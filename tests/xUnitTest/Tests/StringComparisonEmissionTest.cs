@@ -118,8 +118,7 @@ public class StringComparisonEmissionTest
     {
         const string Source = "func forever() -> string\n    loop => ()\nlet text = \"held\"\ntext == forever()";
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]

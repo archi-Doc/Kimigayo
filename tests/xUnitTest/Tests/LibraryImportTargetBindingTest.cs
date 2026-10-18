@@ -87,8 +87,16 @@ public class LibraryImportTargetBindingTest
         Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var import = Assert.Single(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
+        var import = Assert.Single(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);
         Assert.Equal(("library", "symbol", "import"), (import.Library, import.Symbol, import.Kind));
+
+        // R5-M25: the import names its definition the way MirDefKey does, by the function's symbol, and a rebind keeps it.
+        var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Native").Members.OfType<FunctionKoto>().Single();
+        Assert.Same(function, import.Decl.Declaration);
+        Assert.Same(function.SymbolOf(), import.Decl);
+        Assert.Equal(BindingSymbolKind.Function, import.Decl.Kind);
+        Assert.True(c.Bind().IsComplete);
+        Assert.Same(import.Decl, Assert.Single(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha).Decl);
     }
 
     [Theory]

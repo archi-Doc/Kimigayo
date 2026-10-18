@@ -12,6 +12,92 @@ namespace XunitTest;
 /// Type is the instantiation Binding makes for it, over the Kimi library and every milestone program.</summary>
 public sealed class TyCtxtTest
 {
+    // Generic functions whose requirement calls, in the closed calls below, run each witness kind: a conformance witness, an inherited one, one
+    // through a conditional conformance of a Type with an Origin slot, one through a bound Contract reference (also written in a generic Type's
+    // own parameter), an accessor-call and a standard property witness (get and set), a fixed array's entry, the integer Position and built-in
+    // comparison and arithmetic (the latter through a bound reference).
+    internal const string WitnessSource = """
+        contract Shape
+            func area(self: ref/Self) -> i32
+        struct Square
+            Self is Shape
+            public var side: i32
+            public init(side: i32) => self.side = side
+            public func area(self: ref/Self) -> i32 => self.side * self.side
+        public open struct Base
+            public var side: i32 = 2
+            public func area(self: ref/Self) -> i32 => self.side
+        public struct Leaf : Base
+            Self is Shape
+            public init() => ()
+        struct Held<T> {a}
+            Self is Shape when T is Copy
+            public var value: ref/T during a
+            public init(value: ref/T during a) => self.value = value
+            public func area(self: ref/Self) -> i32 => 4
+        contract Counted
+            property count: i32 has get, set
+        struct Tally
+            Self is Counted
+            public var count: i32 = 1
+            public init() => ()
+        struct Gauge
+            Self is Counted
+            var stored: i32 = 2
+            public computed count: i32
+                get() -> i32 => self.stored
+                set(value: i32) -> () => self.stored = value
+            public init() => ()
+        struct Plain
+            Self is Addable<i32>
+            associate Output is i32
+            public init() => ()
+            public func added(self: ref/Self, right: ref/i32) -> i32 => 6
+        struct Wrap<V>
+            V is PrimitiveInteger
+            Self is Addable<V>
+            associate Output is i32
+            public init() => ()
+            public func added(self: ref/Self, right: ref/V) -> i32 => 7
+        func measure<T>(x: ref/T) -> i32
+            T is Shape
+            return x.area()
+        func bump<T>(x: uniq/T) -> i32
+            T is Counted
+            x.count = x.count + 1
+            return x.count
+        func add<T>(left: ref/T, right: ref/i32) -> i32
+            T is Addable<i32>
+            T.(Addable<i32>).Output is i32
+            return left.added(right)
+        func same<T>(x: T) -> bool
+            T is Equatable
+            return x == x
+        func count<C>(items: ref/C) -> i32
+            C is Iterable
+            var n = 0
+            for item in items => n += 1
+            return n
+        func at<P>(p: P, length: isize) -> Option<isize>
+            P is Position
+            return p.tryResolve(length)
+        let square = Square.init(3)
+        let leaf = Leaf.init()
+        let seven = 7
+        let held = Held<i32>.init(seven@ref)
+        var tally = Tally.init()
+        var gauge = Gauge.init()
+        let plain = Plain.init()
+        let wrap = Wrap<i32>.init()
+        let five = 5
+        let fixed: [3 of i32] = [1, 2, 3]
+        require measure(square) == 9 and measure(leaf) == 2 and measure(held) == 4 else => $abort("shape")
+        require bump(tally@uniq) == 2 and bump(gauge@uniq) == 3 else => $abort("count")
+        require add(plain, 2) == 6 and add(wrap, 2) == 7 and add(five, 2) == 7 else => $abort("add")
+        require same(8) and count(fixed) == 3 else => $abort("built in")
+        _ = at(1, 3)
+        """;
+
     // A generic function whose closure an instance closes, called with two lengths.
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
@@ -343,6 +429,67 @@ public sealed class TyCtxtTest
         Assert.Same(BoundType.I32, composed.Single(static x => x.Name == "get").Subst.Declaring!.Components[0]);
     }
 
+    // DECISIONS R5-M61 (F package 4.5): a requirement call in a generic body, in the instance a closed call of that body makes, has under
+    // Witness the target Binding's forwarding into that instance materializes (InstantiateForwardedCall), over every such call of the
+    // generic library and the milestones and over WitnessSource's kinds; a bound Contract reference is the substitution's declaring Type.
+    [Fact]
+    public void WitnessIsTheForwardedRequirementCall()
+    {
+        var problems = new List<string>();
+        var corpus = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        foreach (var name in HirColumnsTest.Corpus.Select(static x => x.Data))
+        {
+            var (c, module) = SemanticSnapshotTest.Bind(name);
+            WitnessProblems(c, module, name, corpus, problems);
+        }
+
+        var direct = MinimalEmissionTest.Analyze(WitnessSource);
+        Assert.True(direct.Binding.Result.IsComplete, MinimalEmissionTest.Describe(direct, null));
+        var kinds = new SortedDictionary<string, int>(StringComparer.Ordinal);
+        WitnessProblems(direct, direct.Kotonoha, "direct", kinds, problems);
+        var counts = $"corpus {Counts(corpus)}; direct {Counts(kinds)}";
+        Assert.True(
+            problems.Count == 0 && counts == "corpus Body 34, Builtin 2, Storage 1, bound 3; direct Body 11, Builtin 2, Storage 3, bound 3",
+            $"{counts}; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
+
+        static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
+    }
+
+    // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception. A caller's
+    // instance that makes a requirement call's Self nest past it has no composed substitution, as it has no forwarded call (PLAN G157 (4)),
+    // so no substitution without its Self reaches Witness.
+    [Fact]
+    public void ADeepSelfHasTheLimitTarget()
+    {
+        var c = MinimalEmissionTest.Analyze(WitnessSource);
+        var (inner, outer) = RequirementCalls(c, c.Kotonoha).First(static x => x.Inner.Target.Name == "area");
+        var wrap = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Wrap" })!;
+        var deep = BoundType.I32;
+        for (var i = 0; i < 80; i++)
+        {
+            deep = c.Types.Intern(wrap.Kind, wrap.Symbol, wrap.Semantics, [deep]);
+        }
+
+        var call = new CallPlan();
+        call.Set(inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
+        Assert.Equal(RequirementTargetKind.Limit, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
+        Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
+
+        // Option^40<i32> (storage depth 80): Wrap^80 counts as prepared in the pass once Witness prepared it, since its failing part is a
+        // Type argument that no Field stores.
+        var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
+        var nested = BoundType.I32;
+        for (var i = 0; i < 40; i++)
+        {
+            nested = c.Types.Intern(option.Kind, option.Symbol, option.Semantics, [nested]);
+        }
+
+        var instance = new CallPlan();
+        instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
+        Assert.Null(c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
+        Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
+    }
+
     // A warm rebind keeps every call's substitution the same object and looking it up allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -385,6 +532,27 @@ public sealed class TyCtxtTest
         }));
         Assert.Equal(0, changed);
         Assert.Contains(composed, static x => x is { IsIdentity: false, Types.Length: > 0 });
+    }
+
+    // A warm rebind gives each requirement call of WitnessSource the same target in each instance, and asking again allocates nothing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmWitnessIsTheSameAndAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(WitnessSource);
+        var calls = RequirementCalls(c, c.Kotonoha).ToArray();
+        var targets = calls.Select(x => Witness(c, x)).ToArray();
+        var changed = 0;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            for (var i = 0; i < calls.Length; i++)
+            {
+                changed += Witness(c, calls[i]) == targets[i] ? 0 : 1;
+            }
+        }));
+        Assert.Equal(0, changed);
+        Assert.Contains(targets, static x => x.Kind == RequirementTargetKind.Body);
     }
 
     // Erasing the Types of a program's MIR locals again allocates nothing: each erased form is memoized like the interning.
@@ -580,4 +748,108 @@ public sealed class TyCtxtTest
     private static bool Binds(Subst subst, CallPlan call)
         => subst.Types.SequenceEqual(call.TypeArguments) && subst.Lengths.SequenceEqual(call.LengthArguments) &&
             subst.Origins.SequenceEqual(call.Origins) && subst.Inputs.SequenceEqual(call.InputOrigins);
+
+    // Each requirement call in the body of a generic function, with each call of that function in a module whose instance closes the
+    // requirement's Self, as InstantiateForwardedCall pairs them (a call in a nested function or closure is its own binder's).
+    private static IEnumerable<(CallPlan Inner, CallPlan Outer)> RequirementCalls(Compilation c, Kotonoha module)
+    {
+        var bodies = new Dictionary<FunctionKoto, CallPlan[]>();
+        foreach (var node in KotoTree.Walk(module.RootKoto))
+        {
+            for (var i = 0; CallPlan.Of(node, i) is { } outer; i++)
+            {
+                if (outer.Kind != CalleeKind.Function || outer.Target.Declaration is not FunctionKoto callee || !c.Types.Instantiates(outer.Target))
+                {
+                    continue;
+                }
+
+                if (!bodies.TryGetValue(callee, out var inner))
+                {
+                    inner = KotoTree.Walk(callee).Where(x => ReferenceEquals(Binder(x), callee))
+                        .SelectMany(static x => Enumerable.Range(0, 8).Select(k => CallPlan.Of(x, k)).TakeWhile(static y => y is not null).OfType<CallPlan>())
+                        .Where(static x => x.Kind == CalleeKind.Requirement).ToArray();
+                    bodies.Add(callee, inner);
+                }
+
+                foreach (var call in inner)
+                {
+                    if (Composed(c, (call, outer))?.Self is { HasAbstractPart: false })
+                    {
+                        yield return (call, outer);
+                    }
+                }
+            }
+        }
+
+        static FunctionKoto? Binder(Koto node) => node.Parent is not { } parent ? null : parent as FunctionKoto ?? Binder(parent);
+    }
+
+    // A requirement call's substitution in its caller's instance, and its target there.
+    private static Subst? Composed(Compilation c, (CallPlan Inner, CallPlan Outer) call)
+        => c.Types.Compose(c.Types.SubstOf(call.Inner)!, c.Types.SubstOf(call.Outer)!);
+
+    private static RequirementTarget Witness(Compilation c, (CallPlan Inner, CallPlan Outer) call)
+        => c.Types.Witness(call.Inner.Target, call.Inner.RequirementContract, Composed(c, call)!);
+
+    // Each Witness of RequirementCalls agrees with the forwarded call (the CallPlan materializer's): a Body is the function the forwarded call
+    // runs under its substitution; a Builtin the same compiler function, and a Storage witness the Field its bridge reads with the bridge's
+    // operation, each under the requirement call's own substitution, which binds what the forwarded call binds; Refused has no forwarded
+    // call; None and Limit occur for no closed Self of an accepted program. A bound Contract reference is the substitution's declaring Type.
+    // The views leave Binding's records and the HIR version unchanged. Counts the targets by kind and the bound references.
+    private static void WitnessProblems(Compilation c, Kotonoha module, string label, IDictionary<string, int> kinds, List<string> problems)
+    {
+        var version = HirTables.Publish(c);
+        var issues = c.Binding.Issues.Count;
+        var calls = RequirementCalls(c, module).Select(x => (x.Inner, x.Outer, Subst: Composed(c, x)!, Target: Witness(c, x))).ToArray();
+        if (HirTables.Publish(c) != version || c.Binding.Issues.Count != issues)
+        {
+            problems.Add($"{label}: a view changed Binding's state");
+        }
+
+        foreach (var (inner, outer, subst, target) in calls)
+        {
+            Count(target.Kind.ToString());
+            var where = $"{label} {outer.Target.Name} > {inner.Target.Name} on {TyCtxt.Name(subst.Self!)}: {target.Kind}";
+            if (inner.RequirementContract is { Type: { } bound } contract && !ReferenceEquals(bound.Symbol, contract))
+            {
+                Count("bound");
+                if (!ReferenceEquals(subst.Declaring, c.Binding.InstantiateStorageType(bound, outer)))
+                {
+                    problems.Add($"{where} bound reference");
+                }
+            }
+
+            var forwarded = c.Binding.InstantiateForwardedCall(inner, outer);
+            var agrees = target.Kind switch
+            {
+                RequirementTargetKind.Body => ReferenceEquals(target.Target, forwarded?.Target) && ReferenceEquals(target.Subst, c.Types.SubstOf(forwarded!)),
+                RequirementTargetKind.Builtin => ReferenceEquals(target.Target, forwarded?.Target) && ReferenceEquals(target.Subst, subst) &&
+                    Same(c.Types.SubstOf(forwarded!)!, subst),
+                RequirementTargetKind.Storage => forwarded?.Target.Declaration is FunctionKoto { IsPropertyWitness: true, Accessor: { } bridge } function &&
+                    ReferenceEquals(target.Target, bridge.Property.Symbol) && target.Access == Access(function) && ReferenceEquals(target.Subst, subst) &&
+                    c.Types.SubstOf(forwarded) is { } storage && ReferenceEquals(storage.Declaring, subst.Self) && Same(storage, subst, self: false),
+                RequirementTargetKind.Refused => forwarded is null,
+                _ => false,
+            };
+
+            if (!agrees)
+            {
+                problems.Add($"{where}; forwarded {forwarded?.Target.Name}");
+            }
+        }
+
+        void Count(string key) => kinds[key] = kinds.TryGetValue(key, out var count) ? count + 1 : 1;
+
+        // A standard bridge's operation, by the body PropertyWitnessFunction gives it.
+        static PropertyWitnessKind Access(FunctionKoto bridge) => bridge.ExpressionBody switch
+        {
+            ConversionKoto => PropertyWitnessKind.StorageBorrow,
+            BinaryKoto { Akind: KotoKind.Equals } => PropertyWitnessKind.StorageSet,
+            _ => PropertyWitnessKind.StorageCopy,
+        };
+
+        // Two substitutions bind the same Self (when asked), Types, lengths, Origins and inputs.
+        static bool Same(Subst a, Subst b, bool self = true) => (!self || ReferenceEquals(a.Self, b.Self)) && a.Types.SequenceEqual(b.Types) &&
+            a.Lengths.SequenceEqual(b.Lengths) && a.Origins.SequenceEqual(b.Origins) && a.Inputs.SequenceEqual(b.Inputs);
+    }
 }

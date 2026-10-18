@@ -11,7 +11,9 @@ namespace XunitTest;
 /// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R5): <c>KIMI_PIPELINE</c> selects the default,
 /// only the mir pipeline publishes the MIR's records and marks the compiler identity, the legacy output does not depend on it, and every
 /// analysis notifies the difference ledger's observer. <c>KIMI_CODEGEN</c> (R5 PD4) selects MIR code generation under the mir pipeline
-/// only, which collects the checked set and refuses generation until C0b1.</summary>
+/// only, which collects the checked set and writes a module only where its coverage rows cover it (R5 C0b1). Every product generation
+/// request passes the generation entry's gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its
+/// generation records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
     // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
@@ -72,14 +74,15 @@ public sealed class PipelineSwitchTest
         Assert.Equal(legacy.Take(7).Concat(["pipeline", "mir", "codegen", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Mir));
     }
 
-    // R5 K1: only MIR code generation collects the checked set, and until C0b1 it refuses to generate: one Unsupported_Kd in the Emission
-    // partition at each output root (an Application's startup, a test build's tests, a Library's closed bodies), never the old generator's
-    // module.
+    // R5 K1, C0b1 (DECISIONS R5-M65): only MIR code generation collects the checked set; it writes the module of an output form whose items
+    // its coverage rows cover, an Application's (with its entry) or a Library's, and otherwise writes nothing and records one Unsupported_Kd
+    // in the Emission partition at each subject of a row not written yet, here a call (C3a) and a test build's TestEntry at each test
+    // (C10a); never the old generator's module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does.
     [Theory]
-    [InlineData(OutputKind.Application, false, new[] { "" })]
+    [InlineData(OutputKind.Application, false, new[] { "first()" })]
     [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" })]
-    [InlineData(OutputKind.Library, false, new[] { "", "first() => ()", "second() => ()" })]
-    public void MirCodegenRefusesEachOutputRoot(OutputKind output, bool test, string[] roots)
+    [InlineData(OutputKind.Library, false, new string[0])]
+    public void MirCodegenWritesEachCoveredOutputForm(OutputKind output, bool test, string[] records)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
@@ -91,17 +94,95 @@ public sealed class PipelineSwitchTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         Assert.Null(c.Instances);
-        Assert.True(c.WriteIr(TextWriter.Null, out _));
+        using (var legacy = new StringWriter())
+        {
+            Assert.True(c.Generate(legacy));
+            Assert.Equal(CompilationTestHelper.WriteIr(c), legacy.ToString());
+        }
 
         c.Codegen = CompilerCodegen.Mir;
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(c.Instances);
-        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("C0b1", failure);
-        Assert.False(c.Validate(out _));
-        var records = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-        Assert.All(records, static x => Assert.Equal("Unsupported_Kd", x.Code));
-        Assert.Equal(roots, records.Select(static x => x.Text).Order(StringComparer.Ordinal));
+        var written = records.Length == 0;
+        using (var writer = new StringWriter())
+        {
+            Assert.Equal(written, c.Generate(writer));
+            Assert.Equal(written, writer.ToString().Length != 0);
+            Assert.Equal(written && output == OutputKind.Application, writer.ToString().Contains("define void @__kimi_start()", StringComparison.Ordinal));
+        }
+
+        Assert.Equal(written, c.WriteIr(TextWriter.Null, out var failure));
+        Assert.Equal(written, failure is null);
+        Assert.Equal(written, c.Validate(out _));
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.All(errors, static x => Assert.Equal("Unsupported_Kd", x.Code));
+        Assert.Equal(records, errors.Select(static x => x.Text).Order(StringComparer.Ordinal));
+    }
+
+    // R5 C0a (PD12's gate, step 1; DECISIONS R5-M64): every generation request passes the entry's gate, artifact publication included,
+    // which ran the old generator on a program with MIR records before; the records are the analysis's own, so generation adds none.
+    [Fact]
+    public void TheGateRefusesMirRecordsForEveryCaller()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var c = Compilation.CreateForTest();
+            c.Pipeline = CompilerPipeline.Mir;
+            c.Codegen = CompilerCodegen.Legacy;
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+            Assert.False(Analyze(c, OutputKind.Application));
+            Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
+            c.Project.Directory = directory;
+            c.Project.Name = "Hello";
+            c.Project.ProjectFile.OutputPath = "out/Hello.ll";
+            using var writer = new StringWriter();
+            Assert.False(c.Generate(writer));
+            Assert.Empty(writer.ToString());
+            Assert.False(EmissionArtifacts.Publish(c, out var path, out var failure));
+            Assert.Null(path);
+            Assert.Null(failure);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories));
+            Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    // R5 C0a: kimi test publishes its generation records through the entry, as kimi build does: a test build the old generator refuses
+    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54).
+    [Fact]
+    public void TheTestCommandPublishesTheGenerationRecords()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            var project = new Project(new Kimigayo(console)) { Name = "wide", Directory = directory };
+            project.ProjectFile.Targets = [WindowsProfile.Target];
+            const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
+            project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
+            var c = project.PrepareTests(TestContext.Current.CancellationToken);
+            Assert.Equal(Compilation.DefaultCodegen == CompilerCodegen.Mir, c is null);
+            if (c is not null)
+            {
+                var stem = Path.Combine(directory, "tests");
+                Assert.False(project.PublishArtifacts(c, new(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2"), null, out _));
+            }
+
+            Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     // R5 K4b (DECISIONS R5-M41): under MIR code generation the checked set's records are analysis problems too, control-flow Errors at
@@ -125,6 +206,44 @@ public sealed class PipelineSwitchTest
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
         Assert.Equal(("Unsupported_Kd", "pick(v@move)"), (record.Code, record.Text));
+    }
+
+    // R5 K10c (DECISIONS R5-M52): under MIR code generation a layout over 2^63 - 1 bytes is a Language error at check, at its by-value use;
+    // until G2 the default pipeline accepts it at check and the old generator refuses generation with its generation limit's code, without
+    // throwing.
+    [Fact]
+    public async Task MirCodegenRejectsAnOversizedLayoutAtCheck()
+    {
+        const string Over = "func over(value: ([649657 of [92737 of [153092023 of u8]]], u8)) => ()";
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            var project = new Project(new Kimigayo(console)) { Name = "oversized", Directory = directory };
+            project.AddSource("main.kimi", Over + "\nlet x = 1\n");
+            Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+            Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        c.Codegen = CompilerCodegen.Legacy;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Over + "\nlet x = 1\n"));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+
+        c.Codegen = CompilerCodegen.Mir;
+        Assert.False(Analyze(c, OutputKind.Application));
+        var problem = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.OversizedLayout_Kd, Over), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        c.ReportAnalysis();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(("OversizedLayout_Kd", Over["func ".Length..], "layout larger than 2^63 - 1 bytes"), (record.Code, record.Text, record.Label));
     }
 
     // Under mir the MIR's records are the analysis's problems and control-flow Errors that reject the program and block generation;

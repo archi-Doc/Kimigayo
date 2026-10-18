@@ -2,7 +2,7 @@
 
 // Owns the stored shape of one struct or enum declaration.
 // Input: its bound declaration. Output: ordered fields, cases, destructor, inline storage types, whether it has C layout and whether
-// it lies on an inline storage cycle.
+// it lies on an inline storage cycle; a struct's dispatch shape (VTableDef).
 // Binding fills the shape once per pass before bodies; field and case ordinals stay consistent.
 // Must not make MIR or Backend rediscover storage from declaration syntax.
 
@@ -29,12 +29,21 @@ internal sealed class AdtDef
     /// every struct in every pass, before storage is prepared; header binding runs earlier and reads the attributes instead.</summary>
     internal bool IsCLayout { get; set; }
 
+    /// <summary>Gets or sets a value indicating whether the struct's C-layout declaration was rejected for a direct zero-sized Field
+    /// (InvalidCLayout_Kd at the Field). C-layout Field validation writes it for every struct in every pass; Layout reads it as storage
+    /// Binding rejected (DECISIONS R5-M55).</summary>
+    internal bool CLayoutRejected { get; set; }
+
     /// <summary>Gets or sets a value indicating whether the declaration lies on an inline storage cycle (InvalidInlineLayout_Kd).
     /// Inline layout validation writes it for every struct and enum in every pass; Layout reads it (DECISIONS R5-M37).</summary>
     internal bool InlineCycle { get; set; }
 
     /// <summary>Gets or sets the storage version of the pass whose PrepareStorage refilled this shape.</summary>
     internal ulong Version { get; set; }
+
+    /// <summary>Gets or sets a struct's dispatch shape, which slot selection refills in every pass (<see cref="VTableDef.Of"/>; DECISIONS
+    /// R5-M62).</summary>
+    internal VTableDef? VTable { get; set; }
 
     internal static bool IsStruct(BoundType? type) => type is { Kind: BoundTypeKind.Nominal or BoundTypeKind.Constructed, Semantics: SemanticsKind.Owner, Symbol.Declaration: StructKoto };
 
@@ -185,5 +194,9 @@ internal sealed class AdtDef
         internal ulong Version { get; set; }
 
         internal ulong Prepared { get; set; }
+
+        // The levels Binding's storage walk reaches below the instance (Binding.StorageHeight), valid while Prepared is current; 0
+        // while the walk is inside the instance (DECISIONS BU-11).
+        internal int Height { get; set; }
     }
 }

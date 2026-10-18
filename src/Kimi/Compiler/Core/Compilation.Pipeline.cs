@@ -2,10 +2,9 @@
 
 // Owns the public entry path for post-Binding phases and their Problem records.
 // Input: a prepared compilation and its pipeline and code generator choice. Output: analysis, validated and analyzed MIR, under MIR code
-// generation its checked set, diagnostics and IR.
+// generation its checked set, and diagnostics; generation has its own entry (Compilation.Generation.cs, R5 C0a).
 // Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication. Under MIR code generation (sel,
-// R5 PD4) the checked set's records join them (K4b) and generation is refused until C0b1 (K package 5), never falling back to the old
-// generator.
+// R5 PD4) the checked set's records join them (K4b).
 // Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
@@ -14,15 +13,12 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// The analysis and generation entry points (plan 12.1, 13.2), the one way to run and read the phases after Binding and startup, follow
-// the pipeline: until R6 the old path decides under both, and under mir the MIR is built, validated and analyzed beside it and its
-// construction records and validator findings are analysis Errors (its analysis problems stay unpublished, R4-M1).
+// The analysis entry points (plan 12.1, 13.2), the one way to run and read the analyses after Binding and startup (generation has its own
+// entry, Compilation.Generation.cs), follow the pipeline: until R6 the old path decides under both, and under mir the MIR is built,
+// validated and analyzed beside it and its construction records and validator findings are analysis Errors (its analysis problems stay
+// unpublished, R4-M1).
 public partial class Compilation
 {
-    /// <summary>The failure text of the out-string generation adapters under MIR code generation (R5 K1 to C0b1).</summary>
-    [Transitional("R6-gen", Reason = "C0b1 replaces the refusal with the codegen coverage rows.")]
-    internal const string CodegenRefusal = "MIR code generation writes no module before R5 C0b1: its output roots are Unsupported.";
-
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     private static CompilerPipeline? defaultPipeline;
     [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
@@ -153,19 +149,6 @@ public partial class Compilation
         this.Ownership.ReportDiagnostics();
     }
 
-    /// <summary>Writes inspection IR after checking the latest analysis; it does not certify a published artifact or native execution.</summary>
-    /// <param name="writer">The caller-owned output.</param>
-    /// <param name="failure">The failed generation obligation, if any.</param>
-    /// <returns>Whether checked IR was written.</returns>
-    public bool WriteIr(TextWriter writer, out string? failure)
-        => this.Generates(out failure) && this.Emission.WriteIr(writer, out failure);
-
-    /// <summary>Checks that the latest analysis can be generated.</summary>
-    /// <param name="failure">The failed generation obligation, if any.</param>
-    /// <returns>Whether generation can proceed.</returns>
-    public bool Validate(out string? failure)
-        => this.Generates(out failure) && this.Emission.Validate(out failure);
-
     /// <summary>Reads a <c>KIMI_PIPELINE</c> value: <c>mir</c>, or <c>legacy</c> or unset for the old path alone.</summary>
     /// <param name="value">The value.</param>
     /// <returns>The pipeline.</returns>
@@ -212,48 +195,10 @@ public partial class Compilation
         return program;
     }
 
-    /// <summary>Refuses generation under MIR code generation, which writes no module before C0b1 and never falls back to the old generator
-    /// (K package 5, PD11's sel exception): one <c>Unsupported_Kd</c> in the Emission partition at the body of each output root, an
-    /// Application's startup, a test build's tests or a Library's roots.</summary>
-    /// <returns>Whether generation is refused.</returns>
-    [Transitional("R6-gen", Reason = "C0b1 replaces the refusal with the codegen coverage rows.")]
-    internal bool RefusesCodegen()
-    {
-        if (this.codegen != CompilerCodegen.Mir)
-        {
-            return false;
-        }
-
-        var program = this.BuildMir();
-        var set = this.instances!.Set;
-        var startup = this.Binding.Startup;
-        var entry = new Mir.MirDefKey(startup.Kind == StartupKind.Explicit ? startup.Symbol : null, Mir.MirBodyKind.Fn);
-        this.Diagnostics.Invalidate(DiagnosticPartition.Emission);
-        foreach (var item in set.Items[..set.RootCount])
-        {
-            var body = program.Bodies[item.BodyOrdinal];
-            if (this.IsTestBuild ? body.Key.Kind == Mir.MirBodyKind.Test : startup.OutputKind == OutputKind.Library || body.Key == entry)
-            {
-                this.SyntaxOf(body.Source).Report(DiagnosticRequirement.Emission, DiagnosticCode.Unsupported_Kd);
-            }
-        }
-
-        return true;
-    }
-
     internal void InvalidateOwnership()
     {
         this.ownership?.Invalidate();
         this.mir = null;
-    }
-
-    // Generation, like acceptance, requires an analysis without Errors; the old path checks its own.
-    private bool Generates(out string? failure)
-    {
-        var records = this.MirRecords(null);
-        failure = records > 0 ? $"Generation requires an analysis without errors; the MIR has {records} Unsupported, Resource or invariant records."
-            : this.RefusesCodegen() ? CodegenRefusal : null;
-        return failure is null;
     }
 
     // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings, the

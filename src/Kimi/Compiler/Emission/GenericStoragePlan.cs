@@ -419,7 +419,10 @@ internal sealed partial class GenericStoragePlan
             return Fail("Generic entry result has no concrete representation.", out failure);
         }
 
-        var resultSlot = target.IsConstructor || target.IsDestructor || FunctionAbiPool.HasResultSlot(result, layouts);
+        // The ordinary function rule (Abi.Of); a generic closure instance has a concrete environment (PrepareClosures).
+        var flags = (target.IsConstructor || target.IsDestructor ? Abi.Flags.ResultSlot : Abi.Flags.None) |
+            (KimiLibraryCatalog.RequiresCallerLocation(target.BoundSymbol) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
+            (target.IsAnonymous ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
@@ -463,10 +466,10 @@ internal sealed partial class GenericStoragePlan
             return Fail("Selected specialization has no verified implementation ABI.", out failure);
         }
 
-        // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
+        // The entry's physical signature follows the ordinary function rule (Abi.Of), so callers pass every argument alike.
         var name = this.destructorNames.TryGetValue(call, out var reserved) ? reserved : this.EntryName(this.entryNames++);
-        entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
-            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol), function.IsAnonymous), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+        entry = this.PreviousEntry(name, template, parameters, result, flags, call, selectedAbi, layouts) ??
+            new(template, Abi.Of(layouts.Layout, Abi.Convention.Internal, flags, result, parameters).Named(name), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
                 ConcreteCalls = new CallPlan[template.DirectCalls.Length],
             };
@@ -575,14 +578,14 @@ internal sealed partial class GenericStoragePlan
 
     /// <summary>A universally verified generic body and the calls its instances forward.</summary>
     // The previous emission's entry of the same name, template and substitution whose physical signature still holds.
-    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, bool resultSlot, CallPlan call, FunctionAbi? selected, AggregateLayoutPool layouts)
+    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, Abi.Flags flags, CallPlan call, FunctionAbi? selected, AggregateLayoutPool layouts)
     {
         foreach (var previous in this.previousEntries)
         {
             if (ReferenceEquals(previous.Abi.Name, name) && ReferenceEquals(previous.Template, template) && ReferenceEquals(previous.Result, result) &&
                 ReferenceEquals(previous.Selected, selected) && ReferenceEquals(previous.DeclaringType, call.DeclaringType) &&
                 previous.Parameters.AsSpan().SequenceEqual(parameters) && previous.Arguments.AsSpan().SequenceEqual(call.TypeArguments) &&
-                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(template.Body.Function.BoundSymbol), template.Body.Function.IsAnonymous))
+                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && Abi.Matches(previous.Abi, layouts.Layout, Abi.Convention.Internal, flags, result, parameters))
             {
                 return previous;
             }

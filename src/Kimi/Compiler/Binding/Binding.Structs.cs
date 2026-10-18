@@ -14,7 +14,8 @@ public sealed partial class Binding
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
 
-    internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
+    // Whether a Type's storage substitutes completely, nested at most 64 levels below it (PLAN G128's bound).
+    internal bool PrepareTypeStorage(BoundType type) => this.StorageHeight(type, 64) >= 0;
 
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call) => this.InstantiateStorageType(type, this.types.StorageSubst(call));
 
@@ -33,7 +34,7 @@ public sealed partial class Binding
         }
 
         result = result is null ? null : this.CloseClosureTypes(result, subst);
-        return result is not null && this.PrepareInstantiatedStorage(result, 0) ? result : null;
+        return result is not null && this.PrepareTypeStorage(result) ? result : null;
     }
 
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
@@ -49,44 +50,62 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether an instance's storage substitutes completely, nested Types included; validated once per pass. It reads
-    // storage metadata only; it never rebinds or selects a body.
-    private bool PrepareInstantiatedStorage(BoundType type, int depth)
+    // Whether an instance's storage substitutes completely, nested Types included, within the bound: the levels its walk reaches
+    // below a Type (0 for a scalar; 1 + the highest base, Field, Case payload Tuple or Type component), or -1 when a part does not
+    // substitute or the height exceeds the budget. A struct or enum keeps its height for the pass once all its parts passed, so the
+    // answer depends on the Type, not on the order of queries (DECISIONS BU-11). It reads storage metadata only; it never rebinds or
+    // selects a body.
+    private int StorageHeight(BoundType type, int budget)
     {
-        if (depth > 64)
+        if (budget < 0)
         {
-            return false;
+            return -1;
         }
 
-        if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
+        var height = 0;
+        if (!AdtDef.IsStruct(type) && !AdtDef.IsEnum(type))
         {
-            var instance = this.Instance(type);
-            if (instance.Prepared == this.storageVersion)
-            {
-                return true;
-            }
-
-            // Stamped first, so a Type reached again through its own storage is not walked twice.
-            instance.Prepared = this.storageVersion;
-            if ((AdtDef.IsEnum(type) && instance.Cases is null) || (instance.Base is { } parent && !this.PrepareInstantiatedStorage(parent, depth + 1)) ||
-                !this.PrepareEach(instance.Fields, depth) || !this.PrepareEach(instance.Cases, depth))
-            {
-                instance.Prepared = 0;
-                return false;
-            }
+            return this.Highest((BoundType[])type.Components, budget - 1, ref height) ? height : -1;
         }
 
-        return this.PrepareEach((BoundType[])type.Components, depth);
+        var instance = this.Instance(type);
+        if (instance.Prepared == this.storageVersion)
+        {
+            return instance.Height <= budget ? instance.Height : -1;
+        }
+
+        // Stamped first at height 0, so an instance reached again through its own storage counts 0 and is not walked twice.
+        instance.Prepared = this.storageVersion;
+        instance.Height = 0;
+        if ((AdtDef.IsEnum(type) && instance.Cases is null) || !this.StoredHeight(instance, budget - 1, ref height) ||
+            !this.Highest((BoundType[])type.Components, budget - 1, ref height))
+        {
+            instance.Prepared = 0;
+            return -1;
+        }
+
+        instance.Height = height;
+        return height;
     }
 
-    private bool PrepareEach(ReadOnlySpan<BoundType?> types, int depth)
+    // Raises height to one above each stored Type of an instance (its base, Fields and Case payload Tuples); false when one is missing
+    // or fails (StorageHeight).
+    private bool StoredHeight(AdtDef.InstanceStorage instance, int budget, ref int height)
+        => (instance.Base is not { } parent || this.Highest([parent], budget, ref height)) && this.Highest(instance.Fields, budget, ref height) &&
+            this.Highest(instance.Cases, budget, ref height);
+
+    // Raises height to one above each Type's storage height; false when one is missing or fails (StorageHeight).
+    private bool Highest(ReadOnlySpan<BoundType?> types, int budget, ref int height)
     {
         foreach (var type in types)
         {
-            if (type is null || !this.PrepareInstantiatedStorage(type, depth + 1))
+            var part = type is null ? -1 : this.StorageHeight(type, budget);
+            if (part < 0)
             {
                 return false;
             }
+
+            height = Math.Max(height, part + 1);
         }
 
         return true;

@@ -14,12 +14,6 @@ internal static partial class LlvmModuleWriter
     // A check's names: its success label and its two location operands.
     private const int CheckLength = 3 * OperandLength;
 
-    private static void Name(TextWriter output, string prefix, int id)
-    {
-        output.Write(prefix);
-        WriteNumber(output, id);
-    }
-
     private static void WriteOperand(TextWriter output, EmissionOperand operand)
         => output.Write(Spell(operand, stackalloc char[OperandLength]));
 

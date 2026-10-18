@@ -102,9 +102,9 @@ internal sealed class CompilerFunctionAdapters
         }
 
         var ordinal = this.entries.Count;
-        var slot = FunctionAbiPool.HasResultSlot(result, this.layouts);
         FunctionAbi abi;
-        if (ordinal < this.signatures.Count && FunctionAbiPool.Matches(this.signatures[ordinal], result, inputs, slot, this.layouts, callerLocation: true))
+        if (ordinal < this.signatures.Count &&
+            Abi.Matches(this.signatures[ordinal], this.layouts.Layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs))
         {
             abi = this.signatures[ordinal];
         }
@@ -115,7 +115,7 @@ internal sealed class CompilerFunctionAdapters
                 this.names.Add("__kimi_compiler_item" + ordinal.ToString(CultureInfo.InvariantCulture));
             }
 
-            abi = FunctionAbiPool.Build(this.names[ordinal], result, inputs, slot, this.layouts, callerLocation: true);
+            abi = Abi.Of(this.layouts.Layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs).Named(this.names[ordinal]);
             if (ordinal == this.signatures.Count)
             {
                 this.signatures.Add(abi);
