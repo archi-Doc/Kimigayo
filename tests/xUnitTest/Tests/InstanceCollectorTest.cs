@@ -36,6 +36,9 @@ public sealed class InstanceCollectorTest
     private const string InSpecialization = CopyBox + "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n" +
         "        func inner(y: i32) -> i32 => y\n        return inner(2)\nfunc outer<T>(x: T) -> i32\n    T is Copy\n    return Box<T>.f(5)\n";
 
+    // A generic function nested in a closed function, which has no instance to carry.
+    private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
+
     // Closed functions, a generic one and a generic struct, a closure, calls only the checks reach, a computed property with both
     // accessors, mutually recursive defaults (template calls) and top-level statements that call them and the library.
     private const string Source = "func plain() -> i32 => 1\nfunc pick<T>(value: T) -> T => value\n" +
@@ -58,6 +61,7 @@ public sealed class InstanceCollectorTest
         { InBlock, "inner", 0, "inner(x)" },
         { InMethod, "inner", 0, "inner(self.value)" },
         { InSpecialization, "inner", 0, "inner(2)" },
+        { InClosed, "pick", 1, null },
     };
 
     // K 4.4: every body of the root module whose definition does not instantiate, the top-level statements, the closure of a closed
@@ -197,6 +201,23 @@ public sealed class InstanceCollectorTest
         Assert.Equal(items, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn " + nested + " [", StringComparison.Ordinal)));
         Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.All(set.Items.ToArray(), x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
+    }
+
+    // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never
+    // gives such a call, so the test forges one: its substitution becomes the callee's own identity.
+    [Fact]
+    public void AnOpenRepresentativeIsABrokenContract()
+    {
+        var c = MirBuildTest.Compile("func pick<T>(value: T) -> T => value@move\nlet x = pick(1)\n");
+        var program = c.BuildMir();
+        var top = program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0);
+        var block = Enumerable.Range(0, top.Blocks.Length)
+            .Single(b => top.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Symbol.Name: "pick" } });
+        var call = top.Blocks[block].Terminator;
+        top.Terminate(block, call with { Callee = call.Callee with { Subst = c.Types.Identity(call.Callee.Symbol!.Declaration) } });
+        var set = new InstanceCollector(c.Types).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "pick(1)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
     // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.

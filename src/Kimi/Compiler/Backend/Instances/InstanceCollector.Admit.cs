@@ -34,9 +34,11 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        // SPEC 6.1.3, 8.13.3: an instance of a nested function holds its enclosing function's instance, which a call's substitution
-        // carries only as its declaring Type (one level into a generic function); until K5 any other is the EnclosingInstance gap.
-        if (erased is not null && this.types.EnclosingFunction(target.Key.Decl!) is { } enclosing && !ReferenceEquals(subst!.Declaring?.Symbol, enclosing))
+        // SPEC 6.1.3, 8.13.3: an instance of a function nested in an instantiating function holds that function's instance, which a call's
+        // substitution carries only as its declaring Type (one level into a generic function); until K5 any other is the EnclosingInstance
+        // gap. A closed enclosing function has no instance to carry.
+        if (erased is not null && this.types.EnclosingFunction(target.Key.Decl!) is { } enclosing && this.types.Instantiates(enclosing) &&
+            !ReferenceEquals(subst!.Declaring?.Symbol, enclosing))
         {
             set.Report(Capability.Code(CapabilityGap.EnclosingInstance), this.Subject(parent, body, source));
             return -1;
