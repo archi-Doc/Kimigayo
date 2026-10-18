@@ -94,8 +94,9 @@ public partial class Compilation
 
     // MIR code generation (R5 C0b1, DECISIONS R5-M65) of an accepted program: ModuleCodegen over its checked set. A program check did not
     // accept adds no record (check reported why); an accepted one without its MIR or checked set, or a module neither written nor
-    // explained by a record, is a broken contract. A record carries no fact, so its location is its subject (DIAGNOSTICS rule 3): the
-    // records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are one problem.
+    // explained by a record, is a broken contract. A record is a code without facts (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, or
+    // InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS 4.1): the records of two nodes at one location, such as the
+    // siblings an expansion synthesizes with its span, are one problem.
     private bool GenerateMir(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission);

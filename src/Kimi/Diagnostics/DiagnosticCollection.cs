@@ -200,9 +200,9 @@ public sealed class DiagnosticCollection
         return true;
     }
 
-    /// <summary>Records a problem whose location is its subject (docs/dev/DIAGNOSTICS.md §2 rule 3, §4.1): a code without facts at a span,
-    /// such as a later phase's location-only <c>Unsupported_Kd</c>, so the reports of two nodes at one location, such as the siblings a
-    /// transformation synthesizes with its span, are one problem.</summary>
+    /// <summary>Records a problem whose location is its subject (docs/dev/DIAGNOSTICS.md §4.1): a code without facts at a span, such as a
+    /// later phase's location-only <c>Unsupported_Kd</c> (§2 rule 3) or <c>InternalInvariant_Kd</c>, so the reports of two nodes at one
+    /// location, such as the siblings a transformation synthesizes with its span, are one problem.</summary>
     /// <param name="requirement">The requirement.</param>
     /// <param name="range">The location.</param>
     /// <param name="code">The code, which takes no message argument.</param>

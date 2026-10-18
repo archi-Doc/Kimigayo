@@ -3061,8 +3061,9 @@ structure is recorded here by the unit that first implements it.
   into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b); a test
   build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the collector's one rule
   (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation runs over every item and
-  then discards the text. A record carries no fact, so `Generate` publishes it in the Emission partition keyed by its location
-  (DIAGNOSTICS §2 rule 3: `Unsupported_Kd` is location-only), through the Diagnostics owner's `DiagnosticCollection.ReportLocation`,
+  then discards the text. A record is a code without facts, `Unsupported_Kd` (location-only, DIAGNOSTICS §2 rule 3) or
+  `InternalInvariant_Kd` (a broken contract at its site), so `Generate` publishes it in the Emission partition keyed by its location,
+  through the Diagnostics owner's `DiagnosticCollection.ReportLocation`,
   whose key's subject is the location: the records of two nodes at one location, such as a `for` statement and the siblings its
   expansion synthesizes with its span (`$for.iterator`, `$for.some`, `$for.none`, which the order of node keys cannot tell apart), are one
   problem by the owner's merge of equal keys. An accepted program without its MIR or checked set, or a module neither written nor
