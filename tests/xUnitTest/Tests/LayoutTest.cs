@@ -104,20 +104,23 @@ public class LayoutTest
         Assert.Same(Layout.Of(c.Binding.SelfType(c.Library.GetSymbol(KimiDeclarationId.Loan)!)).Value, Layout.Of(item).Value);
     }
 
-    [Fact]
-    public void TheCompleteBaseIsAPrefixOfTheDerivedLayout()
+    [Theory]
+    [InlineData("E", "{ [0 x i32], [16 x i8] }", 16, 4, "12")]
+    [InlineData("D", "{ [0 x i64], [32 x i8] }", 32, 8, "24,16")]
+    public void TheCompleteBaseIsAPrefixOfTheDerivedLayout(string derivedName, string storage, int size, int alignment, string offsets)
     {
-        // S2-S4 X1: B places its C-layout Field (8 bytes, alignment 4) at 0 and t at 8, so its size 12 includes 3 bytes of tail
-        // padding; D's own Fields follow the complete base in their groups (w at 16, u at 24), never in its padding. A derived struct
-        // has no C layout (SPEC 6.7.1), so the base precedes only Kimigayo-mode Fields.
-        var c = CompilationTestHelper.BindSuccess("#Layout(\"C\")\nstruct C\n    var x: u8\n    var y: i32\nopen struct B\n    var c: C\n    var t: u8\nstruct D: B\n    var u: u8\n    var w: i64\nlet d: raw/D = null");
-        var derived = Variable(c, "d").Components[0];
+        // S2-S4 X1: B places its C-layout Field (8 bytes, alignment 4) at 0 and t at 8, so its data ends at 9 and its size 12
+        // includes 3 bytes of tail padding. E's u follows the complete base at 12 (in the padding it would be at 9, size 12); D's
+        // Fields follow it in their groups (w at 16, u at 24). A derived struct has no C layout (SPEC 6.7.1), so the base precedes
+        // only Kimigayo-mode Fields. The old pool's records are Layout's.
+        var c = CompilationTestHelper.BindSuccess("#Layout(\"C\")\nstruct C\n    var x: u8\n    var y: i32\nopen struct B\n    var c: C\n    var t: u8\nstruct E: B\n    var u: u8\nstruct D: B\n    var u: u8\n    var w: i64\nlet p: raw/" + derivedName + " = null");
+        var derived = Variable(c, "p").Components[0];
         var whole = Layout.Of(derived).Value!;
         var prefix = Layout.Of(AdtDef.Base(derived)!).Value!;
         Assert.Equal(("{ [0 x i32], [12 x i8] }", 12, 4), (prefix.Layout.StorageType, prefix.Layout.Size, prefix.Layout.Alignment));
         Assert.Equal(new[] { 0, 8 }, prefix.Layout.FieldOffsets.ToArray());
-        Assert.Equal(("{ [0 x i64], [32 x i8] }", 32, 8), (whole.Layout.StorageType, whole.Layout.Size, whole.Layout.Alignment));
-        Assert.Equal(new[] { 24, 16 }, whole.Layout.FieldOffsets.ToArray());
+        Assert.Equal((storage, size, alignment), (whole.Layout.StorageType, whole.Layout.Size, whole.Layout.Alignment));
+        Assert.Equal(offsets, string.Join(',', whole.Layout.FieldOffsets.ToArray()));
 
         var old = new AggregateLayoutPool().Get(derived)!;
         Assert.Same(whole, old.Value);

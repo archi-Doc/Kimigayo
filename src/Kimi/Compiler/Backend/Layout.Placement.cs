@@ -43,8 +43,12 @@ internal static partial class Layout
             inherited = layout.Value;
         }
 
-        // A Function Item's Components are its bound generic arguments, not stored Fields.
-        var count = structure ? AdtDef.Count(type) : type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count;
+        var count = type.Kind switch
+        {
+            BoundTypeKind.Tuple or BoundTypeKind.Closure => type.Components.Count,
+            BoundTypeKind.FunctionItem => 0, // Its Components are its bound generic arguments, not stored Fields.
+            _ => AdtDef.Count(type),
+        };
         var local = scratch ??= new();
         var start = local.Parts.Count;
         try
@@ -161,8 +165,8 @@ internal static partial class Layout
         return new(local.Record((int)(type.Length * stride), value.Layout.Alignment, []), null);
     }
 
-    // An enum other than the nonnull Option (PLAN U8): an i32 tag at offset 0, then the union of its Case payload Tuples, aligned
-    // for the most aligned payload (IMPL 21.1.3: implementation-defined).
+    // An enum: an i32 tag at offset 0, then the union of its Case payload Tuples, aligned for the most aligned payload (IMPL 21.1.3:
+    // implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS).
     private static Result PlaceEnum(BoundType type)
     {
         var alignment = 1;

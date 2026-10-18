@@ -1,18 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M27): its
+// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M29): its
 // size, alignment, stride, Field offsets and LLVM representation, for every generator (PD2: the old pool calls it, never a copy).
 // Rows: IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function handles, and the sequence handles
 // (Slice, Array, Dictionary words). Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums,
-// Closures and Function Items. Typed limit kinds and the count and depth bounds come with P7c; Weak<S> with its operations (P41).
+// Closures and Function Items. P7c brings the Type memo, typed limits, the count bound and the depth and cycle guard (R5-M29), before
+// any MIR caller; Weak<S> comes with its operations (P41).
 // Input: a closed Type. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
 // Output: a Result (S2-S4 X18): OK with the Type's ValueLowering; CLayout with the C-layout instance, at any depth, that stores a
 // zero-sized Field; or Limit, when a size or offset exceeds 2^31 - 1. A Type without a row is an internal error.
 // Invariants: deterministic; one shared record per representation, so a call that finds its records allocates nothing; the
 // complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL
 // 21.1.3), while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is
-// unchanged. No memo by Type: interned Types outlive a Binding pass, which refills their stored Types, so the caller that knows
-// the pass keeps one (the old pool, per body).
+// unchanged. No Type memo until P7c: Binding keeps interned Types across passes and re-substitutes their stored Types, so the old
+// pool memoizes per body.
 // Must not read syntax (AdtDef.IsCLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
 // pool keeps its callbacks until G8), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), or use LINQ.
 
