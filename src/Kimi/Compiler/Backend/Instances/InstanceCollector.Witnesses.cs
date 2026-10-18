@@ -13,8 +13,8 @@ internal sealed partial class InstanceCollector
     // recorded and its composed substitution (X16): a Body's function item, the implementation its instance selects (SPEC 8.13.3; -1
     // without a body); a Builtin's shim item, keyed by the erased Self and its compiler function; a Storage witness's property-witness
     // item, keyed by its Field, the erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the
-    // instance. OCC-X's refusal and a Self whose storage does not complete are capability gaps at the call; no answer for the closed Self of
-    // an accepted program, or a disagreeing signature, is a broken contract.
+    // instance. OCC-X's refusal and a Self whose storage does not complete are capability gaps at the call; None, no answer for the closed
+    // Self of an accepted program, and a Storage witness whose signature disagrees are broken contracts; a kind without a row is a fault.
     private int Requirement(MirProgram program, int item, SourceRef subject, in MirCallee callee, Subst subst)
     {
         var target = this.types.Witness(callee.Symbol!, callee.Contract, subst);
@@ -22,9 +22,10 @@ internal sealed partial class InstanceCollector
         {
             RequirementTargetKind.Body or RequirementTargetKind.Builtin => null,
             RequirementTargetKind.Storage when this.Agrees(callee.Symbol!, subst, target) => null,
+            RequirementTargetKind.Storage or RequirementTargetKind.None => DiagnosticCode.InternalInvariant_Kd,
             RequirementTargetKind.Refused => Capability.Code(CapabilityGap.ExclusiveInheritedWitness),
             RequirementTargetKind.Limit => Capability.Code(CapabilityGap.StorageNesting),
-            _ => DiagnosticCode.InternalInvariant_Kd,
+            _ => throw new InvalidOperationException($"The witness kind {target.Kind} has no edge row."),
         };
 
         if (refused is { } code)
@@ -57,7 +58,13 @@ internal sealed partial class InstanceCollector
 
         var set = target.Access == PropertyWitnessKind.StorageSet;
         var receiver = this.types.Reference(set ? SemanticsKind.Uniq : SemanticsKind.Ref, self);
-        var result = target.Access == PropertyWitnessKind.StorageBorrow ? this.types.Reference(SemanticsKind.Ref, field!) : set ? BoundType.Unit : field!;
+        var result = target.Access switch
+        {
+            PropertyWitnessKind.StorageCopy => field!,
+            PropertyWitnessKind.StorageBorrow => this.types.Reference(SemanticsKind.Ref, field!),
+            PropertyWitnessKind.StorageSet => BoundType.Unit,
+            _ => throw new InvalidOperationException($"A Storage witness has the operation {target.Access}."),
+        };
         var agrees = Same(TyCtxt.Signature(requirement, subst, -1, out var count), result) && count == (set ? 2 : 1);
         for (var slot = 0; agrees && slot < count; slot++)
         {
@@ -69,9 +76,16 @@ internal sealed partial class InstanceCollector
         bool Same(BoundType? declared, BoundType expected) => declared is not null && ReferenceEquals(this.types.Erase(declared), this.types.Erase(expected));
     }
 
-    // K 4.3: a shim's targets, at its default site: a setter's property witness drops the Field's old value (its glue); a Builtin's leaves
-    // come with F6's comparison view (DECISIONS R5-M67).
+    // K 4.3: a shim's targets, at its default site: a setter's property witness drops the Field's old value (its glue), the Field Agrees
+    // found in the representative Self at admission; a Builtin's leaves are K6b's (DECISIONS R5-M67).
     private int Shim(int item, SourceRef site, in MonoKey key, BoundType self)
-        => key is { Kind: MonoKind.PropertyWitness, Variant: (byte)PropertyWitnessKind.StorageSet } && AdtDef.FindField(self, key.Symbol, out var field, out _)
-            ? this.Glue(item, site, field!) : -1;
+    {
+        if (key is not { Kind: MonoKind.PropertyWitness, Variant: (byte)PropertyWitnessKind.StorageSet })
+        {
+            return -1;
+        }
+
+        return AdtDef.FindField(self, key.Symbol, out var field, out _) ? this.Glue(item, site, field!)
+            : throw new InvalidOperationException($"The property witness of {key.Symbol} is not a Field of {TyCtxt.Name(self)}.");
+    }
 }

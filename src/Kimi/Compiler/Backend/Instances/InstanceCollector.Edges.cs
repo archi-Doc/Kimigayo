@@ -24,7 +24,7 @@ internal sealed partial class InstanceCollector
     // Requirement callee's witness under the composed substitution (InstanceCollector.Witnesses.cs), the body a Value callee's Closure or
     // function item runs, an intrinsic's target where its row names one (a staticEnsure's StaticInit, a DestroyValues' glue) and a dropped
     // value's glue; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a callee
-    // without a body, a refused edge or a row not collected yet (the writer's witness, DECISIONS R5-M67; the descriptors, K8).
+    // without a body, a refused edge or a row not collected yet (row 2's shims and row 6's writer witness, K6b; the descriptors, K8).
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
         var callee = call.Callee;
@@ -52,7 +52,7 @@ internal sealed partial class InstanceCollector
             {
                 IntrinsicTarget.StaticInit => this.Static(program, item, body, subject, call),
                 IntrinsicTarget.Glue => this.Glue(item, subject, callee.Subst!.Types[0]!),
-                IntrinsicTarget.None or IntrinsicTarget.Witness or IntrinsicTarget.Descriptor => -1, // The writer's witness: R5-M67; the descriptors: K8.
+                IntrinsicTarget.None or IntrinsicTarget.Witness or IntrinsicTarget.Descriptor => -1, // The writer's witness: K6b; the descriptors: K8.
                 _ => throw new InvalidOperationException($"The intrinsic target {row.Target} has no edge row."),
             };
         }
@@ -106,7 +106,7 @@ internal sealed partial class InstanceCollector
 
     // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
     // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem), as the
-    // implementation that selects (SPEC 8.13.3). -1 for the Item of a function whose calls dispatch (a requirement, K6; a virtual slot, K8),
+    // implementation that selects (SPEC 8.13.3). -1 for the Item of a function whose calls dispatch (a requirement, K6b; a virtual slot, K8),
     // a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
     private int Callee(MirProgram program, int item, SourceRef subject, BoundType callable)
     {

@@ -16,7 +16,8 @@
 // constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
 // each site under the item's representative, a Requirement call's by its witness there (InstanceCollector.Witnesses.cs: a body, a Builtin
 // or a property-witness shim keyed by the erased Self, or a gap); a type-driven item's targets follow from its representative Type
-// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; a property-witness setter's Field glue). K8 adds the object rows.
+// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; a property-witness setter's Field glue). K6b adds the requirement
+// Items, the formatting and writer witnesses and a Builtin's leaves (DECISIONS R5-M67), K8 the object rows.
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.

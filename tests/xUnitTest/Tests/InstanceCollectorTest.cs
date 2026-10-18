@@ -297,7 +297,7 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
-    // K 4.5 rows 4, 5 and 12: the Item of a function whose calls dispatch, a requirement's (not collected yet, DECISIONS R5-M67) or a virtual
+    // K 4.5 rows 4, 5 and 12: the Item of a function whose calls dispatch, a requirement's (K6b, DECISIONS R5-M67) or a virtual
     // slot's (K8), is no target where it is made or called.
     [Fact]
     public void ADispatchingItemHasNoTarget()

@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 internal enum IntrinsicTarget : byte
 {
     None,
-    Witness, // The body of the user's writer witness (ErasedWriter, K6).
+    Witness, // The body of the user's writer witness (ErasedWriter, K6b).
     StaticInit, // The initializer body of the static (StaticEnsure, K7).
     Descriptor, // The object descriptor of the payload (K8).
     Glue, // The drop glue of the element (DestroyValues, K7).
