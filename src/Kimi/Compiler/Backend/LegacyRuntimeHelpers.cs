@@ -19,8 +19,8 @@
 // shape, writer, HelperNeeds (the Array runtime for every kind, the Dictionary runtime for CheckKey, the element's drop glue for
 // Drop) and its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
 // CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
-// DictionaryCallee names each function by the KimiLibrary declaration the old emitter resolves it from until F2c supplies their
-// symbol view; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
+// DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
+// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
 // row, and the old lowering also requests it for a Dictionary's construction. The formatting rows follow in P1d, the storage
 // kernels in P2a-P2b.
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each

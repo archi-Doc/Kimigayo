@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using Kimi.Compiler.Backend;
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -108,7 +108,7 @@ public class DictionaryCapacityTest
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var helpers = module.RuntimeHelpers;
-        var reserve = helpers.Callee(DictionaryCallee.ReserveStorage)!;
+        var reserve = helpers.Callee(DictionaryCallee.Reserve)!;
         var append = helpers.Callee(DictionaryCallee.Append)!;
         Assert.True(reserve.CallerLocation && append.CallerLocation);
         return (CompilationTestHelper.WriteIr(c), reserve.Name, append.Name);
