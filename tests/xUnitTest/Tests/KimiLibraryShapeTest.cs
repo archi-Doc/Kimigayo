@@ -288,6 +288,27 @@ public class KimiLibraryShapeTest
         Assert.Null(library.Function(CompilerFunctionKind.None));
     }
 
+    // F2c (DECISIONS R5-M28): the DictionaryStorage view names each function by the one symbol Binding declares for it, a source
+    // function declared once in the DictionaryStorage group; None names no function.
+    [Fact]
+    public void DictionaryStorageViewNamesTheDeclaredFunctions()
+    {
+        var c = Library.Value;
+        string[] names = ["findEntry", "clearEntries", "requireAbsent", "append", "initialize", "reserve"];
+        Assert.Equal(names.Length + 1, Enum.GetValues<DictionaryCallee>().Length);
+        for (var callee = DictionaryCallee.FindEntry; callee <= DictionaryCallee.Reserve; callee++)
+        {
+            var symbol = c.Library.DictionaryStorage(callee);
+            var container = Container(symbol.Declaration);
+            Assert.Equal("DictionaryStorage", Path(container));
+            Assert.Same(symbol.Declaration, Assert.Single(Declarations(container, names[(int)callee - 1], true)));
+            Assert.Same(symbol, symbol.Declaration.SymbolOf());
+            Assert.True(HasBody(symbol.Declaration));
+        }
+
+        Assert.Throws<InvalidOperationException>(() => c.Library.DictionaryStorage(DictionaryCallee.None));
+    }
+
     // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
     // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), and whether in place,
     // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan).

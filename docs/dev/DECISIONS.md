@@ -1833,7 +1833,7 @@ structure is recorded here by the unit that first implements it.
   Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
   `cLayouts` beside the fact.
 - **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
-  refines R5-M16) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
+  refines R5-M16; refined by R5-M28) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
   `LegacyRuntimeHelpers.DictionaryRow(kind)`, which fails closed: `Kind`; `Shape`, the ABI over the generator's name suffix and
   the key and value descriptors, with the kind's name prefix inside it; `Write`, the body's writer over the helper and the ABIs
   of its two callees; `Entries`, the `DictionaryStorage` function generic over the entry Types, which a helper reaches through
@@ -1858,3 +1858,25 @@ structure is recorded here by the unit that first implements it.
   as its own field (a seventh parameter, over ARCH's six); declaring `reserve`, `shrinkToFit`, `appendSlot` or `clearLinks` as
   row callees (no helper calls them); the Dictionary runtime for every Dictionary request (Place and Drop use neither the
   adapter nor the bridge); helpers written only under the runtime flag, or flags set by their requesters (G133).
+- **R5-M28 The `DictionaryStorage` symbol view** (2026-10-18, planning session; plan F2c, package F §4.10 and §5, S2-S4 X4,
+  under R5-M18; applies R5-M25, refines R5-M27) A `[Transitional("R8")]` Binding view,
+  `KimiLibrary.DictionaryStorage(DictionaryCallee)` (`Binding/KimiLibrary.DictionaryStorage.cs`), gives the `BindingSymbol` of each
+  `DictionaryStorage` function the Backend resolves by name, naming its definition the way `MirDefKey` does. `DictionaryCallee`
+  moves from the Backend into Binding as the view's key, and the legacy Dictionary rows declare their callees in it (X4); None, a
+  row position without a callee, names no function. Members: the five functions legacy text calls (R5-M27) — findEntry and
+  clearEntries, generic over the entry Types, which a helper reaches through its `Related` instance; requireAbsent and append,
+  which the helpers call; initialize, which the Dictionary runtime's initialization bridge calls (the runtime has no row yet; C8e
+  declares its callee) — and reserve, kept because two tests read its compiled name and the old emitter has no other path from a
+  source function to its ABI (it goes with the old emitter, or when those tests read codegen item names). No catalog row and no
+  `KimiDeclarationId`: a cataloged function (findEntry, append, reserve) keeps its catalog symbol, and each other one gets its
+  symbol at library construction, registered like the catalog's so that Binding's indexer declares that same symbol
+  (`KimiLibraryShapeTest`). By the Rule the `FunctionKoto` columns of these six functions are replaced, since every reader (the
+  old analysis, the emitter, `Binding.DictionaryStorageCall`, tests) derives the Koto as the symbol's `Declaration`.
+  `Binding.DictionaryStorageCall` takes the callee and fails closed on any but the two generic functions; the emitter's mapping
+  goes, and the emitter resolves every view function into the module (the generic ones stay null). appendSlot and clearLinks,
+  callees of compiled sources that compile with their callers, are no longer resolved: the bridge checks initialize only.
+  shrinkToFit's resolution, read by nothing, goes with its column (tests read the catalog symbol). The unlink, appendSlot,
+  clearLinks and compact columns stay for the old analysis and tests, until their last syntax reader goes. Rejected: catalog rows
+  (a temporary view in a held file); one symbol property per function (each consumer would map a row's callee to its property);
+  a key beside `DictionaryCallee` (two names for one concept); reading the symbol from the declaration's HIR column (a forwarding
+  property, removed at R6); keeping appendSlot and clearLinks (no legacy text calls them).
