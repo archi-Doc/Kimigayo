@@ -1,9 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the dispatch facts in MIR terms (DECISIONS R5-M61; R5 package F 4.1, 4.5, S2-S4 X1, X16, X28): what a requirement call runs under
-// a closed substitution (Witness), from the requirement-witness core (Binding.ResolveRequirementWitness, R5-M22) under the library root's
-// premises and the Contract reference the call selected as its Self conforms to it (Binding.InstanceContract, shared with the CallPlan
-// materializer).
+// Owns the dispatch facts in MIR terms (DECISIONS R5-M61, R5-M62; R5 package F 4.1, 4.3, 4.5, S2-S4 X1, X16, X28): what a requirement call
+// runs under a closed substitution (Witness), from the requirement-witness core (Binding.ResolveRequirementWitness, R5-M22) under the
+// library root's premises and the Contract reference the call selected as its Self conforms to it (Binding.InstanceContract, shared with
+// the CallPlan materializer); whether a virtual slot exists for a declaring instance (Applies), beside its struct's VTableDef.
+// Applies: given an original and the layer of a representative that declares it, true or false as Binding.VirtualApplicability proves it
+// under the public premises, else null, which for a closed declaring Type is a broken contract its reader records as InternalInvariant_Kd;
+// false makes the slot's entry null (VTableDef's consumer rule). One answer per (original, declaring), discarded at an edit.
 // Input: a requirement, the Contract reference its call recorded (MirCallee.Contract; null for none) and the call's closed substitution
 // (TyCtxt.Compose with a representative), whose Self is the conforming Type and whose declaring Type holds the instantiated bound
 // reference (TyCtxt.SubstOf).
@@ -43,6 +46,7 @@ internal readonly record struct RequirementTarget(RequirementTargetKind Kind, Bi
 internal sealed partial class TyCtxt
 {
     private readonly Dictionary<(BindingSymbol Requirement, BindingSymbol? Contract, Subst Subst), RequirementTarget> witnesses = new();
+    private readonly Dictionary<(BindingSymbol Original, BoundType Declaring), bool?> applicability = new();
 
     // A witness instance's Types and Origins before interning, reused.
     private BoundType?[] witnessTypes = [];
@@ -61,9 +65,31 @@ internal sealed partial class TyCtxt
         return target;
     }
 
+    // SPEC 6.4.3: whether an original's slot exists for the declaring instance, the layer of the representative that declares the original
+    // (Binding.VirtualApplicability under the public premises): Proven is true and Refuted false.
+    internal bool? Applies(BindingSymbol original, BoundType declaring)
+    {
+        if (!this.applicability.TryGetValue((original, declaring), out var applies))
+        {
+            applies = binding.VirtualApplicability(new((FunctionKoto)original.Declaration, declaring)) switch
+            {
+                ConstraintProof.Proven => true,
+                ConstraintProof.Refuted => false,
+                _ => null,
+            };
+            this.applicability.Add((original, declaring), applies);
+        }
+
+        return applies;
+    }
+
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 
-    private void ResetDispatch() => this.witnesses.Clear();
+    private void ResetDispatch()
+    {
+        this.witnesses.Clear();
+        this.applicability.Clear();
+    }
 
     private RequirementTarget Resolve(BindingSymbol requirement, BindingSymbol? contract, Subst subst)
     {
