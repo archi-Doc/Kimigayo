@@ -123,17 +123,21 @@ public sealed partial class Binding
     {
         if (self is not null && ArithmeticContracts.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic && ArithmeticContracts.Supports(self, arithmetic))
         {
-            return this.builtinArithmetic[ArithmeticSlot(arithmetic)]!;
+            return Prepared(this.builtinArithmetic[ArithmeticSlot(arithmetic)]);
         }
 
         if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
             (ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration) || ComparisonTypes.IsComposite(self)))
         {
-            return contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals! : this.builtinCompare!;
+            return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
         }
 
         return self is not null && FormattingTypes.IsBuiltin(self) && selected.Scope.Owner.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Utf8Format
-            ? this.builtinFormat! : selected;
+            ? Prepared(this.builtinFormat) : selected;
+
+        // A built-in target exists from the first pass's PrepareBuiltinTargets on; no requirement is resolved before it.
+        static BindingSymbol Prepared(BindingSymbol? target)
+            => target ?? throw new InvalidOperationException("A built-in target is read before PrepareBuiltinTargets.");
     }
 
     // F fact 11a: a built-in target is its Contract's one own requirement executed by the compiler, with that requirement's name,

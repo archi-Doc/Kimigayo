@@ -2253,8 +2253,9 @@ structure is recorded here by the unit that first implements it.
   false. The built-in target symbols (comparison, formatting and the six arithmetic ones) take their requirement's name,
   declaration, result Type and receiver slot once per pass after headers (`PrepareBuiltinTargets`; F fact 11a) instead of on
   every call, so the core writes nothing beyond interning, proof caches and instance storage preparation. F5b's `TyCtxt.Witness`
-  will call the core. Refused is unreachable today: conformance verification rejects an inherited witness with an exclusive or
-  object receiver first (`ProjectedReceiverProof`; R1g), and no test exercises it. Rejected: built-in targets created lazily by
+  will call the core. Refused is unreachable today: conformance verification rejects an inherited witness with an exclusive
+  receiver first (`ProjectedReceiverProof`), the receiver match excludes an object receiver (`ProjectRequirementReceiver` projects
+  only a `ref` or `uniq` receiver of Self to the base), and no test exercises it. Rejected: built-in targets created lazily by
   the core (a view would create symbols); the arithmetic built-ins left with per-call writes (the same cause); the refusal left in
   the materializer (F5b resolves without a CallPlan); extracting `InstanceReference`'s matching half before F5b, its second caller.
 - **R5-M23 The R6-check prerequisite package Q8** (owner, 2026-10-18: 「Q8を承認」, answering the request to approve the package
@@ -2313,9 +2314,12 @@ structure is recorded here by the unit that first implements it.
   `StartupResult.Function` stays and goes with its last syntax reader, `LlvmEmitter`, at G7; tests read `Symbol` and `Kind`.
   F2b applies it to library imports: `LibraryImport.Decl` (`Binding/BindingModel.cs`), the imported function's symbol, replaces
   `LibraryImport.Function`, since every reader (the old emitter, `EmissionArtifacts`, tests) derives the Koto as `Decl.Declaration`;
-  its first Backend reader is P8's C-convention `Abi.Of`. F2c applies it to the legacy Dictionary rows' callees (R5-M28).
-  Rejected: a module ordinal column (plan row F2a; always 0); replacing `Function` by `Symbol` now (for the Implicit body a
-  reader would derive the Koto from `Kind`, not from the symbol).
+  P8's C-convention `Abi.Of` takes the import's Types, which the old emitter reads through `Decl.Declaration`, so the column's
+  first Backend reader comes with the MIR generator's import calls and declarations. F2c applies it to the legacy Dictionary
+  rows' callees (R5-M28).
+  Rejected: a module ordinal column (plan row F2a; always 0); replacing `StartupResult.Function` by `StartupResult.Symbol` now
+  (F2a: for the Implicit body a reader would derive the Koto from `Kind`, not from the symbol); `LibraryImport.Decl` beside
+  `LibraryImport.Function` (F2b: every reader derives the Koto as `Decl.Declaration`).
 - **R5-M26 `AdtDef.IsCLayout`** (2026-10-18, planning session; plan F1, package F §4.9 and §9, S2-S4 X18 and X26, under R5-M18; R5-M55
   adds `AdtDef.CLayoutRejected` for a declaration rejected for a direct zero-sized Field)
   Binding's published fact that a struct's C layout validated (SPEC 21.1). Producer: `ValidateLayoutFragments`
@@ -2941,6 +2945,56 @@ structure is recorded here by the unit that first implements it.
     per-operation saturation; a published size or an Instance for Oversized (no consumer); one Language record per Type (SPEC 8.15.3
     places it at the use); K10c before K10b (check under sel would accept the moved C-layout form); a requirement for this code before H3;
     a legacy fix (R5-M6).
+- **R5-M58 `Abi`** (2026-10-19, C lane; plan P8, C design §2.6, package C §3.5, under R5-M18 form 1; promoted under R5-M14) A
+  permanent Backend component that owns the physical signature of a closed function instance for every generator: `Abi.Of(layout,
+  convention, flags, result, parameters)` returns a `FunctionAbi` without a name, which its definition names (`FunctionAbi.Named`:
+  the old pool `__kimi_f<n>`, the old imports their external symbol, ModuleCodegen its items), and `Abi.Matches` whether an existing
+  signature is that one, without allocating. Inputs: the result Type and the parameter Types in slot order, laid out by `Layout.Of`
+  (any outcome but Ok is a broken contract), the convention (`Internal`, IMPL 21.3.1; `C`, SPEC 22.6) and `Abi.Flags`, the facts the
+  Types do not give (an erased or concrete closure environment, a constructor's or destructor's result slot, the caller location);
+  `NoReturn` follows a Never result. The internal rules are `FunctionAbiPool.Build`'s and `Get`'s, moved: the order [environment]
+  [ret] a0..an [context] [location, location_length], a `ref/string` SharedReference, a slot Type OwnedSlot, zero-sized parameters
+  omitted, the result slot and result Type (`Abi.HasResultSlot`, `Abi.ResultType`, which the old pool's statics also answer with).
+  Under C every parameter is a Value of its argument Type and nothing is omitted or a slot; on SPEC 22.6's table this is the old
+  `LlvmEmitter.CreateImportAbi`, so it, `ImportType`, the import `Matches` and the unreachable failure "A foreign import needs an
+  unsupported parameter or result representation." are deleted. `Abi` has no gate: the old callers keep `FunctionAbiPool.Supports`
+  and `GetValue` until R6-gen (every Type they admit is laid out Ok) and pass `AggregateLayoutPool.Layout`. Deleted from the old
+  pool: `Build`, the static `Matches`, `Shape`, `ParameterShape` and `Signature`; `Get` and the new `Import` (C) reuse the previous
+  signature by `Matches`, keeping no Type or syntax. Not ported: `PreparedSlot` (`DefaultGenerationPlan` keeps its own ABI). Staged:
+  C design §2.6's memo keyed by (convention, flags, interned signature Type) comes with ModuleCodegen (C0b1); the old callers reuse
+  by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
+  (ARCH "Capability gates"); a separate C-convention component (the order, records and reuse are one rule with two conventions);
+  keeping the per-ordinal `Signature` record, whose logical shapes also compare zero-sized parameters that have no slot.
+- **R5-M61 `TyCtxt.Witness`, a requirement call's target under a closed substitution** (2026-10-19, planning session; plan F5b,
+  package F §4.1, §4.5, §5 and §6, S2-S4 X1, X16, X28; under R5-M18 and R5-M22) A permanent view of the dispatch facts
+  (`Binding/TyCtxt.Dispatch.cs`): `TyCtxt.Witness(requirement, contract, subst)`, given a requirement, the Contract reference its
+  call recorded (`MirCallee.Contract`) and the call's closed substitution, returns `RequirementTarget(Kind, Target, Subst, Access)`,
+  whose kind enum is local, not an ARCH vocabulary. Body: a conformance witness (inherited ones included) under its declaring
+  instance with the call's Types and lengths and its Origins in the call's terms, an accessor-call witness's executing accessor under
+  its implementing Type's instance, or a fixed-array or integer Position member under its own slots. Builtin: the compiler function
+  under the call's own substitution, whose bound reference instantiates the requirement's signature (the CallPlan form drops it, its
+  CallPlan already carrying that signature). Storage: a standard property witness's implementing Field under the call's
+  substitution, `Access` its `PropertyWitnessKind` (AccessorCall for every other kind). Refused: OCC-X. Limit: the conforming Self's
+  storage does not complete (`PrepareTypeStorage`, the depth bound of R4-M51's Limit), for a Self no `Apply` instantiated, such as the
+  Self-bearing `Synthesized` factory's (F6). None: no answer, a broken contract for a closed accepted Self that its reader records as
+  `InternalInvariant_Kd`; an abstract Self has None, since the materializer's SPEC 8.15 forwarding keeps such a call. The view calls the
+  core under the library root's premises (`EffectPremises(null)`) with the Contract reference `Binding.InstanceContract` matches,
+  the matching half R5-M22 deferred, now one function for both forms: from the recorded reference, Self and the bound reference in
+  the instance (the materializer instantiates it in its caller's CallPlan; a substitution holds it as its declaring Type, F fact 5)
+  to the conformance of Self's Type that names it. Both forms share Binding's per-kind rules: `WitnessOrigin` (a witness Origin in
+  the call's terms), `RentFixedArrayArguments` and `IntegerPositionSlot`; the core gives a Property witness its implementing Type's
+  instance (`Declaring`). Memo per (requirement, contract, subst), kept until an edit; `TyCtxt.ResetViews`, the one reset of every
+  view's memos (retentions, instance classes, requirement targets), replaces `Binding.Invalidate`'s two calls (R4-M51, R5-M21), so
+  `Binding.cs` shrinks and later views add a line there instead (R4's step-2 unit 2a0-2); a warm call allocates 0 B. Twin
+  (`TyCtxtTest.WitnessIsTheForwardedRequirementCall`): each requirement call in a generic function's body under each closed call of
+  that function, over the library and the milestones (37 calls: Body 34, Builtin 2, Storage 1; 3 bound references) and a direct
+  program reaching every kind but Refused (16), has the target `InstantiateForwardedCall` materializes: a Body the forwarded call's
+  function and `SubstOf`; a Builtin its compiler function, and Storage the Field its bridge reads with the bridge's operation, under the
+  call's own substitution, which binds the same Self, Types, lengths and Origins; `Subst.Declaring` is the instantiated bound
+  reference wherever the reference is bound (fact 5 holds, so the reference needs no Subst slot of its own); the views leave Binding's
+  records and the HIR version unchanged. Rejected: the match re-expressed over `Subst.Declaring` in TyCtxt (a second copy); a Builtin
+  without the bound reference (the substitution needs it for the signature); a twin over collector sites (no mapping from a MIR site
+  back to its CallPlan pair exists); reading a None of the core as Limit (an Unknown proof is no depth limit).
 - **R5-M60 Drop glue, destructor and static edges of the checked set** (2026-10-19, planning session; plan K7, the K package's §4.5 rows
   7, 9, 10 and "DropGlue", §4.7 and §4.8, S2-S4 X3, X23, X27, X33 (a) and X34; under R5-M18, R5-M35 and R5-M44; DEC Q6 form 1) Every Drop
   (A2's verdicts do not narrow the checked set) and every `DestroyValues` call is the `DropGlue` item of its Type in the item's instance,
