@@ -1,7 +1,7 @@
 Unit 2x-S1 probes: old-path records (OLD) and shadow A5 problems (MIR) at dev 48a42168.
 Harness: artifacts/handoff/2026-10-18-pause/r4-scratch/1c-design/probe/Program.cs (main checkout), a scratch console app named
 Benchmark over a copy of Kimi.dll built from 48a42168 (dotnet build src/Kimi/Kimi.csproj -c Release); run: Benchmark.exe *.kimi.
-A file with no OLD or MIR line is accepted by both. Sources first, then the output.
+A file with no OLD or MIR line is accepted by both. r1-r4 are the 2x-S1 review's cases. Sources first, then the output.
 
 --- a1-replace-params.kimi
 func run(first: uniq/i32 during a, second: uniq/i32 during a)
@@ -392,6 +392,77 @@ func two<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
     return (first@move, second@move)
 public func main() => ()
 
+--- r1-tuple-local-sibling.kimi
+func h(value: uniq/i32 during q, w: uniq/i32 during q) -> ()
+    var v = value@move
+    var local = w@move
+    var other: i32 = 3
+    var loc2 = other@uniq
+    var t = (local@uniq, loc2@uniq)
+    let child = v
+    t.0@follow = child@move
+    _ = local@follow
+    v@follow = 9
+    _ = loc2@follow
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    h(n@uniq, m@uniq)
+
+--- r2-pair-init-owned.kimi
+struct Pair<A, B>
+    public var first: A
+    public var second: B
+    public init(first: A, second: B)
+        self.first = first@move
+        self.second = second@move
+func h(value: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p) -> ()
+    var v = value@move
+    var n2: i32 = 0
+    var local = n2@uniq
+    var t = Pair.init(first: local@uniq, second: w2@move)
+    let child = v
+    t.first@follow = child@move
+    _ = local@follow
+    v@follow = 9
+public func main() -> ()
+    var n: i32 = 1
+    var k: i32 = 3
+    var r = k@uniq
+    h(n@uniq, r@uniq)
+
+--- r3-tuple-owned.kimi
+func h(value: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p) -> ()
+    var v = value@move
+    var n2: i32 = 0
+    var local = n2@uniq
+    var t = (local@uniq, w2@move)
+    let child = v
+    t.0@follow = child@move
+    _ = local@follow
+    v@follow = 9
+public func main() -> ()
+    var n: i32 = 1
+    var k: i32 = 3
+    var r = k@uniq
+    h(n@uniq, r@uniq)
+
+--- r4-tuple-owned-no-param.kimi
+func h(value: uniq/i32 during q) -> ()
+    var v = value@move
+    var n2: i32 = 0
+    var n3: i32 = 0
+    var local = n2@uniq
+    var local3 = n3@uniq
+    var t = (local@uniq, local3@uniq)
+    let child = v
+    t.0@follow = child@move
+    _ = local@follow
+    v@follow = 9
+public func main() -> ()
+    var n: i32 = 1
+    h(n@uniq)
+
 === output
 === a1-replace-params.kimi
 OLD  ComparisonLoanConflict_Kd (ComparisonLoanConflict) | run: item
@@ -447,3 +518,17 @@ OLD  CallEffectConflict_Kd (CallEffectConflict) | through: source.reset()
 === p5-take-two.kimi
 === p5b-take-two-only.kimi
 OLD  CallEffectConflict_Kd (CallEffectConflict) | two: source.take()
+=== r1-tuple-local-sibling.kimi
+MIR  ComparisonLoanConflict_Kd views=0x1 | h: v@follow = 9
+       Anchor: h: v
+       Use: h: loc2@follow
+=== r2-pair-init-owned.kimi
+OLD  ComparisonLoanConflict_Kd (ComparisonLoanConflict) | h: v
+MIR  ComparisonLoanConflict_Kd views=0x1 | h: v@follow = 9
+       Anchor: h: v
+       Store: h: v@follow = 9
+=== r3-tuple-owned.kimi
+MIR  ComparisonLoanConflict_Kd views=0x1 | h: v@follow = 9
+       Anchor: h: v
+       Store: h: v@follow = 9
+=== r4-tuple-owned-no-param.kimi

@@ -51,15 +51,18 @@ static class S2x1
 
     static IEnumerable<Item> Items()
     {
-        // G147 (8ii): A3 = the implemented facts (a call result takes ret(i, Value) = val ∪ content(val); Φ_E is carried per
-        // holder, P1); narrow = a result tied to an argument does not derive from a read through it (no content flow);
-        // per part = derivation per Move Path (a local aggregate's parts as separate holders; a call result stays one value,
-        // SPEC 15.6.4 "per argument, never per Origin").
+        // G147 (8ii) and S1-a: A3 = the implemented facts (a call result takes ret(i, Value) = val ∪ content(val); Loans and
+        // Φ_E are carried per holder, P1); narrow = a result tied to an argument does not derive from a read through it (no
+        // content flow); split = a local aggregate's parts as separate holders, Loans and Φ_E both (the first draft's "per
+        // part", which P1/P10 forbid for Loans: r1); Φ_E per part = S1-a's option (b): Loans per holder, Φ_E per part, a part
+        // read carrying the holder's Loans and its own part's Φ_E (the side holder t~k). A call result stays one value in every
+        // form (SPEC 15.6.4, "per argument, never per Origin"). r1–r3 are the 2x-S1 review's cases.
         foreach (var (id, kind, err, at) in new[] { ("g1", "field", true, "v@follow = x"), ("g2", "box", true, "v@follow = x"), ("g3", "counter", true, "v@follow = x"),
-            ("g4", "direct", false, ""), ("g5", "tupleLocal", false, ""), ("g6", "tupleParam", true, "v@follow = 9") })
+            ("r2", "pairInit", true, "v@follow = 9"), ("g4", "direct", false, ""), ("g5", "tupleLocal", false, ""), ("g6", "tupleParam", true, "v@follow = 9"),
+            ("r1", "tupleSibling", true, "v@follow = 9"), ("r3", "tupleOwned", false, "") })
         {
-            yield return new("G147 (8ii)", id, HolderTitle(kind), err, at.Length > 0 ? [at] : [],
-                [("A3", Holder(id, kind, "A3")), ("narrow", Holder(id, kind, "narrow")), ("per part", Holder(id, kind, "perPart"))]);
+            yield return new("G147 (8ii) and S1-a", id, HolderTitle(kind), err, at.Length > 0 ? [at] : [],
+                [("A3", Holder(id, kind, "A3")), ("narrow", Holder(id, kind, "narrow")), ("split", Holder(id, kind, "split")), ("Φ_E per part", Holder(id, kind, "phiPart"))]);
         }
 
         // af43dcd8ffce: insertOrReplace's published retention (SPEC 4.9.6, LIBRARY): result ← receiver Content, value Value;
@@ -98,28 +101,19 @@ static class S2x1
         "box" => "A4-box-ok, uniq case: `box = Box<uniq/(s/T)>.init(item: slot@uniq); …; box.item@follow = child@move; …`",
         "counter" => "the same caller facts, `other: uniq/(uniq/T during q)`: `cell = Wrap.make(slot@uniq)`, whose link is `link@follow@follow@uniq`, i.e. `*other` (caller storage)",
         "direct" => "direct twin: `var link = slot@uniq; link@follow = child@move; _ = slot@follow; v@follow = x`",
-        "tupleLocal" => "no call: `var t = (local@uniq, w2@move); t.0@follow = child@move; _ = local@follow; v@follow = 9` (w2 a parameter reference)",
-        _ => "no call: the same with `t.1@follow = child@move` (writes `*w2`)",
+        "pairInit" => "`var local = n2@uniq; var t = Pair.init(first: local@uniq, second: w2@move); t.first@follow = child@move; _ = local@follow; v@follow = 9` (review r2; a call result)",
+        "tupleLocal" => "no call: `var t = (local@uniq, w2@move); t.0@follow = child@move; _ = local@follow; v@follow = 9` (`local = w@move`, w and w2 parameter references)",
+        "tupleParam" => "no call: g5 with `t.1@follow = child@move` (writes `*w2`)",
+        "tupleSibling" => "no call: `var loc2 = other@uniq; var t = (local@uniq, loc2@uniq); t.0@follow = child@move; _ = local@follow; v@follow = 9; _ = loc2@follow` (review r1)",
+        _ => "no call: g5 with a body-owned `local = n2@uniq` (review r3)",
     };
 
     // value, other: uniq/T in the uniq case (s = uniq); v and slot carry their parameters' entry Loans (Φ_E).
     static Case Holder(string id, string kind, string form)
     {
+        if (kind.StartsWith("tuple") || kind == "pairInit") return Aggregate(id, kind, form);
         var c = new Case(id, HolderTitle(kind));
         bool call = kind is "field" or "box" or "counter";
-        if (kind.StartsWith("tuple"))
-        {
-            c.N("entry: var v = value@move; var local = w@move; w2").Param("Lv", "v").Param("Lw", "local").Param("Lw2", "w2");
-            var (t0, t1) = form == "perPart" ? ("t0", "t1") : ("t.0", "t.1"); // per part: the parts as separate holders
-            c.N("var t = (local@uniq, w2@move)").Def(t0.Split('.')[0], t1.Split('.')[0]).Borrow("Ll", "local", Uniq, t0).A(K.Move, "w2").Flow("w2", t1);
-            c.N("let child = v (a Reborrow)").Def("child").Borrow("Lc", "v.*", Uniq, "child");
-            var part = kind == "tupleLocal" ? t0 : t1;
-            c.N((kind == "tupleLocal" ? "t.0" : "t.1") + "@follow = child@move").A(K.Move, "child").Through(part + ".*", "child");
-            c.N("_ = local@follow").A(K.Read, "local.*");
-            c.N("v@follow = 9").A(K.Write, "v.*");
-            return kind == "tupleLocal" ? c.Valid() : c.Error("v@follow = 9");
-        }
-
         c.N("entry: var v = value@move; var slot = other@move").Param("Lv", "v").Param("Lo", "slot");
         var holder = kind == "box" ? "box" : "cell";
         if (call)
@@ -140,6 +134,48 @@ static class S2x1
         c.N("_ = slot@follow").A(K.Read, "slot.*");
         c.N("v@follow = x").A(K.Write, "v.*");
         return kind == "direct" ? c.Valid() : c.Error("v@follow = x");
+    }
+
+    // A local aggregate whose part 0 is `local@uniq` and part 1 a parameter reference `w2` (or, r1, the body-owned `loc2@uniq`).
+    static Case Aggregate(string id, string kind, string form)
+    {
+        var c = new Case(id, HolderTitle(kind));
+        bool owned = kind is "tupleOwned" or "pairInit", sibling = kind == "tupleSibling";
+        var entry = c.N("entry: var v = value@move" + (owned ? "; w2" : "; var local = w@move" + (sibling ? "" : "; w2"))).Param("Lv", "v");
+        if (owned) { entry.Param("Lw2", "w2"); c.N("var n2 = 0; var local = n2@uniq").Def("n2", "local").Borrow("Ln", "n2", Uniq, "local"); }
+        else { entry.Param("Lw", "local"); if (!sibling) entry.Param("Lw2", "w2"); }
+        if (sibling) c.N("var other = 3; var loc2 = other@uniq").Def("other", "loc2").Borrow("Lo2", "other", Uniq, "loc2");
+        int k = kind == "tupleParam" ? 1 : 0; // the written part
+        string target;
+        if (kind == "pairInit")
+        {
+            c.N("$a = &uniq two-phase local").Def("$a").Borrow("Ll", "local", Uniq, "$a", reserve: true);
+            var n = c.N("t = Pair.init(first: move $a, second: move w2) [0 Value result, 1 Value result]").Input(K.Move, "$a").Input(K.Move, "w2").Activate("Ll").Def("t").Flow("$a", "t").Flow("w2", "t");
+            if (form != "narrow") n.Flow("$a.*", "t");
+            target = "t.first";
+        }
+        else
+        {
+            bool split = form == "split", phi = form == "phiPart";
+            var (t0, t1) = split ? ("t0", "t1") : ("t.0", "t.1");
+            var agg = c.N(sibling ? "var t = (local@uniq, loc2@uniq)" : "var t = (local@uniq, w2@move)").Def(split ? new[] { "t0", "t1" } : new[] { "t" }).Borrow("Ll", "local", Uniq, t0);
+            if (sibling) agg.Borrow("Ll2", "loc2", Uniq, t1);
+            else agg.A(K.Move, "w2").Flow("w2", phi ? "t~1" : t1); // Φ_E per part: w2's Φ_E in part 1's side holder only
+            target = split ? (k == 0 ? "t0" : "t1") : (k == 0 ? "t.0" : "t.1");
+            if (phi) // a part read carries the holder's Loans (P1) and its own part's Φ_E
+            {
+                var read = c.N($"$u = t.{k} (a part read)").Def("$u").Flow("t", "$u");
+                if (k == 1 && !sibling) read.Flow("t~1", "$u");
+                target = "$u";
+            }
+        }
+
+        c.N("let child = v (a Reborrow)").Def("child").Borrow("Lc", "v.*", Uniq, "child");
+        c.N((kind == "pairInit" ? "t.first" : $"t.{k}") + "@follow = child@move").A(K.Move, "child").Through(target + ".*", "child");
+        c.N("_ = local@follow").A(K.Read, "local.*");
+        c.N("v@follow = 9").A(K.Write, "v.*");
+        if (sibling) c.N("_ = loc2@follow").A(K.Read, "loc2.*");
+        return kind is "tupleLocal" or "tupleOwned" ? c.Valid() : c.Error("v@follow = 9");
     }
 
     static Case Replace(string id, bool locals, bool writeX)
