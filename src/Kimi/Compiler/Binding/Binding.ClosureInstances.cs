@@ -45,7 +45,9 @@ public sealed partial class Binding
         return call;
     }
 
-    private BoundType? CloseClosureTypes(BoundType type, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    // SPEC 8.2: the closures of the instance a substitution makes closed in it: each closure its binder encloses (through anonymous
+    // functions) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36).
+    private BoundType? CloseClosureTypes(BoundType type, Subst instance)
     {
         if (type.ClosureContext is not null || (type.Components.Count == 0 && type.Kind != BoundTypeKind.Closure))
         {
@@ -58,7 +60,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (this.CloseClosureTypes(type.Components[i], target, declaring, types, lengths, origins, inputs) is not { } part)
+                if (this.CloseClosureTypes(type.Components[i], instance) is not { } part)
                 {
                     return null;
                 }
@@ -72,20 +74,20 @@ public sealed partial class Binding
                 this.types.Instantiates(symbol))
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;
-                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, target.Declaration))
+                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, instance.Binder))
                 {
                     enclosing = enclosing.BoundSymbol?.Scope.Function;
                 }
 
-                if (enclosing is not null && ReferenceEquals(enclosing, target.Declaration))
+                if (enclosing is not null && ReferenceEquals(enclosing, instance.Binder))
                 {
-                    // The closure's result in the instance is the failure check; its context is the instance's substitution (R5-M36).
-                    if (this.InstantiateStorageType(closure.Signature.Components[1], target, declaring, types, lengths, origins, inputs) is null)
+                    // The closure's result in the instance is the failure check.
+                    if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
                     {
                         return null;
                     }
 
-                    context = this.types.ClosureContext(target, declaring, types, lengths, origins, inputs);
+                    context = instance;
                 }
             }
 

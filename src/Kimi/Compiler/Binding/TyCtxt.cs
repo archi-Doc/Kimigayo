@@ -220,16 +220,14 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return closure.ClosureContext ?? this.Identity(binder);
     }
 
-    // SPEC 8.2: the context of a closure an instance of its enclosing function closes, that instance's substitution without a conforming
-    // Self (DECISIONS R5-M36, PLAN G142): one interned value per instance, which all of the instance's closures share.
-    internal Subst ClosureContext(
-        BindingSymbol enclosing,
-        BoundType? declaring,
-        ReadOnlySpan<BoundType?> types,
-        ReadOnlySpan<BoundLength?> lengths,
-        ReadOnlySpan<BoundOrigin> origins,
-        ReadOnlySpan<BoundOrigin> inputs)
-        => this.Intern(enclosing, null, declaring, types, lengths, origins, inputs);
+    // The substitution Binding's storage instantiation of a call applies (Binding.InstantiateStorageType(type, call)): its target's slots,
+    // declaring Type and Origins, without the conforming Self, the bound Contract reference or the implementation of a direct base call
+    // that SubstOf adds, as the old analyses and generator have always instantiated a call's Types. A second substitution per call beside
+    // SubstOf, it goes when the readers of that CallPlan form apply SubstOf instead: the old generator's at G7, the old analyses' at R6-check
+    // and Binding's own with R7's CallPlan pipeline (DECISIONS R5-M36).
+    [Transitional("R7", Reason = "R7's CallPlan pipeline moves the last readers of the CallPlan form of InstantiateStorageType to SubstOf.")]
+    internal Subst StorageSubst(CallPlan call)
+        => this.Intern(call.Target, null, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
     // SPEC 7.3: a function item's substitution, the context its Item Type binds; an Item keeps its per-call Origins in place.
     internal Subst? SubstOfItem(BoundType item) => binding.FunctionItemContext(item, false) is { } context ? this.SubstOf(context) : null;
@@ -243,8 +241,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
-    internal BoundType? Apply(BoundType type, Subst subst)
-        => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst.Target, subst.Declaring, subst.Types, subst.Lengths, subst.Origins, subst.Inputs, subst.Self);
+    internal BoundType? Apply(BoundType type, Subst subst) => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst);
 
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of

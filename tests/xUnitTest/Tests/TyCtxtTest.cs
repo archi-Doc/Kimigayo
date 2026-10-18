@@ -115,6 +115,40 @@ public sealed class TyCtxtTest
         Assert.Same(closure.Signature, c.Types.Apply(closure.Signature, identity));
     }
 
+    // SPEC 8.2, PLAN G142: a closure's context is the whole substitution of the instance that closed it, its conforming Self included, so two
+    // substitutions that differ only in Self close it twice. No source call gives a body with a closure a Self (a Contract declares no default
+    // implementation, SPEC 8.6.1), so the test synthesizes the two calls.
+    [Fact]
+    public void AClosureContextKeepsTheConformingSelf()
+    {
+        var c = MinimalEmissionTest.Analyze(ClosureSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var closure = nodes.OfType<FunctionKoto>().Single(static x => x.IsAnonymous).ClosureOf()!;
+        var call = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).First(static x => x?.Target.Name == "identity")!;
+        var substs = new[] { BoundType.Boolean, BoundType.I32 }.Select(self => c.Types.SubstOf(Conforming(call, self))!).ToArray();
+        var closed = substs.Select(x => c.Types.Apply(closure.EnvironmentType!, x)!).ToArray();
+        Assert.Equal(substs, closed.Select(c.Types.SubstOfClosure));
+        Assert.NotSame(closed[0], closed[1]);
+
+        static CallPlan Conforming(CallPlan call, BoundType self)
+        {
+            var synthesized = new CallPlan();
+            synthesized.Set(
+                call.Target,
+                call.ReturnType,
+                null,
+                [],
+                call.TypeArguments,
+                conformingType: self,
+                declaringType: call.DeclaringType,
+                origins: call.Origins,
+                inputOrigins: call.InputOrigins,
+                lengthArguments: call.LengthArguments);
+            return synthesized;
+        }
+    }
+
     // SPEC 8.13.3: a substitution holds one length entry per slot whichever producer forms it, so a direct call, a function item and a
     // synthesized call of one instance are one substitution.
     [Fact]
@@ -526,29 +560,24 @@ public sealed class TyCtxtTest
         Assert.True(calls > 0 && problems.Count == 0, $"{calls} calls; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
     }
 
-    // Binding's instantiation for a call's context: a requirement's under its conforming Self and bound Contract reference; a direct base
-    // call's into an implementation other than the slot's original, of that implementation in the implementing Type with the call's
-    // arguments, as Binding.EffectBounds forms that call; any other call's of its target.
+    // Binding's instantiation for a call's context. A requirement's, under its conforming Self and bound Contract reference, and a direct
+    // base call's into an implementation other than the slot's original, of that implementation in the implementing Type (as
+    // Binding.EffectBounds forms that call), have no CallPlan form: theirs is Binding's instantiation under the substitution once it names the
+    // call's target and conforming Self (a base call's: the implementation, no Self, the implementing Type) and binds the call's Type and
+    // length arguments and Origins. Any other call's is its CallPlan form.
     private static BoundType? Instance(Compilation c, BoundType declared, Subst subst, CallPlan context) => context switch
     {
-        { Kind: CalleeKind.Requirement } => c.Binding.InstantiateStorageType(
-            declared,
-            context.Target,
-            subst.Declaring,
-            context.TypeArguments,
-            context.LengthArguments,
-            context.Origins,
-            context.InputOrigins,
-            context.ConformingType),
-        { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation: { } body }
-            when !ReferenceEquals(body, context.Target.Declaration) && body.SymbolOf() is { } implementation => c.Binding.InstantiateStorageType(
-            declared,
-            implementation,
-            context.VirtualImplementingType,
-            context.TypeArguments,
-            context.LengthArguments,
-            context.Origins,
-            context.InputOrigins),
+        { Kind: CalleeKind.Requirement } when ReferenceEquals(subst.Target, context.Target) && ReferenceEquals(subst.Self, context.ConformingType) &&
+            Binds(subst, context) => c.Binding.InstantiateStorageType(declared, subst),
+        { Kind: CalleeKind.Requirement } => null,
+        { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation: { } body } when !ReferenceEquals(body, context.Target.Declaration)
+            => ReferenceEquals(subst.Binder, body) && subst.Self is null && ReferenceEquals(subst.Declaring, context.VirtualImplementingType) &&
+                Binds(subst, context) ? c.Binding.InstantiateStorageType(declared, subst) : null,
         _ => c.Binding.InstantiateStorageType(declared, context),
     };
+
+    // The substitution binds the call's Type and length arguments, declared Origins and input Origins.
+    private static bool Binds(Subst subst, CallPlan call)
+        => subst.Types.SequenceEqual(call.TypeArguments) && subst.Lengths.SequenceEqual(call.LengthArguments) &&
+            subst.Origins.SequenceEqual(call.Origins) && subst.Inputs.SequenceEqual(call.InputOrigins);
 }
