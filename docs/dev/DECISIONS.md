@@ -1470,8 +1470,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   diverges writes through its reservation, and a construction around a Never form keeps its operands' Moves and Loans; A4 counts
   the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
-  leaves it open). Not temporary. Amended by R5-M38: the Never value is a node's temp; a named Place of Type Never is acquired as
-  Binding publishes it into the node's Never temp, which every consumer takes as it is, the placement rule unchanged.
+  leaves it open). Not temporary. Amended by R5-M38: the Never value is a temp of Type Never; an unadapted acquisition of a named
+  Place of Type Never goes into a fresh Never temp, which every consumer takes as it is (the placement rule unchanged), and an
+  adapted one is built as Binding publishes it.
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
   of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result")
   A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
@@ -2188,21 +2189,29 @@ structure is recorded here by the unit that first implements it.
   diverging Call" (X30: it rejects an `if`'s arms sharing a destination) and "the builder's unwritten temp" (it misses an
   ordinary call-result temp, `_4 = stop() -> ! check bb1`); a MIR representation of the fact (only the validator reads it).
 - **R5-M38 A named Never Place takes the acquisition Binding publishes** (2026-10-18, planning session; plan F12, PLAN G139,
-  R4's consent to amending R4-M62's acquisition clause, after BU-4; R4's review choice (a), which keeps R4-M62's placement rule)
-  Rule (`MirBuilder.Values.cs`): the Never value is the temp of a node of Type Never (`IsNeverValue`); every acquisition takes it as
-  it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type Never (a parameter, a binding, a payload) is not
-  the Never value: `Acquire` builds the acquisition Binding publishes for it (Copy for a bare read, since Never is Copy, BU-4) into
-  the node's Never temp, the one writer of such a temp, and gives that temp, so whatever takes it places nothing. So
-  `func absurd(x: Never) => g(x, x)` copies x twice and has no MovedPlace, and `g2(x, k())` secures the acquired temp; and since a
-  read of a Never Place supplies no normal completion (SPEC 14.10.3, Binding's Diverges; BU-6), its assumed completion initializes
-  nothing it is placed into: `let y: i32 = x`, `y = x` and `var y: Never = x` leave y uninitialized, each later read of it an
-  `UninitializedPlace`. `IsNever` (any Place of Type Never) stays for the sites that would borrow or view it (a runtime Type
-  test's handle, a verification's message, `$tryWrite`'s writer). Per BU-6 (pending, owner decision 2026-10-18, G129) every
-  expression of Type Never supplies no normal completion and an explicit acquisition keeps its effect on assumed paths, so an
-  explicit `x@move` on a Never Place is a Move. Binding publishes it today as a Convert (Diverges) whose name it reads by Copy, so
-  MIR moves nothing there; MIR builds whatever Binding publishes, so once Binding publishes the Move (after G129), the moved read
-  in `g(x@move, x)` is A1's `MovedPlace`, whose row R5 adds then (BU adds the Binding and HIR rows). No library, milestone or corpus
-  program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a Copy Place read twice became
-  two Moves); `Set` placing a named Never Place's value (an earlier follow-up's exemption: a written and an unwritten Never temp
-  were one spelling, and `let y: i32 = x` initialized y, against SPEC 14.10.3); an adaptation override or a `None` arm for Never
-  in `Acquire` (Binding publishes Copy or None with no adaptation at every traced site; the validator reports a `ref/Never`).
+  R4's consent to amending R4-M62's acquisition clause, after BU-4; R4's review choice (a), which keeps R4-M62's placement rule;
+  the owner's choice on B2, selecting R4's option 「借用は公開どおり作る（推奨）」: 「Never 用の分岐は、借用などの変換が付かない
+  読み出しだけに使います。参照による束縛では、Binding が公開した借用を `ref/Never` 型のまま作ります。こうすると、その束縛が r
+  に対する Loan を持つので、SPEC の文言どおり競合を検出できます。あわせて MirValidator に「Never 用の一時変数へ書けるもの」の
+  許可一覧（変換なしの Never Place 読み出し・Never 型の Opaque・発散する呼び出しの戻り先）を加え、この系統を閉じます。R5 側で
+  実装と再レビューが必要です。」) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
+  (`IsNeverValue`); every acquisition takes it as it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type
+  Never (a parameter, a binding, a payload) is not the Never value: an acquisition of it with no adaptation, the Copy (a bare
+  read, since Never is Copy, BU-4) or Move Binding publishes, goes into a fresh Never temp, which `Acquire` gives, so whatever
+  takes it places nothing; an adapted acquisition (a pattern binding of a Never payload, which borrows the subject in place) is
+  built as Binding publishes it, a `ref/Never` that keeps its Loan, so a write to the subject while the binding lives is a
+  conflict, even in an arm that never runs. `MirValidator`'s `NeverWrite` row whitelists a Never temp's writers: an unadapted
+  Copy or Move of a Place of Type Never, an Opaque value, and a diverging Call's destination (R5-M33); any other is a finding.
+  So `func absurd(x: Never) => g(x, x)` copies x twice and has no MovedPlace, `g2(x, k())` secures the acquired temp, and since
+  a read of a Never Place supplies no normal completion (SPEC 14.10.3, Binding's Diverges; BU-6), its assumed completion
+  initializes nothing it is placed into: `let y: i32 = x`, `y = x` and `var y: Never = x` leave y uninitialized, each later read
+  of it an `UninitializedPlace`. `IsNever` (any Place of Type Never) stays for the sites that would borrow or view it (a runtime
+  Type test's handle, a verification's message, `$tryWrite`'s writer). Per BU-6 (pending, owner decision 2026-10-18, G129) an
+  explicit `x@move` on a Never Place is a Move; Binding publishes it today as a Convert (Diverges) whose name it reads by Copy,
+  so MIR moves nothing there; MIR builds whatever Binding publishes, so once Binding publishes the Move (after G129), the moved
+  read in `g(x@move, x)` is A1's `MovedPlace`, whose row R5 adds then (BU adds the Binding and HIR rows). No library, milestone or
+  corpus program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a Copy Place read twice
+  became two Moves); `Set` placing a named Never Place's value (an earlier follow-up's exemption: a written and an unwritten
+  Never temp were one spelling, and `let y: i32 = x` initialized y, against SPEC 14.10.3); the owner's rejected options
+  「変換せず Move/Copy にする」 (R4 reviewer's (A), the published kind never adapted: a binding in an arm whose payload is Never
+  would hold no Loan) and 「F12 を保留する」.
