@@ -6,6 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7) and TryResolveFormattingCallback's (H11).")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, string? Name), (ulong Version, CallPlan Call)> requirementCalls = new();
     private readonly Dictionary<BoundType, CallPlan> destructionCalls = new(ReferenceEqualityComparer.Instance);
     private BindingSymbol? builtinFormat;
@@ -54,9 +55,11 @@ public sealed partial class Binding
 
     // Compiler-created calls use the same verified witness and storage substitution as source calls.
     // Their input Origins remain the implementation's external inputs; no borrowed value is captured.
+    [Transitional("R6", Reason = "H11 deletes it with TryResolveFormattingCallback.")]
     internal CallPlan? RequirementImplementation(CallPlan site, BoundType self, KimiDeclarationId identity, string? name = null)
         => this.RequirementImplementation(site.Target, self, identity, name);
 
+    [Transitional("R7", Reason = "The legacy comparison composition's leaves (A-12, else R7) and TryResolveFormattingCallback's (H11).")]
     private CallPlan? RequirementImplementation(BindingSymbol site, BoundType self, KimiDeclarationId identity, string? name = null)
     {
         var key = (site, self, identity, name);
@@ -127,7 +130,7 @@ public sealed partial class Binding
         }
 
         if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
-            (ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration) || ComparisonTypes.IsComposite(self)))
+            ComparisonKindOf(self, contract.LibraryDeclaration, operators: false) is ComparisonKind.Composite or ComparisonKind.Builtin)
         {
             return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
         }
@@ -157,17 +160,11 @@ public sealed partial class Binding
 
         void Prepare(ref BindingSymbol? target, KimiDeclarationId id, CompilerFunctionKind kind)
         {
-            var contract = this.Library.GetSymbol(id)!;
-            var requirements = contract.Contract!.RequirementStorage;
-            for (var i = 0; i < requirements.Count; i++)
+            if (this.Library.GetSymbol(id)!.Contract!.OwnRequirement() is { } requirement)
             {
-                if (ReferenceEquals(requirements[i].Contract, contract))
-                {
-                    var requirement = requirements[i].Symbol;
-                    target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
-                    target.Type = requirement.Type;
-                    target.ReceiverIndex = requirement.ReceiverIndex;
-                }
+                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
+                target.Type = requirement.Type;
+                target.ReceiverIndex = requirement.ReceiverIndex;
             }
         }
     }

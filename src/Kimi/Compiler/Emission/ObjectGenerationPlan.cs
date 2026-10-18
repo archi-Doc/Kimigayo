@@ -7,9 +7,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-#pragma warning disable SA1402 // Checked call contexts and syntax-free physical object records.
-
-internal sealed record ObjectCreation(int Id, int TypeKey, ValueLowering Payload, string? Destroy, bool Copy, FunctionAbi Abi, int TypeToken, int[] BaseTokens, FunctionAbi?[] VirtualSlots);
+#pragma warning disable SA1402 // Checked call contexts over ObjectRuntime's syntax-free physical rows.
 
 internal readonly record struct ObjectCall(BoundType Payload, BoundType Result, ObjectCreation Physical);
 
@@ -221,7 +219,12 @@ internal sealed class ObjectGenerationPlan
                 parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
                 var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray()) { ResultSlot = true };
                 var destroy = drop == -1 ? null : drop == -2 ? "__kimi_destroy_string" : "__kimi_drop_aggregate" + drop;
-                entry = new(id, typeKey, value, destroy, copy == ConstraintProof.Proven, abi, token, this.bases.ToArray(), slots);
+                entry = new(id, typeKey, value, copy == ConstraintProof.Proven, abi, token)
+                {
+                    Destroy = destroy,
+                    BaseTokens = this.bases.ToArray(),
+                    VirtualSlots = slots,
+                };
                 if (id == this.physical.Count)
                 {
                     this.physical.Add((drop, entry));

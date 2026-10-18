@@ -8,14 +8,15 @@
 // Never); under #LibraryImport's C convention (SPEC 22.6) each parameter is a Value of its argument Type, nothing is omitted and the
 // result is never a slot.
 // Inputs: the compilation's Layout; the convention and flags; the closed result Type and the closed parameter Types in slot order, each
-// laid out by Layout (Ok); a C signature is one Binding validated (SPEC 22.6's table) and takes no flags. The kinds read SlotTypes and
-// ReferenceTypes.
+// laid out by Layout (Ok); a C signature is one Binding validated (SPEC 22.6's table), whose every parameter has an argument
+// representation, and takes no flags. The kinds read the root Type predicates SlotTypes and ReferenceTypes.
 // Outputs: Of, a FunctionAbi without a name (empty), which its definition names (FunctionAbi.Named: the old pool __kimi_f<n>, the old
 // imports their external symbol, ModuleCodegen its items); Matches, whether an existing FunctionAbi is that signature, so a caller
 // reuses it without allocating; HasResultSlot and ResultType, the internal convention's result rules over a record, which the old
 // pool's gate also answers with.
 // Invariants: Of is a function of its inputs; Matches(Of(x), x) holds and allocates nothing.
-// Must not gate (the old pool keeps FunctionAbiPool.Supports until R6-gen) or map a Layout outcome other than Ok (a broken contract),
+// Must not gate (the old pool keeps FunctionAbiPool.Supports until R6-gen) or map a Layout outcome other than Ok, flags under C or a C
+// parameter without an argument representation (broken contracts, which throw),
 // read syntax, Origins, HIR, MIR or the old Emission's scalar-value gate (WindowsLowering), name a function, port PreparedSlot (the
 // old default evaluators' kind), keep state or use LINQ.
 
@@ -171,18 +172,33 @@ internal static class Abi
     private static AbiParameter Environment(Flags flags)
         => new((flags & Flags.ConcreteClosure) != 0 ? "ptr" : "i64", "environment", AbiParameterKind.Environment);
 
-    // Under the internal convention a constructor's or destructor's result slot, or a slot Type's of nonzero size; never under C.
+    // Under the internal convention a constructor's or destructor's result slot, or a slot Type's of nonzero size; never under C, which
+    // takes no flags.
     private static bool HasSlot(Convention convention, Flags flags, BoundType result, ValueLowering value)
-        => convention == Convention.Internal && ((flags & Flags.ResultSlot) != 0 || HasResultSlot(result, value));
+    {
+        if (convention == Convention.C)
+        {
+            return flags == Flags.None ? false : throw new InvalidOperationException("A C signature (SPEC 22.6) takes no flags.");
+        }
+
+        return (flags & Flags.ResultSlot) != 0 || HasResultSlot(result, value);
+    }
 
     private static string Result(Convention convention, BoundType result, ValueLowering value)
         => convention == Convention.C ? value.ComputationType : ResultType(result, value);
 
-    // A parameter's argument Type; under the internal convention a zero-sized parameter has none (no physical slot).
+    // A parameter's argument Type; under the internal convention a zero-sized parameter has none (no physical slot), while under C nothing
+    // is omitted (SPEC 22.6's table admits no parameter without one).
     private static string? ArgumentType(Layout layout, Convention convention, BoundType type)
     {
         var value = Value(layout, type);
-        return convention == Convention.Internal && value.Layout.Size == 0 ? null : value.ArgumentType;
+        if (convention == Convention.Internal)
+        {
+            return value.Layout.Size == 0 ? null : value.ArgumentType;
+        }
+
+        return value.ArgumentType ??
+            throw new InvalidOperationException("A C signature (SPEC 22.6) reached the parameter Type " + type.Name + ", which has no argument value.");
     }
 
     private static AbiParameterKind Kind(Convention convention, BoundType type)

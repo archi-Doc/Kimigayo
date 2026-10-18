@@ -1929,6 +1929,27 @@ R5 on the owner's request of 2026-10-18.
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
   the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
+- **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
+  the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
+  refuses an instance whose stored Types nest more than 64 levels, A5 plan PD30's storage-nesting gap) is a property of each
+  instance. `StorageHeight(type, budget)` (`Binding.Structs.cs`) gives the levels the storage walk reaches below a Type (0 for a
+  scalar; 1 + its highest base, Field, Case payload Tuple or Type component), or -1 when a part does not substitute or the height
+  exceeds the budget; `PrepareTypeStorage` admits a height of at most 64 and is the one entry. New state:
+  `AdtDef.InstanceStorage.Height`, valid while `Prepared` is the current pass. A struct or enum is stamped at height 0 when the
+  walk enters it, so an instance reached again through its own storage counts 0; it keeps its height only once its base, Fields,
+  Cases and Type components all passed; one that fails keeps nothing and fails the query. A later query compares the kept height with
+  its own budget. Why: the stamp recorded success at the depth of the first walk and survived a failing Type component, so
+  `h<Box^62>` was the gap alone and an instance beside `h<Box^61>` in either order, a Type stored twice passed or failed by Field
+  order (`AB<Box^57, Box^4<Box^57>>`), and `Tag<Array^61<i32>>`, whose `T` no Field stores, was refused once, then admitted.
+  Known residual (pre-existing, as before BU-11; PLAN G153 (2)): a member of a storage cycle keeps the height computed with the
+  cycle cut at 0 where its first walk entered, so cyclic storage still depends on order: near the bound (`Option<rc/L<Box^61>>`
+  after `L<Box^61>`), and at any depth when the cycle's entry then fails, since the member's kept height counted the failed entry
+  as 0 (with `R<T> { x: X<T>, y: Box^200<T> }` and `X<T> { r: Option<rc/R<T>> }`, `h<X<i32>>` is the gap alone and passes after
+  `h<R<i32>>`); A2 removes both. The bound counts levels through handles, so a ring of 17 non-generic structs linked by
+  `Option<rc/…>` is refused. Rejected: clearing the stamp when a Type component fails, alone (the memo still ignores depth); no
+  memo below the root (exponential over shared parts, `Pair^25`); not keeping cycle members (exponential over mutually recursive
+  Types); heights shared per strongly connected component with a growth cap on the walk (A2) and inline-only preparation (B),
+  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7).
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -2759,7 +2780,8 @@ structure is recorded here by the unit that first implements it.
   and §4.5 rows 5 and 11-13; under R5-M18) `TyCtxt.SubstOfItem` gives an ordinary function item's substitution from its Item Type alone:
   its function's own Type arguments (`Binding.CopyItemArguments`), the declaring Type its last Component holds and its length arguments,
   without Origins, the substitution `FunctionItemContext` built, without its cache or storage preparation; a requirement Item's stays its
-  requirement call's until K6. The collector's templates gain statement sites, in location order with the calls: an `Aggregate(Closure)`
+  requirement call's until K6b (superseded by R5-M67, which moved it from K6). The collector's templates gain statement sites, in
+  location order with the calls: an `Aggregate(Closure)`
   is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
   `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
   Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
@@ -2961,8 +2983,8 @@ structure is recorded here by the unit that first implements it.
   and `GetValue` until R6-gen (every Type they admit is laid out Ok) and pass `AggregateLayoutPool.Layout`. Deleted from the old
   pool: `Build`, the static `Matches`, `Shape`, `ParameterShape` and `Signature`; `Get` and the new `Import` (C) reuse the previous
   signature by `Matches`, keeping no Type or syntax. Not ported: `PreparedSlot` (`DefaultGenerationPlan` keeps its own ABI). Staged:
-  C design §2.6's memo keyed by (convention, flags, interned signature Type) comes with ModuleCodegen (C0b1); the old callers reuse
-  by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
+  C design §2.6's memo keyed by (convention, flags, interned signature Type) comes with ModuleCodegen (C0b1; R5-M65 replaces it with
+  ModuleCodegen's per-item reuse by `Abi.Matches`); the old callers reuse by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
   (ARCH "Capability gates"); a separate C-convention component (the order, records and reuse are one rule with two conventions);
   keeping the per-ordinal `Signature` record, whose logical shapes also compare zero-sized parameters that have no slot.
 - **R5-M61 `TyCtxt.Witness`, a requirement call's target under a closed substitution** (2026-10-19, planning session; plan F5b,
@@ -3066,3 +3088,146 @@ structure is recorded here by the unit that first implements it.
   - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
     `MayNeedDrop` says; Parts derived from `MirTypes.Destruction` (a deep forward walk, and Mir does not read the Backend); a
     collector-side element table (X4).
+- **R5-M62 `VTableDef` and `TyCtxt.Applies`, a struct family's dispatch shape** (2026-10-19, planning session; plan F4, package F
+  §4.1–§4.3, §5 and §6, S2-S4 X5; under R5-M18 form 1 and R5-M61) A permanent declaration table (`Binding/VTableDef.cs`, R2b-D3's
+  deferred view) kept on the struct's `AdtDef` (`VTable`), and a view beside `TyCtxt.Witness` (`TyCtxt.Dispatch.cs`).
+  `PrepareVirtualOverrides` fills the table at its end, once slot selection is complete, for every struct in every pass, into the same
+  arrays: a struct's table is its base's table, then its own virtuals in member order (SPEC 6.2.1: fragments merge in logical
+  declaration order; a conditional-conformance Block's members in its place), with no path or span sort; `Implementations[slot]` is
+  the struct's own override, else its base's entry, else the original; `BaseCount` counts the base's slots. `VTableDef.Of(struct)` is
+  null for a struct with no slot and for one whose declaration, base table, virtuals or overrides had failed by then, a dependent of a
+  failed part (`CompleteDependent`) included (R4-M18);
+  `VTableDef.Slot(original)` searches the original owner's own range, the same index in every table of the family. A failure later in
+  the pass (an override condition, an effect bound, the objuniq receiver's `Unsupported_Kd`) keeps the table and leaves Binding's result
+  incomplete; such an entry names a definition without a MIR body (R4-M18), which a reader meets as any unresolved callee. Consumer
+  rule (K8, C6c): slot i of a closed T runs `Implementations[i]` in the first layer on T's `AdtDef.Base` chain that declares it, under
+  `TyCtxt.Synthesized(implementation, layer, [])`; where `TyCtxt.Applies` of the slot's original at the layer that declares the original
+  is false, the entry is null and the body is checked only (R4-M28); a Virtual callee loads `Slot(original)` (X5).
+  `TyCtxt.Applies(original, declaring)` gives `Binding.VirtualApplicability`'s proof under the public premises: Proven true, Refuted
+  false, else null, which for a closed declaring Type is a broken contract its reader records as `InternalInvariant_Kd`. One answer
+  per (original, declaring), discarded at an edit by `ResetDispatch`, which `TyCtxt.ResetViews` already calls; a warm rebind refills
+  the same arrays and a warm `Applies` allocates 0 B. `VirtualGenerationPlan` keeps its own sort and slots until G7 (D5). Rejected:
+  a path or span sort (member order is the logical order, F fact 6); filling after the pass's later checks (the package places the
+  fill after slot selection, and nothing reads a table during a pass); a table per closed instance or a layer per slot (one table per
+  declaration with the consumer's Base walk serves every instance); applicability in the table (a closed instance's proof, the view's);
+  a per-pass side set of filled structs (the table carries its pass's storage version, as `AdtDef` and `InstanceStorage` do).
+- **R5-M65 The frame of MIR code generation: `ModuleCodegen` and `FunctionCodegen`** (2026-10-19, C lane; plan C0b1, package C §3.2,
+  §3.3 and §3.9, D2 §2.2, §2.3 and §2.12, PD11; under R5-M18 form 1 and R5-M64) Two permanent Backend components (`Backend/Codegen/`,
+  contract entries), one `ModuleCodegen` per `Compilation`. Under MIR code generation `Compilation.Generate` passes gate step 1, then
+  needs the check's acceptance `Compilation.Accepts` (SPEC 23.2.2; `Project` reads it instead of its own copy; the old generator keeps
+  its `CheckInputs`), and runs `ModuleCodegen.Write`: every item of the checked set in admission order (K11's Generated mark narrows
+  them), a body item `__kimi_f<item>` under `Abi.Of`'s internal signature from local 0 and the argument locals in slot order
+  (`CallerLocation` from `KimiLibraryCatalog.RequiresCallerLocation`; the old constructor and destructor result-slot flag is the old
+  generator's ABI choice, which local 0's Type replaces), reused per item while `Abi.Matches` holds; an Application's `__kimi_start`
+  (the startup item, then `__kimi_exit(0)`), a Library without an entry; the frame through `LlvmModuleText` in the old order; the module
+  all or nothing. `FunctionCodegen` writes a body item: one aligned alloca per local of nonzero size (bool `i8`), Value arguments stored,
+  pointer-passed arguments and the result slot in place; exactly the blocks `MirReach.Walk(body, 0, checks: false)` reaches; the
+  no-op statements, a `Use` into an unprojected local from an unprojected Copy or Move or a Bool, Integer or Unit constant (zero-sized
+  writes nothing, a slot Type's copy is C2b's), Goto, SwitchInt, Return and Unreachable. PD11's coverage rows are the two components'
+  dispatch arms (MIR vocabularies; body kinds Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b: a constant initializer folds
+  into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b); a test
+  build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the collector's one rule
+  (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation runs over every item and
+  then discards the text. A record is a code without facts, `Unsupported_Kd` (location-only, DIAGNOSTICS §2 rule 3) or
+  `InternalInvariant_Kd` (a broken contract at its site), so `Generate` publishes it in the Emission partition keyed by its location,
+  through the Diagnostics owner's `DiagnosticCollection.ReportLocation`,
+  whose key's subject is the location: the records of two nodes at one location, such as a `for` statement and the siblings its
+  expansion synthesizes with its span (`$for.iterator`, `$for.some`, `$for.none`, which the order of node keys cannot tell apart), are one
+  problem by the owner's merge of equal keys. An accepted program without its MIR or checked set, or a module neither written nor
+  explained by a record (an Application's startup without a generated item), is `InternalInvariant_Kd` at the project. Types come from
+  `InstanceCollector.TypeOf`, the collector's own instance rule (`Apply` under the representative), which its edges now read too.
+  R5-M35's and R5-M64's sel refusal is deleted.
+  - Moved here from C0b2: module assembly, the Application entry and the Library form (a frame fixture needs a linkable module).
+    Staged to their first readers: the intrinsic rows' writer column (C3a or C8a, PLAN G151), the zero-sized address symbol (C2b),
+    view selection (C2a), Float constants (C1b, which promotes the old writer's hex spelling). R5-M58's staged nameless memo is replaced
+    by the per-item reuse (a nameless memo would still allocate each name). The entry's call is written by `ModuleCodegen` until C3a,
+    whose call writer it then goes through (one ABI and attribute writer, package C §3.2).
+  - P8's review: ARCH's Backend row lists the root Type predicates `SlotTypes` and `ReferenceTypes`; `Abi` throws for flags or a
+    parameter without an argument value under C; `VirtualGenerationPlan` names its entry with `FunctionAbi.Named`.
+  - Rejected: a coverage table or predicate beside the dispatch (a second copy); streaming functions to the caller (a partial module on
+    a gap); a destructor fact in Binding for the old result-slot flag (the MIR signature needs none); records at library sites (the
+    collector's rule is the one location rule); a consumer-side table of published spans (records dropped after the fact, beside the
+    owner's own merge); a Diagnostics tie-break or a per-record condition for synthesized siblings (it would show identical records, and the
+    order fault guards every reporter); moving synthesized sites in the location rule (no published fact names an expansion's source
+    node).
+- **R5-M69 `ObjectRuntime`** (2026-10-19, P lane; plan P3b, PD2, package C §3.1 and §3.4, PLAN10 §5.8; promoted under R5-M14) A
+  permanent Backend component that owns the object runtime text every generator writes (IMPL 21.1.3, SHARED_OBJECT_RUNTIME), moved
+  from the old writer's `Objects` and `SharedObjects` partials after P3a's split: `WriteRuntime`, the payload-independent runtime once
+  per module that uses objects (the dynamic Type test through a descriptor's base map, the descriptor's free entry, finalization, and
+  the rc and arc clone and drop with their release transitions); `WriteObject`, an object's private constants (Runtime Type key,
+  metadata, descriptor, virtual table, base map), payload destructor and `__kimi_make_object<N>` factory from its row
+  `ObjectCreation`, which moved from `ObjectGenerationPlan` with it: its number, pooled key, payload `ValueLowering`, Copy, factory
+  `FunctionAbi` and Type token in the constructor, and the descriptor's optional entries (the payload destructor's symbol, the base
+  tokens, the virtual slots) init-only, so the constructor is within ARCH's parameter limit (as R5-M15's `FunctionAbi`);
+  `WriteSealedDrop`, a Sealed handle's direct release, from the handle's `ObjectCountingStep` (`BoundType.HandleMode`'s; it stays in
+  the held `BindingModel.cs`) and the symbol of the payload's drop routine as a span, empty for none, so the old aggregate destructor
+  names `__kimi_destroy_string` or formats `__kimi_drop_aggregate<N>` on the stack (`PayloadDrop`) and codegen passes its glue's
+  symbol. The parts' order is the component's; the old `WriteObjects` only decides from `EmissionModule` whether a module uses
+  objects. `LlvmModuleWriter.Name` joined `LlvmModuleText` (numbered names). The move is behavior-preserving; the Runtime Type key
+  constant, which nothing reads (PD17), moved unchanged, and its deletion with `ObjectCreation.TypeKey` and the pool parameter stays
+  a separate unit that changes the IR. C6a builds the codegen's rows (`B/Codegen/ObjectDescriptors.cs`, the factory ABI with them).
+  Rejected: `ObjectHandleMode` as input (payload authority is not the runtime's); the old aggregate ordinal as input (the old
+  writer's naming in a permanent component); a `string` symbol (a warm write would allocate a payload aggregate's drop name, and
+  `SealedObjectFinalizationTest` holds warm emission at 0 B); the caller writing the payload call between a release member and a
+  free member (the release order would leave the component); a copy of `Name` (a second copy); the row left in Emission (a Backend
+  dependency on the old Emission, which R6-gen deletes); the per-part members internal (each generator would repeat their order).
+- **R5-M68 `TyCtxt.Comparison`, a comparison's composition by Type, and the legacy comparison twin** (2026-10-19, planning session;
+  plan F6, package F §4.1, §4.6, §4.7, §5 and §6, S2-S4 F 2, F 5 and X25; under R5-M18 form 1 and R5-M61) A permanent view of the
+  dispatch facts (`TyCtxt.Dispatch.cs`): `TyCtxt.Comparison(contract, self, operators)`, given Equatable or Comparable, a Type and the
+  mode (source operators, which compare floats by IEEE, or the Contract's mapping, whose float `equals` is NaN-reflexive; SPEC 13.4,
+  13.4.1, 12.4.3), returns a `ComparisonNode(Type, Kind, Target, Subst, Parts)` tree, whose kind enum is local, not an ARCH vocabulary:
+  Composite (a Tuple or a safe `ref` layer) over its parts; Builtin; Witness, a closed leaf: the Body `TyCtxt.Witness` gives for the
+  Contract's own requirement on the leaf, under its declaring instance (`TyCtxt.Synthesized(witness, declaring, [])`, its Origins the
+  analyses'); Requirement, a leaf with an abstract part: that requirement on the leaf in every instance, under the Self-bearing factory
+  `TyCtxt.Synthesized(requirement, self)`, beside `Synthesized` in `TyCtxt.cs`, which K's rows 2 and 6 also use; None: no answer, a
+  broken contract for a closed accepted Self that its reader records as `InternalInvariant_Kd`; null for a Limit (Witness's: the leaf's
+  storage does not complete). One rule decides the kinds, `Binding.ComparisonKindOf(self, contract, operators)`
+  (`Binding.ComparisonPlans.cs`), which the legacy plan and `CompilerRequirementTarget` (a comparison's built-in target: Composite or
+  Builtin under the Contract's mapping) read too, so no copy of the composition remains; the Contract's own requirement is
+  `BoundContract.OwnRequirement`, shared with `PrepareBuiltinTargets`. One node per (contract, self, operators), kept until an edit
+  (`ResetDispatch`, under `TyCtxt.ResetViews`); a warm call allocates 0 B. Readers: F7 (operators), C8f (the Contract's mapping: the
+  BuiltinEquals and BuiltinCompare shims and the Dictionary key-equality row), K6's Builtin items; A4 only through A-12.
+  - The legacy comparison twin (package §4.7), a temporary structure marked `[Transitional]`: the private `ComparisonPlan` overload,
+    `BoundComparison`, `comparisonPlans` and `RequirementImplementation` with `requirementCalls` stay for A4's `Witnesses` until A-12,
+    else R7; `ComparisonPlan(CallPlan)` and `DictionaryComparison` go at H11 after their readers (H5, G7), and `RequirementImplementation`'s
+    CallPlan overload with `TryResolveFormattingCallback` at H11. While it lives A4 and codegen resolve comparison leaves with two
+    resolvers (X25). Twin (`ComparisonCompositionTest.TheViewHasTheLegacyPlansLeaves`): each comparison call of the library, the
+    milestones and four direct programs (with witnesses of conditional conformances, one of a Type with an Origin slot and one nested in
+    itself, package §10) has, for a closed Self, the legacy plan's leaves (Types, kinds, witness and declaring instance) and, for a Self
+    with an abstract part, the requirement on each leaf with one; the views leave Binding's records and the HIR version unchanged. Every
+    closed comparison has a plan: an inherited witness, which the plan refuses, implements no comparison requirement, whose `other` is
+    `ref/Self` (`MissingContractImplementation_Kd`), so package §4.6's inherited case has no instance.
+  - Departure: group G:library-2, reviewed per unit, instead of G:compare (planning session). Not shared: `TyCtxt.Published`'s "its one
+    requirement" (`Requirements[0]`, `TyCtxt.Effects.cs`, R4's), equal to `OwnRequirement` for every catalog row's Contract.
+  - Rejected: a view mapping the legacy plan's tree (null at every abstract leaf, F fact 1, so F7 could not expand a generic tuple
+    comparison); a mode on the legacy overload choosing the leaf resolver (a mode steering one function; its CallPlan leaves and
+    per-version retention are the legacy readers'); the core called directly for a Witness leaf (a second copy of Witness's Limit and
+    premise scope); Witness's Body Subst as the leaf's (its Origins are the requirement's own atoms, foreign to a synthesized call);
+    `ComparisonProof` on the same rule (an acceptance proof under the caller's premises, which proves built-in Types through the
+    constraint solver: another contract).
+- **R5-M67 Requirement edges of the checked set** (2026-10-19, planning session; plan K6, the K package's §4.3 and §4.5 row 3 with its
+  witness results, package F §4.5, S2-S4 X14, X16, X28; under R5-M18, R5-M40 and R5-M61; DEC Q6 form 1; `MonoKind.Builtin`,
+  `MonoKind.PropertyWitness` and the capability rows are approved with the K package, §11, `ExclusiveInheritedWitness` being KD10's and
+  §4.7's OCC-X row) A Requirement call of an item's
+  body is, under the call's substitution composed with the item's representative, the target `TyCtxt.Witness(requirement,
+  MirCallee.Contract, composed)` gives: Body, the item of the implementation its substitution selects (`TyCtxt.Implementation`,
+  `MirProgram.Callee`; none without a body), admitted as a Fn callee's; Builtin, a shim item keyed by the erased Self and the compiler
+  function (new `MonoKind.Builtin`, `MonoKey.Variant`); Storage, a shim item keyed by the Field, the erased Self and the
+  `PropertyWitnessKind` (new `MonoKind.PropertyWitness`, `MonoKey.Symbol`, X14), admitted only when the requirement's signature in
+  the instance (`TyCtxt.Signature`) is the key's up to Origins (a `ref/Self` or `uniq/Self` receiver, a result `F`, `ref/F` or Unit,
+  a set input `F`, `F` the Field's Type in Self by `AdtDef.FindField`), else `InternalInvariant_Kd`, and a set's item targets the
+  Field Type's glue; Refused, the capability row `ExclusiveInheritedWitness` (OCC-X, `Unsupported_Kd` at the call); Limit, the
+  storage-nesting row; None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are type-driven items: the Self's
+  layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate is null (`TyCtxt.Compose`,
+  PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
+  - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets): requirement Items (rows 5 and 12), whose
+    substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until K6": they now wait for K6b); row 6's
+    writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim disposition's Builtin item, which need
+    F6's Self-bearing `Synthesized` factory (package F §4.5's input); a Builtin item's leaves, from F6's `TyCtxt.Comparison`
+    (BuiltinFormat's too, R5-M30). Until K6b these sites carry no target and no record; C3b, C8f and C9b depend on K6b, which keeps
+    that safe (under sel `build` is still refused by C0b1's frame). Refused has no reproducer: Binding rejects every inherited
+    exclusive witness at its conformance (`Unsupported_Kd` at `Self is C`, ObjectCompatibility Unknown), so the row is reached once
+    OCC-X proves one.
+  - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
+    places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
+    plans).

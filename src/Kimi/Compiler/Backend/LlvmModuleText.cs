@@ -3,11 +3,11 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the checked splice every
 // runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations,
-// the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols and numbers
-// formatted on the stack (or once, as text, for a template filled at startup). Both generators write the frame through it (PD2:
-// promoted, never copied).
-// Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers and
-// symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons) and the target profile (WindowsProfile).
+// the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names
+// and numbers formatted on the stack (or once, as text, for a template filled at startup). Both generators write the frame through
+// it (PD2: promoted, never copied; Name came from the old writer with ObjectRuntime, R5-M69).
+// Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, name
+// prefixes and symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons) and the target profile (WindowsProfile).
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
 // runtime template.
 // Invariants: the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; each runtime ABI
@@ -217,6 +217,13 @@ internal static class LlvmModuleText
         Span<char> digits = stackalloc char[40];
         value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
         output.Write(digits[..length]);
+    }
+
+    // A numbered name (a symbol, label or SSA value): its prefix, then the number formatted on the stack.
+    internal static void Name(TextWriter output, string prefix, int id)
+    {
+        output.Write(prefix);
+        WriteNumber(output, id);
     }
 
     // A runtime template (the Windows runtime, the formatting runtime) with its abort reason markers expanded and each definition

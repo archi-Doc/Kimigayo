@@ -1,21 +1,24 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60): every body
-// instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
-// each site's target that code generation reads.
+// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
+// R5-M67): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its instance-stage records,
+// and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Apply, Implementation, SubstOfClosure, SubstOfItem, Synthesized); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts;
-// MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose
-// outcomes the collector alone maps (R5-M37).
+// Compose, Apply, Implementation, Witness, Signature, SubstOfClosure, SubstOfItem, Synthesized); MirCases (Views); MirTypes.MayNeedDrop;
+// DropGlue.Parts; AdtDef.FindField; MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the
+// compilation's Layout, whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
-// Compilation.MirRecords publishes under MIR code generation (K4b).
+// Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
+// location of a record at a site of its body (Subject).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5, InstanceCollector.Edges.cs): one template per body and version lists its sites that may carry a target (Fn, Requirement and
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
 // constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
-// each site under the item's representative; a type-driven item's targets follow from its representative Type (InstanceCollector.Glue.cs:
-// a DropGlue's direct parts, DropGlue.Parts). K6 and K8 add the other rows.
+// each site under the item's representative, a Requirement call's by its witness there (InstanceCollector.Witnesses.cs: a body, a Builtin
+// or a property-witness shim keyed by the erased Self, or a gap); a type-driven item's targets follow from its representative Type
+// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; a property-witness setter's Field glue). K6b adds the requirement
+// Items, the formatting and writer witnesses and a Builtin's leaves (DECISIONS R5-M67), K8 the object rows.
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
@@ -26,11 +29,12 @@
 // storage derives from a Binding error; a type-driven item needs an Ok verdict.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution
-// TyCtxt cannot make and an access of a static of a generic container's group (X33 (a)) are the capability table's gaps; depth past 128,
-// 16 ancestors of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or
-// leaves its body open is InternalInvariant_Kd. A refused edge is dropped and collection continues.
+// TyCtxt cannot make, an access of a static of a generic container's group (X33 (a)) and OCC-X's refused witness are the capability
+// table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a
+// representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are InternalInvariant_Kd.
+// A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
-// root-module site the admission chain first reached.
+// root-module site the admission chain first reached; code generation's records take the same rule.
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); at most one target per site of a
 // body; a type-driven item's targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its
 // environment's glue; a repeated run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
@@ -112,6 +116,14 @@ internal sealed partial class InstanceCollector
 
         return set;
     }
+
+    /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
+    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its application under the representative.</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="type">A Type of its body.</param>
+    /// <returns>The Type in the instance, or null when TyCtxt cannot make it (the collector's storage-nesting gap).</returns>
+    internal BoundType? TypeOf(int item, BoundType type)
+        => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative) : type;
 
     // K 4.5 rows 1-9: a call carries a target by its callee: a Fn, Requirement or Value callee, or an intrinsic whose row names one; a
     // Virtual call none, its receiver's VTable holding the entries (X5).

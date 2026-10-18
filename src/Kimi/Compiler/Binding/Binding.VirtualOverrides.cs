@@ -20,6 +20,8 @@ public sealed partial class Binding
     private readonly HashSet<BoundConstraint> virtualHeaderCommon = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<BoundConstraint> virtualHeaderCandidate = new(ReferenceEqualityComparer.Instance);
     private readonly ScratchBuffers<BoundConstraint> virtualHeaderScratch = new();
+    // One struct's virtual and override functions in member order while its VTableDef is filled.
+    private readonly List<FunctionKoto> slotMembers = new();
     private Dictionary<FunctionKoto, OverrideFailure>? overrideFailures;
 
     // Header names must be independent of slot selection. Only premises common to the accessible
@@ -300,6 +302,89 @@ public sealed partial class Binding
                 {
                     this.FailOverride(function, BindingFailure.OverrideContractMismatch, "Origin binder names must belong to the original slot; omitted annotations inherit that contract", slot.Original);
                 }
+            }
+        }
+
+        this.FillVTables();
+    }
+
+    // SPEC 6.4.1-6.4.3, 6.2.1: every struct's dispatch shape once slot selection is complete (VTableDef, DECISIONS R5-M62).
+    private void FillVTables()
+    {
+        foreach (var container in this.storageDeclarations)
+        {
+            if (container is StructKoto structure)
+            {
+                this.FillVTable(structure);
+            }
+        }
+    }
+
+    // A struct's table, its base's first; null when its declaration, its base's table, a virtual or an override did not resolve.
+    private VTableDef? FillVTable(StructKoto structure)
+    {
+        var symbol = structure.BoundSymbol!;
+        var table = symbol.Adt!.VTable ??= new();
+        if (table.Version == this.storageVersion)
+        {
+            return table.Resolved ? table : null;
+        }
+
+        table.Version = this.storageVersion;
+        table.Resolved = false;
+        var parent = structure.Bases.Count != 0 ? AdtDef.Declaration(AdtDef.Base(this.SelfType(symbol))) : null;
+        var inherited = parent is null ? null : this.FillVTable(parent);
+        if (structure.BindingState == BindingState.Invalid || (structure.Bases.Count != 0 && inherited is null))
+        {
+            return null;
+        }
+
+        this.slotMembers.Clear();
+        this.AddSlotMembers(structure.Members);
+        var own = 0;
+        foreach (var function in this.slotMembers)
+        {
+            // A failed function, or one completed as the dependent of a failed part (CompleteDependent), did not resolve.
+            if (function.BindingFailure != BindingFailure.None || function.BindingState == BindingState.Unresolved)
+            {
+                return null;
+            }
+
+            own += function.IsVirtual ? 1 : 0;
+        }
+
+        table.Refill(inherited, own);
+        var next = table.BaseCount;
+        foreach (var function in this.slotMembers)
+        {
+            if (function.IsVirtual)
+            {
+                table.Originals[next] = function.BoundSymbol!;
+                table.Implementations[next++] = function.BoundSymbol!;
+            }
+            else
+            {
+                // Slot selection gave every resolved override its original in a base's own range.
+                table.Implementations[VTableDef.Slot(this.virtualOverrides[function].Slot.Original.BoundSymbol!)] = function.BoundSymbol!;
+            }
+        }
+
+        table.Resolved = true;
+        return table;
+    }
+
+    // The virtual and override functions among members in member order, a conditional-conformance Block's in its place.
+    private void AddSlotMembers(IReadOnlyList<Koto> members)
+    {
+        for (var i = 0; i < members.Count; i++)
+        {
+            if (members[i] is FunctionKoto function && (function.IsVirtual || function.IsOverride))
+            {
+                this.slotMembers.Add(function);
+            }
+            else if (members[i] is SyntaxFormKoto { Akind: KotoKind.ConditionalConformance } syntax && TryConditionalBlock(syntax, out var block))
+            {
+                this.AddSlotMembers(block.Items);
             }
         }
     }

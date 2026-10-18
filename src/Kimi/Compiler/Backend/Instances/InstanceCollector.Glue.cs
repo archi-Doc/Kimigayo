@@ -12,7 +12,7 @@ internal sealed partial class InstanceCollector
     // runs or releases something (MirTypes.MayNeedDrop); A2's verdicts do not narrow the checked set (codegen reads them). -1 for a Type
     // with nothing to destroy or a refused edge.
     private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed && MirTypes.MayNeedDrop(closed, this.seen)
-        ? this.AdmitType(item, subject, MonoKind.DropGlue, closed) : -1;
+        ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default), closed) : -1;
 
     // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10); none is a broken contract, since the builder
     // ensures only the statics whose initializers it builds. A static of a generic container's group, whose storage the MIR keys by its
@@ -30,17 +30,23 @@ internal sealed partial class InstanceCollector
     }
 
     // K 4.3: a type-driven item's targets, from its representative Type, each at the default site: a ClosureErasure's body and its
-    // environment's glue; an ItemAdapter's body; a DropGlue's direct parts in destruction order (DropGlue.Parts): a destructor's Body
-    // under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue.
+    // environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts in destruction order
+    // (DropGlue.Parts): a destructor's Body under TyCtxt.Synthesized (R4-M6b), or each part's, element's or Sealed payload's glue.
     private void Expand(MirProgram program, int item)
     {
-        var kind = this.Set.Items[item].Key.Kind;
+        var key = this.Set.Items[item].Key;
         var type = this.Set.Items[item].RepresentativeType!;
         var site = this.Set.Items[item].Site;
-        if (kind != MonoKind.DropGlue)
+        if (key.Kind is MonoKind.Builtin or MonoKind.PropertyWitness)
+        {
+            this.Target(item, this.Shim(item, site, key, type));
+            return;
+        }
+
+        if (key.Kind != MonoKind.DropGlue)
         {
             this.Target(item, this.Callee(program, item, site, type));
-            this.Target(item, kind == MonoKind.ClosureErasure ? this.Glue(item, site, type) : -1);
+            this.Target(item, key.Kind == MonoKind.ClosureErasure ? this.Glue(item, site, type) : -1);
             return;
         }
 

@@ -145,8 +145,7 @@ public class DivisionEmissionTest
 
         Assert.All(function.Slots, x => Assert.Equal(OwnershipPlaceKind.Local, c.Ownership.Bodies[0].Places[x.Place].Kind));
         Assert.DoesNotContain(" exact ", ir);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]

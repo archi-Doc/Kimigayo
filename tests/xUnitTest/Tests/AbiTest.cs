@@ -90,6 +90,19 @@ public class AbiTest
         Assert.False(Abi.Matches(abi, c.Layout, Abi.Convention.C, Abi.Flags.None, BoundType.Primitives["i32"], parameters));
     }
 
+    // SPEC 22.6: a C signature takes no flags and passes every parameter as a value, so a flag or a parameter without an argument value is a
+    // broken contract (Binding admits neither), never a silent omission.
+    [Fact]
+    public void TheCConventionRefusesFlagsAndOmissions()
+    {
+        var layout = new Layout();
+        var i32 = BoundType.Primitives["i32"];
+        Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, Abi.Convention.C, Abi.Flags.CallerLocation, i32, [i32]));
+        Assert.Throws<InvalidOperationException>(() => Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, i32, [BoundType.Unit, i32]));
+        var abi = Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, i32, [i32]);
+        Assert.Throws<InvalidOperationException>(() => Abi.Matches(abi, layout, Abi.Convention.C, Abi.Flags.ResultSlot, i32, [i32]));
+    }
+
     private static BoundType[] Parameters(Compilation c, string name)
         => [.. KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == name).Parameters.Select(static x => x.Type.TypeOf()!)];
 
