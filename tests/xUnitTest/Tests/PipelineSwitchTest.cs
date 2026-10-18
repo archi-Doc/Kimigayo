@@ -11,7 +11,9 @@ namespace XunitTest;
 /// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R5): <c>KIMI_PIPELINE</c> selects the default,
 /// only the mir pipeline publishes the MIR's records and marks the compiler identity, the legacy output does not depend on it, and every
 /// analysis notifies the difference ledger's observer. <c>KIMI_CODEGEN</c> (R5 PD4) selects MIR code generation under the mir pipeline
-/// only, which collects the checked set and refuses generation until C0b1.</summary>
+/// only, which collects the checked set and refuses generation until C0b1. Every product generation request passes the generation entry's
+/// gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its generation records as <c>kimi build</c>
+/// does.</summary>
 public sealed class PipelineSwitchTest
 {
     // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
@@ -161,7 +163,8 @@ public sealed class PipelineSwitchTest
             var console = new DiagnosticContractTest.DiagnosticConsole();
             var project = new Project(new Kimigayo(console)) { Name = "wide", Directory = directory };
             project.ProjectFile.Targets = [WindowsProfile.Target];
-            project.AddSource("main.kimi", "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n#Test\nfunc wide()\n    let result = half(10@i128)\n");
+            const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
+            project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             var c = project.PrepareTests(TestContext.Current.CancellationToken);
             Assert.Equal(Compilation.DefaultCodegen == CompilerCodegen.Mir, c is null);
             if (c is not null)

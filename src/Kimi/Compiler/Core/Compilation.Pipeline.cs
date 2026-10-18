@@ -13,9 +13,10 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
-// The analysis and generation entry points (plan 12.1, 13.2), the one way to run and read the phases after Binding and startup, follow
-// the pipeline: until R6 the old path decides under both, and under mir the MIR is built, validated and analyzed beside it and its
-// construction records and validator findings are analysis Errors (its analysis problems stay unpublished, R4-M1).
+// The analysis entry points (plan 12.1, 13.2), the one way to run and read the analyses after Binding and startup (generation has its own
+// entry, Compilation.Generation.cs), follow the pipeline: until R6 the old path decides under both, and under mir the MIR is built,
+// validated and analyzed beside it and its construction records and validator findings are analysis Errors (its analysis problems stay
+// unpublished, R4-M1).
 public partial class Compilation
 {
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]

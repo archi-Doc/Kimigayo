@@ -7,7 +7,10 @@
 // the old generator's own record (its instance's located records, GenerationResourceLimit_Kd or, until G9b, GenerationFailed_Kd).
 // Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and, under sel, the checked set's
 // records). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none.
-// Invariants: every generation request, the out-string adapters included, passes this gate; under sel the old generator never runs.
+// Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
+// and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
+// LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
+// and src/Benchmark (four stage measurements of the old generator) run the old generator without the gate, under sel too.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
 // generator under sel. C4a adds gate step 2 and K11 the Generated mark here.
 

@@ -2946,7 +2946,9 @@ structure is recorded here by the unit that first implements it.
   the one way the latest analysis becomes module text: `Compilation.Generate(TextWriter)` passes the gate, runs the compilation's code
   generator and writes the complete module, or writes nothing and records why in the Emission partition; it returns no failure text.
   `EmissionArtifacts.Publish` generates only through it, and `Project.PublishArtifacts`, the one publication path of `kimi build` and
-  `kimi test`, renders the Emission result, so `kimi test` reports located records where it reported failure text.
+  `kimi test`, renders the Emission result, so `kimi test` reports located records where it reported failure text. Outside the gate until
+  G7 deletes `LlvmEmitter` (and `Compilation.Emission`): its direct readers in tests (G5 deletes them) and four `src/Benchmark` stage
+  measurements run the old generator without the gate, under sel too.
   - Gate, step 1: no MIR records of the version (`MirRecords`: construction records, validator findings and, under MIR code generation, the
     checked set's records). They are analysis Errors that check publishes, so a refusal adds no record; `Publish` skipped this gate before.
     C4a adds step 2 (A2's per-body completeness fact, R5-M18) and K11 the Generated mark in this file only.
