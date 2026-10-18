@@ -3019,3 +3019,28 @@ structure is recorded here by the unit that first implements it.
   - Rejected: an entry returning the prepared old module (Core would publish `EmissionModule`, which MIR code generation replaces);
     buffering the module before the publication checks (an allocation the size of the module); a writer opened on first write (a wrapper
     kept only for the old order); reporting publication failures in `Generate` (publication is `EmissionArtifacts`', G9b's record).
+- **R5-M60 Drop glue, destructor and static edges of the checked set** (2026-10-19, planning session; plan K7, the K package's §4.5 rows
+  7, 9, 10 and "DropGlue", §4.7 and §4.8, S2-S4 X3, X23, X27, X33 (a) and X34; under R5-M18, R5-M35 and R5-M44; DEC Q6 form 1) Every Drop
+  (A2's verdicts do not narrow the checked set) and every `DestroyValues` call is the `DropGlue` item of its Type in the item's instance,
+  keyed by the erased Type, when `MirTypes.MayNeedDrop` holds. A glue item's targets, at its default site, are the glues of
+  `DropGlue.Parts`, a new Backend component (`Backend/DropGlue.cs`; C4a writes glue from the same enumeration, X27): a closed Type's
+  direct parts in destruction order (SPEC 16.3.2, 16.4): a declared destructor alone, its Body in the struct's instance
+  (`TyCtxt.Synthesized`, R4-M6b); else Fields last to first, then the base; Tuple and fixed-array elements by decreasing index; each Case's
+  payloads last to first; a Closure environment's captures in reverse initialization order (X23); an Array's or Dictionary's element
+  Types (its legacy Drop row's ElementGlue need, X4); an `obj`, `rc` or `arc` payload when `TyCtxt.Sealed` holds (else the descriptor's
+  finalizer runs the actual Type's glue, K8). A `ClosureErasure` also targets its environment's glue. A destructor without a body is one
+  Binding rejected, so its edge derives from that error.
+  - X34: a glue item lays out its collection element Types, also those that need no drop, and their verdicts join its admission (a
+    type-driven item needs an Ok verdict), so an element that fails refuses the glue: a Language record at each request (an empty
+    `Array<P<()>>` local's declaration), a Resource record once per erased Type.
+  - Row 7: a `staticEnsure` targets the StaticInit body `MirProgram.StaticInit` names (F10); none is `InternalInvariant_Kd` at the access.
+    A static of a generic container's group, whose storage the MIR keys by its symbol alone, is the capability row `GenericStaticKey`
+    (`Unsupported_Kd` at each access; X33 (a)). Search (K7's condition): over the library, the 44 milestones, the mutation, syntax and pair
+    corpora (456 cases) and the 63 spec-case variants, only Milestone 42 uses the form, P42's completion program, which the old analysis
+    rejects at the same accesses; no accepted program does. An immutable scalar `let` there, which the old path accepts and builds, is
+    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit.
+  - The plan row's "through a `MirTypes.Destruction` visitor" is `MayNeedDrop` (presence) with `DropGlue.Parts` (the parts), as X3 and
+    X27 decided.
+  - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
+    `MayNeedDrop` says; Parts derived from `MirTypes.Destruction` (a deep forward walk, and Mir does not read the Backend); a
+    collector-side element table (X4).

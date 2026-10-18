@@ -9,10 +9,11 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The instance collector (R5 K1, K4a; K package 4.3-4.6, DECISIONS R5-M35, R5-M40): the roots are the closed bodies of the root
-/// modules, a Fn, getter, setter, default-template or closure call is a target at its site with whether a runtime path reaches it, a
-/// generic callee an instance keyed by its erased substitution, a callee only the checks reach is in the checked set, the admission
-/// limits and Binding's storage bound are located records, the work grows linearly and collecting again allocates nothing.</summary>
+/// <summary>The instance collector (R5 K1, K4a, K7; K package 4.3-4.6, DECISIONS R5-M35, R5-M40, R5-M60): the roots are the closed bodies
+/// of the root modules, a Fn, getter, setter, default-template or closure call is a target at its site with whether a runtime path reaches
+/// it, a generic callee an instance keyed by its erased substitution, a callee only the checks reach is in the checked set, a dropped value
+/// its Type's glue and a static access its initializer, the admission limits and Binding's storage bound are located records, the work
+/// grows linearly and collecting again allocates nothing.</summary>
 public sealed class InstanceCollectorTest
 {
     // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
@@ -275,7 +276,7 @@ public sealed class InstanceCollectorTest
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
-        var adapters = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].BodyOrdinal < 0).ToArray();
+        var adapters = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind is MonoKind.ClosureErasure or MonoKind.ItemAdapter).ToArray();
         Assert.Equal([MonoKind.ClosureErasure, MonoKind.ItemAdapter], adapters.Select(x => set.Items[x].Key.Kind).Order());
         Assert.All(adapters, x => Assert.Same(c.Types.Erase(set.Items[x].RepresentativeType!), set.Items[x].Key.Type));
         Assert.Equal(
@@ -319,6 +320,197 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, statement.Source.Syntax)], set.Records.Select(static x => (x.Code, x.Subject)));
         Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.ItemAdapter);
+    }
+
+    // K 4.5 row 10, SPEC 16.3.2 (S2-S4 X3): a Drop is its dropped Type's DropGlue item, whose targets are the glues of its direct parts that
+    // need a drop, in destruction order: a struct's Fields last to first (an i32 Field none), then its base; a Tuple's elements in
+    // decreasing index; an enum's Case payloads, each Case's last to first. A Type with nothing to destroy has no glue.
+    [Fact]
+    public void AGluesTargetsAreItsPartsInDestructionOrder()
+    {
+        var (program, set) = Collect("open struct Base\n    public var log: Array<u8> = []\n    public init() => ()\nstruct Triple: Base\n" +
+            "    public var a: string = \"a\"\n    public var n: i32 = 0\n    public var b: Array<i32> = []\n" +
+            "    public var c: (Array<bool>, string) = ([], \"c\")\n    public init() : base() => ()\n" +
+            "enum Shape\n    Pair(string, Array<i32>)\n    Single(Array<bool>)\n    Empty\nstruct Plain\n    public var n: i32 = 1\n    public init() => ()\n" +
+            "func use() -> ()\n    let t = Triple.init()\n    let s = Shape.Pair(\"a\", [1])\n    let p = Plain.init()\n    return\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["DropGlue (Array<bool>, string)", "DropGlue Array<i32>", "DropGlue string", "DropGlue Base"], Targets(program, set, "DropGlue Triple"));
+        Assert.Equal(["DropGlue string", "DropGlue Array<bool>"], Targets(program, set, "DropGlue (Array<bool>, string)"));
+        Assert.Equal(["DropGlue Array<u8>"], Targets(program, set, "DropGlue Base"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string", "DropGlue Array<bool>"], Targets(program, set, "DropGlue Shape"));
+        Assert.Contains("DropGlue Triple", Targets(program, set, "Fn use"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue Plain");
+    }
+
+    // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of
+    // elements that need no drop has none; a derived struct's glue ends with its base's, which is the base's declared destructor alone, as
+    // a base without one ends with its Fields.
+    [Fact]
+    public void AFixedArraysAndADerivedStructsGluesEndWithTheirParts()
+    {
+        var (program, set) = Collect("open struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "struct Derived: Res\n    public var name: string = \"d\"\n    public var count: i32 = 0\n    public init() : base(1) => ()\n" +
+            "func use() -> ()\n    let f: [2 of string] = [\"x\", \"y\"]\n    let g: [2 of i32] = [1, 2]\n    let d = Derived.init()\n    return\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue [2 of string]"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue [2 of i32]");
+        Assert.Equal(["DropGlue string", "DropGlue Res"], Targets(program, set, "DropGlue Derived"));
+        Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
+    }
+
+    // K 4.5 "DropGlue", R4-M6b, SPEC 16.3.2: a struct that declares a drop is destroyed by its destructor alone, the Body of the struct's
+    // instance (TyCtxt.Synthesized), which drops the struct's own Fields: one destructor item per instance of a generic struct, the root
+    // for a closed one.
+    [Fact]
+    public void ADestructorIsItsStructsGlue()
+    {
+        var (program, set) = Collect("struct Holder<T>\n    public var value: T\n    public init(value: T) => self.value = value@move\n    drop => ()\n" +
+            "struct Res\n    public var id: i32\n    public init(id: i32) => self.id = id\n    drop => ()\n" +
+            "func use() -> ()\n    let h = Holder<i32>.init(1)\n    let g = Holder<string>.init(\"s\")\n    let r = Res.init(1)\n    return\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn drop [Holder<i32>]"], Targets(program, set, "DropGlue Holder<i32>"));
+        Assert.Equal(["Fn drop [Holder<string>]"], Targets(program, set, "DropGlue Holder<string>"));
+        Assert.Equal(["Fn drop"], Targets(program, set, "DropGlue Res"));
+        Assert.InRange(Item(program, set, "Fn drop"), 0, set.RootCount - 1);
+        Assert.Empty(Targets(program, set, "Fn drop [Holder<i32>]"));
+        Assert.Equal(["DropGlue string"], Targets(program, set, "Fn drop [Holder<string>]"));
+    }
+
+    // K 4.6 for destructors: a destructor that destroys a value of a growing instance of its struct stops when 16 destructor items of its
+    // definition are on the chain, GenerationResourceLimit_Kd at the destroyed local in the destructor, a root-module site.
+    [Fact]
+    public void AGrowingDestructorStopsAtItsDrop()
+    {
+        var c = MirBuildTest.Compile("struct Grow<T>\n    public var value: Option<T>\n    public init(value: Option<T>) => self.value = value@move\n" +
+            "    drop\n        let next = Grow<(T,)>.init(.None)\nfunc use() -> ()\n    let g = Grow<i32>.init(.None)\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(16, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn drop [", StringComparison.Ordinal)));
+        Assert.Equal(
+            [(DiagnosticCode.GenerationResourceLimit_Kd, "let next = Grow<(T,)>.init(.None)")],
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // K 4.5 "DropGlue", SPEC 16.3.3: an owning handle's glue destroys a Sealed payload through the payload's glue; an open payload is destroyed
+    // as its actual Type, which the object descriptor's finalizer runs (K8), so that glue has no target.
+    [Fact]
+    public void AHandlesGlueDestroysASealedPayload()
+    {
+        var (program, set) = Collect("struct Leaf\n    public var name: string\n    public init(name: string) => self.name = name@move\nopen struct Node\n" +
+            "    public var name: string\n    public init(name: string) => self.name = name@move\nfunc use() -> ()\n" +
+            "    let a = Kimi.Intrinsics.makeRc(Leaf.init(\"a\"))\n    let b = Kimi.Intrinsics.makeArc(Leaf.init(\"b\"))\n" +
+            "    let c = Kimi.Intrinsics.makeRc(Node.init(\"c\"))\n    return\n");
+        Assert.Equal(["DropGlue Leaf"], Targets(program, set, "DropGlue rc/Leaf"));
+        Assert.Equal(["DropGlue Leaf"], Targets(program, set, "DropGlue arc/Leaf"));
+        Assert.Empty(Targets(program, set, "DropGlue rc/Node"));
+    }
+
+    // K 4.5 "DropGlue" (X23), rows 10 and 13: a Closure environment's glue destroys its captures last to first, and the Closure's erasure
+    // targets the environment's glue after its body; a Function value's glue has no target, since its environment's destruction is erased.
+    [Fact]
+    public void AClosuresGlueDestroysItsCapturesLastToFirst()
+    {
+        var (program, set) = Collect("func capture(text: string, names: Array<i32>) -> i32\n    let f = func [text@move, names@move] () -> i32 => 1\n" +
+            "    let e: () -> i32 = f\n    return e()\n");
+        Assert.Equal(["Closure capture", "DropGlue closure () -> i32"], Targets(program, set, "ClosureErasure closure () -> i32"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Targets(program, set, "DropGlue closure () -> i32"));
+        Assert.Empty(Targets(program, set, "DropGlue () -> i32"));
+    }
+
+    // K 4.5 "DropGlue" (X4): an Array's or Dictionary's glue targets the glues of its element Types that need a drop.
+    [Fact]
+    public void ACollectionsGlueDestroysItsElements()
+    {
+        var (program, set) = Collect("func use() -> ()\n    let names: Array<string> = []\n    let counts: Array<i32> = []\n" +
+            "    let table: Dictionary<string, Array<i32>> = [:]\n    return\n");
+        Assert.Equal(["DropGlue string"], Targets(program, set, "DropGlue Array<string>"));
+        Assert.Empty(Targets(program, set, "DropGlue Array<i32>"));
+        Assert.Equal(["DropGlue Array<i32>", "DropGlue string"], Targets(program, set, "DropGlue Dictionary<string, Array<i32>>"));
+    }
+
+    // K 4.8, S2-S4 X34: a collection's own layout is its handle words, but its glue lays out its element Types, also those that need no drop,
+    // whose verdicts join the glue item's: a C-layout element storing a zero-sized Field is InvalidCLayout_Kd at each request of the glue,
+    // an empty local's declaration (also for an inferred instance, which Binding does not report), and a limit element the erased Type's one
+    // Resource record; such a glue has no item. Records by code and the subject's first line, in record order.
+    [Theory]
+    [InlineData(
+        "func use() -> ()\n    let a: Array<P<()>> = []\n    let b: Array<P<()>> = []\n    return\n",
+        2,
+        "InvalidCLayout_Kd let b: Array<P<()>> = []|InvalidCLayout_Kd let a: Array<P<()>> = []")]
+    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(())\n", 0, "InvalidCLayout_Kd let a: Array<P<T>> = []")]
+    [InlineData("func g<T>(value: T) -> i32\n    let a: Array<P<T>> = []\n    return 0\nlet r = g(1)\n", 0, "")]
+    [InlineData(
+        "func use() -> ()\n    let a: Array<[2147483648 of u8]> = []\n    let b: Array<[2147483648 of u8]> = []\n    return\n",
+        0,
+        "GenerationResourceLimit_Kd let b: Array<[2147483648 of u8]> = []")]
+    public void ACollectionsGlueLaysOutItsElements(string uses, int eager, string records)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + uses);
+        Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+        Assert.Equal(records.Length == 0, set.Items.ToArray().Any(x => Label(program, x).StartsWith("DropGlue Array<", StringComparison.Ordinal)));
+    }
+
+    // K 4.5 row 7: a static's access is its initializer's StaticInit body (MirProgram.StaticInit), a root in the root module, also from an
+    // instance; an access of a static of a generic container's group, also in an instance, is the generic-static-key gap, Unsupported_Kd at
+    // the access (X33 (a): generic storage keys are P42's), which the old path accepts for this immutable scalar (an R5-M18 (e) row).
+    [Fact]
+    public void AStaticAccessIsItsInitializer()
+    {
+        var c = MirBuildTest.Compile("struct Cache<T>\n    public group Statistics\n        public let count: i32 = 0\n" +
+            "group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => Cache<i32>.Statistics.count + Registry.total\n" +
+            "func read<T>() -> i32 => Cache<T>.Statistics.count + Registry.total\nlet n = read<bool>()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(["StaticInit total"], Targets(program, set, "Fn use"));
+        Assert.Equal(["StaticInit total"], Targets(program, set, "Fn read [bool]"));
+        Assert.InRange(Item(program, set, "StaticInit total"), 0, set.RootCount - 1);
+        Assert.Equal(
+            [(DiagnosticCode.Unsupported_Kd, "Cache<i32>.Statistics.count"), (DiagnosticCode.Unsupported_Kd, "Cache<T>.Statistics.count")],
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // F10's contract: the builder ensures only the statics whose initializers it builds, so a staticEnsure that names a static without one is
+    // a broken contract, InternalInvariant_Kd at the access and no target. Binding never gives one, so the test points the ensure at a
+    // function's symbol.
+    [Fact]
+    public void AnEnsureWithoutAnInitializerIsABrokenContract()
+    {
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc plain() -> i32 => 1\nfunc use() -> i32 => Registry.total\n");
+        var program = c.BuildMir();
+        var use = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var plain = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "plain").Key.Decl!;
+        var block = Enumerable.Range(0, use.Blocks.Length).Single(b => use.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
+        var root = use.Static(new(plain, BoundType.Unit, false, false)).Root;
+        var operand = use.AddOperand(MirOperand.Const(use.Const(new(MirConstKind.Integer, BoundType.ISize, ~root))));
+        use.Terminate(block, use.Blocks[block].Terminator with { Start = operand });
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "Registry.total")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.Empty(Targets(program, set, "Fn use"));
+    }
+
+    // K 4.5 row 9: a DestroyValues call is its Type argument's glue in the item's instance when that Type needs a drop. No library call makes
+    // one before R8 (PD21), so the test turns a Raw.allocate call into one.
+    [Fact]
+    public void ADestroyValuesCallIsItsTypesGlue()
+    {
+        var c = MirBuildTest.Compile("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<string>()\nlet q = make<i32>()\nunsafe => Raw.release(p)\n" +
+            "unsafe => Raw.release(q)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var make = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "make");
+        var block = Enumerable.Range(0, make.Blocks.Length).Single(b => make.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.RawAllocate } });
+        var call = make.Blocks[block].Terminator;
+        make.Terminate(block, call with { Callee = call.Callee with { Arg = (int)IntrinsicId.DestroyValues } });
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(["DropGlue string"], Targets(program, set, "Fn make [string]"));
+        Assert.Empty(Targets(program, set, "Fn make [i32]"));
     }
 
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
@@ -643,7 +835,9 @@ public sealed class InstanceCollectorTest
                 $"struct S{i}\n    public var value: i32\n    public init(value: i32) => self.value = value\nlet s{i} = first(S{i}.init({i}))\n"));
     }
 
-    // K4b: every milestone analyzed under MIR code generation has a checked set without a record.
+    // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
+    // program, which the old analysis rejects at the same accesses), whose accesses of a static of a generic container's group are the
+    // generic-static-key gap (X33 (a), DECISIONS R5-M18, R5-M60).
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void TheMilestonesHaveNoCollectorRecordUnderMirCodegen(string name)
@@ -653,6 +847,9 @@ public sealed class InstanceCollectorTest
             return;
         }
 
+        string[] expected = name != "milestone/Milestone42" ? [] :
+            [.. new[] { "i32", "i32", "string", "string", "i32", "string" }.Select(static x => $"Unsupported_Kd Cache<{x}>.Statistics.hits")];
+
         var c = Compilation.CreateForTest();
         c.Pipeline = CompilerPipeline.Mir;
         c.Codegen = CompilerCodegen.Mir;
@@ -661,7 +858,10 @@ public sealed class InstanceCollectorTest
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.True(c.Instances is { Items.Length: > 0, Records.Count: 0 }, string.Join(", ", c.Instances?.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}") ?? []));
+        var set = c.Instances;
+        Assert.NotNull(set);
+        Assert.NotEqual(0, set.Items.Length);
+        Assert.Equal(expected, set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}"));
     }
 
     // A warm rebind rebuilds the MIR and collects it again with the same items and targets, instances included, and no allocation.
@@ -731,7 +931,8 @@ public sealed class InstanceCollectorTest
         {
             null => "top",
             FunctionKoto { IsAnonymous: true } closure => Enclosing(closure.Parent!).Name,
-            var declaration => ((FunctionKoto)declaration).Name,
+            FunctionKoto function => function.Name,
+            _ => body.Key.Decl!.Name, // A static's initializer.
         };
         var instance = item.Representative is { } subst
             ? " [" + string.Join(", ", (subst.Declaring is { } owner ? [owner] : Array.Empty<BoundType?>()).Concat(subst.Types.ToArray()).Select(static x => TyCtxt.Name(x!))) + "]"
