@@ -19,6 +19,7 @@ internal enum MirViolation : byte
     TargetRange, // A successor, case range, check target or MustNotComplete block out of range; a MustNotComplete end with a check or not Unreachable.
     CheckTarget, // A check target on a terminator other than Goto, a Call without a target and Unreachable.
     Unreachable, // A block that neither runtime nor check edges reach from the entry.
+    Diverged, // A read, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
     Local, // Local 0 is not the Return local, an Arg local does not directly follow it, or a local has no Type.
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
@@ -46,18 +47,23 @@ internal enum MirViolation : byte
 internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject);
 
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
-/// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins) and each Adapt under every
-/// Semantics case view (<see cref="MirCases"/>), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
+/// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
+/// Semantics case view (<see cref="MirCases"/>) and the blocks that read a Temp only diverging Calls write (G131), before any analysis
+/// reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity only (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest), and a Value callee's against its Type's signature where that Type is a Function Type, else by its declared
 /// signature's arity only.</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
+    private const byte DivergingWrite = 1; // A local's writes (G131): a diverging Call's destination, which MirUses does not report,
+    private const byte OtherWrite = 2; // and any write MirUses reports.
+
     private readonly MirCases cases = new(types);
     private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
     private readonly MirReach reach = new();
     private bool[] unknown = [];
+    private byte[] writes = []; // Per local, its writes' kinds.
 
     /// <summary>Validates a body.</summary>
     /// <param name="body">The body.</param>
@@ -70,29 +76,36 @@ internal sealed partial class MirValidator(TyCtxt types)
             return; // Nor are its views resolved.
         }
 
+        if (this.writes.Length < body.Locals.Length)
+        {
+            this.writes = new byte[Math.Max(body.Locals.Length, this.writes.Length * 2)];
+        }
+
+        Array.Clear(this.writes, 0, body.Locals.Length);
         this.adapts.Clear();
-        var checker = new Checker(body, findings, this.Unknown(body), this.adapts);
+        var checker = new Checker(body, findings, this.Unknown(body), this.adapts, this.writes);
         if (!checker.Tables())
         {
             return; // A chain or site out of order or range cannot be walked.
         }
 
         var blocks = body.Blocks;
-        var targets = blocks.Length > 0;
-        if (!targets)
+        var walked = blocks.Length > 0;
+        if (!walked)
         {
             checker.Report(MirViolation.NoBlocks);
         }
 
         for (var block = 0; block < blocks.Length; block++)
         {
-            targets &= checker.Block(block);
+            walked &= checker.Block(block);
         }
 
         checker.Finish();
         checker.Views(this.cases);
-        if (targets)
+        if (walked)
         {
+            this.Diverged(body, findings);
             this.Reach(body, findings);
         }
     }
@@ -159,8 +172,42 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
     }
 
-    // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports.
-    private partial struct Checker(MirBody body, List<MirFinding> findings, bool[] unknown, List<(MirRvalue Adapt, SourceInfo Source)> adapts) : IMirUses
+    // G131 (DECISIONS R5-M33): a diverging Call writes no destination, so a Temp only such Calls write holds no value at run time and only
+    // check-only blocks, which no runtime edge reaches, read it. Any other place, Never-typed or written on another path, is read anywhere.
+    private void Diverged(MirBody body, List<MirFinding> findings)
+    {
+        var locals = body.Locals;
+        var diverged = false;
+        for (var local = 0; local < locals.Length; local++)
+        {
+            diverged |= this.writes[local] == DivergingWrite && locals[local].Kind == MirLocalKind.Temp;
+        }
+
+        if (!diverged)
+        {
+            return;
+        }
+
+        this.reach.Clear(body.Blocks.Length);
+        this.reach.Walk(body, 0, checks: false);
+        var reads = new DivergedReads(body, findings, this.writes);
+        for (var block = 0; block < body.Blocks.Length; block++)
+        {
+            if (this.reach[block])
+            {
+                reads.Block(block);
+            }
+        }
+    }
+
+    // The checks of one body: tables first, then each location before MirUses walks it, and the visitor's checks of what it reports; it
+    // records each local's writes.
+    private partial struct Checker(
+        MirBody body,
+        List<MirFinding> findings,
+        bool[] unknown,
+        List<(MirRvalue Adapt, SourceInfo Source)> adapts,
+        byte[] writes) : IMirUses
     {
         private SourceInfo at;
         private int opaqueValues;
@@ -195,6 +242,11 @@ internal sealed partial class MirValidator(TyCtxt types)
             {
                 this.Report(MirViolation.Place);
                 return;
+            }
+
+            if ((access & MirAccess.Writes) != 0 && place.Root >= 0)
+            {
+                writes[place.Root] |= OtherWrite;
             }
 
             var projections = body.Projections;
@@ -291,12 +343,13 @@ internal sealed partial class MirValidator(TyCtxt types)
             return walkable;
         }
 
-        // A block's statements and terminator; false when a successor is out of range.
+        // A block's statements and terminator; false when a successor is out of range or MirUses cannot walk a location.
         internal bool Block(int index)
         {
             ref readonly var block = ref body.Blocks[index];
             this.at = block.Terminator.Source;
-            if (!InRange(block.Start, block.Count, body.Statements.Length))
+            var walked = InRange(block.Start, block.Count, body.Statements.Length);
+            if (!walked)
             {
                 this.Report(MirViolation.StatementRange);
             }
@@ -304,11 +357,11 @@ internal sealed partial class MirValidator(TyCtxt types)
             {
                 for (var i = 0; i < block.Count; i++)
                 {
-                    this.Statement(new(index, i), body.Statements[block.Start + i]);
+                    walked &= this.Statement(new(index, i), body.Statements[block.Start + i]);
                 }
             }
 
-            return this.Terminator(new(index, block.Count), block.Terminator);
+            return this.Terminator(new(index, block.Count), block.Terminator) && walked;
         }
 
         // An Opaque value exactly when the body has Opaque sites.
@@ -379,13 +432,14 @@ internal sealed partial class MirValidator(TyCtxt types)
             row.Type,
             body.ProjectedType(type, row.Kind, row.Arg));
 
-        private void Statement(MirLocation location, in MirStatement statement)
+        // False when MirUses cannot walk it.
+        private bool Statement(MirLocation location, in MirStatement statement)
         {
             this.At(statement.Source);
             if (!MirDescriptors.Of(statement.Kind).Defined)
             {
                 this.Report(MirViolation.UnknownKind);
-                return;
+                return false;
             }
 
             var place = statement.Place;
@@ -400,7 +454,7 @@ internal sealed partial class MirValidator(TyCtxt types)
                     this.Report(MirViolation.EndBorrowLocal);
                     break;
                 case MirStatementKind.Assign when !this.Rvalue(statement.Rvalue, this.IsValid(place) ? body.TypeOf(place) : null):
-                    return;
+                    return false;
             }
 
             this.acquires = statement is
@@ -410,6 +464,7 @@ internal sealed partial class MirValidator(TyCtxt types)
             };
             MirUses.ForEach(body, location, ref this);
             this.acquires = false;
+            return true;
         }
 
         // False when the operands or the Opaque site are out of range, which MirUses then does not walk.
@@ -458,7 +513,7 @@ internal sealed partial class MirValidator(TyCtxt types)
             return true;
         }
 
-        // False when a successor is out of range.
+        // False when a successor is out of range or MirUses cannot walk it.
         private bool Terminator(MirLocation location, in MirTerminator terminator)
         {
             this.At(terminator.Source);
@@ -550,7 +605,46 @@ internal sealed partial class MirValidator(TyCtxt types)
                     break;
             }
 
+            if (call is { Target: < 0, Place: { Projection: 0, Root: >= 0 and var root } } && root < body.Locals.Length)
+            {
+                writes[root] |= DivergingWrite; // The destination MirUses does not report.
+            }
+
             return true;
+        }
+    }
+
+    // A runtime block's reads of the Temps whose only writes are diverging Calls' destinations, each a finding at its location.
+    private struct DivergedReads(MirBody body, List<MirFinding> findings, byte[] writes) : IMirUses
+    {
+        private SourceInfo at;
+
+        public readonly void Operand(in MirOperand operand)
+        {
+        }
+
+        public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
+        {
+            if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse)) != 0 &&
+                (uint)place.Root < (uint)body.Locals.Length && writes[place.Root] == DivergingWrite &&
+                body.Locals[place.Root].Kind == MirLocalKind.Temp)
+            {
+                findings.Add(new(MirViolation.Diverged, body.Subject(this.at)));
+            }
+        }
+
+        public readonly void Effect(MirEffect effects, int site)
+        {
+        }
+
+        internal void Block(int index)
+        {
+            ref readonly var block = ref body.Blocks[index];
+            for (var i = 0; i <= block.Count; i++)
+            {
+                this.at = i < block.Count ? body.Statements[block.Start + i].Source : block.Terminator.Source;
+                MirUses.ForEach(body, new(index, i), ref this);
+            }
         }
     }
 }

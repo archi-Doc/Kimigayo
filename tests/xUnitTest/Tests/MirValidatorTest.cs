@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -213,6 +214,23 @@ public sealed class MirValidatorTest
         var (s, e) = (TyCtxt.Signature(same, null, 0, out _)!, TyCtxt.Signature(same, null, 1, out _)!);
         Assert.False(MirTypes.Agree(s, e));
         Assert.Same(TyCtxt.Premised(same, s), TyCtxt.Premised(same, e));
+    }
+
+    // G131 (DECISIONS R5-M33): only check-only blocks read a Temp whose only writes are diverging Calls' destinations, an argument's here;
+    // a Never parameter, a payload of Result<i32, Never> and a destination an if's other arm writes are read on runtime paths, validly
+    // (SPEC 3.1.3, 14.9.3). EachRuleRejectsTheBodyThatBreaksIt has the invalid read.
+    [Theory]
+    [InlineData("func absurd(x: Never) -> i32 => x\n")]
+    [InlineData("func get(r: Result<i32, Never>) -> i32\n    return match r\n        .Ok(let v) => v\n        .Err(let e) => e\n")]
+    [InlineData("func consume(x: Never) -> i32 => x\n" +
+        "func get(r: Result<i32, Never>) -> i32\n    return match r\n        .Ok(let v) => v\n        .Err(let e) => consume(e)\n")]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pick(c: bool) -> i32\n    let x: i32 = if c => stop() else => 1\n    return x\n")]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc take(a: i32, b: i32) -> i32 => a + b\nfunc f(n: i32) -> i32 => take(n, stop())\n")]
+    public void OnlyCheckOnlyBlocksReadWhatOnlyADivergingCallWrites(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
+        Assert.Empty(c.BuildMir().Findings);
     }
 
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
@@ -531,14 +549,23 @@ public sealed class MirValidatorTest
         body.AddCase(0, abort);
         body.Terminate(entry, MirTerminator.SwitchInt(MirOperand.Copy(flag), 0, 1, call, At));
         var text = Operands(Const(MirConstKind.String, BoundType.String, value: "abort"));
-        var abortCall = broken == MirViolation.Callee ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, call, Broken) : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = call };
+        var stopped = MirModelTest.Local(body, BoundType.Never, MirLocalKind.Temp); // Only the diverging Abort writes it (G131).
+        var abortCall = broken == MirViolation.Callee
+            ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, call, Broken)
+            : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, stopped, -1, At) with { CheckTarget = call };
         body.Terminate(abort, abortCall);
         var signature = new MirCallee(MirCalleeKind.Value, Arg: body.Const(new(MirConstKind.TypeToken, body.TypeOf(function)!)));
         body.Terminate(call, MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) });
         body.Terminate(drop, broken == MirViolation.CheckTarget ? new(MirTerminatorKind.Drop, Broken, exit, check, Place: point) : MirTerminator.Drop(point, exit, At));
         body.Push(exit, MirStatement.Of(MirStatementKind.StorageDead, point, At));
+        if (broken == MirViolation.Diverged)
+        {
+            body.Push(exit, MirStatement.Of(MirStatementKind.FakeRead, stopped, Broken)); // A runtime edge reaches exit.
+        }
+
         body.Terminate(exit, MirTerminator.Goto(done, At, check));
         body.Terminate(done, MirTerminator.Return(At));
+        body.Push(check, MirStatement.Of(MirStatementKind.FakeRead, stopped, At)); // Only a check edge reaches check.
         body.Terminate(check, MirTerminator.Unreachable(At));
         body.AddMustNotComplete(new(abort, check, At.Syntax));
         switch (broken)
