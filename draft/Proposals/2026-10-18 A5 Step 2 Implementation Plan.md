@@ -2,7 +2,10 @@
 
 Date: 2026-10-18
 
-Status: Proposal for the owner's decision, written by the R4 planning session from nine read-only audits of 2026-10-18
+Status: Adopted working plan. On 2026-10-19 the owner adopted it as R4's formal plan for A5 step 2, A6 and R4's exit
+(OQ1 (a)) and answered all of OQ1–OQ13 at once, packet 2 before its triggers (§2.2 records the outcomes; DECISIONS
+R4-M74). OQ3 is conditional on round 2x-P6, OQ6's fifth item on R5's acceptance (AR-7), and OQ10 prefers (b). The
+text below is otherwise the 2026-10-18 proposal, written by the R4 planning session from nine read-only audits of 2026-10-18
 (families A5-F4, A5-F5, A5-F7, A5-F8, A5-F9, A5-F6, the exit, the ledger census and the cross-cutting constraints). The owner
 asked for a detailed implementation plan for step 2, cut into small verifiable units in the format of the adopted R5/R6 plan,
 with unit tables, dependencies, sizes and owner questions. Revised after six independent reviews (SPEC and soundness, unit
@@ -172,6 +175,10 @@ Each is recorded in DEC by the commit that first implements it (AGENTS "Record d
 
 "Blocks" names the first unit that cannot start. Packet 1 is sent with the plan; packet 2 is asked only when its trigger
 fires.
+
+**Outcomes (owner, 2026-10-19; DECISIONS R4-M74).** OQ1 (a); OQ2 (a); OQ3 (a) if round 2x-P6 shows S2 sound, else (b);
+OQ4 (a); OQ5 (i)(a), (ii), (iii)(a); OQ6 (a), its fifth item once R5 accepts H3's contract change (AR-7); OQ7 (a); OQ8 (a);
+OQ9 (a); OQ10 (b) preferred; OQ11 (b); OQ12 (a); OQ13 (a).
 
 **Packet 1: send now.**
 
