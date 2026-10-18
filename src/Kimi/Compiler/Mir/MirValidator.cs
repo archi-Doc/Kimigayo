@@ -19,7 +19,7 @@ internal enum MirViolation : byte
     TargetRange, // A successor, case range, check target or MustNotComplete block out of range; a MustNotComplete end with a check or not Unreachable.
     CheckTarget, // A check target on a terminator other than Goto, a Call without a target and Unreachable.
     Unreachable, // A block that neither runtime nor check edges reach from the entry.
-    Diverged, // A read, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
+    Diverged, // A read, move or borrow, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
     Local, // Local 0 is not the Return local, an Arg local does not directly follow it, or a local has no Type.
     Scope, // A scope that its outer scope does not precede, or a source outside the scopes.
     StorageLocal, // StorageLive or StorageDead of a Place other than a Var or Temp local.
@@ -173,7 +173,8 @@ internal sealed partial class MirValidator(TyCtxt types)
     }
 
     // G131 (DECISIONS R5-M33): a diverging Call writes no destination, so a Temp only such Calls write holds no value at run time and only
-    // check-only blocks, which no runtime edge reaches, read it. Any other place, Never-typed or written on another path, is read anywhere.
+    // check-only blocks, which no runtime edge reaches, read, move or borrow it. Any other place, Never-typed or written on another path, is
+    // read anywhere. A Drop of the Temp, like its StorageDead, reads nothing: a runtime Drop of storage nothing initialized is valid MIR.
     private void Diverged(MirBody body, List<MirFinding> findings)
     {
         var locals = body.Locals;
@@ -614,7 +615,8 @@ internal sealed partial class MirValidator(TyCtxt types)
         }
     }
 
-    // A runtime block's reads of the Temps whose only writes are diverging Calls' destinations, each a finding at its location.
+    // A runtime block's reads, moves and borrows (not Drops or StorageDeads) of the Temps whose only writes are diverging Calls' destinations,
+    // each a finding at its location.
     private struct DivergedReads(MirBody body, List<MirFinding> findings, byte[] writes) : IMirUses
     {
         private SourceInfo at;
@@ -625,7 +627,7 @@ internal sealed partial class MirValidator(TyCtxt types)
 
         public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
-            if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows | MirAccess.DropUse)) != 0 &&
+            if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows)) != 0 &&
                 (uint)place.Root < (uint)body.Locals.Length && writes[place.Root] == DivergingWrite &&
                 body.Locals[place.Root].Kind == MirLocalKind.Temp)
             {
