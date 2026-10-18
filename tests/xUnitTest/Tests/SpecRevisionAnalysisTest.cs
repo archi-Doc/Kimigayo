@@ -102,7 +102,11 @@ public class SpecRevisionAnalysisTest
     [InlineData("if true\n    defer => yield 1", "No valid target")]
     [InlineData("defer\n    if false\n        return", "No valid target")]
     public void DeferredBoundaryCannotBeCrossed(string source, string diagnostic)
-        => Assert.Contains(Analyze(source).Issues, issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
+    {
+        var compilation = Parse(source).Compilation;
+        compilation.Bind();
+        Assert.Contains(CompilationTestHelper.BindingErrors(compilation), issue => issue.Message.Contains(diagnostic, StringComparison.Ordinal));
+    }
 
     [Fact]
     public void DeferredDivergenceAffectsExitRatherThanRegistration()
@@ -280,13 +284,14 @@ public class SpecRevisionAnalysisTest
     private static bool BindsAndFlows(string source)
     {
         var compilation = Parse(source).Compilation;
-        return compilation.Bind().IsComplete && compilation.AnalyzeControlFlow().Issues.Count == 0;
+        return compilation.Bind().IsComplete && compilation.Binding.LintErrors == 0 && compilation.AnalyzeControlFlow().Issues.Count == 0;
     }
 
     private static void AssertValidAnalysis(string source)
     {
         var compilation = Parse(source).Compilation;
         Assert.True(compilation.Bind().IsComplete, string.Join("\n", compilation.Binding.Issues.Select(x => x.Code + ": " + x.Node)));
+        Assert.Equal(0, compilation.Binding.LintErrors);
         var analysis = compilation.AnalyzeControlFlow();
         Assert.True(analysis.Issues.Count == 0, string.Join("\n", analysis.Issues.Select(x => x.Message)));
     }

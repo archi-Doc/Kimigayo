@@ -345,7 +345,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc obtain(s: string) -> obj/Dog => obtain(s@move)\nfunc f(s: string) -> bool => obtain(s@move) is Dog");
         AssertBound(c);
-        Assert.Empty(c.AnalyzeControlFlow().Warnings);
+        Assert.Empty(CompilationTestHelper.BindingWarnings(c));
     }
 
     [Fact]
@@ -353,7 +353,7 @@ public class RuntimeTypeTest
     {
         var c = CompilationTestHelper.ParseSuccess("struct Dog\nfunc f(x: objref/Dog) -> i32\n    if x is Dog => return 1");
         c.Bind();
-        Assert.NotEmpty(c.AnalyzeControlFlow().Issues);
+        Assert.Contains(c.Binding.LintErrorRecords, static x => x.Code == DiagnosticCode.FunctionFallthrough_Kd);
         var refinement = CompilationTestHelper.ParseSuccess("open struct Animal\nstruct Dog: Animal\n    public func bark(self: objref/Self) -> bool => true\nfunc f(x: objref/Animal) -> bool\n    require x is Dog else => return false\n    return x.bark()");
         Assert.False(refinement.Bind().IsComplete);
         Assert.NotNull(Test(refinement).RuntimeTestOf());
