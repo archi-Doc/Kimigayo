@@ -248,7 +248,9 @@ public class AggregateFunctionEmissionTest
     public void PhysicalSignatureCacheReusesShapesWithoutRetainingSyntax()
     {
         var pool = new FunctionAbiPool();
-        var layouts = new AggregateLayoutPool();
+        // One pool and Layout across three compilations: their Types are Tuples of primitives, without stored Types that would
+        // follow one compilation's edits (Layout's input contract), so the shared records stay valid.
+        var layouts = new AggregateLayoutPool(new Layout());
         var tree = Populate(pool, layouts, out var first);
         GC.Collect();
         GC.WaitForPendingFinalizers();

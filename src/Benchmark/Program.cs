@@ -129,6 +129,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--analyze-cost")
+        {
+            AnalyzeCostMeasurements.Run();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--compiler-pipeline")
         {
             CompilerPipelineMeasurements.Run();

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -14,6 +15,10 @@ public sealed class TyCtxtTest
     // A generic function whose closure an instance closes, called with two lengths.
     private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
         "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
+
+    // A generic function with a closure, called with two borrows of different Origins, and a nongeneric function with Origins.
+    private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
+        "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
 
     // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
     // function over the struct's Type parameter.
@@ -191,6 +196,90 @@ public sealed class TyCtxtTest
         static FunctionKoto Enclosing(Koto node) => node as FunctionKoto ?? Enclosing(node.Parent!);
     }
 
+    // DECISIONS R5-M39 (K package 4.1): Erase makes every Origin static and keeps everything else; two calls whose substitutions differ in
+    // Origins only have one erased substitution, and every Type of the callee's body and closure, the closure's context included, erases
+    // alike in their instances; erasing is idempotent and keeps a Type without Origins; a binder that does not instantiate has none.
+    [Fact]
+    public void EraseKeepsEverythingButOrigins()
+    {
+        var c = MinimalEmissionTest.Analyze(EraseSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var types = c.Types;
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var calls = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Where(static x => x?.Target.Name == "keep")
+            .Select(x => types.SubstOf(x!)!).ToArray();
+        Assert.Equal(2, calls.Length);
+        Assert.NotSame(calls[0], calls[1]);
+        var erased = types.Erase(calls[0])!;
+        Assert.Same(erased, types.Erase(calls[1]));
+        Assert.Same(erased, types.Erase(erased));
+        Assert.Equal((SemanticsKind.Ref, BoundOrigin.Static), (erased.Types[0]!.Semantics, erased.Types[0]!.Origin));
+        Assert.All(erased.Inputs.ToArray().Concat(erased.Origins.ToArray()), static x => Assert.Same(BoundOrigin.Static, x));
+        var locals = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl?.Name == "keep" || (x.Key.Kind == MirBodyKind.Closure && x.Source.Module == 0))
+            .SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).ToArray();
+        Assert.True(locals.Length > 4);
+        foreach (var local in locals)
+        {
+            var first = types.Erase(types.Apply(local, calls[0])!);
+            Assert.Same(first, types.Erase(types.Apply(local, calls[1])!));
+            Assert.Same(first, types.Erase(first));
+        }
+
+        var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
+        var closed = calls.Select(x => types.Apply(closure, x)!).ToArray();
+        Assert.NotSame(closed[0], closed[1]);
+        Assert.Same(types.Erase(closed[0]), types.Erase(closed[1]));
+        Assert.Same(types.Erase(closed[0].ClosureContext!), types.Erase(closed[0]).ClosureContext);
+        Assert.Same(BoundType.I32, types.Erase(BoundType.I32));
+        Assert.Same(types.Tuple([BoundType.I32, BoundType.Boolean]), types.Erase(types.Tuple([BoundType.I32, BoundType.Boolean])));
+        var host = nodes.OfType<InvocationKoto>().Select(static x => x.CallOf()).Single(static x => x?.Target.Name == "host")!;
+        Assert.Null(types.Erase(types.SubstOf(host)!));
+    }
+
+    // K package 4.1: an erased struct or enum instance stores the erasure of what the instance stores, for every instance the MIR locals of
+    // the library and the milestones hold (Layout.Of lays out erased Types).
+    [Theory]
+    [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
+    public void AnErasedInstanceStoresTheErasedTypes(string name)
+    {
+        var (c, _) = SemanticSnapshotTest.Bind(name);
+        var types = c.Types;
+        var seen = new HashSet<BoundType>();
+        var problems = new List<string>();
+        var instances = 0;
+        foreach (var body in c.BuildMir().Bodies)
+        {
+            foreach (var local in body.Locals)
+            {
+                Visit(local.Type);
+            }
+        }
+
+        Assert.True(problems.Count == 0 && instances > 0, $"{instances} instances; {problems.Count} differ:\n{string.Join('\n', problems.Take(20))}");
+
+        void Visit(BoundType type)
+        {
+            if (!seen.Add(type))
+            {
+                return;
+            }
+
+            foreach (var part in type.Components)
+            {
+                Visit(part);
+            }
+
+            if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
+            {
+                instances++;
+                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
+                {
+                    problems.Add(TyCtxt.Name(type));
+                }
+            }
+        }
+    }
+
     // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it is the call Binding forwards into that
     // instance (InstantiateForwardedCall), over the corpus and over generic, length, Origin, member and requirement calls in defaults.
     [Fact]
@@ -264,6 +353,26 @@ public sealed class TyCtxtTest
         Assert.Contains(composed, static x => x is { IsIdentity: false, Types.Length: > 0 });
     }
 
+    // Erasing the Types of a program's MIR locals again allocates nothing: each erased form is memoized like the interning.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void WarmEraseAllocatesNothing()
+    {
+        var c = SemanticSnapshotTest.Bind("milestone/Milestone34").Compilation;
+        var locals = c.BuildMir().Bodies.ToArray().SelectMany(static x => x.Locals.ToArray()).Select(static x => x.Type).Distinct().ToArray();
+        var erased = locals.Select(c.Types.Erase).ToArray();
+        var changed = 0;
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            for (var i = 0; i < locals.Length; i++)
+            {
+                changed += ReferenceEquals(c.Types.Erase(locals[i]), erased[i]) ? 0 : 1;
+            }
+        }));
+        Assert.Equal(0, changed);
+        Assert.Contains(locals, x => !ReferenceEquals(c.Types.Erase(x), x));
+    }
+
     // A warm rebind keeps whether each MIR key symbol is instantiated, and asking again allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -285,6 +394,10 @@ public sealed class TyCtxtTest
         Assert.Contains(true, instantiates);
         Assert.Contains(false, instantiates);
     }
+
+    // A struct's Fields and base, or an enum's Case payloads.
+    private static IEnumerable<BoundType?> Stored(BoundType type) => AdtDef.IsStruct(type)
+        ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(type, x)).Append(AdtDef.Base(type)) : AdtDef.CaseTypes(type) ?? [];
 
     // Each call in a default a call omits, with that call.
     private static IEnumerable<(CallPlan Inner, CallPlan Outer)> NestedCalls(Kotonoha module)

@@ -2,6 +2,9 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
+using System.Globalization;
+using System.Reflection.Emit;
+using System.Runtime;
 
 namespace XunitTest;
 
@@ -19,9 +22,23 @@ internal static class AllocationMeasurement
     // collection, or after any collection of a pool first used in the process; the next Rent then allocates. A window with
     // pooled-buffer events that all have such a cause, or a full pool, is invalid, and another warm-up and window follow; any
     // other pooled allocation, such as storage that first grows after the warm-up, is measured.
+    // The first tier-0 run of a comparison creates EqualityComparer<T>.Default or Comparer<T>.Default (88 bytes on .NET 10)
+    // once per process, charged to the running thread; optimized code needs none. A comparison that OSR or inlined code ran
+    // first therefore creates it whenever tiering first runs it at tier 0, such as in a callee first called on its own once its
+    // caller's tier-1 code stops inlining it. A window that allocated while the measuring thread compiled such a comparer's
+    // class constructor, as the runtime's JIT events report in the thread's order between the window's two markers, is invalid
+    // in the same way; any other compilation excuses nothing. The whole window is invalid, so the operation's own one-time
+    // allocation in it is not measured either, as with a trim. Not covered: a comparer whose class constructor is precompiled
+    // (ReadyToRun) or shared (a reference type T) or was compiled by another thread before this one ran it. Cost: every
+    // compilation in the process sends the listener an event, each window compiles a start marker, and a window that allocated
+    // while compiling compiles an end marker and waits for it (at most MarkerWait; nothing is excused without it).
     private const int MaximumWindows = 3;
 
+    private static readonly TimeSpan MarkerWait = TimeSpan.FromSeconds(10);
+
     private static readonly PoolEvents Pool = new();
+
+    private static readonly CompileEvents Compiles = new();
 
     // Keep test-runner execution context and thread setup outside the measured interval. The result is the largest
     // allocation of MeasuredOperations consecutive operations of the valid window, the whole standard window.
@@ -36,8 +53,9 @@ internal static class AllocationMeasurement
             try
             {
                 Pool.RecordCurrentThread();
+                List<string>? causes = null;
                 var run = 0;
-                for (var window = 1; ; window++)
+                for (var window = 1; window <= MaximumWindows; window++)
                 {
                     var trims = Pool.Trims;
                     for (var i = 0; i < WarmupOperations; i++)
@@ -49,12 +67,14 @@ internal static class AllocationMeasurement
                     run += WarmupOperations;
                     var readings = new long[run + 8 + 1];
                     var events = Pool.OnCurrentThread;
+                    var marker = CompileEvents.Start();
 
                     // A runtime pause that is not a collection can charge the unused tail of a partially used
                     // allocation context (up to ~8 KB) to this thread. Retire it so zero-allocation work holds none.
                     // A gen0 collection retires it; a full one would also trim shared pools (gen2 callbacks) under
                     // the measurements running on other threads.
                     GC.Collect(0, GCCollectionMode.Forced, blocking: true);
+                    var compiled = JitInfo.GetCompiledMethodCount(currentThread: true);
                     readings[0] = GC.GetAllocatedBytesForCurrentThread();
                     for (var i = 1; i < readings.Length; i++)
                     {
@@ -62,22 +82,22 @@ internal static class AllocationMeasurement
                         readings[i] = GC.GetAllocatedBytesForCurrentThread();
                     }
 
+                    compiled = JitInfo.GetCompiledMethodCount(currentThread: true) - compiled;
                     run += readings.Length - 1;
-                    if (!Pool.FollowTrims(events, trims))
+                    var largest = Largest(readings);
+                    var cause = Pool.FollowTrims(events, trims) ? "High-pressure ArrayPool trims or full pools"
+                        : largest > 0 && compiled > 0 && Compiles.CreatedComparer(marker, MarkerWait) ? $"a default comparer created on the measuring thread, {largest} bytes"
+                        : null;
+                    if (cause is null)
                     {
-                        for (var i = MeasuredOperations; i < readings.Length; i++)
-                        {
-                            allocated = Math.Max(allocated, readings[i] - readings[i - MeasuredOperations]);
-                        }
-
+                        allocated = largest;
                         return;
                     }
 
-                    if (window == MaximumWindows)
-                    {
-                        throw new InvalidOperationException($"High-pressure ArrayPool trims or full pools disturbed all {MaximumWindows} allocation windows.");
-                    }
+                    (causes ??= []).Add($"window {window}: {cause}");
                 }
+
+                throw new InvalidOperationException($"All {MaximumWindows} allocation windows were invalid ({string.Join("; ", causes!)}).");
             }
             catch (Exception exception)
             {
@@ -102,6 +122,18 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
+    }
+
+    // The largest allocation of MeasuredOperations consecutive operations of a window's readings.
+    private static long Largest(long[] readings)
+    {
+        long largest = 0;
+        for (var i = MeasuredOperations; i < readings.Length; i++)
+        {
+            largest = Math.Max(largest, readings[i] - readings[i - MeasuredOperations]);
+        }
+
+        return largest;
     }
 
     // ArrayPoolEventSource reports a pool's allocation or full-pool drop of a buffer synchronously on the thread that rents
@@ -186,6 +218,100 @@ internal static class AllocationMeasurement
 
             // BufferAllocated and BufferTrimmed begin with the buffer's identity, its length and the pool's identity.
             static (int Pool, int Length) Key(EventWrittenEventArgs eventData) => ((int)eventData.Payload![2]!, (int)eventData.Payload[1]!);
+        }
+    }
+
+    // The runtime reports each method it compiles, with the compiling thread, on its JIT keyword (0x10); the events reach the
+    // listener on one thread, in each compiling thread's order. A window is bounded by two marker methods that the measuring
+    // thread compiles, named after the window; a class constructor of EqualityComparer<T> or Comparer<T>, which creates the
+    // Type's default comparer, that the same thread compiled between them is in the window.
+    private sealed class CompileEvents : EventListener
+    {
+        private const EventKeywords Jit = (EventKeywords)0x10;
+        private const string StartName = "AllocationWindowStart:";
+        private const string EndName = "AllocationWindowEnd:";
+
+        // The window each thread has open, by marker, and whether the thread created a default comparer in it; then the
+        // closed windows' results until the measuring thread reads them. Only the listener's thread writes Open.
+        private static readonly ConcurrentDictionary<long, (long Marker, bool Comparer)> Open = new();
+        private static readonly ConcurrentDictionary<long, bool> Closed = new();
+        private static long markers;
+
+        // Opens a window on the current thread: compiles its start marker and returns the marker.
+        internal static long Start()
+        {
+            var marker = Interlocked.Increment(ref markers);
+            Compile(StartName + marker);
+            return marker;
+        }
+
+        // Whether the current thread created a default comparer in the window: compiles its end marker and waits at most the
+        // bound for the listener to close the window; without that, nothing is excused.
+        internal bool CreatedComparer(long marker, TimeSpan wait)
+        {
+            Compile(EndName + marker);
+            var deadline = DateTime.UtcNow + wait;
+            bool created;
+            while (!Closed.TryRemove(marker, out created))
+            {
+                if (DateTime.UtcNow > deadline)
+                {
+                    return false;
+                }
+
+                Thread.Sleep(10);
+            }
+
+            return created;
+        }
+
+        protected override void OnEventSourceCreated(EventSource eventSource)
+        {
+            if (eventSource.Name == "Microsoft-Windows-DotNETRuntime")
+            {
+                this.EnableEvents(eventSource, EventLevel.Verbose, Jit);
+            }
+        }
+
+        protected override void OnEventWritten(EventWrittenEventArgs eventData)
+        {
+            if (eventData.EventName?.StartsWith("MethodLoadVerbose", StringComparison.Ordinal) != true)
+            {
+                return;
+            }
+
+            var names = eventData.PayloadNames!;
+            var name = eventData.Payload![names.IndexOf("MethodName")] as string ?? string.Empty;
+            var thread = eventData.OSThreadId;
+            if (name.StartsWith(StartName, StringComparison.Ordinal))
+            {
+                Open[thread] = (long.Parse(name.AsSpan(StartName.Length), CultureInfo.InvariantCulture), false);
+            }
+            else if (Open.TryGetValue(thread, out var open))
+            {
+                if (name.StartsWith(EndName, StringComparison.Ordinal))
+                {
+                    Open.TryRemove(thread, out _);
+                    if (long.Parse(name.AsSpan(EndName.Length), CultureInfo.InvariantCulture) == open.Marker)
+                    {
+                        Closed[open.Marker] = open.Comparer;
+                    }
+                }
+                else if (name == ".cctor" && eventData.Payload[names.IndexOf("MethodNamespace")] is string type &&
+                    (type.StartsWith("System.Collections.Generic.EqualityComparer`1[", StringComparison.Ordinal) ||
+                    type.StartsWith("System.Collections.Generic.Comparer`1[", StringComparison.Ordinal)))
+                {
+                    Open[thread] = (open.Marker, true);
+                }
+            }
+        }
+
+        // Compiles and runs a fresh empty method with the name on the current thread.
+        private static void Compile(string name)
+        {
+            var method = new DynamicMethod(name, null, null, typeof(CompileEvents).Module, skipVisibility: true);
+            method.GetILGenerator().Emit(OpCodes.Ret);
+            method.CreateDelegate<Action>()();
         }
     }
 }

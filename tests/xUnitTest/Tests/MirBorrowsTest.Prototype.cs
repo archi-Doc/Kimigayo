@@ -8,7 +8,7 @@ namespace XunitTest;
 /// spell, with the verdicts of the adopted design (its PrefixKill mode, A3 E8; the listed losses as listed), each function named by its case.
 /// Left out: the linked-list walks (30a–30d, 35a–35b, 82–83) and 25c, which bind their payloads through a match (F8); the F6 cases (33a–33e,
 /// 36a–36g, `preserves results`); 108, which Binding rejects (its Origin relation); 8c and 120b, which have no MIR-problem observable or
-/// form; and 75 (PLAN G145).</summary>
+/// form; and 75 (PLAN G147).</summary>
 public sealed partial class MirBorrowsTest
 {
     // SPEC 15.6, 15.6.3, 15.7 (prototype rounds 1–2, round 10's design verdicts): replacing a holder ends its Loans, a Reborrow keeps its
