@@ -202,8 +202,8 @@ first. IntrinsicId returns to 30 at R8.
   temporaries, recorded by their first units (DECISIONS R5-M18): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4); the codegen coverage rows (the R5
   plan's unit X2); `MonoKind.LegacyRow` (R8); the out-string `WriteIr`/`Validate` adapters (C0a to G9b); the sel `build` refusal
   (K1 to C0b1); Binding's eager C-layout instance check beside `Layout.Of`, with K10b's double report under sel (G2b); the legacy comparison composition (A-12 or R7); the F2c Dictionary-storage view (R8); the
-  `Binding.ClosureCall` bridge (R6-gen); the old generator's specialization view `TyCtxt.InstantiatesInLegacy` (G7, DECISIONS
-  R5-M34). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
+  `Binding.ClosureCall` bridge (R6-gen); the old generator's specialization view `TyCtxt.InstantiatesInLegacy` and the class
+  `InstanceClass.GenericThroughSpecialization` it reads (G7, DECISIONS R5-M34). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
   contract is unmarked; only its publisher walk and private state disappear at R7.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the

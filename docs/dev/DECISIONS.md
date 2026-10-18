@@ -2184,7 +2184,10 @@ structure is recorded here by the unit that first implements it.
   - Binding's closure contexts (`CloseClosureTypes`, which `TyCtxt.Apply` delegates to) read `Instantiates`: a context is made only
     for a substitution whose target is the closure's nearest named enclosing function, and the old generator forms none whose
     target its view counts closed, so its output is unchanged, while MIR's `Apply` gives a closure in such a specialization the
-    container's context, which the collector's closure edges key by (K5).
+    container's context, which the collector's closure edges key by (K5). The effect-bound check's specialization call plan
+    (`Binding.EffectBounds.cs` `Specialization`, resolving body Types through `InstantiateStorageType`) and `MirEffects` through
+    `Apply` reach the same contexts on both pipelines, a move toward SPEC that no corpus case shows (X40 review). The "old
+    readers" of X40 are the old generator's: `Binding.ClosureInstances` takes the SPEC view (K5 keys closures by it).
   - Evidence: no definition among the 456 snapshot cases (library, milestones, corpus) changes class (temporary probe); the 17
     F3 reproducers and three new probes give the parent's old-generator output; the program R5-M21 named still builds
     (`GenericClosureDispatchTest`). Legacy-only sites keeping the old treatment: `OwnershipModel.IsConcrete` (R6-check) and

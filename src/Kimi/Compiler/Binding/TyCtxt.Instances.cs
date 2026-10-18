@@ -3,7 +3,8 @@
 // Owns instance identity (DECISIONS R5-M21, R5-M34; R5 package F 4.11, K 4.1, X8, X40): whether a definition's body is checked once and
 // generated per closed substitution (Instantiates), the null rule of instance keys.
 // Input: a definition's BindingSymbol (a named or anonymous function, an accessor's executing function, a property) once the pass has bound
-// its schemas. Output: a bool per definition, kept across passes with no edit and discarded at an edit (Binding.Invalidate).
+// its schemas. Output: a class per definition (Closed, Generic, GenericThroughSpecialization), kept across passes with no edit and
+// discarded at an edit (Binding.Invalidate).
 // Invariants: true exactly when the definition or a declaration enclosing it on its scope chain has a Type, Semantics or length slot, even an
 // unused one (SPEC 6.1.3). A specialization declares no slot (SPEC 8.13.1), so one in a generic container, and every declaration nested in
 // it, is generic in the container's slots, its instance key holding the container's arguments (SPEC 8.13.3). Origin slots never count.
