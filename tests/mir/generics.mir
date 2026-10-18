@@ -25,7 +25,7 @@ fn largest @4
   _17: T temp @32 s4
   _18: isize temp @108 s1
   _19: T temp @37 s1
-  _20: T temp @4 s1
+  _20: T temp @4
   s1: lexical in s0 @18
   s2: lexical in s1 @22
   s3: lexical in s2 @25
@@ -180,7 +180,7 @@ fn unwrapTry @61
   _5: T var $try.value @78 s1
   _6: isize temp @113
   _7: Option<T> temp @115 s2
-  _8: Option<T> temp @61 s2
+  _8: Option<T> temp @61
   s1: lexical in s0 @74
   s2: lexical in s0 @113
   bb0:

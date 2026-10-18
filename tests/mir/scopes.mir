@@ -84,7 +84,7 @@ fn drop @49
   _1: Derived arg self @49
   _2: () temp @52 s1
   _3: bool temp @53 s1
-  _4: () temp @49 s2
+  _4: () temp @49
   _5: () temp @60 s1
   _6: i32 temp @61 s1
   s1: lexical in s0 @51
@@ -191,7 +191,7 @@ fn cleanup @79
   _4: string var s @85 s1
   _5: () temp @94 s1
   _6: bool temp @95 s1
-  _7: i32 temp @79 s2
+  _7: i32 temp @79
   _8: () temp @89 s1
   _9: () temp @91 s3
   _10: i32 var mut i @111 s1
@@ -205,7 +205,7 @@ fn cleanup @79
   _18: () temp @126 s6
   _19: () temp @135 s4
   _20: bool temp @136 s4
-  _21: () temp @115 s7
+  _21: () temp @115 s1
   _22: () temp @124 s4
   _23: () temp @126 s8
   _24: () temp @141 s4
@@ -216,13 +216,13 @@ fn cleanup @79
   _29: () temp @101 s10
   _30: () temp @104 s10
   _31: bool temp @105 s10
-  _32: () temp @99 s11
+  _32: () temp @99 s1
   _33: () temp @108 s10
   _34: () temp @99 s1
   _35: () temp @101 s12
   _36: () temp @104 s12
   _37: bool temp @105 s12
-  _38: () temp @99 s13
+  _38: () temp @99 s1
   _39: () temp @108 s12
   _40: () temp @89 s1
   _41: () temp @91 s14
@@ -515,7 +515,7 @@ fn divergingDefer @148
   _1: bool arg flag @148
   _2: () temp @156 s1
   _3: bool temp @157 s1
-  _4: i32 temp @148 s2
+  _4: i32 temp @148
   _5: () temp @152 s1
   _6: Never temp @154 s3
   _7: () temp @152 s1
@@ -583,7 +583,7 @@ fn conditionTemporaries @163
   _4: string temp @169 s1
   _5: ref/string temp @169 s1
   _6: ref/string temp @171 s1
-  _7: i32 temp @163 s2
+  _7: i32 temp @163
   s1: lexical in s0 @166
   s2: lexical in s1 @172
   bb0:
@@ -758,7 +758,7 @@ fn securedReturn @214
   _0: string return @214
   _1: string arg s @214
   _2: string temp @219 s1
-  _3: string temp @214 s1
+  _3: string temp @214
   s1: lexical in s0 @217
   bb0:
       StorageLive(_2) @219 s1
@@ -809,7 +809,7 @@ fn returnInArgument @226
   _4: i32 temp @233 s1
   _5: bool temp @234 s1
   _6: string var inner @236 s2
-  _7: () temp @226 s2
+  _7: () temp @226
   s1: lexical in s0 @228
   s2: lexical in s1 @235
   s3: lexical in s1 @240

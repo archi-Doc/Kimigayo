@@ -158,7 +158,7 @@ fn use @95
   _10: ref/Device temp @114 s1
   _11: () temp @116 s1
   _12: () temp @119 s1
-  _13: i32 temp @95 s1
+  _13: i32 temp @95
   s1: lexical in s0 @99
   static0: hits: i32 mut
   static1: limit: i32

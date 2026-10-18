@@ -161,9 +161,10 @@ internal sealed partial class MirBuilder
         if (!continues && !target.Delivers && this.Departs(target.Depth))
         {
             // SPEC 16.2.2: the secured result is delivered after the Scope Exit of the scopes left: the target's Destination becomes a
-            // result temp, with no storage of its own, and its Break the block that delivers that temp to the old Destination, which
-            // every later transfer to it takes, as they share its drop tree (DECISIONS R5-M50).
-            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination)!, MirLocalKind.Temp, this.Info(target.Node, local: true))));
+            // result temp in the target's scope, with no storage of its own, and its Break the block that delivers that temp to the old
+            // Destination, which every later transfer to it takes, as they share its drop tree (DECISIONS R5-M50).
+            var at = new SourceInfo(SourceRef.Of(target.Node), target.Scope, StatementStart: false);
+            var result = new MirPlace(this.body.AddLocal(new(this.body.TypeOf(target.Destination)!, MirLocalKind.Temp, at)));
             var deliver = this.body.AddBlock();
             this.body.Push(deliver, MirStatement.Assign(target.Destination, MirRvalue.Use(this.body.AddOperand(MirOperand.Move(result))), inner));
             this.body.Terminate(deliver, MirTerminator.Goto(target.Break, inner));
@@ -379,7 +380,7 @@ internal sealed partial class MirBuilder
     private int Open(Koto node, MirPlace destination, int next = -1)
     {
         var after = this.body.AddBlock();
-        this.targets.Add(new(node, destination, after, next, this.arguments.Count, this.scopes.Count, Reached: false));
+        this.targets.Add(new(node, destination, after, next, this.arguments.Count, this.scopes.Count, Reached: false) { Scope = this.scope });
         return after;
     }
 
@@ -411,6 +412,9 @@ internal sealed partial class MirBuilder
     // yield reached it.
     private record struct Target(Koto Node, MirPlace Destination, int Break, int Continue, int Mark, int Depth, bool Reached)
     {
+        // The MIR scope it opened in, which its delivered result temp takes (SPEC 16.2.2).
+        internal ushort Scope { get; init; }
+
         // Whether its Destination and Break are a result temp and the block delivering it after a Scope Exit (SPEC 16.2.2).
         internal bool Delivers { get; set; }
     }

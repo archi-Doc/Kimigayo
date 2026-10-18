@@ -75,7 +75,7 @@ fn inner @34
   _0: () return @34
   _1: s/T arg a @34
   _2: i32 arg b @34
-  _3: () temp @34 s1
+  _3: () temp @34
   s1: lexical in s0 @45
   b0: T ValueBorrow
   bb0:

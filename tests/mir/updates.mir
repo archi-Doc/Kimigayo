@@ -42,7 +42,7 @@ fn counters @11
   _20: isize temp @43 s1
   _21: i32 temp @48 s1
   _22: uniq/i32 temp @48 s1
-  _23: i32 temp @11 s1
+  _23: i32 temp @11
   s1: lexical in s0 @20
   bb0:
       StorageLive(_4) @21 s1
@@ -135,7 +135,7 @@ fn divergentReplacement @52
   _1: [1 of string] var mut a @54 s1
   _2: () temp @61 s1
   _3: string temp @62 s1
-  _4: string temp @66 s2
+  _4: string temp @66 s1
   _5: () temp @68 s2
   _6: Never temp @70 s3
   _7: () temp @71 s3
@@ -223,7 +223,7 @@ fn divergentReplacementIndex @75
   _3: string temp @85 s1
   _4: ref/[1 of string] temp @85 s1
   _5: i32 temp @87 s1
-  _6: i32 temp @89 s2
+  _6: i32 temp @89 s1
   _7: () temp @91 s2
   _8: Never temp @93 s3
   _9: () temp @94 s3
@@ -322,7 +322,7 @@ fn noncompletingWrite @99
   _3: string var mut text @103 s2
   _4: () temp @106 s2
   _5: Never temp @108 s2
-  _6: () temp @101 s2
+  _6: () temp @101 s1
   s1: lexical in s0 @100
   s2: lexical in s1 @102
   bb0:
