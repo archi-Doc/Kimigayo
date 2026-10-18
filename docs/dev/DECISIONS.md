@@ -2221,13 +2221,13 @@ structure is recorded here by the unit that first implements it.
   (`Binding/Binding.Attributes.cs`), true exactly for a struct whose selected mode is `#Layout("C")` with valid fragments and that
   is neither open, derived nor empty. It is written true or false for every struct in every pass; on a first pass the shape is
   created there (`Adt ??= new()`) and `PrepareStorage` reuses it, and no reader in between distinguishes an empty shape from a
-  missing one. Reader: `ValidateCLayoutFields`, which filters the storage declarations by it; the pass-local `cLayouts` list, a
-  second representation, is deleted. Readers that still use the attributes: `Binding.Types`, which queues
-  `CheckCLayoutInstance` by the attributes (`HasCLayout`) whenever it binds a written generic C-layout instance, in headers and
-  bodies alike, until G2b; `CExchangeable` in `ValidateLibraryImports`, which runs before `PrepareStorage` (PLAN G132). First
-  consumer outside Binding: P7b's `Layout.Of`, the one owner of the zero-sized C-layout rule (X18), which deletes the old
-  Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
-  `cLayouts` beside the fact.
+  missing one. Readers: `ValidateCLayoutFields`, which filters the storage declarations by it (the pass-local `cLayouts` list, a
+  second representation, is deleted), and `CExchangeable` (SPEC 22.6), which reads it with the prepared Field Types, since
+  `ValidateLibraryImports` runs after `ValidateCLayoutFields` (PLAN G132, BU commit `a779b529`). The reader that still uses the
+  attributes: `Binding.Types`, which queues `CheckCLayoutInstance` by the attributes (`HasCLayout`) whenever it binds a written
+  generic C-layout instance, in headers and bodies alike, until G2b. First consumer outside Binding: P7b's `Layout.Of`, the
+  one owner of the zero-sized C-layout rule (X18), which deletes the old Emission's attribute walk and `Open` re-check.
+  Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping `cLayouts` beside the fact.
 - **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
   refines R5-M16; refined by R5-M28, by R5-M30, which adds the formatting rows and the `HelperNeeds` member
   `FormattingRuntime`, and by R5-M46, which narrows the rows' Array runtime needs) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by

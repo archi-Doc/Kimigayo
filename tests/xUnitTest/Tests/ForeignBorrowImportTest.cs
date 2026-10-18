@@ -44,4 +44,18 @@ public class ForeignBorrowImportTest
             """;
         ScalarEmissionTest.EmitFixture("ForeignBorrowCounter", source, "counted\n");
     }
+
+    // A borrow of a C-layout struct passes the struct's address, where the foreign call writes its first Field.
+    [Fact]
+    public void ACLayoutStructBorrowPassesItsAddress()
+    {
+        const string Source = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public func query(value: uniq/Counter) -> i32\n" +
+            "#Layout(\"C\")\nstruct Counter\n    public var ticks: i64\n    public init() => self.ticks = -1\n" + """
+            var counter = Counter.init()
+            require Native.query(counter@uniq) != 0 else => $abort("query")
+            require counter.ticks >= 0 else => $abort("ticks")
+            Console.writeLine("counted")
+            """;
+        ScalarEmissionTest.EmitFixture("ForeignBorrowCLayout", Source, "counted\n");
+    }
 }
