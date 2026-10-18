@@ -56,8 +56,7 @@ public class FunctionEmissionTest
     public void NonterminationHasNoFabricatedReturn(string name, string source)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, "begin\n", timeoutMilliseconds: 200);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]
