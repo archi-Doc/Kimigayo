@@ -74,7 +74,8 @@ public sealed class PipelineSwitchTest
 
     // R5 K1: only MIR code generation collects the checked set, and until C0b1 it refuses to generate: one Unsupported_Kd in the Emission
     // partition at each output root (an Application's startup, a test build's tests, a Library's closed bodies), never the old generator's
-    // module.
+    // module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does, and under MIR code generation
+    // nothing.
     [Theory]
     [InlineData(OutputKind.Application, false, new[] { "" })]
     [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" })]
@@ -91,17 +92,92 @@ public sealed class PipelineSwitchTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         Assert.Null(c.Instances);
-        Assert.True(c.WriteIr(TextWriter.Null, out _));
+        using (var legacy = new StringWriter())
+        {
+            Assert.True(c.Generate(legacy));
+            Assert.Equal(CompilationTestHelper.WriteIr(c), legacy.ToString());
+        }
 
         c.Codegen = CompilerCodegen.Mir;
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(c.Instances);
+        using (var writer = new StringWriter())
+        {
+            Assert.False(c.Generate(writer));
+            Assert.Empty(writer.ToString());
+        }
+
         Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         Assert.Contains("C0b1", failure);
         Assert.False(c.Validate(out _));
         var records = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
         Assert.All(records, static x => Assert.Equal("Unsupported_Kd", x.Code));
         Assert.Equal(roots, records.Select(static x => x.Text).Order(StringComparer.Ordinal));
+    }
+
+    // R5 C0a (PD12's gate, step 1; DECISIONS R5-M64): every generation request passes the entry's gate, artifact publication included,
+    // which ran the old generator on a program with MIR records before; the records are the analysis's own, so generation adds none.
+    [Fact]
+    public void TheGateRefusesMirRecordsForEveryCaller()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var c = Compilation.CreateForTest();
+            c.Pipeline = CompilerPipeline.Mir;
+            c.Codegen = CompilerCodegen.Legacy;
+            Assert.True(c.Prepare(WindowsProfile.Target));
+            c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+            Assert.False(Analyze(c, OutputKind.Application));
+            Assert.Equal(DiagnosticCode.Unsupported_Kd, Assert.Single(c.Problems).Code);
+            c.Project.Directory = directory;
+            c.Project.Name = "Hello";
+            c.Project.ProjectFile.OutputPath = "out/Hello.ll";
+            using var writer = new StringWriter();
+            Assert.False(c.Generate(writer));
+            Assert.Empty(writer.ToString());
+            Assert.False(EmissionArtifacts.Publish(c, out var path, out var failure));
+            Assert.Null(path);
+            Assert.Null(failure);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories));
+            Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
+    }
+
+    // R5 C0a: kimi test publishes its generation records through the entry, as kimi build does: a test build the old generator refuses
+    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54).
+    [Fact]
+    public void TheTestCommandPublishesTheGenerationRecords()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-pipeline-switch-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            var project = new Project(new Kimigayo(console)) { Name = "wide", Directory = directory };
+            project.ProjectFile.Targets = [WindowsProfile.Target];
+            project.AddSource("main.kimi", "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n#Test\nfunc wide()\n    let result = half(10@i128)\n");
+            var c = project.PrepareTests(TestContext.Current.CancellationToken);
+            Assert.Equal(Compilation.DefaultCodegen == CompilerCodegen.Mir, c is null);
+            if (c is not null)
+            {
+                var stem = Path.Combine(directory, "tests");
+                Assert.False(project.PublishArtifacts(c, new(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2"), null, out _));
+            }
+
+            Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
+            Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     // R5 K4b (DECISIONS R5-M41): under MIR code generation the checked set's records are analysis problems too, control-flow Errors at
