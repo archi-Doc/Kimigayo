@@ -14,29 +14,6 @@ internal enum DictionaryHelperKind : byte
     Drop,
 }
 
-/// <summary>The DictionaryStorage library functions (DictionaryStorage.kimi) the Dictionary helpers and the Dictionary runtime
-/// call, named by the KimiLibrary declaration the old emitter resolves each from, until F2c supplies their symbol view.
-/// FindEntry and ClearEntries are generic over the entry Types, so a helper reaches its instance through its Related index; a
-/// module resolves each other function once (<see cref="LegacyRuntimeHelpers.Resolve"/>).</summary>
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal enum DictionaryCallee : byte
-{
-    None,
-    FindEntry,
-    ClearEntries,
-    RequireAbsent,
-    Append,
-    Initialize,
-
-    // Called by no helper (append, initialize and clearEntries call them); checked present with the Dictionary runtime.
-    AppendSlot,
-    ClearLinks,
-
-    // Called by no helper (ordinary calls reach them); tests read their compiled names. Shrink is the last member.
-    ReserveStorage,
-    Shrink,
-}
-
 /// <summary>The physical layout of a Dictionary entry: the key and value offsets and the entry stride.</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct DictionaryEntryLayout(long KeyOffset, long ValueOffset, long Stride);
@@ -168,8 +145,9 @@ internal sealed partial class LegacyRuntimeHelpers
             HelperNeeds.ArrayRuntime | HelperNeeds.ElementGlue),
     ];
 
-    // The module's resolved DictionaryStorage functions, indexed by DictionaryCallee; None and the generic ones stay null.
-    private readonly FunctionAbi?[] dictionaryCallees = new FunctionAbi?[(int)DictionaryCallee.Shrink + 1];
+    // The module's resolved DictionaryStorage functions, indexed by DictionaryCallee (KimiLibrary's view, F2c); None and the
+    // generic ones stay null.
+    private readonly FunctionAbi?[] dictionaryCallees = new FunctionAbi?[(int)DictionaryCallee.Reserve + 1];
 
     // The per-entry Dictionary helpers requested by lowered bodies, in first-request order.
     private readonly List<DictionaryHelper> dictionaryHelpers = new();
@@ -196,9 +174,10 @@ internal sealed partial class LegacyRuntimeHelpers
     /// <returns>Its compiled ABI.</returns>
     internal FunctionAbi? Callee(DictionaryCallee callee) => this.dictionaryCallees[(int)callee];
 
-    /// <summary>Records the module's ABI of a DictionaryStorage function that is not generic.</summary>
+    /// <summary>Records the module's ABI of a DictionaryStorage function.</summary>
     /// <param name="callee">The function.</param>
-    /// <param name="abi">Its compiled ABI, or null when it was not compiled.</param>
+    /// <param name="abi">Its compiled ABI, or null when it was not compiled as one function (absent, or generic over the entry
+    /// Types).</param>
     internal void Resolve(DictionaryCallee callee, FunctionAbi? abi) => this.dictionaryCallees[(int)callee] = abi;
 
     /// <summary>Registers a Dictionary helper a lowered body uses: each helper is written once per module, in first-request order,
@@ -320,11 +299,11 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write('\n');
     }
 
-    // The empty-Dictionary initialization bridge; the ordered-link algorithms are compiled from DictionaryStorage.kimi.
+    // The empty-Dictionary initialization bridge; the ordered-link algorithms are compiled from DictionaryStorage.kimi, and the
+    // functions initialize calls compile with it.
     private void WriteDictionaryInit(TextWriter output)
     {
-        if (this.Callee(DictionaryCallee.AppendSlot) is null || this.Callee(DictionaryCallee.Initialize) is not { } initialize ||
-            this.Callee(DictionaryCallee.ClearLinks) is null)
+        if (this.Callee(DictionaryCallee.Initialize) is not { } initialize)
         {
             throw new InvalidOperationException("Dictionary storage sources were not compiled.");
         }

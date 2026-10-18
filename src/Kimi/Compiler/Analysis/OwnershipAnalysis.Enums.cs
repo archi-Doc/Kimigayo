@@ -106,13 +106,14 @@ public sealed partial class OwnershipAnalysis
 
         if (type.Kind == BoundTypeKind.Dictionary || ReferenceTypes.IsDictionary(type))
         {
-            this.CollectLibraryBody(this.compilation.Library.DictionaryAppendSlot);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryInitialize);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryClearLinks);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryFind);
-            this.CollectLibraryBody(this.compilation.Library.DictionaryClear);
+            var library = this.compilation.Library;
+            this.CollectLibraryBody(library.DictionaryAppendSlot);
+            this.CollectLibraryBody((FunctionKoto)library.DictionaryStorage(DictionaryCallee.Initialize).Declaration);
+            this.CollectLibraryBody(library.DictionaryClearLinks);
+            this.CollectLibraryBody((FunctionKoto)library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration);
+            this.CollectLibraryBody((FunctionKoto)library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration);
             // The typed placement helper calls append by name; reserve and shrinkToFit are reached through ordinary calls.
-            this.CollectLibraryBody(this.compilation.Library.DictionaryAppend);
+            this.CollectLibraryBody((FunctionKoto)library.DictionaryStorage(DictionaryCallee.Append).Declaration);
         }
 
         if (ReferenceTypes.IsString(type) || ReferenceTypes.IsBorrow(type) || ReferenceTypes.IsPointer(type))
