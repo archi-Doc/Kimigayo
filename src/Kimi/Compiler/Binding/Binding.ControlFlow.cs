@@ -107,6 +107,19 @@ public sealed partial class Binding
         return target;
     }
 
+    // The Target Result Type a position fixes for a result target (SPEC 14.9.2 step 1): Unit outside a value context and for while and
+    // for; none for an expectation whose Origin is still inferred, so that the result's actual dependency is inferred before a local
+    // annotation is completed.
+    private static BoundType? ResultExpectation(Koto target, BoundType? expected)
+    {
+        if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
+        {
+            return BoundType.Unit;
+        }
+
+        return expected?.Origin?.Kind == OriginKind.Inference ? null : expected;
+    }
+
     private BoundType? CommonBorrowResult(BoundType left, BoundType right)
     {
         if (ReferenceEquals(left, BoundType.Never))
@@ -164,17 +177,7 @@ public sealed partial class Binding
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
-        if (expected?.Origin?.Kind == OriginKind.Inference)
-        {
-            // Infer the result's actual dependency before completing a local annotation.
-            expected = null;
-        }
-
-        if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
-        {
-            expected = BoundType.Unit;
-        }
-
+        expected = ResultExpectation(target, expected);
         var context = this.RentResult(expected);
         this.resultContexts[target] = context;
         if (expected is null && !deferEvidence)
@@ -279,6 +282,12 @@ public sealed partial class Binding
             context.Sources.Add(BoundType.Unit);
         }
 
+        return this.DecideResult(node, context);
+    }
+
+    // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
+    private BoundType? DecideResult(Koto node, ResultContext context)
+    {
         var types = this.resultTypes;
         types.Clear();
         foreach (var source in context.Sources)
@@ -332,7 +341,7 @@ public sealed partial class Binding
         }
 
         var completion = node is FunctionKoto { Body: { } functionBody } ? functionBody : node;
-        return Complete(node, !suppliedValue && !structural.CanComplete(completion) ? BoundType.Never : common);
+        return Complete(node, !suppliedValue && !this.ResultStructure().CanComplete(completion) ? BoundType.Never : common);
     }
 
     private sealed class ResultContext

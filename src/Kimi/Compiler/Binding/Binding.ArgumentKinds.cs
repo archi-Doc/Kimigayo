@@ -21,12 +21,13 @@ namespace Kimi.Compiler;
 //   part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments, elements, Case
 //   payloads and value calls, and the erasure of a callable completed there (ErasePart); SolveSelected, the selected candidate of a call
 //   whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its checks run once more
-//   (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments; the waiting-binds-F rule (TakeWaiting,
-//   Binding.ArgumentKinds.Waiting.cs), the one walk to the waiting callables at an F that the call's queries and the completions share;
-//   SlotSolution (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of one candidate or one Case construction, whose
-//   evidence walk takes each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies
-//   the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the
-//   Constraints over it (Prove); CompleteUnselected, the parts of a call that completes none, bound on their own (SPEC 23.1.2).
+//   (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments, and CompleteArguments, its arguments completed at its
+//   operations; the waiting-binds-F rule (TakeWaiting, Binding.ArgumentKinds.Waiting.cs), the one walk to the waiting callables at an F
+//   that the call's queries and the completions share; SlotSolution (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of
+//   one candidate or one Case construction, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
+//   Binding.ArgumentKinds.Evidence.cs) and applies the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations
+//   substitute the solution (Type) and judge the Constraints over it (Prove); CompleteUnselected, the parts of a call that completes
+//   none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
 //   part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal
 //   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
@@ -438,6 +439,40 @@ public sealed partial class Binding
 
         return context is { } signature
             ? this.BindFunctionReference(part, node.BoundSymbol!, signature, scope, erase: false) : this.BindFunctionItem(part, node.BoundSymbol!, scope);
+    }
+
+    // SPEC 10.5, 10.2: completes the selected candidate's arguments at its operations: a part still unbound is bound at its parameter's
+    // Type, and a Closure or Function Item the candidate erases is converted to the common Function Type. False when one fails; every
+    // failing erasure is reported, since the call rests on it and another candidate is never selected.
+    private bool CompleteArguments(InvocationKoto call, BindingScope scope, Span<BoundArgumentOperation> operations)
+    {
+        var erased = true;
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
+        {
+            var argument = call.ArgumentNodes[i];
+            if (argument.BoundType is null)
+            {
+                // The argument is an expression of the caller's context, not of the selected requirement.
+                var selectedContract = this.activeRequirementContract;
+                this.activeRequirementContract = null;
+                this.RequireType(argument, scope, operations[i].SourceType ?? operations[i].ParameterType);
+                this.activeRequirementContract = selectedContract;
+                if (argument.BindingState != BindingState.Resolved)
+                {
+                    return false;
+                }
+
+                operations[i] = operations[i] with { SourceType = argument.BoundType };
+            }
+            else if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType &&
+                operations[i].ParameterType is { Kind: BoundTypeKind.Function } erasedType && operations[i].Adaptation == ArgumentAdaptation.Erasure)
+            {
+                erased &= this.ErasePart(argument, closureType, erasedType);
+                operations[i] = operations[i] with { SourceType = erasedType };
+            }
+        }
+
+        return erased;
     }
 
     // SPEC 10.2.1: the selected candidate's checks run once more with its Literal parts' defaults; a failure is its own record and

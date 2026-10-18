@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Parsing;
+
 namespace Kimi.Compiler;
 
 // Result propagation (SPEC 14.9.2 step 3, 3.8; DECISIONS R4-M52, BU-4): a literal takes its position's Type.
@@ -24,5 +26,28 @@ public sealed partial class Binding
         }
 
         return this.types.Tuple(elements);
+    }
+
+    // SPEC 3.8: a Tuple literal binds its elements at its position's element Types and takes α's Type (FittedTupleType).
+    private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
+    {
+        var buffer = this.RentTypes(tuple.Elements.Count);
+        try
+        {
+            var complete = true;
+            for (var i = 0; i < tuple.Elements.Count; i++)
+            {
+                var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
+                var type = this.BindNode(tuple.Elements[i], scope, element);
+                buffer[i] = type!;
+                complete &= type is not null;
+            }
+
+            return Complete(tuple, complete ? this.FittedTupleType(buffer.AsSpan(0, tuple.Elements.Count), expected) : null);
+        }
+        finally
+        {
+            this.typeScratch.Return(buffer, clearArray: true);
+        }
     }
 }

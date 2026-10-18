@@ -1390,28 +1390,6 @@ public sealed partial class Binding
         return this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
     }
 
-    private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
-    {
-        var buffer = this.RentTypes(tuple.Elements.Count);
-        try
-        {
-            var complete = true;
-            for (var i = 0; i < tuple.Elements.Count; i++)
-            {
-                var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
-                var type = this.BindNode(tuple.Elements[i], scope, element);
-                buffer[i] = type!;
-                complete &= type is not null;
-            }
-
-            return Complete(tuple, complete ? this.FittedTupleType(buffer.AsSpan(0, tuple.Elements.Count), expected) : null);
-        }
-        finally
-        {
-            this.typeScratch.Return(buffer, clearArray: true);
-        }
-    }
-
     private ChildBinder? childBinder;
 
     private void BindUnknownChildren(Koto node, BindingScope scope)

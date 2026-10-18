@@ -704,33 +704,7 @@ public sealed partial class Binding
                 }
             }
 
-            var erasureFailed = false;
-            for (var i = 0; i < argumentCount; i++)
-            {
-                if (call.ArgumentNodes[i].BoundType is null)
-                {
-                    // The argument is an expression of the caller's context, not of the selected requirement.
-                    var selectedContract = this.activeRequirementContract;
-                    this.activeRequirementContract = null;
-                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType);
-                    this.activeRequirementContract = selectedContract;
-                    if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
-                    {
-                        return Complete(call, null);
-                    }
-
-                    selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
-                }
-                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { Kind: BoundTypeKind.Function } erased &&
-                    selectedOperations[i].Adaptation == ArgumentAdaptation.Erasure)
-                {
-                    // SPEC 10.5: the call rests on a failed erasure and another candidate is never selected; every failing argument is reported.
-                    erasureFailed |= !this.ErasePart(call.ArgumentNodes[i], closureType, erased);
-                    selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
-                }
-            }
-
-            if (erasureFailed)
+            if (!this.CompleteArguments(call, scope, selectedOperations))
             {
                 return Complete(call, null);
             }
