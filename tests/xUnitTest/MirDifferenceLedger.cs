@@ -23,8 +23,10 @@ namespace XunitTest;
 /// </summary>
 /// <remarks>A raw row is <c>event section side analysis code requirement location form body sha</c>: the comparison, complete or
 /// incomplete Binding (R4-M5), both, old or new, the owning analysis (A1, A3, A4, A5, U for an old Unsupported gate, - for the expansion
-/// limit, B for a MIR construction record or validator finding; a MIR problem takes its code's), the code, the old requirement (- on the MIR side, R4-M3a), the
-/// subject's document, offset and length, its syntax form, the location of its enclosing definition and the source's hash.</remarks>
+/// limit, B for a MIR construction record, validator finding or contract break; a MIR problem takes its pair's in the compared set), the
+/// code, the requirement (the old record's; a MIR problem's own, R4-M67; - for a MIR construction record or validator finding, which name
+/// none until H3; <c>old&gt;mir</c> for a matched pair whose requirements differ), the subject's document, offset and length, its syntax
+/// form, the location of its enclosing definition and the source's hash.</remarks>
 public sealed class MirDifferenceLedger : IDisposable
 {
     internal const int Event = 0;
@@ -39,38 +41,41 @@ public sealed class MirDifferenceLedger : IDisposable
     internal const int Sha = 9;
 
     // R4-M4: the compared old records, by requirement and each code it reports (OwnershipIssue.Code, Binding's code of the failure), with
-    // the analysis that owns them; a MIR problem takes its code's analysis. Every other record passes through: TransferRequired and
-    // Internal, control flow's other codes and Binding's other failures, CaseLimit included. Binding's IncompatibleImplementation and
-    // Unsupported records are compared only where an effect check made them (Binding.IsEffectRecord, R4-M23).
-    internal static readonly (DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis)[] Compared =
+    // the analysis that owns them and the requirement a MIR problem of that code names (R4-M67; none for the old expansion limit). Every
+    // other old record passes through: TransferRequired and Internal, control flow's other codes and Binding's other failures, CaseLimit
+    // included. Binding's IncompatibleImplementation and Unsupported records are compared only where an effect check made them
+    // (Binding.IsEffectRecord, R4-M23), and the MIR names the Ownership requirement of each decision the old path reports under Binding
+    // (DIAGNOSTICS rule 1; renamed at H5). The MIR pairs are the consistency set of PLAN10 §7: a MIR problem outside it is a recording
+    // rule's defect, ledgered as a contract break (B), as is MirReport.Add's disagreement record (Ownership.Internal).
+    internal static readonly (DiagnosticRequirement Requirement, DiagnosticCode Code, string Analysis, DiagnosticRequirement? Mir)[] Compared =
     [
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse), DiagnosticCode.UninitializedPlace_Kd, "A1"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse), DiagnosticCode.MovedPlace_Kd, "A1"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.ReassignedLet), DiagnosticCode.ReassignedLet_Kd, "A1"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.StaticMovePathRequired), DiagnosticCode.StaticMovePathRequired_Kd, "A1"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.DefaultArgumentMove), DiagnosticCode.DefaultArgumentMove_Kd, "A1"),
-        (DiagnosticRequirement.ControlFlow, DiagnosticCode.RequireFallthrough_Kd, "A3"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.EffectBound), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.CallableEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
-        (DiagnosticRequirement.Binding(BindingFailure.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4"),
-        (DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4"),
-        (DiagnosticRequirement.Binding(BindingFailure.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.ComparisonLoanConflict_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallReservationConflict_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallActivationConflict_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.PlacementActivationConflict_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.CallEffectConflict), DiagnosticCode.CallEffectConflict_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.DefaultArgumentAccess), DiagnosticCode.DefaultArgumentAccess_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.DefaultArgumentBorrow), DiagnosticCode.DefaultArgumentBorrow_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenOriginRelation_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenConstraint_Kd, "A5"),
-        (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5"),
-        (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnprovenOriginRelation_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit), DiagnosticCode.OwnershipStorageLimit_Kd, "A5"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), DiagnosticCode.Unsupported_Kd, "U"),
-        (DiagnosticRequirement.Ownership(OwnershipRequirement.ExpansionLimit), DiagnosticCode.DeferredExpansionLimit_Kd, "-"),
+        (Ownership(OwnershipRequirement.UninitializedUse), DiagnosticCode.UninitializedPlace_Kd, "A1", Ownership(OwnershipRequirement.UninitializedUse)),
+        (Ownership(OwnershipRequirement.PossiblyMovedUse), DiagnosticCode.MovedPlace_Kd, "A1", Ownership(OwnershipRequirement.PossiblyMovedUse)),
+        (Ownership(OwnershipRequirement.ReassignedLet), DiagnosticCode.ReassignedLet_Kd, "A1", Ownership(OwnershipRequirement.ReassignedLet)),
+        (Ownership(OwnershipRequirement.StaticMovePathRequired), DiagnosticCode.StaticMovePathRequired_Kd, "A1", Ownership(OwnershipRequirement.StaticMovePathRequired)),
+        (Ownership(OwnershipRequirement.DefaultArgumentMove), DiagnosticCode.DefaultArgumentMove_Kd, "A1", Ownership(OwnershipRequirement.DefaultArgumentMove)),
+        (DiagnosticRequirement.ControlFlow, DiagnosticCode.RequireFallthrough_Kd, "A3", DiagnosticRequirement.ControlFlow),
+        (Ownership(OwnershipRequirement.EffectBound), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4", Ownership(OwnershipRequirement.EffectBound)),
+        (Ownership(OwnershipRequirement.CallableEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4", Ownership(OwnershipRequirement.CallableEffectBound)),
+        (Ownership(OwnershipRequirement.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4", Ownership(OwnershipRequirement.VirtualEffectBound)),
+        (DiagnosticRequirement.Binding(BindingFailure.VirtualEffectBound), DiagnosticCode.UnsatisfiedEffectBound_Kd, "A4", Ownership(OwnershipRequirement.VirtualEffectBound)),
+        (DiagnosticRequirement.Binding(BindingFailure.IncompatibleImplementation), DiagnosticCode.IncompatibleContractImplementation_Kd, "A4", Ownership(OwnershipRequirement.EffectBound)),
+        (DiagnosticRequirement.Binding(BindingFailure.Unsupported), DiagnosticCode.Unsupported_Kd, "U", Ownership(OwnershipRequirement.Unsupported)),
+        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.ComparisonLoanConflict_Kd, "A5", Ownership(OwnershipRequirement.ComparisonLoanConflict)),
+        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallReservationConflict_Kd, "A5", Ownership(OwnershipRequirement.ComparisonLoanConflict)),
+        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.CallActivationConflict_Kd, "A5", Ownership(OwnershipRequirement.ComparisonLoanConflict)),
+        (Ownership(OwnershipRequirement.ComparisonLoanConflict), DiagnosticCode.PlacementActivationConflict_Kd, "A5", Ownership(OwnershipRequirement.ComparisonLoanConflict)),
+        (Ownership(OwnershipRequirement.CallEffectConflict), DiagnosticCode.CallEffectConflict_Kd, "A5", Ownership(OwnershipRequirement.CallEffectConflict)),
+        (Ownership(OwnershipRequirement.DefaultArgumentAccess), DiagnosticCode.DefaultArgumentAccess_Kd, "A5", Ownership(OwnershipRequirement.DefaultArgumentAccess)),
+        (Ownership(OwnershipRequirement.DefaultArgumentBorrow), DiagnosticCode.DefaultArgumentBorrow_Kd, "A5", Ownership(OwnershipRequirement.DefaultArgumentBorrow)),
+        (Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5", Ownership(OwnershipRequirement.UnprovenOrigin)),
+        (Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenOriginRelation_Kd, "A5", Ownership(OwnershipRequirement.UnprovenOrigin)),
+        (Ownership(OwnershipRequirement.UnprovenOrigin), DiagnosticCode.UnprovenConstraint_Kd, "A5", Ownership(OwnershipRequirement.UnprovenOrigin)),
+        (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5", Ownership(OwnershipRequirement.UnprovenOrigin)),
+        (DiagnosticRequirement.Binding(BindingFailure.OriginRelation), DiagnosticCode.UnprovenOriginRelation_Kd, "A5", Ownership(OwnershipRequirement.UnprovenOrigin)),
+        (Ownership(OwnershipRequirement.StorageLimit), DiagnosticCode.OwnershipStorageLimit_Kd, "A5", Ownership(OwnershipRequirement.StorageLimit)),
+        (Ownership(OwnershipRequirement.Unsupported), DiagnosticCode.Unsupported_Kd, "U", Ownership(OwnershipRequirement.Unsupported)),
+        (Ownership(OwnershipRequirement.ExpansionLimit), DiagnosticCode.DeferredExpansionLimit_Kd, "-", null),
     ];
 
     private readonly string? directory = Environment.GetEnvironmentVariable("KIMI_MIR_DIFF") is { Length: > 0 } value ? value : null;
@@ -121,22 +126,25 @@ public sealed class MirDifferenceLedger : IDisposable
     internal static string? AnalysisOf(DiagnosticRequirement requirement, DiagnosticCode code)
         => Array.Find(Compared, x => x.Requirement == requirement && x.Code == code).Analysis;
 
-    /// <summary>Gets the analysis that owns a MIR problem: its code's in the compared set (R4-M4), where each code names one analysis.</summary>
+    /// <summary>Gets the analysis that owns a MIR problem: its pair's in the compared set's MIR column (R4-M67), where each code names one
+    /// analysis; null outside it, a recording rule's defect.</summary>
+    /// <param name="requirement">The requirement the problem names.</param>
     /// <param name="code">The problem's code.</param>
-    /// <returns>The analysis.</returns>
-    /// <exception cref="InvalidOperationException">The code is outside the compared set, which no analysis reports.</exception>
-    internal static string AnalysisOf(DiagnosticCode code)
-        => Array.Find(Compared, x => x.Code == code).Analysis ?? throw new InvalidOperationException($"{code} is outside the compared set (R4-M4).");
+    /// <returns>The analysis, or null.</returns>
+    internal static string? MirAnalysisOf(DiagnosticRequirement requirement, DiagnosticCode code)
+        => Array.Find(Compared, x => x.Mir == requirement && x.Code == code).Analysis;
 
     /// <summary>Matches the records of both sides as multisets on code and subject node, by reference: each MIR entry takes the first
-    /// unmatched old entry of its code and node. Old entries come first in their order, on side both (with the old entry's facts) or
-    /// old, then the unmatched MIR entries on side new.</summary>
+    /// unmatched old entry of its code and node. Old entries come first in their order, on side both (with the old entry's facts, its
+    /// requirement written <c>old&gt;mir</c> when the MIR entry names another; a MIR entry that names none, -, agrees) or old, then the
+    /// unmatched MIR entries on side new.</summary>
     /// <param name="old">The old path's A-owned records.</param>
     /// <param name="mir">The MIR's records and problems.</param>
     /// <returns>The sides and entries.</returns>
     internal static List<(string Side, Entry Entry)> Match(List<Entry> old, List<Entry> mir)
     {
         var matched = new bool[old.Count];
+        var requirements = old.Select(static x => x.Requirement).ToArray();
         var unmatched = new List<Entry>();
         foreach (var entry in mir)
         {
@@ -149,6 +157,8 @@ public sealed class MirDifferenceLedger : IDisposable
             if (index < old.Count)
             {
                 matched[index] = true;
+                var agrees = entry.Requirement is "-" || entry.Requirement == old[index].Requirement;
+                requirements[index] = agrees ? old[index].Requirement : $"{old[index].Requirement}>{entry.Requirement}";
             }
             else
             {
@@ -156,13 +166,14 @@ public sealed class MirDifferenceLedger : IDisposable
             }
         }
 
-        return [.. old.Select((x, i) => (matched[i] ? "both" : "old", x)), .. unmatched.Select(static x => ("new", x))];
+        return [.. old.Select((x, i) => (matched[i] ? "both" : "old", x with { Requirement = requirements[i] })), .. unmatched.Select(static x => ("new", x))];
     }
 
     /// <summary>Lists the differences of raw rows by signature (section, kind, analysis, code, requirement, form): per event and body, an
     /// unmatched old and new row of one code pair into one <c>location</c> difference with the old row's facts, and the other unmatched
     /// rows are <c>missing</c> (old) or <c>new</c>; an event whose A-owned records are on one side only adds an <c>acceptance</c>
-    /// difference with that side's first row. Matched rows are no difference. A missing row is unsound, the old path rejecting what the
+    /// difference with that side's first row. A matched row whose requirements differ (<c>old&gt;mir</c>) is a <c>requirement</c>
+    /// difference; other matched rows are no difference. A missing row is unsound, the old path rejecting what the
     /// MIR accepts (plan §8 of the Complete Polonius A5 Plan, R4-M47), when its compilation's Binding is complete and its body keeps no
     /// unpaired MIR record, which would make it a code choice.</summary>
     /// <param name="rows">The raw rows.</param>
@@ -190,6 +201,7 @@ public sealed class MirDifferenceLedger : IDisposable
                 }
             }
 
+            differences.AddRange(group.Where(static x => x[Side] == "both" && x[Requirement].Contains('>')).Select(static x => Difference(x, "requirement", false)));
             var complete = group.First()[Section] == "complete";
             differences.AddRange(olds.Select(x => x.Paired ? Difference(x.Row, "location", false)
                 : Difference(x.Row, "missing", complete && !news.Exists(y => y[Body] == x.Row[Body]))));
@@ -282,13 +294,37 @@ public sealed class MirDifferenceLedger : IDisposable
 
         var mir = program.Records.Select(x => new Entry(x.Code, "-", "B", compilation.SyntaxOf(x.Subject)))
             .Concat(program.Findings.Select(x => new Entry(DiagnosticCode.InternalInvariant_Kd, "-", "B", compilation.SyntaxOf(x.Subject)))).ToList();
-        foreach (var problem in program.Problems.All)
-        {
-            mir.Add(new(problem.Code, "-", AnalysisOf(problem.Code), compilation.SyntaxOf(problem.Subject)));
-        }
-
+        mir.AddRange(MirEntries(program.Problems.All.ToArray().Select(x => (x.Code, x.Requirement, compilation.SyntaxOf(x.Subject)))));
         return (common, old, passed, mir);
     }
+
+    /// <summary>Merges MIR problems into one entry per code and subject node, over the bodies that report it: its requirement and the
+    /// analysis its pair names in the compared set. Bodies that name different requirements for one entry, or a pair outside the set, are a
+    /// recording rule's defect, an entry of the contract breaks (B) whose requirement lists the names it met (<c>a|b</c>).</summary>
+    /// <param name="problems">The problems' codes, requirements and subjects.</param>
+    /// <returns>The entries in the order their first problems come.</returns>
+    internal static List<Entry> MirEntries(IEnumerable<(DiagnosticCode Code, DiagnosticRequirement Requirement, Koto Node)> problems)
+    {
+        var merged = new List<(DiagnosticCode Code, Koto Node, List<DiagnosticRequirement> Requirements)>();
+        foreach (var (code, requirement, node) in problems)
+        {
+            var index = merged.FindIndex(x => x.Code == code && ReferenceEquals(x.Node, node));
+            if (index < 0)
+            {
+                merged.Add((code, node, [requirement]));
+            }
+            else if (!merged[index].Requirements.Contains(requirement))
+            {
+                merged[index].Requirements.Add(requirement);
+            }
+        }
+
+        return [.. merged.Select(static x => x.Requirements is [var one]
+            ? new Entry(x.Code, one.Name, MirAnalysisOf(one, x.Code) ?? "B", x.Node)
+            : new Entry(x.Code, string.Join('|', x.Requirements.Select(static y => y.Name)), "B", x.Node))];
+    }
+
+    private static DiagnosticRequirement Ownership(OwnershipRequirement requirement) => DiagnosticRequirement.Ownership(requirement);
 
     private static (string Signature, string Sha, string Location, bool Unsound) Difference(string[] row, string kind, bool unsound)
         => (string.Join('\t', row[Section], kind, row[Analysis], row[Code], row[Requirement], row[Form]), row[Sha], row[Location], unsound);
@@ -370,7 +406,8 @@ public sealed class MirDifferenceLedger : IDisposable
         }
     }
 
-    /// <summary>A record of either side: its code, its requirement's name (- on the MIR side), the analysis owning it and its subject.</summary>
+    /// <summary>A record of either side: its code, its requirement's name (- for a MIR construction record or validator finding), the
+    /// analysis owning it and its subject.</summary>
     /// <param name="Code">The code.</param>
     /// <param name="Requirement">The requirement's name.</param>
     /// <param name="Analysis">The analysis.</param>

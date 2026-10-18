@@ -2698,3 +2698,18 @@ structure is recorded here by the unit that first implements it.
   capacity routines, because one member names them with the memory declarations; splitting it adds a vocabulary entry. Rejected:
   that split here (beyond G134's rows); keeping the hand-set flag for every Array operation (G133's cause, a flag set by its
   requester instead of its row).
+- **R5-M56 The difference ledger compares the requirement** (2026-10-18, planning session; plan Q17, Q8 package §3.6, under R5-M23
+  and R4-M67; supersedes R4-M17's "a MIR problem takes its code's analysis" and R4-M3a's `-` requirement on the MIR side) A MIR
+  problem's ledger row carries its own requirement (R4-M67); a MIR construction record or validator finding names none (`-`) until
+  H3. `MirDifferenceLedger.Compared` gains each row's MIR requirement, the one its code's recording rule names: the old requirement,
+  or for the decisions the old path reports under `Binding.*` (VirtualEffectBound, IncompatibleImplementation, the effect limit's
+  Unsupported, OriginRelation) their Ownership requirement (DIAGNOSTICS rule 1, renamed publicly at H5); none for the expansion
+  limit. These MIR pairs are PLAN10 §7's consistency set, each an image of `OwnershipIssue.Code` for its failure or ControlFlow's
+  require fallthrough (tested, with a program per recording rule); a MIR problem takes its pair's analysis. The ledger merges MIR
+  problems per code and subject node over bodies itself, reading only their named members (R4's 1c-8 will key them per body): a
+  merged row whose bodies name different requirements (written `a|b`), MirReport's disagreement record (`Ownership.Internal`) and
+  any pair outside the set are contract-break rows (B), never an exception. A matched pair whose requirements differ is a
+  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees. The classification table stays R4's.
+  - Rejected: a code-to-requirement lookup on the MIR side (R5-M23 D7); throwing on a pair outside the set (the ledger would lose the
+    run); comparing requirements in `location` pairs (their subject is the difference); keeping `-` on the MIR side (the comparison
+    the package asks for).
