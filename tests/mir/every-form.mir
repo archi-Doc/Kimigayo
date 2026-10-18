@@ -10,6 +10,7 @@ fn f @0
   _8: (i32) -> i32 var @0
   _9: bool temp @0
   _10: Base var @0
+  _11: Never temp @0
   s1: unsafe in s0 @0
   b0: T Value, Uniq
   static0: f: i32
@@ -43,7 +44,7 @@ fn f @0
       _4 = copy _0 as isize (Integer) @0
       switch copy _9 [0: bb1, otherwise: bb2] @0
   bb1:
-      _0 = intrinsic Abort(const "abort") -> ! check bb2 @0
+      _11 = intrinsic Abort(const "abort") -> ! check bb2 @0
   bb2:
       _0 = value const type (i32) -> i32 copy _8(copy _1.0) -> bb3 @0
   bb3:
@@ -54,6 +55,7 @@ fn f @0
   bb5:
       return @0
   bb6:
+      FakeRead(_11) @0
       _7 = &uniq two-phase _4: ref/i32 @0
     * _7 = &raw _4: ref/i32 @1:5 s1
       unreachable @0

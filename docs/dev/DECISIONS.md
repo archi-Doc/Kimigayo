@@ -2219,6 +2219,21 @@ structure is recorded here by the unit that first implements it.
   - Rejected: an A3 rule on the MIR (a second completion rule beside Structural Completion); a check in `BindFunction`,
     `BindAccessorBody` and `BindClosure` (three sites and records from tentative passes); keeping the old pending gate (a
     second guess rule).
+- **R5-M33 A diverging Call's destination is read only where the checks continue** (2026-10-18, planning session; plan F11,
+  PLAN G131, C-package §7 row F11 and row 33, S2-S4 X29, X30 and X30′, owner-approved with R5-M18) Rule, in `MirValidator` (the
+  producer's one validator; `MirViolation.Diverged`): a Call without a runtime successor writes no destination (`MirUses`), so a
+  Temp whose only writes are diverging Calls' destinations holds no value at run time, and only check-only blocks, which no
+  runtime edge reaches from the entry (`MirReach` without CheckTarget edges), read, move, borrow or drop it. Any other place is
+  valid wherever it is read: a Never-typed parameter, Field or payload (SPEC 3.1.3, 14.9.3), a Var or the return local, and a
+  Temp also written on another path (an `if`'s arms sharing a destination). A runtime read would be lowered as a read of storage
+  nothing initialized; R5 relies on the rule from C0b1 and C2b, which lower Never temps. The Checker records each local's writes
+  while it walks a body (a diverging destination, which `MirUses` does not report, and any write it reports); only a body with
+  such a Temp walks its runtime blocks once more. Neither reach rule (Unreachable, Diverged) runs on a body some location of which
+  `MirUses` cannot walk; `Unreachable` formerly ran when only the successors were in range. The rule finds nothing in the
+  library, the milestones, the corpus, the goldens or the whole suite under the mir pipeline: no builder fault. Rejected: a Never
+  temp read only in check-only blocks (X29: it rejects valid reads of Never parameters and payloads); "the destination of a
+  diverging Call" (X30: it rejects an `if`'s arms sharing a destination) and "the builder's unwritten temp" (it misses an
+  ordinary call-result temp, `_4 = stop() -> ! check bb1`); a MIR representation of the fact (only the validator reads it).
 - **R5-M34 `Instantiates` follows SPEC 6.1.3; the old generator keeps its view** (2026-10-18, planning session; plan K1's
   prerequisite, S2-S4 X40, package K §4.1, PLAN SP; under R5-M18; supersedes R5-M21's departure clause) `TyCtxt.Instantiates`
   is true when the definition or a declaration on its scope chain has a Type, Semantics or length slot. A specialization declares
