@@ -176,6 +176,27 @@ public class LibraryImportTargetBindingTest
         Assert.Equal(code is null, c.Binding.Result.IsComplete);
     }
 
+    // SPEC 22.6: a borrow of a C-layout struct whose Fields are all C-exchangeable passes as a pointer. The struct's published
+    // C-layout fact (DECISIONS R5-M26) and its prepared Field Types decide it, in every pass.
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: uniq/S)", null)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: ref/S)", null)]
+    [InlineData("#Layout(\"C\")\nstruct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner\n    public var bytes: [2 of u8]", "(value: ref/S)", null)]
+    [InlineData("#Layout(\"C\")\nstruct S<T>\n    public var a: T", "(value: uniq/S<i64>)", null)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: S)", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: bool", "(value: ref/S)", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("struct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner", "(value: uniq/S)", DiagnosticCode.InvalidImportSignature_Kd)]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.InvalidImportSignature_Kd)]
+    public void CLayoutStructBorrowsAreCExchangeable(string declarations, string parameters, DiagnosticCode? code)
+    {
+        var c = AnalyzeImport(declarations + "\ngroup Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> i32", "codec");
+        Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
+        Assert.Equal(code is null, c.Binding.Result.IsComplete);
+        Assert.Equal(code is null, c.Bind().IsComplete);
+        Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
+    }
+
     [Theory]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: i32) -> i32", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: u32) -> u32", false)]
     [InlineData("group A\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: raw/i8) -> ()", "group B\n    #LibraryImport(\"codec\", \"shared\")\n    public unsafe func call(value: raw/f64) -> ()", false)]

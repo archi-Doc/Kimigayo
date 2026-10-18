@@ -470,11 +470,11 @@ public sealed partial class Binding
         this.PrepareBuiltinTargets();
         this.ValidateVirtualDeclarations();
         this.ValidateLayoutFragments();
-        this.ValidateLibraryImports();
         this.ValidateBaseDeclarations();
         this.PrepareStorage();
         this.ValidateInlineLayouts();
         this.ValidateCLayoutFields();
+        this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ComputeOriginRequirements();
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();

@@ -313,9 +313,9 @@ public sealed partial class Binding
     private bool IsImportBorrow(BoundType type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0);
 
-    // IMPL 21.2: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
-    // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs with eligible Fields.
-    // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
+    // SPEC 22.6: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
+    // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs (AdtDef.IsCLayout) with
+    // eligible prepared Fields. The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
     private bool CExchangeable(BoundType type, int depth)
     {
         if (depth > 32)
@@ -338,8 +338,7 @@ public sealed partial class Binding
             return this.CExchangeable(element, depth + 1);
         }
 
-        if (type.Semantics != SemanticsKind.Owner || type.Symbol?.Declaration is not StructKoto structure || !HasCLayout(structure) ||
-            structure.BoundSymbol?.Adt is not { Types.Count: > 0 } shape)
+        if (type.Semantics != SemanticsKind.Owner || type.Symbol?.Adt is not { IsCLayout: true } shape)
         {
             return false;
         }
