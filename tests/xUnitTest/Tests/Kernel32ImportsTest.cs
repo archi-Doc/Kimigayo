@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -38,6 +39,22 @@ public sealed class Kernel32ImportsTest
             Assert.Contains(match.Groups[1].Value, exports);
         }
     }
+
+    // PLAN G137: every runtime template, the formatting runtime's included, splices each shared ABI definition at exactly one
+    // marker and keeps no unexpanded marker; a broken template fails closed.
+    [Theory]
+    [InlineData("; no marker\n")]
+    [InlineData("{{__kimi_exit}}\n{{__kimi_exit}}\n")]
+    [InlineData("{{__kimi_exit}}\n{{__kimi_unknown}}\n")]
+    [InlineData("{{__kimi_exit}}\n  call void @__kimi_abort(i32 {{reason_unknown}})\n")]
+    public void BrokenRuntimeTemplateFails(string template)
+        => Assert.Throws<InvalidDataException>(() => LlvmModuleText.ExpandRuntime(template, [RuntimeAbi.Exit]));
+
+    [Fact]
+    public void RuntimeTemplateSplicesEachDefinitionOnce()
+        => Assert.Equal(
+            RuntimeAbi.Exit.GetDefinition(exported: false) + "  unreachable\n}\n",
+            LlvmModuleText.ExpandRuntime("{{__kimi_exit}}\r\n  unreachable\n}\n", [RuntimeAbi.Exit]));
 
     [Fact]
     public void RuntimeDeclarationTableMatchesTheEmittedDeclarations()

@@ -1,15 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
-// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the external declarations,
+// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the checked splice every
+// runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations,
 // the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols and numbers
 // formatted on the stack (or once, as text, for a template filled at startup). Both generators write the frame through it (PD2:
 // promoted, never copied).
 // Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers and
 // symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons) and the target profile (WindowsProfile).
-// Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling.
+// Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
+// runtime template.
 // Invariants: the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; each runtime ABI
-// definition marker is spliced exactly once; the text holds no checkout path.
+// definition marker of a template is spliced exactly once and none is left unexpanded, or the template fails; the text holds no
+// checkout path.
 // Must not take syntax, HIR, Binding internals, EmissionModule or MIR types in its signatures, branch on the generator, or use LINQ.
 
 #pragma warning disable SA1402 // The external declaration record is this writer's input.
@@ -216,6 +219,32 @@ internal static class LlvmModuleText
         output.Write(digits[..length]);
     }
 
+    // A runtime template (the Windows runtime, the formatting runtime) with its abort reason markers expanded and each definition
+    // spliced in at its `{{name}}` marker. Compiler-facing runtime signatures come from the same FunctionAbi records as calls and
+    // each is defined once, so a missing or repeated marker, or a marker left unexpanded, is a broken template.
+    internal static string ExpandRuntime(string template, ReadOnlySpan<FunctionAbi> definitions)
+    {
+        var runtime = AbortReasons.Expand(template.Replace("\r\n", "\n", StringComparison.Ordinal));
+        foreach (var abi in definitions)
+        {
+            var marker = "{{" + abi.Name + "}}\n";
+            var index = runtime.IndexOf(marker, StringComparison.Ordinal);
+            if (index < 0 || runtime.IndexOf(marker, index + marker.Length, StringComparison.Ordinal) >= 0)
+            {
+                throw new InvalidDataException("The runtime template must contain each shared ABI definition marker exactly once.");
+            }
+
+            runtime = runtime.Replace(marker, abi.GetDefinition(exported: false), StringComparison.Ordinal);
+        }
+
+        if (runtime.Contains("{{", StringComparison.Ordinal))
+        {
+            throw new InvalidDataException("The runtime template has an unexpanded ABI definition.");
+        }
+
+        return runtime;
+    }
+
     // Whether the runtime text declares the symbol: `@name(` on a line that begins with `declare `.
     private static bool Declares(string runtime, string name)
     {
@@ -236,26 +265,7 @@ internal static class LlvmModuleText
     {
         using var stream = typeof(LlvmModuleText).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
         using var reader = new StreamReader(stream);
-        var runtime = AbortReasons.Expand(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
-        foreach (var abi in RuntimeAbi.RuntimeDefinitions)
-        {
-            // Compiler-facing runtime signatures come from the same FunctionAbi records as calls; each is defined once.
-            var marker = "{{" + abi.Name + "}}\n";
-            var index = runtime.IndexOf(marker, StringComparison.Ordinal);
-            if (index < 0 || runtime.IndexOf(marker, index + marker.Length, StringComparison.Ordinal) >= 0)
-            {
-                throw new InvalidDataException("The runtime template must contain each shared ABI definition marker exactly once.");
-            }
-
-            runtime = runtime.Replace(marker, abi.GetDefinition(exported: false), StringComparison.Ordinal);
-        }
-
-        if (runtime.Contains("{{", StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("The runtime template has an unexpanded ABI definition.");
-        }
-
-        return runtime + "\n";
+        return ExpandRuntime(reader.ReadToEnd(), RuntimeAbi.RuntimeDefinitions) + "\n";
     }
 
     private static string ReportTestAbort(string runtime, FunctionAbi abort)

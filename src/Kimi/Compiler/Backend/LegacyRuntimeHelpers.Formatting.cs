@@ -2,6 +2,7 @@
 
 #pragma warning disable SA1402 // The formatting row is this concern's request vocabulary.
 
+using System.Runtime.InteropServices;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -166,8 +167,8 @@ internal sealed partial class LegacyRuntimeHelpers
         void Add(CompilerFunctionKind kind, FunctionAbi abi, HelperNeeds needs) => rows[kind - CompilerFunctionKind.TextFixed] = new(kind, abi, needs);
     }
 
-    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, each row's routine definition spliced in at
-    // its marker (the first row of a shared symbol defines it) and the abort reason markers expanded.
+    // The buffer and formatting runtimes, then the floating-point formatting and Ryu, expanded by LlvmModuleText's checked splice:
+    // each routine's definition at its marker, from the first row of its symbol.
     private static string ReadFormattingRuntime()
     {
         string? text = null;
@@ -175,16 +176,21 @@ internal sealed partial class LegacyRuntimeHelpers
         {
             using var resource = typeof(LegacyRuntimeHelpers).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name + ".ll.in")!;
             using var reader = new StreamReader(resource);
-            var part = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
+            var part = reader.ReadToEnd();
             text = text is null ? part : text + "\n" + part;
         }
 
+        var symbols = new HashSet<string>(StringComparer.Ordinal);
+        var definitions = new List<FunctionAbi>(FormattingRows.Length);
         foreach (var row in FormattingRows)
         {
-            text = text!.Replace("{{" + row.Abi.Name + "}}\n", row.Abi.GetDefinition(exported: false), StringComparison.Ordinal);
+            if (symbols.Add(row.Abi.Name))
+            {
+                definitions.Add(row.Abi);
+            }
         }
 
-        return AbortReasons.Expand(text!);
+        return ExpandRuntime(text!, CollectionsMarshal.AsSpan(definitions));
     }
 
     // SPEC 22.10.1: a write that the adapter's recorded failure blocks, and whose returned or nested failure it records.
