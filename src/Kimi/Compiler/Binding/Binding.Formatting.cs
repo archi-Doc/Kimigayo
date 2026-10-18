@@ -136,7 +136,8 @@ public sealed partial class Binding
             ? Prepared(this.builtinFormat) : selected;
 
         // A built-in target exists from the first pass's PrepareBuiltinTargets on; no requirement is resolved before it.
-        static BindingSymbol Prepared(BindingSymbol? target) => target ?? throw new InvalidOperationException("A built-in target is read before PrepareBuiltinTargets.");
+        static BindingSymbol Prepared(BindingSymbol? target)
+            => target ?? throw new InvalidOperationException("A built-in target is read before PrepareBuiltinTargets.");
     }
 
     // F fact 11a: a built-in target is its Contract's one own requirement executed by the compiler, with that requirement's name,

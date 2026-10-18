@@ -10,10 +10,10 @@ namespace Kimi.Compiler;
 // - Inputs: verified conformance paths under the caller's scope; the built-in targets, which take their requirements' signatures once
 //   per pass after headers (PrepareBuiltinTargets); the Kimi fixed-array and integer Position members.
 // - Outputs: Builtin; Conformance (the witness, its declaring instance and verified mapping with its base path); Property (the
-//   verified path and operation); FixedArrayEntry; IntegerPosition; Refused (a base-path witness whose requirement receiver is not
-//   `ref`, OCC-X); None.
+//   verified path and operation, the implementing Type's instance); FixedArrayEntry; IntegerPosition; Refused (a base-path witness
+//   whose requirement receiver is not `ref`, OCC-X); None.
 // - Invariants: a caller forwards an abstract Self before it calls the core (SPEC 8.15) and keeps its own premise scope: the
-//   materializer its call's ConstraintScope, Witnesses its definition's EffectPremises.
+//   materializer its call's ConstraintScope, Witnesses its definition's EffectPremises, TyCtxt.Witness the library root's.
 // - Prohibitions: no member lookup, CallPlan, Origin translation, receiver projection, bridge or diagnostic; no written state beyond
 //   interning, proof caches and instance storage preparation.
 public sealed partial class Binding
@@ -30,8 +30,8 @@ public sealed partial class Binding
         Refused,
     }
 
-    // Target: the built-in target, the conformance witness or the Kimi member; Declaring and Function: a conformance witness's declaring
-    // instance and verified mapping; Path and Property: a Property requirement's verified path and operation.
+    // Target: the built-in target, the conformance witness or the Kimi member; Declaring: a conformance or Property witness's declaring
+    // instance; Function: a conformance witness's verified mapping; Path and Property: a Property requirement's verified path and operation.
     internal readonly record struct RequirementWitness(
         RequirementWitnessKind Kind, BindingSymbol? Target, BoundType? Declaring = null, BoundFunctionWitness? Function = null)
     {
@@ -96,8 +96,8 @@ public sealed partial class Binding
             ? this.StoredType(function.DeclaringType, self) : null;
     }
 
-    // SPEC 11.9.2: the verified operation a conformance maps a Property requirement's accessor to. A standard witness is a member of the
-    // conforming Type itself, so only an accessor call can be inherited (OCC-X as above).
+    // SPEC 11.9.2: the verified operation a conformance maps a Property requirement's accessor to, and the instance of the Type that
+    // implements it. A standard witness is a member of the conforming Type itself, so only an accessor call can be inherited (OCC-X as above).
     private RequirementWitness PropertyRequirementWitness(BoundAccessor requirement, BoundType self, BindingSymbol? contract, BindingScope scope)
     {
         if (contract is null || this.ResolveConformance(self, contract, scope, out var path) != ConstraintProof.Proven || path is not { IsVerified: true } ||
@@ -106,12 +106,12 @@ public sealed partial class Binding
             return default;
         }
 
-        if (witness.ObjectCompatibility != ConstraintProof.Proven)
+        if (witness.ObjectCompatibility != ConstraintProof.Proven || this.StoredType(witness.ImplementationType, self) is not { } declaring)
         {
             return default;
         }
 
         return witness.Kind == PropertyWitnessKind.AccessorCall && Refused(witness.BasePath, witness.Implementation.Receiver is not null, witness.ReceiverType)
-            ? new(RequirementWitnessKind.Refused, null) : new(RequirementWitnessKind.Property, null) { Path = path, Property = witness };
+            ? new(RequirementWitnessKind.Refused, null) : new(RequirementWitnessKind.Property, null, declaring) { Path = path, Property = witness };
     }
 }

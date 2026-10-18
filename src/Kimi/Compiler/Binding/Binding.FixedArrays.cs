@@ -26,6 +26,31 @@ public sealed partial class Binding
         }
     }
 
+    // Rents the member's generic arguments for `array`: `E` and `N` at their slots, null elsewhere (the materializer and TyCtxt.Witness).
+    internal bool RentFixedArrayArguments(FunctionKoto witness, BoundType array, out BoundType?[] types, out BoundLength?[] lengths, out int count)
+    {
+        types = null!;
+        lengths = null!;
+        count = 0;
+        if (!this.FixedArraySlots(witness, out var element, out var length))
+        {
+            return false;
+        }
+
+        count = Math.Max(element, length) + 1;
+        types = this.RentTypes(count);
+        lengths = this.lengthScratch.Rent(count);
+        types[element] = array.Components[0];
+        lengths[length] = array.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, array.Length);
+        return true;
+    }
+
+    internal void ReturnFixedArrayArguments(BoundType?[] types, BoundLength?[] lengths)
+    {
+        this.lengthScratch.Return(lengths, clearArray: true);
+        this.typeScratch.Return(types, clearArray: true);
+    }
+
     private static bool IsFixedArrayEntry(BoundType? type, BindingSymbol contract)
         => type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable or KimiDeclarationId.IntoIterable;
 
@@ -98,30 +123,5 @@ public sealed partial class Binding
         {
             this.ReturnFixedArrayArguments(types, lengths);
         }
-    }
-
-    // Rents the member's generic arguments for `array`: `E` and `N` at their slots, null elsewhere.
-    private bool RentFixedArrayArguments(FunctionKoto witness, BoundType array, out BoundType?[] types, out BoundLength?[] lengths, out int count)
-    {
-        types = null!;
-        lengths = null!;
-        count = 0;
-        if (!this.FixedArraySlots(witness, out var element, out var length))
-        {
-            return false;
-        }
-
-        count = Math.Max(element, length) + 1;
-        types = this.RentTypes(count);
-        lengths = this.lengthScratch.Rent(count);
-        types[element] = array.Components[0];
-        lengths[length] = array.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, array.Length);
-        return true;
-    }
-
-    private void ReturnFixedArrayArguments(BoundType?[] types, BoundLength?[] lengths)
-    {
-        this.lengthScratch.Return(lengths, clearArray: true);
-        this.typeScratch.Return(types, clearArray: true);
     }
 }

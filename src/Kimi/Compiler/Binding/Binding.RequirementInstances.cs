@@ -44,6 +44,39 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 8.6.1: the Contract reference a requirement call selected, as Self's Type conforms to it, for the CallPlan materializer and
+    // TyCtxt.Witness: a Contract without Type arguments is its own reference; a bound reference, given in the instance (`reference`:
+    // `Indexable<Name>`, or `C<E>` read as `C<i32>`; a call's substitution holds it as its declaring Type), is the conformance of
+    // Self's Type that names it. Null when the call recorded none or no instantiated reference names a conformance of Self's Type.
+    internal BindingSymbol? InstanceContract(BindingSymbol? recorded, BoundType self, BoundType? reference)
+    {
+        if (recorded is null || !IsBoundContractReference(recorded))
+        {
+            return recorded;
+        }
+
+        if (reference is null || self.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
+        {
+            return null;
+        }
+
+        for (var i = 0; i < identities.Count; i++)
+        {
+            // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`).
+            if (identities[i].Contract.Type is { } formal && (ReferenceEquals(formal, reference) || ReferenceEquals(this.StoredType(formal, self), reference)))
+            {
+                return identities[i].Contract;
+            }
+        }
+
+        return null;
+    }
+
+    // SPEC 21.3.1: a witness's Origin in its requirement call's terms, the call's Origins and inputs over the requirement's binder; an
+    // owning input has no outer Origin slot, so its absence (null) stays.
+    internal BoundOrigin WitnessOrigin(BoundOrigin? origin, Koto requirement, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+        => origin is null ? null! : this.SubstituteStoredOrigin(origin, requirement, origins, inputs);
+
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
     {
@@ -62,7 +95,10 @@ public sealed partial class Binding
             return null;
         }
 
-        var contract = this.InstanceReference(call, self, outer);
+        // A bound reference in the caller's instance, the one form InstanceContract reads it for.
+        var recorded = call.RequirementContract;
+        var reference = recorded is { Type: { } bound } && IsBoundContractReference(recorded) ? this.InstantiateStorageType(bound, outer) : null;
+        var contract = this.InstanceContract(recorded, self, reference);
         var witness = this.ResolveRequirementWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration));
         return witness.Kind switch
         {
@@ -109,8 +145,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < source.Length; i++)
             {
-                // An owning input has no outer Origin slot; keep that absence in its concrete witness.
-                result[i] = source[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement, call.Origins, call.InputOrigins) : null!;
+                result[i] = this.WitnessOrigin(source[i], requirement, call.Origins, call.InputOrigins);
             }
         }
     }
@@ -141,37 +176,5 @@ public sealed partial class Binding
         var receiver = operation.ParameterType ?? throw new InvalidOperationException("A base-path witness call has no acquired receiver.");
         var projected = this.types.Reference(SemanticsKind.Ref, declaring, receiver.Origin);
         call.SetReceiverProjection(operation with { ParameterType = projected, AdaptedType = projected, Kind = ArgumentOperationKind.BaseBorrow, BasePath = path, ObjectCompatibility = ConstraintProof.Proven }, path);
-    }
-
-    // SPEC 8.6.1: the Contract reference the call selected, as the instance's Type conforms to it: a Contract without Type
-    // arguments is its own reference, and a bound reference has its Type arguments instantiated (`Indexable<Name>`, or
-    // `C<E>` read as `C<i32>`). Null when the call recorded none or the instance has no such conformance.
-    private BindingSymbol? InstanceReference(CallPlan call, BoundType self, CallPlan outer)
-    {
-        if (call.RequirementContract is not { } recorded)
-        {
-            return null;
-        }
-
-        if (!IsBoundContractReference(recorded))
-        {
-            return recorded;
-        }
-
-        if (this.InstantiateStorageType(recorded.Type!, outer) is not { } concrete || self.Symbol is not { } owner || !this.conformancesByType.TryGetValue(owner, out var identities))
-        {
-            return null;
-        }
-
-        for (var i = 0; i < identities.Count; i++)
-        {
-            // A conformance of a generic Type names its reference in the Type's own parameters (`Self is Indexable<K>`).
-            if (identities[i].Contract.Type is { } formal && (ReferenceEquals(formal, concrete) || ReferenceEquals(this.StoredType(formal, self), concrete)))
-            {
-                return identities[i].Contract;
-            }
-        }
-
-        return null;
     }
 }
