@@ -2769,7 +2769,9 @@ structure is recorded here by the unit that first implements it.
   problems per code and subject node over bodies itself, reading only their named members (R4's 1c-8 will key them per body): a
   merged row whose bodies name different requirements (written `a|b`), MirReport's disagreement record (`Ownership.Internal`) and
   any pair outside the set are contract-break rows (B), never an exception. A matched pair whose requirements differ is a
-  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees. The classification table stays R4's.
+  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees. The classification table stays R4's;
+  with R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names, the A4 requirement
+  difference is (d) (`a4-requirement`) and the dead `a1-result` row goes.
   - Rejected: a code-to-requirement lookup on the MIR side (R5-M23 D7); throwing on a pair outside the set (the ledger would lose the
     run); comparing requirements in `location` pairs (their subject is the difference); keeping `-` on the MIR side (the comparison
     the package asks for).

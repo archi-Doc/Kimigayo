@@ -126,7 +126,7 @@ public sealed class MirDifferenceTest
 
     // R4-M47 (plan §8): a difference blocks the R4 exit when it is unsound, lies in a library body, or lies in a Binding-complete program
     // that holds a milestone's whole text; it stays open unless its signature is classified (a), (c) or (d). The library row's new
-    // signature is the tracked (d) row a1-c3.
+    // signature, whose MIR side names its requirement (R4-M67), is the tracked (d) row a1-c3.
     [Fact]
     public void BlockingRowsAreUnsoundOrInTheLibraryOrAMilestone()
     {
@@ -137,7 +137,7 @@ public sealed class MirDifferenceTest
             File.WriteAllText(Path.Combine(directory, "sources", "milestone.kimi"), "// Program.kimi\n" + DiagnosticCorpus.Milestone(1) + "\n");
             File.WriteAllText(Path.Combine(directory, "sources", "other.kimi"), "// Program.kimi\nlet x = 1\n");
             static string Row(string comparison, string side, string location, string sha, string form = "UnitLiteralKoto", string section = "complete")
-                => $"{comparison}\t{section}\t{side}\tA1\tUninitializedPlace_Kd\t{(side == "new" ? "-" : "Ownership.UninitializedUse")}\t{location}\t{form}\tProgram.kimi:0\t{sha}";
+                => $"{comparison}\t{section}\t{side}\tA1\tUninitializedPlace_Kd\tOwnership.UninitializedUse\t{location}\t{form}\tProgram.kimi:0\t{sha}";
             File.WriteAllLines(
                 Path.Combine(directory, "raw-1.tsv"),
                 [
@@ -153,13 +153,12 @@ public sealed class MirDifferenceTest
             var expected = new Dictionary<string, (string, string)>
             {
                 ["complete missing Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "1"),
-                ["complete acceptance Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
-                ["complete new - UnitLiteralKoto"] = ("2", "1"),
-                ["complete acceptance - UnitLiteralKoto"] = ("2", "1"),
-                ["complete new - IdentifierNameKoto"] = ("1", "1"),
-                ["complete acceptance - IdentifierNameKoto"] = ("1", "1"),
-                ["incomplete new - UnitLiteralKoto"] = ("1", "0"),
-                ["incomplete acceptance - UnitLiteralKoto"] = ("1", "0"),
+                ["complete acceptance Ownership.UninitializedUse UnitLiteralKoto"] = ("3", "1"),
+                ["complete new Ownership.UninitializedUse UnitLiteralKoto"] = ("2", "1"),
+                ["complete new Ownership.UninitializedUse IdentifierNameKoto"] = ("1", "1"),
+                ["complete acceptance Ownership.UninitializedUse IdentifierNameKoto"] = ("1", "1"),
+                ["incomplete new Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
+                ["incomplete acceptance Ownership.UninitializedUse UnitLiteralKoto"] = ("1", "0"),
             };
             Assert.Equal(expected, blocking);
             Assert.Contains("- Open blocking rows: 4 of 5 (an old rejection the MIR lacks 1, else a library body 1, else a milestone 2)\n", File.ReadAllText(Path.Combine(directory, "summary.md")));
