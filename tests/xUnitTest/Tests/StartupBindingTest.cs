@@ -31,6 +31,7 @@ public class StartupBindingTest
             Assert.Equal(StartupKind.Explicit, result.Kind);
             Assert.Same(GetMain(c).SymbolOf(), result.Symbol);
             Assert.Empty(c.Binding.StartupItems);
+            Assert.Null(c.Binding.CheckStartup(OutputKind.Library).Symbol);
         }
         else
         {

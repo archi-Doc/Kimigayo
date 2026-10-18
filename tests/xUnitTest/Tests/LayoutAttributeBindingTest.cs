@@ -173,6 +173,7 @@ public class LayoutAttributeBindingTest
     // AdtDef.IsCLayout: true exactly for a struct whose C layout validated, written for every struct in every pass.
     [Theory]
     [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32", true)]
+    [InlineData("#Layout(\"C\")\nstruct S<T>\n    var n: i32\n    var value: T", true)]
     [InlineData("#Layout(\"Kimigayo\")\nstruct S\n    var a: i32", false)]
     [InlineData("struct S\n    var a: i32", false)]
     [InlineData("#Layout(\"C\")\nopen struct S\n    var a: i32", false)]
