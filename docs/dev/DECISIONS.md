@@ -1929,6 +1929,27 @@ R5 on the owner's request of 2026-10-18.
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
   the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
+- **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
+  the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
+  refuses an instance whose stored Types nest more than 64 levels, A5 plan PD30's storage-nesting gap) is a property of each
+  instance. `StorageHeight(type, budget)` (`Binding.Structs.cs`) gives the levels the storage walk reaches below a Type (0 for a
+  scalar; 1 + its highest base, Field, Case payload Tuple or Type component), or -1 when a part does not substitute or the height
+  exceeds the budget; `PrepareTypeStorage` admits a height of at most 64 and is the one entry. New state:
+  `AdtDef.InstanceStorage.Height`, valid while `Prepared` is the current pass. A struct or enum is stamped at height 0 when the
+  walk enters it, so an instance reached again through its own storage counts 0; it keeps its height only once its base, Fields,
+  Cases and Type components all passed; one that fails keeps nothing and fails the query. A later query compares the kept height with
+  its own budget. Why: the stamp recorded success at the depth of the first walk and survived a failing Type component, so
+  `h<Box^62>` was the gap alone and an instance beside `h<Box^61>` in either order, a Type stored twice passed or failed by Field
+  order (`AB<Box^57, Box^4<Box^57>>`), and `Tag<Array^61<i32>>`, whose `T` no Field stores, was refused once, then admitted.
+  Known residual (pre-existing, as before BU-11; PLAN G153 (2)): a member of a storage cycle keeps the height computed with the
+  cycle cut at 0 where its first walk entered, so cyclic storage still depends on order: near the bound (`Option<rc/L<Box^61>>`
+  after `L<Box^61>`), and at any depth when the cycle's entry then fails, since the member's kept height counted the failed entry
+  as 0 (with `R<T> { x: X<T>, y: Box^200<T> }` and `X<T> { r: Option<rc/R<T>> }`, `h<X<i32>>` is the gap alone and passes after
+  `h<R<i32>>`); A2 removes both. The bound counts levels through handles, so a ring of 17 non-generic structs linked by
+  `Option<rc/…>` is refused. Rejected: clearing the stamp when a Type component fails, alone (the memo still ignores depth); no
+  memo below the root (exponential over shared parts, `Pair^25`); not keeping cycle members (exponential over mutually recursive
+  Types); heights shared per strongly connected component with a growth cap on the walk (A2) and inline-only preparation (B),
+  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7).
 
 ## R5 and R6 (adopted 2026-10-18)
 
