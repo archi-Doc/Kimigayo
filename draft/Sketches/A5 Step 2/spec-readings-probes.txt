@@ -1,0 +1,449 @@
+Unit 2x-S1 probes: old-path records (OLD) and shadow A5 problems (MIR) at dev 48a42168.
+Harness: artifacts/handoff/2026-10-18-pause/r4-scratch/1c-design/probe/Program.cs (main checkout), a scratch console app named
+Benchmark over a copy of Kimi.dll built from 48a42168 (dotnet build src/Kimi/Kimi.csproj -c Release); run: Benchmark.exe *.kimi.
+A file with no OLD or MIR line is accepted by both. Sources first, then the output.
+
+--- a1-replace-params.kimi
+func run(first: uniq/i32 during a, second: uniq/i32 during a)
+    var entries = [1: first@move]
+    match entries.insertOrReplace(1, second@move)
+        .Some(let item) => item@follow = 42
+        .None => $abort("missing")
+    require entries.length == 1 else => $abort("length")
+public func main() -> ()
+    var x: i32 = 1
+    var y: i32 = 2
+    run(x@uniq, y@uniq)
+
+--- a2-replace-local-write.kimi
+public func main() -> ()
+    var x: i32 = 1
+    var y: i32 = 2
+    var entries: Dictionary<i32, uniq/i32> = [:]
+    _ = entries.insertOrReplace(1, x@uniq)
+    match entries.insertOrReplace(1, y@uniq)
+        .Some(let item) => item@follow = 42
+        .None => $abort("missing")
+    x = 5
+    require entries.length == 1 else => $abort("length")
+
+--- a3-replace-local.kimi
+public func main() -> ()
+    var x: i32 = 1
+    var y: i32 = 2
+    var entries: Dictionary<i32, uniq/i32> = [:]
+    _ = entries.insertOrReplace(1, x@uniq)
+    match entries.insertOrReplace(1, y@uniq)
+        .Some(let item) => item@follow = 42
+        .None => $abort("missing")
+    require entries.length == 1 else => $abort("length")
+
+--- c1-same.kimi
+contract Source
+    associate Item
+func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)
+    S is Source
+    F is Callable<uniq, (uniq/S) -> S.Item>
+        effect preserves results
+    var f = one@move
+    let first = f(source)
+    let second = f(source)
+    return (first@move, second@move)
+public func main() => ()
+
+--- c2-replaced.kimi
+contract Source
+    associate Item
+func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)
+    S is Source
+    F is Callable<uniq, (uniq/S) -> S.Item>
+        effect preserves results
+    var f = one@move
+    let first = f(source)
+    f = two@move
+    let second = f(source)
+    return (first@move, second@move)
+public func main() => ()
+
+--- c3-other.kimi
+contract Source
+    associate Item
+func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)
+    S is Source
+    F is Callable<uniq, (uniq/S) -> S.Item>
+        effect preserves results
+    var f = one@move
+    let first = f(source)
+    var g = two@move
+    let second = g(source)
+    return (first@move, second@move)
+public func main() => ()
+
+--- g1-field.kimi
+struct Cell<E> {a}
+    public var link: uniq/E during a
+    public init(link: uniq/E during a) => self.link = link@move
+func f<s/T>(value: s/T, other: s/T, x: T) -> ()
+    s is owner or uniq
+    T is Copy
+    var v = value@move
+    var slot = other@move
+    var cell = Cell<s/T>.init(link: slot@uniq)
+    let child = v
+    cell.link@follow = child@move
+    _ = slot@follow
+    v@follow = x
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    f(n, m, 9)
+    f(n@uniq, m@uniq, 9)
+
+--- g2-box.kimi
+struct Box<E>
+    public var item: E
+    public init(item: E) => self.item = item@move
+func f<s/T>(value: s/T, other: s/T, x: T) -> ()
+    s is owner or uniq
+    T is Copy
+    var v = value@move
+    var slot = other@move
+    var box = Box<uniq/(s/T)>.init(item: slot@uniq)
+    let child = v
+    box.item@follow = child@move
+    _ = slot@follow
+    v@follow = x
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    f(n, m, 9)
+    f(n@uniq, m@uniq, 9)
+
+--- g3-counter.kimi
+struct Cell<E> {a}
+    public var link: uniq/E during a
+    public init(link: uniq/E during a) => self.link = link@move
+group Wrap
+    public func make<E>(link: uniq/(uniq/E during b) during a) -> Cell<E> during a
+        return Cell<E>.init(link: link@follow@follow@uniq)
+func g<T>(value: uniq/T during q, other: uniq/(uniq/T during q) during p, x: T) -> ()
+    T is Copy
+    var v = value@move
+    var slot = other@move
+    var cell = Wrap.make(slot@uniq)
+    let child = v
+    cell.link@follow = child@move
+    _ = slot@follow
+    v@follow = x
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    var r = m@uniq
+    g(n@uniq, r@uniq, 9)
+
+--- g4-direct.kimi
+func f<s/T>(value: s/T, other: s/T, x: T) -> ()
+    s is owner or uniq
+    T is Copy
+    var v = value@move
+    var slot = other@move
+    var link = slot@uniq
+    let child = v
+    link@follow = child@move
+    _ = slot@follow
+    v@follow = x
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    f(n, m, 9)
+    f(n@uniq, m@uniq, 9)
+
+--- g5-tuple-local.kimi
+func h(value: uniq/i32 during q, w: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p) -> ()
+    var v = value@move
+    var local = w@move
+    var t = (local@uniq, w2@move)
+    let child = v
+    t.0@follow = child@move
+    _ = local@follow
+    v@follow = 9
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    var k: i32 = 3
+    var r = k@uniq
+    h(n@uniq, m@uniq, r@uniq)
+
+--- g6-tuple-param.kimi
+func h(value: uniq/i32 during q, w: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p) -> ()
+    var v = value@move
+    var local = w@move
+    var t = (local@uniq, w2@move)
+    let child = v
+    t.1@follow = child@move
+    _ = local@follow
+    v@follow = 9
+public func main() -> ()
+    var n: i32 = 1
+    var m: i32 = 2
+    var k: i32 = 3
+    var r = k@uniq
+    h(n@uniq, m@uniq, r@uniq)
+
+--- h1-helper.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func reset(self: uniq/Self)
+contract StableSource: Source
+    effect Source.take preserves results
+func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    let second = Helpers.again(source)
+    return (first@move, second@move)
+group Helpers
+    public func again<T>(value: uniq/T) -> Option<T.Item>
+        T is Source
+        return value.take()
+public func main() => ()
+
+--- h2-launder.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func reset(self: uniq/Self)
+contract StableSource: Source
+    effect Source.take preserves results
+func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    let second = Helpers.again(source)
+    return (first@move, second@move)
+group Helpers
+    public func again<T>(value: uniq/T) -> Option<T.Item>
+        T is Source
+        value.reset()
+        return .None
+public func main() => ()
+
+--- h3-stable-helper.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func reset(self: uniq/Self)
+contract StableSource: Source
+    effect Source.take preserves results
+func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    let second = Helpers.again(source)
+    return (first@move, second@move)
+group Helpers
+    public func again<T>(value: uniq/T) -> Option<T.Item>
+        T is StableSource
+        return value.take()
+public func main() => ()
+
+--- h4-direct-other.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func reset(self: uniq/Self)
+contract StableSource: Source
+    effect Source.take preserves results
+func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    source.reset()
+    let second = source.take()
+    return (first@move, second@move)
+public func main() => ()
+
+--- h5-direct-same.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func reset(self: uniq/Self)
+contract StableSource: Source
+    effect Source.take preserves results
+func through<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    let second = source.take()
+    return (first@move, second@move)
+public func main() => ()
+
+--- p1-transfer.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+func keep<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    var held: Option<S.Item> = .None
+    let first = source.take()
+    held = first@move
+    let second = source.take()
+    return (held@move, second@move)
+public func main() => ()
+
+--- p2-transfer-call.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+group Stash
+    public func put<V>(slot: uniq/Option<V>, value: Option<V>) => slot@follow = value@move
+func keep<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    var held: Option<S.Item> = .None
+    let first = source.take()
+    Stash.put(held@uniq, first@move)
+    let second = source.take()
+    return (held@move, second@move)
+public func main() => ()
+
+--- p3-own-store.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+func keep<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    var spare1: Option<S.Item> = .None
+    var spare2: Option<S.Item> = .None
+    let first = source.takeInto(spare1@uniq)
+    _ = first@move
+    let second = source.takeInto(spare2@uniq)
+    return (spare1@move, second@move)
+public func main() => ()
+
+--- p3b-own-store-take-only.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+func keep<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is Source
+    var spare1: Option<S.Item> = .None
+    var spare2: Option<S.Item> = .None
+    let first = source.takeInto(spare1@uniq)
+    _ = first@move
+    let second = source.takeInto(spare2@uniq)
+    return (spare1@move, second@move)
+public func main() => ()
+
+--- p4-take-late.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+func late<S>(source: uniq/S) -> Option<S.Item>
+    S is Source
+    let first = source.take()
+    _ = first@move
+    let second = source.take()
+    return second@move
+public func main() => ()
+
+--- p5-take-two.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+func two<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is StableSource
+    let first = source.take()
+    let second = source.take()
+    return (first@move, second@move)
+public func main() => ()
+
+--- p5b-take-two-only.kimi
+contract Source
+    associate Item
+    func take(self: uniq/Self) -> Option<Self.Item>
+    func takeInto(self: uniq/Self, spare: uniq/Option<Self.Item>) -> Option<Self.Item>
+contract StableSource: Source
+    effect Source.take preserves results
+    effect Source.takeInto preserves results
+func two<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is Source
+    let first = source.take()
+    let second = source.take()
+    return (first@move, second@move)
+public func main() => ()
+
+=== output
+=== a1-replace-params.kimi
+OLD  ComparisonLoanConflict_Kd (ComparisonLoanConflict) | run: item
+=== a2-replace-local-write.kimi
+OLD  ComparisonLoanConflict_Kd (ComparisonLoanConflict) | main: item
+OLD  ComparisonLoanConflict_Kd (ComparisonLoanConflict) | main: x = 5
+MIR  ComparisonLoanConflict_Kd views=0x1 | main: x = 5
+       Anchor: main: x@uniq
+       Use: main: entries.length
+=== a3-replace-local.kimi
+OLD  ComparisonLoanConflict_Kd (ComparisonLoanConflict) | main: item
+=== c1-same.kimi
+OLD  Unsupported_Kd (Unsupported) | twice: f(source)
+=== c2-replaced.kimi
+OLD  Unsupported_Kd (Unsupported) | twice: f(source)
+=== c3-other.kimi
+OLD  CallEffectConflict_Kd (CallEffectConflict) | twice: g(source)
+=== g1-field.kimi
+MIR  ComparisonLoanConflict_Kd views=0x2 | f: v@follow = x
+       Anchor: f: v
+       Store: f: v@follow = x
+=== g2-box.kimi
+MIR  ComparisonLoanConflict_Kd views=0x2 | f: v@follow = x
+       Anchor: f: v
+       Store: f: v@follow = x
+=== g3-counter.kimi
+MIR  ComparisonLoanConflict_Kd views=0x1 | g: v@follow = x
+       Anchor: g: v
+       Store: g: v@follow = x
+=== g4-direct.kimi
+=== g5-tuple-local.kimi
+MIR  ComparisonLoanConflict_Kd views=0x1 | h: v@follow = 9
+       Anchor: h: v
+       Store: h: v@follow = 9
+=== g6-tuple-param.kimi
+MIR  ComparisonLoanConflict_Kd views=0x1 | h: v@follow = 9
+       Anchor: h: v
+       Store: h: v@follow = 9
+=== h1-helper.kimi
+OLD  CallEffectConflict_Kd (CallEffectConflict) | through: Helpers.again(source)
+=== h2-launder.kimi
+OLD  CallEffectConflict_Kd (CallEffectConflict) | through: Helpers.again(source)
+=== h3-stable-helper.kimi
+OLD  CallEffectConflict_Kd (CallEffectConflict) | through: Helpers.again(source)
+=== h4-direct-other.kimi
+OLD  CallEffectConflict_Kd (CallEffectConflict) | through: source.reset()
+=== h5-direct-same.kimi
+=== p1-transfer.kimi
+=== p2-transfer-call.kimi
+=== p3-own-store.kimi
+=== p3b-own-store-take-only.kimi
+=== p4-take-late.kimi
+=== p5-take-two.kimi
+=== p5b-take-two-only.kimi
+OLD  CallEffectConflict_Kd (CallEffectConflict) | two: source.take()
