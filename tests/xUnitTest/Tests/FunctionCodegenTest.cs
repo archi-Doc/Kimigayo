@@ -52,8 +52,8 @@ public sealed class FunctionCodegenTest
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty);
 
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
-    // local; an integer constant is its value's two's complement at its width, stored into its local's slot. The entry calls the startup
-    // item, then __kimi_exit(0).
+    // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
+    // entry and the profile attributes for both generators).
     [Fact]
     public void EachLocalOfNonzeroSizeHasOneSlot()
     {
@@ -72,18 +72,17 @@ public sealed class FunctionCodegenTest
             ],
             body.Instructions.Where(static x => x.Opcode == "store").Select(static x => (x.Shape, x.Operands[^1])));
         Assert.DoesNotMatch(@"store i1\b", text);
-        var start = ir.Function("__kimi_start");
-        Assert.Equal(["noreturn", .. body.Attributes], start.Attributes);
-        Assert.Equal(["call void @()", "call void @(i32 0)", "unreachable"], Assert.Single(start.Blocks).Instructions.Select(static x => x.Shape));
-        Assert.Same(ir.Function("__kimi_exit"), start.Instructions[1].Callee);
     }
 
     // I2: a Value argument is stored into its local's slot (bool widened), a pointer-passed argument is its local's home, a zero-sized one has
-    // no parameter; a bool result is narrowed to be returned.
+    // no parameter; a bool result is narrowed to be returned. I1: values %t<n>, slots %l<local> and arguments %a<slot> are numbered per
+    // function.
     [Fact]
     public void ArgumentsLiveInTheirLocalsHomes()
     {
-        var ir = GeneratedIr.Parse(Generate("func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\n()"));
+        var text = Generate("func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\n()");
+        Assert.Contains("  %t0 = zext i1 %a0 to i8\n  store i8 %t0, ptr %l1, align 1\n  store i64 %a1, ptr %l2, align 8\n", text);
+        var ir = GeneratedIr.Parse(text);
         var f = ir.Single("internal i1 (i1, i64, ptr noundef nonnull align 8 dereferenceable(24))");
         var entry = f.Blocks[0].Instructions;
         Assert.Equal(

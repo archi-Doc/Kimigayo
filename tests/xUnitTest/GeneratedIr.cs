@@ -285,6 +285,10 @@ internal sealed partial class GeneratedIr
             {
                 attributes.AddRange(group);
             }
+            else if (token[0] == '#')
+            {
+                Assert.Fail($"Attribute group {token} is not defined.");
+            }
             else
             {
                 attributes.Add(token);

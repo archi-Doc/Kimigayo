@@ -38,15 +38,22 @@ public sealed class GeneratedIrTest
         attributes #1 = { nounwind }
         """;
 
-    // The same requirement on the text of each generator: the ABI of the signatures (IMPL 21.3), a Never function that loops without a
-    // return (IMPL 21.3.1), constants in two's complement at their width stored into slots of their Type (IMPL 21.1.3), the entry's
-    // startup call and __kimi_exit(0), and no termination claim, though every function, value and label is named differently.
+    // The windows-x64 profile of a definition: Windows x64 unwind information and the baseline x86-64 CPU with SSE2 and no other feature
+    // (IMPL 21.4.1), denormals not flushed (IMPL 21.2).
+    private static readonly string[] Profile =
+        ["uwtable(async)", "\"target-cpu\"=\"x86-64\"", "\"target-features\"=\"+sse2\"", "\"denormal-fp-math\"=\"ieee,ieee\""];
+
+    // The same requirement on the text of each generator: every definition's profile attributes (IMPL 21.4.1 and 21.2), the ABI of the
+    // signatures (IMPL 21.3), a Never function that loops without a return (IMPL 21.3.1), constants in two's complement at their width
+    // stored into slots of their Type (IMPL 21.1.3), the entry's startup call and __kimi_exit(0) (IMPL 21.4.2), and no termination claim,
+    // though every function, value and label is named differently.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void OneRequirementHoldsForBothGenerators(bool mir)
     {
         var ir = GeneratedIr.Parse(Generate(Program, mir));
+        Assert.All(ir.Functions.Where(static x => x.Blocks.Count != 0), static x => Assert.All(Profile, y => Assert.Contains(y, x.Attributes)));
         ir.Single("internal i1 (i1, i64, ptr noundef nonnull align 8 dereferenceable(24))");
         Assert.DoesNotContain(ir.Single("internal void (ptr)").Instructions, static x => x.Opcode == "alloca");
         var stop = Assert.Single(ir.Functions, static x => x.Signature == "internal void ()" && x.Attributes.Contains("noreturn"));
@@ -111,7 +118,7 @@ public sealed class GeneratedIrTest
         ir.AssertNoTerminationClaim();
     }
 
-    // A signature selects exactly one function; a name read but defined nowhere fails the reading.
+    // A signature selects exactly one function; a value or an attribute group read but defined nowhere fails the reading.
     [Fact]
     public void ASelectionIsExact()
     {
@@ -119,6 +126,8 @@ public sealed class GeneratedIrTest
         Assert.ThrowsAny<XunitException>(() => ir.Single("internal void ()"));
         Assert.ThrowsAny<XunitException>(() => ir.Single("internal i32 ()"));
         Assert.ThrowsAny<XunitException>(() => GeneratedIr.Parse("define internal i32 @a() {\nentry:\n  ret i32 %missing\n}"));
+        Assert.ThrowsAny<XunitException>(() => GeneratedIr.Parse("define internal void @a() #0 {\nentry:\n  ret void\n}"));
+        Assert.ThrowsAny<XunitException>(() => GeneratedIr.Parse("declare void @g()\ndefine internal void @a() {\nentry:\n  call void @g() #1\n  ret void\n}"));
     }
 
     // The program's text under one generator, whatever the process's: the old one or MIR code generation (sel).
