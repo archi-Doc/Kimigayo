@@ -1928,7 +1928,38 @@ R5 on the owner's request of 2026-10-18.
   7.3 to be read) and an exclusive base receiver even on a local (`Unsupported_Kd`), so neither reaches the selection;
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
-  the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
+  the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409), fixed by BU-10. Not temporary.
+- **BU-10** (2026-10-19; the BU planning session; PLAN G147 (2b): designs 1 (B) and 2 (E) compared, an independent design review
+  chose E with corrections (E′), adopted by the planning session; the owner's D5 exception and guard the same day) `r[k]` designates
+  the referent of its selection reference (SPEC 4.7.1, 4.7.2); a member below it continues through the element's own safe
+  value-reference layers (3.4.3), as below a local of Type `sel/E`: its Origin is 10.2's one shared reference, its authority the meet
+  of the selection and each layer (15.6.2), never a Take (15.1.5). A receiver's recorded in-place read is one shared reference to the
+  Type declaring the selected member: for an element storing safe layers, the selection's reference continued through them
+  (`ElementRead`, recorded by `ReceiverElement` for a user index and by `SharedElement` before its one-layer collapse; all in
+  `Binding.PlaceAuthority.cs`, split from `Binding.ArgumentOperations.cs` with behavior unchanged). The read is a representation,
+  never a layer: `ElementAccess.IsSynthesizedAccess` recognizes a SharedBorrow of the node's own Type or of the terminal its layers
+  reach (both shapes: one comparison against `ComparisonReferent` alone would also reclassify the `ref/E` read of an element whose
+  terminal is no struct or Tuple, such as `uniq/Array<i32>`); `PathAuthority`'s member arm reads the root Place's own Type
+  (`LayerAuthority`), its `IsUserIndex`, `IsSynthesizedAccess` and `AccessType` reads deleted; `AccessType`'s exclusive upgrade is
+  refused when the Place's own Type has a shared layer and taken when the path continued through the Place's own layers is Uniq
+  (`ReferentAuthority`; the review's correction: an owned `Array<uniq/S>` element, `var` or `let`, is Uniq through its stored
+  reference). Why: `ReceiverElement` recorded `ref/E`, the selection, for any E, and every reader peeled one layer from it, so with
+  E `uniq/Point` `entries[1].inner` was no Place (the MIR copied `inner` before its `&uniq`: a lost mutation), `PathAuthority`
+  answered Owner (Binding accepted `keep(entries[1].inner@move)` and a write through a `ref/Point` element), `entries[1].0` was
+  `Unsupported_Kd` and the old path faulted; `SharedElement`'s collapse was read as a shared layer (`vals[0].n = 5` on
+  `Array<uniq/Point>` rejected). D5 exception (owner, 2026-10-19, "Exception + old-analysis guard"): the old paths accept the forms
+  the correction makes valid where the old Emission generates them (checked natively at O0: parts below one stored layer of a user
+  index's element as receivers, writes, updates, Tuple elements and returned borrows, and shared reads below a built-in element);
+  the guard in `OwnershipAnalysis.Receiver` reports the located `Unsupported_Kd` at the element for a recorded read reaching through
+  more than one stored layer, or exclusively through a built-in element's stored reference, the old Emission's limit ("Reborrow has
+  no matching reference source"), and goes with the old analysis at R6-check. Rejected: A, `IsBarePlace` reading the node's Type for
+  a synthesized read (one form; `PathAuthority` stays Owner, so Take and writes through `ref/` stay accepted); B, no read for a
+  layered element (drops the selection's dependency: `return entries[1].inner@uniq` through `uniq/Dictionary<i32, uniq/Point during
+  a>` accepted `during a`, unsound); C, Binding's predicates no longer reading a recorded read (rewrites ten `ElementAccess` readers
+  that the old path shares; the direction for R6-check and R7); D, a separate published element-Place fact (R7). Open: `let`-owned
+  subscripts (BU-8); a direct receiver through a built-in element's stored `uniq/` (`vals[0].bump()`) passes checking and fails
+  generation, pre-existing and not a recorded read; a receiver through two stored layers stays `NoApplicableOverload_Kd` (BU-8).
+  Temporary: the guard (R6-check).
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
   refuses an instance whose stored Types nest more than 64 levels, A5 plan PD30's storage-nesting gap) is a property of each

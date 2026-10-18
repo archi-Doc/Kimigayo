@@ -189,8 +189,10 @@ first. IntrinsicId returns to 30 at R8.
 
 - **Freeze (D5).** From R0 until R6 completes (Emission until R6-gen, Analysis until R6-check; DECISIONS R4-M35), the old
   Analysis and Emission paths receive no new accepted forms or generation features. Allowed: deletion, miscompile fixes
-  mirrored on the new path, the mechanical follow-up that a stage of the plan names, and the owner's exception for the Place
-  result removal (DECISIONS PR-1).
+  mirrored on the new path, the mechanical follow-up that a stage of the plan names, the owner's exception for the Place
+  result removal (DECISIONS PR-1), and the owner's exception for G147 (2b): the old paths accept the forms its Binding
+  correction makes valid where the old Emission generates them, and the old analysis's guard reports the rest as
+  `Unsupported_Kd` until R6-check (DECISIONS BU-10).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.

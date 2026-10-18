@@ -413,6 +413,17 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
+            // DECISIONS BU-10 (removed with the old path at R6-check): the old Emission reborrows the reference an element stores only
+            // one layer deep, and exclusively only through a user index's selected call (a built-in element's stored exclusive reference
+            // is not Reborrowed, STATUS); a read reaching through more of the element's layers has no matching reference source there.
+            var read = adaptation.Type.Components[0];
+            if (root.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } element && !ReferenceEquals(read, element) &&
+                (!ReferenceEquals(read, stored) || (exclusive && !ElementAccess.IsUserIndex(root))))
+            {
+                this.Unsupported(root);
+                return -1;
+            }
+
             return this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!);
         }
 

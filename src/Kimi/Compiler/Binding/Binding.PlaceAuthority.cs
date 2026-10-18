@@ -7,15 +7,17 @@ namespace Kimi.Compiler;
 // Place authority (SPEC 3.4, 3.4.3, 3.5, 3.6, 13.5.5, 15.1.5, 15.6.2): what an expression is as a Place and what its path grants.
 // - Responsibility: whether an expression is a bare Place (IsBarePlace) or a Temporary Value a borrow may materialize
 //   (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
-//   capability it denies (AccessFailure); whether a Place offers Take (OffersTake, and TakeJudgment for a repair candidate) and may be
-//   borrowed in a mode (BorrowablePlace, BorrowableHandle); and the in-place read Binding records for a receiver selected below a
-//   Place (ReceiverThroughLayers, ReceiverElement, SharedElement, SharedElementView) or for a compared operand (CompareInPlace).
+//   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a Place offers
+//   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle); and
+//   the in-place read Binding records for a receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement,
+//   SharedElementView; ElementRead through the layers an element stores) or for a compared operand (CompareInPlace).
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability) and a named root's mutability (Writable).
 // - Outputs: the predicates above, and the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which
 //   ElementAccess.AccessType and IsSynthesizedAccess publish to Binding, the HIR publisher and the old paths.
 // - Invariants: one path computation decides writes, Moves and borrows; a shared layer anywhere on a path bounds it to Read; a node
-//   keeps its own Type, and a recorded read only states how the node is read in place.
+//   keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the Type declaring
+//   the member, never a layer (a path's layer below a Place is its own Type's, LayerAuthority).
 // - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure names), selects a candidate or changes
 //   a Type.
 public sealed partial class Binding
@@ -66,8 +68,8 @@ public sealed partial class Binding
     // SPEC 3.4, 13.5.5, 15.1.5: the access a Place's path grants, computed once for writes, Moves and borrows. Owner is a
     // direct path (a local, parameter or static and their inline parts), Uniq a path through an exclusive reference or
     // objuniq view, and Ref a path through a shared layer: a ref reference, a Slice element, an objref, rc or arc view or
-    // a guard candidate. A shared layer anywhere on the path bounds it to shared access; the path never changes the Type. A
-    // synthesized shared access of a base Place is representation, not a layer: the path continues through that base.
+    // a guard candidate. A shared layer anywhere on the path bounds it to shared access; the path never changes the Type. Below a
+    // base Place, the layers are those of the base's own Type (SPEC 3.4.3); a recorded in-place read of it is representation.
     internal static SemanticsKind PathAuthority(Koto source)
     {
         var authority = SemanticsKind.Owner;
@@ -110,7 +112,7 @@ public sealed partial class Binding
                     break;
                 case MemberAccessKoto member when ElementAccess.BorrowedPathRoot(member) is { } root:
                     next = root;
-                    layer = ElementAccess.IsUserIndex(root) || ElementAccess.IsSynthesizedAccess(root) ? null : ElementAccess.AccessType(KotoHelper.UnwrapParentheses(root))?.Semantics;
+                    layer = LayerAuthority(KotoHelper.UnwrapParentheses(root).BoundType);
                     break;
                 case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
                     next = part.Left; // An inline part shares its owner's path.
@@ -134,12 +136,18 @@ public sealed partial class Binding
         return authority;
     }
 
-    // SPEC 15.6.2: access through a shared reference cannot grant exclusive
-    // authority, even to an exclusive reference stored below it.
-    private static bool ReachedThroughShared(Koto source) => PathAuthority(source) == SemanticsKind.Ref;
+    // SPEC 3.4.3, 15.6.2: the access a Place's path grants to what the Place's own safe reference layers reach: its path's, bounded
+    // by a shared layer of the Place's Type and exclusive through an exclusive one.
+    internal static SemanticsKind ReferentAuthority(Koto place)
+        => (PathAuthority(place), LayerAuthority(place.BoundType)) switch
+        {
+            (SemanticsKind.Ref, _) or (_, SemanticsKind.Ref) => SemanticsKind.Ref,
+            (_, SemanticsKind.Uniq) => SemanticsKind.Uniq,
+            var (path, _) => path,
+        };
 
     // SPEC 3.4.3: whether selection through the Type's reference layers passes a shared layer.
-    private static bool HasSharedLayer(BoundType? type)
+    internal static bool HasSharedLayer(BoundType? type)
     {
         for (; type is { Kind: BoundTypeKind.Semantics, Components.Count: 1 }; type = type.Components[0])
         {
@@ -151,6 +159,16 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // SPEC 15.6.2: access through a shared reference cannot grant exclusive
+    // authority, even to an exclusive reference stored below it.
+    private static bool ReachedThroughShared(Koto source) => PathAuthority(source) == SemanticsKind.Ref;
+
+    // SPEC 3.4.3, 15.6.2: the layer a Place's own Type adds to a path below the Place: Ref when its reference layers pass a shared
+    // one, Uniq for an exclusive reference or objuniq view, none for an owned Type.
+    private static SemanticsKind? LayerAuthority(BoundType? type)
+        => HasSharedLayer(type) ? SemanticsKind.Ref
+            : type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } ? SemanticsKind.Uniq : null;
 
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
     // exclusive reference grants Read and Write but not Take, and otherwise the binding itself forbids the access.
@@ -252,13 +270,16 @@ public sealed partial class Binding
         return reference;
     }
 
-    // SPEC 3.4.3, 4.8.2: a member selected below a Non-Copy element of a Slice or borrowed array is reached through one
-    // shared borrow of that element Place. The element keeps its stored Type; the borrow is the receiver's adaptation.
+    // SPEC 3.4.3, 4.7.1, 4.8.2: a member selected below a user index's element, or below a Non-Copy element of a Slice or borrowed
+    // array, is reached through one shared read of that element Place, continued through the layers it stores (ElementRead). The
+    // element keeps its stored Type; the read is the receiver's adaptation.
     private void ReceiverElement(Koto left, BoundType? element)
     {
         if (ElementAccess.IsUserIndex(left) && element is not null)
         {
-            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Reference(SemanticsKind.Ref, element, this.PlaceOrigin(left)));
+            var origin = this.PlaceOrigin(left);
+            var read = this.ElementRead(element, origin) ?? this.types.Reference(SemanticsKind.Ref, element, origin);
+            this.adaptations[left] = new(ExpectedAdaptationKind.SharedBorrow, read);
             return;
         }
 
@@ -318,9 +339,19 @@ public sealed partial class Binding
         {
             var origin = this.PlaceOrigin(receiver);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
-            this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: element.Origin is { } dependency ? this.Meet(origin, dependency) : origin));
+            var dependency = element.Origin is { } stored ? this.Meet(origin, stored) : origin;
+            var read = this.ElementRead(element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
+            this.adaptations[node] = new(ExpectedAdaptationKind.SharedBorrow, read);
         }
     }
+
+    // SPEC 3.4.3, 10.2: the in-place read of an element storing safe reference layers, below which a member is selected: one shared
+    // reference to the declaring struct or Tuple, the element's selection reference (with the selection's Origin) continued through
+    // those layers; null for any other element. It is the selection's representation, never a layer (ElementAccess.IsSynthesizedAccess).
+    private BoundType? ElementRead(BoundType element, BoundOrigin selection)
+        => ComparisonReferent(element) is var terminal && !ReferenceEquals(terminal, element) &&
+            (terminal.Kind == BoundTypeKind.Tuple || AdtDef.IsStruct(terminal))
+            ? this.SharedReferenceThroughLayers(this.types.Reference(SemanticsKind.Ref, element, selection), terminal, out _) : null;
 
     // SPEC 13.5.5, 13.5.6: an owning handle lends its object or payload from a borrowable Place or from a Temporary Value
     // materialized for the operation; the handle's own authority (shared for rc/arc) is checked by the caller.

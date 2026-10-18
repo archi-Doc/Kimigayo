@@ -410,6 +410,60 @@ public sealed class HirColumnsTest
         static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
     }
 
+    // SPEC 3.4.3, 4.7.1, 7.3, 15.1.6 (PLAN G147 (2b)): a part below an element storing reference layers is a Place reached through those
+    // layers, as below a local of the element's Type: a receiver borrows it in place in the receiver's mode and a Subject in place.
+    [Fact]
+    public void APartBelowAStoredReferenceIsAPlace()
+    {
+        const string Source = """
+            struct Inner
+                public var x: i32 = 0
+                public init() => ()
+                public func mutate(self: uniq/Self) => self.x = 7
+                public func look(self) -> i32 => self.x
+            struct Point
+                public var inner: Inner = Inner.init()
+                public var opt: Option<string> = .None
+                public init() => ()
+                public func bump(self: uniq/Self) => self.inner.x += 1
+            func parts(value: uniq/Point during a) -> i32
+                var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]
+                entries[1].inner.mutate()
+                entries[1].bump()
+                match entries[1].opt
+                    .Some(let s) => return 0
+                    .None => return entries[1].inner.look()
+            func layers(value: uniq/(uniq/Point during a) during b)
+                var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]
+                entries[1].inner.mutate()
+            func tuples(value: uniq/(Inner, i32) during a)
+                var entries: Dictionary<i32, uniq/(Inner, i32) during a> = [1: value@move]
+                entries[1].0.mutate()
+            func local(p: uniq/Point) => p.inner.mutate()
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        string[] parts = ["entries[1].inner", "entries[1].opt", "entries[1].0", "p.inner"];
+        var adjusted = Reachable(c.Kotonoha).Where(x => x.Span.Start >= Source.IndexOf("func parts", StringComparison.Ordinal) && parts.Contains(Text(x)))
+            .Select(x => $"{Line(x.Span.Start)}: {Text(x)} {HirTables.AdjustOf(x).Acquire}/{HirTables.AdjustOf(x).Adaptation}");
+        string[] expected =
+        [
+            "entries[1].inner.mutate(): entries[1].inner None/ExclusiveBorrow", "match entries[1].opt: entries[1].opt None/SharedBorrow",
+            ".None => return entries[1].inner.look(): entries[1].inner None/SharedBorrow", "entries[1].inner.mutate(): entries[1].inner None/ExclusiveBorrow",
+            "entries[1].0.mutate(): entries[1].0 None/ExclusiveBorrow", "func local(p: uniq/Point) => p.inner.mutate(): p.inner None/ExclusiveBorrow",
+        ];
+        Assert.Equal(expected, adjusted);
+        var element = Reachable(c.Kotonoha).Single(x => Text(x) == "entries[1]" && Line(x.Span.Start) == "entries[1].bump()");
+        Assert.Equal(new HirAdjust(HirAcquire.Reborrow, HirAdaptation.None), HirTables.AdjustOf(element)); // SPEC 3.4.3: the stored uniq/Point.
+
+        static string Text(Koto node) => Source.Substring(node.Span.Start, node.Span.Length);
+
+        static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
+    }
+
     // SPEC 4.7, 4.9.5, 6.3.6, 11.3: an accessor's executing function takes its receiver and its input (a static setter only its input),
     // an implicit constructor of a derived structure initializes its Fields and calls the base constructor its omitted base clause selects,
     // and each sequence metadata member is published with its form.

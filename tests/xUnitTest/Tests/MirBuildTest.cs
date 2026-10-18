@@ -1044,6 +1044,23 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 3.4.3, 4.7.1, 7.3 (PLAN G147 (2b)): a receiver below an element storing an exclusive reference is borrowed in place, through the
+    // selected call's reference and the stored one, never through a copy, so the call's write reaches the element's referent.
+    [Fact]
+    public void AReceiverBelowAStoredReferenceIsBorrowedInPlace()
+    {
+        var program = Compile("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +
+            "struct Point\n    public var inner: Inner = Inner.init()\n    public init() => ()\nfunc f(value: uniq/Point during a)\n" +
+            "    var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]\n    entries[1].inner.mutate()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var body = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
+        Assert.Matches(@"= &uniq two-phase \(\*\(\*_\d+\)\)\.0: uniq/Inner", body);
+        Assert.DoesNotContain("copy (*(*", body, StringComparison.Ordinal);
+    }
+
     // SPEC 3.4, 13.7: Binding designates a Property target through its parentheses, so an update or assignment of a parenthesized
     // Property builds as the unparenthesized one does (its syntax ids aside), whichever of its accessors is custom.
     [Theory]
