@@ -47,10 +47,12 @@ public sealed partial class Binding
     // SPEC 8.6.1: the Contract reference a requirement call selected, as Self's Type conforms to it, for the CallPlan materializer and
     // TyCtxt.Witness: a Contract without Type arguments is its own reference; a bound reference, given in the instance (`reference`:
     // `Indexable<Name>`, or `C<E>` read as `C<i32>`; a call's substitution holds it as its declaring Type), is the conformance of
-    // Self's Type that names it. Null when the call recorded none or no instantiated reference names a conformance of Self's Type.
+    // Self's Type that names it. A requirement's function item records its reference as a Type (TyCtxt.Witness(item)), so its Contract
+    // declaration with a reference of that declaration in the instance is that reference (DECISIONS R5-M70). Null when the call recorded
+    // none or no instantiated reference names a conformance of Self's Type.
     internal BindingSymbol? InstanceContract(BindingSymbol? recorded, BoundType self, BoundType? reference)
     {
-        if (recorded is null || !IsBoundContractReference(recorded))
+        if (recorded is null || (!IsBoundContractReference(recorded) && !ReferenceEquals(reference?.Symbol, recorded)))
         {
             return recorded;
         }

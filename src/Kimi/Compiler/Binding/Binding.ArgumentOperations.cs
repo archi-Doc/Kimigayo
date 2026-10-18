@@ -861,7 +861,7 @@ public sealed partial class Binding
         }
 
         // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local.
-        return source is IdentifierNameKoto && source.BoundSymbol?.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.Capture or BindingSymbolKind.PatternCandidate && (!exclusive || Writable(source));
+        return source is IdentifierNameKoto && IsBarePlace(source) && (!exclusive || Writable(source));
     }
 
     /// <summary>
@@ -880,9 +880,9 @@ public sealed partial class Binding
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
-        if (ReferenceEquals(actual, BoundType.Never))
+        if (ReferenceEquals(actual, BoundType.Never) && !explicitBorrow)
         {
-            return true; // A noncompleting argument forms no borrow or reference value.
+            return true; // A noncompleting argument forms no borrow or reference value; an explicit borrow names a Place (IsNeverValue).
         }
 
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&

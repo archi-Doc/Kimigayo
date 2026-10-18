@@ -177,6 +177,12 @@ public sealed partial class Binding
             return CandidateApplicability.Pending;
         }
 
+        if (this.AwaitsPosition(node) && this.LateTypeOf(node, type) is { } late && this.FitsStructurallyAt(late, type, use))
+        {
+            operation = new(part, late, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact); // SPEC 14.9.2 step 3: it takes the Type.
+            return CandidateApplicability.Applicable;
+        }
+
         if (this.ErasureSignatureFits(actual, type, node))
         {
             // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an initialization; its receiver
