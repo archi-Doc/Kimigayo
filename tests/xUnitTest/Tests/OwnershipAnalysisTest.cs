@@ -298,7 +298,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void ReanalysisClearsPreviousFlowResults()
     {
-        var invalid = Parse("func f() -> i32\n    ()");
+        var invalid = Parse("func f()\n    require true else => ()\n    ()");
         var valid = Parse("let x = 1");
         var flow = invalid.AnalyzeControlFlow();
         Assert.NotEmpty(flow.Issues);

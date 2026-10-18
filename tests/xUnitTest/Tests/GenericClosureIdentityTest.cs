@@ -40,6 +40,25 @@ public class GenericClosureIdentityTest
         Assert.Empty(first.Components);
     }
 
+    // DECISIONS R5-M36, S2-S4 X10: two closures of equal result Type in one generic instance share the instance's context, and the old
+    // generator's bridge keeps one call per closure, the same at every request, so each instance runs each closure's own body.
+    [Fact]
+    public void TwoClosuresOfOneInstanceKeepTheirOwnBodies()
+    {
+        const string Source = "func pair<T>(value: T) -> i32\n    T is Copy\n    let first = func [] (x: T) -> i32 => 1\n    let second = func [] (x: T) -> i32 => 2\n" +
+            "    return first(value) * 10 + second(value)\nrequire pair(3) == 12 and pair(true) == 12 else => $abort(\"two closures\")";
+        var c = MinimalEmissionTest.Analyze(Source);
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var call = nodes.OfType<InvocationKoto>().First(static x => x.CallOf()?.Target.Name == "pair").CallOf()!;
+        var closures = nodes.OfType<FunctionKoto>().Where(static x => x.IsAnonymous).Select(x => c.Binding.InstantiateStorageType(x.ClosureOf()!.EnvironmentType!, call)!).ToArray();
+        Assert.Equal(2, closures.Length);
+        Assert.Same(closures[0].ClosureContext, closures[1].ClosureContext);
+        Assert.Same(c.Types.SubstOf(call), closures[0].ClosureContext);
+        Assert.NotSame(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[1]));
+        Assert.Same(c.Binding.ClosureCall(closures[0]), c.Binding.ClosureCall(closures[0]));
+        ScalarEmissionTest.EmitFixture("GenericClosureIdentityTwo", Source, string.Empty);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false, 0, 0, "")]

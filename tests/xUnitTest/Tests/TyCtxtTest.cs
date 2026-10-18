@@ -29,7 +29,8 @@ public sealed class TyCtxtTest
 
     // An Origin-generic function; a generic function with a closure and its specialization with one; a length-generic function with a
     // default; named functions nested one and two levels in a generic function and one in a block of it; one nested in a nongeneric function;
-    // a generic struct whose method nests a function, with an accessor; a nongeneric struct with an accessor; a group's static.
+    // a generic struct whose method nests a function, with an accessor and a generic method whose specialization has a closure and a nested
+    // function (the F3 reproducer spec2.kimi); a nongeneric struct with an accessor; a group's static.
     private const string InstanceSource = "func plain(value: ref/i32 during a) -> ref/i32 during a => value\n" +
         "func pass<T>(value: T) -> T\n    T is Copy\n    let keep = func [] (inner: T) -> T => inner\n    return keep(value)\n" +
         "specialize func pass<i32>(value: i32) -> i32\n    let keep = func [] (inner: i32) -> i32 => inner\n    return keep(value)\n" +
@@ -40,6 +41,8 @@ public sealed class TyCtxtTest
         "struct Box<T>\n    T is Copy\n    public var value: T\n    public computed current: T\n        get() -> T => self.value\n" +
         "    public init(value: T) => self.value = value\n    public func get(self: ref/Self) -> T\n        func local() -> i32 => 1\n" +
         "        _ = local()\n        return self.value\n" +
+        "    public func f<U>(self: ref/Self, x: U) -> T => self.value\n    specialize func f<i32>(self: ref/Self, x: i32) -> T\n" +
+        "        let g = func [] (y: T) -> T => y\n        func nested() -> i32 => 1\n        _ = nested()\n        return g(self.value)\n" +
         "struct Fixed\n    public var value: i32\n    public computed current: i32\n        get() -> i32 => self.value\n    public init(value: i32) => self.value = value\n" +
         "group Limits\n    public let limit: i32 = seed()\n    public func seed() -> i32 => 3\n";
 
@@ -153,8 +156,10 @@ public sealed class TyCtxtTest
     }
 
     // SPEC 6.1.3, 8.13, 8.15.1: the body of every MIR key symbol is instantiated exactly when the symbol or a declaration enclosing it has a
-    // Type, Semantics or length slot, even an unused one, with no specialization between them; an Origin slot does not count. A named
-    // function nested two levels or in a block of a generic function, or in a generic struct's method, is instantiated as one level is.
+    // Type, Semantics or length slot, even an unused one; an Origin slot does not count. A named function nested two levels or in a block of a
+    // generic function, or in a generic struct's method, is instantiated as one level is; a specialization declares no slot (SPEC 8.13.1), so a
+    // top-level one is closed and one in a generic struct, with what it nests, is generic in the struct's slot. The old generator's view
+    // counts the latter as closed (DECISIONS R5-M34, until G7).
     [Fact]
     public void InstantiatesFollowsTheEnclosingSlots()
     {
@@ -164,12 +169,15 @@ public sealed class TyCtxtTest
         [
             "Fn plain False", "Fn pass True", "Closure pass True", "Fn specialize pass False", "Closure specialize pass False", "Fn size True",
             "DefaultTemplate size True", "Fn outer True", "Fn middle True", "Fn inner True", "Fn scoped True", "Fn host False", "Fn helper False",
-            "Fn init True", "Getter current.Get True", "Fn get True", "Fn local True", "Fn init False", "Getter current.Get False",
-            "StaticInit limit False", "Fn seed False",
+            "Fn init True", "Getter current.Get True", "Fn get True", "Fn local True", "Fn f True", "Fn specialize f True",
+            "Closure specialize f True", "Fn nested True", "Fn init False", "Getter current.Get False", "StaticInit limit False", "Fn seed False",
         ];
-        var actual = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null && x.Source.Module == 0)
-            .Select(x => $"{x.Key.Kind} {Label(x.Key.Decl!.Declaration)} {c.Types.Instantiates(x.Key.Decl!)}");
+        var keys = c.BuildMir().Bodies.ToArray().Where(static x => x.Key.Decl is not null && x.Source.Module == 0).Select(static x => x.Key).ToArray();
+        var actual = keys.Select(x => $"{x.Kind} {Label(x.Decl!.Declaration)} {c.Types.Instantiates(x.Decl!)}");
         Assert.Equal(expected.Order(StringComparer.Ordinal), actual.Order(StringComparer.Ordinal));
+        var legacy = keys.Where(x => c.Types.InstantiatesInLegacy(x.Decl!) != c.Types.Instantiates(x.Decl!))
+            .Select(x => $"{x.Kind} {Label(x.Decl!.Declaration)}");
+        Assert.Equal(["Closure specialize f", "Fn nested", "Fn specialize f"], legacy.Order(StringComparer.Ordinal));
 
         // A closure is labeled by the function enclosing it.
         static string Label(Koto declaration) => declaration switch

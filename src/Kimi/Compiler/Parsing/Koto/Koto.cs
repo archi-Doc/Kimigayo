@@ -662,8 +662,18 @@ public abstract class Koto
     /// <summary>Reports that a requirement of this node cannot be decided because its prerequisites failed (SPEC 23.1.2).</summary>
     /// <param name="requirement">The requirement left undecided.</param>
     /// <param name="prerequisites">The check keys of the unmet prerequisites; the unresolved mark when unknown.</param>
-    internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites)
-        => this.DiagnosticCollection?.Report(requirement.Partition, this.KeyOf(requirement), this.Span, DiagnosticCode.PrerequisiteUnavailable_Kd, null, null, null, prerequisites, this.CodeContext.SourceDocument);
+    /// <param name="condition">The condition within the requirement, as <see cref="Report"/> takes it.</param>
+    internal void ReportDerived(DiagnosticRequirement requirement, DiagnosticKey[] prerequisites, ushort condition = 0)
+        => this.DiagnosticCollection?.Report(
+            requirement.Partition,
+            this.KeyOf(requirement, condition),
+            this.Span,
+            DiagnosticCode.PrerequisiteUnavailable_Kd,
+            null,
+            null,
+            null,
+            prerequisites,
+            this.CodeContext.SourceDocument);
 
     /// <summary>Reports that this node is a form of syntax not permitted where it stands (docs/dev/DIAGNOSTICS.md §4.4). The caller
     /// records the node as a recovery when its later checks depend on the misplaced syntax; independent checks stay direct.</summary>

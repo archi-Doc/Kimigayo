@@ -122,7 +122,7 @@ public sealed class MirDifferenceTest
     [InlineData("Ownership", (int)OwnershipRequirement.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
     [InlineData("Ownership", (int)OwnershipRequirement.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]
     [InlineData("ControlFlow", 0, DiagnosticCode.RequireFallthrough_Kd, "A3")]
-    [InlineData("ControlFlow", 0, DiagnosticCode.FunctionFallthrough_Kd, null)]
+    [InlineData("Binding", (int)BindingFailure.None, DiagnosticCode.FunctionFallthrough_Kd, null)]
     [InlineData("Binding", (int)BindingFailure.OriginRelation, DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5")]
     [InlineData("Binding", (int)BindingFailure.IncompatibleImplementation, DiagnosticCode.IncompatibleContractImplementation_Kd, "A4")]
     [InlineData("Binding", (int)BindingFailure.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]

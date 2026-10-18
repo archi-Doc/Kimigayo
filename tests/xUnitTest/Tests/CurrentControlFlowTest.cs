@@ -78,6 +78,7 @@ public class CurrentControlFlowTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
+        Assert.Equal(0, c.Binding.LintErrors);
         Assert.Empty(flow.PendingBinding);
     }
 
@@ -96,7 +97,7 @@ public class CurrentControlFlowTest
         var c = Parse(source);
         var bound = c.Bind();
         var flow = c.AnalyzeControlFlow();
-        Assert.True(!bound.IsComplete || flow.Issues.Count > 0, source);
+        Assert.True(!bound.IsComplete || c.Binding.LintErrors > 0 || flow.Issues.Count > 0, source);
     }
 
     [Fact]
@@ -122,6 +123,7 @@ public class CurrentControlFlowTest
         Assert.True(c.Bind().IsComplete, Describe(c));
         var flow = c.AnalyzeControlFlow();
         Assert.Empty(flow.Issues);
+        Assert.Equal(0, c.Binding.LintErrors);
         Assert.Empty(flow.PendingBinding);
     }
 
@@ -158,11 +160,11 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Issues);
-        Assert.Contains(flow.Warnings, warning => warning.Code == code);
-        var count = flow.Warnings.Count;
-        Assert.Equal(count, c.AnalyzeControlFlow().Warnings.Count);
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
+        var warnings = CompilationTestHelper.BindingWarnings(c);
+        Assert.Contains(warnings, warning => warning.Code == code.ToString());
+        Assert.True(c.Bind().IsComplete);
+        Assert.Equal(warnings, CompilationTestHelper.BindingWarnings(c));
     }
 
     [Theory]
@@ -174,7 +176,53 @@ public class CurrentControlFlowTest
     {
         var c = Parse(source);
         Assert.True(c.Bind().IsComplete, Describe(c));
-        Assert.Empty(c.AnalyzeControlFlow().Warnings);
+        Assert.Empty(CompilationTestHelper.BindingWarnings(c));
+    }
+
+    // The HIR lints are judged by one walk at the end of each final pass, whose records a warm rebind replaces without allocating.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void LintWalkReusesItsStorage()
+    {
+        const string Source = "enum Direction\n    Self is Copy\n    North\nfunc compute() -> i32 => 1\nfunc source() -> Result<i32, i32> => .Ok(1)\n" +
+            "func run() -> Result<(), i32>\n    source()\n    try source()\n    let x = do\n        compute()\n    (1, 2)\n    Direction.North\n" +
+            "    while true => exit\n    return .Ok(())\nfunc touch(p: raw/i32)\n    unsafe => *p = 1\n    unsafe => ()\n    *p = 2\n" +
+            "func leave()\n    defer => return\nfunc partial(flag: bool) -> i32\n    if flag => return 1";
+        var c = Parse(Source);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        string[] codes = ["DiscardedResult_Kd", "UnusedTrySuccess_Kd", "DiscardedTail_Kd", "DiscardedValue_Kd", "DiscardedValue_Kd", "StaticWhileTrue_Kd", "UnnecessaryUnsafeBlock_Kd"];
+        Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
+        Assert.Equal(3, c.Binding.LintErrors);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid);
+        Assert.Equal(codes.Order(), CompilationTestHelper.BindingWarnings(c).Select(static x => x.Code).Order());
+        Assert.Equal(3, c.Binding.LintErrors);
+    }
+
+    // SPEC 17.5.2: each nested `do` whose Unit Binding inferred is a descent root over its whole body. The walk shares one structural
+    // completion, so it composes each node's completion once and its work grows with the nesting, not with its square.
+    [Fact]
+    public void LintWalkComposesEachCompletionOnce()
+    {
+        var shallow = Work(16);
+        var deep = Work(64);
+        Assert.True(deep <= 5 * shallow, $"{shallow} -> {deep}");
+
+        static long Work(int depth)
+        {
+            var source = new System.Text.StringBuilder("func compute() -> i32 => 1\nfunc run()\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                source.Append(' ', 4 * i).Append("let x").Append(i).Append(" = do\n");
+            }
+
+            source.Append(' ', 4 * (depth + 1)).Append("compute()\n");
+            var c = Parse(source.ToString());
+            Assert.True(c.Bind().IsComplete, Describe(c));
+            Assert.Single(CompilationTestHelper.BindingWarnings(c), static x => x.Code == "DiscardedTail_Kd");
+            return c.Binding.LintCompletionWork;
+        }
     }
 
     private static Compilation Parse(string source)
