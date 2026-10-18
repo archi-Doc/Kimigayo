@@ -3,11 +3,12 @@
 namespace Kimi.Compiler.Backend;
 
 /// <summary>The checked set of a program version (SPEC 8.15.3, IMPL 21.3.1), which only <see cref="InstanceCollector"/> writes: its items in
-/// admission order, the roots first, each with its targets in its body's location order. Its arrays and lookup keep their storage, so
-/// collecting a program again allocates nothing.</summary>
+/// admission order, the roots first, each with its targets in its body's location order, and its instance-stage records, one per code and
+/// subject (unpublished until K4b). Its arrays and lookup keep their storage, so collecting a program again allocates nothing.</summary>
 internal sealed class CheckedSet
 {
     private readonly Dictionary<MonoKey, int> lookup = new();
+    private readonly HashSet<Problem> reported = new();
     private MonoItem[] items = [];
     private MonoTarget[] targets = [];
     private int itemCount;
@@ -18,6 +19,10 @@ internal sealed class CheckedSet
 
     /// <summary>Gets the number of roots, the first items.</summary>
     internal int RootCount { get; private set; }
+
+    /// <summary>Gets the records of the collection, one per code and subject: a capability gap's <c>Unsupported_Kd</c>, a limit's
+    /// <c>GenerationResourceLimit_Kd</c>, a broken contract's <c>InternalInvariant_Kd</c>.</summary>
+    internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the items in admission order.</summary>
     internal ReadOnlySpan<MonoItem> Items => this.items.AsSpan(0, this.itemCount);
@@ -35,24 +40,32 @@ internal sealed class CheckedSet
     internal void Clear(ulong version)
     {
         this.lookup.Clear();
+        this.reported.Clear();
+        this.Records.Clear();
         (this.itemCount, this.targetCount, this.RootCount, this.Version) = (0, 0, 0, version);
     }
 
-    // The item of a key, admitted once.
-    internal int Admit(in MonoKey key, int body)
+    // A new item, whose key has none yet.
+    internal int Add(in MonoItem entry)
     {
-        if (!this.lookup.TryGetValue(key, out var item))
+        if (this.itemCount == this.items.Length)
         {
-            if (this.itemCount == this.items.Length)
-            {
-                Array.Resize(ref this.items, Math.Max(64, this.itemCount * 2));
-            }
-
-            this.items[item = this.itemCount++] = new(key, body, 0, 0);
-            this.lookup.Add(key, item);
+            Array.Resize(ref this.items, Math.Max(64, this.itemCount * 2));
         }
 
+        var item = this.itemCount++;
+        this.items[item] = entry;
+        this.lookup.Add(entry.Key, item);
         return item;
+    }
+
+    // A record at its subject, once per code and subject.
+    internal void Report(DiagnosticCode code, SourceRef subject)
+    {
+        if (this.reported.Add(new(code, subject)))
+        {
+            this.Records.Add(new(code, subject));
+        }
     }
 
     // The items admitted so far are the roots.

@@ -2259,3 +2259,26 @@ structure is recorded here by the unit that first implements it.
     will rely on, K10a).
   - Rejected: a separate `TyCtxt.Erasure.cs` (X8, X26); the null rule inside Type erasure for closure contexts (it would tie the
     structural memo to `Instantiates`); a second Origin sentinel (KD2).
+- **R5-M40 Admission, the location rule and `Capability`** (2026-10-18, planning session; plan K4a, the K package's first half of K4,
+  §4.3, §4.5-4.7, §4.9, KD3, KD9, KD10, KD12, S2-S4 X19, PD30; under R5-M18) The instance collector (R5-M35) composes each site's
+  substitution with its item's representative (`TyCtxt.Compose`) and admits generic callees, keyed by definition and `Erase` (R5-M39).
+  The first composed substitution is the representative, stored as null for a closed item, which every reader treats as the identity
+  (KD3's `Identity(Decl)`); the item's one view of its body is `MirCases.Views` on the representative, and none or several is
+  `InternalInvariant_Kd`. `Admit`, one function: a known key is reused, so Origin-only variants and a recursion under one substitution
+  share an item; a new key whose composition fails or whose body's local Types `TyCtxt.Apply` cannot make under the representative is
+  the capability table's storage-nesting gap (`Unsupported_Kd`, PD30), so each later Type of the item exists; a depth past 128, 16 items
+  of the definition on the admission chain, or 1,024 items of the definition are `GenerationResourceLimit_Kd` (X19; every item is a Body
+  item so far). A refused edge is dropped and collection continues. The location rule (KD12): the cause's site, moved out of inlined
+  default templates outside the root modules to the outermost omitting call, else the root-module site of the item's first admission,
+  which each item keeps as `Site`. Records live in `CheckedSet.Records`, one per code and subject, unpublished until K4b; `Work` counts
+  replayed sites and admissions.
+  - A permanent Backend component, `Capability` (`Backend/Capability.cs`): the one table of what the backend does not generate on
+    windows-x64 (IMPL 21.3.3, SPEC 23.1.1), the capability check of ARCH's closed vocabularies; its first row is `StorageNesting` (PLAN
+    G128) with its code. OCC-X's refusal (K6), the generic static storage key (K7) and the operation rows (K9a) join it.
+  - Verified (`InstanceCollectorTest`): instances keyed by erased substitutions, erased exactly when the definition instantiates;
+    Origin-only variants and finite recursion reuse one item; a growing key stops at 16 items with the record at its recursive call;
+    `pick<Option^31<ref/i32>>` and `pick<Array^64<i32>>` are instances while `Option^32<ref/i32>` and `Array^65<i32>` are the gap at the
+    call; the work doubles and quadruples with the instances; a warm run allocates nothing; the library (as roots) and the 44 milestones
+    give no record. Not reached by any test: the location rule's inlined and admission-chain branches (no library body of the corpus
+    fails).
+  - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
