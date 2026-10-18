@@ -160,7 +160,7 @@ public sealed partial class Binding
             }
 
             CandidateApplicability input;
-            if (IsAggregateArgument(source) || NeedsEnumContext(source) || IsUnfittedLiteral(source))
+            if (this.KindOf(source) is ArgumentKind.Composite or ArgumentKind.Literal)
             {
                 input = this.ProbeAggregateArgument(source, type, scope); // An input waiting for its payload Type (PrepareContextualEnumInputs).
             }
@@ -293,7 +293,7 @@ public sealed partial class Binding
                 for (var i = 0; i < count; i++)
                 {
                     var source = call!.ArgumentNodes[i];
-                    if ((NeedsEnumContext(source) ? 2 : IsUnfittedLiteral(source) ? 1 : 0) != pass)
+                    if (this.KindOf(source) switch { ArgumentKind.Literal => 1, ArgumentKind.Composite when NeedsEnumContext(source) => 2, _ => 0 } != pass)
                     {
                         continue;
                     }

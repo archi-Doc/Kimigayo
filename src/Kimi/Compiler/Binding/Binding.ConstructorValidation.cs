@@ -137,7 +137,31 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
-                var state = this.TryCandidate(call, function, null, scope, arguments, lengths, [], mapping, previous.ArgumentMap, expected, null, origins, inputs, construction, candidateOperations, out var defaults, out var unbound, out var receiver, out _, out _, out var premiseUnknown, fixedConstruction: true);
+                var state = this.TryCandidate(
+                    new SlotSolution
+                    {
+                        Binding = this,
+                        Call = call,
+                        Function = function,
+                        Scope = scope,
+                        DeclaringType = construction,
+                        Types = arguments,
+                        Lengths = lengths,
+                        Origins = origins,
+                        Inputs = inputs,
+                        FixedConstruction = true,
+                    },
+                    [],
+                    mapping,
+                    previous.ArgumentMap,
+                    expected,
+                    candidateOperations,
+                    out var defaults,
+                    out var unbound,
+                    out var receiver,
+                    out _,
+                    out _,
+                    out var premiseUnknown);
                 checkedCandidates[i] = new(previous.Symbol, state, construction, defaults, unbound, receiver, previous.ArgumentMap, PremiseUnknown: premiseUnknown);
                 if ((state == CandidateApplicability.Pending && !premiseUnknown) || state == CandidateApplicability.Error || unbound)
                 {
@@ -156,7 +180,7 @@ public sealed partial class Binding
                         }
 
                         var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-                        var contextPattern = WasWaitingNestedCall(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
+                        var contextPattern = this.WasWaitingNestedCall(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
                         var usedContext = waitingContexts[a];
                         if (!ReferenceEquals(context, usedContext) && (context is null || usedContext is null || !FitsType(context, usedContext) || !FitsType(usedContext, context)))

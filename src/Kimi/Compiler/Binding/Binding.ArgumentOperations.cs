@@ -1050,7 +1050,7 @@ public sealed partial class Binding
                 }
             }
             else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation, callableValue) &&
-                !(target == SemanticsKind.Ref && IsUnfittedLiteral(source)))
+                !(target == SemanticsKind.Ref && this.KindOf(source) == ArgumentKind.Literal))
             {
                 return false;
             }

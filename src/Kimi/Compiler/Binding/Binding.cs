@@ -338,7 +338,7 @@ public sealed partial class Binding
         this.ResetPrerequisites();
         this.objectPayloadCauses?.Clear();
         this.ResetMatches();
-        this.waitingNestedCalls.Clear();
+        this.argumentKinds.Clear();
         this.nestedArgumentProbe = null;
         this.resultContexts.Clear();
         this.resultLocalEvidence.Clear();

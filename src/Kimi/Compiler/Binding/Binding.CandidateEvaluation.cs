@@ -73,64 +73,10 @@ public sealed partial class Binding
                 this.binding.inferenceComparisons++;
             }
 
-            return BetterCandidate(this.candidates[left], this.candidates[right], this.operations.AsSpan(left * this.stride, this.stride - 1), this.operations.AsSpan(right * this.stride, this.stride - 1));
+            var leftOperations = this.operations.AsSpan(left * this.stride, this.stride - 1);
+            var rightOperations = this.operations.AsSpan(right * this.stride, this.stride - 1);
+            return this.binding.BetterCandidate(this.candidates[left], this.candidates[right], leftOperations, rightOperations);
         }
-    }
-
-    // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
-    private static bool BetterCandidate(in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
-    {
-        var better = false;
-        var worse = false;
-        for (var i = 0; i < left.Length; i++)
-        {
-            var x = left[i];
-            var y = right[i];
-            if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
-            {
-                return false; // An incomparable argument cannot be rescued by another argument or tie-breaker.
-            }
-
-            better |= x.Adaptation < y.Adaptation;
-            worse |= x.Adaptation > y.Adaptation;
-        }
-
-        if (worse || better)
-        {
-            return better && !worse;
-        }
-
-        for (var i = 0; i < left.Length; i++)
-        {
-            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
-                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
-                (IsWaitingCallable(source) || IsWaitingNestedCall(source)))
-            {
-                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
-            }
-
-            var x = left[i].ParameterType;
-            var y = right[i].ParameterType;
-            if (ReferenceEquals(x, y) && (x is not null || left[i].Source is null))
-            {
-                continue;
-            }
-
-            // Open slots are neither identical nor subtypes; Origin bindings never rank even inside Function Types.
-            var xy = x is not null && y is not null && FitsStructuralPart(x, y);
-            var yx = x is not null && y is not null && FitsStructuralPart(y, x);
-            better |= xy && !yx;
-            worse |= !xy;
-        }
-
-        if (worse || better)
-        {
-            return better && !worse;
-        }
-
-        var aGeneric = a.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
-        var bGeneric = b.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
-        return aGeneric != bGeneric ? !aGeneric : a.DefaultsUsed < b.DefaultsUsed;
     }
 
     // SPEC 10.5, 10.8: a waiting argument at F, ref/F or uniq/F, whether its candidate's fixed expected call signature is closed, holds an
@@ -209,6 +155,63 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 10.4: this pure comparison reads explicit source arguments only; receiver acquisition is common to the group.
+    private bool BetterCandidate(
+        in EvaluatedCandidate a, in EvaluatedCandidate b, ReadOnlySpan<BoundArgumentOperation> left, ReadOnlySpan<BoundArgumentOperation> right)
+    {
+        var better = false;
+        var worse = false;
+        for (var i = 0; i < left.Length; i++)
+        {
+            var x = left[i];
+            var y = right[i];
+            if (x.Adaptation != y.Adaptation && (x.Adaptation == ArgumentAdaptation.Erasure || y.Adaptation == ArgumentAdaptation.Erasure))
+            {
+                return false; // An incomparable argument cannot be rescued by another argument or tie-breaker.
+            }
+
+            better |= x.Adaptation < y.Adaptation;
+            worse |= x.Adaptation > y.Adaptation;
+        }
+
+        if (worse || better)
+        {
+            return better && !worse;
+        }
+
+        for (var i = 0; i < left.Length; i++)
+        {
+            if (a.State == CandidateApplicability.Waiting && b.State == CandidateApplicability.Waiting &&
+                left[i].Adaptation != ArgumentAdaptation.Erasure && left[i].Source is { } source &&
+                this.KindOf(source) == ArgumentKind.Waiting)
+            {
+                continue; // The checked common acquisition ties here; an unchecked waiting signature never ranks.
+            }
+
+            var x = left[i].ParameterType;
+            var y = right[i].ParameterType;
+            if (ReferenceEquals(x, y) && (x is not null || left[i].Source is null))
+            {
+                continue;
+            }
+
+            // Open slots are neither identical nor subtypes; Origin bindings never rank even inside Function Types.
+            var xy = x is not null && y is not null && FitsStructuralPart(x, y);
+            var yx = x is not null && y is not null && FitsStructuralPart(y, x);
+            better |= xy && !yx;
+            worse |= !xy;
+        }
+
+        if (worse || better)
+        {
+            return better && !worse;
+        }
+
+        var aGeneric = a.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
+        var bGeneric = b.Symbol?.Declaration is FunctionKoto { GenericArguments.Count: > 0 };
+        return aGeneric != bGeneric ? !aGeneric : a.DefaultsUsed < b.DefaultsUsed;
+    }
+
     private BoundType? FailWaitingSelection(InvocationKoto call, BindingFailure failure)
     {
         this.MarkWaitingHeaders(call);
@@ -285,7 +288,7 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (IsWaitingNestedCall(argument))
+            if (this.IsWaitingNestedCall(argument))
             {
                 this.CompleteDependent(argument, call);
             }

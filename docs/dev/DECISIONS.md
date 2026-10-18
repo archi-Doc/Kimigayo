@@ -1438,6 +1438,30 @@ R5 on the owner's request of 2026-10-18.
   Origin, which its referent's Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a
   non-exclusive pair layer" below a writable invariant position. Rejected: removing rc and arc from the shared layers (a
   case per form; it would also make an rc payload held by value writable); a store row per handle input. Not temporary.
+- **BU-2** (2026-10-18; the BU planning session; PLAN G130, design B with its review's resolutions; the G130 entry, which its
+  later units extend) Argument kinds (SPEC 10.5.1) have one owner, the canonical component `Binding.ArgumentKinds`: the kind of
+  every argument part (a call argument and, recursively, an element of a Tuple or array literal argument, a written boundary
+  of a mixed range and a payload of a contextual `.Case(...)`) is Literal, Composite, Waiting or Typed, and consumers read it
+  through one query, `KindOf`; the component prepares a call's arguments and a Composite's parts and walks a Composite for
+  slot evidence and for its fit to a candidate. It replaces `Binding.NestedCalls` and `Binding.ArrayArguments`.
+  Representation: the kind a pass records for a part, keyed by syntax identity (`SourceRef`), replaces the Koto-keyed
+  `waitingNestedCalls` set; the first unit records the nested calls the argument probe defers, and `KindOf` otherwise
+  derives the kind from the part's syntax and binding state, as the consumers did. `SlotSolution` is the SPEC 10.8 solve
+  state of one candidate (its Type, length and Origin slots and input Origins, scope, Self, declaring Type, explicit Type
+  arguments, the fixed-construction flag and the Origin inference its evidence begins) with its own operations: an argument
+  part's evidence, substitution of the solution and the judgment of the candidate's Constraints over it. It replaces the
+  parallel arrays `TryCandidate` and its local evidence functions took; a Case construction is to supply its own data to it,
+  with no branch on a missing function. Owner decisions (2026-10-18, in the BU planning session), implemented by G130's later
+  units U2–U5: SPEC 10.5.1 is followed as written, so a contextual `.Case(...)` argument is Waiting and never probed per
+  candidate, and a control-flow argument is Literal only when all its result sources are Literal; SPEC 10.2.1's Literal
+  timing holds, so a Literal is no evidence during applicability and comparison and its default applies after selection,
+  with the ambiguities that follow. Why: each consumer decided an argument's
+  kind from syntax, and the element, payload and top-level paths decided it differently (PLAN G130). Rejected: fixing the
+  walkers in place (design A's option (i), and fixes inside each walker: the dispatch copies and the two leaf rules for
+  elements and top-level arguments stay); a Case construction as a synthesized constructor candidate through `BindCallCore`
+  (design B's option (iii): a `FunctionKoto` per Case without syntax and HIR and MIR changes for a single-candidate solve); a
+  Koto-keyed kind table (ARCH Code rules, Syntax identity). Open: a construction's unbound slot reports `MissingType`
+  (`UnresolvedBinding_Kd`) while a call's reports `UnboundTypeArgument_Kd`. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 

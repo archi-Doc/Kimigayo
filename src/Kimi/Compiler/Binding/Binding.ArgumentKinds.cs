@@ -4,8 +4,35 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
+// Argument kinds (SPEC 10.5.1; DECISIONS BU-2): what each argument part is to the candidates of a call.
+// - Responsibility: the kind of every argument part: a call argument and, recursively, an element of a Tuple or array literal
+//   argument, a written boundary of a mixed range and a payload of a contextual `.Case(...)`. Literal: an unfitted literal (SPEC
+//   12.3). Composite: a Tuple or array literal, a mixed range or a contextual Case, whose parts are classified instead. Waiting: an
+//   anonymous function, a function reference that needs S, or a nested call the argument probe deferred, until the selected
+//   candidate completes it. Typed: every other part.
+// - Inputs: the part's syntax and binding state; the argument probe (BindIndependentArgument), under which a nested call that only an
+//   outer expectation could type defers (DeferNestedCall) and its kind is recorded.
+// - Outputs: KindOf; the preparation of a call's arguments (PrepareCallArguments) and of a Composite's parts; a Composite's fit to a
+//   candidate's parameter Type (ProbeAggregateArgument); SlotSolution (Binding.ArgumentKinds.Solution.cs), one candidate's SPEC 10.8
+//   solve state, whose operations take a part's evidence for the slots (InferInput, InferAggregateCall for a Composite,
+//   InferClosureHeader, InferCallableSignatures), substitute the solution (Type) and judge the Constraints over it (Prove).
+// - Invariants: a recorded kind is keyed by syntax identity (SourceRef) and lives for one pass; a deferred nested call stays waiting
+//   after its completion, so its Type is never evidence for an outer slot (WasWaitingNestedCall).
+// - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
+//   reference) to fit them; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
 public sealed partial class Binding
 {
+    private readonly Dictionary<SourceRef, ArgumentKind> argumentKinds = new();
+    private InvocationKoto? nestedArgumentProbe;
+
+    private enum ArgumentKind : byte
+    {
+        Typed,
+        Literal,
+        Waiting,
+        Composite,
+    }
+
     private static bool IsAggregateArgument(Koto source)
         => KotoHelper.UnwrapParentheses(source) is ArrayLiteralKoto or TupleLiteralKoto { Elements.Count: > 0 } || IsMixedRange(source);
 
@@ -15,109 +42,104 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is RangeKoto range && !IsLiteralOnlyRange(range) &&
             ((range.Start is { } start && IsLiteralOnlyPosition(start)) || (range.End is { } end && IsLiteralOnlyPosition(end)));
 
-    private bool InferAggregateCall(BoundType pattern, Koto source, FunctionKoto function, BoundType?[] types, BoundLength?[] lengths, BoundOrigin[] origins, BoundOrigin[] inputs, bool fitLiterals)
+    // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far.
+    private ArgumentKind KindOf(Koto part)
     {
-        source = KotoHelper.UnwrapParentheses(source);
-        if (source is RangeKoto mixed && IsMixedRange(mixed) && pattern.Kind != BoundTypeKind.Parameter)
+        if (IsUnfittedLiteral(part))
         {
-            if (pattern is not { Kind: BoundTypeKind.Constructed, Components.Count: 2 } || !ReferenceEquals(pattern.Symbol, mixed.IsInclusive ? this.Library.ClosedRange : this.Library.Range))
-            {
-                return true; // Probing reports a shape mismatch once the target is fixed.
-            }
-
-            // The typed boundary first; after all other evidence, a literal-only boundary whose S or E is still unknown takes the
-            // other boundary's integer Type, else i32 (SPEC 4.6.2 rules 2 and 3).
-            var startLiteral = mixed.Start is { } first && IsLiteralOnlyPosition(first);
-            var endLiteral = mixed.End is { } last && IsLiteralOnlyPosition(last);
-            if ((mixed.Start is not null && !startLiteral && !this.InferAggregateCall(pattern.Components[0], mixed.Start, function, types, lengths, origins, inputs, fitLiterals)) ||
-                (mixed.End is not null && !endLiteral && !this.InferAggregateCall(pattern.Components[1], mixed.End, function, types, lengths, origins, inputs, fitLiterals)))
-            {
-                return false;
-            }
-
-            return (!startLiteral || this.InferLiteralBoundary(pattern.Components[0], mixed.Start!, this.IndependentRangeBoundary(mixed.End, this.EndType), function, types, lengths, fitLiterals)) &&
-                (!endLiteral || this.InferLiteralBoundary(pattern.Components[1], mixed.End!, this.IndependentRangeBoundary(mixed.Start, this.StartType), function, types, lengths, fitLiterals));
+            return ArgumentKind.Literal;
         }
 
-        if (pattern.Kind == BoundTypeKind.Parameter)
+        if (IsAggregateArgument(part) || NeedsEnumContext(part))
         {
-            if (this.SubstituteType(pattern, CallSlotOwner(function), types, lengths) is { } fixedType)
-            {
-                pattern = fixedType;
-            }
-            else if (this.IndependentAggregateType(source, fitLiterals) is { } inferred)
-            {
-                return this.Infer(pattern, inferred, CallSlotOwner(function), types, lengths: lengths);
-            }
+            return ArgumentKind.Composite;
         }
 
-        if (source is TupleLiteralKoto tuple)
+        return IsWaitingCallable(part) || this.IsWaitingNestedCall(part) ? ArgumentKind.Waiting : ArgumentKind.Typed;
+    }
+
+    private bool WasWaitingNestedCall(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is InvocationKoto { SyntaxOwner: { } owner } call &&
+            this.argumentKinds.TryGetValue(new(owner.Module, call.SyntaxId), out var kind) && kind == ArgumentKind.Waiting;
+
+    private bool IsWaitingNestedCall(Koto node) => node.BoundType is null && this.WasWaitingNestedCall(node);
+
+    // Independent argument evidence is prepared once for named and constraint-based calls.
+    private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
+    {
+        var unknownArgument = false;
+        for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
-            if (pattern.Kind != BoundTypeKind.Tuple || pattern.Components.Count != tuple.Elements.Count)
+            var argument = call.ArgumentNodes[i];
+            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true })
             {
-                return true; // Probing reports a shape mismatch once the target is fixed.
+                continue; // A common-function argument supplies its fixed signature after selection.
             }
 
-            for (var i = 0; i < tuple.Elements.Count; i++)
+            if (this.KindOf(argument) == ArgumentKind.Composite)
             {
-                if (!this.InferAggregateCall(pattern.Components[i], tuple.Elements[i], function, types, lengths, origins, inputs, fitLiterals))
+                unknownArgument |= !this.PrepareAggregateArgument(argument, scope);
+                continue;
+            }
+
+            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
+            if ((this.KindOf(argument) != ArgumentKind.Literal || argument.CodeContext.RecoveryCause(argument) is not null) &&
+                this.BindIndependentArgument(argument, scope) is null)
+            {
+                if (this.IsWaitingNestedCall(argument))
                 {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        if (source is ArrayLiteralKoto array)
-        {
-            if (pattern.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array))
-            {
-                return true; // Existing candidate-specific probing diagnoses other shapes.
-            }
-
-            if (pattern.Kind == BoundTypeKind.FixedArray && pattern.LengthExpression is { Parameter: { } parameter } && ReferenceEquals(parameter.Scope.Owner, function))
-            {
-                var length = array.FillLength is null ? this.InternLength(KotoKind.NumberLiteral, array.Elements.Count) : array.FillCount;
-                if (length is null)
-                {
-                    return false;
+                    continue; // SPEC 10.5: only a determined outer candidate supplies the missing expectation.
                 }
 
-                if (lengths[parameter.Slot] is { } previous && !ReferenceEquals(previous, length))
+                if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
                 {
-                    return false;
+                    if ((callableContext || this.TakesCallableContext(group)) &&
+                        !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
+                        !this.ExplicitReferenceValue(argument, item, scope))
+                    {
+                        continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
+                    }
+
+                    // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
+                    // A generic Callable contract checks that Type without erasing it to a common Function handle.
+                    if (this.BindFunctionItem(argument, item, scope) is not null)
+                    {
+                        continue;
+                    }
                 }
 
-                lengths[parameter.Slot] = length;
+                unknownArgument = true;
             }
-
-            for (var i = 0; i < array.Elements.Count; i++)
-            {
-                if (!this.InferAggregateCall(pattern.Components[0], array.Elements[i], function, types, lengths, origins, inputs, fitLiterals))
-                {
-                    return false;
-                }
-            }
-
-            return true;
         }
 
-        if (source.BoundType is { } actual)
+        return !unknownArgument;
+    }
+
+    // SPEC 10.5: first obtain independent evidence. Only an inner call that would need a result expectation waits; failures of
+    // its own inputs or declarations are still diagnosed here. Parentheses preserve the same boundary.
+    private BoundType? BindIndependentArgument(Koto argument, BindingScope scope)
+    {
+        var previous = this.nestedArgumentProbe;
+        this.nestedArgumentProbe = KotoHelper.UnwrapParentheses(argument) as InvocationKoto;
+        try
         {
-            // A typed range boundary contributes the read Type it supplies (SPEC 3.5.3).
-            actual = KotoHelper.UnwrapParentheses(source.Parent!) is RangeKoto && this.ReadTypeReferent(actual, source) is { } read ? read : actual;
-            this.MatchInputOrigins(pattern, actual, function, origins, inputs);
-            pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-            return this.Infer(pattern, actual, CallSlotOwner(function), types, true, lengths);
+            return this.BindNode(argument, scope);
         }
-
-        if (!fitLiterals || this.SubstituteType(pattern, CallSlotOwner(function), types, lengths) is not null)
+        finally
         {
-            return true;
+            this.nestedArgumentProbe = previous;
+        }
+    }
+
+    private bool DeferNestedCall(InvocationKoto call, BoundType? expected)
+    {
+        if (expected is not null || !ReferenceEquals(this.nestedArgumentProbe, call))
+        {
+            return false;
         }
 
-        return this.LiteralDefault(source) is not { } literalDefault || this.Infer(pattern, literalDefault, CallSlotOwner(function), types, lengths: lengths);
+        this.argumentKinds[SourceRef.Of(call)] = ArgumentKind.Waiting;
+        return true;
     }
 
     // Obtain independent tuple/fill Types without committing candidate-local numeric defaults.
@@ -136,13 +158,16 @@ public sealed partial class Binding
             var end = this.IndependentRangeBoundary(range.End, this.EndType);
             start ??= this.OtherBoundaryType(range.Start!, end);
             end ??= this.OtherBoundaryType(range.End!, start);
-            return this.types.Intern(BoundTypeKind.Constructed, range.IsInclusive ? this.Library.ClosedRange : this.Library.Range, SemanticsKind.Owner, [start, end]);
+            var symbol = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
+            return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, end]);
         }
 
         if (source is ArrayLiteralKoto { FillCount: { } length } fill &&
             this.IndependentAggregateType(fill.Elements[0], fitLiterals) is { } elementType)
         {
-            return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [elementType], length.IsConstant ? length.Value : 0, lengthExpression: length.IsConstant ? null : length);
+            var count = length.IsConstant ? length.Value : 0;
+            var expression = length.IsConstant ? null : length;
+            return this.types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [elementType], count, lengthExpression: expression);
         }
 
         if (source is TupleLiteralKoto tuple)
@@ -171,10 +196,6 @@ public sealed partial class Binding
         return fitLiterals ? this.LiteralDefault(source) : null;
     }
 
-    private bool InferLiteralBoundary(BoundType pattern, Koto boundary, BoundType? other, FunctionKoto function, BoundType?[] types, BoundLength?[] lengths, bool fitLiterals)
-        => !fitLiterals || this.SubstituteType(pattern, CallSlotOwner(function), types, lengths) is not null ||
-            this.Infer(pattern, this.OtherBoundaryType(boundary, other), CallSlotOwner(function), types, lengths: lengths);
-
     // The independent Type of a written range boundary: Start or End when omitted, the read Type of a typed one, or null for a
     // literal-only one.
     private BoundType? IndependentRangeBoundary(Koto? boundary, BoundType omitted)
@@ -201,7 +222,8 @@ public sealed partial class Binding
         if (source is RangeKoto range && IsMixedRange(range))
         {
             // A typed boundary is bound on its own now; a literal-only one waits for the candidate (SPEC 4.6.2).
-            return (range.Start is null || this.PrepareAggregateArgument(range.Start, scope)) & (range.End is null || this.PrepareAggregateArgument(range.End, scope));
+            return (range.Start is null || this.PrepareAggregateArgument(range.Start, scope)) &
+                (range.End is null || this.PrepareAggregateArgument(range.End, scope));
         }
 
         var elements = source switch
@@ -212,7 +234,8 @@ public sealed partial class Binding
         };
         if (elements is null)
         {
-            return NeedsEnumContext(source) ? this.PrepareContextualEnumInputs(source, scope) : IsUnfittedLiteral(source) || this.BindNode(source, scope) is not null;
+            return NeedsEnumContext(source) ? this.PrepareContextualEnumInputs(source, scope)
+                : this.KindOf(source) == ArgumentKind.Literal || this.BindNode(source, scope) is not null;
         }
 
         var valid = true;
@@ -240,7 +263,9 @@ public sealed partial class Binding
             if (expected is not { Kind: BoundTypeKind.FixedArray or BoundTypeKind.Array, Semantics: SemanticsKind.Owner } ||
                 (array.FillLength is not null && expected.Kind != BoundTypeKind.FixedArray) ||
                 (expected.Kind == BoundTypeKind.FixedArray && (array.FillLength is null ? expected.Length != array.Elements.Count :
-                    array.FillCount is not { } count || (count.IsConstant ? expected.LengthExpression is not null || expected.Length != count.Value : !ReferenceEquals(expected.LengthExpression, count)))))
+                    array.FillCount is not { } count || (count.IsConstant
+                        ? expected.LengthExpression is not null || expected.Length != count.Value
+                        : !ReferenceEquals(expected.LengthExpression, count)))))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -295,7 +320,7 @@ public sealed partial class Binding
             return this.ProbeContextualEnum(source, expected, scope);
         }
 
-        if (IsUnfittedLiteral(source))
+        if (this.KindOf(source) == ArgumentKind.Literal)
         {
             return this.FitsInputLiteral(source, expected, scope) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
         }
@@ -319,6 +344,7 @@ public sealed partial class Binding
 
         var syntax = KotoHelper.UnwrapParentheses(boundary);
         return syntax.BoundType is not { } actual ? CandidateApplicability.Pending :
-            ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable : CandidateApplicability.Inapplicable;
+            ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable
+            : CandidateApplicability.Inapplicable;
     }
 }

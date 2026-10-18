@@ -117,8 +117,10 @@ public sealed partial class Binding
 
     // An open position stays open only while its parameter Type still holds an unsolved slot; a later literal default may have closed it,
     // and then the position was never fitted, so the candidate stays pending.
-    private bool OpenPositionsHold(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, int[] mapping, SlotSet open, SlotSet openSignatures, SlotSet unsolved, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, BoundLength?[] lengths)
+    private bool OpenPositionsHold(in SlotSolution solution, int[] mapping, SlotSet open, SlotSet openSignatures, SlotSet unsolved)
     {
+        var call = solution.Call;
+        var function = solution.Function;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (!open.Contains(i) && !openSignatures.Contains(i))
@@ -129,7 +131,7 @@ public sealed partial class Binding
             var pattern = function.Parameters[mapping[i]].Type.BoundType!;
             var signature = open.Contains(i) ? pattern : this.ExpectedCallSignature(function, pattern);
             if (signature is null || !MentionsSlots(signature, CallSlotOwner(function), unsolved) ||
-                this.CallType(signature, function, arguments, scope, self, origins, inputs, declaringType, lengths) is not null)
+                solution.Type(signature) is not null)
             {
                 return false;
             }

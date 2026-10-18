@@ -190,11 +190,11 @@ public sealed partial class Binding
             var quality = ArgumentAdaptation.Literal;
             var kind = ArgumentOperationKind.Value;
             BoundType? adapted = null;
-            if (IsWaitingNestedCall(node))
+            if (this.IsWaitingNestedCall(node))
             {
                 quality = ArgumentAdaptation.Exact;
             }
-            else if (IsAggregateArgument(node) || NeedsEnumContext(node))
+            else if (this.KindOf(node) == ArgumentKind.Composite)
             {
                 var borrow = parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
                 var value = borrow ? parameter.Components[0] : parameter;
@@ -225,7 +225,7 @@ public sealed partial class Binding
 
                 quality = ArgumentAdaptation.Erasure;
             }
-            else if (IsUnfittedLiteral(node))
+            else if (this.KindOf(node) == ArgumentKind.Literal)
             {
                 var borrow = parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
                 if (!this.FitsInputLiteral(node, LiteralInputType(parameter), scope))
