@@ -144,21 +144,7 @@ public sealed partial class Binding
         if (this.Result.Mode == BindingMode.Final)
         {
             this.ReportDuplicateDeclarations();
-            var warning = DiagnosticRequirement.Binding(BindingFailure.None);
-            foreach (var alias in this.aliasWarnings)
-            {
-                alias.Report(warning, DiagnosticCode.HiddenNamedAlias_Kd);
-            }
-
-            foreach (var pattern in this.patternWarnings)
-            {
-                pattern.Pattern.Report(warning, DiagnosticCode.UnreachablePattern_Kd, pattern.CoveringArm + 1);
-            }
-
-            foreach (var position in this.positionWarnings)
-            {
-                position.Node.Report(warning, DiagnosticCode.PositionAlwaysFails_Kd, position.Kind, evidence: position.FixedLength < 0 ? null : [position.FixedLength]);
-            }
+            this.ReportNonFailingRecords();
 
             // SPEC 23.2.2: an incomplete Binding without an Error in it or an earlier phase reports one fallback at its
             // first incomplete node. It marks a missing report, a compiler defect to repair where it occurs.
