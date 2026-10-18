@@ -1348,8 +1348,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate
   (the local index is the key).
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
-  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`; its "which the builder replaces whole" is
-  superseded by R5-M63 for the children Binding resolved) A published Op guarantees the Binding
+  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`; its "which the builder replaces whole" and
+  "its children are not published as evaluated and a closure inside it is not built" are superseded by R5-M63 for the children
+  Binding resolved) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
   every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
   symbol), and per Op the call it builds (an index's selected call), the Evaluated argument of a key resolution and of an update's
@@ -3213,8 +3214,11 @@ structure is recorded here by the unit that first implements it.
     plans).
 - **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19, planning session; plan Q21, PLAN G121, package Q8 §3.8
   and Q8-7 under R5-M23 (DEC Q6 form 1), design `r5/w1-q21-design.md` accepted on review with the two amendments below, ask A-14
-  with an R4 reviewer; supersedes R4-M61's "which the builder replaces whole" for the children below) SPEC 23.1.2: a node's failure
-  hides no independent error in the children Binding resolved; the Error node's own value stays a derived Opaque with no record.
+  with R4's reviewer's sign-off; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its
+  children are not published as evaluated and a closure inside it is not built") SPEC 23.1.2: a node's failure hides no independent
+  error in the children Binding resolved; the Error node's own value stays a derived Opaque with no record. R4-M61's reason concerned
+  only the Error node's own value, whose facts are missing; each kept child is published with its own facts (`Binding.HasFacts`) and
+  checked like any node (`HirTables.Broken`), so the reason does not reach it.
   (1) A closure definition: `BoundClosure.Of` is the definition of the closure's latest binding once it bound the inputs, the result
   and the environment (`Signature` set; `Binding.BindClosure` clears it first), whatever its creation's outcome. An anonymous function
   Binding bound in the pass (Resolved or failed), at an evaluated or a replaced position, with its definition keeps its parts as a
@@ -3226,25 +3230,32 @@ structure is recorded here by the unit that first implements it.
   Opaque site naming the captures' sources, or part of a replaced parent's Opaque. The MIR builder builds each definition whose value
   node the HIR publishes (`MirBuilder.Published`, equal to the Body and Closure Ops before this entry: 0 differences over 740 table
   definitions of the goldens and the library and 863 of the milestones and the library). Amendment (review): the definition must also
-  be one the publisher reached (an Op written), since a synthesized executing function shares its accessor's body. (2) A failed
-  compound Place (a Field, an Index, a Deref, `*p` or `p@follow`, the latter recognized by Binding's target rule
+  be one the publisher reached (an Op written), since a synthesized executing function shares its accessor's body.
+  (2) A failed compound Place (a Field, an Index, a Deref, `*p` or `p@follow`, the latter recognized by Binding's target rule
   `TypeSemanticsKoto.Names`, or a group, such as a list item the parser recovered (a parameter default, a call's last argument), that
   Binding rejected or did not resolve, not a broken contract) keeps each operand Binding resolved at its position, written in place
   `(None, None)`, which under an Error node marks a kept operand (`HirPublisher.Keeps`). Amendment (review): an operand is kept only
   when its own Op is published with its facts, so a Type or group name (Syntax) and a name both of whose paths resolve (an Error)
   stay replaced. The builder evaluates an Error node's kept operands in syntax order as their Places (a value in a temp) before its
-  Opaque value, never acquiring them; the site names their roots and the roots of the rest of the node's syntax, which root collection skips (it walks the Error
-  node's own children; no parent is read), so a moved operand is not used again at the site (A1 checks each root at the site's
-  subject). Any other child stays replaced. A kept body keeps what Binding refuted: a closure rejected for its inferred result's Origin
-  builds the refuted borrow, so A5 adds records caused only by Binding's, `ComparisonLoanConflict_Kd` where the borrowed parameter or
-  local ends: on the failed closure (`FunctionKoto`) or on a `let` inside its body (`FieldKoto`), not on the failed node; they are
-  classified (d) under SPEC 23.1.2 and DIAGNOSTICS' later phases until 2g-D's cause contract or Binding failing the refuted borrow
-  itself, as it does for a written result (PLAN, Binding session), decides them. Rejected: in-place writes for a closure (Q8-7: an
+  Opaque value, never acquiring them; the site names their roots and the roots of the rest of the node's syntax, which root
+  collection skips (it walks the Error node's own children; no parent is read), so a moved operand is not used again at the site (A1
+  checks each root at the site's subject). Any other child stays replaced.
+  Finding A: a kept body keeps what Binding refuted. A closure rejected because its inferred result borrows the call's own storage
+  (`CallLocalOrigin`, SPEC 15.8.2) builds the refuted borrow, so A5 adds `ComparisonLoanConflict_Kd` where the borrowed parameter or
+  local ends: on the failed closure (`FunctionKoto`) or on a `let` inside its body (`FieldKoto`), not on the failed node. All seven
+  such rows of the Q21 ledger are derived: the only Loan on the ending storage is the one issued at the refuted borrow. They are
+  classified (b) open (`classification.tsv` row a5-kept-closure; not (d), which at signature level would absorb an independent
+  conflict of the same form) until R4's A5-F7 unit 2c-6 judges closure results on the MIR, one report per refuted relation, and
+  R6-check's H11 deletes `CallLocalOrigin`; R4's condition: H11 lands before the MIR becomes the default pipeline, or 2c-6 reports
+  each refuted relation once while `CallLocalOrigin` exists.
+  Residuals (PLAN G121): an assignment or update whose target Binding rejected (`MirBuilder.Values.cs:143`) is one Opaque value, so
+  its target's kept operands are published but never evaluated; the operands of other failed forms (calls, statements, conversions
+  other than `@follow`) stay replaced; a failed Place's operand that Binding did not resolve stays replaced (a nested failed Place is
+  not published Error until R4's 2x-E2 decides unresolved compound Places). Rejected: in-place writes for a closure (Q8-7: an
   expression body's result and a by-case Copy of a capture); a `Kept` member of `HirAcquire` or `HirPosition` (a vocabulary entry;
   `HirAcquire.None` already means used in place, and under an Error only this rule writes it); building closure bodies from Binding
-  state in the builder (it reads the HIR only); a walk clause naming an Error closure (one form); keeping operands Binding did not
-  resolve (a nested failed Place is not published Error until R4's 2x-E2 decides unresolved compound Places) and the operands of other
-  failed forms (calls, statements, other conversions; PLAN G121's residuals). Lasting. R4's 2g-2a adds each Opaque root's access kind
-  at `MirBuilder.Root`, which the kept operands and the root collection use, and the completion-undecided flag at `Site`; it also
-  routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`, and an omitted default's
-  site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their next change.
+  state in the builder (it reads the HIR only); a walk clause naming an Error closure (one form). Lasting. R4's 2g-2a adds each
+  Opaque root's access kind at `MirBuilder.Root`, which the kept operands and the root collection use, and the completion-undecided
+  flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
+  and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
+  next change.
