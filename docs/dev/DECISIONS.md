@@ -1929,6 +1929,31 @@ R5 on the owner's request of 2026-10-18.
     of a join takes no late Type (`if c => ["k": (a, a)] else => ["k": (a, (return 4))]`: mir `InternalInvariant_Kd`, as on dev); a
     join under `@move` or a label does not wait for an outer join, so its literals take their defaults first; a control-flow
     argument whose literals sit beside an unknown typed source still waits (PLAN G152).
+  - U4, the relation (E1, E2 with S4, S1, S3, E8 with S9). `FitsTypeCore` relates Never only to itself (SPEC 3.8: a Type holding
+    Never is an ordinary Type). Never fitting is decided once, at the root of the value-fit entries (`Binding.ValueFits`: `FitsType`,
+    `FitsStructurally(At)`, `FitsTypeAt`, `FitsVerifiedTypeAt` and `CheckTypeUse` read `NeverFits`), and `CheckTypeUseCore`'s
+    recursion calls only the relation (S1: `let t: Sink<Never> = s@move` with `s: Sink<i32>`, `struct Sink<T>` holding `(T) -> ()`,
+    also through `Option<…>`, and SPEC 3.8's `let g: (i32) -> i32 = handler@move` are `TypeMismatch_Kd` on both pipelines).
+    Type-to-Type comparisons call the relation's entries (`Binding.TypeRelations`: `IsSubtype`, `IsStructuralSubtype`, `IsSubtypeAt`
+    and `FitsStructuralPart`, now relation-only), sorted by contract (S3): slot unification (`Calls`), ranking (`CandidateEvaluation`:
+    SPEC 10.4 step 2 is structural identity, so the subtyping `better` branch is deleted and `f(x: Never)` beside `f(x: i32)` for
+    `f(stop())` is ambiguous), identity tests (`CompleteTypeIdentity`, `ConstructorValidation`, `FunctionTypes`' written and bound
+    Types, `ShapeEvidence`, `CallableSelection`'s signature equality), `CommonOriginType`, `SelectCommonType`, `PropertyMatching`,
+    `PairLayers`, `Elements`' key and `Conversions`' borrowed referent; every other caller is a value position and keeps the value
+    entries. SPEC 10.7 has one judgment (S4): an implementation is related by subtyping to the required signature whose result is
+    Never when the implementation's is (`CompatibleResult`, `CompatibleSignature`; `CallableSignatureFits`, now a `Binding` member
+    beside the relation), read by erasure, Callable proofs, a Function Item's contract (`ItemContractFits`, whose inputs now relate
+    by subtyping alone) and contract implementation matching (`CallableContracts`). The 14.9.2 join checks an awaiting source by its
+    late Type with or without a fixed Target Result Type (no Never fitting below the root); a literal or join waits through @move,
+    @copy and labels as through parentheses (`DeliveredOperand`, read from the syntax, is the one walk) and is bound at the decided
+    Type operand first (`BindWaiting`); without a candidate, the defaulted literal sources supply the candidates
+    (`if c => (a, (return 1)) else => (a, 5)` is `(i64, i32)`). E8 (the owner is told): the FunctionReference tests premised on `(i32) -> Never <:
+    (i32) -> i32`, which SPEC 3.8 excludes, take premises SPEC 10.4 supports: a generic reference ranks below a non-generic one
+    (step 3), an ambiguity between two generic references with identical parameters (steps 2 and 3 tie), an unknown condition of
+    the non-generic best reference. Open: `let u: (i64, i64) = (a, (return 2))@move` is `TypeMismatch_Kd`, since @move binds its
+    operand without an expected Type (`Binding.Conversions`), so α does not reach the literal; a Callable bound over a Function Item
+    whose result is Never stays `NoApplicableOverload_Kd` (E10(3), as on dev); a join whose every source holds Never compares their
+    own Types (E10(2)); a Dictionary literal source of a join takes no late Type (U5 decides its MIR side).
 - **BU-5** (2026-10-18; the BU planning session; G129 E5, before R4-M59's removal) An anonymous function's result sources
   (SPEC 14.9.1, 14.9.2) and the survey of an operator's result (SPEC 13.3.4). (1) Without a declared or expected result, an
   anonymous function with a single-item body is a result target exactly as one with an indented body: `BeginResult`

@@ -106,6 +106,57 @@ public class NeverContinuationTest
         Assert.Contains(c.Binding.Issues, static x => x.Node is IfKoto && x.Failure == BindingFailure.TypeMismatch);
     }
 
+    // SPEC 3.8: Never is a subtype of no other Type, at any depth: a Type holding Never relates only by identity, a Function Type's result
+    // and input included (the section's own example), and through a Type argument in either direction; Never fitting is the judgment of
+    // a Never expression alone.
+    [Theory]
+    [InlineData("struct Sink<T>\n    public var f: (T) -> ()\nfunc g(s: Sink<i32>)\n    let t: Sink<Never> = s@move\n")]
+    [InlineData("struct Sink<T>\n    public var f: (T) -> ()\nfunc g(s: Option<Sink<i32>>)\n    let t: Option<Sink<Never>> = s@move\n")]
+    [InlineData("func f(handler: (i32) -> Never) -> ()\n    let g: (i32) -> i32 = handler@move\n")]
+    [InlineData("func f(handler: (i32) -> ()) -> ()\n    let g: (Never) -> () = handler@move\n")]
+    [InlineData("func f(a: i64) -> i64\n    let u = (a, (return 1))\n    let t: (i64, i64) = u\n    return 0\n")]
+    [InlineData("func take(t: (i64, i64)) => ()\nfunc f(a: i64, u: (i64, Never))\n    take(u)\n")]
+    public void ATypeHoldingNeverRelatesOnlyByIdentity(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, static x => x.Failure is BindingFailure.TypeMismatch or BindingFailure.NoApplicableCandidate);
+    }
+
+    // SPEC 3.8, 10.7: Never fitting at a value position, and 10.7's result compatibility (R <: Q or R is Never) at an implementation's
+    // result: a Function Item and a contract implementation whose result is Never.
+    [Theory]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc f()\n    let x: i64 = stop()\n    let t: (i64, i64) = (1, stop())\n")]
+    [InlineData("func h(x: i32) -> Never => $abort(\"x\")\nlet g: (i32) -> i32 = h\n")]
+    [InlineData("contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public func empty() -> Never => $abort(\"no value\")\n")]
+    public void NeverFittingIsAValueAndResultJudgment(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.4 step 2: parameter Types rank no candidates, Never's included: `f(x: Never)` and `f(x: i32)` both take `stop()`, by
+    // Never fitting, and are incomparable.
+    [Fact]
+    public void ANeverParameterRanksNoCandidate()
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(x: Never) -> i32 => 1\nfunc f(x: i32) -> i32 => 2\nlet r = f(stop())\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Failure == BindingFailure.Ambiguous);
+    }
+
+    // SPEC 14.9.2 step 3: a literal holding Never that a join types late fits a Target Result Type fixed by an outer expectation through
+    // its late Type, not by Never fitting, also through @move and when a nested join waited for it.
+    [Theory]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move", "(a, (return 1))")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
+    public void ANeverElementLiteralFitsAnExpectedJoinByItsLateType(string statement, string literal)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
+        Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+    }
+
     // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such
     // a Type is a Copy. The old path's Unsupported_Kd for every Place of a Type holding Never stays its only record until R6-check.
     [Theory]

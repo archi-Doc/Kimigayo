@@ -7,16 +7,17 @@ namespace Kimi.Compiler;
 // Result propagation (SPEC 14.9.2 step 3, 3.8, 12.3; DECISIONS R4-M52, BU-4): a literal takes its position's Type.
 // - Responsibility: (1) α, the Type a Tuple literal takes from its elements' Types at its position's Type (FittedTupleType: an element
 //   of Type Never takes its position's element Type, every other element keeps its own Type) where the position is known when the
-//   literal is bound (BindTuple); (2) the late fit, where it is decided only after the expression is bound: an expression that awaits its
-//   position (AwaitsPosition: a literal-only expression, SPEC 12.3; a Tuple or array literal with a part of Type Never or a part that
-//   awaits; a result target every value source of which awaits or has Type Never; through parentheses, labels, expression bodies,
-//   @move and @copy) is no evidence beside one that is (SPEC 14.9.2 step 2, 4.3, 10.8), and takes the Type that a join, its
-//   literal's element evidence or its selected call decides (TryPropagate); (3) the literal deferral of a join (SPEC 14.9.2 step 3: a
-//   literal result is not fixed before outer constraints): while a join collects its sources without a Target Result Type, a numeric
-//   literal-only source, directly or as a part of a Tuple or array literal source, is not bound (WaitsForJoin, DefersToJoin), and a
-//   join all of whose sources await and one of which waited, itself such a source, waits too (AwaitsWithoutCandidate); the join's
-//   decision (DecideResult) binds each waiting source once, at the decided Type (PropagateSources) or, without a candidate, at its
-//   default, and a waiting join is decided when its position binds it (DecideWaiting).
+//   literal is bound (BindTuple); (2) the late fit, where it is decided only after the expression is bound: an expression that awaits
+//   its position (AwaitsPosition: a literal-only expression, SPEC 12.3; a Tuple or array literal with a part of Type Never or a part
+//   that awaits; a result target every value source of which awaits or has Type Never; through parentheses, labels, expression bodies,
+//   @move and @copy) is no evidence beside one that is (SPEC 14.9.2 step 2, 4.3, 10.8), and takes the Type that a join, its literal's
+//   element evidence or its selected call decides (TryPropagate); (3) the literal deferral of a join (SPEC 14.9.2 step 3: a literal
+//   result is not fixed before outer constraints): while a join collects its sources without a Target Result Type, a numeric
+//   literal-only source, directly, through the forms that deliver it or as a part of a Tuple or array literal source, is not bound
+//   (WaitsForJoin, DefersToJoin), and a join all of whose sources await and one of which waited, itself such a source, waits too
+//   (AwaitsWithoutCandidate); the join's decision (DecideResult) binds each waiting source once (BindWaiting), at the decided Type
+//   (PropagateSources) or, without a candidate, at its default, the defaulted sources then supplying the candidates
+//   (AwaitsWithoutCandidate), and a waiting join is decided when its position binds it (DecideWaiting).
 // - Inputs: the bound expression, its parts' Types, the value sources a join recorded (ResultContext.SourceNodes) and whether it still
 //   collects them (ResultContext.Collecting), the target Type.
 // - Outputs: LateTypeOf, the Type the expression takes at the target, computed from its parts: a literal leaf takes its position's
@@ -35,13 +36,15 @@ public sealed partial class Binding
     // SPEC 14.9.1: a result target whose value is its result, a selection, `do` or `loop`; a function's value is itself, not its result.
     private static bool DeliversResult(Koto node) => node is IfKoto or MatchKoto or DoKoto or LoopKoto;
 
-    // The operand a value-preserving form delivers as it is: parentheses, a label, an expression body, @move and @copy.
+    // The operand a value-preserving form delivers as it is: parentheses, a label, an expression body, @move and @copy, read from the
+    // syntax so that it holds before they are bound.
     private static Koto? DeliveredOperand(Koto node) => node switch
     {
         ParenthesizedKoto parentheses => parentheses.Operand,
         LabeledKoto label => label.Target,
         CodeBlockKoto { IsExpressionBody: true } block => block.Items[0],
-        ConversionKoto { ConversionBinding: ConversionBinding.Transfer or ConversionBinding.Identity, Right: TypeSemanticsKoto { Type: null } } acquisition
+        ConversionKoto acquisition when
+            ConversionTargetSyntax(acquisition) is TypeSemanticsKoto { Type: null, Identifier: Constants.MoveOperation or Constants.CopyOperation }
             => acquisition.Left,
         _ => null,
     };
@@ -147,14 +150,15 @@ public sealed partial class Binding
     private bool WaitsForJoin(Koto node, BoundType? expected)
         => expected is null && node.BindingState == BindingState.Unvisited && NumericLiteralDefault(node) is not null && this.DefersToJoin(node);
 
-    // Whether the node is a value source, directly or as a part of a Tuple or array literal source, of a join that collects its sources
-    // without a Target Result Type (SPEC 14.9.1, 14.9.2).
+    // Whether the node is a value source of a join that collects its sources without a Target Result Type (SPEC 14.9.1, 14.9.2): directly,
+    // through the forms that deliver it (DeliveredOperand), or as a part of a Tuple or array literal source.
     private bool DefersToJoin(Koto node)
     {
         var source = node;
-        while (source.Parent is ParenthesizedKoto or TupleLiteralKoto or ArrayLiteralKoto { FillLength: null })
+        while (source.Parent is { } parent &&
+            (ReferenceEquals(DeliveredOperand(parent), source) || parent is TupleLiteralKoto or ArrayLiteralKoto { FillLength: null }))
         {
-            source = source.Parent;
+            source = parent;
         }
 
         return ResultTarget(source) is { } target && this.resultContexts.TryGetValue(target, out var context) && context.Collecting && context.Expected is null;
@@ -188,35 +192,64 @@ public sealed partial class Binding
     private bool AwaitsWithoutCandidate(Koto node, ResultContext context, List<BoundType> types)
     {
         var nested = DeliversResult(node) && this.DefersToJoin(node);
-        for (var i = 0; i < context.Sources.Count; i++)
+        var defaulted = this.flagScratch.Rent(context.Sources.Count);
+        try
         {
-            if (context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source))
+            var any = false;
+            for (var i = 0; i < context.Sources.Count; i++)
             {
-                if (nested)
+                defaulted[i] = context.Sources[i] is null && context.SourceNodes[i] is { } source && this.Deferred(source);
+                if (defaulted[i] && nested)
                 {
                     return context.Waiting = true;
                 }
 
-                context.Sources[i] = this.BindNode(source, this.ConstraintScope(source), null) is null ? null : this.SuppliedType(source);
-                context.Pending |= context.Sources[i] is null;
+                if (defaulted[i])
+                {
+                    context.Sources[i] = this.BindWaiting(context.SourceNodes[i]!, null);
+                    context.Pending |= context.Sources[i] is null;
+                    any = true;
+                }
             }
-        }
 
-        types.Clear(); // A nested result decided above reused the list.
-        for (var i = 0; i < context.Sources.Count; i++)
-        {
-            if (context.Sources[i] is { } source && !ReferenceEquals(source, BoundType.Never))
+            types.Clear(); // A nested result decided above reused the list.
+            for (var i = 0; i < context.Sources.Count; i++)
             {
-                types.Add(source);
+                if (context.Sources[i] is { } source && !ReferenceEquals(source, BoundType.Never) && (defaulted[i] || !any))
+                {
+                    types.Add(source);
+                }
             }
-        }
 
-        return false;
+            return false;
+        }
+        finally
+        {
+            this.flagScratch.Return(defaulted);
+        }
     }
 
-    // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: without a fixed Target Result Type, a source that awaits its
-    // position supplies none; a source that waited unbound supplies none either, and any other unbound source makes the join pending.
-    // Returns whether a source awaits.
+    // SPEC 14.9.2 step 3: binds a source that waited at `type` (null: its defaults): its delivered operand first, since @move and @copy
+    // bind theirs without an expected Type, then the forms around it. Returns the Type the source supplies, null when it fails.
+    private BoundType? BindWaiting(Koto source, BoundType? type)
+    {
+        var operand = source;
+        while (DeliveredOperand(operand) is { } inner)
+        {
+            operand = inner;
+        }
+
+        if (!ReferenceEquals(operand, source))
+        {
+            this.BindNode(operand, this.ConstraintScope(operand), type);
+        }
+
+        return this.BindNode(source, this.ConstraintScope(source), type) is null ? null : this.SuppliedType(source);
+    }
+
+    // SPEC 14.9.2 step 2: the candidates of a join, Never supplying none: a source that awaits its position supplies none and is checked
+    // by its late Type (PropagateSources), with or without a fixed Target Result Type; a source that waited unbound supplies none either,
+    // and any other unbound source makes the join pending. Returns whether a source awaits.
     private bool ResultCandidates(ResultContext context, List<BoundType> types)
     {
         var awaiting = false;
@@ -230,7 +263,7 @@ public sealed partial class Binding
             }
             else if (!ReferenceEquals(source, BoundType.Never))
             {
-                var awaits = context.Expected is null && context.SourceNodes[i] is { } node && this.AwaitsPosition(node);
+                var awaits = context.SourceNodes[i] is { } node && this.AwaitsPosition(node);
                 awaiting |= awaits;
                 if (!awaits)
                 {
@@ -260,7 +293,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            var fits = waited ? this.BindNode(source, this.ConstraintScope(source), common) is { } bound && this.FitsTypeAt(bound, common, node) :
+            var fits = waited ? this.BindWaiting(source, common) is { } bound && this.FitsTypeAt(bound, common, node) :
                 this.TryPropagate(source, common, node);
             context.Sources[i] = this.SuppliedType(source);
             context.Pending |= context.Sources[i] is null;

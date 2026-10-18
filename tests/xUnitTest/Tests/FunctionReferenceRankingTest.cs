@@ -13,9 +13,14 @@ namespace XunitTest;
 public class FunctionReferenceRankingTest(ITestOutputHelper output)
 {
     private const string Types = "func fail(value: i32) -> Never => $abort(\"not called\")\n";
-    private const string Broad = "func choose(value: (i32) -> i32) -> i32 => 0\n";
+
+    // SPEC 10.4 step 3: a generic reference that every signature fits beside one with no generic parameters of its own. SPEC 3.8 makes
+    // `(i32) -> Never` no subtype of `(i32) -> i32`, so a reference parameter of the latter Type fits no `(i32) -> Never` input.
+    private const string Broad = "func choose<F>(value: F) -> i32 => 0\n";
     private const string Narrow = "func choose(value: (i32) -> Never) -> i32 => 42\n";
 
+    // SPEC 10.4 step 3: of two fitting references, the one with no generic parameters of its own is selected, in either declaration order,
+    // at an erasure and for a Callable bound, by value and borrowed.
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(true, false, false)]
@@ -25,14 +30,14 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
     [InlineData(true, false, true)]
     [InlineData(false, true, true)]
     [InlineData(true, true, true)]
-    public void ParameterSubtypingRanksFittingReferences(bool reverse, bool erased, bool borrowed)
+    public void ANonGenericReferenceRanksAboveAGenericOne(bool reverse, bool erased, bool borrowed)
     {
         var use = erased ? "let action: ((i32) -> Never) -> i32 = choose\nlet value: (i32) -> Never = fail\nrequire action(value@move) == 42 else => $abort(\"reference\")" :
             "func apply<F>(action: ref/F) -> i32\n    F is Callable<((i32) -> Never) -> i32>\n    let value: (i32) -> Never = fail\n    return action(value@move)\nrequire apply(choose) == 42 else => $abort(\"reference\")";
         var source = Types + (reverse ? Narrow + Broad : Broad + Narrow) + use;
         if (borrowed)
         {
-            source = VerificationWorkloads.BorrowFunctionReferenceInputs(source);
+            source = VerificationWorkloads.BorrowFunctionReferenceInputs(source).Replace("(value: F)", "(value: ref/F)", StringComparison.Ordinal);
         }
 
         ScalarEmissionTest.EmitFixture("FunctionReferenceRanking" + reverse + erased + borrowed, source, string.Empty);
@@ -49,10 +54,11 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void OpposingParameterAdvantagesReportOnlyTheFittingCandidates(bool independent)
+    public void AnAmbiguousReferenceReportsOnlyTheFittingCandidates(bool independent)
     {
-        const string Declarations = "func choose(a: (i32) -> Never, b: (i32) -> i32) -> i32 => 1\nfunc choose(a: (i32) -> i32, b: (i32) -> Never) -> i32 => 2\nfunc choose(a: bool) -> i32 => 3\n";
-        var source = Declarations + "let action: ((i32) -> Never, (i32) -> Never) -> i32 = choose" + (independent ? "\nlet bad: i32 = false" : string.Empty);
+        // SPEC 10.4: both generic candidates fit with identical parameter Types (steps 2 and 3 tie); the bool one does not fit.
+        const string Declarations = "func choose<T>(a: T, b: T) -> i32 => 1\nfunc choose<T, U>(a: T, b: U) -> i32 => 2\nfunc choose(a: bool) -> i32 => 3\n";
+        var source = Declarations + "let action: ((i32) -> i32, (i32) -> i32) -> i32 = choose" + (independent ? "\nlet bad: i32 = false" : string.Empty);
         var path = Path.GetFullPath("reference-ranking.kimi");
         var c = MinimalEmissionTest.Analyze(source, path);
         Assert.False(c.Binding.Result.IsComplete);

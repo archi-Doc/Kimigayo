@@ -84,6 +84,10 @@ public class LiteralExpressionTest
     [InlineData("let t = if c => p.x else => (if d => (if c => 4000000000 else => 1) else => -2)", "-2", "i64")]
     [InlineData("let g = func [] (e: bool)\n        return func [] ()\n            return 7", "7", "i32")]
     [InlineData("let g = func [] (e: bool, q: P) => if e => (return q.x) else => 4000000000", "4000000000", "i64")]
+    [InlineData("let t = if c => p.x else => (if d => 4000000000 else => 2)@move", "2", "i64")]
+    [InlineData("let t = if c => p.x else => (label inner: if d => 4000000000 else => 3)", "3", "i64")]
+    [InlineData("let t = if c => p.x else => (4000000000)@copy", "4000000000", "i64")]
+    [InlineData("let t = if c => (n, (return 1)) else => (n, 5)", "(n, (return 1))", "(i64, i32)")]
     [InlineData("let g = func [] (e: bool, a: i64)\n        if e => return (1, 2)\n        return (a, a)", "(1, 2)", "(i64, i64)")]
     public void ALiteralSourceTakesItsJoinsType(string statement, string literal, string type)
     {

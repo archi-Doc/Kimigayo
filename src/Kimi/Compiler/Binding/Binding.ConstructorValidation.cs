@@ -183,7 +183,8 @@ public sealed partial class Binding
                         var contextPattern = this.WasWaitingPart(call.ArgumentNodes[a]) ? pattern : this.ExpectedCallSignature(function, pattern);
                         var context = contextPattern is null ? null : this.CallType(contextPattern, function, arguments, scope, null, origins, inputs, construction, lengths);
                         var usedContext = waitingContexts[a];
-                        if (!ReferenceEquals(context, usedContext) && (context is null || usedContext is null || !FitsType(context, usedContext) || !FitsType(usedContext, context)))
+                        if (!ReferenceEquals(context, usedContext) &&
+                            (context is null || usedContext is null || !IsSubtype(context, usedContext) || !IsSubtype(usedContext, context)))
                         {
                             return Reject(function, ConstructionCheck.WaitingContext);
                         }

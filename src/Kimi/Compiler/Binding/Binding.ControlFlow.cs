@@ -56,7 +56,7 @@ public sealed partial class Binding
             var fitsAll = true;
             for (var j = 0; j < types.Count && fitsAll; j++)
             {
-                fitsAll = FitsType(types[j], candidate);
+                fitsAll = IsSubtype(types[j], candidate);
             }
 
             if (fitsAll)
@@ -298,9 +298,9 @@ public sealed partial class Binding
             return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
         }
 
-        var suppliedValue = types.Count > 0;
+        var suppliedValue = types.Count > 0 || awaiting;
         var common = context.Expected;
-        if (common is not null && suppliedValue && HasArrayLengthHole(common))
+        if (common is not null && types.Count > 0 && HasArrayLengthHole(common))
         {
             common = this.CompleteArrayExpectation(common, types[0]);
         }
@@ -309,8 +309,7 @@ public sealed partial class Binding
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            failed = awaiting && common is not null ? this.PropagateSources(node, context, common) : null;
-            context.Invalid |= conflict || failed is not null;
+            context.Invalid |= conflict;
         }
         else
         {
@@ -324,6 +323,13 @@ public sealed partial class Binding
                     failed ??= types[i];
                 }
             }
+        }
+
+        // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
+        if (awaiting && common is not null && this.PropagateSources(node, context, common) is { } misfit)
+        {
+            context.Invalid = true;
+            failed ??= misfit;
         }
 
         types.Clear();
