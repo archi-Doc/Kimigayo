@@ -62,6 +62,19 @@ public class NeverContinuationTest
         Assert.All(reads, static x => Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(x).Acquire));
     }
 
+    // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move
+    // (SPEC 3.5).
+    [Fact]
+    public void APlaceHoldingNeverAndANonCopyPartIsNotCopied()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(a: Option<(string, Never)>)\n    let b = a\n    let c = a\n");
+        Assert.Contains(LegacyRecords.Of(c), static x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        HirTables.Publish(c);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "a" && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
+        Assert.Equal(2, reads.Length);
+        Assert.All(reads, static x => Assert.Equal(HirAcquire.Move, HirTables.AdjustOf(x).Acquire));
+    }
+
     [Fact]
     public void ANonCompletingLeftOperandSkipsTheOperation()
         => ScalarEmissionTest.EmitFixture("NeverOperand" + Configuration + "Left", Stop + "Console.writeLine(\"begin\")\nlet n: i32 = stop() + 1\nConsole.writeLine(\"after\")", "begin\n", 1, "Hello.kimi:1:25: abort KIMI_E_ABORT: stop\n");

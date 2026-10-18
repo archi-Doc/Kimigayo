@@ -39,13 +39,14 @@ public class IntrinsicCapabilityTest
         Assert.Equal(owned ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveOwned(bound, function));
     }
 
-    // SPEC 3.1.3: Never is not Sealed, ObjectPayload, PrimitiveInteger or Callable, so a call whose only candidate requires one of them
-    // has no applicable overload.
+    // SPEC 3.1.3: Never is Copy and is not Sealed, ObjectPayload, PrimitiveInteger or Callable, so a call whose only candidate requires
+    // `T is not Copy` or one of those has no applicable overload.
     [Theory]
     [InlineData("Sealed")]
     [InlineData("ObjectPayload")]
     [InlineData("PrimitiveInteger")]
     [InlineData("Callable<() -> ()>")]
+    [InlineData("not Copy")]
     public void NeverRefutesTheOtherIntrinsicCapabilities(string capability)
     {
         var c = CompilationTestHelper.ParseSuccess($"func need<T>(x: T)\n    T is {capability}\n    ()\nfunc use(n: Never) => need<Never>(n)");
