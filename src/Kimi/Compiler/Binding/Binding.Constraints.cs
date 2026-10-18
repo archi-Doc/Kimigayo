@@ -767,9 +767,12 @@ public sealed partial class Binding
         var subject = this.SubstituteType(constraint.Subject, binder, arguments, lengths);
         var required = constraint.RequiredType is null ? null : this.SubstituteType(constraint.RequiredType, binder, arguments, lengths);
         var contract = constraint.Contract;
-        if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract) && this.SubstituteType(reference, binder, arguments, lengths) is { } substituted)
+        if (contract?.Type is { } reference && !ReferenceEquals(reference.Symbol, contract))
         {
-            contract = this.BoundContractReference(substituted);
+            // SPEC 10.8: a Contract argument that holds a slot no evidence binds leaves the clause unresolved, never the callee's own.
+            var substituted = this.SubstituteType(reference, binder, arguments, lengths);
+            subject = substituted is null && incomplete ? null : subject;
+            contract = substituted is null ? contract : this.BoundContractReference(substituted);
         }
 
         return subject is null || (constraint.RequiredType is not null && required is null) ? this.InternConstraint(new(incomplete ? ConstraintKind.Unresolved : ConstraintKind.Error)) : this.InternConstraint(new(constraint.Kind, subject, required, contract, constraint.Mask));

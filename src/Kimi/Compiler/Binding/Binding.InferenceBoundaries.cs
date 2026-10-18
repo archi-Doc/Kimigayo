@@ -15,7 +15,8 @@ public sealed partial class Binding
 
     private Dictionary<Koto, UnboundSlotFact>? unboundSlots;
 
-    // Whether `type` names one of the callee's Type slots in `slots`, directly or as the selector of an `s/U` application.
+    // Whether `type` names one of the callee's Type slots in `slots`, directly, as the selector of an `s/U` application or as the target
+    // projection of a pair slot.
     private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots, int depth = 0)
     {
         if (slots.IsEmpty || depth > 64)
@@ -23,7 +24,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && type.Symbol is { } symbol &&
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
+            type.Symbol is { } symbol &&
             ContainerSlot(function, symbol) is var slot && slots.Contains(slot))
         {
             return true;

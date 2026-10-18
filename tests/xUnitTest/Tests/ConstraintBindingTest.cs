@@ -111,7 +111,7 @@ public class ConstraintBindingTest
     {
         const string a = "func f<T>(x: T) -> i32\n    T is string\n    return 0\n";
         const string b = "func f(x: i32) -> i32 => x\n";
-        var c = Parse((reverse ? b + a : a + b) + "let result = f(1)");
+        var c = Parse((reverse ? b + a : a + b) + "let result = f(1@i32)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.Empty(((FunctionKoto)call.SymbolOf()!.Declaration).GenericArguments);

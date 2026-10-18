@@ -597,15 +597,9 @@ public sealed partial class Binding
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
             }
 
-            if (evaluated[winnerIndex].Unsolved)
+            if ((applicable > 1 || evaluated[winnerIndex].Unsolved) && !this.SolveSelected(ref evaluation, winnerIndex, selectedType))
             {
-                if (this.DeferNestedCall(call, expected))
-                {
-                    return Complete(call, null);
-                }
-
-                // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-                return this.FailUnboundSlots(call, selected, scope, scratch, lengthArguments, mapping, operations.AsSpan(winnerIndex * operationStride, operationStride), expected, self, origins, inputs, selectedType);
+                return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
             }
 
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)
@@ -1316,8 +1310,9 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        // Default only otherwise unconstrained literals; all established inputs were processed above.
-                        if (this.LiteralDefault(argument) is not { } literalDefault)
+                        // SPEC 10.2.1, 10.5.1: a Literal is no evidence; its default is, once applied to the selected candidate (DefaultArguments),
+                        // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
+                        if (this.LiteralDefault(argument) is not { } shape)
                         {
                             if (this.KindOf(argument) != ArgumentKind.Literal &&
                                 MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
@@ -1334,22 +1329,24 @@ public sealed partial class Binding
                             return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
-                        if (!solution.InferInput(function.Parameters[mapping[i]].Type.BoundType!, literalDefault, argument))
+                        if (this.DefaultOf(argument) is { } literalDefault
+                            ? !solution.InferInput(pattern, literalDefault, argument) : !solution.FitsLiteralShape(pattern, shape))
                         {
-                            if (DifferentRangeShapes(literalDefault, function.Parameters[mapping[i]].Type.BoundType!))
+                            if (DifferentRangeShapes(shape, pattern))
                             {
-                                operations[i] = new(call.ArgumentNodes[i], literalDefault, function.Parameters[mapping[i]].Type.BoundType!, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                operations[i] = new(
+                                    call.ArgumentNodes[i], shape, pattern, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
                             }
 
                             return CandidateApplicability.Inapplicable;
                         }
 
-                        type = solution.Type(function.Parameters[mapping[i]].Type.BoundType!);
+                        type = solution.Type(pattern);
                         if (type is null)
                         {
                             if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
-                                // Literal defaults cannot invert a projection or an unresolved selector.
+                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
                                 open.Add(i);
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
                                 continue;

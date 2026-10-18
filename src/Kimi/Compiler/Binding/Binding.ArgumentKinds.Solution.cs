@@ -65,6 +65,70 @@ public sealed partial class Binding
             return true;
         }
 
+        // SPEC 10.5.1: whether the result holds a Type or Semantics slot that no evidence binds; a constructor's result holds all its
+        // slots. Origin slots are not counted.
+        internal readonly bool ResultHoldsUnsolved(int[] mapping)
+        {
+            var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
+            try
+            {
+                UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                return !unsolved.IsEmpty &&
+                    (this.Function.IsConstructor || (this.Function.BoundSymbol?.Type is { } result && MentionsSlots(result, this.SlotOwner, unsolved)));
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(unsolved);
+            }
+        }
+
+        // SPEC 10.2.1: after selection, each Literal part at a position that holds an unsolved slot takes its default (SPEC 12.3, and
+        // 4.6.2 rule 3 for a literal-only range boundary), recorded for the candidate's checks to run once more. Returns the first such
+        // part that its default does not fit, bound at it for its own record; `applied` tells whether any default applied.
+        internal readonly Koto? DefaultArguments(int[] mapping, out bool applied)
+        {
+            var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
+            try
+            {
+                UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                applied = false;
+                Koto? misfit = null;
+                for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
+                {
+                    misfit ??= this.DefaultPart(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, unsolved, ref applied);
+                }
+
+                return misfit;
+            }
+            finally
+            {
+                this.Binding.ReturnSlotSet(unsolved);
+            }
+        }
+
+        // SPEC 10.5.1, 10.2.1: before its default applies, a Literal fits a position that holds an unbound slot only by the slot-free
+        // structure its default would have; it binds no slot.
+        internal readonly bool FitsLiteralShape(BoundType pattern, BoundType shape)
+        {
+            var binding = this.Binding;
+            if (binding.CallMemberPattern(pattern, this.Function, this.DeclaringType) is not { } memberPattern)
+            {
+                return false;
+            }
+
+            var count = CallSlotCount(this.Function);
+            var trial = binding.typeScratch.Rent(count);
+            try
+            {
+                this.Types.AsSpan(0, count).CopyTo(trial);
+                return binding.Infer(LiteralInputType(binding.ContractType(memberPattern, this.Scope, this.Self)), shape, this.SlotOwner, trial);
+            }
+            finally
+            {
+                binding.typeScratch.Return(trial, clearArray: true);
+            }
+        }
+
         // SPEC 10.8: an argument's (or the receiver's) Type as evidence for the slots of its parameter's pattern.
         internal bool InferInput(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
         {
@@ -302,7 +366,7 @@ public sealed partial class Binding
                 return true;
             }
 
-            return binding.LiteralDefault(source) is not { } literalDefault ||
+            return binding.DefaultOf(source) is not { } literalDefault ||
                 binding.Infer(pattern, literalDefault, this.SlotOwner, this.Types, lengths: this.Lengths);
         }
 
@@ -462,10 +526,86 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 4.6.2: with `fitLiterals`, a literal-only boundary whose S or E no other evidence fixed takes the other boundary's Type.
+        // SPEC 4.6.2: with `fitLiterals`, a literal-only boundary whose S or E no other evidence fixed takes the other boundary's integer
+        // Type (rule 2), or its default once DefaultArguments applied it to the selected candidate.
         private readonly bool InferLiteralBoundary(BoundType pattern, Koto boundary, BoundType? other, bool fitLiterals)
             => !fitLiterals || this.Binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
-                this.Binding.Infer(pattern, this.Binding.OtherBoundaryType(boundary, other), this.SlotOwner, this.Types, lengths: this.Lengths);
+                (this.Binding.DefaultOf(boundary) ?? this.Binding.RangeTyping(boundary, other)) is not { } type ||
+                this.Binding.Infer(pattern, type, this.SlotOwner, this.Types, lengths: this.Lengths);
+
+        // The defaults of a part's Literal leaves at the positions that hold an unsolved slot: the part itself, the elements of a Tuple
+        // or array literal and the literal-only boundary of a mixed range.
+        private readonly Koto? DefaultPart(Koto part, BoundType pattern, SlotSet unsolved, ref bool applied)
+        {
+            var binding = this.Binding;
+            if (!MentionsSlots(pattern, this.SlotOwner, unsolved))
+            {
+                return null;
+            }
+
+            var source = KotoHelper.UnwrapParentheses(part);
+            if (binding.KindOf(source) == ArgumentKind.Literal)
+            {
+                return this.Default(source, binding.LiteralDefault(source), ref applied);
+            }
+
+            Koto? misfit = null;
+            if (source is TupleLiteralKoto tuple)
+            {
+                for (var i = 0; i < tuple.Elements.Count; i++)
+                {
+                    var element = pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count ? pattern.Components[i] : pattern;
+                    misfit ??= this.DefaultPart(tuple.Elements[i], element, unsolved, ref applied);
+                }
+            }
+            else if (source is ArrayLiteralKoto array)
+            {
+                var element = pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray ? pattern.Components[0] : pattern;
+                for (var i = 0; i < array.Elements.Count; i++)
+                {
+                    misfit ??= this.DefaultPart(array.Elements[i], element, unsolved, ref applied);
+                }
+            }
+            else if (source is RangeKoto range && IsMixedRange(range))
+            {
+                var ranged = pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 2 };
+                misfit = this.DefaultBoundary(range.Start, range.End, ranged ? pattern.Components[0] : pattern, binding.EndType, unsolved, ref applied) ??
+                    this.DefaultBoundary(range.End, range.Start, ranged ? pattern.Components[1] : pattern, binding.StartType, unsolved, ref applied);
+            }
+
+            return misfit;
+        }
+
+        // SPEC 4.6.2: a literal-only boundary still unbound takes the other boundary's integer Type, else i32 (rules 2 and 3).
+        private readonly Koto? DefaultBoundary(Koto? boundary, Koto? other, BoundType pattern, BoundType omitted, SlotSet unsolved, ref bool applied)
+        {
+            if (boundary is null || !IsLiteralOnlyPosition(boundary) || boundary.BoundType is not null || !MentionsSlots(pattern, this.SlotOwner, unsolved))
+            {
+                return null;
+            }
+
+            var binding = this.Binding;
+            return this.Default(boundary, binding.OtherBoundaryType(boundary, binding.IndependentRangeBoundary(other, omitted)), ref applied);
+        }
+
+        private readonly Koto? Default(Koto literal, BoundType? type, ref bool applied)
+        {
+            var binding = this.Binding;
+            if (type is null)
+            {
+                return null;
+            }
+
+            binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type);
+            applied = true;
+            if (binding.FitsInputLiteral(literal, type, this.Scope))
+            {
+                return null;
+            }
+
+            binding.RequireType(literal, this.Scope, type);
+            return literal;
+        }
 
         // Whether the call infers a construction's Type from its arguments (SPEC 10.8.1), and its target.
         private readonly bool InfersConstruction(out Koto? target)

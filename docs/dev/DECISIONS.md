@@ -1462,6 +1462,18 @@ R5 on the owner's request of 2026-10-18.
   (design B's option (iii): a `FunctionKoto` per Case without syntax and HIR and MIR changes for a single-candidate solve); a
   Koto-keyed kind table (ARCH Code rules, Syntax identity). Open: a construction's unbound slot reports `MissingType`
   (`UnresolvedBinding_Kd`) while a call's reports `UnboundTypeArgument_Kd`. Not temporary.
+  - U2, Literal timing (SPEC 10.2.1, 10.5.1; owner decision (2)): a Literal part is no evidence during applicability and
+    comparison. At a position that holds an unbound slot it is checked only by the slot-free shape its default would have and
+    leaves the slot unbound, so step 2 of 10.4 makes such candidates incomparable. For the selected candidate whose slot no
+    evidence binds, `SolveSelected` applies the defaults to its Literal parts at positions that hold the slot (12.3; 4.6.2 rule 3,
+    while rule 2, the other boundary's integer Type, stays range typing during candidate evaluation), records each as the part's
+    fact (`ArgumentFact.Default`, keyed by `SourceRef`) and runs the candidate's checks once more. A failure is that candidate's
+    own record and never reselects: a literal its default does not fit is its own `InvalidNumericLiteral_Kd`, a refuted
+    Constraint keeps its fact. Under the argument probe a nested call or construction waits when another candidate is applicable
+    or its result holds a Type or Semantics slot no evidence binds (a constructor's result holds all its slots; Origin slots
+    never count). Arithmetic operands have their own probe (SPEC 13.3.4), which waits only on an ambiguity or a slot no default
+    binds, so `identity(1) + identity(2)` stays typed. Gaps the timing exposed: a Contract argument holding an unbound slot leaves
+    its clause unresolved instead of judging the callee's own reference; a pair's target projection `T` mentions its pair slot.
 
 ## R5 and R6 (adopted 2026-10-18)
 

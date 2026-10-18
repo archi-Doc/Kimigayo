@@ -97,11 +97,13 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 10.8: a parameter Type that holds an unsolved slot is neither identical to nor a subtype of another Type, so the candidates tie
-    // in step 2 even though one uses a default; omitted header Types rest on the ambiguity.
+    // SPEC 10.8, 10.2.1: a parameter Type that holds an unsolved slot is neither identical to nor a subtype of another Type, so the
+    // candidates tie in step 2 even though one uses a default, and a Literal is no evidence; omitted header Types rest on the ambiguity.
     [Theory]
     [InlineData("func size<T>(value: Option<T>) -> i32 => 1\nfunc size(value: Option<i32>, extra: i32 = 0) -> i32 => 2\npublic func main() -> ()\n    let r = size(.None)\n", "size(.None)")]
     [InlineData("func run(action: (i32) -> i32) -> i32 => action(1)\nfunc run<T>(action: (T) -> T, extra: i32 = 0) -> i32 => 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)")]
+    [InlineData("func h(value: i32) -> i32 => 1\nfunc h<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = h(1)\n", "h(1)")]
+    [InlineData("func g2(value: f64) -> i32 => 1\nfunc g2<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = g2(1.5)\n", "g2(1.5)")]
     public void OpenParameterTypesAreIncomparable(string source, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -110,11 +112,14 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     }
 
     // SPEC 10.5, 23.1.2: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and
-    // a failed selection leaves the omitted header Types derived.
+    // a failed selection leaves the omitted header Types derived. SPEC 10.2.1: a check that fails once the defaults apply is the selected
+    // candidate's own record: a literal that its default does not fit, or a refuted Constraint.
     [Theory]
     [InlineData("func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + missing)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
     [InlineData("func run<F>(action: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\npublic func main() -> ()\n    let r = run(func (n) => n + 1, true)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "run(func (n) => n + 1, true)")]
     [InlineData("func run<F>(action: ref/F) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "n")]
+    [InlineData("func f<T>(x: T) => ()\npublic func main() -> ()\n    f(3000000000)\n", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "3000000000")]
+    [InlineData("func fi<T>(x: T)\n    T is PrimitiveInteger\n    return\npublic func main() -> ()\n    fi(1.5)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "fi(1.5)")]
     public void OneRecordPerIndependentProblem(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);

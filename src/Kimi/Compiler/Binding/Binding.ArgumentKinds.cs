@@ -11,19 +11,23 @@ namespace Kimi.Compiler;
 //   anonymous function, a function reference that needs S, or a nested call the argument probe deferred, until the selected
 //   candidate completes it. Typed: every other part.
 // - Inputs: the part's syntax and binding state; the argument probe (BindIndependentArgument), under which a nested call that only an
-//   outer expectation could type defers (DeferNestedCall) and its kind is recorded.
+//   outer expectation could type defers (DeferNestedCall) and its kind is recorded; arithmetic operands have their own probe (SPEC 13.3.4).
 // - Outputs: KindOf; the preparation of a call's arguments (PrepareCallArguments) and of a Composite's parts; a Composite's fit to a
-//   candidate's parameter Type (ProbeAggregateArgument); SlotSolution (Binding.ArgumentKinds.Solution.cs), one candidate's SPEC 10.8
-//   solve state, whose operations take a part's evidence for the slots (InferInput, InferAggregateCall for a Composite,
-//   InferClosureHeader, InferCallableSignatures), substitute the solution (Type) and judge the Constraints over it (Prove).
-// - Invariants: a recorded kind is keyed by syntax identity (SourceRef) and lives for one pass; a deferred nested call stays waiting
-//   after its completion, so its Type is never evidence for an outer slot (WasWaitingNestedCall).
+//   candidate's parameter Type (ProbeAggregateArgument); SolveSelected, the selected candidate of a call whose slot no evidence binds:
+//   a nested call waits, or the Literal parts' defaults apply to it alone and its checks run once more (SPEC 10.2.1); SlotSolution
+//   (Binding.ArgumentKinds.Solution.cs), one candidate's SPEC 10.8 solve state, whose operations take a part's evidence for the slots
+//   (InferInput, InferAggregateCall for a Composite, InferClosureHeader, InferCallableSignatures), apply the defaults
+//   (DefaultArguments), substitute the solution (Type) and judge the Constraints over it (Prove).
+// - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
+//   nested call stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingNestedCall); a Literal
+//   is evidence only through the default recorded for the selected candidate.
 // - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
 //   reference) to fit them; no Koto-keyed table (COMPILER_ARCHITECTURE, Code rules: Syntax identity).
 public sealed partial class Binding
 {
-    private readonly Dictionary<SourceRef, ArgumentKind> argumentKinds = new();
+    private readonly Dictionary<SourceRef, ArgumentFact> argumentKinds = new();
     private InvocationKoto? nestedArgumentProbe;
+    private InvocationKoto? nestedOperandProbe;
 
     private enum ArgumentKind : byte
     {
@@ -59,8 +63,14 @@ public sealed partial class Binding
     }
 
     private bool WasWaitingNestedCall(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is InvocationKoto { SyntaxOwner: { } owner } call &&
-            this.argumentKinds.TryGetValue(new(owner.Module, call.SyntaxId), out var kind) && kind == ArgumentKind.Waiting;
+        => KotoHelper.UnwrapParentheses(node) is InvocationKoto call && this.RecordedFact(call).Kind == ArgumentKind.Waiting;
+
+    // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
+    private BoundType? DefaultOf(Koto part)
+        => this.RecordedFact(KotoHelper.UnwrapParentheses(part)) is { Kind: ArgumentKind.Literal, Default: { } literalDefault } ? literalDefault : null;
+
+    private ArgumentFact RecordedFact(Koto node)
+        => node.SyntaxOwner is { } owner && this.argumentKinds.TryGetValue(new(owner.Module, node.SyntaxId), out var fact) ? fact : default;
 
     private bool IsWaitingNestedCall(Koto node) => node.BoundType is null && this.WasWaitingNestedCall(node);
 
@@ -131,18 +141,127 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 13.3.4: an arithmetic operand is typed independently as an argument is, but by its operator's own rule: a nested call
+    // waits only when it is ambiguous or no default fixes its slots (SolveSelected), never because a default would.
+    private BoundType? BindIndependentOperand(Koto operand, BindingScope scope)
+    {
+        var previous = this.nestedOperandProbe;
+        this.nestedOperandProbe = KotoHelper.UnwrapParentheses(operand) as InvocationKoto;
+        try
+        {
+            return this.BindNode(operand, scope);
+        }
+        finally
+        {
+            this.nestedOperandProbe = previous;
+        }
+    }
+
     private bool DeferNestedCall(InvocationKoto call, BoundType? expected)
     {
-        if (expected is not null || !ReferenceEquals(this.nestedArgumentProbe, call))
+        if (expected is not null || !(ReferenceEquals(this.nestedArgumentProbe, call) || ReferenceEquals(this.nestedOperandProbe, call)))
         {
             return false;
         }
 
-        this.argumentKinds[SourceRef.Of(call)] = ArgumentKind.Waiting;
+        this.argumentKinds[SourceRef.Of(call)] = new(ArgumentKind.Waiting, null);
         return true;
     }
 
-    // Obtain independent tuple/fill Types without committing candidate-local numeric defaults.
+    // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds, or of a nested call with another applicable
+    // candidate. Under the argument probe the nested call waits when another candidate is applicable or its result holds an unsolved
+    // slot. Otherwise the Literal parts' defaults apply to the selected candidate and its checks run once more; a failure reports that
+    // candidate, never another, and a slot still unbound is the inference boundary. False when the call is complete: waiting or failed.
+    private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
+    {
+        var call = evaluation.Call;
+        var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
+        var solution = this.Solution(evaluation, selected, declaringType);
+        var argument = evaluation.Expected is null && ReferenceEquals(this.nestedArgumentProbe, call);
+        if (argument && (evaluation.Applicable > 1 || (evaluation.Evaluated[winner].Unsolved && solution.ResultHoldsUnsolved(evaluation.Mapping))))
+        {
+            this.DeferNestedCall(call, evaluation.Expected);
+            Complete(call, null);
+            return false;
+        }
+
+        if (!evaluation.Evaluated[winner].Unsolved)
+        {
+            return true;
+        }
+
+        if (solution.DefaultArguments(evaluation.Mapping, out var applied) is { } misfit)
+        {
+            this.CompleteDependent(call, misfit); // SPEC 12.3: the literal's own record, on which the call rests.
+            return false;
+        }
+
+        var operations = evaluation.Operations.AsSpan(winner * evaluation.OperationStride, evaluation.OperationStride);
+        if (applied && !this.CheckDefaulted(ref evaluation, winner, solution, operations))
+        {
+            return false;
+        }
+
+        if (!evaluation.Evaluated[winner].Unsolved)
+        {
+            return true;
+        }
+
+        if (this.DeferNestedCall(call, evaluation.Expected))
+        {
+            Complete(call, null);
+        }
+        else
+        {
+            // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
+            this.FailUnboundSlots(
+                call,
+                selected,
+                evaluation.Scope,
+                evaluation.Scratch,
+                evaluation.LengthArguments,
+                evaluation.Mapping,
+                operations,
+                evaluation.Expected,
+                evaluation.Self,
+                evaluation.Origins,
+                evaluation.Inputs,
+                declaringType);
+        }
+
+        return false;
+    }
+
+    // SPEC 10.2.1: the selected candidate's checks run once more with its Literal parts' defaults; a failure is its own record and
+    // never reselects.
+    private bool CheckDefaulted(ref CallEvaluation evaluation, int winner, SlotSolution solution, Span<BoundArgumentOperation> operations)
+    {
+        var state = this.TryCandidate(
+            solution,
+            evaluation.ExplicitLengths,
+            evaluation.Mapping,
+            evaluation.Evaluated[winner].ArgumentMap,
+            evaluation.Expected,
+            operations,
+            out _,
+            out var unsolved,
+            out _,
+            out _,
+            out var failure,
+            out _);
+        if (state is CandidateApplicability.Applicable or CandidateApplicability.Waiting)
+        {
+            evaluation.Evaluated[winner] = evaluation.Evaluated[winner] with { State = state, Unsolved = unsolved };
+            return true;
+        }
+
+        var call = evaluation.Call;
+        (this.rejectedCandidates ??= new(ReferenceEqualityComparer.Instance))[call] = [new(solution.Function, null, null, ConstraintFailure: failure)];
+        this.FailWaitingSelection(call, state == CandidateApplicability.Pending ? BindingFailure.UnprovenConstraint : BindingFailure.NoApplicableCandidate);
+        return false;
+    }
+
+    // Obtain independent tuple/fill Types; with `fitLiterals`, a Literal part gives its default once DefaultArguments applied it.
     private BoundType? IndependentAggregateType(Koto source, bool fitLiterals)
     {
         source = KotoHelper.UnwrapParentheses(source);
@@ -153,11 +272,17 @@ public sealed partial class Binding
 
         if (source is RangeKoto range && IsMixedRange(range))
         {
-            // SPEC 4.6.2: without an expected range, a literal-only boundary takes the integer Type of the typed one.
+            // SPEC 4.6.2: without an expected range, a literal-only boundary takes the integer Type of the typed one; its default (rule 3)
+            // applies only to the selected candidate (SPEC 10.2.1).
             var start = this.IndependentRangeBoundary(range.Start, this.StartType);
             var end = this.IndependentRangeBoundary(range.End, this.EndType);
-            start ??= this.OtherBoundaryType(range.Start!, end);
-            end ??= this.OtherBoundaryType(range.End!, start);
+            start ??= this.DefaultOf(range.Start!) ?? this.RangeTyping(range.Start!, end);
+            end ??= this.DefaultOf(range.End!) ?? this.RangeTyping(range.End!, start);
+            if (start is null || end is null)
+            {
+                return null;
+            }
+
             var symbol = range.IsInclusive ? this.Library.ClosedRange : this.Library.Range;
             return this.types.Intern(BoundTypeKind.Constructed, symbol, SemanticsKind.Owner, [start, end]);
         }
@@ -193,7 +318,7 @@ public sealed partial class Binding
             }
         }
 
-        return fitLiterals ? this.LiteralDefault(source) : null;
+        return fitLiterals ? this.DefaultOf(source) : null;
     }
 
     // The independent Type of a written range boundary: Start or End when omitted, the read Type of a typed one, or null for a
@@ -211,8 +336,17 @@ public sealed partial class Binding
 
     // A literal-only boundary beside a typed one: that boundary's integer Type, or its T for FromEnd<T>, else i32 (SPEC 4.6.2).
     private BoundType OtherBoundaryType(Koto boundary, BoundType? other)
+        => this.RangeTyping(boundary, other) ?? this.RangeTyping(boundary, BoundType.I32)!;
+
+    // SPEC 4.6.2 rule 2: a literal-only boundary beside one with an established integer Type takes that Type, or its T for FromEnd<T>;
+    // null when the other boundary has none.
+    private BoundType? RangeTyping(Koto boundary, BoundType? other)
     {
-        var integer = other is { IsInteger: true } ? other : this.FromEndOffsetType(other) ?? BoundType.I32;
+        if ((other is { IsInteger: true } ? other : this.FromEndOffsetType(other)) is not { } integer)
+        {
+            return null;
+        }
+
         return KotoHelper.UnwrapParentheses(boundary) is FromEndIndexKoto ? this.FromEndType(integer) : integer;
     }
 
@@ -347,4 +481,8 @@ public sealed partial class Binding
             ReferenceEquals(this.ReadTypeReferent(actual, syntax) ?? actual, expected) ? CandidateApplicability.Applicable
             : CandidateApplicability.Inapplicable;
     }
+
+    // A part's kind as the pass recorded it where its syntax does not give it, and the default a Literal part takes for the selected
+    // candidate (SPEC 10.2.1).
+    private readonly record struct ArgumentFact(ArgumentKind Kind, BoundType? Default);
 }

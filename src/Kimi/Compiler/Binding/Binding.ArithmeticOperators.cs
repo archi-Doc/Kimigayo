@@ -67,7 +67,7 @@ public sealed partial class Binding
 
         var leftLiteral = IsUnfittedLiteral(binary.Left);
         var rightLiteral = IsUnfittedLiteral(binary.Right);
-        var left = leftLiteral ? null : this.BindIndependentArgument(binary.Left, scope);
+        var left = leftLiteral ? null : this.BindIndependentOperand(binary.Left, scope);
         var leftCore = left is null ? null : this.ArithmeticTerminal(binary.Left, left);
         var ordinary = leftCore is not null && (UserArithmeticProvider(leftCore) || this.HasArithmeticPremise(leftCore, ArithmeticContract(operation), scope));
         // A built-in input Type still guides literal results of a control-flow operand (SPEC 14.9.2).
@@ -91,7 +91,7 @@ public sealed partial class Binding
         }
 
         // A fixed left provider can give the other operand a bounded expected Type after selection.
-        var right = rightLiteral ? null : this.BindIndependentArgument(binary.Right, scope);
+        var right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
         var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);
         if ((!leftLiteral && left is null && !this.IsWaitingNestedCall(binary.Left) && !IsWaitingCallable(binary.Left)) ||
             (!rightLiteral && right is null && !this.IsWaitingNestedCall(binary.Right) && !IsWaitingCallable(binary.Right)))
@@ -176,7 +176,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var operand = this.BindIndependentArgument(unary.Operand, scope);
+        var operand = this.BindIndependentOperand(unary.Operand, scope);
         if (operand is null)
         {
             return false;

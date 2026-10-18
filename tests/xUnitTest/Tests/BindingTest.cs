@@ -196,7 +196,7 @@ public class BindingTest
             Array.Reverse(declarations);
         }
 
-        var compilation = CompilationTestHelper.ParseSuccess(string.Join("\n", declarations) + "\nlet result = f(1)");
+        var compilation = CompilationTestHelper.ParseSuccess(string.Join("\n", declarations) + "\nlet result = f(1@i32)");
         Assert.True(compilation.Bind().IsComplete, Describe(compilation));
         var call = Assert.Single(KotoTree.Walk(compilation.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var selected = Assert.IsType<FunctionKoto>(call.SymbolOf()!.Declaration);
