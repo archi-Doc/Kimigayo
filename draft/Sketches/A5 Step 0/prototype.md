@@ -33,7 +33,7 @@ dotnet run proto.cs -- -cases None+PK NoDestroyValue+PK  # +PK runs a variant on
 dotnet run proto.cs -- -r13      # only round 13's tables
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 4,227 lines after round 13 and its 2026-10-18 correction.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 4,243 lines after round 14.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1397,3 +1397,42 @@ a Loan ends only where a Move Path is destroyed in place (SPEC 15.6.3), and a Mo
 - Rerun, the design: 304 same, 21 earlier or moved, 7 listed losses, 0 unlisted, 0 unsound (unchanged totals; 75 is "same" as an
   error). Design A (last base): 285 same, 22 listed losses (75 left them). Only the rejected `KillAcrossDeref` accepts 75.
 - A5 agrees: `MirBorrowsTest`'s c75 expects the error at `h@follow.r@follow@follow = 7` (1b-5, `806110fc`).
+
+## Round 14 (group 1c's 26b: an activation meets only shared Loans; DECISIONS R4-M68)
+
+**Input.** Group 1c's two designs and their design review (2026-10-18), which ran this rule as the variant
+`ActivationRefOnly` on round 13's design with the case 75 correction.
+
+**Rule (the design).** An activation, deep or destroying in place, conflicts only with Loans whose mode is `ref` in the
+holder where it is found. An exclusive Loan that hits the reservation was met where the later Borrow was formed or
+activated: at the reservation's formation, or at its own formation or inner activation. So each (Loan, reservation) is
+reported once (SPEC 15.6.7: the target is checked once). A destroying call's destroy (err(destroy)) keeps every mode. The
+runs without `prefixKill` reproduce earlier rounds and keep round 13's rule.
+
+- `ActivationEveryMode` restores round 13's err(activate).
+- `NoFormationReport` is the rejected option, the old path's choice: the formation reports nothing, the activation every
+  mode.
+
+**Run.** `-cases None+PK ActivationEveryMode+PK NoFormationReport+PK` against round 13's `-cases None+PK`, and the full
+output against round 13's:
+
+| Mode | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **The design** | 300 | 25 | 7 | 0 | 0 |
+| `ActivationEveryMode` | 304 | 21 | 7 | 0 | 0 |
+| `NoFormationReport` | 298 | 26 | 7 | 0 | 1 (38j) |
+
+- `ActivationEveryMode` reproduces round 13's design in all 332 cases, fact by fact.
+- Under the design exactly 16 cases change: 9g, 9m, 9n, 9o, 9h, 20b, 20f, 22a, 33b, 33d, 33e, 53, 63, 64, 88 and r13s2.
+  - Each keeps its verdict and loses only its activation's `UBorrow` error.
+  - The pair stays reported: in 15 cases by the reservation's formation (`SBorrow`, the same Loan); in 33e by the write
+    in its argument, which met Φ₁ before the call disturbed it.
+  - 33e, 53, 88 and r13s2 move from "same" to "error moves", because their listed locations include the activation.
+- The full output changes only in the design's rows and its variants' (by those four cases), r13s2's row and the two new
+  variant rows.
+- `NoFormationReport` accepts 38j (UNSOUND): the formation of `$r1 = cur.inner` is the only check that meets Lpc.
+- No case has a destroying activation that meets a unique Loan. The review's variant exempting in-place activations gave
+  the same result. The MIR tests cover that form (`MirBorrowsTest`: i4, a `replace`).
+- Open for 2f: a Φ_c of a shared-receiver abstract descending call issued inside a reservation window. If 2f makes it
+  uniq, no access meets the reservation. 2f gives it the receiver's mode, or reruns `ActivationEveryMode` against the
+  design with that case.

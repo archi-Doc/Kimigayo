@@ -61,6 +61,11 @@
 //               ParentsAsTransit (the review's RefParentsInTransit with a seed whatever the liveness), ActivationLiveIn,
 //               CurrentBuilder (Case.Built: today's builder), KeepCSTerms, BorrowWithoutSeed (the round's first run: the borrow
 //               row without E5's seed accepts 41o), ParentsEveryLayer (⋃_{j<k}) and OnePointDrop (Case.OnePoint).
+//        Round 14 (the design; group 1c's 26b, DECISIONS R4-M68): an activation, deep or destroying in place, conflicts only
+//               with Loans whose mode is `ref` in the holder where it is found. An exclusive Loan that hits the reservation was
+//               met where the later Borrow was formed or activated, so each (Loan, reservation) is reported once (SPEC 15.6.7);
+//               a destroying call's destroy keeps every mode. Variants: ActivationEveryMode (round 13's err(activate)) and
+//               NoFormationReport (rejected: the formation reports nothing, the activation every mode).
 using System.Text;
 using Fact = (string H, string L);
 
@@ -78,6 +83,7 @@ if (args.Length == 2 && args[0] == "-dump") // dotnet run proto.cs -- -dump 8b :
 // cases 130+ under the design and each round-13 variant. -r13 prints only this section.
 Analysis Design(Case c, Abl x = Abl.None) => new(c, Mode.A, x, prefixKill: true);
 var round13Variants = new[] { Abl.NoDestroyValue, Abl.BorrowSeedOnly, Abl.ParentsAsTransit, Abl.ActivationLiveIn, Abl.CurrentBuilder, Abl.KeepCSTerms, Abl.BorrowWithoutSeed, Abl.ParentsEveryLayer, Abl.OnePointDrop };
+var round14Variants = new[] { Abl.ActivationEveryMode, Abl.NoFormationReport }; // round 14 (R4-M68): on the design's rows
 void Round13()
 {
     string Group(Analysis a, Case c) => Cls(c, a) is var s && s.StartsWith("(a)") ? "listed loss" : s;
@@ -90,7 +96,7 @@ void Round13()
     Console.WriteLine($"\nRound 13 (E13 rewritten; {Cases.All().Count} cases):\n| Mode | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |\n| --- | ---: | ---: | ---: | ---: | ---: |");
     Console.WriteLine(Row("**The design** (design A with PrefixKill)", c => Design(c)));
     Console.WriteLine(Row("Design A (last base)", c => new Analysis(c, Mode.A)));
-    foreach (var ab in round13Variants.Concat(new[] { Abl.NoOwnValue, Abl.NoEarlierValues, Abl.NoLaterRoots, Abl.EarlierRoots, Abl.AcquireAtOperation, Abl.ShapeReservation, Abl.IntrinsicAllOperands, Abl.OwnValueEverywhere, Abl.RefParentsInTransit, Abl.Round11, Abl.CalleeNotActivated, Abl.InputsOnCS, Abl.PairAcquireLive, Abl.NoRawStore, Abl.Implemented1b }))
+    foreach (var ab in round13Variants.Concat(round14Variants).Concat(new[] { Abl.NoOwnValue, Abl.NoEarlierValues, Abl.NoLaterRoots, Abl.EarlierRoots, Abl.AcquireAtOperation, Abl.ShapeReservation, Abl.IntrinsicAllOperands, Abl.OwnValueEverywhere, Abl.RefParentsInTransit, Abl.Round11, Abl.CalleeNotActivated, Abl.InputsOnCS, Abl.PairAcquireLive, Abl.NoRawStore, Abl.Implemented1b }))
         Console.WriteLine(Row("`" + ab + "`", c => Design(c, ab)));
     Console.WriteLine("\nRound 13 cases (130+) under the design:\n| Case | Program | SPEC | design | last base | " + string.Join(" | ", round13Variants) + " | class design |\n|" + string.Concat(Enumerable.Repeat(" --- |", round13Variants.Length + 6)));
     foreach (var c in Cases.All().Where(Cases.Round11))
@@ -286,7 +292,7 @@ foreach (var (ab, fd) in new[] { (Abl.None, false), (Abl.FirstDerefBase, false),
         .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab, fd)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
         .Select(g => $"{g.Count()} {g.Key}" + (g.Key != "same" ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
 Console.WriteLine();
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Where(c => !Cases.NoS1P(c)).Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -364,7 +370,10 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     KeepCSTerms,        // a borrow and an observing Drop also take CS(ℓ)'s transit and E5's seed (the review's additive run)
     BorrowWithoutSeed,  // round 13's first run: the borrow row without E5's seed (its own Loan into a live destination): 41o accepted
     ParentsEveryLayer,  // the borrow row's parents over every layer, ⋃_{j<k}, instead of E3's bound ⋃_{m≤j<k} (round 13's first run)
-    OnePointDrop }      // the one-point encodings of 24c, 29b and 91 (Case.OnePoint): a drop and a store at one location
+    OnePointDrop,       // the one-point encodings of 24c, 29b and 91 (Case.OnePoint): a drop and a store at one location
+    // Round 14 (1c's 26b, DECISIONS R4-M68): the design's activation meets only `ref` Loans in the holder found.
+    ActivationEveryMode, // round 13's err(activate): an activation conflicts with a Loan of any mode
+    NoFormationReport } // rejected (the old path's choice): a reservation's formation reports nothing, its activation every mode
 
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
@@ -547,6 +556,9 @@ class Analysis
     // the own term (the review's additive run).
     bool OwnTerm(Acc a) => !Earlier && X != Abl.KeepCSTerms && (a.From != null ? X is not (Abl.BorrowSeedOnly or Abl.ParentsAsTransit)
         : a.Kind == K.Destroy && a.Except == null && X != Abl.NoDestroyValue);
+    // Round 14 (R4-M68): the design's activation conflicts only with a Loan `ref` in the holder found. Off in the runs of earlier
+    // rounds (no prefixKill) and in the variants that restore the activation's every mode.
+    bool ActivationRefOnly => Pk && X is not (Abl.ActivationEveryMode or Abl.NoFormationReport);
 
     int IxOf(string l) { int i = ns.FindIndex(n => n.Label == l); return i >= 0 ? i : throw new Exception("no label " + l); }
 
@@ -1048,6 +1060,10 @@ class Analysis
                     if (X == Abl.AText && a.Except == null && n.Issues.Any(s => s.Id == l)) continue; // "L not issued at ℓ"
                     bool uniq = issue[l].Uniq && !Reserved(h, l, i);
                     if (!uniq && a.Kind is K.Read or K.SBorrow) continue;
+                    // Round 14 (R4-M68, SPEC 15.6.7): an exclusive Loan that hits a reservation was met where the later Borrow was
+                    // formed or activated, so the activation meets only `ref` ones; NoFormationReport reports at the activation only.
+                    if (ActivationRefOnly && a.Except != null && a.Kind == K.UBorrow && uniq) continue;
+                    if (X == Abl.NoFormationReport && a.From != null && issue[a.From.Id].Reserve) continue;
                     var p = issue[l].Place; // syntactic: no resolution, no authority
                     // Review r2 F1 (A3 §5 err(destroy), corrected from ¬hits(…, uborrow), which never holds): a destroying call's
                     // destruction reports only the obs part beyond its activation, so skip a Loan the activation's own kind hits
