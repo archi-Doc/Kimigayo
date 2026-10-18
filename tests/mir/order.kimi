@@ -1,0 +1,41 @@
+func give2(a: i32, b: i32) => ()
+
+struct Box
+    public var v: i32 = 0
+    public init() => ()
+    public func f(a: i32, self: ref/Self) => ()
+
+struct Gauge
+    public var level: i32 = 0
+        set(value: i32) -> ()
+            storage = value
+    public init() => ()
+
+func inner<s/T>(a: s/T, b: i32) -> ()
+    s is ref or uniq
+    return
+
+func named(x: i32, y: i32)
+    give2(b: x, a: y)
+    give2(a: x, b: y)
+
+func unbound(x: i32, box: ref/Box)
+    Box.f(x, box)
+    box.f(x)
+
+func setter(x: i32)
+    var g = Gauge.init()
+    g.level = x
+
+func captures(x: i32)
+    var y: i32 = 0
+    let c = func [x, y@uniq] () => ()
+    let d = func [y@uniq, x] () => ()
+
+func pairs<s/T>(p: s/T, item: T)
+    s is ref or uniq
+    var v = p
+    inner(v, 1)
+    let t = (v, 1)
+    var x = item@move
+    inner(x@(s/T), 2)

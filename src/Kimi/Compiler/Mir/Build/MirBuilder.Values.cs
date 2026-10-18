@@ -20,8 +20,7 @@ internal sealed partial class MirBuilder
             return HirTables.Op(node) != HirOp.Literal;
         }
 
-        var read = adjust.Adaptation == HirAdaptation.ReferentRead ? adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Temporary)
-            : adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move };
+        var read = Reads(adjust);
         while (read && HirTables.Op(node) != HirOp.Name && HirTables.PlaceOf(node).Kind is HirPlaceKind.Field or HirPlaceKind.Deref or
             HirPlaceKind.PairLayer or HirPlaceKind.ConstIndex)
         {
@@ -30,6 +29,11 @@ internal sealed partial class MirBuilder
 
         return !read || HirTables.PlaceOf(node).Kind != HirPlaceKind.Local;
     }
+
+    // Whether an acquisition reads its Place as it is (Copied, Moved or through its referent), so it builds no code of its own (Builds).
+    private static bool Reads(HirAdjust adjust) => adjust.Adaptation == HirAdaptation.ReferentRead
+        ? adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Temporary)
+        : adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move };
 
     // Whether a Type holds a Never element where a literal builds one: a Tuple's component or an array's element, through those kinds
     // only (Aggregate; DECISIONS R4-M59). A Never elsewhere, a Function's result or a Type argument, is a declared Type.
@@ -128,7 +132,7 @@ internal sealed partial class MirBuilder
                 this.Set(destination, this.Ref(this.Place(Child(node), input), TypeOf(node), input), node);
                 break;
             case HirOp.Convert:
-                this.Convert(destination, (BinaryKoto)node, TypeOf(node));
+                this.Convert(destination, (BinaryKoto)node, TypeOf(node), input);
                 break;
             case HirOp.Aggregate:
                 this.Aggregate(destination, node, TypeOf(node));
@@ -181,16 +185,19 @@ internal sealed partial class MirBuilder
     // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input), a value the acquisition
     // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
     // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
-    // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is.
+    // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is. An input the call
+    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves) and has no preparation path (A3 E13 (4)).
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
     {
         var adjust = HirTables.AdjustOf(node);
+        var reserves = input && this.Binder(expected ?? TypeOf(node)) >= 0;
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
+        reserves |= input;
         if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
-                : MirOperand.Move(this.Value(node, into, input));
+                : MirOperand.Move(this.Value(node, into, reserves));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
@@ -201,10 +208,11 @@ internal sealed partial class MirBuilder
         }
 
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
-        return this.Acquire(adjust, place, expected, input, node, into);
+        return this.Acquire(adjust, place, expected, reserves, node, into);
     }
 
-    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (SPEC 8.14; where its Type
+    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (SPEC 8.14: a PairAcquire, the
+    // whole rvalue of an Assign to the local given or a temp, marked with the Reborrow its exclusive case makes, A3 E13 (4); where its Type
     // decides the case, as in a default's copy, Copied or Reborrowed as that Type is) or, a stored exclusive reference, Reborrowed in its
     // own mode (SPEC 15.1.5). SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
     // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
@@ -225,7 +233,11 @@ internal sealed partial class MirBuilder
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
-                    HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => MirOperand.PairAcquire(binder, place),
+                    HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => this.Temporary(
+                        type,
+                        MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq),
+                        node,
+                        into is { Projection: 0, Root: >= 0 } ? into : null),
                     HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
                     HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, input), node, into),
                     HirAcquire.Copy => MirOperand.Copy(place),
@@ -383,10 +395,17 @@ internal sealed partial class MirBuilder
 
     // SPEC 7.7.1, 7.7.2: creating a Closure evaluates its captures, not its body: each environment binding, in entry order, from the Place
     // of its source binding (Bound) as its entry acquires it, the Closure value their aggregate. A source not bound here is unsupported.
+    // SPEC 12.2 (A3 E13 (2)): a capture before a later one whose acquisition builds code is secured where it is evaluated.
     private void Closure(MirPlace destination, FunctionKoto closure)
     {
         var captures = BoundClosure.Of(closure)!.Captures;
         var start = this.arguments.Count;
+        var last = -1;
+        for (var i = 0; i < captures.Count; i++)
+        {
+            last = Reads(captures[i].Adjust) ? last : i;
+        }
+
         for (var i = 0; i < captures.Count; i++)
         {
             var type = captures[i].Environment.Type ?? BoundType.Unit;
@@ -395,7 +414,8 @@ internal sealed partial class MirBuilder
                 this.Unsupported(closure, place = this.Temp(type, closure));
             }
 
-            this.arguments.Add(this.Acquire(captures[i].Adjust, place, type, input: false, closure));
+            var operand = this.Acquire(captures[i].Adjust, place, type, input: false, closure);
+            this.arguments.Add(i < last ? this.Secure(operand, closure) : operand);
         }
 
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.Closure, this.Flush(start), captures.Count, TypeOf(closure)), closure);

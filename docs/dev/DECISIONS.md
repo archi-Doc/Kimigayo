@@ -1004,7 +1004,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   into it live); one fact for both (two readers, two rules). Not temporary.
 - **R4-M37** (2026-10-17; design A3 §4.1 G5, G6, the writeback and the guard row, owner approval of its §9 item 8 on 2026-10-17;
   G5's path clause and G6's value rule superseded by R4-M52 (implemented as R4-M54 and R4-M62); its `EndBorrow` meaning for guards
-  replaced by A3 §12 E7, recorded with unit 1b-4) The
+  replaced by A3 §12 E7, recorded with unit 1b-4; its Open "a pair-layer argument is acquired at its Call" superseded by R4-M66) The
   MIR builder contracts A5's reservations and guard-local Origins read. G5: every exclusive borrow on an invocation's preparation path
   is `TwoPhaseUniq` (SPEC 15.6.7): a written `@uniq`, also in parentheses or on the Place path of a receiver or an argument down to a
   value (`h@follow@uniq.c.bump(1)`; a call result or a getter activates at its own call), the Reborrow of a stored exclusive reference
@@ -1358,7 +1358,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Error keeps evaluated children); a `HirOp` member (40 of 40); a Binding failure written at publish (publishing decides nothing,
   `PublishIsInvisible`); non-nullable fact types now (R7's CallPlan and declaration-table scope). Lasting: `HasFacts` and
   `HirTables.Broken` are the publication contract; at R7 the publisher walk goes and Binding's inline Op writes call `HasFacts`.
-- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day)
+- **R4-M54** (2026-10-17; PLAN G92, implementing R4-M52's fold (owner) on the planning session's instruction of the same day;
+  its pair-layer input amended by R4-M66)
   On the preparation path of an input that starts a reservation (`MirBuilder.Place` with `input`: `Operand` keeps it only for an
   input the call takes as an exclusive reference, by its expected Type, or without one, a value call's callee, by the reference it is
   or its acquisition forms), a written exclusive borrow whose value the path follows (PlaceShape `Value`, `Layers > 0`; also in
@@ -1374,7 +1375,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   and its Open note on a parent reservation's mode: no reservation is formed through another reservation's holder, so A3's mode
   rule stands. Rejected: an A5 reservation chain (R4-M52); a parent link on the Ref (an O1 vocabulary entry for a fact the Place
   shows). Not temporary.
-- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day) An
+- **R4-M55** (2026-10-17; PLAN G123, the planning session's design A3 E10, implemented on its instruction of the same day;
+  amended by R4-M66: also an operand out of operand order, captures, and every pair-layer acquisition secured and marked) An
   operand is read where it is evaluated (SPEC 12.2): a Place operand (Copied, Moved or acquired by case) of an operation is
   secured into a temp where it is evaluated (`Secure`, as a transfer's result is) when a later operand of the same operation builds
   code. `MirBuilder.Builds` decides that from the HIR: every operand builds code except a literal's constant and a Place read as it
@@ -1519,6 +1521,32 @@ and migration obligations remain in force; no numeric cap changes are authorized
   On that corpus chain visits fall by 0.07 % and A1–A4 and A5 time is unchanged within noise. Rejected: the cap (it stops a
   body whose cost is the order's defect; owner); restating V16 to admit passes × node sizes (owner); a priority queue (a log
   factor and storage for an index set a bitset scans); a FIFO ring that favors loop heads (two orders). Not temporary.
+- **R4-M66** (2026-10-18; design A3 §12 E13, decided by the planning session on the core lane's group review B1 and B2 with the
+  owner's choices of 2026-10-18: A5 orders operands (option R1) and, after the second design round, one rule for every access;
+  three design reviews, the last accepting with wording changes; prototype round 13, 332 cases; amends R4-M55 and R4-M54,
+  supersedes R4-M37's "a pair-layer argument (`PairAcquire`) is acquired at its Call") The values an access takes (SPEC 12.2, 15.6),
+  and the operand order MIR gives them. Unit E13a, MIR (E13 (2), (4)):
+  - Operand order: a Place operand is secured into a temp where it is evaluated also when an operand evaluated after it precedes
+    it in the operation's operand order: a named argument, a constructor's included (SPEC 10.1.1), an argument before an unbound
+    reference's receiver supplied after it, which `MirCallee.Position` passes first (7.3.4), and a setter's value (13.7.1); `Call`
+    keeps the least position of the arguments evaluated after each (`leastAfter`, a stack the nested calls share). A Closure's
+    captures take G123's rule: a capture before one whose acquisition builds code (`Reads`, shared with `Builds`) is secured. Case
+    payloads are positional (6.5.1). Evaluation order is a source fact the MIR does not record, so this is a lowering contract like
+    R4-M55's, which MirValidator cannot check (MirBuildTest, `tests/mir/order`).
+  - Pair-layer acquisitions: a PairAcquire is always the whole rvalue of an Assign to a local's whole Place (a temp, a local such
+    as `var v = p`, or `_0`); where it is an operand of another operation (a call, an aggregate, a capture) it is secured into its
+    own temp. Its Use's `Op` holds the `MirRefKind` of the Reborrow its exclusive case makes (`MirRvalue.Acquire`): TwoPhaseUniq
+    where it produces an invocation's input, else Uniq. `Operand` tells the two facts apart: an input the call takes as a pair layer
+    reserves where it is acquired, and its path is no preparation path, so R4-M54's "a pair-layer input, exclusive only by case,
+    starts none here" gains: its own PairAcquire reserves in the exclusive case, and the fold still does not apply on its path. An
+    Adapt's `Op` gains an input bit beside its shorthand bit (`MirRvalue.AdaptShorthand`, `AdaptInput`), which `MirCases.Adapt`
+    reads instead of `input: false`; a default's copy re-acquires a PairAcquire by its marker, not with `input: false` (the same
+    cause). The marker decides the reservation, not where the acquisition stands. No closed-vocabulary entry (`MirRefKind` gains no
+    member). The validator admits a PairAcquire only as the operand of a Use assigned to a local's whole Place marked Uniq or
+    TwoPhaseUniq, a marked Use only of a PairAcquire (`Operation` otherwise), and an Adapt's two bits (`UnknownKind` otherwise).
+  - Rejected: R2's every Place operand through a temp (more MIR for no change of what is read, R4-M55's reason, which still
+    holds); a reservation A5 derives from the MIR shape (prototype 134d's `ShapeReservation`, unsound); a quadratic scan of the later
+    arguments per argument. Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

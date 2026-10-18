@@ -21,7 +21,7 @@ internal static partial class MirDump
         switch (rvalue.Kind)
         {
             case MirRvalueKind.Use:
-                Operand(text, body, body.Operands[rvalue.Start]);
+                Operand(text, body, body.Operands[rvalue.Start]).Append(rvalue.Op == (byte)MirRefKind.TwoPhaseUniq ? " two-phase" : string.Empty);
                 break;
             case MirRvalueKind.Ref:
                 text.Append(
@@ -56,7 +56,8 @@ internal static partial class MirDump
                     Place(text.Append(" payload "), body, rvalue.Place);
                 }
 
-                text.Append(": ").Append(Type(rvalue.Type)).Append(rvalue.Op != 0 ? " shorthand" : string.Empty);
+                text.Append(": ").Append(Type(rvalue.Type)).Append((rvalue.Op & MirRvalue.AdaptShorthand) != 0 ? " shorthand" : string.Empty)
+                    .Append((rvalue.Op & MirRvalue.AdaptInput) != 0 ? " input" : string.Empty);
                 break;
             default:
                 text.Append("opaque ").Append(rvalue.Arg).Append(": ").Append(Type(rvalue.Type));
