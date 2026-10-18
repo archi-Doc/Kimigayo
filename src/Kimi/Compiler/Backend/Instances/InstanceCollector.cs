@@ -4,8 +4,9 @@
 // instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
 // each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Apply, Implementation, SubstOfClosure, SubstOfItem); MirCases (Views); the Target and Layout columns of the intrinsic rows; the
-// capability table; the compilation's Layout, whose outcomes the collector alone maps (R5-M37).
+// Compose, Apply, Implementation, SubstOfClosure, SubstOfItem, Synthesized); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts;
+// MirProgram.StaticInit; the Target and Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose
+// outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b).
@@ -19,20 +20,21 @@
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
-// the Type argument of an intrinsic whose row names one) and each type-driven item's Type take Layout's verdict: a limit is
-// GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized Field InvalidCLayout_Kd and a
-// layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage derives from a Binding
-// error; a type-driven item needs an Ok verdict.
+// the Type argument of an intrinsic whose row names one), each type-driven item's Type and a DropGlue's collection element Types (X34) take
+// Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized
+// Field InvalidCLayout_Kd and a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected
+// storage derives from a Binding error; a type-driven item needs an Ok verdict.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
-// key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43) and a substitution TyCtxt
-// cannot make are the capability table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are
-// GenerationResourceLimit_Kd; a representative that is open or leaves its body open is InternalInvariant_Kd. A refused edge is dropped
-// and collection continues.
+// key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution
+// TyCtxt cannot make and an access of a static of a generic container's group (X33 (a)) are the capability table's gaps; depth past 128,
+// 16 ancestors of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or
+// leaves its body open is InternalInvariant_Kd. A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached.
-// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); at most one target per site; a
-// repeated run of a version is a no-op; a program with validator findings has an empty set; a warm run of a program as large as an earlier
-// one allocates nothing.
+// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); at most one target per site of a
+// body; a type-driven item's targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its
+// environment's glue; a repeated run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
+// program as large as an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
 // (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
 
@@ -136,8 +138,9 @@ internal sealed partial class InstanceCollector
 
     // Whether a block's terminator is a site: a Drop (row 10), a call that may carry a target, or an intrinsic call whose Type argument is a
     // by-value use.
-    private static bool IsSite(in MirTerminator terminator) => terminator.Kind == MirTerminatorKind.Drop || (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
-        (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType)));
+    private static bool IsSite(in MirTerminator terminator) => terminator.Kind == MirTerminatorKind.Drop ||
+        (terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
+            (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType)));
 
     // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
     private void Templates(MirProgram program)

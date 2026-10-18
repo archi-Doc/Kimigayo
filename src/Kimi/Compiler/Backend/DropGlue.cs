@@ -7,9 +7,12 @@
 // alone for a struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical
 // declaration order, then its base; a Tuple's elements in decreasing index; a fixed array's element (each element, from the last); an enum's
 // Case payload elements, each Case's in reverse declaration order; a Closure environment's captures in reverse initialization order (X23);
-// an Array's or Dictionary's element Types, which its glue destroys and lays out (X34); an owning handle's payload when the payload is
-// proven Sealed (else the object descriptor's finalizer runs the actual Type's glue, K8). Strings, scalars, references, raw pointers,
-// Slices, Function values and InlineStorage, whose owner destroys its contents, have none.
+// an Array's or Dictionary's element Types, which its legacy Drop row destroys (its ElementGlue need, X4) and lays out (X34); an owning
+// handle's payload when the payload is proven Sealed (else the object descriptor's finalizer runs the actual Type's glue, K8). Strings,
+// scalars, references, raw pointers, Slices, Function values (their environment's destruction is erased) and InlineStorage, whose owner
+// destroys its contents, have none.
+// Invariants: deterministic; the parts are the components MirTypes.Destruction descends into, in destruction order, and a Sealed handle's
+// payload, which that walk visits without descending.
 // Must not: decide whether a part needs a drop (MirTypes.MayNeedDrop, the consumer's), read syntax or proofs other than Sealed, write glue.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;

@@ -79,9 +79,9 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // K 4.3, 4.8: the item of a type-driven key requested at a site, admitted once per erased Type whose layout verdict is Ok (a failure is
-    // the Type's one record, or derived) and represented by the first unerased Type that requests it, which is closed (an open one is a
-    // broken contract, InternalInvariant_Kd); past the depth limit
+    // K 4.3, 4.8: the item of a type-driven key requested at a site, admitted once per erased Type whose layout verdict is Ok, a DropGlue's
+    // with its collection elements' (X34; a failure is the Type's record, or derived), and represented by the first unerased Type that
+    // requests it, which is closed (an open one is a broken contract, InternalInvariant_Kd); past the depth limit
     // GenerationResourceLimit_Kd. -1 when refused.
     private int AdmitType(int parent, SourceRef site, MonoKind kind, BoundType type)
     {
@@ -98,7 +98,7 @@ internal sealed partial class InstanceCollector
             return found;
         }
 
-        if (!this.LaysOut(site, type))
+        if (!this.LaysOut(site, type) || (kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
         {
             return -1;
         }

@@ -39,19 +39,20 @@ internal sealed partial class InstanceCollector
                 ? this.Callee(program, item, subject, closed) : -1;
         }
 
-        if (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType &&
-            this.In(item, subject, callee.Subst!.Types[0]!) is { } argument)
-        {
-            _ = this.LaysOut(subject, argument);
-        }
-
         if (callee.Kind == MirCalleeKind.Intrinsic)
         {
-            return IntrinsicRows.Of((IntrinsicId)callee.Arg).Target switch
+            var row = IntrinsicRows.Of((IntrinsicId)callee.Arg);
+            if (row.LaysOutType && this.In(item, subject, callee.Subst!.Types[0]!) is { } argument)
+            {
+                _ = this.LaysOut(subject, argument);
+            }
+
+            return row.Target switch
             {
                 IntrinsicTarget.StaticInit => this.Static(program, item, body, subject, call),
                 IntrinsicTarget.Glue => this.Glue(item, subject, callee.Subst!.Types[0]!),
-                _ => -1, // The writer witness (K6) and the object descriptors (K8).
+                IntrinsicTarget.None or IntrinsicTarget.Witness or IntrinsicTarget.Descriptor => -1, // The writer witness: K6; the descriptors: K8.
+                _ => throw new InvalidOperationException($"The intrinsic target {row.Target} has no edge row."),
             };
         }
 
