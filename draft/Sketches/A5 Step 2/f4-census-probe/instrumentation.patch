@@ -1,0 +1,469 @@
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Analysis/OwnershipAnalysis.Borrows.cs ../copy/src/Kimi/Compiler/Analysis/OwnershipAnalysis.Borrows.cs
+--- a/src/Kimi/Compiler/Analysis/OwnershipAnalysis.Borrows.cs
++++ b/src/Kimi/Compiler/Analysis/OwnershipAnalysis.Borrows.cs
+@@ -38,7 +38,7 @@
+             return default; // Definition conditions and each call's substituted lengths were checked by Binding.
+         }
+ 
+-        if (obligation.Discharge == OriginDischarge.CallBorrows || binding.IsVerifiedOriginObligation(obligation))
++        if ((obligation.Discharge == OriginDischarge.CallBorrows && !F4Probe.JudgeCallBorrows) || binding.IsVerifiedOriginObligation(obligation))
+         {
+             return default;
+         }
+@@ -76,6 +76,7 @@
+             {
+                 // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
+                 var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligation) ? initializer : use;
++                if (F4Probe.Enabled) F4Probe.Add("gate79", at, $"{(operand ? "operand" : "row")}\t{obligation.Discharge}\t{(obligation.Clause is null ? "-" : "clause")}\t{(obligation.WellFormed ? "wf" : "-")}\t{F4Probe.Class(longer)}\t{F4Probe.Class(obligation.Shorter)}\t{F4Probe.Show(longer)}\t{F4Probe.Show(obligation.Shorter)}");
+                 this.issues.Add(new(at, OwnershipRequirement.Unsupported));
+                 return false;
+             }
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs ../copy/src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs
+--- a/src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs
++++ b/src/Kimi/Compiler/Binding/Binding.ArgumentOperations.cs
+@@ -566,11 +566,24 @@
+     // implementation verified under `preserves results` publishes results independent of its receiver Loan (SPEC 8.11.3).
+     private BoundOrigin? PathReborrowOrigin(Koto place, BoundOrigin? origin)
+     {
+-        if (origin is null || this.PublishesIndependentResults(place))
++        if (origin is null)
+         {
+             return origin;
+         }
+ 
++        if (this.PublishesIndependentResults(place))
++        {
++            // F4 probe (scratch): the containment the skip leaves out.
++            var walked = F4Probe.Enabled || F4Probe.NoSkip ? this.PathReborrowWalk(place, origin) : origin;
++            if (F4Probe.Enabled) F4Probe.Add("skip", place, $"{F4Probe.Show(origin)}\t{F4Probe.Show(walked)}\t{(ReferenceEquals(walked, origin) ? "same" : "gains")}");
++            return F4Probe.NoSkip ? walked : origin;
++        }
++
++        return this.PathReborrowWalk(place, origin);
++    }
++
++    private BoundOrigin? PathReborrowWalk(Koto place, BoundOrigin? origin)
++    {
+         var path = KotoHelper.UnwrapParentheses(place);
+         for (var depth = 0; depth < 64 && origin is not null; depth++)
+         {
+@@ -632,6 +645,23 @@
+             function = function.Parent;
+         }
+ 
++        return this.PublishesIndependentResultsOf(function);
++    }
++
++    // F4 probe (scratch): the named functions whose bodies the skip covers.
++    internal void ProbeIndependentFunctions()
++    {
++        for (var i = 0; i < this.nodes.Count; i++)
++        {
++            if (this.nodes[i] is FunctionKoto { IsAnonymous: false } function && this.PublishesIndependentResultsOf(function))
++            {
++                if (F4Probe.Enabled) F4Probe.Add("independent", function, F4Probe.Function(function));
++            }
++        }
++    }
++
++    private bool PublishesIndependentResultsOf(Koto? function)
++    {
+         if (function is not FunctionKoto { BoundSymbol: { } symbol } named || symbol.Scope.Owner.BoundSymbol is not { } owner ||
+             !this.conformancesByType.TryGetValue(owner, out var conformances))
+         {
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Binding/Binding.CallRelations.cs ../copy/src/Kimi/Compiler/Binding/Binding.CallRelations.cs
+--- a/src/Kimi/Compiler/Binding/Binding.CallRelations.cs
++++ b/src/Kimi/Compiler/Binding/Binding.CallRelations.cs
+@@ -420,6 +420,9 @@
+         this.callRelationScratch.Clear();
+     }
+ 
++    // F4 probe (scratch): the records of `node` after its first.
++    internal List<OriginRelationFact>? ProbeMoreRelations(Koto node) => this.callRelations?.TryGetValue(node, out var more) == true ? more : null;
++
+     // A record of `node` after its first, published with it (ReportMoreCallRelations).
+     private void RecordMoreRelation(Koto node, OriginRelationFact fact)
+     {
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Binding/Binding.Diagnostics.cs ../copy/src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
+--- a/src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
++++ b/src/Kimi/Compiler/Binding/Binding.Diagnostics.cs
+@@ -940,7 +940,10 @@
+         {
+             var all = this.relationScratch;
+             all.Clear();
+-            if (this.FailedOriginRelation(actualType, expectedType, node, OriginVariance.Covariant, judged: true, all: all) is { } relation)
++            F4Probe.BeginMismatch();
++            var probed = this.FailedOriginRelation(actualType, expectedType, node, OriginVariance.Covariant, judged: true, all: all);
++            F4Probe.EndMismatch();
++            if (probed is { } relation)
+             {
+                 if (!relation.Refuted && this.FailedOriginEnvironment(node) is { } cause)
+                 {
+@@ -953,6 +956,7 @@
+                     if (!refuted)
+                     {
+                         all.Clear();
++                        if (F4Probe.Enabled) F4Probe.Add("mm-dependent", node, $"{F4Probe.Show(relation.Longer)}\t{F4Probe.Show(relation.Shorter)}");
+                         return this.CompleteDependent(node, cause);
+                     }
+                 }
+@@ -967,6 +971,16 @@
+                     }
+                 }
+ 
++                for (var i = 0; i < all.Count; i++)
++                {
++                    if (F4Probe.Enabled) F4Probe.Add("mm-chain", node, $"{(all[i].Equals(relation) ? "primary" : "more")}\t{(failed ? "recorded" : "node-failed")}\t{OriginRelationCode(all[i])}\t{(all[i].Equality ? "==" : ">=")}\t{F4Probe.Class(all[i].Longer)}\t{F4Probe.Class(all[i].Shorter)}\t{(F4Probe.RegionOperands!.Contains(all[i].Longer) ? "sources" : F4Probe.JudgedViaRegion ? "judge-region" : "direct")}\t{F4Probe.Show(all[i].Longer)}\t{F4Probe.Show(all[i].Shorter)}");
++                }
++
++                if (all.Count == 0)
++                {
++                    if (F4Probe.Enabled) F4Probe.Add("mm-chain", node, $"primary\t{(failed ? "recorded" : "node-failed")}\t{OriginRelationCode(relation)}\t{(relation.Equality ? "==" : ">=")}\t{F4Probe.Class(relation.Longer)}\t{F4Probe.Class(relation.Shorter)}\t{(F4Probe.RegionOperands!.Contains(relation.Longer) ? "sources" : F4Probe.JudgedViaRegion ? "judge-region" : "direct")}\t{F4Probe.Show(relation.Longer)}\t{F4Probe.Show(relation.Shorter)}");
++                }
++
+                 all.Clear();
+                 return this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expectedType });
+             }
+@@ -975,11 +989,14 @@
+             {
+                 if (this.FailedOriginEnvironment(node) is { } cause)
+                 {
++                    if (F4Probe.Enabled) F4Probe.Add("mm-dependent", node, $"{F4Probe.Show(unproven.Longer)}\t{F4Probe.Show(unproven.Shorter)}");
+                     return this.CompleteDependent(node, cause);
+                 }
+ 
+                 // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
+                 // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
++                if (F4Probe.Enabled) F4Probe.Add(unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound ? "mm-unbound" : "gate985", node,
++                    $"{(node.BindingFailure == BindingFailure.None ? "recorded" : "node-failed")}\t{F4Probe.Class(unproven.Longer)}\t{F4Probe.Class(unproven.Shorter)}\t{F4Probe.Show(unproven.Longer)}\t{F4Probe.Show(unproven.Shorter)}");
+                 return unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound
+                     ? this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, unproven with { At = at, Destination = expectedType })
+                     : this.Fail(node, BindingFailure.Unsupported);
+@@ -1125,11 +1142,17 @@
+         if (IsLocalRegion(origin))
+         {
+             var found = false;
++            var before = all.Count;
+             foreach (var source in this.LocalRegionSources(origin))
+             {
+                 found |= this.AddFailingChains(use, source, shorter, type, judged, all, condition);
+             }
+ 
++            for (var i = before; i < all.Count; i++)
++            {
++                F4Probe.RegionOperand(all[i].Longer);
++            }
++
+             return found;
+         }
+ 
+@@ -1166,6 +1189,7 @@
+             {
+                 if (this.FailingOperand(source, shorter, use, judged, refuted, condition) is { } failed)
+                 {
++                    F4Probe.RegionOperand(failed);
+                     return failed;
+                 }
+             }
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Binding/Binding.LocalRegions.cs ../copy/src/Kimi/Compiler/Binding/Binding.LocalRegions.cs
+--- a/src/Kimi/Compiler/Binding/Binding.LocalRegions.cs
++++ b/src/Kimi/Compiler/Binding/Binding.LocalRegions.cs
+@@ -376,6 +376,11 @@
+             return;
+         }
+ 
++        if (F4Probe.HasAnchor(source) || F4Probe.HasAnchor(target))
++        {
++            if (F4Probe.Enabled) F4Probe.Add("anchor-bound", evidence, $"{F4Probe.Class(source)}\t{F4Probe.Class(target)}\t{F4Probe.Show(source)}\t{F4Probe.Show(target)}");
++        }
++
+         if (!this.localRegions.TryGetValue(target, out var region))
+         {
+             this.localRegions.Add(target, region = new());
+@@ -445,6 +450,7 @@
+             var judgment = this.JudgeOriginAtoms(source, shorter, use, condition);
+             if (judgment == OriginJudgment.Refuted)
+             {
++                F4Probe.JudgedViaRegion |= F4Probe.MismatchDepth > 0;
+                 return judgment;
+             }
+ 
+@@ -454,6 +460,7 @@
+             }
+         }
+ 
++        F4Probe.JudgedViaRegion |= F4Probe.MismatchDepth > 0 && result != OriginJudgment.Proven;
+         return result;
+     }
+ 
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Binding/Binding.OriginProof.cs ../copy/src/Kimi/Compiler/Binding/Binding.OriginProof.cs
+--- a/src/Kimi/Compiler/Binding/Binding.OriginProof.cs
++++ b/src/Kimi/Compiler/Binding/Binding.OriginProof.cs
+@@ -208,6 +208,11 @@
+         shorter = this.OriginAtUse(shorter, use);
+         this.OriginProofMetrics?.Enter(longer, shorter, use, this.originPremiseDepth);
+         var proven = this.EntailsOrigin(longer, shorter, use, condition);
++        if (this.candidateTrials == 0 && (F4Probe.HasAnchor(longer) || F4Probe.HasAnchor(shorter)) && !ReferenceEquals(longer, shorter))
++        {
++            if (F4Probe.Enabled) F4Probe.Add("anchor-proof", use, $"{(proven ? "proven" : "unproven")}\t{F4Probe.Class(longer)}\t{F4Probe.Class(shorter)}\t{F4Probe.Show(longer)}\t{F4Probe.Show(shorter)}");
++        }
++
+         if (version != this.originStateVersion)
+         {
+             throw new InvalidOperationException($"The Origin proof of `{longer} outlives {shorter}` changed inference or obligation state (PLAN G74).");
+@@ -288,8 +293,11 @@
+             var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
+             if (!this.ProvesOriginOutlives(a, b, scope.Owner) || (relation.Equality && !this.ProvesOriginOutlives(b, a, scope.Owner)))
+             {
++                if (F4Probe.Enabled) F4Probe.Add("t1", scope.Owner, $"{(this.candidateTrials == 0 ? "selected" : "trial")}\tunknown\t{F4Probe.Where(relation.Syntax)}\t{F4Probe.Show(a)}\t{F4Probe.Show(b)}");
+                 return ConstraintProof.Unknown;
+             }
++
++            if (F4Probe.Enabled) F4Probe.Add("t1", scope.Owner, $"{(this.candidateTrials == 0 ? "selected" : "trial")}\tproven\t{F4Probe.Where(relation.Syntax)}\t{F4Probe.Show(a)}\t{F4Probe.Show(b)}");
+         }
+ 
+         return ConstraintProof.Proven;
+@@ -315,6 +323,7 @@
+                 var b = this.SubstituteStoredOrigin(relation.Shorter, symbol.Declaration, (BoundOrigin[])type.OriginArguments);
+                 if (!ReferenceEquals(a, b))
+                 {
++                    if (F4Probe.Enabled) F4Probe.Add("t1-row", occurrence, $"{F4Probe.Where(relation.Syntax)}\t{F4Probe.Show(a)}\t{F4Probe.Show(b)}");
+                     this.AddObligation(new(BindingObligationKind.OriginOutlives, occurrence, BindingDeadline.BodyOrigins, null, a, b, Equality: relation.Equality, Clause: relation.Syntax));
+                 }
+             }
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/Core/Compilation.Pipeline.cs ../copy/src/Kimi/Compiler/Core/Compilation.Pipeline.cs
+--- a/src/Kimi/Compiler/Core/Compilation.Pipeline.cs
++++ b/src/Kimi/Compiler/Core/Compilation.Pipeline.cs
+@@ -158,7 +158,11 @@
+     /// <param name="failure">The failed generation obligation, if any.</param>
+     /// <returns>Whether checked IR was written.</returns>
+     public bool WriteIr(TextWriter writer, out string? failure)
+-        => this.Generates(out failure) && this.Emission.WriteIr(writer, out failure);
++    {
++        // F4 probe (scratch): the emitted compilation, without allocating.
++        F4Probe.LastIrCompilation = this;
++        return this.Generates(out failure) && this.Emission.WriteIr(writer, out failure);
++    }
+ 
+     /// <summary>Checks that the latest analysis can be generated.</summary>
+     /// <param name="failure">The failed generation obligation, if any.</param>
+diff -ruN '--exclude=bin' '--exclude=obj' src/Kimi/Compiler/F4Probe.cs ../copy/src/Kimi/Compiler/F4Probe.cs
+--- a/src/Kimi/Compiler/F4Probe.cs
++++ b/src/Kimi/Compiler/F4Probe.cs
+@@ -0,0 +1,200 @@
++// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
++
++#pragma warning disable SA1600, SA1401, CS1591, SA1649, SA1402
++
++using System.Text;
++using Kimi.Compiler.Parsing;
++
++namespace Kimi.Compiler;
++
++// Scratch probe of A5 step 2 unit 2a0-0 (never in a tracked source file): events recorded by the instrumented copy of the
++// compiler, read by the census test. Inert unless Enabled is set.
++public static class F4Probe
++{
++    public static readonly bool NoSkip = Environment.GetEnvironmentVariable("F4_NOSKIP") == "1";
++    public static readonly bool JudgeCallBorrows = Environment.GetEnvironmentVariable("F4_CALLBORROWS") == "1";
++    public static readonly List<(string Kind, Koto? Node, string Detail)> Events = new();
++    public static volatile bool Enabled;
++
++    [ThreadStatic]
++    public static Compilation? LastIrCompilation;
++
++    // The documents of the last compilation WriteIr wrote on this thread, in the ledger's source format.
++    public static string? LastIrSource()
++    {
++        if (LastIrCompilation is not { } compilation)
++        {
++            return null;
++        }
++
++        var text = new StringBuilder();
++        foreach (var module in compilation.SourceModules)
++        {
++            foreach (var document in module.SourceDocuments)
++            {
++                text.Append("// ").Append(Path.GetFileName(document.Path)).Append('\n').Append(document.SourceText).Append('\n');
++            }
++        }
++
++        return text.ToString();
++    }
++
++    // RecordMismatch window: whether a judged chain went through LocalRegionSources (FailingOperand, AddFailingChains) or
++    // through JudgeLocalRegion.
++    [ThreadStatic]
++    internal static int MismatchDepth;
++    [ThreadStatic]
++    internal static HashSet<BoundOrigin>? RegionOperands;
++    [ThreadStatic]
++    internal static bool JudgedViaRegion;
++
++    public static void Add(string kind, Koto? node, string detail)
++    {
++        if (!Enabled)
++        {
++            return;
++        }
++
++        lock (Events)
++        {
++            Events.Add((kind, node, detail));
++        }
++    }
++
++    internal static void BeginMismatch()
++    {
++        MismatchDepth++;
++        (RegionOperands ??= new(ReferenceEqualityComparer.Instance)).Clear();
++        JudgedViaRegion = false;
++    }
++
++    internal static void EndMismatch() => MismatchDepth--;
++
++    internal static void RegionOperand(BoundOrigin origin)
++    {
++        if (MismatchDepth > 0)
++        {
++            RegionOperands?.Add(origin);
++        }
++    }
++
++    // An Origin with its kind: S static, P parameter, I input, Pr projection (finite body-local Borrow), A anchor, R local region,
++    // Inf other inference, U unbound, (a & b) a meet.
++    public static string Show(BoundOrigin? origin)
++    {
++        if (origin is null)
++        {
++            return "-";
++        }
++
++        if (origin.Kind == OriginKind.Intersection)
++        {
++            var text = new StringBuilder("(");
++            for (var i = 0; i < origin.Operands.Count; i++)
++            {
++                text.Append(i == 0 ? string.Empty : " & ").Append(Show(origin.Operands[i]));
++            }
++
++            return text.Append(')').ToString();
++        }
++
++        var prefix = origin.Kind switch
++        {
++            OriginKind.Static => "S",
++            OriginKind.Parameter => "P",
++            OriginKind.Input => "I",
++            OriginKind.Projection => "Pr",
++            OriginKind.Anchor => "A",
++            OriginKind.Unbound => "U",
++            OriginKind.Inference when Binding.IsLocalRegion(origin) => "R",
++            _ => "Inf",
++        };
++        return prefix + ":" + origin.Name + "@" + (origin.Binder?.Span.Start.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "-") + "/" + origin.Slot;
++    }
++
++    // The class of an end under SPEC 15.6.5 as Binding represents it: fixed (static, parameter, input, or a meet of them), finite
++    // (a Projection: a body-local Borrow), anchor (a raw Borrow), region (a local region), inferred (other inference), unbound,
++    // or mixed (a meet of different classes).
++    public static string Class(BoundOrigin? origin)
++    {
++        if (origin is null)
++        {
++            return "-";
++        }
++
++        if (origin.Kind == OriginKind.Intersection)
++        {
++            string? result = null;
++            for (var i = 0; i < origin.Operands.Count; i++)
++            {
++                var part = Class(origin.Operands[i]);
++                result = result is null || result == part ? part : "mixed";
++            }
++
++            return result ?? "fixed";
++        }
++
++        return origin.Kind switch
++        {
++            OriginKind.Static or OriginKind.Parameter or OriginKind.Input => "fixed",
++            OriginKind.Projection => "finite",
++            OriginKind.Anchor => "anchor",
++            OriginKind.Unbound => "unbound",
++            OriginKind.Inference when Binding.IsLocalRegion(origin) => "region",
++            _ => "inferred",
++        };
++    }
++
++    public static bool HasAnchor(BoundOrigin? origin)
++    {
++        if (origin is null)
++        {
++            return false;
++        }
++
++        if (origin.Kind == OriginKind.Anchor)
++        {
++            return true;
++        }
++
++        for (var i = 0; i < origin.Operands.Count; i++)
++        {
++            if (HasAnchor(origin.Operands[i]))
++            {
++                return true;
++            }
++        }
++
++        return false;
++    }
++
++    // A node's document file name and start offset.
++    public static string Where(Koto? node)
++    {
++        var path = node?.CodeContext?.SourceDocument?.Path;
++        return (path is null ? "?" : path[(Math.Max(path.LastIndexOf('/'), path.LastIndexOf('\\')) + 1)..]) + ":" + (node?.Span.Start.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "?");
++    }
++
++    public static string Function(Koto? node)
++    {
++        for (var current = node; current is not null; current = current.Parent)
++        {
++            if (current is FunctionKoto function)
++            {
++                var owner = string.Empty;
++                for (var parent = function.Parent; parent is not null; parent = parent.Parent)
++                {
++                    if (parent is DeclarationContainerKoto { Name: { Length: > 0 } name })
++                    {
++                        owner = name + ".";
++                        break;
++                    }
++                }
++
++                return owner + (function.Name.Length == 0 ? "<anon>" : function.Name);
++            }
++        }
++
++        return "-";
++    }
++}
+--- a/tests/xUnitTest/Tests/ScalarEmissionTest.cs
++++ b/tests/xUnitTest/Tests/ScalarEmissionTest.cs
+@@ -145,6 +145,13 @@
+     internal static void WriteFixture(string name, string ir, string stdout, int exit = 0, string? stderr = null, int timeoutMilliseconds = 0)
+     {
+         var path = FixtureDirectory();
++        if (Environment.GetEnvironmentVariable("F4_FIXSRC") is { } sources && F4Probe.LastIrSource() is { } source)
++        {
++            // F4 probe (scratch): the fixture's program, from the last WriteIr on this thread.
++            Directory.CreateDirectory(sources);
++            File.WriteAllText(Path.Combine(sources, name + ".kimi"), source);
++        }
++
+         File.WriteAllText(Path.Combine(path, name + ".ll"), ir);
+         File.WriteAllText(Path.Combine(path, name + ".stdout"), stdout);
+         File.WriteAllText(Path.Combine(path, name + ".exit"), exit.ToString(System.Globalization.CultureInfo.InvariantCulture));
