@@ -1,0 +1,310 @@
+=== probe-cases:d01-field-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+=== probe-cases:d02-move-restore [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+=== probe-cases:d03-copy-field-move [complete]
+=== probe-cases:d04-nested-field-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self
+=== probe-cases:d05-exchange-valid [complete]
+=== probe-cases:d06-copy-read-valid [complete]
+=== probe-cases:d07-shared-borrow-valid [complete]
+=== probe-cases:d08-local-part-move-valid [complete]
+=== probe-cases:d09-whole-move [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self
+OPQ  drop site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[_1:self] | Sink.take(self@move)
+=== probe-cases:d10-uniq-self-field-move [incomplete]
+BIND ExclusivePathTake_Kd (ExclusivePathTake) | self.buffer@move
+OPQ  steal site 0 ConversionKoto state=Invalid completion=Completes causes=1 roots=[_1:self] | self.buffer@move
+=== probe-cases:d10b-uniq-self-copy-field-move [incomplete]
+BIND ExclusivePathTake_Kd (ExclusivePathTake) | self.count@move
+OPQ  steal site 0 ConversionKoto state=Invalid completion=Completes causes=1 roots=[_1:self] | self.count@move
+=== probe-cases:d11-conditional-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+=== probe-cases:d12-move-then-use [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+OLD  MovedPlace_Kd (PossiblyMovedUse) | drop: self.buffer
+NOW  MovedPlace_Kd views=0x1 | drop: self.buffer@ref
+=== probe-cases:d13-move-from-field-with-drop [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self
+A2   drop _1.0 -> bb2 [open (.0 elide)] @59
+NOW  MovedPlace_Kd views=0x1 | drop: drop
+=== probe-cases:d14-move-rejected-elsewhere [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+A2   drop _3 -> bb2 [keep] @53 s1
+OPQ  drop site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+=== probe-cases:d15-move-field-as-argument [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+=== probe-cases:d16-base-field-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.value
+A2   drop _2 -> bb1 [keep] @47 s1
+A2   drop _1.base1 -> bb2 [open (.0 elide)] @44
+=== probe-cases:d17-generic-field-move-twice [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.value
+OLD  Unsupported_Kd (Unsupported) | drop: self.value
+OLD  MovedPlace_Kd (PossiblyMovedUse) | drop: self.value
+A2   drop _3 -> bb1 [keep] @26 s1
+A2   drop _2 -> bb2 [keep] @19 s1
+A2   drop _1.0 -> bb3 [elide] @16
+NOW  MovedPlace_Kd views=0x1 | drop: self.value
+=== probe-cases:o01-assign-uninit-var [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x = "text"
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | f: x = "text"   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | f: x   <-- gone under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | x = "text"
+RW   site 0 write of _1:x, reads [] | x = "text"
+=== probe-cases:o02-ctor-field-rejected [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | self.b = b
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.b = b   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(a: i32, b: string)   <-- gone under the model
+OPQ  init site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_0:Return,_2:b] | self.b = b
+RW   site 0 write of _0:Return.Field1, reads [b] | self.b = b
+=== probe-cases:o03-ctor-sibling-uninit [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | self.a = a
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.a = a   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(a: string)
+OPQ  init site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_0:Return,_1:a] | self.a = a
+RW   site 0 write of _0:Return.Field0, reads [a] | self.a = a
+=== probe-cases:o04-part-write-sibling-moved [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+NOW  MovedPlace_Kd views=0x1 | f: x.b@ref
+OPQ  f site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+=== probe-cases:o04b-part-write-node-sibling-moved [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x.a = "s"
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: x.a = "s"   <-- gone under the model
+NOW  MovedPlace_Kd views=0x1 | f: x.b@ref
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_2:x] | x.a = "s"
+RW   site 0 write of _2:x.Field0, reads [] | x.a = "s"
+=== probe-cases:o05-part-write-unconstructed [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+NOW  UninitializedPlace_Kd views=0x1 | f: x.a = 1
+OPQ  f site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+=== probe-cases:o05b-part-write-node-unconstructed [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x.a = "s"
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | f: x.a = "s"
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | x.a = "s"
+RW   site 0 write of _1:x.Field0, reads [] | x.a = "s"
+=== probe-cases:o06-read-uninit [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | let s: string = x
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf FieldKoto) | f: let s: string = x
+OPQ  f site 0 FieldKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | let s: string = x
+=== probe-cases:o07-read-partial [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | let s: string = x.a
+NOW  MovedPlace_Kd views=0x1 @site(leaf FieldKoto) | f: let s: string = x.a
+OPQ  f site 0 FieldKoto state=Invalid completion=Completes causes=1 roots=[_2:x] | let s: string = x.a
+=== probe-cases:o08-read-moves [incomplete]
+BIND NoApplicableOverload_Kd (NoApplicableCandidate) | two(x@move)
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[_2:x] | two(x@move)
+=== probe-cases:o09-let-second-init [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x = "s"
+NEW  ReassignedLet_Kd views=0x1 @site(write) | f: x = "s"   <-- added under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | x = "s"
+RW   site 0 write of _1:x, reads [] | x = "s"
+=== probe-cases:o10-let-with-init [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x = "s"
+NEW  ReassignedLet_Kd views=0x1 @site(write) | f: x = "s"   <-- added under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | x = "s"
+RW   site 0 write of _1:x, reads [] | x = "s"
+=== probe-cases:o10b-let-with-init-valid-type [complete]
+OLD  ReassignedLet_Kd (ReassignedLet) | f: x = 2
+NOW  ReassignedLet_Kd views=0x1 | f: x = 2
+=== probe-cases:o11-update-moved [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | a.1 += "x"
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: a.1 += "x"
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:a] | a.1 += "x"
+RW   site 0 update of _1:a.Field1, reads [] | a.1 += "x"
+=== probe-cases:o12-write-through-ref [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | c.value = "s"
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:c] | c.value = "s"
+RW   site 0 kept (target c; value) | c.value = "s"
+=== probe-cases:o13-undecided-write [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | unknown
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | unknown()
+=== probe-cases:o14-other-path-uninit [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x = "s"
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | f: x = "s"   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | f: x
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_2:x] | x = "s"
+RW   site 0 write of _2:x, reads [] | x = "s"
+=== probe-cases:o15-both-paths [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x = "t"
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | f: x = "t"   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | f: x   <-- gone under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_2:x] | x = "t"
+RW   site 0 write of _2:x, reads [] | x = "t"
+=== probe-cases:o16-tuple-target [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | (self.a, self.b) = (a, b)
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: (self.a, self.b) = (a, b)   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(a: i32, b: string) => (self.a, self.b) = (a, b)   <-- gone under the model
+OPQ  init site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_0:Return,_1:a,_2:b] | (self.a, self.b) = (a, b)
+RW   site 0 write of _0:Return.Field0, _0:Return.Field1, reads [a,b] | (self.a, self.b) = (a, b)
+=== probe-cases:o17-whole-write-after-partial [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+OPQ  f site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+=== probe-cases:o17b-whole-write-node-after-partial [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | x = "s"
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: x = "s"   <-- gone under the model
+NOW  MovedPlace_Kd views=0x1 | f: x.b@ref   <-- gone under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_2:x] | x = "s"
+RW   site 0 write of _2:x, reads [] | x = "s"
+=== probe-cases:o18-let-moved-whole-write [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | a = ("new", "x")
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: a = ("new", "x")   <-- gone under the model
+NEW  ReassignedLet_Kd views=0x1 @site(write) | f: a = ("new", "x")   <-- added under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:a] | a = ("new", "x")
+RW   site 0 write of _1:a, reads [] | a = ("new", "x")
+=== probe-cases:o18b-let-moved-whole-write-valid-type [complete]
+OLD  ReassignedLet_Kd (ReassignedLet) | f: a = ("new", 2)
+NOW  ReassignedLet_Kd views=0x1 | f: a = ("new", 2)
+=== probe-cases:o19-write-then-read-in-one-node [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | do
+NOW  UninitializedPlace_Kd views=0x1 @site(non-leaf) | f: do
+NOW  UninitializedPlace_Kd views=0x1 | f: x + y
+OPQ  f site 0 DoKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | do
+=== probe-cases:o20-part-write-node-ctor-sibling-written [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | self.a = a
+BIND UnresolvedBinding_Kd (MissingName) | make
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.a = a   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(a: string)   <-- gone under the model
+OPQ  init site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_0:Return,_1:a] | self.a = a
+OPQ  init site 1 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | make()
+RW   site 0 write of _0:Return.Field0, reads [a] | self.a = a
+=== probe-cases:o21-ctor-read-self-before-init [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | self.b + "s"
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf BinaryKoto) | init: self.b + "s"
+OPQ  init site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_0:Return] | self.b + "s"
+=== probe-cases:o22-let-part-write-type-mismatch [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+NOW  ReassignedLet_Kd views=0x1 | f: a.0 = 1
+OPQ  f site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+=== probe-cases:o23-param-part-write-type-mismatch [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+OPQ  f site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+=== probe-cases:o24-conditional-write-in-failed-node [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | do
+NOW  UninitializedPlace_Kd views=0x1 @site(non-leaf) | f: do
+NOW  UninitializedPlace_Kd views=0x1 | f: x
+OPQ  f site 0 DoKoto state=Invalid completion=Completes causes=1 roots=[_1:c,_2:x] | do
+=== probe-cases:o25-read-only-failed-node [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | do
+NOW  UninitializedPlace_Kd views=0x1 @site(non-leaf) | f: do
+OPQ  f site 0 DoKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | do
+=== probe-cases:o26-move-in-failed-node-then-use [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | do
+OPQ  f site 0 DoKoto state=Invalid completion=Completes causes=1 roots=[_1:x] | do
+=== probe-cases:o27-rejected-call-arg-read-uninit [incomplete]
+BIND NoApplicableOverload_Kd (NoApplicableCandidate) | two(x@ref)
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf InvocationKoto) | f: two(x@ref)
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[_1:x] | two(x@ref)
+=== probe-cases:o28-let-part-write-valid-type [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | a.1 = 2
+NEW  ReassignedLet_Kd views=0x1 @site(write) | f: a.1 = 2   <-- added under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:a] | a.1 = 2
+RW   site 0 write of _1:a.Field1, reads [] | a.1 = 2
+=== probe-cases:o29-let-part-write-node-mismatch [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | a.0 = "s"
+NEW  ReassignedLet_Kd views=0x1 @site(write) | f: a.0 = "s"   <-- added under the model
+OPQ  f site 0 BinaryKoto state=Invalid completion=Completes causes=1 roots=[_1:a] | a.0 = "s"
+RW   site 0 write of _1:a.Field0, reads [] | a.0 = "s"
+=== probe-cases:o30-read-before-write-in-failed-node [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | do
+NOW  UninitializedPlace_Kd views=0x1 @site(non-leaf) | f: do
+NOW  UninitializedPlace_Kd views=0x1 | f: x + y
+OPQ  f site 0 DoKoto state=Invalid completion=Completes causes=1 roots=[_2:x] | do
+=== probe-cases:r01-undecided-call [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+NOW  RequireFallthrough_Kd views=all @site(leaf InvocationKoto) | f: logFailure()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: logFailure()
+=== probe-cases:r02-one-path-avoids [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+NOW  RequireFallthrough_Kd views=all | f: if d
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | f: if d
+=== probe-cases:r03-decided-unit-call-rejected [incomplete]
+BIND NoApplicableOverload_Kd (NoApplicableCandidate) | log(1)
+NOW  RequireFallthrough_Kd views=all @site(leaf InvocationKoto) | f: log(1)
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | log(1)
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: log(1)
+=== probe-cases:r04-decided-never-call-rejected [incomplete]
+BIND NoApplicableOverload_Kd (NoApplicableCandidate) | stop(1)
+NOW  RequireFallthrough_Kd views=all @site(leaf InvocationKoto) | f: stop(1)
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | stop(1)
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: stop(1)
+=== probe-cases:r05-nested-in-rejected-node [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | do
+CF   RequireFallthrough_Kd | f: ()
+OPQ  f site 0 DoKoto state=Invalid completion=Completes causes=1 roots=[_1:c] | do
+=== probe-cases:r06-undecided-condition [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | unknownCond
+CF   RequireFallthrough_Kd | f: ()
+NOW  RequireFallthrough_Kd views=all | f: ()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | unknownCond()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | f: ()
+=== probe-cases:r07-nested-requires [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+NOW  RequireFallthrough_Kd views=all | f: require b else => logFailure()
+NOW  RequireFallthrough_Kd views=all @site(leaf InvocationKoto) | f: logFailure()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: logFailure()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | f: require b else => logFailure()
+=== probe-cases:r08-sequential-undecided [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+BIND UnresolvedBinding_Kd (MissingName) | logMore
+NOW  RequireFallthrough_Kd views=all | f: logFailure()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+OPQ  f site 1 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logMore()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: logFailure()
+=== probe-cases:r09-undecided-then-unit [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+NOW  RequireFallthrough_Kd views=all | f: logFailure()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: logFailure()
+=== probe-cases:r10-loop [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+=== probe-cases:r11-written-fallthrough-valid-program [complete]
+CF   RequireFallthrough_Kd | f: log("x")
+NOW  RequireFallthrough_Kd views=all | f: log("x")
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | f: log("x")
+=== probe-cases:r12-undecided-then-return [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+=== probe-cases:r13-failed-if-without-else [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | unknownCond
+NOW  RequireFallthrough_Kd views=all | f: if unknownCond()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | unknownCond()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: if unknownCond()
+=== probe-cases:r14-failed-if-else-written-unit [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | unknownCond
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+NOW  RequireFallthrough_Kd views=all | f: if unknownCond()
+OPQ  f site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | unknownCond()
+OPQ  f site 1 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | logFailure()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | f: if unknownCond()
+=== probe-cases:r15-match-with-written-unit-arm [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+NOW  RequireFallthrough_Kd views=all | f: match d
+OPQ  f site 0 MatchKoto state=Unresolved completion=Completes causes=1 roots=[_2:d] | match d
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [non-leaf] | f: match d
+### programs 68, Binding-incomplete 51, with a changed A1/A2 record 14, changed records 21, A3 rows derived 9
+probe-cases:o01-assign-uninit-var	gone	UninitializedPlace_Kd views=0x1 @site(write) | f: x = "text"
+probe-cases:o01-assign-uninit-var	gone	UninitializedPlace_Kd views=0x1 | f: x
+probe-cases:o02-ctor-field-rejected	gone	UninitializedPlace_Kd views=0x1 @site(write) | init: self.b = b
+probe-cases:o02-ctor-field-rejected	gone	UninitializedPlace_Kd views=0x1 | init: public init(a: i32, b: string)
+probe-cases:o03-ctor-sibling-uninit	gone	UninitializedPlace_Kd views=0x1 @site(write) | init: self.a = a
+probe-cases:o04b-part-write-node-sibling-moved	gone	MovedPlace_Kd views=0x1 @site(write) | f: x.a = "s"
+probe-cases:o09-let-second-init	added	ReassignedLet_Kd views=0x1 @site(write) | f: x = "s"
+probe-cases:o10-let-with-init	added	ReassignedLet_Kd views=0x1 @site(write) | f: x = "s"
+probe-cases:o14-other-path-uninit	gone	UninitializedPlace_Kd views=0x1 @site(write) | f: x = "s"
+probe-cases:o15-both-paths	gone	UninitializedPlace_Kd views=0x1 @site(write) | f: x = "t"
+probe-cases:o15-both-paths	gone	UninitializedPlace_Kd views=0x1 | f: x
+probe-cases:o16-tuple-target	gone	UninitializedPlace_Kd views=0x1 @site(write) | init: (self.a, self.b) = (a, b)
+probe-cases:o16-tuple-target	gone	UninitializedPlace_Kd views=0x1 | init: public init(a: i32, b: string) => (self.a, self.b) = (a, b)
+probe-cases:o17b-whole-write-node-after-partial	gone	MovedPlace_Kd views=0x1 @site(write) | f: x = "s"
+probe-cases:o17b-whole-write-node-after-partial	gone	MovedPlace_Kd views=0x1 | f: x.b@ref
+probe-cases:o18-let-moved-whole-write	gone	MovedPlace_Kd views=0x1 @site(write) | f: a = ("new", "x")
+probe-cases:o18-let-moved-whole-write	added	ReassignedLet_Kd views=0x1 @site(write) | f: a = ("new", "x")
+probe-cases:o20-part-write-node-ctor-sibling-written	gone	UninitializedPlace_Kd views=0x1 @site(write) | init: self.a = a
+probe-cases:o20-part-write-node-ctor-sibling-written	gone	UninitializedPlace_Kd views=0x1 | init: public init(a: string)
+probe-cases:o28-let-part-write-valid-type	added	ReassignedLet_Kd views=0x1 @site(write) | f: a.1 = 2
+probe-cases:o29-let-part-write-node-mismatch	added	ReassignedLet_Kd views=0x1 @site(write) | f: a.0 = "s"

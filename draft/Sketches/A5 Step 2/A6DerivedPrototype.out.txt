@@ -1,0 +1,76 @@
+| Case | Today | R4-M10 | Brief | Recommended | AnyCause | RootWrite | MoveSyntactic | NonLeafDerived | NonLeafAssumeInit | FlagIsGuess | FlagUnresolved | NoE4a | PartDerived |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| o01 rejected `x = "text"`; `return x` | FALSE UninitializedPlace_Kd(init)@asg; FALSE UninitializedPlace_Kd(init)@ret | FALSE UninitializedPlace_Kd(init)@ret | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o02 ctor: `self.a = a; self.b = b` (b rejected) | FALSE UninitializedPlace_Kd(complete)@b; FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o03 ctor: `self.a = a` rejected, b never set | FALSE UninitializedPlace_Kd(complete)@a | ok | ok | ok | ok | HIDDEN complete@end | ok | ok | ok | ok | ok | ok | ok |
+| o04b `x.b` moved; rejected `x.a = "s"`; `look(x.b)` | FALSE MovedPlace_Kd(complete)@asg | ok | ok | ok | ok | HIDDEN init@look | ok | ok | ok | ok | ok | ok | ok |
+| o05b `var x: Pair`; rejected `x.a = "s"` | ok | HIDDEN complete@asg | ok | ok | HIDDEN complete@asg | HIDDEN complete@asg | ok | ok | ok | ok | ok | ok | ok |
+| o06 `var x`; rejected `let s: string = x` | ok | HIDDEN init@let | ok | ok | HIDDEN init@let | ok | ok | ok | ok | ok | ok | ok | ok |
+| o07 x.b moved; rejected `let s: string = x.a` | FALSE MovedPlace_Kd(complete)@let | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o07p o07, the read Place not published (listed: read Place not published) | FALSE MovedPlace_Kd(complete)@let | ok | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | ok | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | FALSE MovedPlace_Kd(complete)@let | ok |
+| o21 ctor: rejected `self.a = self.b + "s"` before `self.b = a` | ok | HIDDEN init@val | ok | ok | HIDDEN init@val | ok | ok | ok | ok | ok | ok | ok | ok |
+| o21p o21, the read Place not published | ok | HIDDEN init@val | ok | ok | HIDDEN init@val | ok | ok | ok | ok | ok | ok | ok | HIDDEN init@val |
+| o08 rejected `two(x@move)` (arity); `look(x)` | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o09 `let x; x = 1`; rejected `x = "s"` | HIDDEN let@asg | HIDDEN let@asg | ok | ok | HIDDEN let@asg | ok | ok | ok | ok | ok | ok | ok | ok |
+| o10 `let x = 1`; rejected `x = "s"` | HIDDEN let@asg | HIDDEN let@asg | ok | ok | HIDDEN let@asg | ok | ok | ok | ok | ok | ok | ok | ok |
+| o11 `a` moved; rejected `a.1 += "x"` | ok | HIDDEN init@upd | ok | ok | HIDDEN init@upd | ok | ok | ok | ok | ok | ok | ok | ok |
+| o13 `x = unknown()` (value rejected, assignment kept) | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o14 `if c => x = "s"` rejected; `return x` | FALSE UninitializedPlace_Kd(init)@asg | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o15 `if c => x = 1 else => x = "t"` rejected | FALSE UninitializedPlace_Kd(init)@asg; FALSE UninitializedPlace_Kd(init)@ret | FALSE UninitializedPlace_Kd(init)@ret | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o16 ctor: rejected `(self.a, self.b) = (a, b)` | FALSE UninitializedPlace_Kd(complete)@asg; FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o17b x.b moved; rejected `x = "s"`; `look(x.b)` | FALSE MovedPlace_Kd(complete)@asg; FALSE MovedPlace_Kd(init)@look | FALSE MovedPlace_Kd(init)@look | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o18 `let a` moved; rejected `a = ("new", "x")` | HIDDEN let@asg; FALSE MovedPlace_Kd(init)@asg | HIDDEN let@asg | ok | ok | HIDDEN let@asg | ok | ok | ok | ok | ok | ok | ok | ok |
+| o19 rejected `y = do: x = 1; see(x); "s"`; `x + y` (listed: non-leaf, E4 beyond Q21) | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | ok | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@do; FALSE UninitializedPlace_Kd(init)@sum |
+| o24 rejected `do: if c => x = 1; "s"`; `return x` (listed: non-leaf, E4 beyond Q21) | FALSE UninitializedPlace_Kd(init)@do | ok | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do | ok | HIDDEN init@ret | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do | FALSE UninitializedPlace_Kd(init)@do |
+| o25 rejected `do: see(x); "s"` with x uninitialized (listed: non-leaf, E4 beyond Q21) | ok | HIDDEN init@do | ok | ok | ok | ok | ok | HIDDEN init@do | HIDDEN init@do | ok | ok | ok | ok |
+| o26 rejected `do: consume(x@move); "s"`; `look(x)` (listed: non-leaf, E4 beyond Q21) | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look | HIDDEN init@look |
+| o27 rejected `two(x@ref)` (arity), x uninitialized | ok | HIDDEN init@call | ok | ok | HIDDEN init@call | ok | ok | ok | ok | ok | ok | ok | ok |
+| o28 `let a = ("first", 0)`; `a.1 = 2` (InvalidAssignment) | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| o30 rejected `y = do: see(x); x = 1; "s"`; `x + y` (listed: non-leaf, E4 beyond Q21) | FALSE UninitializedPlace_Kd(init)@sum | HIDDEN init@do; FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | HIDDEN init@do; FALSE UninitializedPlace_Kd(init)@sum | HIDDEN init@do | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum | FALSE UninitializedPlace_Kd(init)@sum |
+| bdfa param `a.0` moved; `a.0 = "new"` (InvalidAssignment) | FALSE MovedPlace_Kd(complete)@asg | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| 72a6 ctor: `let escaped = self` before init (InvalidAssignment) | FALSE UninitializedPlace_Kd(complete)@let | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| 52ea ctor: `self.a = self.b` (getter on incomplete self) | FALSE UninitializedPlace_Kd(complete)@get | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| 4ce1 `let N: i32; let row: [N of u8]` | FALSE UninitializedPlace_Kd(init)@row | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| b45a `use(port)` unresolved; port maybe uninitialized | ok | HIDDEN init@use | ok | ok | HIDDEN init@use | ok | ok | ok | ok | ok | ok | ok | ok |
+| f1a0 ctor: `value = 1` (QualificationRequired) (listed: unresolved target) | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end | FALSE UninitializedPlace_Kd(complete)@end |
+| r01 `require c else => logFailure()` (unresolved) | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r02 `else => if d => logFailure()` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r03 `else => log(1)` (one candidate, Unit; no candidate applies) | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r04 `else => stop(1)` (stop: -> Never; no candidate applies) | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r06 `require unknownCond() else => ()` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r07 `require a else => require b else => logFailure()` | FALSE RequireFallthrough_Kd(fall)@inner | FALSE RequireFallthrough_Kd(fall)@inner | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r08 `else: logFailure(); logMore()` | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r09 `else: logFailure(); ()` | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r10 `else => loop => logFailure()` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r11 `else => log("x")` (valid program) | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r12 `else: logFailure(); return` | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r13 `else => if unknownCond() => ()` (the condition may be Never) | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| r15 `else => match d: true => logFailure(); false => ()` | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN fall@body | HIDDEN fall@body | ok | ok |
+| 42d4 `require a == 1 else =>` (body supplied by the parser) | FALSE RequireFallthrough_Kd(fall)@body | FALSE RequireFallthrough_Kd(fall)@body | ok | ok | ok | ok | ok | ok | ok | ok | FALSE RequireFallthrough_Kd(fall)@body | ok | ok |
+| b9d8 `else => 0 < a < 2` (recovered chained comparison) | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN fall@body | ok | ok |
+| d01 `let moved = self.buffer@move` | HIDDEN take@mv | HIDDEN take@mv | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN take@mv | ok |
+| d02 Move, then `self.buffer = Buffer.init()` | HIDDEN take@mv | HIDDEN take@mv | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN take@mv | ok |
+| d03 `self.count@move` (a Copy Field) | HIDDEN take@mv | HIDDEN take@mv | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN take@mv | ok |
+| d04 `self.inner.x@move` | HIDDEN take@mv | HIDDEN take@mv | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN take@mv | ok |
+| d05 `exchange(self.buffer@uniq, with: ...)` (valid) | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok | ok |
+| d11 `if self.on => let moved = self.buffer@move` | HIDDEN take@mv | HIDDEN take@mv | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN take@mv | ok |
+| d12 Move, then `observe(self.buffer@ref)` | HIDDEN take@mv; FALSE MovedPlace_Kd(init)@observe | HIDDEN take@mv; FALSE MovedPlace_Kd(init)@observe | ok | ok | ok | ok | FALSE MovedPlace_Kd(init)@observe | ok | ok | ok | ok | HIDDEN take@mv; FALSE MovedPlace_Kd(init)@observe | ok |
+| d13 `self.box.value@move` (Box declares a drop) | HIDDEN take@mv; FALSE MovedPlace_Kd(complete)@drop | HIDDEN take@mv; FALSE MovedPlace_Kd(complete)@drop | ok | ok | ok | ok | FALSE MovedPlace_Kd(complete)@drop | ok | ok | ok | ok | HIDDEN take@mv; FALSE MovedPlace_Kd(complete)@drop | ok |
+| d17 two Moves of `self.value` (Box<T>) | HIDDEN take@mv1; HIDDEN take@mv2; FALSE MovedPlace_Kd(init)@mv2 | HIDDEN take@mv1; HIDDEN take@mv2; FALSE MovedPlace_Kd(init)@mv2 | ok | ok | ok | ok | ok | ok | ok | ok | ok | HIDDEN take@mv1; HIDDEN take@mv2; FALSE MovedPlace_Kd(init)@mv2 | ok |
+| 16.3.1 Move variant (helper borrow `self@ref` rejected, G100) | HIDDEN take@mv; FALSE MovedPlace_Kd(complete)@whole; FALSE MovedPlace_Kd(init)@observe; FALSE MovedPlace_Kd(init)@exchange | HIDDEN take@mv; FALSE MovedPlace_Kd(init)@observe; FALSE MovedPlace_Kd(init)@exchange | ok | ok | ok | ok | FALSE MovedPlace_Kd(complete)@whole; FALSE MovedPlace_Kd(init)@observe; FALSE MovedPlace_Kd(init)@exchange | ok | ok | ok | ok | HIDDEN take@mv; FALSE MovedPlace_Kd(complete)@whole; FALSE MovedPlace_Kd(init)@observe; FALSE MovedPlace_Kd(init)@exchange | ok |
+
+| Variant | HIDDEN (unsound, SPEC 23.1.2) | of them in cases not listed | FALSE |
+|---|---|---|---|
+| Today | 15 | 14 | 39 |
+| R4-M10 | 24 | 21 | 21 |
+| Brief | 2 | 1 | 6 |
+| Recommended | 1 | 0 | 6 |
+| AnyCause | 11 | 10 | 5 |
+| RootWrite | 4 | 3 | 6 |
+| MoveSyntactic | 1 | 0 | 11 |
+| NonLeafDerived | 3 | 0 | 4 |
+| NonLeafAssumeInit | 4 | 0 | 2 |
+| FlagIsGuess | 2 | 1 | 6 |
+| FlagUnresolved | 3 | 2 | 7 |
+| NoE4a | 11 | 10 | 12 |
+| PartDerived | 2 | 1 | 5 |

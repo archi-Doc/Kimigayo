@@ -1,0 +1,320 @@
+# A1/A2/A3 MIR records of the corpus's Binding-incomplete programs, today (NOW) and under the model (A6DerivedProbe; corpus: the
+# a5-1b5-b1 ledger sources and tests/diagnostics/syntax.json; compiler at dev adb9aa9e, identical at 48a42168). Per program: Binding's records
+# (BIND), the old path's control-flow records (CF), each MIR record today with "gone" where the model drops it, NEW for a record
+# the model adds, @site(kind) for a record at an Opaque site, and each A3 row's class under the derived rule.
+### programs 2234, Binding-incomplete 547, with a changed A1/A2 record 11, changed records 18, A3 rows derived 27
+
+== 02c68520fdb6.kimi [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | inc
+NOW  StaticMovePathRequired_Kd views=0x1 | bad: x
+
+== 09184c312d1f.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 0b3cedcb4cc5.kimi [incomplete]
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.downgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.makeRcCyclic
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.selfWeak = selfWeak@move   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(selfWeak: Weak<rc/Node>, value: i32)   <-- gone under the model
+
+== 0ea87e2f3caf.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self
+NOW  MovedPlace_Kd views=0x1 @site(leaf FieldKoto) | drop: let whole = self@ref
+NOW  MovedPlace_Kd views=0x1 | drop: self.buffer@ref
+NOW  MovedPlace_Kd views=0x1 | drop: self.buffer@uniq
+
+== 0f5a66264a43.kimi [incomplete]
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.downgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.makeRcCyclic
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.selfWeak = selfWeak@move   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(selfWeak: Weak<rc/Node>, value: i32)   <-- gone under the model
+
+== 0fc170c818cf.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 14093527ff9b.kimi [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | animal.score
+BIND UnresolvedBinding_Kd (MissingName) | animal.score
+NOW  UninitializedPlace_Kd views=0x1 | <Generated>: p
+NOW  MovedPlace_Kd views=0x1 | <Generated>: x
+NOW  UninitializedPlace_Kd views=0x1 | <Generated>: y
+
+== 18e5b02e0029.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: 
+
+== 31bd3499ad34.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 3b71fda26058.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 41c3156b15d4.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: ()
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+NOW  RequireFallthrough_Kd views=all | main: ()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | main: ()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 42d43e6f6edb.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: Error
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: Error
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: Error
+
+== 4349d7b7b4cc.kimi [incomplete]
+NOW  UninitializedPlace_Kd views=0x1 | f: s
+
+== 453a8425e420.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self.x
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf MemberAccessKoto) | init: self.x
+
+== 4698f40020c9.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | a.0 = "new"
+NOW  MovedPlace_Kd views=0x1 @site(write) | <Generated>: a.0 = "new"   <-- gone under the model
+NEW  ReassignedLet_Kd views=0x1 @site(write) | <Generated>: a.0 = "new"   <-- added under the model
+
+== 4ce1412d0adc.kimi [incomplete]
+BIND InvalidTypeFormation_Kd (InvalidTypeFormation) | N
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf FieldKoto) | <Generated>: let row: [N of u8]
+
+== 52ea3ab966fd.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self.b
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf MemberAccessKoto) | init: self.b
+
+== 565362ba10e0.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | (self.a, self.b) = (a, b)
+BIND DuplicateBinding_Kd (Duplicate) | Slice<View>{source}
+BIND MissingOriginBinding_Kd (MissingOrigin) | View
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: (self.a, self.b) = (a, b)   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(a: Box<i32>, b: (i32, [2 of bool])) => (self.a, self.b) = (a, b)   <-- gone under the model
+
+== 580e694acd50.kimi [incomplete]
+NOW  MovedPlace_Kd views=0x1 | g: text
+
+== 658bd9e2efb9.kimi [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | inc
+NOW  StaticMovePathRequired_Kd views=0x1 | bad: x
+
+== 6ee46fb6c993.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: 
+
+== 6f754574826c.kimi [incomplete]
+BIND DuplicateBinding_Kd (Duplicate) | Holder{x}
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(item: ref/i32 during x) => self.item = item
+
+== 72a63ab4e96b.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf FieldKoto) | init: let escaped = self
+
+== 8ca4b18a700d.kimi [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | return true
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 984f455e02b6.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: 
+
+== 9b4b4aa645d7.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== 9cfbf7464ca1.kimi [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | self.f = f
+BIND NoApplicableOverload_Kd (NoApplicableCandidate) | twice(s.f)
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.f = f   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(f: i32) => self.f = f   <-- gone under the model
+
+== 9ef893fbcf8e.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: 
+
+== abfa8992f789.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: 
+
+== ad097f61eee7.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | a = ("new", 1)
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: a = ("new", 1)   <-- gone under the model
+
+== af580abd707d.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | ++a.1
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: ++a.1   <-- gone under the model
+
+== b054fe57226c.kimi [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | enabled
+BIND UnresolvedBinding_Kd (MissingName) | ready
+BIND UnresolvedBinding_Kd (MissingName) | compute
+BIND UnresolvedBinding_Kd (MissingName) | needsCleanup
+BIND UnresolvedBinding_Kd (MissingName) | cleanup
+BIND UnresolvedBinding_Kd (MissingName) | logFailure
+BIND UnresolvedBinding_Kd (MissingName) | ready
+BIND UnresolvedBinding_Kd (MissingName) | ready
+CF   RequireFallthrough_Kd | <Generated>: while true => ()
+NOW  RequireFallthrough_Kd views=all | <Generated>: while true => ()
+NOW  RequireFallthrough_Kd views=all @site(leaf InvocationKoto) | <Generated>: logFailure()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [leaf InvocationKoto] | <Generated>: logFailure()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | <Generated>: while true => ()
+
+== b145f5c0d8c3.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: Error
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: Error
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: Error
+
+== b45a1011b584.kimi [incomplete]
+BIND UnresolvedBinding_Kd (MissingName) | tryBind
+BIND UnresolvedBinding_Kd (MissingName) | use
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf InvocationKoto) | <Generated>: use(port)
+
+== b9d806669e4b.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: 0 < a < 2
+NOW  RequireFallthrough_Kd views=all @site(leaf BinaryKoto) | <Generated>: 0 < a < 2
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | <Generated>: 0 < a < 2
+
+== bdfacc4f7404.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | a.0 = "new"
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: a.0 = "new"   <-- gone under the model
+
+== c44d6f026e55.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | a.1 += 1
+NOW  MovedPlace_Kd views=0x1 @site(write) | f: a.1 += 1   <-- gone under the model
+
+== c4d576c541d1.kimi [incomplete]
+BIND UnresolvedBinding_Kd (MissingType) | Resource
+BIND UnresolvedBinding_Kd (MissingType) | Resource
+BIND UnresolvedBinding_Kd (MissingType) | Resource
+BIND UnresolvedBinding_Kd (MissingType) | Resource
+BIND UnresolvedBinding_Kd (MissingName) | makeResource
+BIND UnresolvedBinding_Kd (MissingName) | inspect
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.item = item@move   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(item: Resource) => self.item = item@move   <-- gone under the model
+
+== c4d80ff44f64.kimi [incomplete]
+CF   RequireFallthrough_Kd | <Generated>: ()
+CF   RequireFallthrough_Kd | <Generated>: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | <Generated>: 
+NOW  RequireFallthrough_Kd views=all | <Generated>: ()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | <Generated>: ()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | <Generated>: 
+
+== c5d10f36f256.kimi [incomplete]
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Weak
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.makeRcCyclic
+BIND Unsupported_Kd (Unsupported) | Kimi.Intrinsics.upgrade
+NOW  UninitializedPlace_Kd views=0x1 @site(write) | init: self.selfWeak = selfWeak@move   <-- gone under the model
+NOW  UninitializedPlace_Kd views=0x1 | init: public init(selfWeak: Weak<rc/Node>)   <-- gone under the model
+
+== cca73b99a460.kimi [incomplete]
+CF   RequireFallthrough_Kd | f: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | f: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | f: 
+
+== cd80dd8ab0f3.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf InvocationKoto) | init: base(self.value)
+
+== d3b4f9141d81.kimi [incomplete]
+NOW  MovedPlace_Kd views=0x1 | unrelated: text
+
+== e89a9f60d737.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== e9da10aec0c2.kimi [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 0
+NOW  StaticMovePathRequired_Kd views=0x1 | a: x
+
+== eeec7bcd169d.kimi [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== f1a041fd01cb.kimi [incomplete]
+BIND QualificationRequired_Kd (QualificationRequired) | value
+NOW  UninitializedPlace_Kd views=0x1 | init: public init() => value = 1
+
+== f577b363c71c.kimi [incomplete]
+CF   RequireFallthrough_Kd | f: if a == 2
+NOW  RequireFallthrough_Kd views=all | f: if a == 2
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | f: if a == 2
+
+== fd855292b745.kimi [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self.b
+NOW  UninitializedPlace_Kd views=0x1 @site(leaf MemberAccessKoto) | init: self.b
+
+== syntax:require-and-symbol [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== syntax:require-missing-else [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== syntax:require-missing-failure-body [incomplete]
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== syntax:require-missing-failure-expression [incomplete]
+CF   RequireFallthrough_Kd | main: Error
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: Error
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: Error
+
+== syntax:require-written-body-without-else [incomplete]
+CF   RequireFallthrough_Kd | main: ()
+CF   RequireFallthrough_Kd | main: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | main: 
+NOW  RequireFallthrough_Kd views=all | main: ()
+A3   RequireFallthrough_Kd direct (Binding.GuessedCompletion direct) | main: ()
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | main: 
+
+== syntax:guessed-require-body [incomplete]
+CF   RequireFallthrough_Kd | f: 
+NOW  RequireFallthrough_Kd views=all @site(supplied) | f: 
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | f: 
+
+== syntax:guessed-body-in-require-body [incomplete]
+CF   RequireFallthrough_Kd | f: if a == 2
+NOW  RequireFallthrough_Kd views=all | f: if a == 2
+A3   RequireFallthrough_Kd derived (Binding.GuessedCompletion rests) through [supplied] | f: if a == 2

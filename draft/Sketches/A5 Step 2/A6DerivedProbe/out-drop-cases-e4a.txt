@@ -1,0 +1,75 @@
+=== drop-cases:d01-field-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:d02-move-restore [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:d03-copy-field-move [complete]
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:d04-nested-field-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0.Field0
+=== drop-cases:d05-exchange-valid [complete]
+=== drop-cases:d06-copy-read-valid [complete]
+=== drop-cases:d07-shared-borrow-valid [complete]
+=== drop-cases:d08-local-part-move-valid [complete]
+=== drop-cases:d09-whole-move [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self
+OPQ  drop site 0 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[_1:self] | Sink.take(self@move)
+=== drop-cases:d10-uniq-self-field-move [incomplete]
+BIND ExclusivePathTake_Kd (ExclusivePathTake) | self.buffer@move
+OPQ  steal site 0 ConversionKoto state=Invalid completion=Completes causes=1 roots=[_1:self] | self.buffer@move
+=== drop-cases:d10b-uniq-self-copy-field-move [incomplete]
+BIND ExclusivePathTake_Kd (ExclusivePathTake) | self.count@move
+OPQ  steal site 0 ConversionKoto state=Invalid completion=Completes causes=1 roots=[_1:self] | self.count@move
+=== drop-cases:d11-conditional-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field1
+=== drop-cases:d12-move-then-use [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+OLD  MovedPlace_Kd (PossiblyMovedUse) | drop: self.buffer
+NOW  MovedPlace_Kd views=0x1 | drop: self.buffer@ref   <-- gone under the model
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:d13-move-from-field-with-drop [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self
+A2   drop _1.0 -> bb2 [open (.0 elide)] @59   => under the model: drop _1.0 -> bb2 [keep] @59
+NOW  MovedPlace_Kd views=0x1 | drop: drop   <-- gone under the model
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0.Field0
+=== drop-cases:d14-move-rejected-elsewhere [incomplete]
+BIND TypeMismatch_Kd (TypeMismatch) | 1
+A2   drop _3 -> bb2 [keep] @53 s1
+OPQ  drop site 0 NumberLiteralKoto state=Invalid completion=Completes causes=1 roots=[] | 1
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:d15-move-field-as-argument [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.buffer
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:d16-base-field-move [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.value
+A2   drop _2 -> bb1 [keep] @47 s1
+A2   drop _1.base1 -> bb2 [open (.0 elide)] @44   => under the model: drop _1.base1 -> bb2 [keep] @44
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Base1.Field0
+=== drop-cases:d17-generic-field-move-twice [complete]
+OLD  Unsupported_Kd (Unsupported) | drop: self.value
+OLD  Unsupported_Kd (Unsupported) | drop: self.value
+OLD  MovedPlace_Kd (PossiblyMovedUse) | drop: self.value
+A2   drop _3 -> bb1 [keep] @26 s1
+A2   drop _2 -> bb2 [keep] @19 s1
+A2   drop _1.0 -> bb3 [elide] @16   => under the model: drop _1.0 -> bb3 [keep] @16
+NOW  MovedPlace_Kd views=0x1 | drop: self.value   <-- gone under the model
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+=== drop-cases:spec-16.3.1-move-variant [incomplete]
+BIND InvalidAssignment_Kd (InvalidAssignment) | self
+NOW  MovedPlace_Kd views=0x1 @site(leaf FieldKoto) | drop: let whole = self@ref   <-- gone under the model
+NOW  MovedPlace_Kd views=0x1 | drop: self.buffer@ref   <-- gone under the model
+NOW  MovedPlace_Kd views=0x1 | drop: self.buffer@uniq   <-- gone under the model
+OPQ  drop site 0 FieldKoto state=Unresolved completion=Completes causes=1 roots=[_1:self] | let whole = self@ref
+OPQ  drop site 1 InvocationKoto state=Unresolved completion=Completes causes=1 roots=[] | Audit.inspect(whole)
+E4A  Binding would report ExclusivePathTake_Kd at the Move of _1:self.Field0
+### programs 19, Binding-incomplete 5, with a changed A1/A2 record 4, changed records 6, A3 rows derived 0
+drop-cases:d12-move-then-use	gone	MovedPlace_Kd views=0x1 | drop: self.buffer@ref
+drop-cases:d13-move-from-field-with-drop	gone	MovedPlace_Kd views=0x1 | drop: drop
+drop-cases:d17-generic-field-move-twice	gone	MovedPlace_Kd views=0x1 | drop: self.value
+drop-cases:spec-16.3.1-move-variant	gone	MovedPlace_Kd views=0x1 @site(leaf FieldKoto) | drop: let whole = self@ref
+drop-cases:spec-16.3.1-move-variant	gone	MovedPlace_Kd views=0x1 | drop: self.buffer@ref
+drop-cases:spec-16.3.1-move-variant	gone	MovedPlace_Kd views=0x1 | drop: self.buffer@uniq
