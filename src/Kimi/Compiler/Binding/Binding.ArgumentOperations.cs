@@ -422,8 +422,12 @@ public sealed partial class Binding
     // receiver keeps its own Type; the recorded reference is what ownership loads and generation addresses.
     private BoundType? ReceiverThroughLayers(Koto left, BoundType? actual)
     {
-        if (actual is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ||
-            actual.Components[0] is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components.Count: 1 })
+        if (actual is not
+            {
+                Kind: BoundTypeKind.Semantics,
+                Semantics: SemanticsKind.Ref or SemanticsKind.Uniq,
+                Components: [{ Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef, Components: [_] }],
+            })
         {
             return null;
         }
@@ -1050,7 +1054,7 @@ public sealed partial class Binding
                 }
             }
             else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation, callableValue) &&
-                !(target == SemanticsKind.Ref && IsUnfittedLiteral(source)))
+                !(target == SemanticsKind.Ref && this.KindOf(source) == ArgumentKind.Literal))
             {
                 return false;
             }

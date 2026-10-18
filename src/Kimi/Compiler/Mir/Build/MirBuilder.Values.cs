@@ -15,7 +15,7 @@ internal sealed partial class MirBuilder
     private static bool Builds(Koto node)
     {
         var adjust = HirTables.AdjustOf(node);
-        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        if (InPlace(adjust))
         {
             return HirTables.Op(node) != HirOp.Literal;
         }
@@ -34,6 +34,9 @@ internal sealed partial class MirBuilder
     private static bool Reads(HirAdjust adjust) => adjust.Adaptation == HirAdaptation.ReferentRead
         ? adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Temporary)
         : adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move };
+
+    // Whether a consumer takes a node's value as the node builds it (its Adjust): a Temporary or a group's operand, not adapted (Assign).
+    private static bool InPlace(HirAdjust adjust) => adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None };
 
     // Whether a Type holds a Never element where a literal builds one: a Tuple's component or an array's element, through those kinds
     // only (Aggregate; DECISIONS R4-M59). A Never elsewhere, a Function's result or a Type argument, is a declared Type.
@@ -171,7 +174,7 @@ internal sealed partial class MirBuilder
     // as a call's input where the destination holds one (input).
     private void Assign(MirPlace destination, Koto node, bool input = false)
     {
-        if (HirTables.AdjustOf(node) is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        if (InPlace(HirTables.AdjustOf(node)))
         {
             this.Into(destination, node, input);
         }
@@ -194,7 +197,7 @@ internal sealed partial class MirBuilder
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
         reserves |= input;
-        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        if (InPlace(adjust))
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
                 : MirOperand.Move(this.Value(node, into, reserves));

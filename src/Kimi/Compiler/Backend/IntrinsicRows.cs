@@ -2,7 +2,8 @@
 
 // Owns the Backend's row of each intrinsic (R5 package K 4.5, C 3.2; S2-S4 X15, X27; DECISIONS R5-M35), the one table the instance
 // collector and code generation read by IntrinsicId. Column Target: the item a call of the intrinsic names as its collector target, the
-// whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. C0b1 adds the writer column.
+// whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column LaysOutType: the call's Type argument is a
+// by-value use whose layout the collector checks (K 4.8; DECISIONS R5-M44). C0b1 adds the writer column.
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId; an id without a row, None included, is a broken MIR contract.
 // Must not: resolve a target's item (the collector's), or restate the descriptor table's columns (MirDescriptors).
@@ -21,7 +22,8 @@ internal enum IntrinsicTarget : byte
 
 /// <summary>A row of the intrinsic table.</summary>
 /// <param name="Target">The item a call names as its collector target.</param>
-internal readonly record struct IntrinsicRow(IntrinsicTarget Target);
+/// <param name="LaysOutType">Whether the call's Type argument is a by-value use (K package 4.8).</param>
+internal readonly record struct IntrinsicRow(IntrinsicTarget Target, bool LaysOutType = false);
 
 /// <summary>The intrinsic table of the Backend: one row per <see cref="IntrinsicId"/>.</summary>
 internal static class IntrinsicRows
@@ -31,14 +33,14 @@ internal static class IntrinsicRows
     /// <returns>The row.</returns>
     internal static IntrinsicRow Of(IntrinsicId id) => id switch
     {
-        IntrinsicId.RawAllocate => new(IntrinsicTarget.None),
+        IntrinsicId.RawAllocate => new(IntrinsicTarget.None, LaysOutType: true),
         IntrinsicId.RawRelease => new(IntrinsicTarget.None),
         IntrinsicId.RawInitialize => new(IntrinsicTarget.None),
         IntrinsicId.RawSlice => new(IntrinsicTarget.None),
         IntrinsicId.TryAllocateBytes => new(IntrinsicTarget.None),
         IntrinsicId.MoveBytes => new(IntrinsicTarget.None),
-        IntrinsicId.Stride => new(IntrinsicTarget.None),
-        IntrinsicId.DestroyValues => new(IntrinsicTarget.Glue),
+        IntrinsicId.Stride => new(IntrinsicTarget.None, LaysOutType: true),
+        IntrinsicId.DestroyValues => new(IntrinsicTarget.Glue, LaysOutType: true),
         IntrinsicId.ReinterpretLoan => new(IntrinsicTarget.None),
         IntrinsicId.Abort => new(IntrinsicTarget.None),
         IntrinsicId.Fail => new(IntrinsicTarget.None),

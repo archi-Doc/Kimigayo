@@ -615,10 +615,12 @@ class Analysis
     // K. KillAcrossDeref restores round 2's rule (the first move path entered may be destroyed).
     bool EndedBy(string l, IEnumerable<string> dip)
     {
+        // A Move Path takes no own step (SPEC 15.1.3; the owner kept SPEC's letter on case 75, 2026-10-18), so a K through an obj
+        // or rc `payload` is no Move Path and ends nothing.
         if (X == Abl.PrefixKill || Pk) // review N1: direct Loans too; Defs are move paths, so K holds no Deref (round 13: the design)
         {
             var ps = Path.Segs(issue[l].Place);
-            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && !ks.Contains("*") && ps.Length >= ks.Length && ps.Take(ks.Length).SequenceEqual(ks));
+            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && !ks.Contains("*") && !ks.Contains("payload") && ps.Length >= ks.Length && ps.Take(ks.Length).SequenceEqual(ks));
         }
         var b = Base(l);
         if (b == null) return false;
@@ -631,7 +633,7 @@ class Analysis
         if (X == Abl.FirstDerefBase || F)
         {
             var fs = Path.Segs(Path.Before(b, "*"));
-            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && fs.Length >= ks.Length && fs.Take(ks.Length).SequenceEqual(ks));
+            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && !ks.Contains("payload") && fs.Length >= ks.Length && fs.Take(ks.Length).SequenceEqual(ks));
         }
         if (b.Contains('*')) return false;
         var bs = Path.Segs(b);
@@ -2360,6 +2362,8 @@ static class Cases
 
     // H {var r: uniq/uniq/i32}: own steps (`payload` of obj and rc; A3 §3: handle storage) before the first borrow Deref.
     // rc payloads are shared-only, so the child is `ref`; 80's H has a drop that writes through self.r (§16.3.3).
+    // 75 is an error by SPEC's letter (owner, 2026-10-18; PLAN G147 (6)): a Loan ends only where a Move Path is destroyed in place
+    // (§15.6.3), and the payload is an own step that no Move Path takes (§15.1.3, §15.6.2), so replacing `h@follow.r` ends nothing.
     static Case OwnStep(string id, string kind)
     {
         var c = new Case(id, kind switch
@@ -2382,7 +2386,7 @@ static class Cases
         {
             case "objField":
                 c.N("h@follow.r = slot2@uniq").Assign("h.payload.r").Borrow("Lo2", "slot2", Uniq, "h.payload.r");
-                c.N("h@follow.r@follow@follow = 7").A(K.Write, "h.payload.r.*.*"); break;
+                err = "h@follow.r@follow@follow = 7"; c.N(err).A(K.Write, "h.payload.r.*.*"); break;
             case "objWhole":
                 c.N("h = obj(H(r: slot2@uniq))").Assign("h").Borrow("Lo2", "slot2", Uniq, "h.payload.r");
                 c.N("h@follow.r@follow@follow = 7").A(K.Write, "h.payload.r.*.*"); break;

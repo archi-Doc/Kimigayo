@@ -72,6 +72,41 @@ public class AggregateArgumentInferenceTest
         Assert.False(c.WriteIr(TextWriter.Null, out _));
     }
 
+    // SPEC 10.5.1, 10.2, 10.8: an element of a Tuple or array literal argument is a parameter position: a nested call that waits for the
+    // decided Type, a value read, an erased function item or Closure, a written header as evidence, an anonymous function completed with
+    // the decided Type or with its F's signature, and a reference that needs S.
+    [Theory]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc g(x: (i64, i64)) => ()\nlet a: i64 = 2\ng((identity(1), a))")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc ga(x: [2 of i64]) => ()\nlet a: i64 = 2\nga([identity(1), a])")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc makeValue() -> i64 => 1\nfunc pair<T>(first: T, rest: (T, T)) -> () => ()\npair(1, (makeValue(), identity(2)))")]
+    [InlineData("func g(x: (i64, i64)) => ()\nlet a: i64 = 2\nlet b: i64 = 3\nlet r = b@ref\ng((r, a))")]
+    [InlineData("func dbl(v: i64) -> i64 => v * 2\nfunc gf(x: (i64, (i64) -> i64)) => ()\nlet a: i64 = 2\ngf((a, dbl))")]
+    [InlineData("func gf(x: (i64, (i64) -> i64)) => ()\nlet a: i64 = 2\nlet cl = func (v: i64) -> i64 => v\ngf((a, cl))")]
+    [InlineData("func pair<T>(first: T, rest: (T, (T) -> T)) => ()\nlet a: i64 = 2\npair(1, (a, func (v: i64) -> i64 => v))")]
+    [InlineData("func gf(x: (i64, (i64) -> i64)) => ()\nlet a: i64 = 2\ngf((a, func (v) => v))")]
+    [InlineData("func gg<T>(x: (T, (T) -> T)) => ()\nlet a: i64 = 2\ngg((a, func (v) => v))")]
+    [InlineData("func foo<F>(x: (i64, F)) -> ()\n    F is Callable<(i64) -> i64>\n    return\nlet a: i64 = 2\nfoo((a, func (v) => v))")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc gf(x: (i64, (i64) -> i64)) => ()\nlet a: i64 = 2\ngf((a, identity))")]
+    public void ElementsArePositionsOfTheirParameter(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.8, 10.5.1: an element's evidence and fit are its position's: a written header that disagrees with the other evidence, and
+    // a nested call that is typed on its own and does not fit, leave no applicable candidate.
+    [Theory]
+    [InlineData("func pair<T>(first: T, rest: (T, (T) -> T)) => ()\nlet a: i64 = 2\npair(1, (a, func (v: i32) -> i32 => v))", "pair")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc g(x: (i64, i64)) => ()\nlet a: i64 = 2\ng((identity(true), a))", "g")]
+    public void ElementsRejectWhatTheirPositionRejects(string source, string callee)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), x => x.Method.ToString() == callee);
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(BindingFailure.NoApplicableCandidate, call.FailureOf());
+    }
+
     [Theory]
     [InlineData("Byte", "func use(value: (u8, bool)) -> u8 => value.0\nif use((255, true)) == 255 => Console.writeLine(\"ok\")")]
     [InlineData("Nested", "func use(value: ([1 of u8], (bool, string))) => Console.writeLine(value.1.1)\nuse(([255], (true, \"ok\")))")]
@@ -106,5 +141,18 @@ public class AggregateArgumentInferenceTest
                 throw new InvalidOperationException("Aggregate argument inference failed.");
             }
         }));
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc g(x: (i64, i64)) => ()\nlet a: i64 = 2\ng((identity(1), a))")]
+    [InlineData("func gg<T>(x: (T, (T) -> T)) => ()\nlet a: i64 = 2\ngg((a, func (v) => v))")]
+    public void WarmElementPositionBindingAllocatesNothing(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Bind().IsComplete);
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
+        Assert.True(valid);
     }
 }

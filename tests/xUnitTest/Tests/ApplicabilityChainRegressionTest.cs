@@ -14,6 +14,11 @@ namespace XunitTest;
 // PLAN G76: the blocking review cases, with expectations from SPEC 10.4, 10.5, 10.7 and 23.1.2.
 public class ApplicabilityChainRegressionTest
 {
+    private const string ControlFlowDeclarations =
+        "func identity<T>(value: T) -> T => value@move\nfunc keep<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
+        "func take(value: i64) -> () => ()\nfunc choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\n" +
+        "func h(value: i8) -> () => ()\nfunc h(value: i64) -> () => ()\nfunc g(value: (i64, i64)) -> () => ()\nlet c = true\nlet x: i64 = 2\n";
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -56,6 +61,9 @@ public class ApplicabilityChainRegressionTest
     [InlineData("Generic", "func keep<T>(o: Option<T>, value: T) -> T => value@move\nrequire keep(make(), 3@i64) == 3 else => $abort(\"nested\")")]
     [InlineData("Deep", "func also<T>(o: Option<T>) -> Option<T> => o@move\nfunc keep(o: Option<i64>) -> i32 => 1\nrequire keep(also(make())) == 1 else => $abort(\"nested\")")]
     [InlineData("Value", "func keep(o: Option<i64>) -> i32 => 1\nlet k: (Option<i64>) -> i32 = keep\nrequire k(make()) == 1 else => $abort(\"nested\")")]
+    [InlineData("LiteralInner", "func identity<T>(value: T) -> T => value@move\nfunc take(value: i64) -> i32 => 1\nrequire take(identity(1)) == 1 else => $abort(\"nested\")")]
+    [InlineData("LiteralExpected", "func identity<T>(value: T) -> T => value@move\nlet x: i64 = identity(identity(1))\nrequire x == 1 else => $abort(\"nested\")")]
+    [InlineData("LiteralOperands", "func identity<T>(value: T) -> T => value@move\nrequire identity(1) + identity(2) == 3 else => $abort(\"operands\")")]
     [InlineData("OverloadedInner", "func inner(x: i32) -> Option<i32> => .Some(x)\nfunc inner(x: i64) -> Option<i64> => .Some(x)\nfunc keep(o: Option<i64>) -> i32 => 1\nrequire keep(inner(1)) == 1 else => $abort(\"nested\")")]
     public void ADeterminedOuterCandidateSuppliesTheNestedExpectation(string name, string body)
         => ScalarEmissionTest.EmitFixture("ApplicabilityChainNested" + name, "func make<T>() -> Option<T> => .None\n" + body, string.Empty);
@@ -93,13 +101,18 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal(2, error.Related!.Length);
     }
 
-    // SPEC 10.5: no Cartesian search, no evidence from a waiting result, and no fallback after the chosen expectation fails.
+    // SPEC 10.5, 10.5.1: no Cartesian search, no evidence from a waiting result, and no fallback after the chosen expectation fails; a
+    // nested call whose result only a literal default would type, or with another applicable candidate, waits.
     [Theory]
     [InlineData("func make<T>() -> Option<T> => .None\nlet value = make()", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "make()")]
     [InlineData("func make<T>() -> Option<T> => .None\nfunc keep<T>(o: Option<T>) => ()\nkeep(make())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(make())")]
     [InlineData("func make<T>() -> Option<T> => .None\nfunc keep(o: Option<i32>) => ()\nfunc keep(o: Option<i64>) => ()\nkeep(make())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "keep(make())")]
     [InlineData("func make<T>() -> Option<T>\n    T is PrimitiveInteger\n    return .None\nfunc keep(o: Option<string>, tag: i32) => ()\nfunc keep(o: Option<i32>, tag: i64) => ()\nkeep(make(), 1@i32)", nameof(DiagnosticCode.NoApplicableOverload_Kd), "make()")]
     [InlineData("func make<T>(value: i32) -> Option<T> => .None\nfunc keep(o: Option<i32>) => ()\nkeep(make(missing))", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nlet x = identity(identity(1))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity(identity(1))")]
+    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc makeBox<T>(value: T) -> Box<T> => Box.init(value@move)\nfunc outer<T>(value: Box<T>) => ()\nouter(makeBox(1))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "outer(makeBox(1))")]
+    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nfunc mk() -> Box<i32> => Box.init(1@i32)\nfunc mk(seed: i32 = 0) -> Box<i64> => Box.init(2@i64)\nfunc outer<T>(value: Box<T>) => ()\nouter(mk())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "outer(mk())")]
+    [InlineData("struct Box<T>\n    public let value: T\n    public init(value: T) => self.value = value@move\nlet a = Box.init(Box.init(42))", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "Box.init(Box.init(42))")]
     public void NestedInferenceHasOneBoundary(string source, string code, string at)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -111,6 +124,51 @@ public class ApplicabilityChainRegressionTest
             Assert.Equal("Generic parameter 'T' is not bound", error.Label);
             Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
         }
+    }
+
+    // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which
+    // reaches its result sources: literals beside only Never or waiting sources, or a waiting source call, make it Waiting, checked
+    // against the selected candidate's Type; a typed source makes it independently typable.
+    [Theory]
+    [InlineData("take(if c => 1 else => stop())")]
+    [InlineData("take(if c => identity(1) else => 2)")]
+    [InlineData("take(if c => identity(1) else => identity(2))")]
+    [InlineData("take(if c => 1 else => x)")]
+    [InlineData("let k: i64 = keep(if c => identity(1) else => x)")]
+    public void AControlFlowArgumentIsClassifiedByItsResultSources(string use)
+    {
+        var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
+    // Literal fits a candidate only when every source does.
+    [Theory]
+    [InlineData("choose(if c => 1 else => 2)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if c => 1 else => 2)")]
+    [InlineData("h(if c => 200 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 200 else => stop())")]
+    [InlineData("g((if c => 1 else => 2.0, x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "g((if c => 1 else => 2.0, x))")]
+    [InlineData("keep(if c => 1 else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => 1 else => stop())")]
+    public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
+    {
+        var source = ControlFlowDeclarations + use + "\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 23.1.2, 10.1: a call that selects no candidate, or whose selected candidate fails, still binds its Literal and waiting
+    // control-flow parts on their own, so their own problems are reported beside the call's record, once; nothing is selected again.
+    [Theory]
+    [InlineData("choose(if ready => 1 else => 0)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if ready => 1 else => 0)")]
+    [InlineData("missingCall(if ready => 1 else => 0)", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missingCall")]
+    [InlineData("choose(identity(if ready => 1 else => 0))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(identity(if ready => 1 else => 0))")]
+    [InlineData("pair((if ready => 1 else => 2, 3))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "pair((if ready => 1 else => 2, 3))")]
+    [InlineData("keep(if ready => 1 else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if ready => 1 else => stop())")]
+    public void AFailedCallStillReportsItsPartsOwnProblems(string use, string code, string at)
+    {
+        var source = ControlFlowDeclarations + "func pair(value: (i32, i32)) -> () => ()\nfunc pair(value: (i64, i64)) -> () => ()\n" + use + "\n";
+        var found = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
+        Assert.Equal([(code, at), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "ready")], found);
     }
 
     [Fact]

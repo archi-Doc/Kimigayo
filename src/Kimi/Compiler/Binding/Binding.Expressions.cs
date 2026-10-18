@@ -157,12 +157,9 @@ public sealed partial class Binding
                 case GenericsKoto generics when ReferenceEquals(generics.Identifier, target):
                     target = target.Parent!;
                     continue;
-                case MemberAccessKoto:
-                    root = target;
-                    return false;
                 default:
                     root = target;
-                    return true;
+                    return target.Parent is not MemberAccessKoto;
             }
         }
     }
@@ -285,7 +282,7 @@ public sealed partial class Binding
     // operations of its concrete Type.
     // A shared literal argument constructs an owner temporary before acquiring its borrow.
     private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? parameter.Components[0] : parameter;
+        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
 
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
@@ -371,6 +368,11 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
+        if (this.WaitsUnderProbe(node, expected))
+        {
+            return null; // SPEC 10.5.1: a literal source of a control-flow part under the argument probe waits for its expectation.
+        }
+
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
         var type = this.BindAndAdaptNode(node, scope, expected);
@@ -427,7 +429,7 @@ public sealed partial class Binding
 
         if (actual is null && expected?.Kind != BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
             node.BoundSymbol is { Kind: BindingSymbolKind.Function } item && IsValueUse(node) &&
-            (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
+            (expected is not null || !this.AtArgumentPosition(node)))
         {
             actual = this.BindFunctionItem(node, item, scope);
         }

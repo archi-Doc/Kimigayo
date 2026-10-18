@@ -206,7 +206,7 @@ public partial class Compilation
         var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
         if (this.codegen == CompilerCodegen.Mir)
         {
-            (this.instances ??= new(this.Types)).Run(program, this.SourceModules.Length);
+            (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
         }
 
         return program;

@@ -33,7 +33,7 @@ dotnet run proto.cs -- -cases None+PK NoDestroyValue+PK  # +PK runs a variant on
 dotnet run proto.cs -- -r13      # only round 13's tables
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 4,223 lines after round 13.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 4,227 lines after round 13 and its 2026-10-18 correction.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1385,3 +1385,15 @@ No rule problem is left: under the design, every case is "same" or "same verdict
 - A call's effects (`err(effect)`: statics), E13 (5)'s cost and E13 (6)'s codes.
 - Labelled payloads (E13 (2)) have no case. They take the named-argument rule at an Aggregate.
 - Today's builder for a setter's Place value is not probed, and the old path is not probed for s1, s2, b1 and b2.
+
+## Correction of 2026-10-18 (case 75, SPEC's letter)
+
+The owner kept SPEC's letter on case 75 (an obj payload's Field replaced while a child borrowed through it lives; PLAN G147 (6)):
+a Loan ends only where a Move Path is destroyed in place (SPEC 15.6.3), and a Move Path takes no own step (15.1.3, 15.6.2), so
+`h@follow.r = slot2@uniq` ends nothing and `h@follow.r@follow@follow = 7` is an error. Changes:
+
+- Case 75's SPEC verdict is that error (it was valid, with design A's error a listed 23a-family loss).
+- `PrefixKill` and `FirstDerefBase` end nothing at a K through `payload`. Without it, the design accepted 75, now unsound.
+- Rerun, the design: 304 same, 21 earlier or moved, 7 listed losses, 0 unlisted, 0 unsound (unchanged totals; 75 is "same" as an
+  error). Design A (last base): 285 same, 22 listed losses (75 left them). Only the rejected `KillAcrossDeref` accepts 75.
+- A5 agrees: `MirBorrowsTest`'s c75 expects the error at `h@follow.r@follow@follow = 7` (1b-5, `806110fc`).

@@ -38,7 +38,7 @@ public class ContextualFunctionReferenceTest(ITestOutputHelper output)
     public void CommonOuterContextSelectsTheReferenceOnce()
     {
         const string Source = Functions + Apply + "func apply<T, F>(value: T, action: ref/F, extra: i32 = 0) -> T\n    F is Callable<(T) -> T>\n    return value@move\n" +
-            "require apply(action: choose, value: 41) == 42 else => $abort(\"common\")";
+            "require apply(action: choose, value: 41@i32) == 42 else => $abort(\"common\")";
         ScalarEmissionTest.EmitFixture("ContextualReferenceCommon", Source, string.Empty);
     }
 

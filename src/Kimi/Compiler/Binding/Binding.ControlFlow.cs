@@ -123,6 +123,33 @@ public sealed partial class Binding
         };
     }
 
+    // SPEC 14.9: the control-flow expression an argument or operand is, through parentheses and a label, or null.
+    private static Koto? ControlFlowExpression(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        node = node is LabeledKoto label ? label.Target : node;
+        return node is IfKoto or MatchKoto or LoopKoto or DoKoto ? node : null;
+    }
+
+    // SPEC 14.9.1: the target to which the expression is a result source, as a single-item body's value or a transfer's operand, or
+    // null; the inverse of FindResultEvidence's sources.
+    private static Koto? ResultTarget(Koto source)
+    {
+        var node = source;
+        while (node.Parent is ParenthesizedKoto || (node.Parent is CodeBlockKoto { IsExpressionBody: true } block && ReferenceEquals(block.Items[0], node)))
+        {
+            node = node.Parent;
+        }
+
+        return node.Parent switch
+        {
+            JumpKoto jump when jump is not ContinueKoto && ReferenceEquals(jump.Expression, node) => KotoHelper.ResolveTransferTarget(jump),
+            IfKoto or MatchKoto when KotoHelper.IsSelectionBody(node.Parent, node) => node.Parent,
+            DoKoto scoped when ReferenceEquals(scoped.Body, node) => scoped,
+            _ => null,
+        };
+    }
+
     private BoundType? CommonBorrowResult(BoundType left, BoundType right)
     {
         if (ReferenceEquals(left, BoundType.Never))
@@ -191,24 +218,7 @@ public sealed partial class Binding
             expected = BoundType.Unit;
         }
 
-        // Rent by a pass-local cursor, not by the map size: rebinding a target that is already mapped
-        // must not hand the next target a context that is still in use.
-        if (this.resultCursor == this.resultPool.Count)
-        {
-            this.resultPool.Add(new());
-        }
-
-        var context = this.resultPool[this.resultCursor++];
-        context.HasLiteral = false;
-        context.PartialEvidence = false;
-        context.Expected = expected;
-        context.Inferred = expected is null;
-        context.Invalid = context.Pending = false;
-        context.Sources.Clear();
-        context.Evidence.Clear();
-        context.ArrayShape = null;
-        context.ArrayElement = context.ArrayDefault = null;
-        context.ArrayFailure = null;
+        var context = this.RentResult(expected);
         this.resultContexts[target] = context;
         if (expected is null && !deferEvidence)
         {
@@ -216,6 +226,39 @@ public sealed partial class Binding
         }
 
         return context;
+    }
+
+    // Rents a cleared context by the pass-local cursor, not by the map size: rebinding a target that is already mapped must not hand
+    // the next target a context that is still in use.
+    private ResultContext RentResult(BoundType? expected)
+    {
+        if (this.resultCursor == this.resultPool.Count)
+        {
+            this.resultPool.Add(new());
+        }
+
+        var context = this.resultPool[this.resultCursor++];
+        context.Clear(expected);
+        return context;
+    }
+
+    // SPEC 14.9.1, 10.5.1: the survey of a control-flow expression's result sources without binding them, for its argument or operand
+    // kind; with `fit`, whether every literal source fits it (SPEC 12.3). Its context is released unless a nested result took the next.
+    private ResultSurvey SurveyResult(Koto target, BindingScope scope, BoundType? fit = null)
+    {
+        var cursor = this.resultCursor;
+        var context = this.RentResult(null);
+        context.LiteralFit = fit;
+        this.resultLocalEvidence.Clear();
+        this.FindResultEvidence(target, scope, context);
+        var survey = new ResultSurvey(
+            context.HasLiteral, context.Evidence.Count > 0, context.PartialEvidence || context.HasNever, !context.LiteralMisfit, context.LiteralDefault);
+        if (this.resultCursor == cursor + 1)
+        {
+            this.resultCursor = cursor;
+        }
+
+        return survey;
     }
 
     private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
@@ -494,11 +537,18 @@ public sealed partial class Binding
         }
         else if (evidence is null && IsUnfittedLiteral(expression))
         {
+            // SPEC 12.3: a survey for a Literal fits each literal source to the surveyed Type; the first one's default is the default.
             context.HasLiteral = true;
+            context.LiteralDefault ??= this.LiteralDefault(expression);
+            context.LiteralMisfit |= context.LiteralFit is { } fit && !this.FitsInputLiteral(expression, fit, scope);
         }
         else if (evidence is null)
         {
             context.PartialEvidence = true;
+        }
+        else
+        {
+            context.HasNever = true; // SPEC 14.9.2, 10.5.1: a Never source supplies no candidate and is no Literal.
         }
     }
 
@@ -675,6 +725,14 @@ public sealed partial class Binding
         return Complete(node, !suppliedValue && !structural.CanComplete(completion) ? BoundType.Never : common);
     }
 
+    // A survey of result sources (SPEC 14.9.1): whether one is a literal, whether one is typed, whether one is Never or not known
+    // without binding, whether every literal fits the surveyed Type, and the first literal's default. AllLiteral is SPEC 10.5.1's
+    // Literal control flow, every source a literal.
+    private readonly record struct ResultSurvey(bool Literal, bool Typed, bool Other, bool Fits, BoundType? Default)
+    {
+        internal bool AllLiteral => this.Literal && !this.Typed && !this.Other;
+    }
+
     private sealed class ResultCollector(List<Koto> children) : KotoVisitor
     {
         public override void Visit(Koto node) => children.Add(node);
@@ -706,5 +764,28 @@ public sealed partial class Binding
         internal bool HasLiteral { get; set; }
 
         internal bool PartialEvidence { get; set; }
+
+        internal bool HasNever { get; set; }
+
+        // A survey's Type for the literal sources, whether one does not fit it, and the first literal's default.
+        internal BoundType? LiteralFit { get; set; }
+
+        internal bool LiteralMisfit { get; set; }
+
+        internal BoundType? LiteralDefault { get; set; }
+
+        internal void Clear(BoundType? expected)
+        {
+            this.HasLiteral = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.LiteralFit = this.LiteralDefault = null;
+            this.Expected = expected;
+            this.Inferred = expected is null;
+            this.Invalid = this.Pending = false;
+            this.Sources.Clear();
+            this.Evidence.Clear();
+            this.ArrayShape = null;
+            this.ArrayElement = this.ArrayDefault = null;
+            this.ArrayFailure = null;
+        }
     }
 }

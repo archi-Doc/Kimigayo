@@ -67,34 +67,22 @@ public sealed partial class Binding
 
         var leftLiteral = IsUnfittedLiteral(binary.Left);
         var rightLiteral = IsUnfittedLiteral(binary.Right);
-        var left = leftLiteral ? null : this.BindIndependentArgument(binary.Left, scope);
+        var left = leftLiteral ? null : this.BindIndependentOperand(binary.Left, scope);
         var leftCore = left is null ? null : this.ArithmeticTerminal(binary.Left, left);
         var ordinary = leftCore is not null && (UserArithmeticProvider(leftCore) || this.HasArithmeticPremise(leftCore, ArithmeticContract(operation), scope));
-        // A built-in input Type still guides literal results of a control-flow operand (SPEC 14.9.2).
-        // Survey result sources without committing their defaults; such an operand cannot supply a user provider.
-        if (!ordinary && leftCore is not null && this.BuiltinNumeric(leftCore, scope))
+        // SPEC 14.9.2, 10.5.1: a built-in input Type still guides a Literal control-flow operand, every result source a literal, surveyed
+        // without committing their defaults; such an operand cannot supply a user provider.
+        if (!ordinary && leftCore is not null && this.BuiltinNumeric(leftCore, scope) &&
+            ControlFlowExpression(binary.Right) is { } operand && this.SurveyResult(operand, scope).AllLiteral)
         {
-            var operand = KotoHelper.UnwrapParentheses(binary.Right);
-            if (operand is LabeledKoto label)
-            {
-                operand = label.Target;
-            }
-
-            if (operand is IfKoto or MatchKoto or LoopKoto or DoKoto)
-            {
-                var evidence = this.BeginResult(operand, scope, null);
-                if (evidence is { HasLiteral: true, Expected: null, PartialEvidence: false, Invalid: false })
-                {
-                    return false;
-                }
-            }
+            return false;
         }
 
         // A fixed left provider can give the other operand a bounded expected Type after selection.
-        var right = rightLiteral ? null : this.BindIndependentArgument(binary.Right, scope);
+        var right = rightLiteral ? null : this.BindIndependentOperand(binary.Right, scope);
         var rightCore = right is null ? null : this.ArithmeticTerminal(binary.Right, right);
-        if ((!leftLiteral && left is null && !IsWaitingNestedCall(binary.Left) && !IsWaitingCallable(binary.Left)) ||
-            (!rightLiteral && right is null && !IsWaitingNestedCall(binary.Right) && !IsWaitingCallable(binary.Right)))
+        if ((!leftLiteral && left is null && !this.IsWaitingPart(binary.Left) && !IsWaitingCallable(binary.Left)) ||
+            (!rightLiteral && right is null && !this.IsWaitingPart(binary.Right) && !IsWaitingCallable(binary.Right)))
         {
             result = Complete(binary, null); // A failed input is not evidence of a missing arithmetic conformance.
             return true;
@@ -176,7 +164,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var operand = this.BindIndependentArgument(unary.Operand, scope);
+        var operand = this.BindIndependentOperand(unary.Operand, scope);
         if (operand is null)
         {
             return false;
@@ -244,7 +232,7 @@ public sealed partial class Binding
             {
                 var expected = candidate.Type!.Components[0];
                 if (IsUnfittedLiteral(other) ? !this.FitsInputLiteral(other, expected, scope) :
-                    counterpart is not null ? !FitsStructuralPart(counterpart, expected) : !IsWaitingNestedCall(other) && !IsWaitingCallable(other))
+                    counterpart is not null ? !FitsStructuralPart(counterpart, expected) : !this.IsWaitingPart(other) && !IsWaitingCallable(other))
                 {
                     continue;
                 }

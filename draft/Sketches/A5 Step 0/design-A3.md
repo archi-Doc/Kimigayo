@@ -601,7 +601,10 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   K's steps compare exactly (a constant index only with the same constant, never a runtime index), and the path may
   continue with any steps, borrow Derefs included. This replaces `base(L, B)`, the `within` kill and "no kill across a
   Deref" (§3), and recovers 23a, 30d, 34c, 35a and 35b. Checks still precede the end. Its SPEC revision (§15.6.3, Appendix E,
-  §13.5.5) landed with P12's at `0779b975`.
+  §13.5.5) landed with P12's at `0779b975`. A Move Path takes no own step (SPEC 15.1.3, 15.6.2), so a K through an obj or rc `payload`
+  ends nothing: case 75 (an obj payload's Field replaced while a child borrowed through it lives) is an error, as SPEC's letter
+  gives (owner, 2026-10-18; PLAN G147 (6)); the case 23a review's verdict "valid" (`../A5 Step 1/review-23a.md`) and the
+  prototype's PrefixKill, which ended it, are superseded (prototype's 2026-10-18 correction).
 - **E9, MIR contracts decided by the owner (2026-10-17, DECISIONS R4-M52; supersede parts of R4-M37).** G92a, assumed
   completion: on a check-only continuation every node is built and makes its own value and accesses; a node of Type
   Never has no value, its consumer taking an unwritten Never temp that fits any operand position; a placement rvalue
