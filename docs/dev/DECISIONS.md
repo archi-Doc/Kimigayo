@@ -2555,3 +2555,16 @@ structure is recorded here by the unit that first implements it.
     record; literal conversions give none; each table row appended as an operation in an unreachable block is `Unsupported_Kd` at its own
     location and its 64-bit twin none; an open division in a generic body is no definition-stage record; the library (as roots) and the
     44 milestones under sel give no record. `InstanceCollector.Template` also brings the template walk within the nesting limit.
+- **R5-M54 The instance-stage capability check** (2026-10-18, planning session; plan K9b, the K package's §4.7 "Instance stage" and §9
+  row K9b; under R5-M18 and R5-M53) An operation whose Types depend on slots (its first operand's or its result's Type is open) is a
+  template site; replaying an item applies the item's representative to those Types (`TyCtxt.Apply`, the storage-nesting gap where it
+  cannot) and checks `Capability.Of` on the instance's Types, so a division or remainder of an i128 or u128 instance is `Unsupported_Kd`,
+  for every instance of the checked set and in every block (IMPL 21.3.3), once per location. The location is R5-M40's rule, the requesting
+  call versus the body as K13a expects: an operation of a generic body in a root module is reported at itself, as the old generator
+  reports it (`GenericGenerationDiagnosticTest`'s `value / 2` and `value % 2`, also when a forwarding call reaches the instance), and one
+  of a library body at the user's request. Closed operations stay A3b's (R5-M53), so no operation is checked at both stages.
+  - Rejected: the record at the requesting call (K13a takes the old generator's location, and a user generic body is where the user can
+    act); a site per operation of every kind (only BinaryOp and Cast can have a row).
+  - Verified (`InstanceCollectorTest`): division and remainder of i128 and u128 instances at their generic-body locations, once for two
+    instances and for a forwarded call, also after a return; independent operations at their own locations; the i64 instance none; the
+    library (as roots) and the 44 milestones under sel give no record.

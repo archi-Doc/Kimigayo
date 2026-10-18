@@ -408,13 +408,33 @@ public sealed class InstanceCollectorTest
         Assert.Equal(gap ? [(DiagnosticCode.Unsupported_Kd, add.Source.Syntax)] : [], set.Records.Select(static x => (x.Code, x.Subject)));
     }
 
-    // K 4.7: an operation whose Types depend on slots is no definition-stage record (K9b checks it per instance).
+    // K 4.7: an operation whose Types depend on slots is no definition-stage record; without an instance it has none.
     [Fact]
     public void AnOpenOperationIsNoDefinitionStageRecord()
     {
         var c = MirBuildTest.Compile("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nfunc keep() -> i32 => 1\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+    }
+
+    // K 4.7 instance stage, IMPL 21.3.3, DECISIONS R5-M54: an operation whose Types depend on slots is checked in each instance of the
+    // checked set; a division or remainder of an i128 or u128 instance is Unsupported_Kd at its own location in the generic body, once
+    // however many instances or forwarding calls reach it, also after a return; the i64 instance has none; independent operations keep their
+    // own locations.
+    [Theory]
+    [InlineData("    return value / 2\n", "let result = half(10@i128)\n", "value / 2")]
+    [InlineData("    return value % 2\n", "let result = half(10@u128)\nlet other = half(20@i128)\n", "value % 2")]
+    [InlineData("    return value / 2\n", "func forward<T>(value: T) -> T\n    T is PrimitiveInteger\n    return half(value)\nlet result = forward(10@i128)\n", "value / 2")]
+    [InlineData("    return value\n    return value / 2\n", "let result = half(10@i128)\n", "value / 2")]
+    [InlineData("    let first = value / 2\n    return value % 2\n", "let result = half(10@i128)\n", "value / 2|value % 2")]
+    [InlineData("    return value / 2\n", "let result = half(10@i64)\n", "")]
+    public void AnInstanceOperationOfTheTableIsAGapAtItsLocation(string body, string uses, string refused)
+    {
+        var c = MirBuildTest.Compile("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n" + body + uses);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).ToArray();
+        Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
     // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never

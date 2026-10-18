@@ -57,12 +57,19 @@ internal sealed partial class InstanceCollector
         return found is null ? -1 : this.Admit(item, subject, found, subst);
     }
 
-    // K 4.5 rows 11-13 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body; a
-    // function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type.
+    // K 4.5 rows 11-13, K 4.7 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body;
+    // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type;
+    // an operation whose Types depend on slots checked against the capability table (no target).
     private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
         var subject = this.Subject(item, body, statement.Source);
+        if (rvalue.Kind == MirRvalueKind.BinaryOp || rvalue is { Kind: MirRvalueKind.Cast, Op: not (byte)MirCastKind.Erasure })
+        {
+            this.CheckOperation(item, subject, body, rvalue);
+            return -1;
+        }
+
         var aggregate = rvalue.Kind == MirRvalueKind.Aggregate;
         if (this.In(item, subject, aggregate ? rvalue.Type! : OperandType(body, body.Operands[rvalue.Start])) is not { } closed)
         {
