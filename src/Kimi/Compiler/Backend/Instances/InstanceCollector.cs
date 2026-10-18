@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.6, 4.9; DECISIONS R5-M35, R5-M40, R5-M43): every body instance and
-// type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of each site's
-// target that code generation reads.
+// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.6, 4.8, 4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44): every body
+// instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
+// each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Apply, Implementation, SubstOfClosure, SubstOfItem); MirCases (Views); the Target column of the intrinsic rows; the capability
-// table.
+// Compose, Apply, Implementation, SubstOfClosure, SubstOfItem); MirCases (Views); the Target and Layout columns of the intrinsic rows; the
+// capability table; the compilation's Layout, whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b).
@@ -14,6 +14,9 @@
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
 // constant), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves each site
 // under the item's representative; a type-driven item's targets follow from its representative Type. K6-K8 add the other rows.
+// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
+// the Type argument of an intrinsic whose row names one) and each type-driven item's Type take one Layout verdict per erased Type: a limit is
+// GenerationResourceLimit_Kd at the first use, Rejected storage derives from a Binding error, and a type-driven item needs an Ok verdict.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43) and a substitution TyCtxt
 // cannot make are the capability table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are
@@ -37,6 +40,8 @@ internal sealed partial class InstanceCollector
     private readonly TyCtxt types;
     private readonly MirCases cases;
     private readonly MirReach reach = new();
+    private readonly Layout layout;
+    private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
     private readonly Dictionary<MirDefKey, int> counts = new(); // Items per definition (X19).
     private (MirLocation At, bool Runtime)[] sites = []; // The templates: each body's sites, in body order.
     private int[] starts = []; // By body ordinal, its first site; the entry after the last body ends the sites.
@@ -44,9 +49,11 @@ internal sealed partial class InstanceCollector
 
     /// <summary>Initializes a new instance of the <see cref="InstanceCollector"/> class.</summary>
     /// <param name="types">The Type context of the programs.</param>
-    internal InstanceCollector(TyCtxt types)
+    /// <param name="layout">The layout of the programs' compilation.</param>
+    internal InstanceCollector(TyCtxt types, Layout layout)
     {
         this.types = types;
+        this.layout = layout;
         this.cases = new(types);
         this.cases.Deselect(); // A representative is closed, so the views it selects need no caller view.
     }
@@ -71,6 +78,7 @@ internal sealed partial class InstanceCollector
 
         set.Clear(program.Version);
         this.counts.Clear();
+        this.limited.Clear();
         (this.rootModules, this.Work) = (rootModules, 0);
         if (program.Findings.Count > 0)
         {
@@ -105,19 +113,20 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"A call has the callee kind {callee.Kind}."),
     };
 
-    // K 4.5 rows 10-12: a statement carries a target by its rvalue: a Closure environment, an erasure to a Function Type, or a function item
-    // constant.
-    private static bool Carries(MirBody body, in MirStatement statement)
+    // K 4.5 rows 10-12 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also carries a
+    // target; an erasure to a Function Type; a function item constant.
+    private static bool IsSite(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
     {
-        MirRvalueKind.Aggregate => (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure,
+        MirRvalueKind.Aggregate => true,
         MirRvalueKind.Cast => (MirCastKind)rvalue.Op == MirCastKind.Erasure,
         MirRvalueKind.Use => body.Operands[rvalue.Start] is { Kind: MirOperandKind.Const } operand && body.Consts[operand.Arg].Kind == MirConstKind.FnItem,
         _ => false,
     };
 
-    // Whether a block's terminator carries a target.
-    private static bool Carries(in MirTerminator terminator) => terminator.Kind == MirTerminatorKind.Call && Carries(terminator.Callee);
+    // Whether a block's terminator is a site: a call that may carry a target, or an intrinsic call whose Type argument is a by-value use.
+    private static bool IsSite(in MirTerminator terminator) => terminator is { Kind: MirTerminatorKind.Call, Callee: var callee } &&
+        (Carries(callee) || (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType));
 
     // Each body's sites, once per version, in location order, with whether a runtime path from its entry reaches each.
     private void Templates(MirProgram program)
@@ -140,7 +149,7 @@ internal sealed partial class InstanceCollector
                 var (start, end) = (blocks[block].Start, blocks[block].Count);
                 for (var index = 0; index <= end; index++)
                 {
-                    if (index < end ? Carries(body, body.Statements[start + index]) : Carries(blocks[block].Terminator))
+                    if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
                     {
                         if (count == this.sites.Length)
                         {
@@ -172,6 +181,7 @@ internal sealed partial class InstanceCollector
         }
 
         var body = program.Bodies[set.Items[item].BodyOrdinal];
+        this.LayOutLocals(item, body);
         for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
         {
             this.Work++;

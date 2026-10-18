@@ -132,13 +132,13 @@ public sealed class InstanceCollectorTest
     {
         var c = MirBuildTest.Compile(Source);
         var program = c.BuildMir();
-        var collector = new InstanceCollector(c.Types);
+        var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(program, 1);
         var items = set.Items.Length;
         Assert.Same(set, collector.Run(program, 1));
         Assert.Equal(items, set.Items.Length);
         program.Findings.Add(new(MirViolation.Callee, program.Bodies[0].Source));
-        Assert.Equal(0, new InstanceCollector(c.Types).Run(program, 1).Items.Length);
+        Assert.Equal(0, new InstanceCollector(c.Types, c.Layout).Run(program, 1).Items.Length);
     }
 
     // KD1, KD3: a generic callee is an instance keyed by its definition and erased substitution, represented by the substitution that first
@@ -151,7 +151,7 @@ public sealed class InstanceCollectorTest
             "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n" +
             "require host(x@ref, y@ref) == 0 and pick(3) == 3 and pick(true) else => $abort(\"pick\")\n");
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
         Assert.All(set.Items.ToArray(), x => Assert.Equal(x.Key.Body.Def.Decl is { } decl && c.Types.Instantiates(decl), x.Key.Body.Erased is not null));
         Assert.All(set.Items.ToArray(), x => Assert.Same(x.Key.Body.Erased, x.Representative is null ? null : c.Types.Erase(x.Representative)));
@@ -170,7 +170,7 @@ public sealed class InstanceCollectorTest
             "require count(2, 7) == 2 and grow<i32>(1, 3) == 0 else => $abort(\"recursion\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         var count = Item(program, set, "Fn count [i32]");
         Assert.Contains(set.Targets(count).ToArray(), x => x.Item == count);
         Assert.Equal(16, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn grow", StringComparison.Ordinal)));
@@ -193,7 +193,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile($"func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: {type} = {value}\n    let w = pick(v@move)\n    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(admitted, set.Items.ToArray().Any(x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal)));
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
@@ -210,7 +210,7 @@ public sealed class InstanceCollectorTest
         var c = MirBuildTest.Compile(declarations + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(items, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn " + nested + " [", StringComparison.Ordinal)));
         Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.All(set.Items.ToArray(), x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
@@ -226,7 +226,7 @@ public sealed class InstanceCollectorTest
             ItemSource + "require apply(3) == 3 and apply(true) and make(1) == 1 and p(4) == 4 and run(one<bool>) == 1 else => $abort(\"k5\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
         Assert.Equal(
             [
@@ -254,7 +254,7 @@ public sealed class InstanceCollectorTest
             "func pick<T>(value: T) -> T => value@move\nlet h: (i32) -> i32 = pick<i32>\nrequire adder(1) == 1 and h(2) == 2 else => $abort(\"erasure\")\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
         var adapters = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].BodyOrdinal < 0).ToArray();
         Assert.Equal([MonoKind.ClosureErasure, MonoKind.ItemAdapter], adapters.Select(x => set.Items[x].Key.Kind).Order());
@@ -264,6 +264,68 @@ public sealed class InstanceCollectorTest
             adapters.SelectMany(x => set.Targets(x).ToArray()).Select(x => Label(program, set.Items[x.Item])).Order(StringComparer.Ordinal));
         var adder = set.Targets(Item(program, set, "Fn adder [i32]")).ToArray();
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
+    }
+
+    // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
+    // use: a parameter (at its function, as MIR records no parameter syntax), a generic instance's intrinsic Type argument, a Closure local
+    // whose environment holds the Type (its erasure then has no adapter item); a struct whose storage Binding rejected derives from Binding's
+    // error and Option<Never> is laid out (X31), neither with a record. Subjects by their first line.
+    [Theory]
+    [InlineData("func f(value: [2147483648 of u8]) -> i32 => 1\n", "func f(value: [2147483648 of u8]) -> i32 => 1")]
+    [InlineData("func f(value: [2147483648 of ()]) -> i32 => 1\n", "func f(value: [2147483648 of ()]) -> i32 => 1")]
+    [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<[2147483648 of u8]>()\nunsafe => Raw.release(p)\n", "Raw.allocate<T>(0)")]
+    [InlineData(
+        "func host(big: [1073741824 of i32]) -> i32\n    let f = func [big] () -> i32 => 1\n    let e: () -> i32 = f\n    return e()\n",
+        "func host(big: [1073741824 of i32]) -> i32|let f = func [big]() -> i32 => 1")]
+    [InlineData("struct A\n    let b: B\nstruct B\n    let a: A\nfunc f(a: A) -> i32 => 1\n", "")]
+    [InlineData("let a: Option<Never> = .None\n", "")]
+    public void ALayoutLimitIsARecordAtItsTypesFirstUse(string source, string subjects)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        var expected = subjects.Length == 0 ? [] : subjects.Split('|').Select(static x => (DiagnosticCode.GenerationResourceLimit_Kd, x)).ToArray();
+        Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.ClosureErasure);
+    }
+
+    // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37), and the old generator, whose pool takes Layout's
+    // verdict, agrees for a struct chain and a one-component Tuple chain, read down to the scalar leaf, at 64 and 65 levels; the height-64
+    // difference R5-M37 anticipated does not arise.
+    [Theory]
+    [InlineData("Struct", 64, false)]
+    [InlineData("Struct", 65, true)]
+    [InlineData("Tuple", 64, false)]
+    [InlineData("Tuple", 65, true)]
+    public void TheDepthLimitCountsPlacedLevels(string shape, int height, bool limited)
+    {
+        var source = new System.Text.StringBuilder();
+        string type;
+        if (shape == "Struct")
+        {
+            source.Append("struct S1\n    public let v: i32\n");
+            for (var i = 2; i <= height; i++)
+            {
+                source.Append("struct S").Append(i).Append("\n    public let v: S").Append(i - 1).Append('\n');
+            }
+
+            type = "S" + height.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        }
+        else
+        {
+            type = new string('(', height) + "i32" + string.Concat(Enumerable.Repeat(",)", height));
+        }
+
+        var leaf = string.Concat(Enumerable.Repeat(shape == "Struct" ? ".v" : ".0", height));
+        source.Append("func f(value: ").Append(type).Append(") -> i32 => value").Append(leaf).Append("\nConsole.writeLine(\"deep\")\n");
+        var c = MirBuildTest.Compile(source.ToString());
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
+        Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, $"func f(value: {type}) -> i32 => value{leaf}")] : [], records);
+        var legacy = MinimalEmissionTest.Analyze(source.ToString());
+        Assert.Equal(!limited, legacy.Validate(out var error));
+        Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
     }
 
     // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never
@@ -278,7 +340,7 @@ public sealed class InstanceCollectorTest
             .Single(b => top.Blocks[b].Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Symbol.Name: "pick" } });
         var call = top.Blocks[block].Terminator;
         top.Terminate(block, call with { Callee = call.Callee with { Subst = c.Types.Identity(call.Callee.Symbol!.Declaration) } });
-        var set = new InstanceCollector(c.Types).Run(program, 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "pick(1)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal));
     }
@@ -290,14 +352,14 @@ public sealed class InstanceCollectorTest
         var chain = string.Concat(Enumerable.Range(0, 130).Select(static i => $"func step{i}<T>(value: T) -> T => {(i == 129 ? "value@move" : $"step{i + 1}<T>(value@move)")}\n"));
         var c = MirBuildTest.Compile(chain + "let x = step0<i32>(1)\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var set = new InstanceCollector(c.Types).Run(c.BuildMir(), 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal([(DiagnosticCode.GenerationResourceLimit_Kd, "step128<T>(value@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.Equal(128, set.Items.ToArray().Max(static x => x.Depth));
 
         var sizes = string.Concat(Enumerable.Range(1, 1025).Select(static n => $"_ = size<{n}>()\n"));
         c = MirBuildTest.Compile("func size<length N>() -> isize => N\n" + sizes);
         var program = c.BuildMir();
-        set = new InstanceCollector(c.Types).Run(program, 1);
+        set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.GenerationResourceLimit_Kd, "size<1025>()")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
         Assert.Equal(1024, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn size", StringComparison.Ordinal)));
     }
@@ -314,7 +376,7 @@ public sealed class InstanceCollectorTest
         var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
-        var set = new InstanceCollector(c.Types).Run(c.BuildMir(), 1);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal(
             [(DiagnosticCode.Unsupported_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
@@ -329,7 +391,7 @@ public sealed class InstanceCollectorTest
         var work = new[] { 8, 16, 32 }.Select(static n =>
         {
             var c = MirBuildTest.Compile(Shape(n));
-            var collector = new InstanceCollector(c.Types);
+            var collector = new InstanceCollector(c.Types, c.Layout);
             var set = collector.Run(c.BuildMir(), 1);
             Assert.Empty(set.Records);
             return (Items: (double)set.Items.Length, Work: (double)collector.Work);
@@ -372,7 +434,7 @@ public sealed class InstanceCollectorTest
     public void AWarmRunAllocatesNothing()
     {
         var c = SemanticSnapshotTest.Bind("milestone/Milestone30").Compilation;
-        var collector = new InstanceCollector(c.Types);
+        var collector = new InstanceCollector(c.Types, c.Layout);
         var set = collector.Run(c.BuildMir(), 1);
         var (items, targets) = (set.Items.Length, Enumerable.Range(0, set.Items.Length).Sum(x => set.Targets(x).Length));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
@@ -410,7 +472,7 @@ public sealed class InstanceCollectorTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
-        return (program, new InstanceCollector(c.Types).Run(program, 1));
+        return (program, new InstanceCollector(c.Types, c.Layout).Run(program, 1));
     }
 
     private static int Item(MirProgram program, CheckedSet set, string label)

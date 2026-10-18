@@ -2352,7 +2352,7 @@ structure is recorded here by the unit that first implements it.
     accepted only because the same body had resolved its inner Types first now reports `GenerationResourceLimit_Kd` (a chain of
     one-component Tuple locals, `InlineLayoutTest`; a trace found no other in the suite, fixtures and milestones). MIR's bound counts
     placed levels only, so a Type of height 64 whose leaf legacy counts (the chain `S0 { v: i32 }` … `S63`) is accepted by MIR and
-    refused by legacy: an R5-M6 (d) row at the first MIR observation.
+    refused by legacy: an R5-M6 (d) row at the first MIR observation. (R5-M44: the first observation found none.)
   - Rejected: a static Type-keyed memo (stale after an edit, retains every compilation's Types); a static weak table with an edit
     epoch (couples compilations); a memo reached through the Type (structural Types unmemoized); clearing per pass (re-placement on
     each warm rebuild); records kept for the compilation's life (grow across edits; the old pool's interning compares child shapes);
@@ -2465,3 +2465,27 @@ structure is recorded here by the unit that first implements it.
     the F3 expectations unchanged; the library (as roots) and the 44 milestones under sel give no record; `TyCtxtTest`'s one length entry
     per slot holds for the pure item substitution, and `MirEffectsTest` passes on it. Staged sel coverage: requirement calls and Items,
     virtual calls and Items, and the descriptor, glue and static-initializer intrinsics still collect nothing until K6-K8.
+- **R5-M44 Layout obligations of the checked set** (2026-10-18, planning session; plan K10a, the K package's §4.8 and §4.3, S2-S4 X18;
+  under R5-M18 and R5-M37) The collector is the one owner of `Layout.Of`'s outcomes (`Compilation.Layout`, passed at its construction).
+  Each item's by-value uses (its body's locals but drop flags, its aggregates, and the Type argument of an intrinsic whose row's new
+  `LaysOutType` column says so: `RawAllocate`, `Stride`, `DestroyValues`) in its instance, and each type-driven item's Type, take
+  Layout's verdict, memoized per program version and equal for Types that differ in Origins only (Layout reads no Origin, R5-M37), so one
+  verdict per erased Type: a size, count or depth limit is the erased Type's one `GenerationResourceLimit_Kd` at its first
+  use, located by R5-M40's rule (IMPL 21.3.2: the declaration, call or token; a parameter's at its function, since MIR records no
+  parameter syntax), so a library instance's limit is reported where user code requests it, not at the project file as the old
+  generator does; Rejected storage derives from the Binding error that rejected it (no record); CLayout is K10b's `InvalidCLayout_Kd`;
+  a `ClosureErasure` or `ItemAdapter` item is admitted only for an Ok verdict. The uses are template sites beside the target sites, in
+  location order; locals are laid out per item before its sites. PLAN G146 (2^63 - 1) stays out of scope.
+  - The height-64 (d) row (R5-M37, P7c's Q6; the final review's N6) does not arise: a struct chain and a one-component Tuple chain, read
+    down to the scalar leaf, are accepted by both MIR and the old generator at 64 placed levels and refused by both at 65, since the old
+    pool takes `Layout`'s depth verdict before counting its own (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`); no R5-M6 row is
+    recorded.
+  - Rejected: a record at every use of a failing Type (one Type would report at each local, temporary and erasure holding it); the
+    intrinsic Type arguments by a collector-side switch (the row table owns per-intrinsic facts); `Layout.Of(Erase(type))` (the erasure
+    memo of every by-value Type cost 1.5 MB allocated and 1.0 MB retained at Generic 128, against 0.47 and 0.25 MB).
+  - Cost (`Benchmark --analyze-cost`, Generic 1/32/64/128, against K5): under sel a fresh check allocates 8, 94, 226 and 472 KB more and
+    the checked compilation retains 6, 52, 121 and 248 KB more (Layout's memo and records, which generation reuses); legacy and `mir`
+    unchanged; a warm Analyze allocates the same.
+  - Verified (`InstanceCollectorTest`): size and count limits at an unused function's parameter, a generic instance's `Raw.allocate`
+    Type argument at the call in the generic body, a Closure local whose environment is too large (no adapter item for its erasure), no
+    record for a struct Binding rejected or for `Option<Never>`; the library (as roots) and the 44 milestones under sel give no record.

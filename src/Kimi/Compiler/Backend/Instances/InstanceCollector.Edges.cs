@@ -21,7 +21,8 @@ internal sealed partial class InstanceCollector
     // K 4.5 rows 1 and 5: a Fn callee's body under the site's substitution composed with the item's representative (TyCtxt.Compose, whose
     // declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit checks; a default template's,
     // the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), and the body a Value callee's Closure or
-    // function item runs. The admitted item, or -1 for a callee without a body, a refused edge or a later row (K6-K8).
+    // function item runs; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a callee
+    // without a body, a refused edge or a later row (K6-K8).
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
         var callee = call.Callee;
@@ -32,9 +33,15 @@ internal sealed partial class InstanceCollector
                 ? this.Callee(program, item, subject, closed) : -1;
         }
 
+        if (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType &&
+            this.In(item, subject, callee.Subst!.Types[0]!) is { } argument)
+        {
+            _ = this.LaysOut(subject, argument);
+        }
+
         if (callee.Kind != MirCalleeKind.Fn)
         {
-            return -1; // Requirement callees and intrinsics: K6-K8.
+            return -1; // Requirement callees and the intrinsics' targets: K6-K8.
         }
 
         var representative = this.Set.Items[item].Representative;
@@ -50,16 +57,22 @@ internal sealed partial class InstanceCollector
         return found is null ? -1 : this.Admit(item, subject, found, subst);
     }
 
-    // K 4.5 rows 10-12, in the item's instance: a Closure environment's body; a function item constant's body (as row 5); an erasure's
-    // ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type.
+    // K 4.5 rows 10-12 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body; a
+    // function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type.
     private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
         var subject = this.Subject(item, body, statement.Source);
-        var type = rvalue.Kind == MirRvalueKind.Aggregate ? rvalue.Type! : OperandType(body, body.Operands[rvalue.Start]);
-        if (this.In(item, subject, type) is not { } closed)
+        var aggregate = rvalue.Kind == MirRvalueKind.Aggregate;
+        if (this.In(item, subject, aggregate ? rvalue.Type! : OperandType(body, body.Operands[rvalue.Start])) is not { } closed)
         {
             return -1;
+        }
+
+        if (aggregate)
+        {
+            _ = this.LaysOut(subject, closed);
+            return (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure ? this.Callee(program, item, subject, closed) : -1;
         }
 
         return rvalue.Kind != MirRvalueKind.Cast ? this.Callee(program, item, subject, closed)

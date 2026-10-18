@@ -79,8 +79,9 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // K 4.3: the item of a type-driven key requested at a site, admitted once per erased Type and represented by the first unerased Type
-    // that requests it; past the depth limit GenerationResourceLimit_Kd. -1 when refused.
+    // K 4.3, 4.8: the item of a type-driven key requested at a site, admitted once per erased Type whose layout verdict is Ok (a failure is
+    // the Type's one record, or derived) and represented by the first unerased Type that requests it; past the depth limit
+    // GenerationResourceLimit_Kd. -1 when refused.
     private int AdmitType(int parent, SourceRef site, MonoKind kind, BoundType type)
     {
         var set = this.Set;
@@ -88,6 +89,11 @@ internal sealed partial class InstanceCollector
         if (set.Find(key) is >= 0 and var found)
         {
             return found;
+        }
+
+        if (!this.LaysOut(site, type))
+        {
+            return -1;
         }
 
         var depth = set.Items[parent].Depth + 1;
