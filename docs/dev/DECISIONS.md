@@ -1348,7 +1348,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate
   (the local index is the key).
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
-  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
+  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`; its "which the builder replaces whole" and
+  "its children are not published as evaluated and a closure inside it is not built" are superseded by R5-M63 for the children
+  Binding resolved) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
   every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
   symbol), and per Op the call it builds (an index's selected call), the Evaluated argument of a key resolution and of an update's
@@ -2666,7 +2668,7 @@ structure is recorded here by the unit that first implements it.
   読み出しだけに使います。参照による束縛では、Binding が公開した借用を `ref/Never` 型のまま作ります。こうすると、その束縛が r
   に対する Loan を持つので、SPEC の文言どおり競合を検出できます。あわせて MirValidator に「Never 用の一時変数へ書けるもの」の
   許可一覧（変換なしの Never Place 読み出し・Never 型の Opaque・発散する呼び出しの戻り先）を加え、この系統を閉じます。R5 側で
-  実装と再レビューが必要です。」) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
+  実装と再レビューが必要です。」; amended by F17: any acquisition without adaptation) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
   (`IsNeverValue`); every acquisition takes it as it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type
   Never (a parameter, a binding, a payload) is not the Never value: any acquisition of it without adaptation (the Copy of a
   bare read, since Never is Copy, BU-4, a Move, or the in-place path's ByCase, which a Copy Type takes by Copy) goes into a
@@ -2876,7 +2878,8 @@ structure is recorded here by the unit that first implements it.
   the borrow `Lent` forms (a base view's subobject). Rejected: widening the base subobject's Loan in A5 (an analysis rule for a
   builder fact); borrowing the payload under the slot's view Type (the validator's Ref Type agreement).
 - **R5-M50 A transfer delivers its result after the Scope Exit** (2026-10-18, planning session; plan F15, PLAN G147 (5) from R4's
-  1b-5 ledger; SPEC 16.2.2) Rule (`MirBuilder.Transfer`): a valued transfer that leaves a scope with a cleanup secures its result
+  1b-5 ledger; SPEC 16.2.2; amended by F17: the result temp lies in the target's scope) Rule (`MirBuilder.Transfer`): a valued
+  transfer that leaves a scope with a cleanup secures its result
   and places it into its target's result temp (no storage of its own) before the Scope Exit, and the target's delivery block,
   after the drop tree, moves it into the target's destination: the target's Destination and Break become that temp and that block
   at its first such transfer (`Target.Delivers`), so every later transfer to it takes them as it shares its drop tree. A transfer
@@ -3209,3 +3212,50 @@ structure is recorded here by the unit that first implements it.
   - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
     places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
     plans).
+- **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19, planning session; plan Q21, PLAN G121, package Q8 §3.8
+  and Q8-7 under R5-M23 (DEC Q6 form 1), design `r5/w1-q21-design.md` accepted on review with the two amendments below, ask A-14
+  with R4's reviewer's sign-off; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its
+  children are not published as evaluated and a closure inside it is not built") SPEC 23.1.2: a node's failure hides no independent
+  error in the children Binding resolved; the Error node's own value stays a derived Opaque with no record. R4-M61's reason concerned
+  only the Error node's own value, whose facts are missing; each kept child is published with its own facts (`Binding.HasFacts`) and
+  checked like any node (`HirTables.Broken`), so the reason does not reach it.
+  (1) A closure definition: `BoundClosure.Of` is the definition of the closure's latest binding once it bound the inputs, the result
+  and the environment (`Signature` set; `Binding.BindClosure` clears it first), whatever its creation's outcome. An anonymous function
+  Binding bound in the pass (Resolved or failed), at an evaluated or a replaced position, with its definition keeps its parts as a
+  Closure (`HirPublisher.Parts`): its own `Consume` (an expression body's result) and its body's positions. This reaches beyond Q8-7's
+  "a closure whose creation failed" to a closure inside a parent Binding rejected (`let g = <closure>` without a Type, a failed call's
+  argument), because Q8 §3.8's required meaning is that the children Binding resolved stay published, and AGENTS accepts no narrow
+  subset of a form one rule covers; a closure that is a failed Place's kept operand is evaluated there (its creation built in a temp)
+  and its body built, where the design had predicted it replaced. Only the creation follows its position: built, a failed creation's
+  Opaque site naming the captures' sources, or part of a replaced parent's Opaque. The MIR builder builds each definition whose value
+  node the HIR publishes (`MirBuilder.Published`, equal to the Body and Closure Ops before this entry: 0 differences over 740 table
+  definitions of the goldens and the library and 863 of the milestones and the library). Amendment (review): the definition must also
+  be one the publisher reached (an Op written), since a synthesized executing function shares its accessor's body.
+  (2) A failed compound Place (a Field, an Index, a Deref, `*p` or `p@follow`, the latter recognized by Binding's target rule
+  `TypeSemanticsKoto.Names`, or a group, such as a list item the parser recovered (a parameter default, a call's last argument), that
+  Binding rejected or did not resolve, not a broken contract) keeps each operand Binding resolved at its position, written in place
+  `(None, None)`, which under an Error node marks a kept operand (`HirPublisher.Keeps`). Amendment (review): an operand is kept only
+  when its own Op is published with its facts, so a Type or group name (Syntax) and a name both of whose paths resolve (an Error)
+  stay replaced. The builder evaluates an Error node's kept operands in syntax order as their Places (a value in a temp) before its
+  Opaque value, never acquiring them; the site names their roots and the roots of the rest of the node's syntax, which root
+  collection skips (it walks the Error node's own children; no parent is read), so a moved operand is not used again at the site (A1
+  checks each root at the site's subject). Any other child stays replaced.
+  Finding A: a kept body keeps what Binding refuted. A closure rejected because its inferred result borrows the call's own storage
+  (`CallLocalOrigin`, SPEC 15.8.2) builds the refuted borrow, so A5 adds `ComparisonLoanConflict_Kd` where the borrowed parameter or
+  local ends: on the failed closure (`FunctionKoto`) or on a `let` inside its body (`FieldKoto`), not on the failed node. All seven
+  such rows of the Q21 ledger are derived: the only Loan on the ending storage is the one issued at the refuted borrow. They are
+  classified (b) open (`classification.tsv` row a5-kept-closure; not (d), which at signature level would absorb an independent
+  conflict of the same form) until R4's A5-F7 unit 2c-6 judges closure results on the MIR, one report per refuted relation, and
+  R6-check's H11 deletes `CallLocalOrigin`; R4's condition: H11 lands before the MIR becomes the default pipeline, or 2c-6 reports
+  each refuted relation once while `CallLocalOrigin` exists.
+  Residuals (PLAN G121): an assignment or update whose target Binding rejected (`MirBuilder.Values.cs:143`) is one Opaque value, so
+  its target's kept operands are published but never evaluated; the operands of other failed forms (calls, statements, conversions
+  other than `@follow`) stay replaced; a failed Place's operand that Binding did not resolve stays replaced (a nested failed Place is
+  not published Error until R4's 2x-E2 decides unresolved compound Places). Rejected: in-place writes for a closure (Q8-7: an
+  expression body's result and a by-case Copy of a capture); a `Kept` member of `HirAcquire` or `HirPosition` (a vocabulary entry;
+  `HirAcquire.None` already means used in place, and under an Error only this rule writes it); building closure bodies from Binding
+  state in the builder (it reads the HIR only); a walk clause naming an Error closure (one form). Lasting. R4's 2g-2a adds each
+  Opaque root's access kind at `MirBuilder.Root`, which the kept operands and the root collection use, and the completion-undecided
+  flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
+  and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
+  next change.

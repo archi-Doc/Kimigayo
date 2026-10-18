@@ -87,6 +87,10 @@ public sealed class TypeSemanticsKoto : TypeKoto
         }
     }
 
+    // Whether this layer is the bare operation word given, written with no Type and no Origin, as a conversion target `follow` or `raw`
+    // is (SPEC 13.5).
+    internal bool Names(string operation) => this.Type is null && !this.HasOrigin && this.Identifier == operation;
+
     internal bool IsTransparentWrapper => this.isTransparentWrapper;
 
     /// <summary>Gets a value indicating whether this node is a named Type written directly, simple, qualified or generic, so that a
