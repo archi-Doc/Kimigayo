@@ -63,6 +63,9 @@ public sealed partial class Binding
         private HirPosition position;
         private bool exclusive;
 
+        // The exclusive capability each consumed child's consumer needs, recorded where the consumer takes it (ExclusiveUse), by SyntaxId.
+        private bool[] claims = [];
+
         // Binding's structural completion with its Never evidence, one per body.
         private StructuralCompletion? completion;
         private SyntaxTable? table;
@@ -142,6 +145,12 @@ public sealed partial class Binding
                 Array.Clear(hir.Places!);
             }
 
+            if (this.claims.Length < hir.States.Length)
+            {
+                this.claims = new bool[hir.States.Length];
+            }
+
+            Array.Clear(this.claims, 0, hir.States.Length);
             (hir.Defaults ??= []).Clear();
             (hir.Broken ??= []).Clear();
             this.table = table;

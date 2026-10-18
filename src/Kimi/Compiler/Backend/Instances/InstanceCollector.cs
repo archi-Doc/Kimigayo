@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.6, 4.8, 4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M60): every body
+// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60): every body
 // instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
 // each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
@@ -15,9 +15,14 @@
 // constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
 // each site under the item's representative; a type-driven item's targets follow from its representative Type (InstanceCollector.Glue.cs:
 // a DropGlue's direct parts, DropGlue.Parts). K6 and K8 add the other rows.
+// Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
+// Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
+// An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
-// the Type argument of an intrinsic whose row names one) and each type-driven item's Type take one Layout verdict per erased Type: a limit is
-// GenerationResourceLimit_Kd at the first use, Rejected storage derives from a Binding error, and a type-driven item needs an Ok verdict.
+// the Type argument of an intrinsic whose row names one) and each type-driven item's Type take Layout's verdict: a limit is
+// GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized Field InvalidCLayout_Kd and a
+// layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected storage derives from a Binding
+// error; a type-driven item needs an Ok verdict.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43) and a substitution TyCtxt
 // cannot make are the capability table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are
@@ -116,13 +121,15 @@ internal sealed partial class InstanceCollector
         _ => throw new InvalidOperationException($"A call has the callee kind {callee.Kind}."),
     };
 
-    // K 4.5 rows 11-13 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also carries a
-    // target; an erasure to a Function Type; a function item constant.
+    // K 4.5 rows 11-13, K 4.7 and K 4.8: a statement is a site by its rvalue: an aggregate, a by-value use whose Closure environment also
+    // carries a target; an erasure to a Function Type; a function item constant; an operation whose Types depend on slots, which the
+    // capability table checks per instance.
     private static bool IsSite(MirBody body, in MirStatement statement)
         => statement is { Kind: MirStatementKind.Assign, Rvalue: var rvalue } && rvalue.Kind switch
     {
         MirRvalueKind.Aggregate => true,
-        MirRvalueKind.Cast => (MirCastKind)rvalue.Op == MirCastKind.Erasure,
+        MirRvalueKind.Cast when (MirCastKind)rvalue.Op == MirCastKind.Erasure => true,
+        MirRvalueKind.Cast or MirRvalueKind.BinaryOp => IsOpen(body, rvalue),
         MirRvalueKind.Use => body.Operands[rvalue.Start] is { Kind: MirOperandKind.Const } operand && body.Consts[operand.Arg].Kind == MirConstKind.FnItem,
         _ => false,
     };
@@ -151,10 +158,12 @@ internal sealed partial class InstanceCollector
         this.starts[bodies.Length] = count;
     }
 
-    // A body's sites, appended from `count` in location order with their runtime bits. Returns the new count.
+    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
+    // the capability table on the way (A3b). Returns the new count.
     private int Template(MirBody body, int count)
     {
         var blocks = body.Blocks;
+        var root = body.Source.Module < this.rootModules;
         this.reach.Clear(blocks.Length);
         this.reach.Walk(body, 0, checks: false);
         for (var block = 0; block < blocks.Length; block++)
@@ -162,6 +171,11 @@ internal sealed partial class InstanceCollector
             var (start, end) = (blocks[block].Start, blocks[block].Count);
             for (var index = 0; index <= end; index++)
             {
+                if (index < end && root)
+                {
+                    this.CheckOperation(body, body.Statements[start + index]);
+                }
+
                 if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
                 {
                     count = this.AddSite(count, new(block, index), this.reach[block]);

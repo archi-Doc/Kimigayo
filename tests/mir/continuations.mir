@@ -72,7 +72,7 @@ fn consumedThenReturned @42
   _5: bool temp @50 s2
   _6: () temp @52 s3
   _7: Box temp @54 s3
-  _8: i32 temp @42 s3
+  _8: i32 temp @42
   _9: () temp @61 s1
   _10: Box temp @63 s1
   s1: lexical in s0 @46
@@ -151,7 +151,7 @@ fn consumedThenReturned @42
 fn returnThenExit @68
   _0: i32 return @68
   _1: () temp @71 s1
-  _2: i32 temp @68 s2
+  _2: i32 temp @68
   s1: lexical in s0 @70
   s2: lexical in s1 @73
   bb0:
@@ -209,7 +209,7 @@ fn divergingCondition @89
   _2: Never temp @93 s1
   _3: bool temp @94 s1
   _4: Never temp @96 s1
-  _5: i32 temp @89 s2
+  _5: i32 temp @89
   _6: i32 temp @100 s1
   s1: lexical in s0 @92
   s2: lexical in s1 @96
@@ -267,7 +267,7 @@ fn abandoned @101
   _4: uniq/Counter temp @109 s1
   _5: i32 temp @111 s1
   _6: bool temp @112 s1
-  _7: i32 temp @101 s2
+  _7: i32 temp @101
   s1: lexical in s0 @106
   s2: lexical in s1 @115
   s3: lexical in s1 @118

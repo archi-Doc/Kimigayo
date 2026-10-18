@@ -81,7 +81,7 @@ fn make @50
   _10: obj/Shape var moved @86 s1
   _11: obj/Square temp @91 s1
   _12: i32 temp @97 s1
-  _13: i32 temp @50 s1
+  _13: i32 temp @50
   s1: lexical in s0 @52
   bb0:
       StorageLive(_1) @53 s1

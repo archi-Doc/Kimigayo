@@ -15,7 +15,7 @@ fn grow @4
   _7: ref/Array<i32> temp @18 s1
   _8: isize temp @18 s1
   _9: isize temp @23 s1
-  _10: isize temp @4 s1
+  _10: isize temp @4
   s1: lexical in s0 @11
   bb0:
       StorageLive(_3) @12 s1
@@ -106,7 +106,7 @@ fn iterate @37
   _24: uniq/i32 temp @60 s5
   _25: isize temp @98 s1
   _26: i32 temp @64 s1
-  _27: i32 temp @37 s1
+  _27: i32 temp @37
   s1: lexical in s0 @43
   s2: lexical in s1 @47
   s3: lexical in s2 @50

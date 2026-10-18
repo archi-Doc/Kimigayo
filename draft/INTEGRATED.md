@@ -671,3 +671,14 @@ ending) and **P12**.
 - Its specification work goes separately: the SETTLED "Instance-evaluated generic defaults" revision at H15 (R5-M11) and
   any SPEC or IMPL change H0's check-only pass finds, each as an explicit revision recorded here when it lands. Adoption
   implies no implementation support.
+
+## 2026-10-19 — A5 step 2 implementation plan
+
+- [A5 Step 2 Implementation Plan](Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md): 一部取り込み (open). The
+  owner adopted it on 2026-10-19 as R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate, and answered all of
+  its questions OQ1–OQ13 at once (its status line and §2.2 record the outcomes; DECISIONS R4-M74). It is a working plan: no
+  section is integrated into SPEC or IMPL, and no text is frozen.
+- Its specification work goes separately, each as an explicit revision recorded here when it lands: S3's SPEC 15.3.6
+  clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3); S5's
+  proposal (2x-S5) and, after its review, its SPEC integration (OQ13); each family's approved losses as SPEC clauses (OQ8).
+  Adoption implies no implementation support.
