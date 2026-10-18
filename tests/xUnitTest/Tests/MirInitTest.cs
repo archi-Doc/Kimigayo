@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Text;
+using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Xunit;
 
@@ -184,6 +186,29 @@ public sealed class MirInitTest(ITestOutputHelper output)
             Problems(Box + "func afterReturn(box: Box) -> i32\n    consume(box@move)\n    return 1\n    consume(box@move)\n    return 2\n" +
                 "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc assigned() -> i32\n    var y: i32\n    y = stop()\n    return y\n" +
                 "func take(box: Box, n: i32) => ()\nfunc continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
+    }
+
+    // SPEC 17.6.3 (PD22): a verification's records read the temps its comparison's operands were read into once, initialized and not yet
+    // moved: made Places of the program (A1 reports a Var's state, never a temp's), they have no problem, where a record reading an
+    // operand after the comparison's Move would be MovedPlace.
+    [Fact]
+    public void RecordsReadOperandsTheComparisonHasNotMoved()
+    {
+        var c = MirBuildTest.Compile(
+            "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    $expect(helper(1) == a)\n    $expect((a < 4))\n",
+            test: true);
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
+        var read = MirBuildTest.Records(body).Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).ToArray();
+        Assert.Equal(3, read.Length);
+        foreach (var operand in read)
+        {
+            ref readonly var local = ref body.Locals[operand.Place.Root];
+            Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
+        }
+
+        new MirAnalysis(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
