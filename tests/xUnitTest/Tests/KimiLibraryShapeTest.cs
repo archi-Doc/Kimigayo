@@ -149,6 +149,19 @@ public class KimiLibraryShapeTest
         Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
     }
 
+    // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
+    // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
+    // each compilation would add none.
+    [Fact]
+    public void TheLibraryCollectsWithoutRecords()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types).Run(c.BuildMir(), c.SourceModules.Length + 1);
+        Assert.Empty(set.Records);
+        Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
+    }
+
     // Recognition finds each cataloged declaration once in its container, at its overload position, with the body kind
     // its role requires.
     [Theory]
@@ -584,7 +597,7 @@ public class KimiLibraryShapeTest
     {
         var record = Record(path);
         var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
-        var pool = new AggregateLayoutPool();
+        var pool = new AggregateLayoutPool(Library.Value.Layout);
         if (AdtDef.Destructor(type) is { } destructor)
         {
             pool.RegisterDestructor(destructor, 0);

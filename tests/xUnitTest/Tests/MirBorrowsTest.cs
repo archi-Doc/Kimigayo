@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -12,7 +13,7 @@ namespace XunitTest;
 /// <summary>A5's Loan stratum on MIR (SPEC 15.6; design A3 with its 12 errata; docs/dev/DECISIONS.md R4-M57): each rule with valid and
 /// invalid programs, through the problems <see cref="MirBorrows"/> adds over every body view of a built program, each as its function and
 /// the first line of its subject.</summary>
-public sealed class MirBorrowsTest(ITestOutputHelper output)
+public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 {
     private const string Prelude = """
         func inspect<T>(value: ref/T) => ()
@@ -981,7 +982,10 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     [Fact]
     public void AnObservingDestructionIsAnExclusiveDeepUse()
         => Assert.Equal(
-            ["o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)", "o29b: var s = D.init(r: x@uniq)"],
+            [
+                "o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)",
+                "o29b: var s = D.init(r: x@uniq)",
+            ],
             Problems("""
                 func o1566()
                     var x = 1
@@ -1013,6 +1017,59 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     var s = D.init(r: x@uniq)
                     let p = s@uniq
                     p@follow = D.init(r: p.r@follow@uniq)
+                """));
+
+    // SPEC 8.15.1, 15.6, 15.6.6, 3.6 (PLAN10-X1 and abstract temporaries; the R5 plan's Q1 programs, its Q5 and ask A-3): a generic body is
+    // checked for every instance, so a holder of an abstract Type may observe its Loans when it is destroyed: replacing `local` while the
+    // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
+    // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
+    // expression, so a later use errs, as in its twin over Array<i32>.
+    [Fact]
+    public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
+        => Assert.Equal(
+            ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            Problems("""
+                struct Bin
+                    Self is Iterable
+                    associate Iterable.IteratorType(source) is BinIterator during source
+                    var items: Array<i32>
+                    public init(items: Array<i32>) => self.items = items@move
+                    public func iterate(self: ref/Self during source) -> BinIterator during source => BinIterator.init(self.items.iterate())
+                struct BinIterator {source}
+                    Self is Iterator
+                    associate Iterator.Item is i32
+                    var inner: ArrayIterator<i32> during source
+                    public init(inner: ArrayIterator<i32> during source) => self.inner = inner@move
+                    public func next(self: uniq/Self) -> Option<i32>
+                        match self.inner.next()
+                            .Some(let v) => return .Some(v@follow)
+                            .None => return .None
+                    drop
+                        match self.inner.next()
+                            .Some(let v) => Console.writeLine("drop sees \(v@follow)")
+                            .None => Console.writeLine("drop sees none")
+                func hold<C>(first: C, second: C) -> ()
+                    C is Iterable
+                    var local = first@move
+                    var it = local.iterate()
+                    _ = it.next()
+                    local = second@move
+                func holdBin(first: Bin, second: Bin) -> ()
+                    var local = first@move
+                    var it = local.iterate()
+                    _ = it.next()
+                    local = second@move
+                func holdArray(first: Array<i32>, second: Array<i32>) -> ()
+                    var local = first@move
+                    var it = local.iterate()
+                    _ = it.next()
+                    local = second@move
+                func keep<T>(make: () -> T) -> ()
+                    let r = make()@ref
+                    inspect(r)
+                func keepArray(make: () -> Array<i32>) -> ()
+                    let r = make()@ref
+                    inspect(r)
                 """));
 
     // SPEC 12.2, 15.6 (A3 E13 (1a), (2); prototype round 13's 136-137, n1-n2, s1-s2, fr-rs1, 131 and 130g): an operation evaluates its
@@ -1540,8 +1597,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,
-    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, from A5 run on the MIR here; the family joins
-    // VerifiedSpecExampleTest.Landed, which reads the driver's records, once the driver runs A5 (unit 1b-5).
+    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, from A5 run on the MIR here; VerifiedSpecExampleTest checks the
+    // driver's records of the landed families (F1 and F3, unit 1b-5b-1).
     [Theory]
     [MemberData(nameof(SpecVariants))]
     public void TheSpecExamplesGetTheirLoanCodes(string name)
@@ -1632,6 +1689,81 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         Assert.True(Grows(bytes, dense ? 5 : 2), $"bytes {string.Join(", ", bytes)}");
     }
 
+    // V16 and A3 E13 (5) (G135): a location reads each (holder, node) entry once however many operands take it, its entries by holder, and
+    // each set's content and an output's referents once, so N copies of a holder carrying K Loans in one operation, a call moving N
+    // arguments with K holders live across it, N retention rows of one argument carrying K Loans and N rows into one output carrying K cost
+    // N + K, not N × K. N × K is linear in each, so the rule is the mixed difference over N = 32, 128 and K = 32, 64, which cancels the
+    // terms in N or K alone: within a quarter step per (N, K) pair. The work and ν are also linear in N at K = 32 and, where the shape
+    // builds its K holders linearly (the copies), in K at N = 32.
+    [Theory]
+    [InlineData(
+        "func shape()\n«K:    var x{0} = {0}\n»    let t = («K:x{0}@ref, »1)\n    var z = 1\n    let q = z@ref\n    _ = («N:t, »z)\n    inspect(q)\n",
+        false)]
+    [InlineData(
+        "func takeN(«N:p{0}: uniq/i32, »n: i32) => ()\nfunc shape(«N:s{0}: uniq/i32, »m: i32)\n    var x = 1\n    let r = x@ref\n«K:    let c{0} = r\n»" +
+        "    var z = 1\n    let q = z@ref\n    takeN(«N:s{0}@move, »z)\n    inspect(q)\n«K:    inspect(c{0})\n»",
+        true)]
+    [InlineData(
+        "func keepN(«N:v{0}: ref/i32 during a, »n: i32) -> ref/i32 during a => v0\nfunc shape(flag: bool)\n«K:    var x{0} = {0}\n»" +
+        "    var r = x0@ref\n«K:    if flag\n        r = x{0}@ref\n»    let y = keepN(«N:r, »0)\n    inspect(y)\n",
+        false)]
+    [InlineData(
+        "func fillN(out: uniq/(ref/i32 during a), «N:v{0}: ref/i32 during a, »n: i32) => ()\n" +
+        "func shape(flag: bool, v: ref/i32 during a, «K:o{0}: uniq/(ref/i32 during a), »m: i32)\n    var p = o0@follow@uniq\n" +
+        "«K:    if flag\n        p = o{0}@follow@uniq\n»    fillN(p, «N:v, »0)\n",
+        false)]
+    public void ALocationReadsEachEntryOnce(string template, bool linearInK)
+    {
+        var at = new Dictionary<(int N, int K), (long Work, long Bytes)>();
+        foreach (var (n, k) in new[] { (32, 32), (64, 32), (128, 32), (32, 64), (128, 64), (32, 128) })
+        {
+            at[(n, k)] = this.Measured(Prelude + Expand(template, n, k));
+        }
+
+        var mixed = at[(128, 64)].Work - at[(128, 32)].Work - at[(32, 64)].Work + at[(32, 32)].Work;
+        long[] work = [at[(32, 32)].Work, at[(64, 32)].Work, at[(128, 32)].Work];
+        long[] bytes = [at[(32, 32)].Bytes, at[(64, 32)].Bytes, at[(128, 32)].Bytes];
+        long[] inK = [at[(32, 32)].Work, at[(32, 64)].Work, at[(32, 128)].Work];
+        output.WriteLine($"N at K 32: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        output.WriteLine($"K at N 32: work {string.Join(", ", inK)}; mixed {mixed}");
+        Assert.True(mixed <= 96 * 32 / 4, $"mixed {mixed}");
+        Assert.True(Grows(work, 2) && Grows(bytes, 2), $"work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(!linearInK || Grows(inK, 2), $"work in K {string.Join(", ", inK)}");
+    }
+
+    // V16 (A3 6.2, 6.3, shape 7, K1): a copy chain of K holders in a loop, copied against the chain's order, carries the Loan one holder
+    // further per pass, so the passes grow with K and the work with K × K, the bound's (passes − 1) × locations term; the holders share two
+    // Loans, so the Loan-set bytes (ν) stay constant.
+    [Fact]
+    public void AnInLoopCopyChainTakesAPassPerHolder()
+    {
+        const string Chain = "func shape(flag: bool)\n    var x = 1\n    var y = 2\n    var r0 = x@ref\n    let q = y@ref\n«K:    var r{1} = q\n»" +
+            "    while flag\n«R:        r{1} = r{0}\n»«K:    inspect(r{1})\n»";
+        var runs = new[] { 32, 64, 128 }.Select(k => this.Measured(Prelude + Expand(Chain, 0, k))).ToArray();
+        long[] work = [.. runs.Select(static x => x.Work)];
+        long[] bytes = [.. runs.Select(static x => x.Bytes)];
+        output.WriteLine($"K 32, 64, 128: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+        Assert.True(Grows(bytes, 2), $"bytes {string.Join(", ", bytes)}");
+    }
+
+    // V16 (A3 6.2, 6.3, shape 8): K holders whose nodes overlap (each joins the one before with one more Loan) live across N writes of a
+    // disjoint Field, each a candidate access that scans the distinct live nodes, K × K / 2 entries: the work is linear in N at K = 32, and
+    // the cost of 32 more writes is quadratic in K, the bound's accesses × node sizes term (building the nested nodes is cubic there too,
+    // each store a candidate scanning the nodes before it, and its ν quadratic, the live Loans per point).
+    [Fact]
+    public void AnAccessScansTheDistinctLiveNodes()
+    {
+        const string Overlap = "func shape(flag: bool)\n    var p0 = Pair.init()\n«K:    var p{1} = Pair.init()\n»    let h0 = p0.a@ref\n" +
+            "«K:    let h{1} = if flag => h{0} else => p{1}.a@ref\n»«N:    p0.b = {0}\n»«K:    inspect(h{1})\n»";
+        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => this.Measured(Prelude + Expand(Overlap, n, 32)).Work)];
+        long[] writes = [.. new[] { 32, 64, 128 }.Select(k =>
+            this.Measured(Prelude + Expand(Overlap, 64, k)).Work - this.Measured(Prelude + Expand(Overlap, 32, k)).Work)];
+        output.WriteLine($"N at K 32: work {string.Join(", ", inN)}; 32 writes at K 32, 64, 128: {string.Join(", ", writes)}");
+        Assert.True(Grows(inN, 2), $"work in N {string.Join(", ", inN)}");
+        Assert.True(Grows(writes, 5), $"writes in K {string.Join(", ", writes)}");
+    }
+
     // A3 12 E8, V16 (review B3): destroying a Move Path ends the Loans of its subtree as one set, made once per path, so N borrow/write pairs
     // of one root make Loan-set bytes (ν) linearly, though their work is dense ((ended points) × holders).
     [Fact]
@@ -1707,6 +1839,19 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
 
     private static string Line(Compilation c, SourceRef site) => c.SyntaxOf(site).ToString().Split('\n')[0].Trim();
 
+    // A shape's source at N and K: each «N:text» or «K:text» run repeated N or K times, «R:text» K times in reverse order, {0} the index
+    // and {1} the index plus one.
+    private static string Expand(string template, int n, int k)
+    {
+        MatchEvaluator runs = x =>
+        {
+            var indices = Enumerable.Range(0, x.Groups[1].Value == "N" ? n : k);
+            return string.Concat((x.Groups[1].Value == "R" ? indices.Reverse() : indices)
+                .Select(i => string.Format(System.Globalization.CultureInfo.InvariantCulture, x.Groups[2].Value, i, i + 1)));
+        };
+        return Regex.Replace(template, "«([NKR]):(.*?)»", runs, RegexOptions.Singleline);
+    }
+
     // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
     private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
@@ -1731,18 +1876,29 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 }
             }
 
-            var c = MirBuildTest.Compile(text.ToString());
-            var stratum = new Stratum(c.Types);
-            stratum.Run(c.BuildMir());
-            Assert.DoesNotContain(c.BuildMir().Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
-            (work[i], bytes[i]) = (stratum.Borrows.Work, stratum.Borrows.Bytes);
+            (work[i], bytes[i]) = this.Measured(text.ToString());
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
         return (work, bytes);
     }
 
-    // A5 over every body view of a built program, as the driver's step 4 will run it (R4-M57).
+    // A5's work and Loan-set bytes on a program with no Loan problem.
+    private (long Work, long Bytes) Measured(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(c.Binding.Issues);
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
+        return (stratum.Borrows.Work, stratum.Borrows.Bytes);
+    }
+
+    // A5 over every view of every body of a built program, as the driver's step 4 runs it over the views A1 and A2 completed (R4-M57).
+    // BuildMir has already run the driver, so a run here adds only the problems of views the driver left out and merges the others into
+    // the driver's (MirReport keeps the first problem and its facts); Work and Bytes count this instance's runs only.
     private sealed class Stratum
     {
         private readonly MirDataflow flow = new(new MirReach());

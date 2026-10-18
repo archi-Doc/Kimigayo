@@ -45,6 +45,7 @@ internal sealed class AggregateLayoutPool
     // SPEC 21.3.2: the mandatory bound on inline nesting depth; a self-containing Type is rejected by Binding before this.
     private const int DepthLimit = 64;
 
+    private readonly Layout layout;
     private readonly List<AggregateLayout> pool = new();
     private readonly Dictionary<BoundType, AggregateLayout?> resolved = new(ReferenceEqualityComparer.Instance);
     private readonly List<ValueLowering> fields = new();
@@ -59,6 +60,10 @@ internal sealed class AggregateLayoutPool
     private AggregateLayout? objectHandle;
     private AggregateLayout? rcHandle;
     private AggregateLayout? arcHandle;
+
+    /// <summary>Initializes a new instance of the <see cref="AggregateLayoutPool"/> class.</summary>
+    /// <param name="layout">The compilation's <see cref="Layout"/>, which places every record this pool interns.</param>
+    internal AggregateLayoutPool(Layout layout) => this.layout = layout;
 
     /// <summary>Gets or sets the source of the element-specific drop helper that stored collection destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
@@ -135,7 +140,7 @@ internal sealed class AggregateLayoutPool
 
         if (!this.sealedObjectHandles.TryGetValue((mode, drop), out var handle))
         {
-            handle = new(this.pool.Count, Layout.Of(type).Value!, [], [], 0, false, true, ObjectHandle: mode, ObjectPayloadDrop: drop);
+            handle = new(this.pool.Count, this.layout.Of(type).Value!, [], [], 0, false, true, ObjectHandle: mode, ObjectPayloadDrop: drop);
             this.pool.Add(handle);
             this.sealedObjectHandles.Add((mode, drop), handle);
         }
@@ -173,18 +178,24 @@ internal sealed class AggregateLayoutPool
         return this.resolved[type] = null;
     }
 
-    // Layout's record of a Type whose parts this pool accepted; null after mapping a Limit to the resource limit and CLayout (a C-layout
-    // instance storing a zero-sized Field) to a refusal.
+    // Layout's record of a Type whose parts this pool accepted; null after mapping a size, count or depth limit to the resource limit
+    // and CLayout (a C-layout instance storing a zero-sized Field) to a refusal. Generation follows a complete Binding, so Rejected
+    // storage is a broken contract.
     private ValueLowering? Represent(BoundType type)
     {
-        var layout = Layout.Of(type);
-        if (layout.CLayout is not null)
+        var layout = this.layout.Of(type);
+        if (layout.Outcome == Layout.Outcome.Rejected)
+        {
+            throw new InvalidOperationException("Generation reached " + type.Name + ", whose storage Binding rejected.");
+        }
+
+        if (layout.Outcome == Layout.Outcome.CLayout)
         {
             this.resolved[type] = null;
         }
-        else if (layout.Value is null)
+        else if (layout.IsLimit)
         {
-            this.ExceedLimit(type);
+            this.ExceedLimit(type, depth: layout.Outcome == Layout.Outcome.DepthLimit);
         }
 
         return layout.Value;
@@ -223,7 +234,7 @@ internal sealed class AggregateLayoutPool
         {
             if (this.functionHandle is null)
             {
-                this.functionHandle = new(this.pool.Count, Layout.Of(type).Value!, [], [], 0, false, true, FunctionHandle: true);
+                this.functionHandle = new(this.pool.Count, this.layout.Of(type).Value!, [], [], 0, false, true, FunctionHandle: true);
                 this.pool.Add(this.functionHandle);
             }
 
@@ -246,7 +257,7 @@ internal sealed class AggregateLayoutPool
             };
             if (handle is null)
             {
-                handle = new(this.pool.Count, Layout.Of(type).Value!, [], [], 0, false, true, ObjectHandle: mode);
+                handle = new(this.pool.Count, this.layout.Of(type).Value!, [], [], 0, false, true, ObjectHandle: mode);
                 this.pool.Add(handle);
                 switch (mode.Counting)
                 {
@@ -297,7 +308,7 @@ internal sealed class AggregateLayoutPool
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
         // A sequence handle's words are Layout's (IMPL 21.1.3); this pool adds their destruction facts.
-        var representation = sequence ? Layout.Of(type).Value : null;
+        var representation = sequence ? this.layout.Of(type).Value : null;
         // A Function Item's Components are its bound generic arguments, not stored fields.
         var fieldCount = representation?.Layout.FieldOffsets.Length ??
             (structure ? AdtDef.Count(type) : type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count);

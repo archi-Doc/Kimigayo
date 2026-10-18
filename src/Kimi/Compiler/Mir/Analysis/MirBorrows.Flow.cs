@@ -2,19 +2,17 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's carrying (A3 5, Carrying and Calls, with E3 and E8): each holder's set forward over the dataflow's chains, joined by node union. A
-// location's effect is planned on the state before it as entries, which the checks replay reads, then committed; at a destruction in place
-// the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target).
+// A5's carrying (A3 5, Carrying, with E3 and E8): each holder's set forward over the dataflow's chains, joined by node union. A location's
+// effect is planned on the state before it as entries (a Call's by MirBorrows.Calls), which the checks replay reads, then committed; at a
+// destruction in place the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its
+// destroyed target).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
     private const byte Replaced = 1;
     private const byte Joined = 2;
 
-    private readonly List<int> targets = []; // The holders a reference's value refers to (refs).
     private Entry[] entries = [];
-    private int[] argValues = [];
-    private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
     private int entryCount;
     private int chainHead = -1; // The checks replay's chain: its head and first block.
     private int chainFirst;
@@ -85,6 +83,12 @@ internal sealed partial class MirBorrows
     private void Plan(ulong[] state, int block, int index)
     {
         this.entryCount = 0;
+        foreach (var set in this.contentsRead)
+        {
+            this.contents[set] = 0;
+        }
+
+        this.contentsRead.Clear();
         ref readonly var data = ref this.body.Blocks[block];
         if (index == data.Count)
         {
@@ -147,140 +151,6 @@ internal sealed partial class MirBorrows
         this.entries[this.entryCount++] = new(slot, value, own, op, issue);
     }
 
-    // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's, the union of an aggregate's or a value-keeping Cast's operands, an Opaque
-    // site's roots with τ_s and Φ_E; under the view an Adapt is the rvalue its case selects (none: its operand's value).
-    private (int Value, int Own) Value(ulong[] state, in MirRvalue rvalue, int location)
-    {
-        switch (rvalue.Kind)
-        {
-            case MirRvalueKind.Use:
-            case MirRvalueKind.Adapt:
-            case MirRvalueKind.Cast when (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast or MirCastKind.Pointer:
-                return (this.Operand(state, rvalue.Start), 0);
-            case MirRvalueKind.Ref when (MirRefKind)rvalue.Op != MirRefKind.Raw:
-                return this.Issued(state, rvalue.Place, reborrow: false, this.loanAt[location]);
-            case MirRvalueKind.Aggregate:
-                var value = 0;
-                for (var o = rvalue.Start; o < rvalue.Start + rvalue.Count; o++)
-                {
-                    value = this.sets.Union(value, this.Operand(state, o));
-                }
-
-                return (value, 0);
-            case MirRvalueKind.Opaque:
-                var site = this.body.OpaqueSites[rvalue.Arg];
-                var opaque = this.sets.Add(this.escapedSet, 1 + rvalue.Arg);
-                foreach (var root in this.body.OpaqueRoots.Slice(site.Start, site.Count))
-                {
-                    opaque = this.sets.Union(opaque, this.Root(state, root));
-                }
-
-                return (opaque, 0);
-            default:
-                return (0, 0);
-        }
-    }
-
-    // An operand's value: a constant's none, a Place's read (a PairAcquire's that Copies; one that Reborrows is its Use's issue, Plan).
-    private int Operand(ulong[] state, int index)
-        => this.body.Operands[index] is { Kind: not MirOperandKind.Const } operand ? this.Read(state, operand.Place) : 0;
-
-    // A root's state: a holder's, a static's {Φ_E}, none for another local.
-    private int Root(ulong[] state, int root)
-    {
-        if (root < 0)
-        {
-            return this.escapedSet;
-        }
-
-        return this.slots[root] >= 0 ? (int)state[this.slots[root]] : 0;
-    }
-
-    // val(X) = content^k(σ(root(X))) over its k borrow Derefs; a raw pointer's referent is {Φ_E}.
-    private int Read(ulong[] state, MirPlace place)
-    {
-        var value = this.Root(state, place.Root);
-        var count = this.Walk(place, reborrow: false, ref this.walk);
-        for (var i = 0; i < count; i++)
-        {
-            value = this.walk[i].Class switch
-            {
-                StepClass.Shared or StepClass.Uniq => this.Content(state, value),
-                StepClass.Raw => this.escapedSet,
-                _ => value,
-            };
-        }
-
-        return value;
-    }
-
-    // A borrow's value (A3 5 issued, E3): its Loan with the parents of every borrow layer it follows, from the last shared layer on.
-    private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
-    {
-        var (layer, parents) = (this.Root(state, place.Root), 0);
-        var count = this.Walk(place, reborrow, ref this.walk);
-        for (var i = 0; i < count; i++)
-        {
-            switch (this.walk[i].Class)
-            {
-                case StepClass.Shared:
-                    (parents, layer) = (layer, this.Content(state, layer));
-                    break;
-                case StepClass.Uniq:
-                    (parents, layer) = (this.sets.Union(parents, layer), this.Content(state, layer));
-                    break;
-                case StepClass.Raw:
-                    (parents, layer) = (this.sets.Union(parents, this.escapedSet), this.escapedSet);
-                    break;
-            }
-        }
-
-        return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
-    }
-
-    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan.
-    private int Content(ulong[] state, int set)
-    {
-        var (content, direct, escaped) = (0, false, false);
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
-        {
-            escaped |= element == Escaped;
-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
-            {
-                direct = true;
-                content = loan.Named >= 0 ? this.sets.Union(content, (int)state[loan.Named]) : content;
-            }
-        }
-
-        return escaped || !direct ? this.sets.Union(content, (int)state[Escaped]) : content;
-    }
-
-    // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan.
-    private void Refs(int set)
-    {
-        var (direct, escaped) = (false, false);
-        this.targets.Clear();
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
-        {
-            escaped |= element == Escaped;
-            if (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true } loan)
-            {
-                direct = true;
-                if (loan.Named >= 0)
-                {
-                    this.targets.Add(loan.Named);
-                }
-            }
-        }
-
-        if (escaped || !direct)
-        {
-            this.targets.Add(Escaped);
-        }
-    }
-
     // assign D := v (A3 5): a whole root replaced, a direct part joined (P1), through k borrow Derefs every holder refs^k names joined
     // (P10), through a raw pointer or into a static E joined.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
@@ -330,146 +200,6 @@ internal sealed partial class MirBorrows
                 this.Add(moved.Root, 0, 0, Cleared, issue: false);
             }
         }
-    }
-
-    // A Call (A3 5, Calls; E14): its arguments' Moves, then each row of its retention (Rows) into the result or through an argument's
-    // referents, then the result into the destination; Φ_E for an untied result. A Value callee's environment, its value or what a reference
-    // to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
-    private void Call(ulong[] state, in MirTerminator call)
-    {
-        MirDataflow.Grow(ref this.argValues, call.Count);
-        for (var i = 0; i < call.Count; i++)
-        {
-            this.argValues[i] = this.Operand(state, call.Start + i);
-        }
-
-        var callee = call.Callee;
-        var result = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
-        result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
-        this.Moves(call.Start, call.Count);
-        if (callee.Kind == MirCalleeKind.Value && call.Operand is { Kind: MirOperandKind.Move, Place: { Projection: 0 } moved })
-        {
-            this.Add(moved.Root, 0, 0, Cleared, issue: false);
-        }
-
-        var retained = this.Rows(call, out var untied);
-        foreach (var row in retained)
-        {
-            var value = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
-            if (row.Output == Retention.Result)
-            {
-                result = this.sets.Union(result, value);
-                continue;
-            }
-
-            this.Refs(this.argValues[row.Output]);
-            foreach (var target in this.targets)
-            {
-                this.AddSlot(target, value, 0, Joined, issue: false);
-            }
-        }
-
-        result = untied ? this.sets.Union(result, this.escapedSet) : result;
-        if (call.Target >= 0)
-        {
-            this.Store(state, call.Place, result, 0, issue: false);
-        }
-    }
-
-    // A Call's retention rows by operand position, into the scratch (A3 E14): its callee's contract (Retaining), slots to positions, with
-    // an intrinsic's row for the operand the builder adds beyond its declaration (MirDescriptors); a default template's call is an unknown
-    // callee until F9 (unit 2e): every input reaches the result and each exclusive input's referents, and its result is untied.
-    private ReadOnlySpan<Retention> Rows(in MirTerminator call, out bool untied)
-    {
-        var (callee, count) = (call.Callee, 0);
-        if (callee is { Kind: MirCalleeKind.Fn, Arg: > 0 })
-        {
-            MirDataflow.Grow(ref this.rows, call.Count * (call.Count + 1));
-            for (var output = Retention.Result; output < call.Count; output++)
-            {
-                if (output >= 0 && !MirTypes.IsExclusive(this.TypeOf(call.Start + output)))
-                {
-                    continue;
-                }
-
-                for (var i = 0; i < call.Count; i++)
-                {
-                    this.rows[count++] = new(i, RetentionKind.Value, output);
-                }
-            }
-
-            untied = true;
-            return this.rows.AsSpan(0, count);
-        }
-
-        var retention = this.Retaining(call) is { IsLimit: false } contract ? contract : null;
-        var declared = retention is null ? default : retention.Rows;
-        untied = retention?.Untied == true;
-        MirDataflow.Grow(ref this.rows, declared.Length + 1);
-        foreach (var row in declared)
-        {
-            var output = row.Output == Retention.Result ? Retention.Result : MirCallee.Position(callee.Symbol, row.Output);
-            this.rows[count++] = new(MirCallee.Position(callee.Symbol, row.Input), row.Kind, output);
-        }
-
-        if (callee.Kind == MirCalleeKind.Intrinsic && MirDescriptors.Of((IntrinsicId)callee.Arg).Retained is >= 0 and var added)
-        {
-            this.rows[count++] = new(added, RetentionKind.Value, Retention.Result);
-        }
-
-        return this.rows.AsSpan(0, count);
-    }
-
-    // The retention a Call's contract gives: TyCtxt.Retains over the callee's declaration (an intrinsic's library declaration, E14) and
-    // Subst, or a Value callee's declared signature; none for another terminator, an intrinsic without a declaration or a default template's
-    // call. Its Limit, a contract Binding does not instantiate, retains nothing the stratum follows: the checks record a located
-    // Unsupported_Kd at the call (R4-M51).
-    private CallRetention? Retaining(in MirTerminator call)
-    {
-        var callee = call.Callee;
-        if (call.Kind != MirTerminatorKind.Call || callee is { Kind: MirCalleeKind.Intrinsic, Symbol: null } or { Kind: MirCalleeKind.Fn, Arg: > 0 })
-        {
-            return null;
-        }
-
-        return callee.Kind == MirCalleeKind.Value
-            ? types.Retains(this.TypeOf(call.Operand)!, this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
-            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
-    }
-
-    // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
-    // a read through it only.
-    private int Retained(ulong[] state, int operand, int position, RetentionKind kind)
-    {
-        var value = this.argValues[position];
-        var through = this.Content(state, value);
-        if (kind == RetentionKind.Content)
-        {
-            return through;
-        }
-
-        return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, through) : value;
-    }
-
-    // An operand's case Type.
-    private BoundType? TypeOf(int operand) => this.TypeOf(this.body.Operands[operand]);
-
-    private BoundType? TypeOf(in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const ? this.body.Consts[operand.Arg].Type : cases.Type(this.body.TypeOf(operand.Place)!);
-
-    // Whether a Place passes a borrow or raw Deref, so writing it uses its root.
-    private bool Through(MirPlace place)
-    {
-        var count = this.Walk(place, reborrow: false, ref this.walk);
-        for (var i = 0; i < count; i++)
-        {
-            if (this.walk[i].Class is StepClass.Shared or StepClass.Uniq or StepClass.Raw)
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>A planned change of a holder's state: cleared, replaced or joined with a value and the Loans issued with it (born at the

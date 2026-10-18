@@ -38,9 +38,10 @@ internal sealed partial class BodyLowering
     private CallPlan? instance;
     private GenericStoragePlan.CallEntry? instanceEntry;
 
-    internal BodyLowering(SourceLocationTable locations)
+    internal BodyLowering(SourceLocationTable locations, Layout layout)
     {
         this.locations = locations;
+        this.aggregateLayouts = new(layout);
         // Stored collection handles keep their element-specific recursive destruction (SPEC 16.3.2).
         this.aggregateLayouts.CollectionDrop = this.CollectionFieldDrop;
     }

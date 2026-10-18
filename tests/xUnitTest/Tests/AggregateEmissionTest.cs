@@ -102,7 +102,7 @@ public class AggregateEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let value: (u8, string, u64, string, ()) = (200, \"a\", 255, \"b\", ())");
         var type = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>()).TypeOf()!;
-        var pool = new AggregateLayoutPool();
+        var pool = new AggregateLayoutPool(c.Layout);
         var layout = Assert.IsType<AggregateLayout>(pool.Get(type));
         Assert.Equal(new[] { 56, 0, 24, 32, 57 }, layout.Value.Layout.FieldOffsets.ToArray());
         Assert.Equal(64, layout.Value.Layout.Size);

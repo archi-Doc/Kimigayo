@@ -5,7 +5,6 @@ using System.Runtime.CompilerServices;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
-using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -158,9 +157,9 @@ public sealed class MirValidatorTest
     // pointer's displacement, a comparison's operands below their layers, a Cast, a Ref, an object upcast and a branch's operand that their
     // kind does not admit; an Adapt whose operand is no by-value acquisition, whose source token is not its operand's Type, that a case
     // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op has a
-    // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of a compiler function it
-    // serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more arguments than its
-    // declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
+    // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of
+    // a compiler function it serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
+    // arguments than its declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
     // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
     // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32.
     [Theory]
@@ -217,20 +216,30 @@ public sealed class MirValidatorTest
     }
 
     // G131 (DECISIONS R5-M33): only check-only blocks read a Temp whose only writes are diverging Calls' destinations, an argument's here;
-    // a Never parameter, a payload of Result<i32, Never> and a destination an if's other arm writes are read on runtime paths, validly
-    // (SPEC 3.1.3, 14.9.3). EachRuleRejectsTheBodyThatBreaksIt has the invalid read.
+    // a Never parameter and a destination an if's other arm writes are read on runtime paths, validly (SPEC 3.1.3). A read of a Never
+    // payload binding (SPEC 14.9.3) is valid too, but Binding rejects it today, so no row has one. EachRuleRejectsTheBodyThatBreaksIt has
+    // the invalid read.
     [Theory]
     [InlineData("func absurd(x: Never) -> i32 => x\n")]
-    [InlineData("func get(r: Result<i32, Never>) -> i32\n    return match r\n        .Ok(let v) => v\n        .Err(let e) => e\n")]
-    [InlineData("func consume(x: Never) -> i32 => x\n" +
-        "func get(r: Result<i32, Never>) -> i32\n    return match r\n        .Ok(let v) => v\n        .Err(let e) => consume(e)\n")]
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pick(c: bool) -> i32\n    let x: i32 = if c => stop() else => 1\n    return x\n")]
     [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc take(a: i32, b: i32) -> i32 => a + b\nfunc f(n: i32) -> i32 => take(n, stop())\n")]
     public void OnlyCheckOnlyBlocksReadWhatOnlyADivergingCallWrites(string source)
     {
         var c = MirBuildTest.Compile(source);
-        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
+        Assert.Empty(c.Binding.Issues);
         Assert.Empty(c.BuildMir().Findings);
+    }
+
+    // G131 (DECISIONS R5-M33): a Drop, like a StorageDead, reads nothing, so a runtime Drop of a Temp only a diverging Call writes, storage
+    // nothing initialized, is valid: the validator's body here drops the Abort's destination where it dropped point.
+    [Fact]
+    public void ARuntimeDropOfWhatOnlyADivergingCallWritesIsValid()
+    {
+        var body = Build(null);
+        var stopped = new MirPlace(Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Type == BoundType.Never));
+        var drop = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator.Kind == MirTerminatorKind.Drop);
+        body.Terminate(drop, body.Blocks[drop].Terminator with { Place = stopped });
+        Assert.Empty(Validate(body));
     }
 
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
@@ -279,7 +288,8 @@ public sealed class MirValidatorTest
     [InlineData("constant")]
     public void APairAcquireIsTheWholeRvalueOfAnAssignToALocal(string? broken)
     {
-        var c = MirBuildTest.Compile("func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
+        var c = MirBuildTest.Compile(
+            "func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "both");
         var body = new MirBody();
         body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
@@ -296,8 +306,10 @@ public sealed class MirValidatorTest
         var mark = broken switch { "unmarked" => MirRefKind.Shared, "raw" => MirRefKind.Raw, _ => MirRefKind.Uniq };
         Assign(first, MirRvalue.Acquire(body.AddOperand(acquire), mark), broken is "unmarked" or "raw" ? broken : string.Empty);
         Assign(second, MirRvalue.Acquire(body.AddOperand(MirOperand.PairAcquire(1, b)), MirRefKind.TwoPhaseUniq), string.Empty);
-        Assign(broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
-        Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]), 2, body.TypeOf(tuple)!), "aggregate");
+        var projected = broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first;
+        Assign(projected, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
+        var elements = AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]);
+        Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, elements, 2, body.TypeOf(tuple)!), "aggregate");
         Assign(number, MirRvalue.Use(body.AddOperand(one)) with { Op = (byte)(broken == "constant" ? MirRefKind.Uniq : MirRefKind.Shared) }, "constant");
         var passed = AddOperands(body, [broken == "argument" ? acquire : MirOperand.Move(first), MirOperand.Move(second)]);
         body.Terminate(block, MirTerminator.Call(new(MirCalleeKind.Fn, function.SymbolOf()), passed, 2, new(0), next, Where("argument")));
@@ -488,7 +500,8 @@ public sealed class MirValidatorTest
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.TwoPhaseUniq));
         var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
-        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), Const(MirConstKind.TypeToken, body.TypeOf(layer)!)), layer, types.Pair, shorthand: true, input: true));
+        var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
+        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
         Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [point.Root])));
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
