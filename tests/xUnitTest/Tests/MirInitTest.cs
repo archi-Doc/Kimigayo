@@ -243,6 +243,20 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
+    // SPEC 3.8, 15.6.2 (DECISIONS R5-M38, the owner's choice): a pattern binding of a Never payload borrows the subject in place as Binding
+    // publishes it, a `ref/Never` that keeps its Loan, so the program is valid (no finding, no problem).
+    [Theory]
+    [InlineData("enum R\n    Ok(i32)\n    Err(Never)\nfunc f(r: R) -> i32 => match r\n    .Ok(let v) => v\n    .Err(let e) => 0\n")]
+    [InlineData("func f(o: Option<Never>) -> i32 => match o\n    .Some(let n) => 1\n    .None => 0\n")]
+    public void ANeverPayloadBindingIsABorrow(string source)
+    {
+        Assert.Empty(Problems(source));
+        var body = MirBuildTest.Compile(source).BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        Assert.Contains(
+            body.Statements.ToArray(),
+            static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Type.Components: [var referent] } && ReferenceEquals(referent, BoundType.Never));
+    }
+
     // SPEC 14.10.3, 3.8 (DECISIONS R4-M62, R5-M38; BU-6): a read of a named Never Place supplies no normal completion, so its assumed
     // completion initializes nothing it is placed into: the Place a let, an assignment or a Never var takes from it stays uninitialized,
     // each later read of it an UninitializedPlace.
