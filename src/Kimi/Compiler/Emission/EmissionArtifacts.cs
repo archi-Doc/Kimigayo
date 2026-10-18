@@ -153,7 +153,7 @@ public static class EmissionArtifacts
                 continue;
             }
 
-            if (!ReferenceEquals(import.Function.CodeContext.Kotonoha, compilation.Kotonoha))
+            if (!ReferenceEquals(import.Decl.Declaration.CodeContext.Kotonoha, compilation.Kotonoha))
             {
                 throw new InvalidDataException("Native supplies required by dependency modules are not linked yet.");
             }

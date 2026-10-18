@@ -178,7 +178,7 @@ public sealed partial class Binding
             Complete(attribute, BoundType.Unit);
             if (attribute.BindingState == BindingState.Resolved && signature is not null && kind is not null)
             {
-                this.libraryImports.Add(new(function, name, symbol, kind));
+                this.libraryImports.Add(new(function.BoundSymbol!, name, symbol, kind));
             }
         }
 
