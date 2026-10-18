@@ -9,6 +9,8 @@ namespace XunitTest;
 
 public class LibraryImportTargetBindingTest
 {
+    private const string Import = "#LibraryImport(\"codec\", \"symbol\")";
+
     [Theory]
     [InlineData("contract C\n#LibraryImport(\"library\", \"symbol\")\nstruct S\n    Self is C")]
     [InlineData("#LibraryImport(\"library\", \"symbol\")\ncontract C\nstruct S\n    Self is C")]
@@ -146,71 +148,91 @@ public class LibraryImportTargetBindingTest
         Assert.Equal(!invalid, c.Binding.Result.IsComplete);
     }
 
+    // SPEC 22.6, one decision per Type: a Type of the table is accepted; a Type without a C counterpart is one error at the import, even
+    // beside an Unsupported Type; any other Type outside the table, such as the nonnull Option of a borrow, whose representation is not
+    // laid out yet, is one Unsupported record at the first such Type in source order.
     [Theory]
-    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: raw/i32)", "()", null)]
-    [InlineData("()", "u8", null)]
-    [InlineData("(value: raw/u8)", "raw/u8", null)]
-    [InlineData("()", "f64", null)]
-    [InlineData("(value: uniq/i64)", "i32", null)]
-    [InlineData("(value: ref/[4 of u8], next: uniq/raw/u8)", "()", null)]
-    [InlineData("(value: raw/string)", "()", null)]
-    [InlineData("(value: string)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("()", "string", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: ref/string)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: Array<i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: uniq/Array<i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: ref/Dictionary<i32, i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: (i32) -> i32)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(a: bool, b: string)", "()", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: string)", "bool", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("(value: bool)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: char)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: isize)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: usize)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: i128)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: (i32, i32))", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: ())", "i32", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: Option<i32>)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: [4 of u8])", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("()", "bool", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("()", "u128", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("()", "Never", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: uniq/(i32, i32))", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: ref/bool)", "()", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("(value: Option<ref/i32 during a>)", "()", DiagnosticCode.Unsupported_Kd)]
-    public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, DiagnosticCode? code)
+    [InlineData("(a: i8, b: u8, c: i16, d: u16, e: i32, f: u32, g: i64, h: u64, i: f32, j: f64, k: raw/i32)", "()", null, null)]
+    [InlineData("()", "u8", null, null)]
+    [InlineData("(value: raw/u8)", "raw/u8", null, null)]
+    [InlineData("()", "f64", null, null)]
+    [InlineData("(value: uniq/i64)", "i32", null, null)]
+    [InlineData("(value: ref/[4 of u8], next: uniq/raw/u8)", "()", null, null)]
+    [InlineData("(value: raw/string)", "()", null, null)]
+    [InlineData("(value: string)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("()", "string", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: ref/string)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: Array<i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: uniq/Array<i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: ref/Dictionary<i32, i32>)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: (i32) -> i32)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(a: bool, b: string)", "()", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: string)", "bool", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("(value: bool)", "()", DiagnosticCode.Unsupported_Kd, "bool")]
+    [InlineData("(value: char)", "()", DiagnosticCode.Unsupported_Kd, "char")]
+    [InlineData("(value: isize)", "()", DiagnosticCode.Unsupported_Kd, "isize")]
+    [InlineData("(value: usize)", "()", DiagnosticCode.Unsupported_Kd, "usize")]
+    [InlineData("(value: i128)", "()", DiagnosticCode.Unsupported_Kd, "i128")]
+    [InlineData("(value: (i32, i32))", "()", DiagnosticCode.Unsupported_Kd, "(i32, i32)")]
+    [InlineData("(value: ())", "i32", DiagnosticCode.Unsupported_Kd, "()")]
+    [InlineData("(value: Option<i32>)", "()", DiagnosticCode.Unsupported_Kd, "Option<i32>")]
+    [InlineData("(value: [4 of u8])", "()", DiagnosticCode.Unsupported_Kd, "[4 of u8]")]
+    [InlineData("()", "bool", DiagnosticCode.Unsupported_Kd, "bool")]
+    [InlineData("()", "u128", DiagnosticCode.Unsupported_Kd, "u128")]
+    [InlineData("()", "Never", DiagnosticCode.Unsupported_Kd, "Never")]
+    [InlineData("(value: Wrapping<u8>)", "()", DiagnosticCode.Unsupported_Kd, "Wrapping<u8>")]
+    [InlineData("()", "Wrapping<i64>", DiagnosticCode.Unsupported_Kd, "Wrapping<i64>")]
+    [InlineData("(value: ref/Wrapping<i32>)", "Wrapping<i64>", DiagnosticCode.Unsupported_Kd, "ref/Wrapping<i32>")]
+    [InlineData("(value: Slice<u8>{view})", "()", DiagnosticCode.Unsupported_Kd, "Slice<u8>{view}")]
+    [InlineData("(value: UniqSlice<u8>{view})", "()", DiagnosticCode.Unsupported_Kd, "UniqSlice<u8>{view}")]
+    [InlineData("(value: uniq/(i32, i32))", "()", DiagnosticCode.Unsupported_Kd, "uniq/(i32, i32)")]
+    [InlineData("(value: ref/bool)", "()", DiagnosticCode.Unsupported_Kd, "ref/bool")]
+    [InlineData("(a: i32, b: bool, c: char)", "bool", DiagnosticCode.Unsupported_Kd, "bool")]
+    [InlineData("(value: Option<ref/i32 during a>)", "()", DiagnosticCode.Unsupported_Kd, "Option<ref/i32 during a>")]
+    [InlineData("(value: Option<ref/string during a>)", "()", DiagnosticCode.Unsupported_Kd, "Option<ref/string during a>")]
+    public void ImportSignaturesFollowTheInitialWindowsCAbi(string parameters, string result, DiagnosticCode? code, string? at)
     {
-        // SPEC 22.6: a Type without a C counterpart is an error, even beside an Unsupported one; any other Type outside the table,
-        // such as a nonnull Option of a borrow, whose representation is not laid out yet, is Unsupported.
-        var c = AnalyzeImport("group Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> " + result, "codec");
-        Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
+        var c = AnalyzeImport("group Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> " + result, "codec");
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code is DiagnosticCode.InvalidLibraryImport_Kd or DiagnosticCode.MissingNativeRequirement_Kd);
-        Assert.Equal(code is null, c.Binding.Result.IsComplete);
+        AssertImportRecord(c, code, at, code is null);
     }
 
     // SPEC 22.6: a borrow of a C-layout struct whose Fields are all C-exchangeable passes as a pointer. The struct's published
-    // C-layout fact (DECISIONS R5-M26) and its prepared Field Types decide it, in every pass. A struct or enum by value and a borrow
-    // of any other referent are Unsupported; an object handle has no C counterpart.
+    // C-layout fact (DECISIONS R5-M26) and its prepared Field Types decide it, in every pass. A struct or enum by value, an object
+    // borrow and a borrow of any other referent are Unsupported; an object handle (obj, rc, arc) has no C counterpart.
     [Theory]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: uniq/S)", null)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: ref/S)", null)]
-    [InlineData("#Layout(\"C\")\nstruct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner\n    public var bytes: [2 of u8]", "(value: ref/S)", null)]
-    [InlineData("#Layout(\"C\")\nstruct S<T>\n    public var a: T", "(value: uniq/S<i64>)", null)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: S)", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: bool", "(value: ref/S)", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("struct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner", "(value: uniq/S)", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("enum E\n    First\n    Second", "(value: E)", DiagnosticCode.Unsupported_Kd)]
-    [InlineData("struct S\n    public var a: i32", "(value: obj/S)", DiagnosticCode.InvalidImportSignature_Kd)]
-    [InlineData("struct S\n    public var a: i32", "(value: ref/rc/S)", DiagnosticCode.InvalidImportSignature_Kd)]
-    public void CLayoutStructBorrowsAreCExchangeable(string declarations, string parameters, DiagnosticCode? code)
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: uniq/S)", null, null)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: ref/S)", null, null)]
+    [InlineData("#Layout(\"C\")\nstruct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner\n    public var bytes: [2 of u8]", "(value: ref/S)", null, null)]
+    [InlineData("#Layout(\"C\")\nstruct S<T>\n    public var a: T", "(value: uniq/S<i64>)", null, null)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: S)", DiagnosticCode.Unsupported_Kd, "S")]
+    [InlineData("struct S\n    public var a: i32", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: bool", "(value: ref/S)", DiagnosticCode.Unsupported_Kd, "ref/S")]
+    [InlineData("struct Inner\n    public var a: i32\n#Layout(\"C\")\nstruct S\n    public var inner: Inner", "(value: uniq/S)", DiagnosticCode.Unsupported_Kd, "uniq/S")]
+    [InlineData("enum E\n    First\n    Second", "(value: E)", DiagnosticCode.Unsupported_Kd, "E")]
+    [InlineData("struct S\n    public var a: i32", "(value: objref/S during a)", DiagnosticCode.Unsupported_Kd, "objref/S during a")]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32", "(value: objuniq/S during a)", DiagnosticCode.Unsupported_Kd, "objuniq/S during a")]
+    [InlineData("struct S\n    public var a: i32", "(value: ref/(objref/S during a))", DiagnosticCode.Unsupported_Kd, "ref/(objref/S during a)")]
+    [InlineData("struct S\n    public var a: i32", "(value: obj/S)", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("struct S\n    public var a: i32", "(value: ref/rc/S)", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    [InlineData("struct S\n    public var a: i32", "(value: arc/S)", DiagnosticCode.InvalidImportSignature_Kd, null)]
+    public void CLayoutStructBorrowsAreCExchangeable(string declarations, string parameters, DiagnosticCode? code, string? at)
     {
-        var c = AnalyzeImport(declarations + "\ngroup Native\n    #LibraryImport(\"codec\", \"symbol\")\n    public unsafe func imported" + parameters + " -> i32", "codec");
-        Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
-        Assert.Equal(code is null, c.Binding.Result.IsComplete);
-        Assert.Equal(code is null, c.Bind().IsComplete);
-        Assert.Equal(code, c.Binding.Issues.Select(x => (DiagnosticCode?)x.Code).FirstOrDefault(x => x is DiagnosticCode.InvalidImportSignature_Kd or DiagnosticCode.Unsupported_Kd));
+        var c = AnalyzeImport(declarations + "\ngroup Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> i32", "codec");
+        AssertImportRecord(c, code, at, code is null);
+    }
+
+    // A borrow of a struct whose declaration already failed (SPEC 21.1: an open C struct, a zero-sized Field) rests on that error and
+    // adds no import record; Weak, which Binding does not support yet, has only its own record at its Type.
+    [Theory]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    public var a: i32", "(value: ref/S)", null, null)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    public var a: i32\n    public var none: [0 of i32]", "(value: uniq/S)", null, null)]
+    [InlineData("struct S\n    public var a: i32", "(value: ref/Weak<rc/S>)", DiagnosticCode.Unsupported_Kd, "Weak")]
+    public void AnImportRestsOnItsTypesOwnError(string declarations, string parameters, DiagnosticCode? code, string? at)
+    {
+        var c = AnalyzeImport(declarations + "\ngroup Native\n    " + Import + "\n    public unsafe func imported" + parameters + " -> i32", "codec");
+        Assert.Equal(code is null, CompilationTestHelper.BindingErrors(c).Any(static x => x.Code == nameof(DiagnosticCode.InvalidCLayout_Kd)));
+        AssertImportRecord(c, code, at, false);
     }
 
     [Theory]
@@ -395,5 +417,18 @@ public class LibraryImportTargetBindingTest
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
         return c;
+    }
+
+    // The import's one record and its location, an error at the import and Unsupported at its Type, in this pass and after a rebind.
+    private static void AssertImportRecord(Compilation c, DiagnosticCode? code, string? at, bool complete)
+    {
+        string[] expected = code is null ? [] : [$"{code} {at ?? Import}"];
+        for (var pass = 0; pass < 2; pass++)
+        {
+            var records = CompilationTestHelper.BindingErrors(c).Where(static x => x.Code is nameof(DiagnosticCode.InvalidImportSignature_Kd) or nameof(DiagnosticCode.Unsupported_Kd));
+            Assert.Equal(expected, records.Select(static x => $"{x.Code} {x.Text}"));
+            Assert.Equal(complete, c.Binding.Result.IsComplete);
+            c.Bind();
+        }
     }
 }
