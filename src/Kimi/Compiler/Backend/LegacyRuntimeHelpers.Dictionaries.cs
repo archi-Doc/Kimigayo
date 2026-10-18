@@ -141,8 +141,8 @@ internal sealed partial class LegacyRuntimeHelpers
 
         """.Replace("REASON_DUPLICATE", Number(AbortReasons.DuplicateKey), StringComparison.Ordinal);
 
-    // One row per kind, in DictionaryHelperKind order; a new kind adds a row. Every Dictionary helper is written with the
-    // Dictionary runtime, which the old lowering requests with the Array runtime.
+    // One row per kind, in DictionaryHelperKind order; a new kind adds a row. A request joins the row's needs to the module's:
+    // CheckKey's duplicate callback reports through the Dictionary runtime's adapter.
     private static readonly DictionaryHelperRow[] DictionaryRows =
     [
         new(
@@ -151,7 +151,7 @@ internal sealed partial class LegacyRuntimeHelpers
             static (output, helper, find, requireAbsent) => WriteKeyCheck(output, helper, find!, requireAbsent!),
             DictionaryCallee.FindEntry,
             DictionaryCallee.RequireAbsent,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.ArrayRuntime | HelperNeeds.DictionaryRuntime),
         new(
             DictionaryHelperKind.Place,
             static (suffix, key, value) => Located("__kimi_dictionary_place" + suffix, [Argument(key, "key"), Argument(value, "value")]),
@@ -176,6 +176,8 @@ internal sealed partial class LegacyRuntimeHelpers
 
     internal IReadOnlyList<DictionaryHelper> DictionaryHelpers => this.dictionaryHelpers;
 
+    /// <summary>Gets or sets a value indicating whether the module holds the Dictionary runtime: a CheckKey request needs it, and the
+    /// old lowering requests it for a Dictionary's construction until the runtime declares its own needs (C8e).</summary>
     internal bool NeedsDictionaryRuntime { get; set; }
 
     /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
@@ -199,10 +201,12 @@ internal sealed partial class LegacyRuntimeHelpers
     /// <param name="abi">Its compiled ABI, or null when it was not compiled.</param>
     internal void Resolve(DictionaryCallee callee, FunctionAbi? abi) => this.dictionaryCallees[(int)callee] = abi;
 
-    /// <summary>Registers a Dictionary helper a lowered body uses: each helper is written once per module, in first-request order.</summary>
+    /// <summary>Registers a Dictionary helper a lowered body uses: each helper is written once per module, in first-request order,
+    /// and the runtimes its kind's row declares join the module's.</summary>
     /// <param name="helper">The requested helper.</param>
     internal void Request(DictionaryHelper helper)
     {
+        this.JoinNeeds(DictionaryRow(helper.Kind).Needs);
         if (!this.dictionaryHelpers.Contains(helper))
         {
             this.dictionaryHelpers.Add(helper);
@@ -227,8 +231,8 @@ internal sealed partial class LegacyRuntimeHelpers
         return false;
     }
 
-    /// <summary>Writes the storage byte primitives when a body uses them, then the Dictionary runtime and each requested helper
-    /// when the module uses Dictionaries.</summary>
+    /// <summary>Writes the storage byte primitives when a body uses them, the Dictionary runtime when the module needs it, then each
+    /// requested helper.</summary>
     /// <param name="output">The module text.</param>
     internal void WriteDictionaries(TextWriter output)
     {
@@ -237,13 +241,12 @@ internal sealed partial class LegacyRuntimeHelpers
             output.Write(StorageBytePrimitives);
         }
 
-        if (!this.NeedsDictionaryRuntime)
+        if (this.NeedsDictionaryRuntime)
         {
-            return;
+            output.Write(DuplicateAdapter);
+            this.WriteDictionaryInit(output);
         }
 
-        output.Write(DuplicateAdapter);
-        this.WriteDictionaryInit(output);
         foreach (var helper in this.dictionaryHelpers)
         {
             var row = DictionaryRow(helper.Kind);

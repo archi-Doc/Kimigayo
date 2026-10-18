@@ -33,8 +33,16 @@ public sealed partial class LlvmEmitter
     {
         this.compilation = compilation;
         this.lowering = new(compilation.Locations);
-        this.lowering.RequireDictionaryOperation = (callee, key, value) =>
-            this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(callee == DictionaryCallee.FindEntry, key, value));
+        // A Dictionary helper row's Entries callee is one of the two functions generic over the entry Types.
+        this.lowering.RequireDictionaryOperation = (callee, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(
+            callee switch
+            {
+                DictionaryCallee.FindEntry => true,
+                DictionaryCallee.ClearEntries => false,
+                _ => throw new InvalidOperationException("A Dictionary helper row's Entries callee is not generic over the entry Types."),
+            },
+            key,
+            value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
     }

@@ -86,8 +86,6 @@ internal sealed partial class BodyLowering
         this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
         this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
         function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
-        this.dictionaryRuntimeUsed = true;
-        this.arrayRuntimeUsed = true;
         return true;
 
         EmissionOperand Argument(int place, in ArrayElement element, int operand) => element.IsZeroSized
@@ -204,8 +202,6 @@ internal sealed partial class BodyLowering
         }
 
         function.AddCall(id, this.GetDictionaryHelper(DictionaryHelperKind.Place, key, value).Abi, CollectionsMarshal.AsSpan(this.callOperands));
-        this.dictionaryRuntimeUsed = true;
-        this.arrayRuntimeUsed = true;
         return true;
     }
 }
