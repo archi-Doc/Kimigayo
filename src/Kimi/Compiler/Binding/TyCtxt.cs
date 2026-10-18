@@ -268,7 +268,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // Plan 5.6.2: the substitution of a call in a body that another substitution instantiates, as a call in a default template folds under
     // the substitution of the call omitting the default: each binding of the inner one in the outer instance, as Binding forwards a call of
     // a generic body (InstantiateForwardedCall), so Apply(t, Compose(inner, outer)) is that call's instantiation of t. Null when the outer
-    // instance does not substitute an inner Type or the declaring Type.
+    // instance does not substitute an inner Type, the conforming Self or the declaring Type.
     internal Subst? Compose(Subst inner, Subst outer)
     {
         if (outer.IsIdentity)
@@ -279,8 +279,9 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         var types = Fit(ref this.composedTypes, inner.Types.Length);
         var lengths = Fit(ref this.composedLengths, inner.Lengths.Length);
         var origins = Fit(ref this.composedOrigins, inner.Origins.Length + inner.Inputs.Length);
+        var self = inner.Self is { } conforming ? this.Apply(conforming, outer) : null;
         var declaring = inner.Declaring is { } owner ? this.Apply(owner, outer) : null;
-        var failed = declaring is null && inner.Declaring is not null;
+        var failed = (self is null && inner.Self is not null) || (declaring is null && inner.Declaring is not null);
         for (var i = 0; i < types.Length; i++)
         {
             types[i] = inner.Types[i] is { } type ? this.Apply(type, outer) : null;
@@ -299,7 +300,7 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
                 ? binding.ForwardOrigin(origin, outer.Target, outer.Declaring, outer.Origins, outer.Inputs, outer.Types) : null!;
         }
 
-        return failed ? null : this.Intern(inner.Target, inner.Self is { } self ? this.Apply(self, outer) : null, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
+        return failed ? null : this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
     }
 
     // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets), discarded

@@ -455,8 +455,9 @@ public sealed class TyCtxtTest
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
     }
 
-    // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception (a Self from
-    // Compose never does: Apply refuses it first).
+    // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception. A caller's
+    // instance that makes a requirement call's Self nest past it has no composed substitution, as it has no forwarded call (PLAN G157 (4)),
+    // so no substitution without its Self reaches Witness.
     [Fact]
     public void ADeepSelfHasTheLimitTarget()
     {
@@ -473,6 +474,20 @@ public sealed class TyCtxtTest
         call.Set(inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
         Assert.Equal(RequirementTargetKind.Limit, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
+
+        // Option^40<i32> (storage depth 80): Wrap^80 counts as prepared in the pass once Witness prepared it, since its failing part is a
+        // Type argument that no Field stores.
+        var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
+        var nested = BoundType.I32;
+        for (var i = 0; i < 40; i++)
+        {
+            nested = c.Types.Intern(option.Kind, option.Symbol, option.Semantics, [nested]);
+        }
+
+        var instance = new CallPlan();
+        instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
+        Assert.Null(c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
+        Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
     }
 
     // A warm rebind keeps every call's substitution the same object and looking it up allocates nothing.
