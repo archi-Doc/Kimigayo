@@ -587,7 +587,7 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   each T named by a direct Loan of the value ℓ stores into a holder live after ℓ (live as `transit` reads it: in
   `live_out(ℓ)` or made live by the closure) or into `E`: the Ref's own Loan and
   its R2 parents from the layers it carries; `CS_call(ℓ, t)`'s closure with those of `σ_in(t)`. Conflict candidates are
-  unchanged. Without it a self-referential holder is unsound (39o, 100, 100d, 101).
+  unchanged (E13 (1) adds a borrow's R2 parents to its own check). Without it a self-referential holder is unsound (39o, 100, 100d, 101).
 - **E6, Slice index.** The Index of a Slice handle is a shared borrow Deref in the step classes (SPEC 4.8.1: the element
   is the handle's referent), not an inline step. UniqSlice has no built-in Index (`index`/`indexUniq` calls).
 - **E7, guard-local Origin (SPEC 14.8.3).** A marker `γ_H` (with `Φ_E` and `τ_s`): each value issued into a guard
@@ -621,7 +621,7 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   `¬hits(X, place(L), write)` for an `InPlace` target (`uborrow` for the `clear`s), the activation's own kind; as written
   (`¬hits(…, uborrow)`, a deep kind) it never fires, and A3 accepts a `replace` that destroys an observing target while a child lives (26a, SPEC 15.6.6's "in a call that
   destroys a target") and 123.
-  Checked at the call on `CS_call(ℓ, t_K)`, with E5's seed.
+  Checked at the call on E13 (1)'s activation set for t_K, with E5's seed.
 
 - **E12, the partition row (§5 `partition`, its lemma and §7's boundary; DIAGNOSTICS; decided by the planning session,
   2026-10-17, on the SPEC revision's review, PLAN G113).** The Loan stratum cannot tell a Loan a value carries exactly
@@ -634,14 +634,74 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   16.2.2). The lemma's "over-approximated Loans are harmless to exclude" no longer holds. Until the Origin stratum lands
   (2a), a returned borrow of a local is reported by the Loan stratum alone.
 
+
+- **E13, the values an access takes (the core lane's group review B1 and B2; its design reviews of 2026-10-18, the last accepting
+  with wording changes; the owner's choices of 2026-10-18: A5 orders operands (R1) and, after the second design round, one rule for
+  every access; prototype round 13, 332 cases; SPEC 3.5, 6.5.1, 7.3.4, 7.7.3, 10.1.1, 12.2, 13.7.1, 15.6, 15.6.3, 15.6.6, 15.6.7;
+  decided by the planning session).**
+  1. **Values an access takes (SPEC 12.2, 15.6).** An operation evaluates its operands in order before it (a receiver or Value
+     callee first, arguments in source order (10.1.1), a setter's value before its receiver (13.7.1), elements, captures and
+     operator operands left to right) and uses each operand's value after that operand's access. With o_1 … o_n in that order,
+     each access at ℓ is checked on `closure(⋃{σ_in(H) | H ∈ live_out(ℓ), ℓ does not overwrite H} ∪ σ_in(E) ∪ T)`, where T is:
+     - (a) for operand i's access: `⋃_{j≤i} val(o_j) ∪ ⋃_{j>i} σ_in(root(o_j))` (its own value included: `s.r = s.n@ref; let t =
+       s@move` errs at the Move even with t dead);
+     - (b) for the activation of a reservation in t, a destroying call's `destroy` and a call's effects: `⋃_{root(o_j)≠t} val(o_j)`,
+       t left out of the live holders and the closure seeded by σ_in(t) (E5); this replaces `CS_call`'s `live_in(ℓ)`, so
+       `let r = y@ref; give(y@uniq, r@follow)` is valid;
+     - (c) for a Ref's or a Reborrowing PairAcquire's borrow of X: its R2 parents as E3 bounds them
+       (`⋃_{m≤j<k} content^j(σ_in(root(X)))`, m the index of the last shared Deref, else 0), whatever its destination's liveness,
+       and E5's seed as before (supersedes DECISIONS R4-M57's "a borrow's stored value only seeds", whose reason, over-strictness
+       on 30b, no longer holds under E8's ending; without the seed, round 13's 41o is accepted);
+     - (d) for an observing destruction of X (a Drop or destroying call whose Type observes): `val(X)` (SPEC 15.6: a Loan is live
+       including an observation by its destruction; 15.6.6); a Drop is a terminator whose placed value's store follows it, and a
+       destroying call's stored value is an operand whose value row (b) takes, so this row needs no transit; at a destroying call
+       val(X) lies in the closure seeded by σ_in(t_X) (E5; E1 keeps X's route fixed), so there it adds nothing;
+     - (e) for the destination write and the stores: transit and E5's seed, as before.
+     An operand's value is scanned under its root's holder for `mode`, a reservation in its own holder counting as `ref`, except
+     at its own call's effects and cleanup, which follow its activation, so there it counts as `uniq` (SPEC 15.6.7: every
+     reservation becomes live at once with the call's effects on static storage; needed before unit 2b). Discriminant, Len and
+     FakeRead take no value (`val` is ∅); a destruction that observes nothing takes no value; an Opaque site's accesses take
+     val(Opaque).
+  2. **Operand order in MIR (amends DECISIONS R4-M55).** MIR reads the Place operands it leaves at ℓ in operand order, a Value
+     callee's first, and the builder makes that order the evaluation order: a Place operand is secured into a temp where it is
+     evaluated when a later operand builds code (G123) or when an operand evaluated after it precedes it in the operation's
+     operand order (named arguments, constructors' included (10.1.1); an unbound reference's receiver supplied after earlier
+     parameters, which `MirCallee.Position` passes first (7.3.4); a setter's value (13.7.1)); Case payloads are positional
+     (6.5.1). A Closure's captures follow the same rule. An operand that follows no reference (a temp, a whole local, inline
+     steps only) has `val(o) = σ_in(root(o))`, so its position is immaterial. Evaluation order is a source fact the MIR does not
+     record, so MirValidator cannot check it: it is a lowering contract like G123's (R4-M55), tested by MirBuildTest goldens
+     (named arguments, an unbound reference's `self`, a setter, captures).
+  3. **Activation.** Every input that is a reservation activates at its Call, a Value callee's operand included (the review's
+     B1); R4-M57's "a Call takes t as an argument" reads "as an input".
+  4. **Pair-layer acquisitions.** A PairAcquire is always the whole rvalue of an Assign: where it is an operand of another
+     operation, the builder secures it into its own temp (supersedes R4-M37's "acquired at its Call"). The acquiring rvalue's
+     `Op` holds its `MirRefKind`, `TwoPhaseUniq` when it produces an invocation's input and `Uniq` otherwise, and an Adapt's
+     `Op` gains an input bit beside its shorthand bit, read by `MirCases.Adapt` instead of `input: false` (`x@(s/T)` at an
+     input; its shorthand test becomes a bit test); `MirBuilder.Defaults`' `FoldOperand`, which re-acquires with `input: false`,
+     shares the cause. No closed-vocabulary entry (`MirRefKind` gains no member). The validator admits a PairAcquire only as the
+     sole operand of a Use assigned to a local's whole Place (a temp, a local such as `var v = p`, or `_0`), with `Op` `Uniq` or
+     `TwoPhaseUniq`; any other Use has `Op` 0; an Adapt's `Op` has only its shorthand and input bits. A5 issues a Reborrowing
+     PairAcquire with that kind, its temp the reservation holder when `TwoPhaseUniq`, at its Assign's location, as a Ref's Loan;
+     the at-Call PairAcquire Loans (`loanOfOperand`) go. In a view where the pair layer is a reference, a PairLayer step and a
+     borrow Deref step are the same following step. R4-M54's "a pair-layer input, exclusive only by case, starts none here"
+     gains: its own PairAcquire reserves in the exclusive case, and the fold still does not apply on its path.
+  5. **Cost (V16).** One gather per operation builds every access's set: each (holder, node) entry is tagged with the first
+     operand whose value takes it and the last operand whose root it is; the closure propagates the tags (least, greatest) in
+     operand order; an activation excludes its holder t. Each access scans its own set: V16's per-access term. The taken nodes
+     are σ_in of holders live into ℓ or reached by the closure, so §6.3's "live and stored nodes" reads "live-in, stored and
+     closure nodes". A scaling shape: one operation with N operands, each carrying a Loan.
+  6. **Codes (unit 1c).** An input's own access failure takes the "Otherwise" row (`ComparisonLoanConflict_Kd`); a marked
+     PairAcquire's activation takes `CallActivationConflict_Kd`, as its non-generic twin does. A Loan in its reservation holder
+     keeps R4-M57's precedence (`CallReservationConflict_Kd`); a Loan found through a value an access takes has the access's
+     location as its witness (§6.4).
 - **E14, call retention (the core lane's group review B4 and N2; its design review, 2026-10-18; SPEC 15.6, 15.6.4; decided by the
   planning session).** A Call retains as its callee's contract says: `TyCtxt.Retains` over the callee's declaration and Subst, an
   intrinsic's library declaration included (its MIR callee keeps that declaration symbol). A store row into a raw-pointer input
   reaches `E` by the store rule (the refs of a value with no direct Loan are `E`), so `Raw.initialize(p, x@ref)` stores `L_x` into
   `E` and a later `x = 2` conflicts (SPEC 15.6: raw storage is storage the body does not own, and a value stored there may be used
   after every point). The intrinsic table keeps rows only for operands the builder adds beyond a declaration (`RawSlice`'s backing
-  → result, Value); an intrinsic the builder synthesizes without a declaration has a result that holds no Loan and retains
-  nothing. A default template's call (until F9) is the unknown-callee row set: every input → result (Value) and → each exclusive
+  → result, Value); an intrinsic without a library declaration (those the builder synthesizes and the compiler-only `$abort`,
+  SPEC 17.4) has a result that holds no Loan and retains nothing. A default template's call (until F9) is the unknown-callee row set: every input → result (Value) and → each exclusive
   input's referents; untied. A5 applies every row set through one loop. This replaces §4's "intrinsics: every operand → result",
   which made `clone` carry the handle borrow (SPEC 15.6.4 retains only the payload's Loans, Content) and so rejected
   `entries.append(clone(owner@ref)); _ = owner@move` (the design review's case 135b). Among today's intrinsics only `RawInitialize`
@@ -673,4 +733,6 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   decisions §9 item 11: E8 Loan ending by exact Move-Path prefix (case 23a, option (c)) and E9 MIR contracts; E10 the
   planning session's MIR contracts; E11 the `err(destroy)` exclusion (records review round 2); E12 the partition row (SPEC revision's review).
 - **E14** (2026-10-18, §12): call retention through the callee's declaration, intrinsics included (core review B4, N2; its design
-  review). E13 (a call's and an operation's inputs) follows with prototype round 12.
+  review).
+- **E13** (2026-10-18, §12; prototype round 13): the values an access takes, operands in evaluation order in MIR, activation of
+  every reservation input, pair-layer acquisitions secured and marked (core review B1, B2; the owner's choices R1 and one rule).
