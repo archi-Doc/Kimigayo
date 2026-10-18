@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -21,7 +22,7 @@ public class InternalInvariantTest
         body.RecordCompletion(0, -1, true);
         body.CheckUnreachable(earlierRejected: false);
         var issue = Assert.Single(body.Issues);
-        Assert.Equal(OwnershipFailure.Internal, issue.Failure);
+        Assert.Equal(OwnershipRequirement.Internal, issue.Failure);
         Assert.Same(body.Operations[0].Source, issue.Source);
         body.ResetCompletion();
     }

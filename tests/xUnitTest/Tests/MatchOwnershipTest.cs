@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -148,7 +149,7 @@ public class MatchOwnershipTest
         var use = body.Operations.Select((o, i) => (o, i)).Last(x => x.o.Kind == OwnershipOperationKind.Consume && x.o.Place == s.Id);
         Assert.True((body.GetInputState(use.i, s.Id) & PlaceState.MayMoved) != 0);
         Assert.All(body.MatchArms, arm => Assert.True(body.IsReachable(arm.Test)));
-        Assert.Contains(body.Issues, i => i.Failure == OwnershipFailure.PossiblyMovedUse);
+        Assert.Contains(body.Issues, i => i.Failure == OwnershipRequirement.PossiblyMovedUse);
     }
 
     [Fact]

@@ -256,7 +256,7 @@ public sealed class SemanticSnapshotTest
                 {
                     DiagnosticPartition.Binding => $"? binding {code} {(BindingFailure)requirement.Kind} ",
                     DiagnosticPartition.ControlFlow => $"? flow {code} ",
-                    _ => $"? ownership {code} {(OwnershipFailure)requirement.Kind} ",
+                    _ => $"? ownership {code} {(OwnershipRequirement)requirement.Kind} ",
                 }).Append(LegacyRecords.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
             }
 

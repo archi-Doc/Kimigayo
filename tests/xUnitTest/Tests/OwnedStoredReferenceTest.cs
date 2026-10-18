@@ -64,7 +64,8 @@ public class OwnedStoredReferenceTest
         var c = MinimalEmissionTest.Analyze(Calls + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && (activation is null || x.Activation == activation));
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
+            (activation is null || x.Activation == activation));
         Assert.False(c.Validate(out _));
     }
 
@@ -113,7 +114,7 @@ public class OwnedStoredReferenceTest
         var c = MinimalEmissionTest.Analyze(Reserved + helpers + "var value = 42\nlet item = (value@uniq, 7)\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
-        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && x.Activation == activation);
+        Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict && x.Activation == activation);
         Assert.False(c.Validate(out _));
     }
 

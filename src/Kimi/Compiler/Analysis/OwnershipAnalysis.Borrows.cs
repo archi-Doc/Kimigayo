@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -75,7 +76,7 @@ public sealed partial class OwnershipAnalysis
             {
                 // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
                 var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligation) ? initializer : use;
-                this.issues.Add(new(at, OwnershipFailure.Unsupported));
+                this.issues.Add(new(at, OwnershipRequirement.Unsupported));
                 return false;
             }
 
@@ -111,12 +112,12 @@ public sealed partial class OwnershipAnalysis
             // An `==` that only its reverse direction fails is shown in that direction, which also decides whether it is Refuted.
             if (reversed)
             {
-                this.issues.Add(new(use, OwnershipFailure.UnprovenOrigin, Obligation: obligation with { Longer = obligation.Shorter, Shorter = longer }));
+                this.issues.Add(new(use, OwnershipRequirement.UnprovenOrigin, Obligation: obligation with { Longer = obligation.Shorter, Shorter = longer }));
                 return false;
             }
         }
 
-        this.issues.Add(new(obligation.Use, OwnershipFailure.UnprovenOrigin, Obligation: obligation));
+        this.issues.Add(new(obligation.Use, OwnershipRequirement.UnprovenOrigin, Obligation: obligation));
         return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
     }
 
@@ -444,7 +445,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 3.5: a Place is never moved by bare acquisition; a non-Copy field needs an explicit borrow or @move, which
             // the shared path refutes. The read is still modeled, so later uses are checked and the result is delivered.
-            this.body.ReportIssue(new(field, OwnershipFailure.TransferRequired));
+            this.body.ReportIssue(new(field, OwnershipRequirement.TransferRequired));
         }
         else if (!this.SupportsCopySnapshot(type, field))
         {
