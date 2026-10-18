@@ -24,8 +24,9 @@ public sealed partial class Binding
     internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
     {
         var binder = subst.Binder;
+        var originBinder = binder is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : binder;
         var result = this.MemberType(type, subst.Declaring) is { } member && this.SubstituteType(member, binder, subst.Types, subst.Lengths) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, binder is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : binder, subst.Origins, subst.Inputs) : null;
+            ? this.SubstituteStoredOrigins(substituted, originBinder, subst.Origins, subst.Inputs) : null;
         if (result is not null)
         {
             result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);

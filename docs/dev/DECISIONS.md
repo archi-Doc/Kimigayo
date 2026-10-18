@@ -2313,7 +2313,14 @@ structure is recorded here by the unit that first implements it.
     (closure symbol, context), as the old scan gave, so two closures of one instance keep two (X10). It is kept with the function item
     contexts until an edit (`ResetCallContexts`, which keeps `Binding.cs` from growing; G7 inlines it); the planning session reads the
     package's "for the pass" as their lifetime, kept across unchanged passes, so a warm rebind and generation build no new CallPlan, as
-    with the old list (not measured: no warm test rebinds). Bridge CallPlans carry the context's padded Lengths, not the caller's.
+    with the old list (not measured: no warm test rebinds). Bridge CallPlans carry the context's padded Lengths, not the caller's, and
+    no conforming Type: the bridge drops the context's Self, which is harmless, since no source instance gives a body with a closure a
+    Self (SPEC 8.6.1) and the bridge's readers instantiate under `TyCtxt.StorageSubst`, which has none; G7 deletes the bridge.
+  - Temporary structure, removed at R7: `[Transitional("R7")] TyCtxt.StorageSubst(call)`, a second substitution per call beside
+    `SubstOf`, which the CallPlan form `Binding.InstantiateStorageType(type, call)` instantiates under. It goes when that form's readers
+    apply `SubstOf` instead: the old generator's (Emission) at G7, the old analyses' (`Analysis/Ownership*`) at R6-check and Binding's
+    own (requirement instantiation under `SelectedRequirements`, forwarded calls, formatting implementations, and the effect-bound
+    summary unless R6-check deletes it with the old effect checks) with R7's CallPlan pipeline.
   - Evidence: the semantic snapshot (HIR and MIR), the diagnostic snapshot and the fixture IR of the closure emission classes are
     identical to the parent's, with the native Closure, GenericClosure, GenericCapture, NestedGeneric, GenericStorage and GenericDefault
     families; `GenericClosureIdentityTest` adds the two-closure regression.
