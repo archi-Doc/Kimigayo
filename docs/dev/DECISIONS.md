@@ -1909,7 +1909,8 @@ R5 on the owner's request of 2026-10-18.
     14.9.2 step 3). `Binding.ResultPropagation` owns the Type an expression takes at its position once that is decided. An
     expression awaits its position (`AwaitsPosition`) when it is a numeric literal-only expression, a Tuple or array literal holding
     a part of Type Never or one that awaits, or a result target every value source of which awaits or is Never, through
-    parentheses, labels, expression bodies and an Identity or Transfer `@move`/`@copy`. Such a source is no candidate of a 14.9.2
+    parentheses, labels, expression bodies and an Identity or Transfer `@move`/`@copy` (the `@move`/`@copy` clause superseded by
+    BU-9). Such a source is no candidate of a 14.9.2
     join (`ResultCandidates`; when none supplies one, the sources' own Types compete), no element evidence of an array or
     Dictionary literal beside an element that is (alone, the awaiting elements' common Type), and at a call evidence only as a
     Literal's default is (late pass, for slots no other evidence binds); it takes the decided Type by its late Type (`LateTypeOf`:
@@ -1923,13 +1924,14 @@ R5 on the owner's request of 2026-10-18.
     it (`DecideWaiting`); otherwise the join binds each waiting source once, at its decided Type, so a misfit is the literal's own
     record (`if c => p.y else => 300` with `p.y: i8`: `InvalidNumericLiteral_Kd` at `300`), or, without a candidate, at its default.
     The completion of a body the parser supplied decides no inferred Target Result Type (a guess, DIAGNOSTICS §4.4).
-    `ResultContext.SourceNodes` records each source's node. Effect: R4-M59's joins (`if`, `match`, `loop`, nested, `@move`-wrapped,
+    `ResultContext.SourceNodes` records each source's node. Effect: R4-M59's joins (`if`, `match`, `loop`, nested, `@move`-wrapped (superseded by BU-9),
     array elements, Dictionary values, S5's call argument) publish their decided Type, and `if c => p.x else => 4000000000`,
     `if c => (a, a) else => (a, 3000000000)` and `let x = if c => identity(a) else => 2` are valid. Rejected: re-typing a literal
     bound at its default (a literal only the join's Type fits is rejected first, and a literal-only operation keeps its default's
     operation); a survey that binds its sources (step 2 compares the independently typable ones). Open: a Dictionary literal source
     of a join takes no late Type (`if c => ["k": (a, a)] else => ["k": (a, (return 4))]`: mir `InternalInvariant_Kd`, as on dev); a
-    join under `@move` or a label does not wait for an outer join, so its literals take their defaults first; a control-flow
+    join under `@move` (superseded by BU-9) or a label does not wait for an outer join, so its literals take their defaults first; a
+    control-flow
     argument whose literals sit beside an unknown typed source still waits (PLAN G152).
   - U4, the relation (E1, E2 with S4, S1, S3, E8 with S9). `FitsTypeCore` relates Never only to itself (SPEC 3.8: a Type holding
     Never is an ordinary Type). Never fitting is decided once, at the root of the value-fit entries (`Binding.ValueFits`: `FitsType`,
@@ -1948,12 +1950,12 @@ R5 on the owner's request of 2026-10-18.
     by subtyping alone) and contract implementation matching (`CallableContracts`). The 14.9.2 join checks an awaiting source by its
     late Type with or without a fixed Target Result Type (no Never fitting below the root); a literal or join waits through @move,
     @copy and labels as through parentheses (`DeliveredOperand`, read from the syntax, is the one walk) and is bound at the decided
-    Type operand first (`BindWaiting`); without a candidate, the defaulted literal sources supply the candidates
+    Type operand first (`BindWaiting`) (the @move and @copy clauses superseded by BU-9); without a candidate, the defaulted literal sources supply the candidates
     (`if c => (a, (return 1)) else => (a, 5)` is `(i64, i32)`). E8 (the owner is told): the FunctionReference tests premised on `(i32) -> Never <:
     (i32) -> i32`, which SPEC 3.8 excludes, take premises SPEC 10.4 supports: a generic reference ranks below a non-generic one
     (step 3), an ambiguity between two generic references with identical parameters (steps 2 and 3 tie), an unknown condition of
     the non-generic best reference. Open: `let u: (i64, i64) = (a, (return 2))@move` is `TypeMismatch_Kd`, since @move binds its
-    operand without an expected Type (`Binding.Conversions`), so α does not reach the literal; a Callable bound over a Function Item
+    operand without an expected Type (`Binding.Conversions`), so α does not reach the literal (superseded by BU-9: the SPEC verdict); a Callable bound over a Function Item
     whose result is Never stays `NoApplicableOverload_Kd` (E10(3), as on dev); a join whose every source holds Never compares their
     own Types (E10(2)); a Dictionary literal source of a join takes no late Type (U5 decides its MIR side).
 - **BU-5** (2026-10-18; the BU planning session; G129 E5, before R4-M59's removal) An anonymous function's result sources
@@ -2050,8 +2052,8 @@ R5 on the owner's request of 2026-10-18.
   its literal's element evidence or its selected call decides, `LateType`, `TryPropagate`, `PropagateSources`; a literal waits
   for it, `WaitsForPosition`, `BindWaiting`). A literal that no position types keeps its own Type, which holds Never only
   where the literal is a fresh value (`let t = (a, (return 1))` is `(i64, Never)`); such a literal never completes at run time. U5
-  closes E3's family of aggregate literals: a dictionary literal awaits as Tuple and array literals do (`HoldsAwaitingEntry`,
-  `LateDictionaryType`), and one whose keys or values only literals type waits for its join (`BindDictionaryLiteral`), so
+  closes E3's family of aggregate literals: a dictionary literal awaits as Tuple and array literals do (`EntriesAwait`,
+  `LateDictionaryType`), and one whose keys or values only literals type waits for its join (`IndependentDictionaryType`), so
   `if c => ["k": a] else => ["k": (return 1)]`, `["k": (a, (return 1))]` beside `["k": (a, a)]` and `["k": 4000000000]` beside
   `["k": p.x]` take the join's Type (before: `UnresolvedBinding_Kd`, `TypeMismatch_Kd`, `InvalidNumericLiteral_Kd`; Ua's mir:
   `InternalInvariant_Kd`). Why: R4-M59 was temporary until Binding published these Types; MIR builds what Binding publishes.
