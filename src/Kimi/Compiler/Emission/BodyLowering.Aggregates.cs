@@ -48,10 +48,7 @@ internal sealed partial class BodyLowering
         this.arrayRuntimeUsed = false;
         foreach (var helper in this.dictionaryHelpers.Values)
         {
-            if (!helpers.DictionaryHelpers.Contains(helper))
-            {
-                helpers.DictionaryHelpers.Add(helper);
-            }
+            helpers.Request(helper);
         }
 
         helpers.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;

@@ -31,20 +31,6 @@ internal enum ArrayHelperKind : byte
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
 
-/// <summary>The needs a legacy helper row declares (X4): runtime text its module must hold and items its helpers call.</summary>
-[Flags]
-[Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
-internal enum HelperNeeds : byte
-{
-    None = 0,
-
-    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5).</summary>
-    ArrayRuntime = 1,
-
-    /// <summary>The element's drop glue: the helper destroys elements (SPEC 4.9.7, 16.3.2).</summary>
-    ElementGlue = 2,
-}
-
 /// <summary>The row of one Array helper kind, readable by kind before any representation exists (X4): the prefix of its helpers'
 /// names, its ABI shape over a helper's name, element descriptor and remainder Fields, its body's prologue and writer, and its
 /// declared needs. No Array helper calls a library function (F2c), so no row declares a library callee.</summary>
@@ -380,15 +366,15 @@ internal sealed partial class LegacyRuntimeHelpers
     private static FunctionAbi Slotted(string name, AbiParameter[] parameters)
         => new(name, RuntimeAbi.Unit.ComputationType, parameters) { ResultSlot = true };
 
-    // The element argument of a helper that moves it in: a scalar by value, another value by address (SPEC 21.3.1).
-    private static AbiParameter Value(in StoredValue element) => new(element.IsScalar ? element.Value.ComputationType : "ptr", "value");
+    // A stored-value argument of a helper that moves it in: a scalar by value, another value by address (SPEC 21.3.1).
+    private static AbiParameter Argument(in StoredValue value, string name) => new(value.IsScalar ? value.Value.ComputationType : "ptr", name);
 
     // A zero-sized element has no slot, so its helpers take no value, source or result pointer (SPEC 4.5).
     private static FunctionAbi AppendShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, []) : Located(name, [Value(element)]);
+        => element.IsZeroSized ? Located(name, []) : Located(name, [Argument(element, "value")]);
 
     private static FunctionAbi InsertShape(string name, StoredValue element)
-        => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Value(element)]);
+        => element.IsZeroSized ? Located(name, [Index]) : Located(name, [Index, Argument(element, "value")]);
 
     private static FunctionAbi PlaceShape(string name, StoredValue element)
         => element.IsZeroSized ? Located(name, []) : Located(name, [new("ptr", "source")]);

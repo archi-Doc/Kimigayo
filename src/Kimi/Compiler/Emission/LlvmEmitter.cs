@@ -33,7 +33,8 @@ public sealed partial class LlvmEmitter
     {
         this.compilation = compilation;
         this.lowering = new(compilation.Locations);
-        this.lowering.RequireDictionaryOperation = (find, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(find, key, value));
+        this.lowering.RequireDictionaryOperation = (callee, key, value) =>
+            this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(callee == DictionaryCallee.FindEntry, key, value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
     }
@@ -190,13 +191,13 @@ public sealed partial class LlvmEmitter
             this.objects.Virtuals = this.virtuals;
 
             var helpers = module.RuntimeHelpers;
-            helpers.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
-            helpers.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
-            helpers.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
-            helpers.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
-            helpers.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
-            helpers.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
-            helpers.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
+            helpers.Resolve(DictionaryCallee.AppendSlot, this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot));
+            helpers.Resolve(DictionaryCallee.Initialize, this.functions.GetValueOrDefault(c.Library.DictionaryInitialize));
+            helpers.Resolve(DictionaryCallee.ClearLinks, this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks));
+            helpers.Resolve(DictionaryCallee.RequireAbsent, this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent));
+            helpers.Resolve(DictionaryCallee.ReserveStorage, this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage));
+            helpers.Resolve(DictionaryCallee.Append, this.functions.GetValueOrDefault(c.Library.DictionaryAppend));
+            helpers.Resolve(DictionaryCallee.Shrink, this.functions.GetValueOrDefault(c.Library.DictionaryShrink));
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
