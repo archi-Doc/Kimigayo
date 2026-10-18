@@ -1149,7 +1149,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   layer above each occurrence (R2); occurrences share it, which replaces the identity scan (`MarkCarrier`) and its
   closure branch, and `AddErasedRelations` relates it like any fixed Origin.
   Kind: Value through anything but a borrowed input's referent, Content through that referent only (step 4); a borrowed
-  input is a ref, uniq, objref or objuniq layer, a Slice or a UniqSlice (`BorrowReferent`, also the layer above a carrier;
+  input is a ref, uniq, objref or objuniq layer, a pair layer admitting only those (BU-3), a Slice or a UniqSlice
+  (`BorrowReferent`, also the layer above a carrier;
   SPEC 4.8.1, 4.8.2: `toArray` keeps the dependencies inside `T` but not the outer borrow; A5 1a3). Stores:
   invariant positions (`ComponentVariance`) reached through storage the call may write: not past a shared layer unless a
   raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type (BU-1 corrects
@@ -1172,7 +1173,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   calls (review r2 option 2). Open: the Callable bounds are all of the callee's premise scope, not only those of carriers
   its contract names (a sound superset); a C8 Closure's or item's bounds are read as declared, not instantiated by an item
   instance's Type arguments as C1's are (latent: Binding rejects such an item value, `UnprovenConstraint_Kd`, review r3); a
-  pair-layer input gives Value through its target even in borrow cases (step 4 would give Content), as do the other
+  pair-layer input admitting a Semantics other than a borrow (owner, an object owner or raw) gives Value through its target
+  even in its borrow cases (narrowed by BU-3; step 4 would give Content), as do the other
   Loan-holding views (the internal Storage remainders; WriteWindow, Utf8Writer and FixedBuffer, whose `u8` holds no
   Origin), a sound over-approximation; A5 reads the view once per pass, its warm cost unmeasured. Not temporary.
 - **R4-M60** (2026-10-17, tooling session; PLAN G111; refines R4-M50 for corpus rows) A corpus row that expects a rule an
@@ -1438,6 +1440,19 @@ R5 on the owner's request of 2026-10-18.
   Origin, which its referent's Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a
   non-exclusive pair layer" below a writable invariant position. Rejected: removing rc and arc from the shared layers (a
   case per form; it would also make an rc payload held by value writable); a store row per handle input. Not temporary.
+- **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
+  narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
+  only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one
+  predicate for a borrowed input, returns its target: its slot (`OuterOrigin`) gives Value and its target Content, which the
+  call may write, invariant, when an exclusive borrow is admitted (the pair's `IsInvariantLayer`). The admitted set is the
+  binder's, from its declaring scope, read by `LayerAdmitted` for this and `InvariantAdmitted`. A pair admitting owner, an
+  object owner or raw is no borrow in that case and keeps the by-value walk. Why: walked by value, `inner11<s/T>(a: s/T, b:
+  i32)` under `s is ref or uniq` stored input 0's own Value into its referent (`0 Value store 0`: both name one carrier), so
+  after `inner11(x@(s/T), peek(x@ref))` with a non-Copy T A5 made x carry its own Loan and x's scope-end drop erred (A5
+  prototype case 139c and the old path accept it); a concrete `uniq/T` input gives `0 Content store 0`, which A5 accepts,
+  and now the pair does too. Rejected: no store row at all (the exclusive case may write the referent, and a concrete
+  `uniq/T` input keeps its row: dropping it would be a second rule for self-stores); a retention per Semantics case (one
+  view per instantiation, R4-M51). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 

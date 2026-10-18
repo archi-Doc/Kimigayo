@@ -156,6 +156,30 @@ public sealed class RetentionTest
         Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
     }
 
+    // SPEC 15.6.4 step 4, 8.1.2 (DECISIONS BU-3): a pair layer whose binder admits only borrows is a borrowed input in every admitted
+    // case, its slot Value and its target Content, which an admitted exclusive borrow lets the call write, as for a concrete `uniq/T`;
+    // the original `s/T` and an application alike. A pair admitting `owner` is no borrow in that case, so its target stays Value.
+    [Theory]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objref or objuniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref\n    return", "")]
+    [InlineData("func f<s/T>(a: s/Option<T>, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is ref or uniq\n    return a", "0 Value result, 0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Value store 0")]
+    public void BorrowPairLayersAreBorrowedInputs(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same for a generic caller passing its own `s/T` (A5's case 139c): the call's Subst keeps the caller's pair, whose binder admits
+    // only borrows, so the call stores only the argument's referent into it.
+    [Fact]
+    public void CallersBorrowPairLayersAreBorrowedInputs()
+    {
+        var c = Bind("func inner<s/T>(a: s/T, b: i32) -> ()\n    s is ref or uniq\n    return\nfunc peek<T>(x: ref/T) -> i32 => 1\n" +
+            "func use<s/T>(p: s/T, item: T) -> ()\n    s is ref or uniq\n    T is Copy\n    var x = item\n    inner(x@(s/T), peek(x@ref))\n");
+        Assert.Equal(["0 Content store 0"], Calls(c, "inner"));
+    }
+
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a
     // Type parameter the result names is retained, as is one whose carrier lies below a layer whose Origin the result's outlives; a call
     // instantiating the parameter retains by the instance, nothing for an Origin-free one.
