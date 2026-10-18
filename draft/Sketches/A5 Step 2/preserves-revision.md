@@ -83,9 +83,9 @@ audit §4's reading).
   call. Φ(c,i) replaces `Φ_c` in `desc(c)`, and P12's Loans stay. A retained argument gets one too (Callables f and g, c17).
 - **Carriers.** Φ's carriers are the Origin atoms of i's Type after normalization: Type parameters, signature Origins and
   hidden atoms.
-  - A projection's atoms are its base's: an associated Type's Origins come from its base's binding, so `J`'s Origins may
-    denote a `J.Item`'s Loans (Keep, §4.2).
-  - An equality between projections (`K.Elem is I.Item`) identifies their atoms.
+  - (Proposed; G3.) A projection's atoms are its base's: an associated Type's Origins come from its base's binding, so
+    `J`'s Origins may denote a `J.Item`'s Loans (Keep, §4.2).
+  - (Proposed; G3.) An equality between projections (`K.Elem is I.Item`) identifies their atoms.
   - Distinct Type parameters share no atom unless the body relates them; this is a reading (G2).
   - Each atom has a mode: `ref` when its slot's Loan requirement is `ref` (15.3.5) or it is reached past a shared layer
     (8.11.4:789), else i's access mode. For the receiver this is R4-M68's condition.
@@ -95,18 +95,25 @@ audit §4's reading).
 - **No access path.** No read, write, Move or Borrow reaches Φ. E8 never ends it. No reservation meets it.
 - **Reach.** An abstract call c2 reaches Φ when an input of c2 has one of Φ's carrier atoms in conflicting modes
   (15.6.2:517).
-  - **Own inputs.** A Φ carried by input `o_j`, or flowing from `o_j` into c2's result or stores, is reached only through
-    another input: a value's Loans cover its aliases (as 15.6.2:505), and an activation skips its own argument (15.6:455).
+  - **Own inputs (proposed; G3).** A Φ carried by input `o_j`, or flowing from `o_j` into c2's result or stores, is
+    reached only through another input: a value's Loans cover its aliases (as 15.6.2:505), and an activation skips its
+    own argument (15.6:455).
   - So chained splitting (c53) and `pred(item@ref)` in a `find` loop (c55) meet nothing, and c43 errs through its
     receiver.
   - `sink.put(item@move)` with `K.Elem is I.Item` reaches the item's Φ through `sink` and errs by the letter (c54; G2, G3).
-- **Destructions reach no Φ in a caller** (reading, G4). 15.6.6:661 reaches by paths, and Φ has none. An Iterator's items
-  depend neither on the receiver Loan nor on its Storage (8.11.3:772; 22.2.3:133, "moving or freeing the Iterator
-  invalidates no returned item"; 15.6.3:570). 16.3.3:196's "unknown for the body's own Loan checks" is then its
-  environment effects, which meet only static Loans (§3).
-  - So `takeOne` and `replaceIt` stay valid (c56, c57).
-  - takeAcross with `source@follow = fresh@move` errs only at the second take (c8). 2f-S2 drops S2 §3's remark that this
-    destruction "has its own conflict with first".
+- **Destructions reach no Φ in a caller** (proposed reading; G4). It covers every abstract destruction in a caller,
+  a Take-only receiver's included:
+  - A descending result names only Origins of the receiver's Type, so it cannot name the receiver's storage
+    (15.6.3:570).
+  - 15.6.6:661 reaches by paths, and Φ has none.
+  - 16.3.3:196's "unknown for the body's own Loan checks" is then the destruction's environment effects, which meet only
+    static Loans (§3).
+  - For Iterators, 22.2.3:133 says so directly ("moving or freeing the Iterator invalidates no returned item").
+  - The run-time argument is (H), as S2 §2.3's H2: the drop cannot reach an item except through a raw split's obligation
+    or a Reborrow that containment forbids.
+  - Under this reading `takeOne` and `replaceIt` stay valid (c56, c57).
+  - takeAcross with `source@follow = fresh@move` errs only at the second take (c8). If G4 is answered this way, 2f-S2
+    also drops S2 §3's remark that this destruction "has its own conflict with first".
 - **Parameter Loans stay unreached.** Loans received through parameters are checked where the body is called (15.6:450),
   so `pass` stays valid (c58, today too).
 - **Exclusion (rule 3).** Φ is excused at a call of r on X when every copy of it in the check set carries `(r, X)`. This
@@ -130,11 +137,13 @@ item 3). The check must therefore reach all of them, path-less ones included:
   `Φ_prev` on `*self`, meets every body that borrows or writes through `self`: every §6 row except the adapters would
   fail (H).
 - **Carriers for path-less Loans.** Each Loan the earlier result keeps without a path is an earlier marker. It is distinct
-  from the current execution's parameters, whose values are other values. It has the atoms of the Type it arrived in
-  (with §4.1's modes):
-  - the receiver's referent Type, for content taken out of `self` (`exchange`, `takeFirst`, a Copy of a stored
-    reference) and for P12's parent Loans of `self`;
-  - the parameter's Type, for an argument's Loans (Keep's `spare`).
+  from the current execution's parameters, whose values are other values. Its atoms, with §4.1's modes, are:
+  - for content taken out of `self` (`exchange`, `takeFirst`, a Copy of a stored reference): the Type of the Place it
+    was read from if G2 keeps c24 valid, or the receiver's referent Type if G2 makes c24 an error (see "Carrier
+    granularity" below);
+  - for P12's parent Loans of `self`: `self`'s outer Origin and its parents, not the referent's atoms. These are Loans of
+    the receiver reference itself, and no Field-typed input carries them;
+  - for an argument's Loans (Keep's `spare`): the parameter's Type.
 - **Delegated tags.** Every Loan a delegated result keeps (its Φ, P12's and descent's Loans) carries `(d, w)`
   (8.11.5:816, "a Loan that its result keeps from the result of … `d`"). Without these tags the adapters' delegated call
   would meet the P12 and descent Loans its earlier item keeps, and `Iteration.kimi:32, :59` would fail (O3).
@@ -144,8 +153,17 @@ item 3). The check must therefore reach all of them, path-less ones included:
   environment effects meet only static Loans (8.11.4:790, 15.6.4:599), which is vacuous by §3.
 - **No own-input exemption for the holder.** The own-input rule never exempts the holder's elements: they stand for an
   earlier item's Loans, even where site identity gives them the current item's names.
-- **Carrier granularity.** 2f-D may take the Type of the Place the content was read from instead of the receiver's
-  referent Type. That is finer, and changes `Lending`'s verdict under G1 (ii) only.
+- **Carrier granularity is G2's c24 answer applied to conformances.** With referent-Type carriers, two unrelated Type
+  parameters of one receiver are related in a conformance although c24 relates them in no caller. Granularity therefore
+  decides rule-1 verdicts:
+  - `Hooked` (c36c: `self.hook()` with `F is Callable<() -> i32>`, then `return self.inner.next()`) and `Tagged`
+    (c59: a `confined` `self.p.ping()` with `P is Ping`, then `return exchange(self.item@uniq, with: .None)`) violate
+    with referent-Type carriers and conform with per-Place carriers.
+  - `Lending` changes under G1 (ii).
+  - Both conformances are rejected today.
+  - Per-Place carriers keep every B1 case rejected: Keep and `Topped` by the parameter's Type, `Two` and `96f3cb16122d`
+    by `Option<T>`, and Peekable by `Option<I.(Iterator).Item>` through the projection rule (proposed; G3). The adapters
+    stay valid, because their P12 markers carry `self`'s outer Origin and their descent markers are tagged.
 - **Containment.** A Loan through `self` in the earlier result is a containment failure (15.6.3:528), which the Origin
   stratum reports. The conformance problem merges into it (A6, as E12; 2f-D).
   - A delegation through a local Reborrow, `var r = self.inner@uniq; return r.next()`, is a violation. P12's Loan of `r`
@@ -262,6 +280,10 @@ These verdict changes come from other rules; none is an S2 loss:
 
 - **G1 (ii′):** the 8 rows of §9 become valid.
 - **G2 (a), rule 1's letter:** `zip`, `both` and c26 become errors; so does `sink` (c54), valid today.
+- **G2's c24-valid answer with per-Place carriers:** `Hooked` (c36c, under G1 (ii) or (ii′)) and `tagged2` (c59) become
+  valid. Both are rejected today.
+- **G4's proposed reading:** 33b (c8) loses its error at the replacement, which reverses prototype round 9's verdict
+  ("33b errs at the replacement, the second reservation and the second call"); the program stays an error.
 - **G4's other reading:** `takeOne`, `replaceIt` and c8's write become errors, valid today. Library 0, milestones 0 (H).
   Tests: at least the native fixture `UserIterationTest.GenericLoopTransfersItsProjectedItemIntoTheResult`
   (`for item in batch@move => return .Some(item@move)`), found by a grep for generic owned iteration.
@@ -284,7 +306,7 @@ the probe or implementation verdict where it matters. 2x-P6 numbers the cases (P
 | c5 | c1 with `it`'s storage ending while `first` lives | valid | E8 against a Place phantom |
 | c6 | `first = it.next(); var j = id(it@move); j.next()` | error [valid] | Loss 1 |
 | c7 | takeAcross with `swap(source, other)` | error at the second take only | Exclusive-Borrow invalidation |
-| c8 | takeAcross with `source@follow = fresh@move` (33b) | error at the second take only (today: valid); G4's other reading adds the write | Destruction reach (G4) |
+| c8 | takeAcross with `source@follow = fresh@move` (33b) | under G4's proposed reading: error at the second take only (today: valid; prototype round 9: also at the replacement); G4's other reading keeps the write's error | Destruction reach (G4) |
 | c9 | 33e (`source.takeWith(do { source@follow = fresh@move; 0 })`) | error | Invalidation inside c2's argument |
 | c10 | `first = it.next(); look(it@ref); second = it.next()`, `look` concrete | valid | Shared Borrows do not invalidate |
 | c11 | 15.6.3:574's `takeFirst` with StableTake, `r.0.take()` twice; the same with `h.1 = 5` between | valid; error at the write (P12) | P12's Loans untagged (§2) |
@@ -314,7 +336,7 @@ the probe or implementation verdict where it matters. 2x-P6 numbers the cases (P
 | c35 | `Swapped`; `Topped` (a result from the argument `spare`) | violation; violation | "Anywhere"; argument carriers |
 | c36 | Drain through a concrete generic helper (`return Helpers.pull(self.inner@uniq)`) | conforms; a violation if 2x-S1 composes helpers | §5.3 with 2x-S1 |
 | c36b | An explicit specialization; Function Item and concrete Closure evidence | checked as bodies | S2 §2.2's scope |
-| c36c | `next` calls a non-confined Callable in `self` while delegating | conforms under (ii), (ii′); violation under (i), (iii) (H) | G1 |
+| c36c | `Hooked`: `let n = self.hook()` (`F is Callable<() -> i32>`), then `return self.inner.next()` | today: violation; conforms under (ii), (ii′) only with per-Place carriers and c24 valid, and violates otherwise | G1; G2 (granularity) |
 | c37 | `var it = M.make(G.arr@ref); first = it.next()`, non-confined | error at the first call | §3 |
 | c38 | c37 with a `confined` preserves requirement, twice | valid | §3 |
 | c39 | A `confined` preserves implementation writing a mutable static | A4's `confined` error only | §3 |
@@ -323,7 +345,7 @@ the probe or implementation verdict where it matters. 2x-P6 numbers the cases (P
 | c42 | c40 with a call between that only reads it | valid | Reads do not invalidate |
 | c43 | `it.consume(it.peek())`, `peek` a `ref`-receiver requirement with a descending result | error at `consume` | R4-M68's condition; own-input rule |
 | c44 | Φ from `w.r.peek()` with `r: ref/S`, then an observing destruction of `w` | valid | E3's residue |
-| c45 | 33a–33e, 36a–36h rerun | SPEC verdicts unchanged; 33c moot | Earlier cases |
+| c45 | 33a–33e, 36a–36h rerun | SPEC verdicts unchanged, except 33b (c8): under G4's proposed reading it loses its error at the replacement; 33c moot | Earlier cases |
 | c46 | A preserves requirement whose result reborrows through a `uniq` non-receiver parameter `p` | conforms if re-rooted (§4.2); else a violation (a loss) | Non-receiver paths |
 | c47 | `var r = self.inner@uniq; return r.next()` | violation [violation] | Local Reborrow in a delegation |
 | c48 | Keep (`.Some(s) => return .Some(s@move)`, else `return self.inner.next()`) | violation (today: violation) | Argument carriers (8.11.5:816) |
@@ -337,6 +359,7 @@ the probe or implementation verdict where it matters. 2x-P6 numbers the cases (P
 | c56 | `takeOne`: `var it = iterator@move; return it.next()` | valid (today: valid); G4's other reading: error | G4 |
 | c57 | `replaceIt`: `first = it.next(); it = other@move; return first` | valid (today: valid); G4's other reading: error | G4 |
 | c58 | `pass`: `keep = other@move; a = left.next(); return (keep, a)` | valid (today: valid) | Parameter Loans unreached in callers |
+| c59 | `Tagged` (probe `tagged2`): `let n = self.p.ping()` with a `confined` `ping` on `P is Ping`, then `return exchange(self.item@uniq, with: .None)`; and its non-confined twin (probe `tagged`) | today: both violate. `tagged2` conforms only with per-Place carriers and c24 valid; `tagged` also needs (ii) or (ii′), where its unknown-effect call is vacuous; otherwise both violate | G2 (granularity); G1 |
 
 ## 9. Owner questions and SPEC gaps
 
@@ -369,10 +392,15 @@ Outside the 35 rows:
 - `Lending` (`EffectBoundImplementationTest`) keeps `a`'s Loans in its earlier result while it destroys a `J` item. It
   violates under (i), (ii′) and (iii). Under (ii) it violates with §4.2's receiver-referent carriers and conforms with
   per-Place carriers.
-- c36c is (H).
+- `Hooked` (c36c) and `tagged` (c59) are rejected today, because today's rule counts a call with unknown effects as
+  unclassifiable. They stay rejected under (i) and (iii). Under (ii) and (ii′) that call's environment effects are
+  vacuous, so their verdicts follow G2's carrier granularity.
 
-**Changes against today:** (i) none; (ii) the 8 rows, with 3 rows undetermined, plus `Lending` under per-Place carriers;
-(ii′) exactly the 8 rows; (iii) `Plain`. Library 0, milestones 0 under every option (§6).
+**Changes against today, as G1 statements:** (i) none; (ii) the 8 rows, with 3 rows undetermined, plus `Lending` under
+per-Place carriers; (ii′) exactly the 8 rows; (iii) `Plain`. Library 0, milestones 0 under every option (§6).
+
+**G2-side changes:** with per-Place carriers and c24 valid, c36c (under (ii) or (ii′)) and `tagged2` (c59) also become
+valid.
 
 **Recommendation: (ii′).** It reads S2's text literally: the by-body earlier result, and "conflicts, as today". It needs no
 atom reach or concrete-call composition, so it is independent of G2, G3 and 2x-S1, and it keeps every other current
@@ -399,9 +427,15 @@ conformances (§4.2). Loans received through parameters stay unreached in caller
 stricter answer: 15.6.5:626 quantifies over every caller, including one that binds `I` and `C` to one Type. Under that
 answer c24 errs.
 
+**The question includes the conformance carrier granularity (§4.2).** Does the c24 answer also set it?
+- c24 valid: content markers per Place, so `Hooked` (c36c) and `Tagged` (c59) conform, as G1 allows; both are rejected
+  today.
+- c24 an error: content markers by the receiver's referent Type, so both violate.
+
 Counts: library 0 and milestones 0 (§6). Tests: 2 `EffectBoundCallerTest` rows change; `sink` is a probe, with no test (H).
 
-**Recommendation: (a).** It is the text and its 8.11.5 example. c24 goes with the answer, or to 2x-S1.
+**Recommendation: (a), with the c24 answer setting the granularity.** (a) is the text and its 8.11.5 example. Tying the
+granularity to the c24 answer keeps callers and conformances under one rule. c24 goes with the answer, or to 2x-S1.
 
 ### SPEC gaps to report
 
@@ -410,17 +444,21 @@ Counts: library 0 and milestones 0 (§6). Tests: 2 `EffectBoundCallerTest` rows 
   - By the letter, c53, c55 and c54 err; all three are valid today.
   - §4.1's own-input rule keeps c53 and c55 valid; c54 still errs through `sink`.
   - 2f-3 lands rule 1 before S2, so this goes to 2x-S1 or OQ8 before 2f-3.
-- **G4, a destruction in a caller.** 22.2.3:133 ("freeing the Iterator invalidates no returned item") and 15.6.3:570 stand
-  against 15.6.6:661 with 16.3.3:196 ("unknown for the body's own Loan checks"). The question is whether an abstract
-  destruction meets an earlier result's Φ.
-  - Proposed reading: no (§4.1).
-  - Otherwise `takeOne`, `replaceIt`, c8's write and a generic `for` loop that returns its item are losses: valid today;
-    library 0, milestones 0 (H); tests at least 1 (§7).
+- **G4, a destruction in a caller.** Does an abstract destruction in a caller meet an earlier result's Φ? This covers
+  every abstract destruction in a caller, a Take-only receiver's included, not only Iterators.
+  - Proposed reading: no (§4.1). A descending result names only Origins of the receiver's Type, not its storage
+    (15.6.3:570), and 15.6.6:661 reaches by paths. 16.3.3:196's "unknown for the body's own Loan checks" then names
+    only the mutable-static conflict. 22.2.3:133 says the same for Iterators.
+  - The run-time argument is (H): raw-split obligations and containment, as in S2 §2.3's H2.
+  - Under the proposed reading, prototype 33b (c8) loses its error at the replacement (§7).
+  - Under the other reading, `takeOne`, `replaceIt`, c8's write and a generic `for` loop that returns its item are
+    losses: valid today; library 0, milestones 0 (H); tests at least 1 (§7).
   - For 2x-S1.
 
 **Pointers, no new question.**
 - 2x-S1's readings of `59e2289ce4f4` (c15, c36) and of the stored Φ (c25) stand.
-- 2f-S2 deletes S2's statics clause (§3) and S2 §3's destruction remark (§4.1).
+- 2f-S2 deletes S2's statics clause (§3). It deletes S2 §3's destruction remark only if G4 takes the proposed reading
+  (§4.1).
 - The F6 audit's ledger note is corrected: Choose and Branch are 2f-5's violations under every option; StoredPair follows
   G1 (§5.5).
 
