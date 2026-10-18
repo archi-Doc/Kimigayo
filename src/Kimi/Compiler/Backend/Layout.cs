@@ -1,30 +1,41 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M29): its
-// size, alignment, stride, Field offsets and LLVM representation, for every generator (PD2: the old pool calls it, never a copy).
-// Rows: IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function handles, and the sequence handles
-// (Slice, Array, Dictionary words). Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums,
-// Closures and Function Items. P7c brings the Type memo, typed limits, the count bound and the depth and cycle guard (R5-M29), before
-// any MIR caller; Weak<S> comes with its operations (P41).
-// Input: a closed Type. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
-// Output: a Result (S2-S4 X18): OK with the Type's ValueLowering; CLayout with the C-layout instance, at any depth, that stores a
-// zero-sized Field; or Limit, when a size or offset exceeds 2^31 - 1. A Type without a row is an internal error.
-// Invariants: deterministic; one shared record per representation, so a call that finds its records allocates nothing; the
-// complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL
-// 21.1.3), while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is
-// unchanged. No Type memo until P7c: Binding keeps interned Types across passes and re-substitutes their stored Types, so the old
-// pool memoizes per body.
+// Layout, one instance per compilation (Compilation.Layout; IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M29, R5-M37).
+// Responsibility: the size, alignment, stride, Field offsets and LLVM representation of a closed Type for every generator (PD2: the
+// old pool calls it, never a copy), and its verdict: OK, a typed generation limit, the C-layout zero-sized rule anywhere in the
+// 64-level window (S2-S4 X18), or a failure derived from Binding's rejected storage. Rows (static, Row): IMPL 21.1.3's scalars, Unit,
+// string, Never, borrows and raw pointers, object and function handles, and the sequence handles (Slice, Array, Dictionary words).
+// Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
+// per program version; Weak<S> comes with its operations (P41).
+// Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, InlineCycle); IMPL 21.1.3's rows. A
+// borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
+// Outputs: a Result (Outcome, Value, Instance); Row(type) for the old scalar-value gate until G8. A Type without a row is an internal
+// error. The collector (InstanceCollector) alone maps the outcomes: a limit to a Resource record (K10a), CLayout to
+// InvalidCLayout_Kd at the use (K10b), Rejected to a derived failure without a record; codegen after acceptance treats any outcome
+// but Ok as a broken contract (InternalInvariant_Kd).
+// After a failed Binding: Rejected for a declaration with InlineCycle, a null stored Field Type, null CaseTypes or a fixed array with
+// Length < 0; an unresolved base, which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
+// Invariants: an answer depends only on the Type and the program version, never on query order; one record per representation
+// within a program version; warm calls allocate 0 B; at most 65 placement levels per call and 65 memo entries per Type; the complete
+// base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL 21.1.3), while
+// the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is unchanged.
 // Must not read syntax (AdtDef.IsCLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
-// pool keeps its callbacks until G8), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), or use LINQ.
+// pool keeps its callbacks until G8), keep static mutable state, detect cycles itself (Binding's InlineCycle), decide derived
+// failures (the collector's), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), use LINQ, be called concurrently on one
+// instance, or be given another compilation's Types (their stored Types follow that compilation's edits).
 
 using System.Globalization;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
-/// <summary>The storage layout of closed Types (IMPL 21.1).</summary>
-internal static partial class Layout
+/// <summary>The storage layout of one compilation's closed Types (IMPL 21.1).</summary>
+internal sealed partial class Layout
 {
+    /// <summary>IMPL 21.3.2's bound on a Type's placement height: a row is 0 high; a struct, Tuple, Closure, Function Item, fixed
+    /// array or enum 1 more than its highest base, Field, component, element or Case payload Tuple.</summary>
+    internal const int MaximumHeight = 64;
+
     private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";
 
     // SPEC 4.8.6, 4.9.5: a Slice is {buffer, length} and an Array handle {buffer, length, capacity}; a Dictionary handle holds seven
@@ -45,19 +56,32 @@ internal static partial class Layout
 
     private static readonly Dictionary<BoundType, ValueLowering> Primitives = CreatePrimitives();
 
-    /// <summary>Gets the layout and representation of a closed Type.</summary>
-    /// <param name="type">A Type of one of the laid-out rows.</param>
-    /// <returns>The shared representation record, or the Limit or CLayout result of a placement.</returns>
-    internal static Result Of(BoundType type) => type.Kind switch
+    /// <summary>A Type's verdict (S2-S4 X18, refined by DECISIONS R5-M37).</summary>
+    internal enum Outcome : byte
     {
-        BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem => Place(type),
-        BoundTypeKind.FixedArray => PlaceArray(type),
-        _ when AdtDef.IsStruct(type) => Place(type),
-        _ when AdtDef.IsEnum(type) => PlaceEnum(type),
-        _ => new(Row(type), null),
-    };
+        /// <summary>Laid out: the result's Value is its record.</summary>
+        Ok,
 
-    private static ValueLowering Row(BoundType type) => type.Kind switch
+        /// <summary>A size or offset exceeds 2^31 - 1 (IMPL 21.3.2).</summary>
+        SizeLimit,
+
+        /// <summary>A fixed array holds more than 2^31 - 1 elements, zero-sized ones included (IMPL 21.3.2).</summary>
+        CountLimit,
+
+        /// <summary>The placement height exceeds <see cref="MaximumHeight"/> and no CLayout lies in the window (IMPL 21.3.2).</summary>
+        DepthLimit,
+
+        /// <summary>The result's Instance, a C-layout instance placed in the window, stores a zero-sized Field (SPEC 6.7.1, 8.15.3).</summary>
+        CLayout,
+
+        /// <summary>The result's Instance is a struct, enum or fixed array whose storage Binding rejected: derived, never reported.</summary>
+        Rejected,
+    }
+
+    /// <summary>Gets IMPL 21.1.3's static row of a Type, which the old scalar-value gate reads until G8.</summary>
+    /// <param name="type">A scalar, Unit, string, Never, borrow, raw pointer, handle or sequence Type.</param>
+    /// <returns>The row's shared record; a Type without a row is an internal error.</returns>
+    internal static ValueLowering Row(BoundType type) => type.Kind switch
     {
         BoundTypeKind.Primitive => Primitives.GetValueOrDefault(type) ?? throw Outside(type),
         BoundTypeKind.Semantics => type.Semantics switch
@@ -74,6 +98,12 @@ internal static partial class Layout
         BoundTypeKind.Dictionary => DictionaryHandle,
         _ => throw Outside(type),
     };
+
+    /// <summary>Gets the layout and verdict of a closed Type of this compilation, memoized for the program version.</summary>
+    /// <param name="type">A Type of one of the laid-out rows.</param>
+    /// <returns>Ok with the representation's one record, or the Type's other outcome (precedence: CLayout in the window,
+    /// DepthLimit, a limit, Rejected, the Type's own size).</returns>
+    internal Result Of(BoundType type) => this.Walk(type, MaximumHeight).Result;
 
     private static InvalidOperationException Outside(BoundType type) => new("Layout has no row for the Type " + type.Name + ".");
 
@@ -132,10 +162,14 @@ internal static partial class Layout
             => new(llvm, size, size, size, ReadOnlyMemory<int>.Empty);
     }
 
-    /// <summary>A Type's layout (S2-S4 X18): OK with its <see cref="Value"/>; CLayout with the C-layout <see cref="CLayout"/>
-    /// instance, at any depth, that stores a zero-sized Field (SPEC 6.7.1, 8.15.3); or Limit, with neither, when a size or offset
-    /// exceeds the generation limit (IMPL 21.3.2).</summary>
-    /// <param name="Value">The shared representation record, when the Type is laid out.</param>
-    /// <param name="CLayout">The C-layout instance without a layout.</param>
-    internal readonly record struct Result(ValueLowering? Value, BoundType? CLayout);
+    /// <summary>A Type's layout and verdict: <see cref="Value"/> exactly for Ok, <see cref="Instance"/> exactly for CLayout and
+    /// Rejected.</summary>
+    /// <param name="Outcome">The verdict.</param>
+    /// <param name="Value">The representation's one record, when the Type is laid out.</param>
+    /// <param name="Instance">The C-layout instance storing a zero-sized Field, or the Type whose storage Binding rejected.</param>
+    internal readonly record struct Result(Outcome Outcome, ValueLowering? Value, BoundType? Instance)
+    {
+        /// <summary>Gets a value indicating whether the outcome is a generation limit (IMPL 21.3.2), a Resource record's cause.</summary>
+        internal bool IsLimit => this.Outcome is Outcome.SizeLimit or Outcome.CountLimit or Outcome.DepthLimit;
+    }
 }

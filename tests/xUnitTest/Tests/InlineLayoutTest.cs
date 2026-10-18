@@ -27,6 +27,11 @@ public class InlineLayoutTest
         Assert.False(c.Binding.Result.IsComplete);
         var diagnosed = c.Binding.Issues.Where(x => x.Code == DiagnosticCode.InvalidInlineLayout_Kd).Select(x => ((Kimi.Compiler.Parsing.DeclarationContainerKoto)x.Node).Name).Order(StringComparer.Ordinal);
         Assert.Equal(cyclic.Split(','), diagnosed);
+
+        // DECISIONS R5-M37: Binding publishes the same declarations as AdtDef.InlineCycle, Layout's Rejected storage.
+        var published = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.DeclarationContainerKoto>()
+            .Where(static x => x.SymbolOf()?.Adt is { InlineCycle: true }).Select(static x => x.Name).Order(StringComparer.Ordinal);
+        Assert.Equal(cyclic.Split(','), published);
     }
 
     [Fact]
@@ -51,6 +56,36 @@ public class InlineLayoutTest
         Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
         Assert.False(c.Validate(out var error));
         Assert.True(c.Emission.FailureIsResourceLimit, error);
+    }
+
+    [Fact]
+    public async Task ABodyResolvingNestedTypesBottomUpReportsTheDepthLimit()
+    {
+        // DECISIONS R5-M37 (a declared change of P7c): the old pool resolves each Type once per body, so t65's one-component Tuple,
+        // 65 levels high, reused t64's resolution and was generated, while a fresh resolution reports the depth limit; Layout's
+        // placement height now decides it whatever the order.
+        var source = new StringBuilder("func f() -> i32\n    let t0 = 1\n");
+        for (var i = 1; i <= 70; i++)
+        {
+            source.Append("    let t").Append(i).Append(" = (t").Append(i - 1).Append(",)\n");
+        }
+
+        source.Append("    return 0\nlet r = f()\nConsole.writeLine(\"deep\")\n");
+        var directory = Path.Combine(Path.GetTempPath(), "kimi-inline-layout-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var console = new DiagnosticContractTest.DiagnosticConsole();
+            var project = new Project(new Kimigayo(console)) { Name = "layout", Directory = directory };
+            project.AddSource("main.kimi", source.ToString());
+            Assert.False(await project.Generate(TestContext.Current.CancellationToken));
+            Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
+            Assert.Contains("depth limit of 64 levels", console.Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(directory, true);
+        }
     }
 
     [Theory]

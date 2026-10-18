@@ -1918,7 +1918,8 @@ structure is recorded here by the unit that first implements it.
     `MissingNativeRequirement_Kd` for the missing-supply cause only.
 - **R5-M19 `Layout`** (2026-10-18, planning session; plan P7a, package §3.5 and §7, S2-S4 X18, X31, X34 and O9, under R5-M18;
   promoted under R5-M14) A permanent Backend component that owns the storage layout of a closed Type for every generator:
-  `Layout.Of(BoundType)` returns its `ValueLowering` (size, alignment, stride, Field offsets, LLVM representation). P7a's rows:
+  `Layout.Of(BoundType)` (static here; an instance method per compilation since R5-M37) returns its `ValueLowering` (size, alignment,
+  stride, Field offsets, LLVM representation). P7a's rows:
   IMPL 21.1.3's scalars (the table that was `WindowsLowering`'s), Unit, string, Never (zero-sized, laid out as Unit), borrows,
   object borrows and raw pointers (one pointer, `RuntimeAbi.StringReference`), object handles (one word), function values
   (16 bytes), `Loan<T>` (the record of a struct without stored Fields), and the Slice, Array and Dictionary handles (2, 3 and 7
@@ -2116,12 +2117,14 @@ structure is recorded here by the unit that first implements it.
 - **R5-M29 `Layout.Of` placement and its result** (2026-10-18, planning session; plan P7b, package C §3.5, S2-S4 X1, X18, X31 and
   X34, under R5-M18 and R5-M19) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
   with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither, when
-  a size or offset exceeds 2^31 − 1. `Backend/Layout.Placement.cs` holds the old pool's `Place` and enum placement, promoted:
+  a size or offset exceeds 2^31 − 1 (superseded by R5-M37's outcomes and window). `Backend/Layout.Placement.cs` holds the old pool's
+  `Place` and enum placement, promoted:
   Kimigayo mode's alignment-descending groups in written order, C mode's written order (from `AdtDef.IsCLayout`; the attribute walk
   and the open, derived and empty re-check are deleted, since Binding rejects those), the `i32` tag before the payload union,
   zero-sized parts kept, and the complete base with its tail padding as the prefix (X1; a derived struct has no C layout, SPEC
   6.7.1). The `Loan<T>` row is deleted: struct placement gives the identical record. Each representation has one record, shared by
-  every Type, compilation and thread (a concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch), so
+  every Type, compilation and thread (a concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch;
+  superseded by R5-M37: records and scratch per compilation, records per program version), so
   a call that finds its records allocates nothing. The old pool keeps its own recursion (the Origin guard, Never's null through the
   scalar gate, destruction, collection Fields, the count and depth bounds) and calls `Layout.Of` where it placed, after its shape
   interning, mapping CLayout to its refusal and Limit to its resource failure.
@@ -2135,14 +2138,16 @@ structure is recorded here by the unit that first implements it.
     `var b: B`, `Option<obj/P<A, B>>` in an inferred `f((), values@move)` with `values: Array<i32>`) then emits the collection
     Field's descriptor and the Array helpers it calls, unreferenced, and the later aggregate numbers shift by one; execution is
     unchanged.
-  - Staged gap (new unit P7c): `Layout` keeps no Type memo, against package C §3.5's "memoization by interned Type" and R5-M19's
+  - Staged gap (new unit P7c; closed by R5-M37): `Layout` keeps no Type memo, against package C §3.5's "memoization by interned Type"
+    and R5-M19's
     "placement brings it". Binding keeps interned Types across passes (`Binding.ResetPass`) and re-substitutes their stored Types
     when `storageVersion` advances (`Binding.Storage.cs`); a nominal Type reaches its compilation (`AdtDef.Instance`) but a
     structural one does not, so a static memo keyed by Type would go stale and retain every compilation's Types. The old pool
     memoizes per body. P7c takes the full process before any MIR caller of `Layout.Of` (C2a, C3c) and owns the memo, the depth and
     cycle guard, the count bound (`[2147483648 of ()]` gets OK today), a Limit that is not `default(Result)`, and the scope of the
     process-wide record table (its lifetime in the LSP server).
-  - Rejected: a per-compilation `Layout` instance (R5-M19 fixes the static `Layout.Of`, and rows and placement would split);
+  - Rejected: a per-compilation `Layout` instance (R5-M19 fixes the static `Layout.Of`, and rows and placement would split;
+    superseded by R5-M37);
     `Layout.Place(fields)` fed by the old pool's records (a second entry beside `Of`); comparing records instead of the layout-mode
     flag in the old pool's shape interning (a struct of a raw pointer and an `isize` would stop sharing the Slice handle's shape);
     keeping the per-Field C-mode check in the old pool (a second owner of X18's rule); the C-mode refusal of an alignment above 16
@@ -2286,3 +2291,44 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each warm
     rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (A5P's C2: a fact outside R7's shape); a
     comparer modulo Origins (D1's Design B).
+- **R5-M37 `Layout` per compilation: memo, bounds and outcomes** (2026-10-18, planning session; plan P7c, full process,
+  `draft/Sketches/R5 P7c/P7c-package.md`; package C §3.5 and §3.13, K §4.3 and §4.8, S2-S4 X18; supersedes R5-M19's static
+  `Layout.Of`, and R5-M29's rejected per-compilation instance, its records "shared by every Type, compilation and thread" and its
+  Limit "neither")
+  - `Layout` is one instance per compilation, `Compilation.Layout`. `Of(BoundType)` gives a closed Type of that compilation a
+    `Layout.Result(Outcome, Value, Instance)`: Ok with the record; SizeLimit (a size or offset over 2^31 − 1); CountLimit (a fixed
+    array of more than 2^31 − 1 elements, zero-sized ones included); DepthLimit (placement height over 64: a row is 0, a struct,
+    Tuple, Closure, Function Item, fixed array or enum 1 + its highest base, Field, component, element or Case payload Tuple);
+    CLayout with the C-layout instance storing a zero-sized Field; Rejected with the struct, enum or fixed array whose storage
+    Binding rejected (an inline storage cycle, a stored Type it did not resolve, an unresolved length). An unresolved base, which
+    Binding publishes as no base, is laid out without it.
+  - Precedence: CLayout, then DepthLimit, a limit (parts, then own count), Rejected, the Type's own size; within each, the first in
+    placement order. No limit hides a CLayout the walk sees within the 64-level window (SPEC 23.1, IMPL 21.3.2); one placed at level
+    64 or below, or whose zero-sized Field's layout reaches past the window (a placed one, as the 0-Tuple, makes that level 62),
+    stays behind DepthLimit, as in legacy: the one remaining narrowing of X18's "at any depth".
+  - The collector (`InstanceCollector`) is the one owner of the outcome mapping and treats Rejected as derived (K §4.3, R4-M10's
+    pattern); codegen after acceptance treats any outcome but Ok as a broken contract.
+  - `AdtDef.InlineCycle`: Binding's fact that a struct or enum declaration lies on an inline storage cycle, written by
+    `ValidateInlineLayouts` for every storage declaration in every pass (R5-M26's pattern); Layout detects no cycle itself.
+  - Memo: (Result, height) per placed Type by interned reference, and for a Type deeper than its remaining budget one entry per
+    (Type, budget) with its first CLayout in the window (at most 65 entries per Type), so an answer depends on the Type alone and
+    placement is linear per program version (P7b's re-placement was exponential over shared parts: `emit` of a 24-level DAG took
+    9.3 s against 4.2 s before P7b; with the memo `emit` takes as long as `check`, whose own cost on such DAGs is PLAN G140). Memo
+    and records are cleared by `Compilation.InvalidateSourceAnalysis` (R5-M20), on R4-M51's premise; a warm call allocates 0 B, and
+    both hold only the current program's Types and representations. One record per representation within a program version; one
+    thread at a time; the concurrent table and thread-static scratch are deleted.
+  - IMPL 21.1.3's rows stay static in `Layout.Row`, read only by `WindowsLowering.GetValue` until G8 (then private).
+  - The old pool takes the instance through `BodyLowering`, maps Size and Count to its size failure, Depth to its depth failure,
+    CLayout to its refusal and Rejected to an internal error. Declared change: a Type of placement height over 64 that the old pool
+    accepted only because the same body had resolved its inner Types first now reports `GenerationResourceLimit_Kd` (a chain of
+    one-component Tuple locals, `InlineLayoutTest`; a trace found no other in the suite, fixtures and milestones). MIR's bound counts
+    placed levels only, so a Type of height 64 whose leaf legacy counts (the chain `S0 { v: i32 }` … `S63`) is accepted by MIR and
+    refused by legacy: an R5-M6 (d) row at the first MIR observation.
+  - Rejected: a static Type-keyed memo (stale after an edit, retains every compilation's Types); a static weak table with an edit
+    epoch (couples compilations); a memo reached through the Type (structural Types unmemoized); clearing per pass (re-placement on
+    each warm rebuild); records kept for the compilation's life (grow across edits; the old pool's interning compares child shapes);
+    a path depth (order-dependent); a larger bound or none (legacy disagreement, stack); a cut that keeps walking unmemoized parts
+    (exponential above 64 levels); DepthLimit before every other outcome (hid a CLayout the walk sees); a cycle as DepthLimit (a
+    Resource record for a Language error); first-failure precedence (a limit hid a Language failure); a Result of independent
+    fields (invalid combinations).
+  - R5-M29's reason no longer holds: rows stay one static owner and placement needs a per-program owner for its memo.

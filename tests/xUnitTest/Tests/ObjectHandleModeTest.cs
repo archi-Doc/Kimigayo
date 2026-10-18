@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Checking;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
@@ -39,7 +40,7 @@ public class ObjectHandleModeTest(ITestOutputHelper output)
     [Fact]
     public void EqualSizedHandlesKeepModeSpecificDestructionLayouts()
     {
-        var pool = new AggregateLayoutPool();
+        var pool = new AggregateLayoutPool(new Layout());
         var modes = new[] { SemanticsKind.Obj, SemanticsKind.Rc, SemanticsKind.Arc };
         var layouts = new AggregateLayout[3];
         for (var i = 0; i < modes.Length; i++)

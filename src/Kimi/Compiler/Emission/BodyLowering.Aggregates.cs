@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
 {
-    private readonly AggregateLayoutPool aggregateLayouts = new();
+    private readonly AggregateLayoutPool aggregateLayouts;
     private readonly Dictionary<BoundType, bool> ownedPatternTypes = new(ReferenceEqualityComparer.Instance);
     private bool formattingRuntimeUsed;
 

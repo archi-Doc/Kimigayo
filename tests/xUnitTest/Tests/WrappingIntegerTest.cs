@@ -61,7 +61,7 @@ public class WrappingIntegerTest
         Assert.Same(wrapping, variables["h"].NameKoto.TypeOf());
         Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
         Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
-        Assert.Same(Layout.Of(primitive).Value, Layout.Of(wrapping).Value);
+        Assert.Same(Layout.Row(primitive), Layout.Row(wrapping));
     }
 
     [Theory]
