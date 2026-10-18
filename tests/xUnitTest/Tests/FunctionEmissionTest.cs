@@ -56,8 +56,7 @@ public class FunctionEmissionTest
     public void NonterminationHasNoFabricatedReturn(string name, string source)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, "begin\n", timeoutMilliseconds: 200);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]
@@ -216,6 +215,36 @@ public class FunctionEmissionTest
 
         Assert.Equal(0, allocated);
         Assert.True(valid);
+    }
+
+    // DECISIONS R5-M58: an import edited without changing its C signature (a parameter renamed) reuses its previous signature, without
+    // allocating; a changed one gets a new signature.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AbiPoolReusesAnEditedImportWithoutAllocating()
+    {
+        var pool = new FunctionAbiPool();
+        var (c, touch) = Import("pointer: raw/i32");
+        var abi = pool.Import(null, touch, c.Layout, "touch");
+        var (edited, renamed) = Import("address: raw/i32");
+        FunctionAbi? reused = null;
+        var allocated = AllocationMeasurement.Measure(() => reused = pool.Import(abi, renamed, edited.Layout, "touch"));
+        Assert.Same(abi, reused);
+        Assert.Equal(0, allocated);
+        var (changed, widened) = Import("pointer: i64");
+        Assert.NotSame(abi, pool.Import(abi, widened, changed.Layout, "touch"));
+    }
+
+    // A compilation whose one import touch takes the parameter, and its declaration.
+    private static (Compilation Compilation, FunctionKoto Import) Import(string parameter)
+    {
+        var c = Compilation.CreateForTest();
+        c.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var source = $"group Native\n    #LibraryImport(\"codec\", \"touch\")\n    public unsafe func touch({parameter}, value: uniq/i64, small: u8) -> ()\n";
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source + "public func main() => ()"));
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        return (c, KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "touch"));
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
