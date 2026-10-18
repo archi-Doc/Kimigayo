@@ -3177,7 +3177,7 @@ structure is recorded here by the unit that first implements it.
   storage-nesting row; None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are type-driven items: the Self's
   layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate is null (`TyCtxt.Compose`,
   PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
-  - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets; K6b landed all but the requirement Items, R5-M70):
+  - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets; K6b landed them, R5-M70):
     requirement Items (rows 5 and 12), whose substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until
     K6": they now wait for K6b); row 6's writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim
     disposition's Builtin item, which need F6's Self-bearing `Synthesized` factory (package F §4.5's input); a Builtin item's leaves,
@@ -3188,39 +3188,46 @@ structure is recorded here by the unit that first implements it.
   - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
     places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
     plans).
-- **R5-M70 Formatting, writer and comparison-leaf edges; requirement Items wait for an Item reference match** (2026-10-19, K lane; plan
-  K6b, the K package's §4.3 Builtin row and §4.5 rows 2 and 6, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68; DEC
-  Q6 form 1) What a compiler function or a shim runs on a user Type is `TyCtxt.Witness` of the requirement it runs there under F6's
-  Self-bearing `Synthesized(requirement, self)`, acted on by R5-M67's kind table, one function (`InstanceCollector.Requirement`) for rows
-  2, 3 and 6. A Fn callee without a MIR body whose published row runs a requirement (`TyCtxt.Published`: TextToString, TextTryFormat and
-  WriterWrite run Utf8Format's `format` on the Type below parameter On, under the composed substitution) targets that witness, a built-in
-  formattable Type's being the BuiltinFormat shim, a `Builtin` item; an `ErasedWriter` call targets its Type argument's BufferWriter
-  `reserve` witness (SPEC 22.10.1; `TyCtxt.OwnRequirement(KimiDeclarationId)`, new, a library Contract's own requirement), none for a
-  `reserve` without a MIR body (FixedBuffer's, HeapBuffer's: their legacy rows, C8*). A Fn callee of a Shim compiler function does not
-  occur: a built-in target's declaration is its requirement (`CallPlan.KindOf`), so MIR builds a Requirement callee. A BuiltinEquals or
-  BuiltinCompare item's targets, at its default site, are the Witness leaves of `TyCtxt.Comparison(its Contract, Self, operators: false)`
-  depth first, each the leaf witness's Body under the leaf's substitution; Composite recurses and Builtin has none; a Requirement or None
-  leaf is `InternalInvariant_Kd` and no tree (Limit) the storage-nesting gap, at the item's site; BuiltinFormat and BuiltinArithmetic,
-  over scalars, call no witness. The Builtin key carries its compiler function (`MonoKey.Symbol`), whose scope owner is the comparison's
-  Contract (F §4.6): Equals, Compare and Format have one symbol per kind, and an arithmetic shim becomes one item per operation Contract
-  (the K6 review's finding).
-  - Requirement Items (rows 5 and 12, and row 13's adapter of one) keep no target and no record; R5-M67's staging of them moves here.
-    `Witness` needs the Contract reference an Item records (`Components[1]`, a Type). For a bound reference (`T.tag` under `T is
-    Tag<i32>`; arithmetic) `Binding.InstanceContract` needs a recorded bound symbol, which only Binding's private `BoundContractReference`
-    makes (it creates and rebuilds bound symbols), and `TyCtxt.ItemContract` is null for a closed Item (`CallPlan.Set` clears
-    `RequirementContract` in the materializer); the template's `ItemContract` would serve rows 5 and 12 but not an ItemAdapter, whose
-    replay has only the closed Item Type (`let g: (i32) -> i32 = T.tag` under `T is Owned` is valid). A pure call form of `SubstOfItem`
-    would also change A4, whose `MirEffects.Solve.cs` reads a closed requirement Item's substitution as the witness it runs. Removal
-    condition (open issue; an R5 hold on `Binding.RequirementInstances.cs`): the matching half takes a recorded Contract declaration with
-    a bound reference of it as bound, so an Item's Contract reference and call come from its Type alone; `SubstOfItem`'s requirement
-    branch then gives that witness's substitution for a closed Self and the requirement call for an abstract one, and the three sites
-    take `Witness`.
-  - Rejected: the template's `ItemContract` for rows 5 and 12 (row 13 left on a second rule; it reads Binding's item-context cache); the
-    comparison's Contract mapped from the `CompilerFunctionKind` in the collector (a second copy of `PrepareBuiltinTargets`' table); a
-    column naming BufferWriter on the intrinsic rows (one Witness row, whose value already means the writer's witness); a published row
-    for `Text.writer` (A4 would read creating the adapter as running `reserve`).
-  - Verified (`InstanceCollectorTest`, each failing before): the format witnesses of generic `toString`, `tryFormat` and `write` calls in
-    their instances and of `format` itself, a user Type's body and `i32`'s BuiltinFormat item without targets; an erased writer over a
-    user sink its `reserve` body and over a fixed buffer none; tuple comparisons' Builtin items targeting their leaves' `equals` and
-    `compare` bodies, a nested tuple twice, and a generic instance sharing its erased Self's item; the library (as roots) and the 44
-    milestones under sel give no record.
+- **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
+  package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
+  DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a
+  compiler function, a requirement's function item or a shim runs on a user Type is `TyCtxt.Witness` of the requirement there, acted on
+  by R5-M67's kind table, one function (`InstanceCollector.Requirement`, given the requirement and its `RequirementTarget`, whose Builtin
+  and Storage substitution is the call's) for rows 2, 3, 5, 6, 12 and 13. The call on a Self is F6's factory, now
+  `TyCtxt.Synthesized(requirement, self, reference)`: a bound Contract reference is its declaring Type (F fact 5, as `SubstOf` holds a
+  call's), a Contract's own Type binds nothing.
+  - Rows 5, 12, 13: a requirement Item records its Contract reference as a Type (its Components: Self, reference), so
+    `Binding.InstanceContract`, the one matching half, reads a recorded Contract declaration with a reference of it in the instance as
+    that reference; `TyCtxt.Witness(item)` (new) is Witness of the requirement's call on the Item's Self through that declaration, null
+    for another function's Item. A requirement Item's constant, its call and its ItemAdapter target that witness's item. `SubstOfItem` is
+    unchanged (Binding's Item context: the witness's call for a closed Self, which A4's `MirEffects` enters), and the witness's Body
+    substitution equals it; the materializer passes no reference for an unbound recorded Contract, so its matching is unchanged.
+  - Row 2: a Fn callee without a MIR body whose published row runs a requirement (`TyCtxt.Published`: TextToString, TextTryFormat and
+    WriterWrite run Utf8Format's `format` on the Type below parameter On, under the composed substitution) targets that witness, a
+    built-in formattable Type's being the BuiltinFormat shim, a `Builtin` item. A Fn callee of a Shim compiler function does not occur: a
+    built-in target's declaration is its requirement (`CallPlan.KindOf`), so MIR builds a Requirement callee (row 3).
+  - Row 6: an `ErasedWriter` call targets its Type argument's BufferWriter `reserve` witness (SPEC 22.10.1;
+    `TyCtxt.OwnRequirement(KimiDeclarationId)`, new, a library Contract's own requirement), none for a `reserve` without a MIR body
+    (FixedBuffer's, HeapBuffer's: their legacy rows, C8*).
+  - Builtin leaves: a BuiltinEquals or BuiltinCompare item's targets, at its default site, are the Witness leaves of
+    `TyCtxt.Comparison(its Contract, Self, operators: false)` depth first, each the leaf witness's Body under the leaf's substitution;
+    Composite recurses and Builtin has none; a Requirement or None leaf is `InternalInvariant_Kd` and no tree (Limit) the storage-nesting
+    gap, at the item's site; BuiltinFormat and BuiltinArithmetic, over scalars, call no witness.
+  - Departure from the K package's key table (§4.3: Builtin = erased Self and `CompilerFunctionKind`): the Builtin key also carries its
+    compiler function (`MonoKey.Symbol`), since F §4.6 takes a shim's comparison Contract as the scope owner of the shim's compiler
+    function, which the kind alone does not name. Equals, Compare and Format have one symbol per kind, so their items do not change; an
+    arithmetic shim becomes one item per operation Contract (the K6 review's finding that one item held every arithmetic requirement).
+  - Rejected: a call-form `SubstOfItem` (A4 reads a closed requirement Item's as the witness it runs, and it drops the Item context's
+    input Origins); the template's `ItemContract` for rows 5 and 12 (null for a closed Item, and an ItemAdapter has no template); a bound
+    symbol from Binding's `BoundContractReference` (private, creates and rebuilds bound symbols); the comparison's Contract mapped from
+    the `CompilerFunctionKind` in the collector (a second copy of `PrepareBuiltinTargets`' table); a column naming BufferWriter on the
+    intrinsic rows (one Witness row, whose value already means the writer's witness); a published row for `Text.writer` (A4 would read
+    creating the adapter as running `reserve`).
+  - Verified (`InstanceCollectorTest`, each new row failing before): `T.equals` Items in instances over a struct (its `equals`) and `i32`
+    (the BuiltinEquals item) where made and called; a `T.tag` Item through `T is Tag<bool>` on a Type conforming to `Tag<i32>` and
+    `Tag<bool>`, made, erased (its ItemAdapter) and called, each the `tag(x: bool)` body, whose substitution is `SubstOfItem`'s; a virtual
+    slot's Item none; the format witnesses of generic `toString`, `tryFormat` and `write` calls and of `format` itself, a user Type's body
+    and `i32`'s BuiltinFormat item without targets; an erased writer over a user sink its `reserve` body and over a fixed buffer none;
+    tuple comparisons' Builtin items targeting their leaves' `equals` and `compare` bodies, a nested tuple twice, and a generic instance
+    sharing its erased Self's item; the library (as roots) and the 44 milestones under sel give no record; the witness twins
+    (`TyCtxtTest`, `ComparisonCompositionTest`) unchanged.

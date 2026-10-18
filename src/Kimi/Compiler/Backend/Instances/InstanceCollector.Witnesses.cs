@@ -5,24 +5,24 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Backend;
 
-// Requirement edges (K package 4.5 rows 2, 3 and 6 and their witness results; F package 4.5 and 4.6; S2-S4 X14, X16, X28; DECISIONS R5-M61,
-// R5-M67, R5-M70) and the targets of the shim items.
+// Requirement edges (K package 4.5 rows 2, 3, 5, 6, 12 and 13 and their witness results; F package 4.5 and 4.6; S2-S4 X14, X16, X28;
+// DECISIONS R5-M61, R5-M67, R5-M70) and the targets of the shim items.
 internal sealed partial class InstanceCollector
 {
-    // K 4.5 rows 2, 3 and 6: what a requirement runs in the item's instance, TyCtxt.Witness of it with the Contract reference its call
-    // recorded and the call's closed substitution (X16), a requirement call's composed one or a compiler function's call on a Self: a Body's
-    // function item, the implementation its instance selects (SPEC 8.13.3; -1 without a body); a Builtin's shim item, keyed by its compiler
-    // function and the erased Self; a Storage witness's property-witness item, keyed by its Field, the erased Self and its operation (X14,
-    // X28), whose key's signature agrees with the requirement's in the instance. OCC-X's refusal and a Self whose storage does not complete
-    // are capability gaps at the call; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature
-    // disagrees are broken contracts; a kind without a row is a fault.
-    private int Requirement(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, BindingSymbol? contract, Subst subst)
+    // K 4.5 rows 2, 3, 5, 6, 12 and 13: what a requirement runs in the item's instance, TyCtxt.Witness of it with the Contract reference its
+    // call recorded and the call's closed substitution (X16): a requirement call's composed one, a compiler function's call on a Self or a
+    // requirement Item's call. A Body's function item, the implementation its instance selects (SPEC 8.13.3; -1 without a body); a Builtin's
+    // shim item, keyed by its compiler function and the erased Self; a Storage witness's property-witness item, keyed by its Field, the
+    // erased Self and its operation (X14, X28), whose key's signature agrees with the requirement's in the instance (a Builtin's and a
+    // Storage witness's substitution is the call's). OCC-X's refusal and a Self whose storage does not complete are capability gaps at the
+    // call; None, no answer for the closed Self of an accepted program, and a Storage witness whose signature disagrees are broken
+    // contracts; a kind without a row is a fault.
+    private int Requirement(MirProgram program, int item, SourceRef subject, BindingSymbol requirement, in RequirementTarget target)
     {
-        var target = this.types.Witness(requirement, contract, subst);
         DiagnosticCode? refused = target.Kind switch
         {
             RequirementTargetKind.Body or RequirementTargetKind.Builtin => null,
-            RequirementTargetKind.Storage when this.Agrees(requirement, subst, target) => null,
+            RequirementTargetKind.Storage when this.Agrees(requirement, target) => null,
             RequirementTargetKind.Storage or RequirementTargetKind.None => DiagnosticCode.InternalInvariant_Kd,
             RequirementTargetKind.Refused => Capability.Code(CapabilityGap.ExclusiveInheritedWitness),
             RequirementTargetKind.Limit => Capability.Code(CapabilityGap.StorageNesting),
@@ -43,7 +43,7 @@ internal sealed partial class InstanceCollector
         var key = target.Kind == RequirementTargetKind.Builtin
             ? new MonoKey(MonoKind.Builtin, default, Symbol: target.Target, Variant: (byte)target.Target!.CompilerFunction)
             : new MonoKey(MonoKind.PropertyWitness, default, Symbol: target.Target, Variant: (byte)target.Access);
-        return this.AdmitType(item, subject, key, subst.Self!);
+        return this.AdmitType(item, subject, key, target.Subst!.Self!);
     }
 
     // K 4.5 rows 2 and 6, F 4.5: a compiler function's call of a requirement on a Type of the item's instance, through the requirement's own
@@ -56,14 +56,17 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        return this.Requirement(program, item, subject, requirement, requirement.Scope.Owner.BoundSymbol, this.types.Synthesized(requirement, self));
+        var contract = requirement.Scope.Owner.BoundSymbol!;
+        var call = this.types.Synthesized(requirement, self, contract.Type!);
+        return this.Requirement(program, item, subject, requirement, this.types.Witness(requirement, contract, call));
     }
 
     // F 4.5: C3c writes a property-witness shim from its key alone, since Binding admits a standard witness only with a ref/Self getter or a
     // uniq/Self setter, a result F or ref/F and a setter's input F (Binding.PropertyMatching.cs:102-117), F the Field's Type in Self; the
     // requirement's signature in the call's instance (TyCtxt.Signature) is the key's, Type for Type up to Origins (Erase).
-    private bool Agrees(BindingSymbol requirement, Subst subst, in RequirementTarget target)
+    private bool Agrees(BindingSymbol requirement, in RequirementTarget target)
     {
+        var subst = target.Subst!;
         var self = subst.Self!;
         if (!AdtDef.FindField(self, target.Target, out var field, out _))
         {

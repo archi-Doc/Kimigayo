@@ -71,7 +71,7 @@ internal sealed partial class InstanceCollector
 
         if (callee.Kind == MirCalleeKind.Requirement)
         {
-            return this.Requirement(program, item, subject, callee.Symbol!, callee.Contract, subst!);
+            return this.Requirement(program, item, subject, callee.Symbol!, this.types.Witness(callee.Symbol!, callee.Contract, subst!));
         }
 
         var function = callee.Arg == 0 ? this.types.Implementation(callee.Symbol!, subst, 0) : callee.Symbol;
@@ -109,9 +109,9 @@ internal sealed partial class InstanceCollector
     }
 
     // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
-    // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem). -1 for
-    // the Item of a function whose calls dispatch (a requirement's, whose Contract reference TyCtxt cannot match yet, DECISIONS R5-M70; a
-    // virtual slot's, K8), a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
+    // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem); a
+    // requirement Item's witness there (TyCtxt.Witness(item), DECISIONS R5-M70), as a requirement call's. -1 for a virtual slot's Item (K8),
+    // a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
     private int Callee(MirProgram program, int item, SourceRef subject, BoundType callable)
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
@@ -119,8 +119,17 @@ internal sealed partial class InstanceCollector
             return program[new(closure, MirBodyKind.Closure)] is { } body ? this.Admit(item, subject, body, this.types.SubstOfClosure(callable)) : -1;
         }
 
-        return callable is { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol } && !this.types.Dispatches(symbol)
-            ? this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable)) : -1;
+        if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol })
+        {
+            return -1;
+        }
+
+        if (!this.types.Dispatches(symbol))
+        {
+            return this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable));
+        }
+
+        return this.types.Witness(callable) is { } target ? this.Requirement(program, item, subject, symbol, target) : -1;
     }
 
     // SPEC 8.13.3: the body of the implementation a function's substitution selects, admitted for a site of an item's body; -1 without one.

@@ -138,6 +138,37 @@ public sealed class InstanceCollectorTest
 
         """;
 
+    // A requirement Item of an Equatable Type parameter, called with a struct and with i32, and one of a bound Contract reference that the
+    // Type conforms to twice, made, erased and called.
+    private const string ItemWitnessSource = """
+        struct Box
+            Self is Equatable
+            public var v: i32
+            public init(v: i32) => self.v = v
+            public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v
+        contract Tag<R>
+            func tag(x: R) -> i32
+        struct Stamp
+            Self is Tag<i32>
+            Self is Tag<bool>
+            public init() => ()
+            public func tag(x: i32) -> i32 => x
+            public func tag(x: bool) -> i32 => 2
+        func same<T>(a: ref/T, b: ref/T) -> bool
+            T is Equatable
+            let f = T.equals
+            return f(a, b)
+        func pick<T>() -> i32
+            T is Tag<bool>
+            T is Owned
+            let g: (bool) -> i32 = T.tag
+            let h = T.tag
+            return g(true) + h(false)
+        let x = Box.init(1)
+        require same(x@ref, x@ref) and same(1, 1) and pick<Stamp>() == 4 else => $abort("items")
+
+        """;
+
     // A generic function nested in a closed function, which has no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
 
@@ -361,19 +392,38 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
-    // K 4.5 rows 4, 5 and 12: the Item of a function whose calls dispatch, a requirement's (until TyCtxt matches an Item's Contract
-    // reference, DECISIONS R5-M70) or a virtual slot's (K8), is no target where it is made or called.
+    // K 4.5 rows 4 and 12: the Item of a virtual slot, whose calls dispatch, is no target where it is made (K8: its receiver's VTable).
     [Fact]
-    public void ADispatchingItemHasNoTarget()
+    public void AVirtualSlotsItemHasNoTarget()
     {
-        var c = MirBuildTest.Compile("open struct Base\n    public virtual func value(self: objref/Self) -> i32 => 1\nfunc same<T>(a: ref/T, b: ref/T) -> bool\n" +
-            "    T is Equatable\n    let f = T.equals\n    return f(a, b)\nlet v = Base.value\nrequire same(1, 1) else => $abort(\"same\")\n");
+        var (program, set) = Collect("open struct Base\n    public virtual func value(self: objref/Self) -> i32 => 1\nlet v = Base.value\n");
+        Assert.Empty(set.Records);
+        Assert.Empty(Targets(program, set, "Fn top"));
+    }
+
+    // K 4.5 rows 5, 12 and 13, DECISIONS R5-M70: a requirement's function item is, in the instance, the item of the witness its requirement
+    // runs on the Item's Self through the Contract reference it records (TyCtxt.Witness(item)), where it is made, where it is called and as
+    // its adapter's target: a user conformance's body, a built-in Type's Builtin shim, and through a bound reference the witness of the
+    // conformance it names (Tag<bool>, not Tag<i32>), the body Binding's Item context also runs.
+    [Fact]
+    public void ARequirementItemIsItsWitnessInTheInstance()
+    {
+        var c = MirBuildTest.Compile(ItemWitnessSource);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Empty(set.Records);
-        Assert.Equal(["Fn same [i32]"], Targets(program, set, "Fn top"));
-        Assert.Empty(Targets(program, set, "Fn same [i32]"));
+        Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(["Builtin i32 BuiltinEquals", "Builtin i32 BuiltinEquals"], Targets(program, set, "Fn same [i32]"));
+        Assert.Equal(["Fn tag", "ItemAdapter function item Tag.tag<Stamp, Tag<bool>>", "Fn tag", "Fn tag"], Calls(program, set, "Fn pick [Stamp]"));
+        var adapter = Item(program, set, "ItemAdapter function item Tag.tag<Stamp, Tag<bool>>");
+        var witness = set.Targets(adapter).ToArray().Single().Item;
+        Assert.All(
+            set.Targets(Item(program, set, "Fn pick [Stamp]")).ToArray().Where(x => set.Items[x.Item].BodyOrdinal >= 0),
+            x => Assert.Equal(witness, x.Item));
+        Assert.Equal("bool", TyCtxt.Name(((FunctionKoto)program.Bodies[set.Items[witness].BodyOrdinal].Key.Decl!.Declaration).Parameters[0].Type.TypeOf()!));
+        var item = set.Items[adapter].RepresentativeType!;
+        Assert.Same(c.Types.SubstOfItem(item), c.Types.Witness(item)!.Value.Subst);
     }
 
     // K 4.5 row 3, F package 4.5 (DECISIONS R5-M61, R5-M67): a requirement call in an instance is the item of its witness there. A conformance
