@@ -15,6 +15,27 @@ namespace XunitTest;
 /// limits and Binding's storage bound are located records, the work grows linearly and collecting again allocates nothing.</summary>
 public sealed class InstanceCollectorTest
 {
+    // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
+    private const string Outer = "func outer<T>(x: T) -> T\n    T is Copy\n";
+    private const string CopyBox = "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n";
+
+    // The F3 reproducers' nested functions (X40): one level into a generic function, one there calling a selected specialization, two
+    // levels in, in a block, in a generic struct's method and in a specialization inside a generic struct.
+    private const string OneLevel = Outer + "    func middle(y: T) -> T => y\n    return middle(x)\n";
+
+    private const string OneLevelSpecialized = "func describe<T>() -> i32 => 1\nspecialize func describe<i32>() -> i32 => 2\nfunc outer<T>(x: T) -> i32\n" +
+        "    T is Copy\n    func inner() -> i32 => describe<T>()\n    return inner()\n";
+
+    private const string TwoLevels = Outer + "    func middle(y: T) -> T\n        func inner(z: T) -> T => z\n        return inner(y)\n    return middle(x)\n";
+
+    private const string InBlock = Outer + "    if true\n        func inner(z: T) -> T => z\n        return inner(x)\n    return x\n";
+
+    private const string InMethod = CopyBox + "    public func get(self: ref/Self) -> T\n        func inner(z: T) -> T => z\n        return inner(self.value)\n" +
+        Outer + "    return Box<T>.init(x).get()\n";
+
+    private const string InSpecialization = CopyBox + "    public func f<U>(x: U) -> i32 => 1\n    specialize func f<i32>(x: i32) -> i32\n" +
+        "        func inner(y: i32) -> i32 => y\n        return inner(2)\nfunc outer<T>(x: T) -> i32\n    T is Copy\n    return Box<T>.f(5)\n";
+
     // Closed functions, a generic one and a generic struct, a closure, calls only the checks reach, a computed property with both
     // accessors, mutually recursive defaults (template calls) and top-level statements that call them and the library.
     private const string Source = "func plain() -> i32 => 1\nfunc pick<T>(value: T) -> T => value\n" +
@@ -27,6 +48,17 @@ public sealed class InstanceCollectorTest
         "        set(self: uniq/Self, value: i32) -> () => self.stored = value\n    public init(stored: i32) => self.stored = stored\n" +
         "var cell = Cell.init(3)\ncell.value = 4\nlet box = Box<i32>.init(cell.value)\nvar watch = Kimi.Time.Stopwatch.init()\n" +
         "require host() == 3 and pick(box.value) == 4 and after() == 1 and f(2) == 1 else => $abort(\"collect\")\n";
+
+    // The F3 reproducers' shapes (X40): the declarations, the nested function, its items now and the refused call (null: none).
+    public static TheoryData<string, string, int, string?> NestedCases => new()
+    {
+        { OneLevel, "middle", 2, null },
+        { OneLevelSpecialized, "inner", 2, null },
+        { TwoLevels, "inner", 0, "inner(y)" },
+        { InBlock, "inner", 0, "inner(x)" },
+        { InMethod, "inner", 0, "inner(self.value)" },
+        { InSpecialization, "inner", 0, "inner(2)" },
+    };
 
     // K 4.4: every body of the root module whose definition does not instantiate, the top-level statements, the closure of a closed
     // function, both accessors of a closed struct and the default templates among them; generic bodies and library bodies only as the
@@ -150,6 +182,61 @@ public sealed class InstanceCollectorTest
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
+    // one level into a generic function carries it, so each instance of the enclosing function has its own item; a call two levels in,
+    // from a block, in a generic struct's method or in a specialization inside a generic struct does not, so the edge is the
+    // EnclosingInstance gap at the call until K5, whose calls carry it (then two items each). Every admitted representative closes its body.
+    [Theory]
+    [MemberData(nameof(NestedCases))]
+    public void NestedFunctionsNeedTheirEnclosingInstance(string declarations, string nested, int items, string? refused)
+    {
+        var c = MirBuildTest.Compile(declarations + "require outer(3) == outer(3) and outer(true) == outer(true) else => $abort(\"nested\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types).Run(program, 1);
+        Assert.Equal(items, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn " + nested + " [", StringComparison.Ordinal)));
+        Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.All(set.Items.ToArray(), x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
+    }
+
+    // X19: an item past depth 128 on its admission chain, and the 1,025th item of one definition, are GenerationResourceLimit_Kd at their calls.
+    [Fact]
+    public void TheDepthAndSetLimitsStopAtTheirCalls()
+    {
+        var chain = string.Concat(Enumerable.Range(0, 130).Select(static i => $"func step{i}<T>(value: T) -> T => {(i == 129 ? "value@move" : $"step{i + 1}<T>(value@move)")}\n"));
+        var c = MirBuildTest.Compile(chain + "let x = step0<i32>(1)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types).Run(c.BuildMir(), 1);
+        Assert.Equal([(DiagnosticCode.GenerationResourceLimit_Kd, "step128<T>(value@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.Equal(128, set.Items.ToArray().Max(static x => x.Depth));
+
+        var sizes = string.Concat(Enumerable.Range(1, 1025).Select(static n => $"_ = size<{n}>()\n"));
+        c = MirBuildTest.Compile("func size<length N>() -> isize => N\n" + sizes);
+        var program = c.BuildMir();
+        set = new InstanceCollector(c.Types).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.GenerationResourceLimit_Kd, "size<1025>()")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.Equal(1024, set.Items.ToArray().Count(x => Label(program, x).StartsWith("Fn size", StringComparison.Ordinal)));
+    }
+
+    // K 4.9 with a second, non-root module: a record caused in its inlined default moves to the root module's omitting call, and one caused
+    // in its body to the root-module call that first admitted the chain.
+    [Fact]
+    public void TheLocationRuleLeavesNonRootModules()
+    {
+        var deep = string.Concat(Enumerable.Repeat("Array<", 65)) + "i32" + new string('>', 65);
+        var library = "public struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\npublic group Api\n" +
+            $"    public func probe<T>(value: T) -> i32 => 0\n    public func take(x: i32, extra: i32 = probe<{deep}>([])) -> i32 => x + extra\n" +
+            "    public func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\n";
+        var c = ModuleBindingTest.Create("public func main() -> ()\n    _ = Lib.Api.take(1)\n    _ = Lib.Api.grow<i32>(1, 3)\n    return\n", library);
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        var set = new InstanceCollector(c.Types).Run(c.BuildMir(), 1);
+        Assert.Equal(
+            [(DiagnosticCode.Unsupported_Kd, "Lib.Api.take(1)"), (DiagnosticCode.GenerationResourceLimit_Kd, "Lib.Api.grow<i32>(1, 3)")],
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.All(set.Records, static x => Assert.Equal(0, x.Subject.Module));
+    }
+
     // K 4.6, the K package's 2x/4x counters: with twice and four times the item Types, the collector admits and replays twice and four times
     // as much.
     [Fact]
@@ -206,6 +293,11 @@ public sealed class InstanceCollectorTest
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
+
+    // K 4.3: a representative is closed and makes every local Type of its body closed.
+    private static bool Closes(TyCtxt types, MirBody body, Subst representative)
+        => representative.Types.ToArray().Append(representative.Declaring).Append(representative.Self).All(static x => x is not { ContainsParameter: true }) &&
+            body.Locals.ToArray().All(x => types.Apply(x.Type, representative) is { ContainsParameter: false });
 
     private static (MirProgram Program, CheckedSet Set) Collect(string source)
     {

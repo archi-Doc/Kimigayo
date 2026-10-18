@@ -16,12 +16,14 @@
 // definition and, when it instantiates, its erased substitution (KD1), and the body of a Closure of a closed definition. K5-K8 add the
 // other rows.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution, erased only into the key
-// (KD3). A substitution TyCtxt cannot make is the capability table's storage-nesting gap; depth past 128, 16 ancestors of the same
-// definition and 1,024 items of one definition are GenerationResourceLimit_Kd. A refused edge is dropped and collection continues.
+// (KD3). A call of a nested function that does not carry its enclosing instance (until K5) and a substitution TyCtxt cannot make are the
+// capability table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are
+// GenerationResourceLimit_Kd; a representative that is open or leaves its body open is InternalInvariant_Kd. A refused edge is dropped
+// and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached.
-// Invariants: deterministic; one item per key; a repeated run of a version is a no-op; a program with validator findings has an empty set;
-// a warm run of a program as large as an earlier one allocates nothing.
+// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); a repeated run of a version is
+// a no-op; a program with validator findings has an empty set; a warm run of a program as large as an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
 // (K4b); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
 
@@ -161,7 +163,8 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // K 4.5 rows 1 and 5: a Fn callee's body under the site's substitution composed with the item's representative (a default template's,
+    // K 4.5 rows 1 and 5: a Fn callee's body under the site's substitution composed with the item's representative (TyCtxt.Compose, whose
+    // declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit checks; a default template's,
     // the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3) and the body of a Closure of a closed
     // definition (K5 brings closures of instances). The admitted item, or -1 for a callee without a body, a refused edge or a later row.
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
