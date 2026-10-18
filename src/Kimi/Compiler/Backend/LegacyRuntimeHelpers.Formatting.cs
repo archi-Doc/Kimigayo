@@ -7,8 +7,9 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>The row of one formatting compiler function, readable by kind before any representation exists (X4): the ABI of its
-/// routine in the formatting runtime, whose fixed symbol every call names, and its declared needs. No formatting row declares a
-/// library callee, since the formatting runtime calls none.</summary>
+/// routine in the formatting runtime, whose fixed symbol every call names, and its declared needs, which are what its text needs:
+/// the formatting runtime. No formatting row declares a library callee, since the formatting runtime calls none; the formatting
+/// witness WriterWrite, TextToString and TextTryFormat run is the need their published library rows state (SPEC 4.9.6).</summary>
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record FormattingHelperRow(CompilerFunctionKind Kind, FunctionAbi Abi, HelperNeeds Needs);
 
@@ -37,42 +38,34 @@ internal sealed partial class LegacyRuntimeHelpers
     internal static FormattingHelperRow? FormattingRow(CompilerFunctionKind kind)
     {
         var index = (uint)(kind - CompilerFunctionKind.TextFixed);
-        return index >= (uint)FormattingRows.Length ? null
-            : FormattingRows[index] is { } row && row.Kind == kind ? row
-            : throw new InvalidOperationException("A formatting compiler function has no row.");
+        if (index >= (uint)FormattingRows.Length)
+        {
+            return null;
+        }
+
+        return FormattingRows[index] is { } row && row.Kind == kind ? row : throw new InvalidOperationException("A formatting compiler function has no row.");
     }
 
-    /// <summary>Registers the writer adapter's write wrapper over a user formatting witness (SPEC 22.10.1): each is written once
-    /// per module, in request order, and the needs of WriterWrite's row join the module's.</summary>
+    /// <summary>Registers the writer adapter's write wrapper over a user formatting witness (SPEC 22.10.1): it is written in
+    /// request order, and the needs of WriterWrite's row join the module's. The planner requests each wrapper once.</summary>
     /// <param name="wrapper">The wrapper's ABI.</param>
     /// <param name="implementation">The witness's compiled format.</param>
     internal void RequestFormattingWrite(FunctionAbi wrapper, FunctionAbi implementation)
     {
         this.JoinNeeds(FormattingRow(CompilerFunctionKind.WriterWrite)!.Needs);
-        if (!this.formattingWrites.Contains((wrapper, implementation)))
-        {
-            this.formattingWrites.Add((wrapper, implementation));
-        }
+        this.formattingWrites.Add((wrapper, implementation));
     }
 
-    /// <summary>Registers a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a write wrapper (SPEC 22.9.2): each is
-    /// written once per module, in request order, and the needs of its kind's row join the module's.</summary>
+    /// <summary>Registers a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a write wrapper (SPEC 22.9.2): it is
+    /// written in request order, and the needs of its kind's row join the module's. The planner requests each conversion once,
+    /// for those two kinds only.</summary>
     /// <param name="kind">TextToString, which formats into a heap buffer, or TextTryFormat, into the caller's array.</param>
     /// <param name="wrapper">The conversion's ABI.</param>
     /// <param name="write">The write wrapper it calls.</param>
     internal void RequestFormattingConversion(CompilerFunctionKind kind, FunctionAbi wrapper, FunctionAbi write)
     {
-        if (kind is not (CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat))
-        {
-            throw new InvalidOperationException("A formatting conversion serves Text.toString or Text.tryFormat.");
-        }
-
         this.JoinNeeds(FormattingRow(kind)!.Needs);
-        var conversion = (wrapper, write, kind == CompilerFunctionKind.TextTryFormat);
-        if (!this.formattingConversions.Contains(conversion))
-        {
-            this.formattingConversions.Add(conversion);
-        }
+        this.formattingConversions.Add((wrapper, write, kind == CompilerFunctionKind.TextTryFormat));
     }
 
     /// <summary>Writes the formatting runtime when the module needs it, then each requested write wrapper and conversion.</summary>
@@ -95,14 +88,11 @@ internal sealed partial class LegacyRuntimeHelpers
         }
     }
 
-    // Each row at its kind's index: every row needs the formatting runtime; WriterWrite, TextToString and TextTryFormat also run
-    // the formatted Type's Utf8Format witness, through a wrapper for a user witness. TextWriter's witness is the ErasedWriter
-    // intrinsic's and BuiltinFormat's leaves are its shim's, so neither row declares one. Rows sharing a symbol share its routine,
-    // which the first of them in kind order defines.
+    // Each row at its kind's index; every row needs the formatting runtime. Rows sharing a symbol share its routine, which the
+    // first of them in kind order defines.
     private static FormattingHelperRow[] CreateFormattingRows()
     {
         const HelperNeeds Runtime = HelperNeeds.FormattingRuntime;
-        const HelperNeeds Witness = HelperNeeds.FormattingRuntime | HelperNeeds.FormattingWitness;
         var rows = new FormattingHelperRow[CompilerFunctionKind.BuiltinFormat - CompilerFunctionKind.TextFixed + 1];
         var ret = new AbiParameter("ptr", "ret", AbiParameterKind.ResultSlot);
         var reference = new AbiParameter("ptr", "self", LogicalIndex: 0);
@@ -123,16 +113,16 @@ internal sealed partial class LegacyRuntimeHelpers
         Add(
             CompilerFunctionKind.WriterWrite,
             Slotted("__kimi_writer_write_builtin", [ret, reference, new("ptr", "value", LogicalIndex: 1), builtin, location, length]),
-            Witness);
+            Runtime);
         Add(
             CompilerFunctionKind.BuiltinFormat,
             Slotted("__kimi_format_builtin", [ret, value, new("ptr", "self", LogicalIndex: 1), builtin, location, length]),
             Runtime);
-        Add(CompilerFunctionKind.TextToString, Slotted("__kimi_text_to_string", [ret, value, builtin, location, length]), Witness);
+        Add(CompilerFunctionKind.TextToString, Slotted("__kimi_text_to_string", [ret, value, builtin, location, length]), Runtime);
         Add(
             CompilerFunctionKind.TextTryFormat,
             Slotted("__kimi_text_try_format", [ret, value, new("ptr", "destination", LogicalIndex: 1), capacity, builtin, location, length]),
-            Witness);
+            Runtime);
         Add(CompilerFunctionKind.TextRelease, new("__kimi_text_release", "void", [reference, location, length]), Runtime);
         Add(CompilerFunctionKind.TextUtf8, Slotted("__kimi_text_utf8", [ret, new("ptr", "self", AbiParameterKind.SharedReference, 0)]), Runtime);
         Add(CompilerFunctionKind.TextValidateUtf8, Slotted("__kimi_text_validate_utf8", [ret, owned]), Runtime);
@@ -171,7 +161,7 @@ internal sealed partial class LegacyRuntimeHelpers
     }
 
     // The buffer and formatting runtimes, then the floating-point formatting and Ryu, each row's routine definition spliced in at
-    // its marker (the first row of a shared symbol defines it) and the abort reasons filled in.
+    // its marker (the first row of a shared symbol defines it) and the abort reason markers expanded.
     private static string ReadFormattingRuntime()
     {
         string? text = null;
@@ -188,9 +178,7 @@ internal sealed partial class LegacyRuntimeHelpers
             text = text!.Replace("{{" + row.Abi.Name + "}}\n", row.Abi.GetDefinition(exported: false), StringComparison.Ordinal);
         }
 
-        return text!.Replace("{{reason_argument_range}}", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
-            .Replace("{{reason_format}}", Number(AbortReasons.Format), StringComparison.Ordinal)
-            .Replace("{{reason_size}}", Number(AbortReasons.AllocationSize), StringComparison.Ordinal);
+        return AbortReasons.Expand(text!);
     }
 
     // SPEC 22.10.1: a write that the adapter's recorded failure blocks, and whose returned or nested failure it records.

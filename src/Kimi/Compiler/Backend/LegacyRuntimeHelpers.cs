@@ -23,11 +23,12 @@
 // DictionaryCallee names each function by the KimiLibrary declaration the old emitter resolves it from until F2c supplies their
 // symbol view; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
 // row, and the old lowering also requests it for a Dictionary's construction. Each formatting compiler function's row
-// (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime for every kind, the formatted Type's
-// Utf8Format witness for WriterWrite, TextToString and TextTryFormat, which run it through a wrapper), and no formatting row
-// declares a library callee, since the formatting runtime calls none. The storage kernels follow in P2a-P2b.
+// (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
+// formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
+// published library rows state (Formats, SPEC 4.9.6), which the collector reads there. The storage kernels follow in P2a-P2b.
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
-// requested helper is written once, in request order, after the runtimes its row declares;
+// requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
+// row declares;
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
 // Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
 // by StoredValue.TravelsAsScalar.
@@ -60,10 +61,6 @@ internal enum HelperNeeds : byte
     /// <summary>The formatting runtime: the UTF-8 buffer, writer, formatting and floating-point routines and the memory
     /// declarations (SPEC 22.7, 22.9, 22.10).</summary>
     FormattingRuntime = 8,
-
-    /// <summary>The formatted Type's Utf8Format witness: the function runs its format, a user witness's through a wrapper
-    /// (SPEC 22.9.2, 22.10.1).</summary>
-    FormattingWitness = 16,
 }
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
