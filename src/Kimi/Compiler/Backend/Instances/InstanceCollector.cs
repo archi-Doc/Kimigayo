@@ -16,10 +16,10 @@
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
 // constant; a Drop), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves
 // each site under the item's representative, a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased
-// writer's by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by the erased Self, or
-// a gap); a type-driven item's targets follow from its representative Type (InstanceCollector.Glue.cs: a DropGlue's direct parts,
-// DropGlue.Parts; an adapter's Item, a comparison shim's leaf witnesses, TyCtxt.Comparison; a property-witness setter's Field glue). K8
-// adds the object rows.
+// writer's by the witness there (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler
+// function or Field and the erased Self, or a gap); a type-driven item's targets follow from its representative Type
+// (InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; an adapter's Item, a comparison shim's leaf witnesses,
+// TyCtxt.Comparison; a property-witness setter's Field glue). K8 adds the object rows.
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.

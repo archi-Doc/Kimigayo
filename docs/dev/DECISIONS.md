@@ -3157,7 +3157,8 @@ structure is recorded here by the unit that first implements it.
   Composite (a Tuple or a safe `ref` layer) over its parts; Builtin; Witness, a closed leaf: the Body `TyCtxt.Witness` gives for the
   Contract's own requirement on the leaf, under its declaring instance (`TyCtxt.Synthesized(witness, declaring, [])`, its Origins the
   analyses'); Requirement, a leaf with an abstract part: that requirement on the leaf in every instance, under the Self-bearing factory
-  `TyCtxt.Synthesized(requirement, self)`, beside `Synthesized` in `TyCtxt.cs`, which K's rows 2 and 6 also use; None: no answer, a
+  `TyCtxt.Synthesized(requirement, self)` (amended by R5-M70: `Synthesized(requirement, self, reference)`), beside `Synthesized` in
+  `TyCtxt.cs`, which K's rows 2 and 6 also use; None: no answer, a
   broken contract for a closed accepted Self that its reader records as `InternalInvariant_Kd`; null for a Limit (Witness's: the leaf's
   storage does not complete). One rule decides the kinds, `Binding.ComparisonKindOf(self, contract, operators)`
   (`Binding.ComparisonPlans.cs`), which the legacy plan and `CompilerRequirementTarget` (a comparison's built-in target: Composite or
@@ -3190,7 +3191,8 @@ structure is recorded here by the unit that first implements it.
   body is, under the call's substitution composed with the item's representative, the target `TyCtxt.Witness(requirement,
   MirCallee.Contract, composed)` gives: Body, the item of the implementation its substitution selects (`TyCtxt.Implementation`,
   `MirProgram.Callee`; none without a body), admitted as a Fn callee's; Builtin, a shim item keyed by the erased Self and the compiler
-  function (new `MonoKind.Builtin`, `MonoKey.Variant`); Storage, a shim item keyed by the Field, the erased Self and the
+  function (new `MonoKind.Builtin`, `MonoKey.Variant`; superseded by R5-M70: the compiler function in `MonoKey.Symbol`); Storage, a
+  shim item keyed by the Field, the erased Self and the
   `PropertyWitnessKind` (new `MonoKind.PropertyWitness`, `MonoKey.Symbol`, X14), admitted only when the requirement's signature in
   the instance (`TyCtxt.Signature`) is the key's up to Origins (a `ref/Self` or `uniq/Self` receiver, a result `F`, `ref/F` or Unit,
   a set input `F`, `F` the Field's Type in Self by `AdtDef.FindField`), else `InternalInvariant_Kd`, and a set's item targets the
@@ -3234,10 +3236,14 @@ structure is recorded here by the unit that first implements it.
     `TyCtxt.Comparison(its Contract, Self, operators: false)` depth first, each the leaf witness's Body under the leaf's substitution;
     Composite recurses and Builtin has none; a Requirement or None leaf is `InternalInvariant_Kd` and no tree (Limit) the storage-nesting
     gap, at the item's site; BuiltinFormat and BuiltinArithmetic, over scalars, call no witness.
-  - Departure from the K package's key table (§4.3: Builtin = erased Self and `CompilerFunctionKind`): the Builtin key also carries its
-    compiler function (`MonoKey.Symbol`), since F §4.6 takes a shim's comparison Contract as the scope owner of the shim's compiler
-    function, which the kind alone does not name. Equals, Compare and Format have one symbol per kind, so their items do not change; an
-    arithmetic shim becomes one item per operation Contract (the K6 review's finding that one item held every arithmetic requirement).
+  - Departure (for the owner's departures list at R5's group review): the K package's §4.3 Builtin row and R5-M67 key a Builtin item by
+    the erased Self and its `CompilerFunctionKind` (`MonoKey.Variant`). Two designs compared: (A) that key with a kind-to-Contract table
+    in the collector, a second copy of `PrepareBuiltinTargets`' rule, leaving every arithmetic requirement on a Self in one item for C8f;
+    (B) the shim's compiler function in `MonoKey.Symbol`, the existing field, which supplies F §4.6's input (the comparison's Contract is
+    the scope owner of the shim's compiler function) and gives one arithmetic item per operation Contract. The independent review's
+    comparison found B more general and not hold-driven, and the planning session adopted B on 2026-10-19. The kind is the function's
+    `CompilerFunction`, so a Builtin key has no `Variant` (one source); Equals, Compare and Format have one function per kind, so their
+    items do not change.
   - Rejected: a call-form `SubstOfItem` (A4 reads a closed requirement Item's as the witness it runs, and it drops the Item context's
     input Origins); the template's `ItemContract` for rows 5 and 12 (null for a closed Item, and an ItemAdapter has no template); a bound
     symbol from Binding's `BoundContractReference` (private, creates and rebuilds bound symbols); the comparison's Contract mapped from
@@ -3250,5 +3256,6 @@ structure is recorded here by the unit that first implements it.
     slot's Item none; the format witnesses of generic `toString`, `tryFormat` and `write` calls and of `format` itself, a user Type's body
     and `i32`'s BuiltinFormat item without targets; an erased writer over a user sink its `reserve` body and over a fixed buffer none;
     tuple comparisons' Builtin items targeting their leaves' `equals` and `compare` bodies, a nested tuple twice, and a generic instance
-    sharing its erased Self's item; the library (as roots) and the 44 milestones under sel give no record; the witness twins
+    sharing its erased Self's item; i32's addition and subtraction two Builtin items, one per Contract; the library (as roots) and the
+    44 milestones under sel give no record; the witness twins
     (`TyCtxtTest`, `ComparisonCompositionTest`) unchanged.

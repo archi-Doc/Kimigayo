@@ -40,8 +40,7 @@ internal sealed partial class InstanceCollector
             return this.Implementation(program, item, subject, target.Target!, target.Subst);
         }
 
-        var key = target.Kind == RequirementTargetKind.Builtin
-            ? new MonoKey(MonoKind.Builtin, default, Symbol: target.Target, Variant: (byte)target.Target!.CompilerFunction)
+        var key = target.Kind == RequirementTargetKind.Builtin ? new MonoKey(MonoKind.Builtin, default, Symbol: target.Target)
             : new MonoKey(MonoKind.PropertyWitness, default, Symbol: target.Target, Variant: (byte)target.Access);
         return this.AdmitType(item, subject, key, target.Subst!.Self!);
     }
@@ -115,15 +114,15 @@ internal sealed partial class InstanceCollector
             return;
         }
 
-        switch ((CompilerFunctionKind)key.Variant)
+        switch (key.Symbol!.CompilerFunction)
         {
             case CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare:
-                this.Leaves(program, item, site, this.types.Comparison(key.Symbol!.Scope.Owner.BoundSymbol!, self, operators: false));
+                this.Leaves(program, item, site, this.types.Comparison(key.Symbol.Scope.Owner.BoundSymbol!, self, operators: false));
                 return;
             case CompilerFunctionKind.BuiltinFormat or CompilerFunctionKind.BuiltinArithmetic:
                 return;
             default:
-                throw new InvalidOperationException($"The shim {(CompilerFunctionKind)key.Variant} has no target row.");
+                throw new InvalidOperationException($"The shim {key.Symbol.CompilerFunction} has no target row.");
         }
     }
 

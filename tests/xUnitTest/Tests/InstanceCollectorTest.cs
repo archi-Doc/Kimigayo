@@ -471,7 +471,8 @@ public sealed class InstanceCollectorTest
     // K 4.5 row 3, F package 4.5 (DECISIONS R5-M61, R5-M67): a requirement call in an instance is the item of its witness there. A conformance
     // witness, an inherited one, one of a generic Type's instance, one through a bound Contract reference, an accessor-call witness's
     // accessors, a fixed array's entry member and the integer Position (its i32 specialization) are body items; a standard property
-    // witness's operations are property-witness items and a built-in comparison or arithmetic a Builtin item, each keyed by the erased Self.
+    // witness's operations are property-witness items keyed by the Field and a built-in comparison or arithmetic a Builtin item keyed by
+    // its compiler function, each with the erased Self.
     [Fact]
     public void ARequirementCallIsItsWitnessInTheInstance()
     {
@@ -564,8 +565,21 @@ public sealed class InstanceCollectorTest
             new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }
                 .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
                 .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
-        var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin).ToArray();
-        Assert.All(shims, static x => Assert.Equal((CompilerFunctionKind)x.Key.Variant, x.Key.Symbol!.CompilerFunction));
+    }
+
+    // K 4.3, DECISIONS R5-M70: a Builtin item is keyed by its compiler function and the erased Self, so two built-in operations on one Self
+    // (i32's addition and subtraction) are two items, each its operation's Contract's.
+    [Fact]
+    public void TwoBuiltinOperationsOnOneSelfAreTwoItems()
+    {
+        var (program, set) = Collect("func both<T>(left: ref/T, right: ref/i32) -> i32\n    T is Addable<i32>\n    T is Subtractable<i32>\n" +
+            "    T.(Addable<i32>).Output is i32\n    T.(Subtractable<i32>).Output is i32\n    return left.added(right) + left.subtracted(right)\n" +
+            "let five = 5\nrequire both(five, 2) == 10 else => $abort(\"both\")\n");
+        Assert.Empty(set.Records);
+        var shims = set.Targets(Item(program, set, "Fn both [i32]")).ToArray().Select(x => set.Items[x.Item]).ToArray();
+        Assert.Equal(["Builtin i32 BuiltinArithmetic", "Builtin i32 BuiltinArithmetic"], shims.Select(x => Label(program, x)));
+        Assert.Equal(["contract Addable", "contract Subtractable"], shims.Select(static x => $"{x.Key.Symbol!.Scope.Owner}"));
+        Assert.Equal(2, shims.Select(x => set.Find(x.Key)).Distinct().Count());
     }
 
     // PLAN G157 (4), PD30: a requirement call whose Self nests past Binding's storage bound in the instance (Box^65<i32>, storage depth 65;
@@ -1228,7 +1242,7 @@ public sealed class InstanceCollectorTest
         {
             var variant = item.Key.Kind switch
             {
-                MonoKind.Builtin => " " + (CompilerFunctionKind)item.Key.Variant,
+                MonoKind.Builtin => " " + item.Key.Symbol!.CompilerFunction,
                 MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
                 _ => string.Empty,
             };
