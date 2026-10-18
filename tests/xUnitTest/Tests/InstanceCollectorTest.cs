@@ -89,9 +89,9 @@ public sealed class InstanceCollectorTest
             set.Items[set.RootCount..].ToArray().Select(x => Label(program, x)).Order(StringComparer.Ordinal));
     }
 
-    // K 4.5 rows 1, 5 and 10: each callee is a target at its call, in location order (a default omitted by a call of f is its template's
+    // K 4.5 rows 1, 5 and 11: each callee is a target at its call, in location order (a default omitted by a call of f is its template's
     // call, the Closure is a target where its environment is made and where it is called through a borrow, pick and Box's init are
-    // instances); every target is at a call or at one of the statements rows 10-12 name.
+    // instances); every target is at a call or at one of the statements rows 11-13 name.
     [Fact]
     public void ClosedCallsAreTargetsInLocationOrder()
     {
@@ -216,7 +216,7 @@ public sealed class InstanceCollectorTest
         Assert.All(set.Items.ToArray(), x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
     }
 
-    // K 4.5 rows 5, 10 and 11, DECISIONS R5-M43: a Closure of an instance is an instance of its body under the instance's substitution,
+    // K 4.5 rows 5, 11 and 12, DECISIONS R5-M43: a Closure of an instance is an instance of its body under the instance's substitution,
     // where its environment is made (also when it is never called) and where it is called, one per enclosing instance and a Closure in a
     // Closure among them; a function item constant and an Item called through a Callable parameter are their function's instances.
     [Fact]
@@ -243,7 +243,7 @@ public sealed class InstanceCollectorTest
             x => Assert.True(x.Representative is null || Closes(c.Types, program.Bodies[x.BodyOrdinal], x.Representative), Label(program, x)));
     }
 
-    // K 4.5 row 12: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
+    // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
     // erased Type and represented by the first Type that requests it, whose target is the body the Closure or Item runs; a call of the
     // Function Type value has no target.
     [Fact]
@@ -264,6 +264,42 @@ public sealed class InstanceCollectorTest
             adapters.SelectMany(x => set.Targets(x).ToArray()).Select(x => Label(program, set.Items[x.Item])).Order(StringComparer.Ordinal));
         var adder = set.Targets(Item(program, set, "Fn adder [i32]")).ToArray();
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
+    }
+
+    // K 4.5 rows 3-5 and 12: the Item of a function whose calls dispatch, a requirement's (K6) or a virtual slot's (K8), is no target where
+    // it is made or called.
+    [Fact]
+    public void ADispatchingItemHasNoTarget()
+    {
+        var c = MirBuildTest.Compile("open struct Base\n    public virtual func value(self: objref/Self) -> i32 => 1\nfunc same<T>(a: ref/T, b: ref/T) -> bool\n" +
+            "    T is Equatable\n    let f = T.equals\n    return f(a, b)\nlet v = Base.value\nrequire same(1, 1) else => $abort(\"same\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn same [i32]"], Targets(program, set, "Fn top"));
+        Assert.Empty(Targets(program, set, "Fn same [i32]"));
+    }
+
+    // K 4.3: a type-driven item's representative is closed; an open one is a broken contract, InternalInvariant_Kd at its request. Binding
+    // never gives one, so the test appends an erasure of an open function item to the top-level body in a new unreachable block.
+    [Fact]
+    public void AnOpenAdapterTypeIsABrokenContract()
+    {
+        var c = MirBuildTest.Compile("func pick<T>(value: T) -> T => value@move\nfunc hold<T>(value: T) -> i32\n    let item = pick<T>\n    return 1\nlet z = 1\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var hold = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "hold");
+        var open = hold.Consts.ToArray().Single(static x => x.Kind == MirConstKind.FnItem).Type;
+        var top = program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0);
+        var statement = top.Statements.ToArray().First(static x => x.Kind == MirStatementKind.Assign);
+        var operand = top.AddOperand(MirOperand.Const(top.Const(new(MirConstKind.FnItem, open))));
+        var block = top.AddBlock();
+        top.Push(block, statement with { Rvalue = new(MirRvalueKind.Cast, (byte)MirCastKind.Erasure, Start: operand, Count: 1, Type: BoundType.Unit) });
+        top.Terminate(block, MirTerminator.Unreachable(statement.Source));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, statement.Source.Syntax)], set.Records.Select(static x => (x.Code, x.Subject)));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind == MonoKind.ItemAdapter);
     }
 
     // K 4.8, IMPL 21.3.2, DECISIONS R5-M44: a by-value use whose Type passes a layout limit is GenerationResourceLimit_Kd at the Type's first
