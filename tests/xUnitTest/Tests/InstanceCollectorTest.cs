@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -227,6 +228,47 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal(admitted, set.Items.ToArray().Any(x => Label(program, x).StartsWith("Fn pick", StringComparison.Ordinal)));
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // DECISIONS BU-11 (PLAN G153 (2)): the storage bound is a property of each instance, whatever was prepared before it and in whatever
+    // order its parts are walked. `h` places its Type argument 3 levels down, so Box^61 (i32 at level 64) is an instance and Box^62 is the
+    // gap, alone and before or after the other; AB and BA store Box^57 in one Field and 4 levels deeper in the other, in either Field
+    // order (AB^56 is the twin within the bound); Tag stores no Field, so its Type argument alone refuses it, at each requesting call.
+    [Theory]
+    [InlineData("Box^61", "")]
+    [InlineData("Box^62", "Box^62")]
+    [InlineData("Box^61 Box^62", "Box^62")]
+    [InlineData("Box^62 Box^61", "Box^62")]
+    [InlineData("AB^56", "")]
+    [InlineData("AB^57", "AB^57")]
+    [InlineData("BA^57", "BA^57")]
+    [InlineData("Tag^61 Tag^61", "Tag^61 Tag^61")]
+    public void StorageNestingIsAPropertyOfTheInstance(string arguments, string refused)
+    {
+        var c = MirBuildTest.Compile(
+            "struct Box<T>\n    public let value: T\nstruct AB<A, B>\n    public let a: A\n    public let b: B\nstruct BA<A, B>\n    public let b: B\n" +
+            "    public let a: A\nstruct Tag<T>\nfunc h<T>(x: Option<raw/T>) => ()\npublic func main() -> ()\n" +
+            string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) + "    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(
+            refused.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (DiagnosticCode.Unsupported_Kd, $"h<{Text(x)}>(.None)")),
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+
+        static string Text(string argument)
+        {
+            var depth = int.Parse(argument[(argument.IndexOf('^') + 1)..], CultureInfo.InvariantCulture);
+            var box = Nest("Box", depth, "i32");
+            return argument[..argument.IndexOf('^')] switch
+            {
+                "Box" => box,
+                "Tag" => $"Tag<{Nest("Array", depth, "i32")}>",
+                var holder => $"{holder}<{box}, {Nest("Box", 4, box)}>",
+            };
+        }
+
+        static string Nest(string wrapper, int depth, string leaf) => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
     }
 
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
