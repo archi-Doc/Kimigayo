@@ -2197,6 +2197,54 @@ structure is recorded here by the unit that first implements it.
   `FormattingWitness` row bit (a third statement of the published `Formats` rows, beside `IntrinsicDisposition.Effect`'s
   `Formatting` class, naming neither the requirement nor the parameter; and no formatting routine's text calls a witness, unlike
   an `ElementGlue` helper's); wrappers written only under the runtime flag (G133).
+- **R5-M31 HIR lints** (2026-10-18, planning session; Q8 package §3.2 and §6 Q9, under R5-M23 and PD31) A permanent canonical
+  Binding component, `Binding/Binding.Lints.cs`: Binding's checks that never fail a node, one row per code in a lint table (code;
+  derived from `FailureCauses`; rests on a guessed completion), the row number being its records' condition; a row whose check
+  rests on a Binding failure or a guess records nothing when its code is a warning and is derived from those causes when it is an
+  Error (DIAGNOSTICS §4.3, Later phases). One walk of the source modules' evaluated syntax is the last step of `Bind(Final)`
+  (Types, attributes, Origin clauses, effect items, a function's signature and a for loop's bindings are not evaluated; an
+  excluded test and a function part holding an unselected `#switch` are not linted, as before). Its records `(node, row, root)`
+  live in a list cleared by `ResetPass` and are published by `ReportDiagnostics` at Final (`ReportNonFailingRecords`, beside the
+  alias, pattern and position warnings) under requirement `Binding` with `BindingFailure.None`; duplicates and SPEC 17.5's
+  priority are resolved by sorting at report time, so a warm rebind allocates nothing; the walk keeps its own structural completion
+  for its descents and end arrivals, cleared once per walk (Binding's shared `ResultStructure()` clears on every query, since
+  binding-time facts change while it runs). Q9 lands rows 1-6 (`DiscardedTail`, `DiscardedResult`, `UnusedTrySuccess`, `DiscardedValue`,
+  `OwningWriteArgument`, `StaticWhileTrue`) with their repairs; Q10-Q12 add rows 7-12. `Koto.ReportDerived` takes the condition of
+  a derived lint Error. The guess query moves into Binding as `GuessedCompletion` over `ResultStructure`, counting an unresolved
+  expression as a guess besides a supplied body (Q8 design 2 §2.4); the old control-flow analysis's fallthrough checks call it
+  until H10. The six codes' requirement becomes `Binding` (was `ControlFlow`). Removing them from `ControlFlowAnalysis` is an
+  R6-check item landed early under D5.
+  - Q10, rows 7-8 (`UnsafeBlockRequired`, `UnnecessaryUnsafeBlock`; SPEC 14.3): an operation needs the permission when it forms
+    a raw Place, does pointer arithmetic, is `noinit`, or one of its calls (`CallPlan.Of`) selects an unsafe function, so a
+    synthesized call is judged at its source node and a function reference never; the walk keeps the innermost block's used and
+    uncertain bits. `LintErrors` counts the lint Errors, which the old analysis adds to its own (earlier rejection, verification)
+    and `LegacyRecords` lists as Binding records, until H10. The old analysis's copy of `UnsafeFunctionValue_Kd` goes: Binding
+    rejects every form at the reference (its four sites), and the copy only repeated it at a requirement item's inner name.
+  - Q11, rows 9-11 (`InvalidJumpTarget`, `UnlabeledYieldTarget`, `OverlappingLabel`; SPEC 14.5.2, 14.7, 14.4): one rule,
+    `KotoHelper.IsValidTransfer` (a target exists; an unlabeled yield's selection uses its result), decides a transfer; the jump
+    binding writes the target row (`PlanRow.Plan`) only for a valid transfer, so the HIR publisher no longer resolves targets,
+    and the walk records rows 9-10 by the same rule. HIR contract: a null target row of a published Jump or Continue means
+    Binding recorded row 9 or 10 there (ask A-8). The table's guess column names what a row reads that a recovery may have
+    guessed: a completion (rows 1 and 12) or a target (rows 9-11, which rest only on a guessed label or a recovered label).
+  - Rejected: one shared `ResultStructure()` per walk (any query inside the walk clears it; per-query clearing composed a nested
+    selection's completion 8,256 times instead of 528); a node failure per lint (the old analysis would skip the program; PD29, PD31); a Koto-keyed set of warned nodes
+    (ARCH Syntax identity, warm allocations); a copy of the old walk's synthesized-evaluation switch (rows 1-6 judge source
+    syntax only: a synthesized call's parent is its source node, a Value Context); a reporter in each owning file (Binding.cs and
+    Binding.Patterns.cs are over the token limit).
+- **R5-M32 FunctionFallthrough is result validation** (2026-10-18, planning session; plan Q12, Q8 package §3.4, PD32, under
+  R5-M23 and R5-M31) SPEC 14.9.3 judges a Block body's structural end by Structural Completion: the end supplies Unit, which a
+  declared result other than Unit cannot take (SPEC 7.1). `Binding.EndArrival`, beside `AddBodyResult` in `Binding.ControlFlow.cs`,
+  decides it once per function and accessor from the HIR lint walk (row 12 at the body, Error), with the walk's structural completion and the
+  declared result (`Binding.DeclaredResult`: the written result, else the bound contract; Unit for a discarded body or a setter),
+  which moves from the old control-flow analysis; the old analysis still asks it whether a contract is pending. The record rests
+  on a guessed completion (`GuessedCompletion`), which replaces the old check's pending gate: an unresolved expression is a
+  guess whose Binding causes the record is derived from. `Binding.FallthroughKey` gives the record's key, on which the old
+  analysis's missing result at that body's end rests until H10. The MIR records nothing at that end (Q8 probe p9, p10; R4-M21),
+  so nothing on the MIR side derives from it and the ledger's `a1-result` row stays. The requirement becomes `Binding` (was
+  `ControlFlow`). This departs from PLAN10 §5.5/§9, which gave the check to A3 (owner-approved with R5-M23).
+  - Rejected: an A3 rule on the MIR (a second completion rule beside Structural Completion); a check in `BindFunction`,
+    `BindAccessorBody` and `BindClosure` (three sites and records from tentative passes); keeping the old pending gate (a
+    second guess rule).
 - **R5-M34 `Instantiates` follows SPEC 6.1.3; the old generator keeps its view** (2026-10-18, planning session; plan K1's
   prerequisite, S2-S4 X40, package K §4.1, PLAN SP; under R5-M18; supersedes R5-M21's departure clause) `TyCtxt.Instantiates`
   is true when the definition or a declaration on its scope chain has a Type, Semantics or length slot. A specialization declares
@@ -2221,3 +2269,24 @@ structure is recorded here by the unit that first implements it.
   - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
     rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
     collector would key a generic closure as closed).
+- **R5-M36 Closure contexts as `Subst`** (2026-10-18, planning session; plan K2 (A5P-C1), package K §4.2 and §9, S2-S4 X10, under
+  R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes` interns it through
+  `TyCtxt.ClosureContext(enclosing, declaring, types, lengths, origins, inputs)`, the value the old synthetic CallPlan's `SubstOf` gave
+  (a call with a conforming Self, a Direct virtual call or a bound contract would add Self, which `CloseClosureTypes` does not receive;
+  PLAN G142), so one instance's closures share it, and interning replaces the never-cleared list of synthetic CallPlans and its linear scan; the
+  closure's result in the instance stays the failure check, while the CallPlan's ReturnType, a function of the rest, is dropped.
+  `SubstOfClosure` reads the field, `ClosureSignature` is `Apply(signature, context)`, and Hover identifies a context by
+  `SubstIdentity` (`Checking/Hover/HoverBuilder.Substitutions.cs`; `HoverBuilder.cs` is over the token limit): its binder and every
+  binding. The rebuild sites and the reference comparisons of `ClosureContext` are unchanged.
+  - Temporary structure, deleted by G7 with its readers: `[Transitional("R6-gen")] Binding.ClosureCall(closure)`, the CallPlan the old
+    generator keys a closure's instance by (`GenericStoragePlan.PrepareClosures`, `BodyLowering`'s value callees). There is one per
+    (closure symbol, context), as the old scan gave, so two closures of one instance keep two (X10). It is kept with the function item
+    contexts until an edit (`ResetCallContexts`, which keeps `Binding.cs` from growing; G7 inlines it); the planning session reads the
+    package's "for the pass" as their lifetime, kept across unchanged passes, so a warm rebind and generation build no new CallPlan, as
+    with the old list (not measured: no warm test rebinds). Bridge CallPlans carry the context's padded Lengths, not the caller's.
+  - Evidence: the semantic snapshot (HIR and MIR), the diagnostic snapshot and the fixture IR of the closure emission classes are
+    identical to the parent's, with the native Closure, GenericClosure, GenericCapture, NestedGeneric, GenericStorage and GenericDefault
+    families; `GenericClosureIdentityTest` adds the two-closure regression.
+  - Rejected: a memo per Subst (two closures of one instance would share one CallPlan: wrong code); a memo cleared per pass (each warm
+    rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (A5P's C2: a fact outside R7's shape); a
+    comparer modulo Origins (D1's Design B).

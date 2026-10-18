@@ -40,6 +40,24 @@ public class UnsafeFunctionValueBindingTest
         Assert.False(c.Binding.Result.IsComplete);
     }
 
+    // SPEC 7.6: Binding rejects the reference itself, a group's after selection (by a function item, a Function Type or a requirement
+    // item), and a group no context selects is ambiguous; no later phase judges the form again, so the reference is the one record.
+    [Theory]
+    [InlineData("unsafe func raw() -> i32 => 1\nlet g = raw", "UnsafeFunctionValue_Kd", "raw")]
+    [InlineData("unsafe func raw<T>(value: T) -> T => value\nfunc raw(value: i32, other: i32) -> i32 => value\nlet g = raw<i32>", "UnsafeFunctionValue_Kd", "raw<i32>")]
+    [InlineData("unsafe func raw(value: i32) -> i32 => value\nfunc raw(value: bool) -> bool => value\nlet g: (i32) -> i32 = raw", "UnsafeFunctionValue_Kd", "raw")]
+    [InlineData("contract Reader\n    unsafe func read(self: ref/Self) -> i32\nfunc use<T>(value: ref/T) -> i32\n    T is Reader\n    let f = T.read\n    return 0", "UnsafeFunctionValue_Kd", "T.read")]
+    [InlineData("unsafe func raw(value: i32) -> i32 => value\nfunc raw(value: bool) -> bool => value\nlet g = raw", "AmbiguousBinding_Kd", "raw")]
+    public void TheReferenceIsTheOneRecord(string source, string code, string text)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        c.Binding.ReportDiagnostics();
+        c.ReportAnalysis();
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal(code, error.Code);
+        Assert.Equal(text, error.Text);
+    }
+
     [Theory]
     [InlineData("unsafe func raw() -> i32 => 1\nlet v = unsafe => raw()")]
     [InlineData("unsafe func raw() -> i32 => 1\nlet v = unsafe => (raw)()")]

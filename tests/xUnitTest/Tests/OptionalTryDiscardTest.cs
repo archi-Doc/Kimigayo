@@ -74,8 +74,7 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func source() -> Result<i32, i32> => .Ok(1)\nfunc run() -> Result<(), i32>\n    " + statement + "\n    return .Ok(())");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Equal(warning, flow.Warnings.Count != 0);
+        Assert.Equal(warning, CompilationTestHelper.BindingWarnings(c).Length != 0);
     }
 
     [Theory]
@@ -106,27 +105,29 @@ public class OptionalTryDiscardTest
         ScalarEmissionTest.EmitFixture("OptionalTry" + name, source + "\nConsole.writeLine(\"ok\")", "ok\n");
     }
 
+    // SPEC 17.5: one warning per discarded value, the highest applicable: unintended Unit inference, then a discarded Result, then
+    // a discarded try success.
     [Theory]
-    [InlineData("try source()", "()", 0)]
-    [InlineData("source()", "()", 2)]
-    [InlineData("(try source())", "i32", 3)]
-    [InlineData("if true => try source()", "i32", 3)]
-    [InlineData("try source()", "Result<(), i32>", 2)]
-    [InlineData("let x = try source()", "i32", 0)]
-    [InlineData("_ = do\n        source()", "i32", 1)]
-    public void WarningPriorityIsLocalToDiscard(string statement, string payload, int priority)
+    [InlineData("try source()", "()", null)]
+    [InlineData("source()", "()", "DiscardedResult_Kd")]
+    [InlineData("(try source())", "i32", "UnusedTrySuccess_Kd")]
+    [InlineData("if true => try source()", "i32", "UnusedTrySuccess_Kd")]
+    [InlineData("try source()", "Result<(), i32>", "DiscardedResult_Kd")]
+    [InlineData("let x = try source()", "i32", null)]
+    [InlineData("_ = do\n        source()", "i32", "DiscardedTail_Kd")]
+    public void WarningPriorityIsLocalToDiscard(string statement, string payload, string? code)
     {
         var value = payload == "()" ? "()" : payload.StartsWith("Result", StringComparison.Ordinal) ? ".Ok(())" : "1";
         var c = MinimalEmissionTest.Analyze($"func source() -> Result<{payload}, i32> => .Ok({value})\nfunc run() -> Result<(), i32>\n    {statement}\n    return .Ok(())");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var warnings = c.AnalyzeControlFlow().Warnings;
-        if (priority == 0)
+        var warnings = CompilationTestHelper.BindingWarnings(c);
+        if (code is null)
         {
             Assert.Empty(warnings);
         }
         else
         {
-            Assert.Equal(priority, Assert.Single(warnings).Priority);
+            Assert.Equal(code, Assert.Single(warnings).Code);
         }
     }
 
@@ -222,9 +223,9 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func process<T>(x: Result<T, i32>) -> Result<(), i32>\n    try x@move\n    return .Ok(())\n_ = process<()>(.Ok(()))\n_ = process<i32>(.Ok(1))");
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, Describe(c));
-        var warning = Assert.Single(c.AnalyzeControlFlow().Warnings);
-        Assert.Equal(3, warning.Priority);
-        Assert.IsType<TryKoto>(warning.Node);
+        var warning = Assert.Single(CompilationTestHelper.BindingWarnings(c));
+        Assert.Equal("UnusedTrySuccess_Kd", warning.Code);
+        Assert.Equal("try x@move", warning.Text);
     }
 
     [Fact]
@@ -232,9 +233,8 @@ public class OptionalTryDiscardTest
     {
         var c = MinimalEmissionTest.Analyze("func source() -> Result<Never, i32> => .Err(1)\nfunc run() -> Result<(), i32>\n    try source()");
         Assert.True(c.Binding.Result.IsComplete, Describe(c));
-        var flow = c.AnalyzeControlFlow();
-        Assert.Empty(flow.Warnings);
-        Assert.Empty(flow.Issues);
+        Assert.Empty(CompilationTestHelper.BindingWarnings(c));
+        Assert.Empty(c.AnalyzeControlFlow().Issues);
     }
 
     [Fact]

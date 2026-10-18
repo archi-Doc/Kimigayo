@@ -30,6 +30,21 @@ public sealed partial class Binding
         return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
     }
 
+    /// <summary>Gets the result a function's or accessor's Block body must deliver: the written result, else the bound contract; Unit
+    /// for a discarded body and a setter (SPEC 7.1, 11.3).</summary>
+    /// <param name="boundary">The function or accessor.</param>
+    /// <returns>The result Type, or null while Binding has not resolved it.</returns>
+    internal static BoundType? DeclaredResult(Koto boundary) => boundary switch
+    {
+        FunctionKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
+        FunctionKoto function => KotoHelper.DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
+        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Set } => BoundType.Unit,
+        PropertyAccessorKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
+        PropertyAccessorKoto { Parent: PropertyKoto { BindingState: BindingState.Resolved } property } => property.BoundType,
+        PropertyAccessorKoto accessor => accessor.ReturnType?.BoundType ?? accessor.BoundType,
+        _ => null,
+    };
+
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.2).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="scope">The scope supplying read-Type Constraints.</param>
@@ -84,6 +99,16 @@ public sealed partial class Binding
     /// <returns>Whether the target's final result is that inferred Unit.</returns>
     internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
         target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
+
+    // SPEC 14.5.2: a transfer's lexical target, which the jump binding writes to the jump's target row when the transfer may go there
+    // (KotoHelper.IsValidTransfer). A null row is a jump the HIR lints record as invalid (rows 9-10), so no transfer is built from it.
+    private static Koto? BindTransferTarget(JumpKoto jump)
+    {
+        var target = KotoHelper.ResolveTransferTarget(jump);
+        var valid = KotoHelper.IsValidTransfer(jump, target);
+        HirTables.PlanFor(jump, valid).Plan = valid ? target : null;
+        return target;
+    }
 
     // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
     // result sources reaches no syntax the survey cannot bind yet.
@@ -561,6 +586,18 @@ public sealed partial class Binding
         else if (structural.CanComplete(body))
         {
             context.Sources.Add(BoundType.Unit);
+        }
+    }
+
+    // SPEC 7.1, 14.9.3 (DECISIONS PD32): the structural end of a function's or accessor's Block body supplies Unit, which a declared
+    // result other than Unit cannot take, so a body that can complete there is HIR lint row 12 at the body. The Final walk asks once
+    // per function and accessor, with its structural completion.
+    private void EndArrival(Koto owner, StructuralCompletion structural)
+    {
+        var body = owner switch { FunctionKoto function => function.Body, PropertyAccessorKoto accessor => accessor.Body, _ => null };
+        if (body is CodeBlockKoto && DeclaredResult(owner) is { } result && !ReferenceEquals(result, BoundType.Unit) && structural.CanComplete(body))
+        {
+            this.lints.Add((body, LintRow.FunctionFallthrough, null));
         }
     }
 

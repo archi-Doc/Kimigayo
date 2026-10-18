@@ -50,6 +50,10 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         }
     }
 
+    /// <summary>Gets the number of node completions composed since creation, which <see cref="Clear"/> keeps: a scaling check's work
+    /// measure.</summary>
+    internal long Composed { get; private set; }
+
     internal bool CanComplete(Koto node) => this.Visit(node).Normal;
 
     internal void Clear()
@@ -129,6 +133,7 @@ internal sealed class StructuralCompletion(Func<Koto, bool> isNever, Func<Koto, 
         // node completes, conservatively assume completion; semantic flow retains
         // a pending obligation for recursive defaults.
         this.cache[node] = new(true, null);
+        this.Composed++;
         var result = this.CloseTransfers(node, this.Compose(node));
         this.cache[node] = result;
         return result;
