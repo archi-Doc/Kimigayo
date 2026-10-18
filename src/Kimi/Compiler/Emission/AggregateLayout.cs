@@ -178,18 +178,24 @@ internal sealed class AggregateLayoutPool
         return this.resolved[type] = null;
     }
 
-    // Layout's record of a Type whose parts this pool accepted; null after mapping a Limit to the resource limit and CLayout (a C-layout
-    // instance storing a zero-sized Field) to a refusal.
+    // Layout's record of a Type whose parts this pool accepted; null after mapping a size, count or depth limit to the resource limit
+    // and CLayout (a C-layout instance storing a zero-sized Field) to a refusal. Generation follows a complete Binding, so Rejected
+    // storage is a broken contract.
     private ValueLowering? Represent(BoundType type)
     {
         var layout = this.layout.Of(type);
-        if (layout.CLayout is not null)
+        if (layout.Outcome == Layout.Outcome.Rejected)
+        {
+            throw new InvalidOperationException("Generation reached " + type.Name + ", whose storage Binding rejected.");
+        }
+
+        if (layout.Outcome == Layout.Outcome.CLayout)
         {
             this.resolved[type] = null;
         }
-        else if (layout.Value is null)
+        else if (layout.IsLimit)
         {
-            this.ExceedLimit(type);
+            this.ExceedLimit(type, depth: layout.Outcome == Layout.Outcome.DepthLimit);
         }
 
         return layout.Value;

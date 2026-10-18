@@ -325,6 +325,7 @@ public partial class Compilation
         this.binding?.Invalidate();
         this.InvalidateOwnership();
         this.locations?.Clear();
+        this.layout?.Clear();
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and

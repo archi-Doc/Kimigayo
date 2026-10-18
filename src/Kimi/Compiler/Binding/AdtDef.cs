@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the stored shape of one struct or enum declaration.
-// Input: its bound declaration. Output: ordered fields, cases, destructor, inline storage types and whether it has C layout.
+// Input: its bound declaration. Output: ordered fields, cases, destructor, inline storage types, whether it has C layout and whether
+// it lies on an inline storage cycle.
 // Binding fills the shape once per pass before bodies; field and case ordinals stay consistent.
 // Must not make MIR or Backend rediscover storage from declaration syntax.
 
@@ -27,6 +28,10 @@ internal sealed class AdtDef
     /// <summary>Gets or sets a value indicating whether the struct's C layout validated (SPEC 21.1). Layout validation writes it for
     /// every struct in every pass, before storage is prepared; header binding runs earlier and reads the attributes instead.</summary>
     internal bool IsCLayout { get; set; }
+
+    /// <summary>Gets or sets a value indicating whether the declaration lies on an inline storage cycle (InvalidInlineLayout_Kd).
+    /// Inline layout validation writes it for every struct and enum in every pass; Layout reads it (DECISIONS R5-M37).</summary>
+    internal bool InlineCycle { get; set; }
 
     /// <summary>Gets or sets the storage version of the pass whose PrepareStorage refilled this shape.</summary>
     internal ulong Version { get; set; }

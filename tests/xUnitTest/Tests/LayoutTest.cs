@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
+using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -9,7 +11,9 @@ using Xunit;
 namespace XunitTest;
 
 // IMPL 21.1.3's rows and the sequence handles (SPEC 4.8.6, 4.9.5) in Layout.Of, which the old pool and gate read (R5 P7a), and
-// struct, Tuple, fixed-array, enum, Closure and Function Item placement with its OK/Limit/CLayout result (R5 P7b, S2-S4 X1, X18, X31).
+// struct, Tuple, fixed-array, enum, Closure and Function Item placement with its OK/Limit/CLayout result (R5 P7b, S2-S4 X1, X18, X31);
+// one Layout per compilation, its memo for the program version, the count and depth bounds, the outcomes and their precedence (R5 P7c,
+// DECISIONS R5-M37).
 public class LayoutTest
 {
     private const string CLayoutGeneric = "#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\n";
@@ -139,9 +143,9 @@ public class LayoutTest
         c.Bind();
         var option = Variable(c, "x");
         var result = c.Layout.Of(option);
-        Assert.Null(result.Value);
-        Assert.Equal("P", result.CLayout!.Name);
-        Assert.Equal(0, c.Layout.Of(result.CLayout.Components[0]).Value!.Layout.Size);
+        Assert.Equal((Layout.Outcome.CLayout, null), (result.Outcome, result.Value));
+        Assert.Equal("P", result.Instance!.Name);
+        Assert.Equal(0, c.Layout.Of(result.Instance.Components[0]).Value!.Layout.Size);
         var pool = new AggregateLayoutPool(c.Layout);
         Assert.Null(pool.Get(option));
         Assert.Null(pool.ResourceLimitFailure);
@@ -156,21 +160,213 @@ public class LayoutTest
         var declared = Variable(c, "x");
         var instances = calls.Select(x => c.Types.Apply(declared, c.Types.SubstOf(x!)!)!).ToArray();
         Assert.Equal([BoundType.Unit, BoundType.I32], instances.Select(static x => x.Components[0].Components[0]));
-        Assert.Same(instances[0].Components[0], c.Layout.Of(instances[0]).CLayout);
+        Assert.Same(instances[0].Components[0], c.Layout.Of(instances[0]).Instance);
         Assert.Equal(("{ i32, { [0 x i32], [8 x i8] } }", 12), (c.Layout.Of(instances[1]).Value!.Layout.StorageType, c.Layout.Of(instances[1]).Value!.Layout.Size));
     }
 
     [Theory]
-    [InlineData("", "[2147483648 of u8]")]
     [InlineData("", "[1073741824 of i32]")]
     [InlineData("", "(bool, [2147483647 of u8])")]
     [InlineData("enum Big\n    A([2147483647 of u8])\n    B\n", "Big")]
-    public void ASizeBeyondTheGenerationLimitIsALimit(string declarations, string type)
+    public void LimitsNameTheirBound(string declarations, string type)
     {
-        // IMPL 21.3.2: sizes and offsets are bounded by 2^31 - 1 (a size bound here; P7c types the count and depth bounds).
+        // IMPL 21.3.2: sizes and offsets are bounded by 2^31 - 1, a SizeLimit with neither a record nor an instance (R5-M37).
         var c = CompilationTestHelper.BindSuccess(declarations + "func probe(value: " + type + ") => ()");
-        var result = c.Layout.Of(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters[0].Type.TypeOf()!);
-        Assert.Equal(default, result);
+        Assert.Equal(new Layout.Result(Layout.Outcome.SizeLimit, null, null), c.Layout.Of(Parameters(c)[0]));
+    }
+
+    [Theory]
+    [InlineData("[2147483648 of ()]", "CountLimit", 0)]
+    [InlineData("[2147483647 of ()]", "Ok", 0)]
+    [InlineData("[2147483648 of u8]", "CountLimit", 0)]
+    public void TheCountBoundCountsZeroSizedElements(string type, string outcome, int size)
+    {
+        // IMPL 21.3.2: a fixed array holds at most 2^31 - 1 elements, whatever its stride; the count is checked before the size.
+        var c = CompilationTestHelper.BindSuccess("func probe(value: " + type + ") => ()");
+        var result = c.Layout.Of(Parameters(c)[0]);
+        Assert.Equal((Enum.Parse<Layout.Outcome>(outcome), size), (result.Outcome, result.Value?.Layout.Size ?? 0));
+    }
+
+    [Fact]
+    public void CLayoutOutranksLimits()
+    {
+        // SPEC 23.1, IMPL 21.3.2: a limit never hides a C-layout failure; Rejected storage yields to an independent limit or CLayout.
+        var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "func probe(value: [1073741824 of i32]) => ()");
+        var p = P(c, BoundType.Unit);
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p), c.Layout.Of(c.Types.Tuple([Parameters(c)[0], p])));
+
+        var failed = CompilationTestHelper.Parse(
+            CLayoutGeneric + "struct Node\n    let value: i32\n    let next: Node\nfunc probe(value: [2147483648 of u8]) => ()");
+        Assert.False(failed.Bind().IsComplete);
+        var node = Declared(failed, "Node");
+        p = P(failed, BoundType.Unit);
+        Assert.Equal(Layout.Outcome.CountLimit, failed.Layout.Of(failed.Types.Tuple([node, Parameters(failed)[0]])).Outcome);
+        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, node), failed.Layout.Of(failed.Types.Tuple([node, BoundType.I32])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p), failed.Layout.Of(failed.Types.Tuple([node, p])));
+    }
+
+    [Theory]
+    [InlineData("struct Node\n    let value: i32\n    let next: Node\n", "Node", "")]
+    [InlineData("struct Box<T>\n    let value: T\nstruct E\n    let b: Box<E>\n", "E", "")]
+    [InlineData("struct Box<T>\n    let value: T\nstruct E\n    let b: Box<E>\n", "E.b", "E")]
+    [InlineData("enum E<T>\n    Empty\n    Again(E<E<T>>)\nlet x = E<i32>.Empty\n", "E<i32>", "")]
+    [InlineData("struct S\n    var a: Missing\n", "S", "")]
+    [InlineData("", "[-1 of i32]", "")]
+    public void RejectedStorageIsDerived(string source, string probe, string instance)
+    {
+        // R5-M37: after a failed Binding, a declaration on an inline storage cycle (AdtDef.InlineCycle), a stored Type Binding did not
+        // resolve and an unresolved fixed-array length give Rejected (the probed Type itself unless `instance` names the declaration),
+        // which a Type storing them by value takes on; nothing throws.
+        var c = CompilationTestHelper.Parse(source + "let y = 1");
+        Assert.Equal(source.Length == 0, c.Bind().IsComplete);
+        var type = probe switch
+        {
+            "E.b" => AdtDef.FieldType(Declared(c, "E"), 0)!,
+            "E<i32>" => c.Types.Intern(BoundTypeKind.Constructed, Declared(c, "E").Symbol, SemanticsKind.Owner, [BoundType.I32]),
+            "[-1 of i32]" => c.Types.Intern(BoundTypeKind.FixedArray, null, SemanticsKind.Owner, [BoundType.I32], length: -1),
+            _ => Declared(c, probe),
+        };
+        var expected = instance.Length == 0 ? type : Declared(c, instance);
+        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, expected), c.Layout.Of(type));
+    }
+
+    [Fact]
+    public void AnUnresolvedBaseIsLaidOutWithoutIt()
+    {
+        // R5-M37: Binding publishes an unresolved base as no base, so the struct is laid out without it; no record follows the failure.
+        var c = CompilationTestHelper.Parse("struct D: Missing\n    var a: u8\nlet y = 1");
+        Assert.False(c.Bind().IsComplete);
+        var result = c.Layout.Of(Declared(c, "D"));
+        Assert.Equal((Layout.Outcome.Ok, 1), (result.Outcome, result.Value!.Layout.Size));
+    }
+
+    [Theory]
+    [InlineData("Tuple", 64, "Ok")]
+    [InlineData("Tuple", 65, "DepthLimit")]
+    [InlineData("Option", 64, "Ok")]
+    [InlineData("Option", 66, "DepthLimit")]
+    [InlineData("Struct", 64, "Ok")]
+    [InlineData("Struct", 65, "DepthLimit")]
+    public void DepthIsThePlacementHeight(string shape, int height, string outcome)
+    {
+        // IMPL 21.3.2, R5-M37: a row is 0 high and a placed Type 1 more than its highest part, an enum's Case payload Tuple counting as
+        // a part (Option<ref/i32> is 2 high); over 64 is DepthLimit, whichever Type is laid out first.
+        var chain = new StringBuilder("struct S1\n    var v: i32\n");
+        for (var i = 2; i <= 65; i++)
+        {
+            chain.Append("struct S").Append(i).Append("\n    var v: S").Append(i - 1).Append('\n');
+        }
+
+        for (var order = 0; order < 2; order++)
+        {
+            var c = CompilationTestHelper.BindSuccess(chain.ToString());
+            var whole = Chain(c, shape, height);
+            var part = Chain(c, shape, height - 2);
+            if (order == 0)
+            {
+                Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(part).Outcome);
+            }
+
+            Assert.Equal(Enum.Parse<Layout.Outcome>(outcome), c.Layout.Of(whole).Outcome);
+            Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(part).Outcome);
+        }
+    }
+
+    [Theory]
+    [InlineData("()", 1, "CLayout")]
+    [InlineData("()", 63, "CLayout")]
+    [InlineData("()", 64, "DepthLimit")]
+    [InlineData("0-Tuple", 62, "CLayout")]
+    [InlineData("0-Tuple", 63, "DepthLimit")]
+    public void DepthLimitHidesNoVisibleCLayout(string field, int level, string outcome)
+    {
+        // R5-M37: P<X> placed at `level` beside a Type 65 high, in either part order and either query order (the parts first, then
+        // the whole, or the whole first in a fresh compilation). A CLayout whose zero-sized Field is laid out within the 64-level window
+        // outranks DepthLimit; one placed at level 64 or below, or whose Field reaches past the window (a placed zero-sized Field, the
+        // 0-Tuple, is 1 high, so its P is visible down to level 62), stays behind DepthLimit, as in the old pool.
+        var expected = Enum.Parse<Layout.Outcome>(outcome);
+        for (var first = 0; first < 2; first++)
+        {
+            var verdicts = new Layout.Result[2];
+            for (var order = 0; order < 2; order++)
+            {
+                var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "()");
+                var p = P(c, field == "()" ? BoundType.Unit : c.Types.Tuple([]));
+                var placed = Wrap(c, p, level - 1);
+                var deep = Wrap(c, BoundType.I32, 65);
+                var whole = first == 0 ? c.Types.Tuple([placed, deep]) : c.Types.Tuple([deep, placed]);
+                if (order == 0)
+                {
+                    c.Layout.Of(deep);
+                    c.Layout.Of(placed);
+                }
+
+                verdicts[order] = c.Layout.Of(whole);
+                Assert.Equal(Layout.Outcome.DepthLimit, c.Layout.Of(deep).Outcome);
+                Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p), c.Layout.Of(placed));
+                Assert.Equal((expected, expected == Layout.Outcome.CLayout ? p : null), (verdicts[order].Outcome, verdicts[order].Instance));
+            }
+
+            Assert.Equal(verdicts[0].Outcome, verdicts[1].Outcome);
+        }
+    }
+
+    [Fact(Timeout = 10000)]
+    public async Task SharedPartsArePlacedOnce()
+    {
+        // R5-M37: placement is linear over shared parts. Tk = (Tk-1, Tk-1) over the 0-Tuple stores 2^k leaves, so placing T40 again
+        // for every use of a part would not end in time, nor would re-placing unmemoized parts past the bound for T100.
+        var c = CompilationTestHelper.BindSuccess("()");
+        var tuples = new BoundType[101];
+        tuples[0] = c.Types.Tuple([]);
+        for (var k = 1; k < tuples.Length; k++)
+        {
+            tuples[k] = c.Types.Tuple([tuples[k - 1], tuples[k - 1]]);
+        }
+
+        await Task.Run(
+            () =>
+            {
+                var shared = c.Layout.Of(tuples[40]);
+                Assert.Equal((Layout.Outcome.Ok, 0), (shared.Outcome, shared.Value!.Layout.Size));
+                Assert.Same(shared.Value, new AggregateLayoutPool(c.Layout).Get(tuples[40])!.Value);
+                Assert.Equal(Layout.Outcome.DepthLimit, c.Layout.Of(tuples[100]).Outcome);
+            },
+            TestContext.Current.CancellationToken);
+    }
+
+    [Fact]
+    public void AnEditReachesTheLayoutOfAStructuralType()
+    {
+        // R5-M37: the memo serves one program version. An edit of S's Field keeps the interned Tuple (S, u8) but changes its layout.
+        const string Source = "struct S\n    var a: u8\nfunc probe(t: (S, u8)) => ()\n";
+        var c = CompilationTestHelper.BindSuccess(Source);
+        var tuple = Parameters(c)[0];
+        Assert.Equal(2, c.Layout.Of(tuple).Value!.Layout.Size);
+        EditFieldType(c, Source, "var a: u8", "var a: i64");
+        Assert.Same(tuple, Parameters(c)[0]);
+        Assert.Equal(16, c.Layout.Of(tuple).Value!.Layout.Size);
+    }
+
+    [Fact]
+    public void AWarmRebindKeepsTheVerdicts()
+    {
+        // R4-M51's premise, on which the memo rests: a pass without an edit gives every Type the verdict a fresh Layout gives.
+        var c = CompilationTestHelper.BindSuccess(
+            CLayoutGeneric + "struct S\n    var a: u8\n    var b: i64\nenum E\n    A(S)\n    B\nlet x: u8 = 4\nlet f = func [x] () -> u8 => x\n" +
+            "func probe(s: S, e: E, p: P<u8>) => ()");
+        BoundType[] types = [.. Parameters(c), Closure(c), P(c, BoundType.Unit)];
+        foreach (var type in types)
+        {
+            c.Layout.Of(type);
+        }
+
+        Assert.True(c.Bind().IsComplete);
+        var fresh = new Layout();
+        foreach (var type in types)
+        {
+            Assert.Equal(Verdict(fresh.Of(type)), Verdict(c.Layout.Of(type)));
+        }
     }
 
     [Theory]
@@ -251,8 +447,14 @@ public class LayoutTest
     [Fact]
     public void WarmLayoutsAllocateNothing()
     {
-        // Rows and placements of every mode and the Limit result: a call that finds its shared records allocates nothing.
-        var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "open struct B\n    var a: i64\n    var b: u8\nstruct D: B\n    var c: u16\nfunc probe(d: D, p: P<u8>, o: Option<(i32, [3 of bool])>, l: [2147483648 of u8]) => ()");
+        // R5-M37: after a warm rebind, rows, placements of every mode and every outcome, complete and exhausted memo hits allocate nothing
+        // and give the same records. Rejected comes from a failed Binding, which is not rebound.
+        var c = CompilationTestHelper.BindSuccess(
+            CLayoutGeneric + "open struct B\n    var a: i64\n    var b: u8\nstruct D: B\n    var c: u16\n" +
+            "func probe(d: D, p: P<u8>, o: Option<(i32, [3 of bool])>, l: [2147483648 of u8], m: [1073741824 of i32]) => ()");
+        var failed = CompilationTestHelper.Parse("struct Node\n    let value: i32\n    let next: Node\nlet y = 1");
+        Assert.False(failed.Bind().IsComplete);
+        var node = Declared(failed, "Node");
         BoundType[] types =
         [
             BoundType.I32, BoundType.Never, BoundType.String, BoundType.WrappingOf(BoundType.ISize),
@@ -260,11 +462,21 @@ public class LayoutTest
             new("h", BoundTypeKind.Semantics, semantics: SemanticsKind.Rc, components: [BoundType.I32]),
             new("fn", BoundTypeKind.Function, components: [BoundType.I32]),
             new("s", BoundTypeKind.Dictionary, components: [BoundType.String, BoundType.I32]),
-            .. KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!),
+            .. Parameters(c), P(c, BoundType.Unit), Wrap(c, BoundType.I32, 65),
         ];
+        var outcomes = new HashSet<Layout.Outcome> { failed.Layout.Of(node).Outcome };
+        foreach (var type in types)
+        {
+            outcomes.Add(c.Layout.Of(type).Outcome);
+        }
+
+        Assert.Equal(6, outcomes.Count);
+        var record = c.Layout.Of(Parameters(c)[0]).Value;
         var size = 0L;
         var allocated = AllocationMeasurement.Measure(() =>
         {
+            c.Binding.Bind(BindingMode.Final);
+            size += (int)failed.Layout.Of(node).Outcome;
             foreach (var type in types)
             {
                 size += c.Layout.Of(type).Value?.Layout.Size ?? 0;
@@ -272,11 +484,118 @@ public class LayoutTest
         });
         Assert.Equal(0, allocated);
         Assert.True(size > 0);
+        Assert.Same(record, c.Layout.Of(Parameters(c)[0]).Value);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnEditReleasesThePreviousRecords()
+    {
+        // R5-M37: an edit clears the records with the memo, so the records Layout retains are the current program's.
+        const string Source = "struct S\n    var a: u8\n    var b: [77 of u8]\nfunc probe(s: S) => ()\n";
+        var c = CompilationTestHelper.BindSuccess(Source);
+        var record = PlaceRecord(c);
+        EditFieldType(c, Source, "var a: u8", "var a: i64");
+        Assert.Equal(88, c.Layout.Of(Parameters(c)[0]).Value!.Layout.Size);
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(record.IsAlive);
+    }
+
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ADroppedCompilationKeepsNoType()
+    {
+        // R5-M37: Layout keeps no static state, so a compilation it laid out is collected with its Types.
+        var compilation = LayOutAndDrop();
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(compilation.IsAlive);
     }
 
     private static (string Storage, int Size, int Alignment, int Stride, string Computation, string? Argument) Row(ValueLowering value)
         => (value.Layout.StorageType, value.Layout.Size, value.Layout.Alignment, value.Layout.Stride, value.ComputationType, value.ArgumentType);
 
+    private static (Layout.Outcome Outcome, string? Storage, int Size, string Offsets, BoundType? Instance) Verdict(Layout.Result result)
+        => (result.Outcome, result.Value?.Layout.StorageType, result.Value?.Layout.Size ?? -1,
+            string.Join(',', result.Value?.Layout.FieldOffsets.ToArray() ?? []), result.Instance);
+
     private static BoundType Variable(Compilation c, string name)
         => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == name).NameKoto.TypeOf()!;
+
+    private static BoundType[] Parameters(Compilation c)
+        => [.. KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!)];
+
+    // A declared struct's or enum's own Type.
+    private static BoundType Declared(Compilation c, string name)
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<DeclarationContainerKoto>().Single(x => x.Name == name).SymbolOf()!.Type!;
+
+    // CLayoutGeneric's instance P<argument>.
+    private static BoundType P(Compilation c, BoundType argument)
+        => c.Types.Intern(BoundTypeKind.Constructed, Declared(c, "P").Symbol, SemanticsKind.Owner, [argument]);
+
+    // `count` one-component Tuples around `type`, one placement level each.
+    private static BoundType Wrap(Compilation c, BoundType type, int count)
+    {
+        for (var i = 0; i < count; i++)
+        {
+            type = c.Types.Tuple([type]);
+        }
+
+        return type;
+    }
+
+    // A Type `height` levels high: one-component Tuples over i32, Options over ref/i32 (2 levels each) or the struct chain S1..S65.
+    private static BoundType Chain(Compilation c, string shape, int height)
+    {
+        if (shape == "Struct")
+        {
+            return Declared(c, "S" + height.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        }
+
+        if (shape == "Tuple")
+        {
+            return Wrap(c, BoundType.I32, height);
+        }
+
+        var type = c.Types.Reference(SemanticsKind.Ref, BoundType.I32);
+        for (var i = 0; i < height / 2; i++)
+        {
+            type = c.Types.Intern(BoundTypeKind.Constructed, c.Library.Option, SemanticsKind.Owner, [type]);
+        }
+
+        return type;
+    }
+
+    private static BoundType Closure(Compilation c)
+        => Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), static x => x.IsAnonymous).ClosureOf()!.EnvironmentType!;
+
+    // Replaces the Type syntax of the Field a by the donor's, an edit (as RetentionTest.AnEditRecomputesRetentions does), and rebinds.
+    private static void EditFieldType(Compilation c, string source, string field, string edited)
+    {
+        var donor = CompilationTestHelper.BindSuccess(source.Replace(field, edited, StringComparison.Ordinal));
+        var syntax = FieldTypeSyntax(c);
+        Assert.True(KotoHelper.Replace(syntax.Parent!, syntax, FieldTypeSyntax(donor)));
+        Assert.True(c.Bind().IsComplete);
+    }
+
+    private static Koto FieldTypeSyntax(Compilation c)
+        => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<PropertyKoto>().Single(static x => x.NameKoto.IdentifierName == "a").TypeKoto!;
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference PlaceRecord(Compilation c) => new(c.Layout.Of(Parameters(c)[0]).Value!);
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference LayOutAndDrop()
+    {
+        var c = CompilationTestHelper.BindSuccess("struct S\n    var a: u8\nenum E\n    A(S)\n    B\nfunc probe(s: S, e: E, t: (S, E)) => ()");
+        foreach (var type in Parameters(c))
+        {
+            c.Layout.Of(type);
+        }
+
+        return new(c);
+    }
 }
