@@ -1,26 +1,31 @@
 #:property Nullable=disable
 // Model of S5 (draft/Proposals/2026-10-19 Effect Atoms Widen.md): effect summaries in terms of a declaration's own Type parameters
-// (SPEC 15.6.4), composed through each call's substitution with normalization (SPEC 8.2.3, 8.5) and destruction resolution (SPEC 16.3.3).
-// A summary keeps destructions of abstract Types (Type parameters and associated-Type projections) as atoms; a concrete part is resolved.
-// Rules:
+// (SPEC 15.6.4), composed along each summary dependency (a call, or a destruction that runs a drop body) through its substitution, with
+// normalization (SPEC 8.2.3, 8.5) and destruction resolution (SPEC 16.3.3). A summary keeps the destruction of an abstract Type (a Type
+// parameter or an associated-Type projection) that its declaration's premises do not prove Copy as an atom; a concrete part is resolved,
+// a Type with a drop body runs that body's summary. Every parameter-dependent effect kind (destruction, a published row's requirement, a
+// call through a Callable input) behaves alike here, so only destructions are modelled.
+// Rules ("a recursive base": one of the projection's bases, at any depth, proven to conform to a recursive Contract, SPEC 8.3.3):
 //   EXACT  the current letter: no widening; a projection-depth cap marks an infinite fixed point (the cap is the model's, not a rule).
-//   S5     the proposal: an atom on a projection with a base proven to conform to a recursive Contract (SPEC 8.3.3) that passes
-//          through a recursive call and is not mapped to itself is recorded as an unclassifiable effect.
-//   LIT    the open-key transcription: any projection atom that passes through a recursive call and is not mapped to itself.
-//   ANY    every atom on a projection with a recursive-Contract base, recursion or not.
+//   S5C    option (c), recommended: an atom with a recursive base is recorded as unknown environment effects, wherever it is recorded.
+//   S5A    option (a): an atom with a recursive base that passes along a dependency on a cycle of dependencies (calls and drop bodies),
+//          and whose substituted Type is not itself in the same declaration, is recorded as unknown environment effects.
+//   S5A1   option (a) with cycles over call edges only (the first draft; review B3).
+//   IMM    option (a) with the immediate base only (review B1's reading).
+//   LIT    the open-key transcription: any projection atom that passes along a dependency cycle and is not mapped to itself.
 //   DEPTH  alternative (b): exact up to projection depth 4; a deeper atom is a Resource failure.
-// A use's verdict: Unknown (an unclassifiable effect, or an abstract atom its premises do not prove Copy), Env (a concrete destruction
-// with an environment effect), Resource, or None.
+// A use's verdict: Unknown (unknown environment effects, or an abstract atom its premises do not prove Copy), Env (a concrete destruction
+// with an environment effect), Resource, Infinite (the model's cap), or None.
 // Run (outside the repository): dotnet run S5EffectWidening.cs [-- -v] [-- -random N]
 using System.Text;
 
 var verbose = args.Contains("-v");
 var randomIndex = Array.IndexOf(args, "-random");
 var randomCount = randomIndex >= 0 ? int.Parse(args[randomIndex + 1]) : 50000;
-var rules = new[] { Rule.Exact, Rule.S5, Rule.Lit, Rule.Any, Rule.Depth };
+var rules = new[] { Rule.Exact, Rule.S5C, Rule.S5A, Rule.S5A1, Rule.Imm, Rule.Lit, Rule.Depth };
 var failures = 0;
 
-Console.WriteLine("case | use | instantiable | expected | EXACT | S5 | LIT | ANY | DEPTH | S5 atoms (max depth)");
+Console.WriteLine("case | use | instantiable | expected | EXACT | S5C | S5A | S5A1 | IMM | LIT | DEPTH");
 foreach (var c in Cases.All())
 {
     var results = rules.ToDictionary(r => r, r => new Solver(c.Program, r).Run());
@@ -32,14 +37,14 @@ foreach (var c in Cases.All())
             row.Append(" | ").Append(results[r].Verdict(use));
         }
 
-        var s5 = results[Rule.S5];
-        row.Append(" | ").Append(s5.AtomCount).Append(" (").Append(s5.MaxDepth).Append(')');
         Console.WriteLine(row);
-        var s5Verdict = s5.Verdict(use);
-        if (s5.Infinite || (c.Instantiable && s5Verdict != expected))
+        foreach (var r in new[] { Rule.S5C, Rule.S5A })
         {
-            failures++;
-            Console.WriteLine($"  FAIL: S5 {(s5.Infinite ? "did not terminate" : "differs from the exact verdict on an instantiable program")}");
+            if (results[r].Infinite || (c.Instantiable && results[r].Verdict(use) != expected))
+            {
+                failures++;
+                Console.WriteLine($"  FAIL: {r} {(results[r].Infinite ? "did not terminate" : "differs from the exact verdict on an instantiable program")}");
+            }
         }
     }
 
@@ -56,7 +61,7 @@ failures += RandomSearch.Run(randomCount);
 Console.WriteLine(failures == 0 ? "OK" : $"FAILURES {failures}");
 return failures;
 
-enum Rule { Exact, S5, Lit, Any, Depth }
+enum Rule { Exact, S5C, S5A, S5A1, Imm, Lit, Depth }
 
 abstract record Ty
 {
@@ -92,22 +97,31 @@ sealed record Con(string Name, Ty Arg) : Ty
     public override string ToString() => this.Arg is null ? this.Name : $"{this.Name}<{this.Arg}>";
 }
 
-// A Contract: parents, declared associated Types with their Constraints, and Constraints on inherited ones (SPEC 8.5.3).
+// A Contract: parents, declared associated Types with their Constraints, and Constraints on inherited ones (SPEC 8.5.3). Contracts have
+// no Type arguments here (review B2 stays unmodelled).
 sealed record Contract(string Name, string[] Parents, (string Assoc, string[] Constraints)[] Assocs, (string Assoc, string Constraint)[] Refines);
 
 // A conformance of a concrete constructor with at most one argument X, under conditions on X, with associated-Type rules over X.
-// Destroying a concrete value destroys its argument; Prog.EnvCons lists the constructors whose destruction has an environment effect.
 sealed record Conformance(string Con, string Contract, string[] Conditions, (string Assoc, Ty Rule)[] Rules);
 
 sealed record Decl(string Name, string[] Params, (Ty Type, string Contract)[] Premises, (Ty From, Ty To)[] Identities, Ty[] Drops, (string Callee, (string Param, Ty Type)[] Subst)[] Calls);
 
 sealed class Prog
 {
+    private readonly Dictionary<string, bool> recursive = [];
+
     public Dictionary<string, Contract> Contracts { get; } = new() { ["Copy"] = new("Copy", [], [], []) };
 
     public List<Conformance> Conformances { get; } = [];
 
+    // Constructors whose destruction has an environment effect; the others destroy their argument.
     public HashSet<string> EnvCons { get; } = [];
+
+    // Constructors with a drop body: destroying Con<A> runs the body's declaration (one parameter, X) with X := A, and the body alone
+    // destroys the parts (its Drops); StructPremises are the constructor's own Constraints on X, needed to form Con<A>.
+    public Dictionary<string, string> DropBodies { get; } = [];
+
+    public Dictionary<string, string[]> StructPremises { get; } = [];
 
     public Dictionary<string, Decl> Decls { get; } = [];
 
@@ -130,9 +144,9 @@ sealed class Prog
         return [.. (own ?? []).Concat(inherited).Concat(refined).Distinct()];
     }
 
-    // SPEC 8.3.3: a Contract whose associated-Type Constraints, its own or those on inherited associated Types, lead back to it.
-    private readonly Dictionary<string, bool> recursive = [];
-
+    // SPEC 8.3.3 as the proposal defines it: conjunction elimination of the Constraints on its associated Types (declared, inherited or
+    // placed on inherited ones) yields a conformance to it or to a Contract that refines it, directly or through the Constraints of the
+    // Contracts so yielded.
     public bool Recursive(string k)
     {
         if (!this.recursive.TryGetValue(k, out var known))
@@ -143,10 +157,12 @@ sealed class Prog
         return known;
     }
 
+    public IEnumerable<string> AllAssocs(string k) => this.Contracts[k].Assocs.Select(a => a.Assoc).Concat(this.Contracts[k].Parents.SelectMany(this.AllAssocs)).Distinct();
+
     private bool FindRecursion(string k)
     {
         var seen = new HashSet<string>();
-        var stack = new Stack<string>(this.Next(k));
+        var stack = new Stack<string>(this.Yields(k));
         while (stack.Count > 0)
         {
             var m = stack.Pop();
@@ -157,7 +173,7 @@ sealed class Prog
 
             if (seen.Add(m))
             {
-                foreach (var n in this.Next(m))
+                foreach (var n in this.Yields(m))
                 {
                     stack.Push(n);
                 }
@@ -167,17 +183,15 @@ sealed class Prog
         return false;
     }
 
-    private IEnumerable<string> Next(string k) => this.AllAssocs(k).SelectMany(a => this.Constraints(k, a) ?? []).Concat(this.Contracts[k].Parents);
-
-    public IEnumerable<string> AllAssocs(string k) => this.Contracts[k].Assocs.Select(a => a.Assoc).Concat(this.Contracts[k].Parents.SelectMany(this.AllAssocs)).Distinct();
+    private IEnumerable<string> Yields(string k) => this.AllAssocs(k).SelectMany(a => this.Constraints(k, a) ?? []);
 }
 
 // Proofs, normalization and destruction resolution in one declaration's scope; conformances in progress supply no evidence (SPEC 8.3.3).
 sealed class Scope(Prog program, Decl decl, HashSet<Conformance> valid)
 {
-    public Decl Decl => decl;
-
     private readonly Dictionary<(Ty, string), bool> cache = [];
+
+    public Decl Decl => decl;
 
     public bool Proves(Ty x, string c, int depth = 0)
     {
@@ -195,6 +209,76 @@ sealed class Scope(Prog program, Decl decl, HashSet<Conformance> valid)
         this.cache[(x, c)] = false; // In progress: no evidence from itself.
         return this.cache[(x, c)] = this.Prove(x, c, depth);
     }
+
+    public Ty Norm(Ty x)
+    {
+        x = x switch
+        {
+            Proj(var b, var a) => this.Reduce(this.Norm(b), a),
+            Con(var n, var arg) => new Con(n, arg is null ? null : this.Norm(arg)),
+            _ => x,
+        };
+        foreach (var (from, to) in decl.Identities)
+        {
+            if (x == from)
+            {
+                return this.Norm(to);
+            }
+        }
+
+        return x;
+    }
+
+    // What destroying a value of a Type does (SPEC 16.3.3): an abstract Type is an atom; a concrete one with a drop body runs that body
+    // (bodies), any other destroys its argument; a marked constructor has an environment effect.
+    public void Resolve(Ty x, List<Ty> atoms, List<(string Body, Ty Arg)> bodies, ref bool env)
+    {
+        x = this.Norm(x);
+        if (x.Abstract || x is not Con con)
+        {
+            atoms.Add(x); // A projection of a concrete Type that no conformance reduces is not well-formed; the solver flags it.
+            return;
+        }
+
+        env |= program.EnvCons.Contains(con.Name);
+        if (program.DropBodies.TryGetValue(con.Name, out var body))
+        {
+            bodies.Add((body, con.Arg));
+        }
+        else if (con.Arg is not null)
+        {
+            this.Resolve(con.Arg, atoms, bodies, ref env);
+        }
+    }
+
+    // A projection one of whose bases (its base, that base's base, and so on) is proven to conform to a recursive Contract.
+    public bool RecursiveBase(Ty x)
+    {
+        for (var b = (x as Proj)?.Base; b is not null; b = (b as Proj)?.Base)
+        {
+            if (this.ConformsToRecursive(b))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // The first draft's reading under SPEC 8.5.2's "the base": the immediate base only (review B1; rule IMM).
+    public bool ImmediateRecursiveBase(Ty x) => x is Proj(var b, _) && this.ConformsToRecursive(b);
+
+    public bool WellFormed(Ty x) => x switch
+    {
+        Par => true,
+        Proj(var b, var a) => this.WellFormed(b) && (this.Norm(b).Abstract || this.Norm(new Proj(b, a)) is not Proj { Base: Con })
+            && program.Contracts.Keys.Any(k => program.AllAssocs(k).Contains(a) && this.Proves(b, k)),
+        Con(var n, var arg) => (arg is null || this.WellFormed(arg))
+            && (!program.StructPremises.TryGetValue(n, out var premises) || premises.All(c => arg is not null && this.Proves(arg, c))),
+        _ => false,
+    };
+
+    private bool ConformsToRecursive(Ty b) => program.Contracts.Keys.Any(k => program.Recursive(k) && this.Proves(b, k));
 
     private bool Prove(Ty x, string c, int depth)
     {
@@ -218,25 +302,6 @@ sealed class Scope(Prog program, Decl decl, HashSet<Conformance> valid)
             && f.Conditions.All(cond => con.Arg is not null && this.Proves(con.Arg, cond, depth + 1)));
     }
 
-    public Ty Norm(Ty x)
-    {
-        x = x switch
-        {
-            Proj(var b, var a) => this.Reduce(this.Norm(b), a),
-            Con(var n, var arg) => new Con(n, arg is null ? null : this.Norm(arg)),
-            _ => x,
-        };
-        foreach (var (from, to) in decl.Identities)
-        {
-            if (x == from)
-            {
-                return this.Norm(to);
-            }
-        }
-
-        return x;
-    }
-
     private Ty Reduce(Ty b, string a)
     {
         if (b is Con con)
@@ -252,53 +317,6 @@ sealed class Scope(Prog program, Decl decl, HashSet<Conformance> valid)
 
         return new Proj(b, a);
     }
-
-    // The atoms and the environment effect of destroying a value of a Type (SPEC 16.3.3): an abstract Type is an atom; a concrete one
-    // destroys its argument and has an environment effect when its constructor is marked.
-    public void Resolve(Ty x, List<Ty> atoms, ref bool env)
-    {
-        x = this.Norm(x);
-        if (x.Abstract)
-        {
-            atoms.Add(x);
-            return;
-        }
-
-        if (x is not Con con)
-        {
-            atoms.Add(x); // A projection of a concrete Type that no conformance reduces (not well-formed).
-            return;
-        }
-
-        env |= program.EnvCons.Contains(con.Name);
-        if (con.Arg is not null)
-        {
-            this.Resolve(con.Arg, atoms, ref env);
-        }
-    }
-
-    // A projection with a base (at any depth) proven to conform to a recursive Contract.
-    public bool RecursiveBase(Ty x)
-    {
-        for (var b = (x as Proj)?.Base; b is not null; b = (b as Proj)?.Base)
-        {
-            if (program.Contracts.Keys.Any(k => program.Recursive(k) && this.Proves(b, k)))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    public bool WellFormed(Ty x) => x switch
-    {
-        Par => true,
-        Proj(var b, var a) => this.WellFormed(b) && (this.Norm(b).Abstract || this.Norm(new Proj(b, a)) is not Proj { Base: Con })
-            && program.Contracts.Keys.Any(k => program.AllAssocs(k).Contains(a) && this.Proves(b, k)),
-        Con(var n, var arg) => arg is null || this.WellFormed(arg),
-        _ => false,
-    };
 }
 
 static class Subst
@@ -316,6 +334,8 @@ sealed class Summary
 {
     public HashSet<Ty> Atoms { get; } = [];
 
+    public HashSet<(string Body, Ty Arg)> Bodies { get; } = []; // The drop bodies its destructions run, with their arguments.
+
     public bool Unknown { get; set; }
 
     public bool Env { get; set; }
@@ -326,10 +346,6 @@ sealed class Summary
 sealed class Result(Dictionary<string, Summary> summaries, Dictionary<string, Scope> scopes, bool infinite)
 {
     public bool Infinite => infinite;
-
-    public int AtomCount => summaries.Values.Sum(s => s.Atoms.Count);
-
-    public int MaxDepth => summaries.Values.SelectMany(s => s.Atoms).Select(a => a.Depth).DefaultIfEmpty(0).Max();
 
     public Dictionary<string, Summary> Summaries => summaries;
 
@@ -354,11 +370,18 @@ sealed class Result(Dictionary<string, Summary> summaries, Dictionary<string, Sc
         return s.Env ? "Env" : "None";
     }
 
-    public string Describe() => string.Join("; ", summaries.Select(kv => $"{kv.Key}: {{{string.Join(", ", kv.Value.Atoms)}}}{(kv.Value.Unknown ? " +unknown" : string.Empty)}{(kv.Value.Env ? " +env" : string.Empty)}{(kv.Value.Resource ? " +resource" : string.Empty)}")) + (infinite ? " (cap reached)" : string.Empty);
+    public string Describe() => string.Join("; ", summaries.Select(kv => $"{kv.Key}: {{{string.Join(", ", kv.Value.Atoms)}}}"
+        + $"{(kv.Value.Unknown ? " +unknown" : string.Empty)}{(kv.Value.Env ? " +env" : string.Empty)}{(kv.Value.Resource ? " +resource" : string.Empty)}"))
+        + (infinite ? " (cap reached)" : string.Empty);
 }
 
 sealed class Solver(Prog program, Rule rule, int cap = 8)
 {
+    private readonly HashSet<(string From, string To)> dependencies = [];
+    private Dictionary<string, Scope> scopes;
+    private Dictionary<string, Summary> summaries;
+    private bool infinite;
+
     public static HashSet<Conformance> Validate(Prog program)
     {
         // A conformance is valid when its rules meet the Contract's associated-Type Constraints under its conditions, with only
@@ -383,59 +406,120 @@ sealed class Solver(Prog program, Rule rule, int cap = 8)
         return valid;
     }
 
+    // The fixed point; for the rules that test recursion, rerun until the dependency graph (calls and the drop bodies found) is complete,
+    // so the cycles are those of the final graph.
     public Result Run()
     {
         var valid = Validate(program);
-        var scopes = program.Decls.ToDictionary(d => d.Key, d => new Scope(program, d.Value, valid));
-        var summaries = program.Decls.ToDictionary(d => d.Key, _ => new Summary());
-        var infinite = false;
+        foreach (var (name, decl) in program.Decls)
+        {
+            foreach (var (callee, _) in decl.Calls)
+            {
+                this.dependencies.Add((name, callee));
+            }
+        }
+
+        while (true)
+        {
+            var known = this.dependencies.Count;
+            this.Solve(valid);
+            if (this.infinite || this.dependencies.Count == known || rule is not (Rule.S5A or Rule.Imm or Rule.Lit))
+            {
+                return new(this.summaries, this.scopes, this.infinite);
+            }
+        }
+    }
+
+    private void Solve(HashSet<Conformance> valid)
+    {
+        this.scopes = program.Decls.ToDictionary(d => d.Key, d => new Scope(program, d.Value, valid));
+        this.summaries = program.Decls.ToDictionary(d => d.Key, _ => new Summary());
+        this.infinite = false;
         foreach (var (name, decl) in program.Decls)
         {
             foreach (var drop in decl.Drops)
             {
-                this.Add(scopes[name], summaries[name], null, drop, false, ref infinite);
+                this.Add(name, drop);
             }
         }
 
-        for (var changed = true; changed && !infinite;)
+        for (var changed = true; changed && !this.infinite;)
         {
             changed = false;
             foreach (var (name, decl) in program.Decls)
             {
-                var caller = summaries[name];
+                var s = this.summaries[name];
+                var before = (s.Atoms.Count, s.Bodies.Count, s.Unknown, s.Env, s.Resource);
                 foreach (var (callee, subst) in decl.Calls)
                 {
-                    var from = summaries[callee];
-                    var recursive = this.Reaches(callee, name);
-                    var before = (caller.Atoms.Count, caller.Unknown, caller.Env, caller.Resource);
-                    caller.Unknown |= from.Unknown;
-                    caller.Env |= from.Env;
-                    caller.Resource |= from.Resource;
-                    foreach (var atom in from.Atoms.ToArray())
-                    {
-                        var image = Subst.Apply(atom, p => subst.FirstOrDefault(s => s.Param == p.Name && p.Decl == callee).Type ?? p);
-                        var widen = recursive && atom is Proj && (rule == Rule.Lit || (rule == Rule.S5 && scopes[callee].RecursiveBase(atom)));
-                        this.Add(scopes[name], caller, widen ? atom : null, image, name == callee, ref infinite);
-                    }
-
-                    changed |= before != (caller.Atoms.Count, caller.Unknown, caller.Env, caller.Resource);
+                    this.Compose(name, callee, p => subst.FirstOrDefault(x => x.Param == p.Name && p.Decl == callee).Type ?? p, call: true);
                 }
+
+                foreach (var (body, arg) in s.Bodies.ToArray())
+                {
+                    this.Compose(name, body, p => p.Decl == body && p.Name == "X" ? arg : p, call: false);
+                }
+
+                changed |= before != (s.Atoms.Count, s.Bodies.Count, s.Unknown, s.Env, s.Resource);
             }
         }
-
-        return new(summaries, scopes, infinite);
     }
 
-    // Adds what destroying a value of the Type contributes; under S5 and LIT a widening source widens each image that is not itself.
-    private void Add(Scope scope, Summary s, Ty widening, Ty type, bool sameDecl, ref bool infinite)
+    // A dependency of the caller on the callee's summary (a call, or a drop body), composed through the substitution; under S5A, IMM and
+    // LIT a source atom that passes along a dependency on a cycle of dependencies, and under S5A1 one that passes through a call on a
+    // cycle of calls, whose substituted Type is not itself in the same declaration, is unknown.
+    private void Compose(string caller, string callee, Func<Par, Ty> map, bool call)
     {
+        var (to, from) = (this.summaries[caller], this.summaries[callee]);
+        to.Unknown |= from.Unknown;
+        to.Env |= from.Env;
+        to.Resource |= from.Resource;
+        var cyclic = rule == Rule.S5A1 ? call && this.Reaches(callee, caller, callsOnly: true)
+            : rule is Rule.S5A or Rule.Imm or Rule.Lit && this.Reaches(callee, caller, callsOnly: false);
+        foreach (var atom in from.Atoms.ToArray())
+        {
+            var image = Subst.Apply(atom, map);
+            var widening = cyclic && atom is Proj && rule switch
+            {
+                Rule.Lit => true,
+                Rule.Imm => this.scopes[callee].ImmediateRecursiveBase(atom),
+                _ => this.scopes[callee].RecursiveBase(atom),
+            };
+            if (widening && !(caller == callee && this.scopes[caller].Norm(image) == atom))
+            {
+                to.Unknown = true;
+                continue;
+            }
+
+            this.Add(caller, image);
+        }
+    }
+
+    // Adds what destroying a value of the Type contributes to the declaration's summary: nothing for a Type its premises prove Copy
+    // (SPEC 8.7.2, 16.3.3); under S5C unknown environment effects for an atom with a recursive base; under DEPTH a Resource failure past
+    // depth 4; the drop bodies it runs as dependencies.
+    private void Add(string name, Ty type)
+    {
+        var (scope, s) = (this.scopes[name], this.summaries[name]);
         var atoms = new List<Ty>();
+        var bodies = new List<(string Body, Ty Arg)>();
         var env = false;
-        scope.Resolve(type, atoms, ref env);
+        scope.Resolve(type, atoms, bodies, ref env);
         s.Env |= env;
+        foreach (var (body, arg) in bodies)
+        {
+            this.dependencies.Add((name, body));
+            this.infinite |= s.Bodies.Add((body, arg)) && arg.Depth > cap;
+        }
+
         foreach (var atom in atoms)
         {
-            if ((widening is not null && !(sameDecl && atom == widening)) || (rule == Rule.Any && scope.RecursiveBase(atom)))
+            if (scope.Proves(atom, "Copy"))
+            {
+                continue;
+            }
+
+            if (rule == Rule.S5C && scope.RecursiveBase(atom))
             {
                 s.Unknown = true;
             }
@@ -445,12 +529,12 @@ sealed class Solver(Prog program, Rule rule, int cap = 8)
             }
             else if (s.Atoms.Add(atom) && (atom.Depth > cap || !atom.Abstract))
             {
-                infinite = true;
+                this.infinite = true;
             }
         }
     }
 
-    private bool Reaches(string from, string to)
+    private bool Reaches(string from, string to, bool callsOnly)
     {
         var seen = new HashSet<string>();
         var stack = new Stack<string>([from]);
@@ -464,9 +548,9 @@ sealed class Solver(Prog program, Rule rule, int cap = 8)
 
             if (seen.Add(d))
             {
-                foreach (var (callee, _) in program.Decls[d].Calls)
+                foreach (var (_, next) in this.dependencies.Where(e => e.From == d && (!callsOnly || program.Decls[d].Calls.Any(c => c.Callee == e.To))))
                 {
-                    stack.Push(callee);
+                    stack.Push(next);
                 }
             }
         }
@@ -479,20 +563,10 @@ sealed record Case(string Name, bool Instantiable, Prog Program, (string Use, st
 
 static class Cases
 {
-    private static Par P(string decl, string name) => new(decl, name);
-
-    private static Proj J(Ty b, params string[] assocs) => (Proj)assocs.Aggregate(b, (t, a) => new Proj(t, a));
-
-    private static Prog Tree(Prog p, string name = "Tree", string child = "Child")
-    {
-        p.Contracts[name] = new(name, [], [(child, [name])], []);
-        return p;
-    }
-
     public static IEnumerable<Case> All()
     {
-        // 1. walk<T: Tree> destroys T and recurses on T.Child (the proposal's first example). Uses: a generic caller under Tree, and one
-        //    under CopyTree (Tree, Copy, Child is CopyTree), whose premises prove every T.Child... Copy (exact None; uninstantiable).
+        // 1. walk<T: Tree> destroys T and recurses on T.Child (the proposal's walk). Uses: a generic caller under Tree, and one under
+        //    CopyTree (Tree, Copy, Child is CopyTree), whose premises prove every T.Child... Copy (exact None; uninstantiable).
         {
             var p = Tree(new Prog());
             p.Contracts["CopyTree"] = new("CopyTree", ["Tree", "Copy"], [], [("Child", "CopyTree")]);
@@ -521,7 +595,7 @@ static class Cases
         }
 
         // 4. ping<L: Source, R: Source> destroys an L.Item and recurses with its arguments swapped; main calls it with Ints and Texts,
-        //    whose Items are Str (no environment effect). Instantiable: S5 and the exact rule agree; LIT widens.
+        //    whose Items are Str (no environment effect). Instantiable: S5C and S5A are exact; LIT widens.
         {
             var p = new Prog();
             p.Contracts["Source"] = new("Source", [], [("Item", [])], []);
@@ -556,7 +630,8 @@ static class Cases
             yield return new("6 rule growth", false, p, [("f", "Unknown")]);
         }
 
-        // 7. A non-recursive call over a recursive Contract: h<T: Tree> calls k<T.Child>, k<U: Tree> destroys U. Exact and S5 agree.
+        // 7. A non-recursive call over a recursive Contract: h<T: CopyTree> calls k<T.Child>, k<U: Tree> destroys U. T.Child is Copy in
+        //    h, so nothing reaches h under any rule.
         {
             var p = Tree(new Prog());
             p.Contracts["CopyTree"] = new("CopyTree", ["Tree", "Copy"], [], [("Child", "CopyTree")]);
@@ -565,7 +640,7 @@ static class Cases
             yield return new("7 non-recursive", false, p, [("h", "None")]);
         }
 
-        // 8. Recursion without growth over a recursive Contract: f<T: CopyTree> recurses on T itself, destroying T.Child.
+        // 8. Recursion without growth over a recursive Contract: f<T: CopyTree> recurses on T itself, destroying T.Child (Copy there).
         {
             var p = Tree(new Prog());
             p.Contracts["CopyTree"] = new("CopyTree", ["Tree", "Copy"], [], [("Child", "CopyTree")]);
@@ -594,7 +669,7 @@ static class Cases
         }
 
         // 11. A concrete environment effect through recursion: g<T: Source> destroys Noisy<T.Item> (Noisy's destruction writes a static)
-        //     and recurses on Pair<T>, whose Item is X.Item again: finite; main's exact verdict is Env, and S5 agrees.
+        //     and recurses on Pair<T>, whose Item is X.Item again: finite; main's exact verdict is Env, and every rule agrees.
         {
             var p = new Prog();
             p.Contracts["Source"] = new("Source", [], [("Item", [])], []);
@@ -608,7 +683,7 @@ static class Cases
         }
 
         // 12. A finite chain deeper than the DEPTH limit: C1.A1 is C2, ..., C5.A5 unconstrained; f<T: C1> destroys T.A1.A2.A3.A4.A5 and
-        //     recurses on T itself; main calls it with L1, whose chain ends at Str. Instantiable: S5 is exact, DEPTH a Resource failure.
+        //     recurses on T itself; main calls it with L1, whose chain ends at Str. Instantiable: S5C and S5A are exact, DEPTH a Resource.
         {
             var p = new Prog();
             for (var i = 1; i <= 5; i++)
@@ -622,28 +697,92 @@ static class Cases
             p.Decls["main"] = new("main", [], [], [], [], [("f", [("T", new Con("L1", null))])]);
             yield return new("12 deep finite", true, p, [("main", "None")]);
         }
+
+        // 13. (Review B1.) A recursive base that is not the immediate one: Tree3.Child is Tree3, Tree3.Item is Box, Box.Inner unconstrained;
+        //     f destroys T.Item.Inner and recurses on T.Child. Its immediate base T.Item is a Box; T is a Tree3. IMM does not terminate.
+        {
+            var p = new Prog();
+            p.Contracts["Box"] = new("Box", [], [("Inner", [])], []);
+            p.Contracts["Tree3"] = new("Tree3", [], [("Child", ["Tree3"]), ("Item", ["Box"])], []);
+            var t = P("f", "T");
+            p.Decls["f"] = new("f", ["T"], [(t, "Tree3")], [], [J(t, "Item", "Inner")], [("f", [("T", J(t, "Child"))])]);
+            yield return new("13 deep base", false, p, [("f", "Unknown")]);
+        }
+
+        // 14. (Review N2.) A concrete image that destroys the source: Wrap<X>.Child is Pair<X.Child>, Pair<Y>.Child is Y.Child; f destroys
+        //     T.Child and recurses on Wrap<T>, so T.Child passes as Pair<T.Child>, not itself, though its destruction destroys T.Child.
+        {
+            var p = Tree(new Prog());
+            p.Conformances.Add(new("Pair", "Tree", ["Tree"], [("Child", J(Prog.X, "Child"))]));
+            p.Conformances.Add(new("Wrap", "Tree", ["Tree"], [("Child", new Con("Pair", J(Prog.X, "Child")))]));
+            var t = P("f", "T");
+            p.Decls["f"] = new("f", ["T"], [(t, "Tree")], [], [J(t, "Child")], [("f", [("T", new Con("Wrap", t))])]);
+            yield return new("14 concrete self-image", false, p, [("f", "Unknown")]);
+        }
+
+        // 15. (Review B3, probe rv-F.) Growth through cleanup with no recursive call edge: Holder<X: Tree>'s drop body calls look<X>, which
+        //     passes its T.Child to make<U>, which destroys a Holder<U>: Holder.drop, look and make depend on each other through a drop
+        //     body. S5A1 (call edges only) does not terminate.
+        {
+            var p = Tree(new Prog());
+            p.DropBodies["Holder"] = "drop";
+            p.StructPremises["Holder"] = ["Tree"];
+            var x = P("drop", "X");
+            p.Decls["drop"] = new("drop", ["X"], [(x, "Tree")], [], [x], [("look", [("T", x)])]);
+            var t = P("look", "T");
+            p.Decls["look"] = new("look", ["T"], [(t, "Tree")], [], [], [("make", [("U", J(t, "Child"))])]);
+            var u = P("make", "U");
+            p.Decls["make"] = new("make", ["U"], [(u, "Tree")], [], [new Con("Holder", u)], []);
+            yield return new("15 cleanup cycle", false, p, [("make", "Unknown"), ("look", "Unknown")]);
+        }
+
+        // 16. Option (c)'s extra loss, no recursion: k<U: Tree> destroys U, h<T: Tree> calls k<T.Child>, and g<V: CopyTree> calls h<V>.
+        //     Exactly, every destroyed Type is Copy in g (None); S5C widens T.Child in h.
+        {
+            var p = Tree(new Prog());
+            p.Contracts["CopyTree"] = new("CopyTree", ["Tree", "Copy"], [], [("Child", "CopyTree")]);
+            p.Decls["k"] = new("k", ["U"], [(P("k", "U"), "Tree")], [], [P("k", "U")], []);
+            p.Decls["h"] = new("h", ["T"], [(P("h", "T"), "Tree")], [], [], [("k", [("U", J(P("h", "T"), "Child"))])]);
+            p.Decls["g"] = new("g", ["V"], [(P("g", "V"), "CopyTree")], [], [], [("h", [("T", P("g", "V"))])]);
+            yield return new("16 stronger caller", false, p, [("g", "None")]);
+        }
+
+        // 17. Option (c)'s extra loss, recursion without growth: f<T: Tree> destroys T.Child and recurses on T; g<V: CopyTree> calls f<V>.
+        {
+            var p = Tree(new Prog());
+            p.Contracts["CopyTree"] = new("CopyTree", ["Tree", "Copy"], [], [("Child", "CopyTree")]);
+            var t = P("f", "T");
+            p.Decls["f"] = new("f", ["T"], [(t, "Tree")], [], [J(t, "Child")], [("f", [("T", t)])]);
+            p.Decls["g"] = new("g", ["V"], [(P("g", "V"), "CopyTree")], [], [], [("f", [("T", P("g", "V"))])]);
+            yield return new("17 stronger caller, self", false, p, [("g", "None")]);
+        }
+    }
+
+    private static Par P(string decl, string name) => new(decl, name);
+
+    private static Proj J(Ty b, params string[] assocs) => (Proj)assocs.Aggregate(b, (t, a) => new Proj(t, a));
+
+    private static Prog Tree(Prog p, string name = "Tree", string child = "Child")
+    {
+        p.Contracts[name] = new(name, [], [(child, [name])], []);
+        return p;
     }
 }
 
-// Random small programs: two Contracts and an optional refinement, the conformances of two concrete constructors, one or two
-// declarations with premises, drops and calls whose substitutions come from a small grammar and prove the callee's premises. Each
-// well-formed program (every Type well-formed, every call proving the callee's premises) is solved under EXACT and S5. Checked: S5
-// always terminates; a program whose exact fixed point reaches the cap has an atom on a projection with a recursive-Contract base
-// (the proposal's lemma); and where no exact atom has such a base, S5 equals EXACT (same atoms, no widening).
+// Random small programs: two Contracts (K1 with A and C, K2 with B) and an optional refinement R, the conformances of three concrete
+// constructors (Wrap, Leaf and, half the time, Hold with a drop body under X: K1), one or two declarations with premises, drops and
+// calls whose substitutions come from a small grammar and prove the callee's premises. Contracts have no Type arguments (review B2 is
+// not generated). Each well-formed program is solved under EXACT, S5C, S5A, S5A1 and IMM. Checked: S5C and S5A always terminate; a
+// program whose exact fixed point reaches the cap has an atom with a recursive base (the proposal's lemma); and where no exact atom has
+// one, S5C and S5A equal EXACT (same atoms, no unknown effects from widening). Counted: how often S5A1 and IMM do not terminate.
 static class RandomSearch
 {
     public static int Run(int count)
     {
         var random = new Random(20261019);
-        var (wellFormed, infinite, widened, recursiveContracts, failures) = (0, 0, 0, 0, 0);
-        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var (wellFormed, recursiveContracts, bodies, infinite, widenedC, widenedA, a1Infinite, immInfinite, failures) = (0, 0, 0, 0, 0, 0, 0, 0, 0);
         for (var i = 0; i < count; i++)
         {
-            if (i % 1000 == 999)
-            {
-                Console.Error.WriteLine($"  random {i + 1}: {wellFormed} well-formed, {infinite} infinite, {clock.Elapsed.TotalSeconds:F0} s");
-            }
-
             var p = Generate(random);
             if (!WellFormed(p))
             {
@@ -651,21 +790,23 @@ static class RandomSearch
             }
 
             wellFormed++;
-            if (Environment.GetEnvironmentVariable("S5_TRACE") is not null)
-            {
-                Console.Error.WriteLine($"  [{i}] {clock.Elapsed.TotalSeconds:F1} s {Show(p)}");
-            }
-
             recursiveContracts += p.Contracts.Keys.Any(p.Recursive) ? 1 : 0;
+            bodies += p.DropBodies.Count > 0 ? 1 : 0;
             var exact = new Solver(p, Rule.Exact).Run();
-            var s5 = new Solver(p, Rule.S5).Run();
+            var s5c = new Solver(p, Rule.S5C).Run();
+            var s5a = new Solver(p, Rule.S5A).Run();
+            a1Infinite += new Solver(p, Rule.S5A1).Run().Infinite ? 1 : 0;
+            immInfinite += new Solver(p, Rule.Imm).Run().Infinite ? 1 : 0;
             var valid = Solver.Validate(p);
-            var deepRecursive = exact.Summaries.Any(kv => kv.Value.Atoms.Any(a => new Scope(p, p.Decls[kv.Key], valid).RecursiveBase(a)));
+            var recursiveAtom = exact.Summaries.Any(kv => kv.Value.Atoms.Any(a => new Scope(p, p.Decls[kv.Key], valid).RecursiveBase(a)));
             infinite += exact.Infinite ? 1 : 0;
-            widened += s5.Summaries.Values.Any(s => s.Unknown) ? 1 : 0;
-            var problem = s5.Infinite ? "S5 did not terminate"
-                : exact.Infinite && !deepRecursive ? "infinite without a recursive-Contract base (lemma)"
-                : !deepRecursive && !Same(exact, s5) ? "S5 differs from EXACT without a recursive-Contract base"
+            widenedC += !Same(exact, s5c) ? 1 : 0;
+            widenedA += !Same(exact, s5a) ? 1 : 0;
+            var problem = s5c.Infinite ? "S5C did not terminate"
+                : s5a.Infinite ? "S5A did not terminate"
+                : exact.Infinite && !recursiveAtom ? "infinite without a recursive base (lemma)"
+                : !recursiveAtom && !Same(exact, s5c) ? "S5C differs from EXACT without a recursive base"
+                : !recursiveAtom && !Same(exact, s5a) ? "S5A differs from EXACT without a recursive base"
                 : null;
             if (problem is not null)
             {
@@ -677,11 +818,14 @@ static class RandomSearch
             }
         }
 
-        Console.WriteLine($"random: {count} generated, {wellFormed} well-formed, {recursiveContracts} with a recursive Contract, {infinite} with an infinite exact fixed point, {widened} widened by S5, {failures} failures");
+        Console.WriteLine($"random: {count} generated, {wellFormed} well-formed, {recursiveContracts} with a recursive Contract, {bodies} with a drop body, "
+            + $"{infinite} with an infinite exact fixed point; S5C changed {widenedC}, S5A changed {widenedA}; {failures} failures; "
+            + $"did not terminate: S5A1 {a1Infinite}, IMM {immInfinite}");
         return failures;
     }
 
-    private static bool Same(Result a, Result b) => a.Summaries.All(kv => b.Summaries[kv.Key].Atoms.SetEquals(kv.Value.Atoms) && b.Summaries[kv.Key].Unknown == kv.Value.Unknown);
+    private static bool Same(Result a, Result b) => !a.Infinite && !b.Infinite && a.Summaries.All(kv => b.Summaries[kv.Key].Atoms.SetEquals(kv.Value.Atoms)
+        && b.Summaries[kv.Key].Unknown == kv.Value.Unknown);
 
     private static T Pick<T>(Random r, params T[] items) => items[r.Next(items.Length)];
 
@@ -689,7 +833,7 @@ static class RandomSearch
     {
         var p = new Prog();
         string[] constraint() => Pick<string[]>(r, [], ["K1"], ["K2"], ["Copy"], ["K1", "Copy"], ["K2", "Copy"]);
-        p.Contracts["K1"] = new("K1", [], [("A", constraint())], []);
+        p.Contracts["K1"] = new("K1", [], [("A", constraint()), ("C", Pick<string[]>(r, [], ["K2"], ["K2", "Copy"], ["Copy"]))], []);
         p.Contracts["K2"] = new("K2", [], [("B", constraint())], []);
         if (r.Next(3) == 0)
         {
@@ -697,50 +841,55 @@ static class RandomSearch
         }
 
         Ty arg(Ty x) => Pick<Ty>(r, x, new Proj(x, "A"), new Proj(new Proj(x, "A"), "A"), new Con("Wrap", x), new Con("Wrap", new Proj(x, "A")), new Con("Leaf", null));
-        p.Conformances.Add(new("Wrap", "K1", Pick<string[]>(r, ["K1"], [], ["K1", "K2"]), [("A", arg(Prog.X))]));
+        p.Conformances.Add(new("Wrap", "K1", Pick<string[]>(r, ["K1"], [], ["K1", "K2"]), [("A", arg(Prog.X)), ("C", Pick<Ty>(r, new Proj(Prog.X, "C"), new Con("Leaf", null)))]));
         if (r.Next(2) == 0)
         {
             p.Conformances.Add(new("Wrap", "K2", Pick<string[]>(r, ["K1"], ["K2"], []), [("B", arg(Prog.X) is Proj { Assoc: "A" } ? new Proj(Prog.X, "B") : arg(Prog.X))]));
         }
 
-        p.Conformances.Add(new("Leaf", "K1", [], [("A", new Con("Leaf", null))]));
+        p.Conformances.Add(new("Leaf", "K1", [], [("A", new Con("Leaf", null)), ("C", new Con("Leaf", null))]));
         p.Conformances.Add(new("Leaf", "K2", [], [("B", new Con("Leaf", null))]));
+        var hold = r.Next(2) == 0;
+        if (hold)
+        {
+            p.DropBodies["Hold"] = "hold";
+            p.StructPremises["Hold"] = ["K1"];
+        }
+
         var valid = Solver.Validate(p);
         var contracts = p.Contracts.Keys.Where(k => k != "Copy").ToArray();
-        var names = r.Next(3) == 0 ? new[] { "f" } : new[] { "f", "g" };
+        var names = (r.Next(3) == 0 ? new[] { "f" } : new[] { "f", "g" }).Concat(hold ? ["hold"] : []).ToArray();
         Ty[] candidates(string name)
         {
-            var (t, u) = (new Par(name, "T"), new Par(name, "U"));
-            return [t, u, new Proj(t, "A"), new Proj(u, "A"), new Proj(t, "B"), new Proj(u, "B"), new Proj(new Proj(t, "A"), "A"), new Proj(new Proj(t, "A"), "B"),
-                new Proj(new Proj(u, "B"), "B"), new Con("Wrap", t), new Con("Wrap", new Proj(t, "A")), new Con("Wrap", u), new Con("Leaf", null)];
+            var (t, u) = (new Par(name, name == "hold" ? "X" : "T"), new Par(name, "U"));
+            Ty[] list = [t, u, new Proj(t, "A"), new Proj(u, "A"), new Proj(t, "B"), new Proj(u, "B"), new Proj(new Proj(t, "A"), "A"), new Proj(new Proj(t, "A"), "B"),
+                new Proj(new Proj(u, "B"), "B"), new Proj(t, "C"), new Proj(new Proj(t, "C"), "B"), new Proj(new Proj(new Proj(t, "A"), "C"), "B"),
+                new Con("Wrap", t), new Con("Wrap", new Proj(t, "A")), new Con("Wrap", u), new Con("Leaf", null)];
+            return hold ? [.. list.Where(x => name != "hold" || !x.ToString().Contains('U')), new Con("Hold", t), new Con("Hold", new Proj(t, "A"))] : [.. list.Where(x => name != "hold" || !x.ToString().Contains('U'))];
         }
 
         foreach (var name in names)
         {
-            var (t, u) = (new Par(name, "T"), new Par(name, "U"));
-            var premises = new List<(Ty, string)> { (t, Pick(r, contracts)) };
-            if (r.Next(2) == 0)
+            var t = new Par(name, name == "hold" ? "X" : "T");
+            var u = new Par(name, "U");
+            var premises = new List<(Ty, string)> { (t, name == "hold" ? "K1" : Pick(r, contracts)) };
+            if (name != "hold" && r.Next(2) == 0)
             {
                 premises.Add((u, Pick(r, contracts)));
             }
 
-            var decl = new Decl(name, ["T", "U"], [.. premises], [], [], []);
+            var decl = new Decl(name, name == "hold" ? ["X"] : ["T", "U"], [.. premises], [], [], []);
             var scope = new Scope(p, decl, valid);
-            var formed = candidates(name).Where(x => x is not Con && scope.WellFormed(x)).ToArray();
-            if (r.Next(3) == 0 && formed.Length > 0)
+            if (name != "hold" && r.Next(3) == 0 && candidates(name).Where(x => x is not Con && scope.WellFormed(x)).ToArray() is { Length: > 0 } extra)
             {
-                premises.Add((Pick(r, formed), Pick(r, contracts)));
+                premises.Add((Pick(r, extra), Pick(r, contracts)));
                 decl = decl with { Premises = [.. premises] };
                 scope = new Scope(p, decl, valid);
-                formed = candidates(name).Where(x => scope.WellFormed(x)).ToArray();
-            }
-            else
-            {
-                formed = candidates(name).Where(x => scope.WellFormed(x)).ToArray();
             }
 
+            var formed = candidates(name).Where(x => scope.WellFormed(x)).ToArray();
             var drops = Enumerable.Range(0, 1 + r.Next(2)).Select(_ => Pick(r, formed)).Distinct().ToArray();
-            p.Decls[name] = decl with { Drops = drops };
+            p.Decls[name] = decl with { Drops = name == "hold" ? [.. drops.Append(t).Distinct()] : drops };
         }
 
         foreach (var name in names)
@@ -750,7 +899,7 @@ static class RandomSearch
             var calls = new List<(string, (string, Ty)[])>();
             for (var c = 1 + r.Next(2); c > 0; c--)
             {
-                var callee = Pick(r, names);
+                var callee = Pick(r, names.Where(n => n != "hold").ToArray());
                 for (var attempt = 0; attempt < 30; attempt++)
                 {
                     (string, Ty)[] subst = [("T", Pick(r, formed)), ("U", Pick(r, formed))];
@@ -794,7 +943,10 @@ static class RandomSearch
         return true;
     }
 
-    private static string Show(Prog p) => string.Join("; ", p.Contracts.Values.Where(k => k.Name != "Copy").Select(k => $"{k.Name}:{string.Join(",", k.Parents)} {string.Join(" ", k.Assocs.Select(a => $"{a.Assoc} is {string.Join("&", a.Constraints)}"))} {string.Join(" ", k.Refines.Select(x => $"{x.Assoc} is {x.Constraint}"))}"))
+    private static string Show(Prog p) => string.Join("; ", p.Contracts.Values.Where(k => k.Name != "Copy")
+            .Select(k => $"{k.Name}:{string.Join(",", k.Parents)} {string.Join(" ", k.Assocs.Select(a => $"{a.Assoc} is {string.Join("&", a.Constraints)}"))} "
+                + string.Join(" ", k.Refines.Select(x => $"{x.Assoc} is {x.Constraint}"))))
         + " | " + string.Join("; ", p.Conformances.Select(f => $"{f.Con}:{f.Contract} when {string.Join("&", f.Conditions)} {string.Join(" ", f.Rules.Select(x => $"{x.Assoc}={x.Rule}"))}"))
-        + " | " + string.Join("; ", p.Decls.Values.Select(d => $"{d.Name} [{string.Join(", ", d.Premises.Select(x => $"{x.Type}:{x.Contract}"))}] drops {string.Join(",", d.Drops)} calls {string.Join(" ", d.Calls.Select(c => $"{c.Callee}<{string.Join(",", c.Subst.Select(s => $"{s.Param}={s.Type}"))}>"))}"));
+        + " | " + string.Join("; ", p.Decls.Values.Select(d => $"{d.Name} [{string.Join(", ", d.Premises.Select(x => $"{x.Type}:{x.Contract}"))}] drops {string.Join(",", d.Drops)} "
+            + $"calls {string.Join(" ", d.Calls.Select(c => $"{c.Callee}<{string.Join(",", c.Subst.Select(s => $"{s.Param}={s.Type}"))}>"))}"));
 }
