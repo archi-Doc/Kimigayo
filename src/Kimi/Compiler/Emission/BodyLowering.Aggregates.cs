@@ -623,7 +623,6 @@ internal sealed partial class BodyLowering
             }
 
             callee = this.GetDictionaryHelper(DictionaryHelperKind.Drop, key, item).Abi;
-            this.dictionaryRuntimeUsed = true;
         }
         else
         {
