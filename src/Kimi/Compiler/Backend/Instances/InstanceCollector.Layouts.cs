@@ -31,12 +31,12 @@ internal sealed partial class InstanceCollector
     }
 
     // Whether a by-value use's Type is laid out, by Layout's verdict, memoized per program version and the same for Types that differ in
-    // Origins only (Layout reads no Origin). An outcome with a record is the erased Type's one record, at its first use (IMPL 21.3.2: the
-    // declaration, call or token).
+    // Origins only (Layout reads no Origin). A Language record is at each use (SPEC 8.15.3; one per code and subject); a limit is the
+    // erased Type's one Resource record, at its first use (IMPL 21.3.2: the declaration, call or token).
     private bool LaysOut(SourceRef subject, BoundType type)
     {
         var result = this.layout.Of(type);
-        if (RecordOf(result.Outcome) is { } code && this.recorded.Add(this.types.Erase(type)))
+        if (RecordOf(result.Outcome) is { } code && (!result.IsLimit || this.limited.Add(this.types.Erase(type))))
         {
             this.Set.Report(code, subject);
         }

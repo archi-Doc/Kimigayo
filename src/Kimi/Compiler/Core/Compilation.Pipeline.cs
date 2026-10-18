@@ -251,7 +251,7 @@ public partial class Compilation
     private bool Generates(out string? failure)
     {
         var records = this.MirRecords(null);
-        failure = records > 0 ? $"Generation requires an analysis without errors; the MIR has {records} Unsupported, Resource, Language or invariant records."
+        failure = records > 0 ? $"Generation requires an analysis without errors; the MIR has {records} error records."
             : this.RefusesCodegen() ? CodegenRefusal : null;
         return failure is null;
     }
