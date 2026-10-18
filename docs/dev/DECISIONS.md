@@ -2510,7 +2510,7 @@ structure is recorded here by the unit that first implements it.
     accepted only because the same body had resolved its inner Types first now reports `GenerationResourceLimit_Kd` (a chain of
     one-component Tuple locals, `InlineLayoutTest`; a trace found no other in the suite, fixtures and milestones). MIR's bound counts
     placed levels only, so a Type of height 64 whose leaf legacy counts (the chain `S0 { v: i32 }` … `S63`) is accepted by MIR and
-    refused by legacy: an R5-M6 (d) row at the first MIR observation.
+    refused by legacy: an R5-M6 (d) row at the first MIR observation. (R5-M44: the first observation found none.)
   - Rejected: a static Type-keyed memo (stale after an edit, retains every compilation's Types); a static weak table with an edit
     epoch (couples compilations); a memo reached through the Type (structural Types unmemoized); clearing per pass (re-placement on
     each warm rebuild); records kept for the compilation's life (grow across edits; the old pool's interning compares child shapes);
@@ -2554,8 +2554,9 @@ structure is recorded here by the unit that first implements it.
     `TyCtxt.Instances.cs`) is therefore the capability gap `EnclosingInstance` (`Unsupported_Kd` at the call), never an admitted item:
     one key for every enclosing instance and an open representative would accept such a program at check (SPEC 8.13.3, R5-M34). A
     function nested in a closed function has no enclosing instance to carry and is admitted by its own substitution.
-    Removal condition: K5, which makes `SubstOfItem` pure for ordinary items and so carries the enclosing instance in the call's
-    substitution; the F3 reproducers in `InstanceCollectorTest` then expect two items each.
+    Removal condition: PLAN G149, a representation of the enclosing-instance chain in a call's substitution (full process, scheduled
+    inside R5 before its exit, so the gap's `[Transitional("R5")]` stage stands; R5-M43 states why K5's pure `SubstOfItem` does not carry
+    it); the F3 reproducers in `InstanceCollectorTest` then expect two items each.
   - Departure from KD3, owned here: a closed item's representative is stored as null, which every reader treats as the identity,
     instead of `Identity(Decl)`; an accessor's executing function would need its own binder for an identity.
   - A permanent Backend component, `Capability` (`Backend/Capability.cs`): the one table of what the backend does not generate on
@@ -2594,6 +2595,62 @@ structure is recorded here by the unit that first implements it.
     and no record; sel's absence of records over the library and the milestones covers only the edges collected.
   - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
     milestones analyzed under sel give no collector record (`InstanceCollectorTest`).
+- **R5-M43 Closure, item and erasure edges; the pure item substitution** (2026-10-18, planning session; plan K5, the K package's §4.3
+  and §4.5 rows 5 and 11-13; under R5-M18) `TyCtxt.SubstOfItem` gives an ordinary function item's substitution from its Item Type alone:
+  its function's own Type arguments (`Binding.CopyItemArguments`), the declaring Type its last Component holds and its length arguments,
+  without Origins, the substitution `FunctionItemContext` built, without its cache or storage preparation; a requirement Item's stays its
+  requirement call's until K6. The collector's templates gain statement sites, in location order with the calls: an `Aggregate(Closure)`
+  is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
+  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
+  Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
+  the instance that closed it (`SubstOfClosure`, exact since G142, R5-M36), an Item's by its function's implementation under the Item's
+  substitution; the Item of a function whose calls dispatch (`TyCtxt.Dispatches`, new, over `CallPlan.KindOf`, the one rule that also
+  gives a call's `Kind`: a requirement, K6; a virtual slot, K8) and a Function Type value have no target. A type-driven item holds its
+  representative Type (`MonoItem.RepresentativeType`, closed, an open one being `InternalInvariant_Kd`) and key Type (`MonoKey.Type`), no
+  body (`BodyOrdinal` -1), takes its target at admission (the body its Closure or Item runs, at the default site,
+  runtime; K7 adds the environment's glue) and past depth 128 is `GenerationResourceLimit_Kd`. `TyCtxt.EnclosingFunction` walks through
+  anonymous functions, and a substitution carries the enclosing instance as its binder (a Closure's context) or its declaring Type.
+  - The `EnclosingInstance` gap stays (planning session): a call's substitution carries the enclosing instance only as `Declaring =
+    SelfType(owner)` when the callee's direct scope owner has slots (`Binding.CallDeclaringType`), and `SubstOfItem` is never read for a
+    Fn call (probe at 2c0371da: the nested calls of the F3 shapes are Fn callees, with `Declaring` null two levels in, in a block, in a
+    method or a specialization of a generic struct), so a pure item substitution cannot carry it, and two slot-bearing levels fit in no one
+    `Declaring`. The fix, a representation of the enclosing-instance chain in a call's substitution, changes shared structure under the full
+    process: PLAN G149, R5-M40's removal condition, scheduled inside R5 before its exit, so the gap stays `[Transitional("R5")]`.
+  - Rejected: widening `CallDeclaringType` to the nearest slot-bearing enclosing declaration (two levels stay unrepresentable, and legacy
+    CallPlans change); the collector testing `IsRequirement` or `IsVirtual` (syntax in the Backend; `Dispatches` publishes it); targets per
+    operand of every statement (a site would hold several).
+  - Verified (`InstanceCollectorTest`): Closures of two instances, a Closure in a Closure and a Closure never called are bodies of their
+    instances, a function item constant and an Item called through a Callable parameter their function's, an erasure of each its adapter
+    item with the body as its target, a call of the Function Type value none, a requirement's and a virtual slot's Item none, an open
+    adapter Type `InternalInvariant_Kd`, no records otherwise; every target at a call or a rows 11-13 statement;
+    the F3 expectations unchanged; the library (as roots) and the 44 milestones under sel give no record; `TyCtxtTest`'s one length entry
+    per slot holds for the pure item substitution, and `MirEffectsTest` passes on it. Staged sel coverage: requirement calls and Items,
+    virtual calls and Items, and the descriptor, glue and static-initializer intrinsics still collect nothing until K6-K8.
+- **R5-M44 Layout obligations of the checked set** (2026-10-18, planning session; plan K10a, the K package's §4.8 and §4.3, S2-S4 X18;
+  under R5-M18 and R5-M37) The collector is the one owner of `Layout.Of`'s outcomes (`Compilation.Layout`, passed at its construction).
+  Each item's by-value uses (its body's locals but drop flags, its aggregates, and the Type argument of an intrinsic whose row's new
+  `LaysOutType` column says so: `RawAllocate`, `Stride`, `DestroyValues`) in its instance, and each type-driven item's Type, take
+  Layout's verdict, memoized per program version and equal for Types that differ in Origins only (Layout reads no Origin, R5-M37), so one
+  verdict per erased Type: a size, count or depth limit is the erased Type's one `GenerationResourceLimit_Kd` at its first
+  use, located by R5-M40's rule (IMPL 21.3.2: the declaration, call or token; a parameter's at its function, since MIR records no
+  parameter syntax), so a library instance's limit is reported where user code requests it, not at the project file as the old
+  generator does; Rejected storage derives from the Binding error that rejected it (no record); CLayout is K10b's `InvalidCLayout_Kd`;
+  a `ClosureErasure` or `ItemAdapter` item is admitted only for an Ok verdict. The uses are template sites beside the target sites, in
+  location order; locals are laid out per item before its sites. PLAN G146 (2^63 - 1) stays out of scope, and so do a collection's
+  element Types (X34): an Array's or Dictionary's own layout is its handle words, so the element verdict comes with its glue item (K7).
+  - The height-64 (d) row (R5-M37, P7c's Q6; the final review's N6) does not arise: a struct chain and a one-component Tuple chain, read
+    down to the scalar leaf, are accepted by both MIR and the old generator at 64 placed levels and refused by both at 65, since the old
+    pool takes `Layout`'s depth verdict before counting its own (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`); no R5-M6 row is
+    recorded.
+  - Rejected: a record at every use of a failing Type (one Type would report at each local, temporary and erasure holding it); the
+    intrinsic Type arguments by a collector-side switch (the row table owns per-intrinsic facts); `Layout.Of(Erase(type))` (the erasure
+    memo of every by-value Type cost 1.5 MB allocated and 1.0 MB retained at Generic 128, against 0.47 and 0.25 MB).
+  - Cost (`Benchmark --analyze-cost`, Generic 1/32/64/128, against K5): under sel a fresh check allocates 8, 94, 226 and 472 KB more and
+    the checked compilation retains 6, 52, 121 and 248 KB more (Layout's memo and records, which generation reuses); legacy and `mir`
+    unchanged; a warm Analyze allocates the same.
+  - Verified (`InstanceCollectorTest`): size and count limits at an unused function's parameter, a generic instance's `Raw.allocate`
+    Type argument at the call in the generic body, a Closure local whose environment is too large (no adapter item for its erasure), no
+    record for a struct Binding rejected or for `Option<Never>`; the library (as roots) and the 44 milestones under sel give no record.
 - **R5-M45 Legacy storage kernel rows** (2026-10-18, planning session; plan P2a, PD2, S2-S4 X4, package C §3.4; refines R5-M16)
   `StorageKernelRow(Kind, Write, Needs)` is one row per `StorageKernelKind`, the storage-boundary text a Body-disposition storage
   operation writes inline in its caller's body (SPEC 22.2): DictionaryLayout (StorageDictionaryLayout), EntryAddress (StorageKeyAt,
