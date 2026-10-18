@@ -215,6 +215,33 @@ public sealed class MirValidatorTest
         Assert.Same(TyCtxt.Premised(same, s), TyCtxt.Premised(same, e));
     }
 
+    // G131 (DECISIONS R5-M33): only check-only blocks read a Temp whose only writes are diverging Calls' destinations, an argument's here;
+    // a Never parameter and a destination an if's other arm writes are read on runtime paths, validly (SPEC 3.1.3). A read of a Never
+    // payload binding (SPEC 14.9.3) is valid too, but Binding rejects it today, so no row has one. EachRuleRejectsTheBodyThatBreaksIt has
+    // the invalid read.
+    [Theory]
+    [InlineData("func absurd(x: Never) -> i32 => x\n")]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc pick(c: bool) -> i32\n    let x: i32 = if c => stop() else => 1\n    return x\n")]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc take(a: i32, b: i32) -> i32 => a + b\nfunc f(n: i32) -> i32 => take(n, stop())\n")]
+    public void OnlyCheckOnlyBlocksReadWhatOnlyADivergingCallWrites(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Empty(c.BuildMir().Findings);
+    }
+
+    // G131 (DECISIONS R5-M33): a Drop, like a StorageDead, reads nothing, so a runtime Drop of a Temp only a diverging Call writes, storage
+    // nothing initialized, is valid: the validator's body here drops the Abort's destination where it dropped point.
+    [Fact]
+    public void ARuntimeDropOfWhatOnlyADivergingCallWritesIsValid()
+    {
+        var body = Build(null);
+        var stopped = new MirPlace(Enumerable.Range(0, body.Locals.Length).Single(x => body.Locals[x].Type == BoundType.Never));
+        var drop = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator.Kind == MirTerminatorKind.Drop);
+        body.Terminate(drop, body.Blocks[drop].Terminator with { Place = stopped });
+        Assert.Empty(Validate(body));
+    }
+
     // Plan 5.6.1: a PairAcquire and a PairLayer name the binder of their Place's pair layer, so each resolves under every Semantics case view
     // (MirCases). In a body with two binders, naming the other one is a finding: Binder for the operand, Projection for the step, whose Type
     // ProjectedType does not give.
@@ -531,14 +558,23 @@ public sealed class MirValidatorTest
         body.AddCase(0, abort);
         body.Terminate(entry, MirTerminator.SwitchInt(MirOperand.Copy(flag), 0, 1, call, At));
         var text = Operands(Const(MirConstKind.String, BoundType.String, value: "abort"));
-        var abortCall = broken == MirViolation.Callee ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, call, Broken) : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, -1, At) with { CheckTarget = call };
+        var stopped = MirModelTest.Local(body, BoundType.Never, MirLocalKind.Temp); // Only the diverging Abort writes it (G131).
+        var abortCall = broken == MirViolation.Callee
+            ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, result, call, Broken)
+            : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, stopped, -1, At) with { CheckTarget = call };
         body.Terminate(abort, abortCall);
         var signature = new MirCallee(MirCalleeKind.Value, Arg: body.Const(new(MirConstKind.TypeToken, body.TypeOf(function)!)));
         body.Terminate(call, MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) });
         body.Terminate(drop, broken == MirViolation.CheckTarget ? new(MirTerminatorKind.Drop, Broken, exit, check, Place: point) : MirTerminator.Drop(point, exit, At));
         body.Push(exit, MirStatement.Of(MirStatementKind.StorageDead, point, At));
+        if (broken == MirViolation.Diverged)
+        {
+            body.Push(exit, MirStatement.Of(MirStatementKind.FakeRead, stopped, Broken)); // A runtime edge reaches exit.
+        }
+
         body.Terminate(exit, MirTerminator.Goto(done, At, check));
         body.Terminate(done, MirTerminator.Return(At));
+        body.Push(check, MirStatement.Of(MirStatementKind.FakeRead, stopped, At)); // Only a check edge reaches check.
         body.Terminate(check, MirTerminator.Unreachable(At));
         body.AddMustNotComplete(new(abort, check, At.Syntax));
         switch (broken)
