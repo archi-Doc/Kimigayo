@@ -4,8 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's conflict check (A3 5, Check sets and err(conflict), with E1, E3, E5 and E13 (1)): a location's accesses, each classified by what it
 // does; at an access of a borrowed root, the Loans of its check set (MirBorrows.CheckSets) on that root, by holder, compared with the access
-// syntactically (A3 5's hits and conflicts); a guard candidate's EndBorrow against the values that keep its guard-local Origin (E7); then
-// the location's activations (MirBorrows.Activations). Each problem is recorded by MirBorrows.Reports.
+// syntactically (A3 5's hits and conflicts); a guard candidate's EndBorrow against the values that keep its guard-local Origin (err(ended),
+// E7); then the location's activations (MirBorrows.Activations). Each problem is recorded by MirBorrows.Reports.
 internal sealed partial class MirBorrows
 {
     private Access[] accesses = [];
@@ -140,6 +140,19 @@ internal sealed partial class MirBorrows
 
     // Whether a Loan of the check set sits in its reservation holder, where its two-phase mode is shared.
     private bool Reserved(in Candidate candidate) => this.loans[candidate.Loan].Mode == MirRefKind.TwoPhaseUniq && !candidate.Unique;
+
+    // err(ended) (A3 E7, SPEC 14.8.3): at a guard candidate's EndBorrow its guard-local Origin ends, so a value live after it that carries its
+    // γ (CS(ℓ), transit included) is a borrow that escapes the guard: ComparisonLoanConflict_Kd at the cleanup (DIAGNOSTICS, escaped
+    // borrows), anchored at the candidate.
+    private void Ended(MirLocation at, int candidate)
+    {
+        var mark = this.guardBase + candidate;
+        if (this.markSeen[mark] == this.stamp)
+        {
+            var anchor = this.body.Subject(this.body.Locals[candidate].Source);
+            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, anchor, this.markVia[mark], at, -1);
+        }
+    }
 
     // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
     // some of it (no group: only the checks reach it), else shallowly.
