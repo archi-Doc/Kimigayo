@@ -9,13 +9,18 @@ namespace Kimi.Compiler.Mir;
 // Binding rejected or no rule builds, its site naming the roots the node's syntax reads, writes or borrows.
 internal sealed partial class MirBuilder
 {
-    private readonly List<int> roots = [];
+    private readonly List<int> roots = []; // The roots of the Opaque site being formed (Site).
+    private readonly List<int> kept = []; // The roots of the kept operands evaluated, innermost Error node last.
     private Roots? collector;
+    private KeptOperands? keptOperands;
 
     // Whether the published facts say the lexer or Binding rejected a node the builder reaches: an Error, a value without a Type, a literal
     // without its constant (an invalid escape, a number that does not fit), or a name of a local whose declaration is an Error.
     private static bool Rejected(Koto node) => HirTables.Op(node) is HirOp.Error or HirOp.Literal || HirTables.Meaning(node) is null ||
         (HirTables.Symbol(node)?.Declaration is { } declaration && HirTables.Op(declaration) == HirOp.Error);
+
+    // Whether the HIR keeps a child of an Error node in place: an operand Binding resolved of a failed compound Place (DECISIONS R5-M63).
+    private static bool Kept(Koto node) => HirTables.AdjustOf(node) == new HirAdjust(HirAcquire.None, HirAdaptation.None);
 
     // The one way a form without a building rule is built (plan 5.4, 6.2): an Opaque value in its place and a located record, merged by
     // location, unless the node is one the lexer or Binding rejected, whose error the Opaque value is derived from (SPEC 23.1.2).
@@ -30,12 +35,35 @@ internal sealed partial class MirBuilder
     }
 
     // An Opaque value of the destination's Type in place of a node, its site naming the locals the node's syntax reads, writes or borrows;
-    // where the node cannot complete, its block ends and building continues in a block only the checks reach (SPEC 14.10.3).
+    // where the node cannot complete, its block ends and building continues in a block only the checks reach (SPEC 14.10.3). SPEC 23.1.2
+    // (DECISIONS R5-M63): an Error node's kept operands are evaluated first, in syntax order, each as its Place (a value in a temp) and
+    // never acquired, and the site names their roots instead of their syntax's, so a moved operand is not used again there.
     private void Opaque(Koto node, MirPlace destination)
     {
+        var start = this.kept.Count;
+        if (HirTables.Op(node) == HirOp.Error)
+        {
+            node.VisitChildren(this.keptOperands ??= new(this));
+        }
+
         this.roots.Clear();
-        (this.collector ??= new(this)).Visit(node);
+        for (var i = start; i < this.kept.Count; i++)
+        {
+            this.Root(this.kept[i]);
+        }
+
+        this.kept.RemoveRange(start, this.kept.Count - start);
+        (this.collector ??= new(this)).Collect(node);
         this.Site(node, destination, Completes(node));
+    }
+
+    // A root of the Opaque site being formed, once: a kept operand's, or one its syntax names.
+    private void Root(int root)
+    {
+        if (!this.roots.Contains(root))
+        {
+            this.roots.Add(root);
+        }
     }
 
     // An Opaque value at a node's site naming the roots collected; where it cannot complete, building continues in a block only the
@@ -52,12 +80,32 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // The locals, parameters, environment bindings and statics a replaced node's syntax names (their Res) or a Closure in it captures,
-    // the roots of its Opaque site.
-    private sealed class Roots(MirBuilder builder) : KotoVisitor
+    // An Error node's kept operands in syntax order, each evaluated as its Place and its root kept; an operand that is an Error again
+    // evaluates its own as its Opaque value is formed.
+    private sealed class KeptOperands(MirBuilder builder) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
+            if (Kept(node))
+            {
+                builder.kept.Add(builder.Place(node).Root);
+            }
+        }
+    }
+
+    // The locals, parameters, environment bindings and statics a replaced node's syntax names (their Res) or a Closure in it captures,
+    // the roots of its Opaque site, but in the operands an Error node keeps, which are evaluated already.
+    private sealed class Roots(MirBuilder builder) : KotoVisitor
+    {
+        private Koto? top; // The Error node whose kept operands its site names by their evaluated roots.
+
+        public override void Visit(Koto node)
+        {
+            if (this.top is not null && ReferenceEquals(node.Parent, this.top) && Kept(node))
+            {
+                return;
+            }
+
             var symbol = HirTables.Symbol(node);
             switch (HirTables.ResOf(node))
             {
@@ -65,7 +113,7 @@ internal sealed partial class MirBuilder
                     this.Add(symbol);
                     break;
                 case HirRes.Static when symbol is not null:
-                    this.Add(builder.StaticRoot(symbol).Root);
+                    builder.Root(builder.StaticRoot(symbol).Root);
                     break;
             }
 
@@ -78,19 +126,18 @@ internal sealed partial class MirBuilder
             node.VisitChildren(this);
         }
 
+        // The roots of a node's syntax, collected after its kept operands' (Opaque).
+        internal void Collect(Koto node)
+        {
+            this.top = HirTables.Op(node) == HirOp.Error ? node : null;
+            this.Visit(node);
+        }
+
         private void Add(BindingSymbol? symbol)
         {
             if (symbol is not null && builder.Bound(symbol) is { } place)
             {
-                this.Add(place.Root);
-            }
-        }
-
-        private void Add(int root)
-        {
-            if (!builder.roots.Contains(root))
-            {
-                builder.roots.Add(root);
+                builder.Root(place.Root);
             }
         }
     }

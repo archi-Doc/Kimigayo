@@ -369,6 +369,11 @@ public sealed partial class Binding
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
     {
+        if (function.ClosureStorage is { } previous)
+        {
+            previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
+        }
+
         if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
         {
             // SPEC 10.5, 23.1.2: the written header disagrees with the fixed signature; the omitted parameter Types that

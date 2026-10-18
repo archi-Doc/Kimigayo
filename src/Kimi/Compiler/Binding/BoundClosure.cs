@@ -35,7 +35,8 @@ public sealed class BoundClosure
 
     internal List<BindingSymbol> SymbolPool { get; } = new();
 
-    // The closure definition (ClosureDef, plan 5.3) of an anonymous function Binding resolved; its substitution is TyCtxt.SubstOfClosure of
-    // its Type.
-    internal static BoundClosure? Of(FunctionKoto function) => function.BoundClosure;
+    // The closure definition (ClosureDef, plan 5.3) of an anonymous function's latest binding, once it bound the inputs, the result and the
+    // environment, whatever its creation's outcome (DECISIONS R5-M63; Binding.BindClosure clears the signature first); its substitution is
+    // TyCtxt.SubstOfClosure of its Type.
+    internal static BoundClosure? Of(FunctionKoto function) => function.ClosureStorage is { Signature: not null } plan ? plan : null;
 }

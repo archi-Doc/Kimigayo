@@ -11,12 +11,12 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition the
-/// HIR names (<see cref="HirOp.Body"/>: a function, an accessor, a static's initializer; a <see cref="HirOp.Closure"/>) and validates it.
+/// <summary>The MIR builder (plan P6, R3 shadow): once per Binding pass it publishes the HIR, builds one body for each definition whose
+/// value node the HIR publishes (a function, an accessor, a static's initializer, a Closure's whatever its creation) and validates it.
 /// It reads syntax children, the HIR columns and plans and <see cref="TyCtxt"/> only. A form no rule builds goes through
 /// <see cref="Unsupported(Koto, MirPlace)"/>, and building continues; it trusts the facts each published Op guarantees
 /// (<see cref="Binding.HasFacts"/>), and records a node the publisher found without them (<see cref="HirTables.Broken"/>) as
-/// InternalInvariant_Kd; an Error node becomes a derived Opaque.
+/// InternalInvariant_Kd; an Error node becomes a derived Opaque after the operands the HIR keeps in place (DECISIONS R5-M63).
 /// The program, its bodies and the builder's scratch are reused, so a warm
 /// rebuild allocates nothing.</summary>
 /// <param name="compilation">The compilation.</param>
@@ -66,6 +66,21 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
     private static BoundType TypeOf(Koto node) => HirTables.Meaning(node) as BoundType ?? BoundType.Unit;
 
+    // Whether the HIR publishes a definition its walk reached (an Op written; a synthesized executing function, which shares its accessor's
+    // body, has none) and evaluates its value node (its body, expression body or initializer, not Syntax): exactly a Body's or a Closure's,
+    // and a closure definition's whatever its creation (DECISIONS R5-M63).
+    private static bool Published(Koto node)
+    {
+        var value = node switch
+        {
+            FunctionKoto function => (Koto?)function.Body ?? function.ExpressionBody,
+            PropertyAccessorKoto accessor => accessor.Body,
+            PropertyKoto property => property.InitializerKoto,
+            _ => null,
+        };
+        return value is not null && HirTables.Op(node) != HirOp.Unset && HirTables.Op(value) != HirOp.Syntax;
+    }
+
     // The syntax of a node, its scope and whether it starts a source statement, which the first statement or terminator built for the
     // source statement takes; a local does not take it.
     private SourceInfo Info(Koto node, bool local = false)
@@ -75,7 +90,8 @@ internal sealed partial class MirBuilder(Compilation compilation)
         return info;
     }
 
-    // The definitions of a module in id order, a #Test function's a Test body and a Closure's keyed by its own symbol; a struct instance
+    // The definitions of a module whose value the HIR publishes (Published), in id order, a #Test function's a Test body and a Closure's
+    // keyed by its own symbol; a struct instance
     // Field's initializer is built into each constructor of its struct. Or the module's broken HIR contracts as records, then the templates
     // of the defaults the HIR published for its named functions (an anonymous function has none, SPEC 7.2.2).
     private void Module(SyntaxTable table, bool templates)
@@ -101,7 +117,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var nodes = table.Nodes;
         for (var id = 1; id < nodes.Length; id++)
         {
-            if (nodes[id] is not { } node || !ReferenceEquals(node.SyntaxOwner, table) || HirTables.Op(node) is not (HirOp.Body or HirOp.Closure))
+            if (nodes[id] is not { } node || !ReferenceEquals(node.SyntaxOwner, table) || !Published(node))
             {
                 continue;
             }

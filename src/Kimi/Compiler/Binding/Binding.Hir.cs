@@ -19,8 +19,8 @@ public sealed partial class Binding
     private ulong hirVersion;
 
     // Where a node stands: evaluated, inside a Pattern (its match plan describes it), covered by its parent (the callee of a selected
-    // call or construction, the call shape of a formatting macro, the name Type arguments apply to), or inside an Error, which the
-    // builder replaces whole.
+    // call or construction, the call shape of a formatting macro, the name Type arguments apply to), or inside an Error, whose value the
+    // builder replaces (DECISIONS R5-M63 keeps a closure definition's parts and a failed compound Place's resolved operands).
     [Flags]
     [Transitional("R7", Reason = "R7 replaces the publisher walk with inline Binding writes.")]
     private enum HirPosition : byte
@@ -75,6 +75,12 @@ public sealed partial class Binding
             var (parent, parentOp, outer, defaults, exclusive) = (this.parent, this.parentOp, this.position, this.defaultCount, this.exclusive);
             var position = this.PositionOf(node);
             var op = this.OpOf(node, position);
+            var parts = this.Parts(node, op, position);
+            if (this.parentOp == HirOp.Error && position == HirPosition.Evaluated)
+            {
+                this.Write(node, new(HirAcquire.None, HirAdaptation.None)); // A failed compound Place's kept operand, used in place.
+            }
+
             if (op == HirOp.Body)
             {
                 this.completion?.Clear();
@@ -113,13 +119,13 @@ public sealed partial class Binding
                 HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
             }
 
-            if (op is not (HirOp.Unset or HirOp.Error) &&
-                (op != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
+            if (parts is not (HirOp.Unset or HirOp.Error) &&
+                (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
-                this.Consume(node, op);
+                this.Consume(node, parts);
             }
 
-            (this.parent, this.parentOp, this.position) = (node, op, position);
+            (this.parent, this.parentOp, this.position) = (node, parts, parts == op ? position : HirPosition.None);
             node.VisitChildren(this);
             if (node is ForKoto { Iteration: { } iteration } && op == HirOp.For)
             {
@@ -169,11 +175,16 @@ public sealed partial class Binding
         // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3) or a failure.
         private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None;
 
+        // SPEC 3.4.3, 13.5.5: the form of a compound Place: a Field, an Index, a Deref (`*p`, `p@follow`) or a group.
+        private static bool CompoundPlace(Koto node) => node is MemberAccessKoto or IndexKoto or DereferenceKoto or ParenthesizedKoto ||
+            (node is ConversionKoto conversion && ConversionTargetSyntax(conversion) is TypeSemanticsKoto target && target.Names(Constants.FollowOperation));
+
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
-        // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length.
+        // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length; an Error replaces its
+        // children but a failed compound Place's operands Binding resolved (Keeps).
         private HirPosition PositionOf(Koto node)
         {
-            if (this.parentOp == HirOp.Error || (this.position & HirPosition.Replaced) != 0)
+            if ((this.parentOp == HirOp.Error && !this.Keeps(node)) || (this.position & HirPosition.Replaced) != 0)
             {
                 return HirPosition.Replaced;
             }
@@ -238,6 +249,23 @@ public sealed partial class Binding
                 default:
                     return position;
             }
+        }
+
+        // SPEC 23.1.2 (DECISIONS R5-M63): a compound Place Binding rejected or did not resolve, not a broken contract, keeps each operand
+        // Binding resolved as a value or a Place, an Op with its facts (not a Type or group name, Syntax), at its position, evaluated in
+        // place; its other children stay replaced. The parent is the child's.
+        private bool Keeps(Koto child) => child.BindingState == BindingState.Resolved && CompoundPlace(this.parent!) &&
+            (Rejected(this.parent!) || this.parent!.BindingState != BindingState.Resolved) &&
+            this.OpOf(child, HirPosition.Evaluated) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error);
+
+        // The Op a node's parts are published under (DECISIONS R5-M63): a closure Binding bound in this pass, at an evaluated or a replaced
+        // position, whose definition it completed keeps its parts as a Closure whatever its creation is (built, failed, or part of a
+        // replaced parent); another node's parts are its Op's.
+        private HirOp Parts(Koto node, HirOp op, HirPosition position)
+        {
+            var bound = (position & (HirPosition.Evaluated | HirPosition.Replaced)) != 0 &&
+                (node.BindingState == BindingState.Resolved || node.BindingFailure != BindingFailure.None);
+            return node is FunctionKoto { IsAnonymous: true } && bound && binding.HasFacts(node, HirOp.Closure) ? HirOp.Closure : op;
         }
 
         private HirOp OpOf(Koto node, HirPosition position)
