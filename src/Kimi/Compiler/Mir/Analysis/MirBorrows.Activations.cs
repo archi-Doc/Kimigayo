@@ -91,7 +91,7 @@ internal sealed partial class MirBorrows
         var kind = this.Destruction(target);
         if (kind == AccessKind.Unclassified)
         {
-            this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, this.Subject(at), this.views));
+            this.Unsupported(at);
             return;
         }
 

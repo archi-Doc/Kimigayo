@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 // A5's conflict check (A3 5, Check sets and err(conflict), with E1, E3, E5 and E13 (1)): at an access of a borrowed root, the Loans of its
@@ -61,7 +63,7 @@ internal sealed partial class MirBorrows
             var access = this.accesses[a];
             if (access.Kind == AccessKind.Unclassified)
             {
-                this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, this.Subject(at), this.views));
+                this.Unsupported(at);
                 continue;
             }
 
@@ -79,7 +81,7 @@ internal sealed partial class MirBorrows
 
         if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
         {
-            this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, this.Subject(at), this.views)); // A contract Binding does not instantiate.
+            this.Unsupported(at); // A contract Binding does not instantiate.
         }
 
         this.Activations(at);
@@ -166,7 +168,7 @@ internal sealed partial class MirBorrows
         this.Report(code, this.loans[found.Loan].Site, live ? found.Via : Taken, at, reservation);
     }
 
-    // A problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
+    // A Loan problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
     // when that lies in a later chain), from the location itself for a reservation's check set, the location for a value it takes, or a
     // transit value's or E's store; and the reservation's anchor.
     private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation)
@@ -185,7 +187,15 @@ internal sealed partial class MirBorrows
             this.facts[count++] = new(MirFactKind.Reservation, this.loans[reservation].Site);
         }
 
-        this.program.Problems.Add(new(code, subject, this.views), this.facts.AsSpan(0, count));
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict); // The four Loan codes' requirement.
+        this.program.Problems.Add(new(code, requirement, subject, this.views), this.facts.AsSpan(0, count));
+    }
+
+    // A located Unsupported_Kd at a location whose access or call the stratum does not classify.
+    private void Unsupported(MirLocation at)
+    {
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+        this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, this.Subject(at), this.views));
     }
 
     // A location's subject: its statement's or terminator's.

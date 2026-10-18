@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Numerics;
+using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
@@ -103,11 +104,11 @@ internal sealed partial class MirEffects
     {
         if ((found & (Environment | Unknown)) != 0)
         {
-            report.Add(new(row.Code, row.Subject, views));
+            report.Add(new(row.Code, row.Requirement, row.Subject, views));
         }
         else if ((found & Limit) != 0)
         {
-            report.Add(new(DiagnosticCode.Unsupported_Kd, row.Subject, views));
+            report.Add(new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), row.Subject, views));
         }
     }
 
@@ -476,7 +477,7 @@ internal sealed partial class MirEffects
             }
             else if (row.Definition is not { } target)
             {
-                report.Add(new(row.Code, row.Subject, ulong.MaxValue));
+                report.Add(new(row.Code, row.Requirement, row.Subject, ulong.MaxValue));
             }
             else
             {
