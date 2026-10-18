@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -1632,6 +1633,50 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         Assert.True(Grows(bytes, dense ? 5 : 2), $"bytes {string.Join(", ", bytes)}");
     }
 
+    // V16 and A3 E13 (5) (G135): a location reads each (holder, node) entry once however many operands take it, its entries by holder, and
+    // each set's content and an output's referents once, so N copies of a holder carrying K Loans in one operation, a call moving N
+    // arguments with K holders live across it, N retention rows of one argument carrying K Loans and N rows into one output carrying K cost
+    // N + K, not N × K. N × K is linear in each, so the rule is the mixed difference over N = 32, 128 and K = 32, 64, which cancels the
+    // terms in N or K alone: within a quarter step per (N, K) pair. The work and ν are also linear in N at K = 32 and, where the shape
+    // builds its K holders linearly (the copies), in K at N = 32.
+    [Theory]
+    [InlineData(
+        "func shape()\n«K:    var x{0} = {0}\n»    let t = («K:x{0}@ref, »1)\n    var z = 1\n    let q = z@ref\n    _ = («N:t, »z)\n    inspect(q)\n",
+        false)]
+    [InlineData(
+        "func takeN(«N:p{0}: uniq/i32, »n: i32) => ()\nfunc shape(«N:s{0}: uniq/i32, »m: i32)\n    var x = 1\n    let r = x@ref\n«K:    let c{0} = r\n»" +
+        "    var z = 1\n    let q = z@ref\n    takeN(«N:s{0}@move, »z)\n    inspect(q)\n«K:    inspect(c{0})\n»",
+        true)]
+    [InlineData(
+        "func keepN(«N:v{0}: ref/i32 during a, »n: i32) -> ref/i32 during a => v0\nfunc shape(flag: bool)\n«K:    var x{0} = {0}\n»" +
+        "    var r = x0@ref\n«K:    if flag\n        r = x{0}@ref\n»    let y = keepN(«N:r, »0)\n    inspect(y)\n",
+        false)]
+    [InlineData(
+        "func fillN(out: uniq/(ref/i32 during a), «N:v{0}: ref/i32 during a, »n: i32) => ()\n" +
+        "func shape(flag: bool, v: ref/i32 during a, «K:o{0}: uniq/(ref/i32 during a), »m: i32)\n    var p = o0@follow@uniq\n" +
+        "«K:    if flag\n        p = o{0}@follow@uniq\n»    fillN(p, «N:v, »0)\n",
+        false)]
+    public void ALocationReadsEachEntryOnce(string template, bool linearInK)
+    {
+        var at = new Dictionary<(int N, int K), (long Work, long Bytes)>();
+        foreach (var (n, k) in new[] { (32, 32), (64, 32), (128, 32), (32, 64), (128, 64), (32, 128) })
+        {
+            MatchEvaluator runs = x => string.Concat(Enumerable.Range(0, x.Groups[1].Value == "N" ? n : k)
+                .Select(i => string.Format(System.Globalization.CultureInfo.InvariantCulture, x.Groups[2].Value, i)));
+            at[(n, k)] = this.Measured(Prelude + Regex.Replace(template, "«([NK]):(.*?)»", runs, RegexOptions.Singleline));
+        }
+
+        var mixed = at[(128, 64)].Work - at[(128, 32)].Work - at[(32, 64)].Work + at[(32, 32)].Work;
+        long[] work = [at[(32, 32)].Work, at[(64, 32)].Work, at[(128, 32)].Work];
+        long[] bytes = [at[(32, 32)].Bytes, at[(64, 32)].Bytes, at[(128, 32)].Bytes];
+        long[] inK = [at[(32, 32)].Work, at[(32, 64)].Work, at[(32, 128)].Work];
+        output.WriteLine($"N at K 32: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        output.WriteLine($"K at N 32: work {string.Join(", ", inK)}; mixed {mixed}");
+        Assert.True(mixed <= 96 * 32 / 4, $"mixed {mixed}");
+        Assert.True(Grows(work, 2) && Grows(bytes, 2), $"work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
+        Assert.True(!linearInK || Grows(inK, 2), $"work in K {string.Join(", ", inK)}");
+    }
+
     // A3 12 E8, V16 (review B3): destroying a Move Path ends the Loans of its subtree as one set, made once per path, so N borrow/write pairs
     // of one root make Loan-set bytes (ν) linearly, though their work is dense ((ended points) × holders).
     [Fact]
@@ -1731,15 +1776,24 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 }
             }
 
-            var c = MirBuildTest.Compile(text.ToString());
-            var stratum = new Stratum(c.Types);
-            stratum.Run(c.BuildMir());
-            Assert.DoesNotContain(c.BuildMir().Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
-            (work[i], bytes[i]) = (stratum.Borrows.Work, stratum.Borrows.Bytes);
+            (work[i], bytes[i]) = this.Measured(text.ToString());
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: work {string.Join(", ", work)}, bytes {string.Join(", ", bytes)}");
         return (work, bytes);
+    }
+
+    // A5's work and Loan-set bytes on a program with no Loan problem.
+    private (long Work, long Bytes) Measured(string source)
+    {
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(c.Binding.Issues);
+        var stratum = new Stratum(c.Types);
+        stratum.Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
+        return (stratum.Borrows.Work, stratum.Borrows.Bytes);
     }
 
     // A5 over every body view of a built program, as the driver's step 4 will run it (R4-M57).

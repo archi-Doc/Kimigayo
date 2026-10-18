@@ -44,6 +44,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private readonly HashSet<BoundType> seen = new(ReferenceEqualityComparer.Instance);
     private int[] slots = []; // Each local's holder slot, -1 for none; E is slot 0.
     private bool[] named = []; // By local: whether a direct Loan names it, so it is a flow holder.
+    private bool[] reserves = []; // By slot: whether a two-phase Loan is issued into it, its reservation holder.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
     private Loan[] loans = [];
@@ -80,8 +81,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     }
 
     /// <summary>Gets the work of the runs (A3 6.2): the pre-pass's walks, transfers, both problems' slot joins, the holders of each point
-    /// that ends Loans, each check's bit scan, stored values and seeds, the set elements its loops and the set operations scanned
-    /// (MirLoanSets.Scanned), the checks' stamps it clears, candidates compared and set bytes made.</summary>
+    /// that ends Loans, each check's bit scan, the entries and taken values it lists and walks, stored values and seeds, the set elements its
+    /// loops and the set operations scanned (MirLoanSets.Scanned), the checks' stamps it clears, candidates compared and set bytes
+    /// made.</summary>
     internal long Work { get; private set; }
 
     /// <summary>Gets the element bytes of the Loan sets the runs made (MirLoanSets.Bytes, A3 6.2's ν), which Work also counts.</summary>
@@ -322,13 +324,19 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             this.flowCount = pass == 0 ? this.holderCount : this.flowCount;
         }
 
+        MirDataflow.Grow(ref this.reserves, this.holderCount);
+        Array.Clear(this.reserves, 0, this.holderCount);
         for (var l = 0; l < this.loanCount; l++)
         {
             ref var loan = ref this.loans[l];
             (loan.Holder, loan.Named) = (loan.Holder >= 0 ? this.slots[loan.Holder] : -1, loan.Named >= 0 ? this.slots[loan.Named] : -1);
+            if (loan is { Mode: MirRefKind.TwoPhaseUniq, Holder: >= 0 })
+            {
+                this.reserves[loan.Holder] = true;
+            }
         }
 
-        this.Work += (2 * locals.Length) + this.loanCount;
+        this.Work += (2 * locals.Length) + this.loanCount + this.holderCount;
     }
 
     // The Loans each location's destructions in place end (E8): a whole write of a Move Path (an Assign's Place, a returning Call's

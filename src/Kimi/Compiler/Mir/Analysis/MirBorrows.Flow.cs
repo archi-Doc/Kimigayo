@@ -4,7 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's carrying (A3 5, Carrying and Calls, with E3 and E8): each holder's set forward over the dataflow's chains, joined by node union. A
 // location's effect is planned on the state before it as entries, which the checks replay reads, then committed; at a destruction in place
-// the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target).
+// the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target). On
+// that state a set's content is read once per location (E13 (5)), however many operands and retention rows read it.
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -12,7 +13,9 @@ internal sealed partial class MirBorrows
     private const byte Joined = 2;
 
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs).
+    private readonly List<int> contentsRead = []; // The sets whose content the location read, reset by Plan.
     private Entry[] entries = [];
+    private int[] contents = []; // By set: its content at the location plus 1 (0: not read there).
     private int[] argValues = [];
     private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
     private int entryCount;
@@ -85,6 +88,12 @@ internal sealed partial class MirBorrows
     private void Plan(ulong[] state, int block, int index)
     {
         this.entryCount = 0;
+        foreach (var set in this.contentsRead)
+        {
+            this.contents[set] = 0;
+        }
+
+        this.contentsRead.Clear();
         ref readonly var data = ref this.body.Blocks[block];
         if (index == data.Count)
         {
@@ -238,9 +247,15 @@ internal sealed partial class MirBorrows
         return (parents, loan >= 0 ? this.sets.Add(0, this.loanBase + loan) : 0);
     }
 
-    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan.
+    // content(S) (A3 5): the states of the holders its direct Loans name, and E's where it carries Φ_E or no direct Loan; memoized at the
+    // location.
     private int Content(ulong[] state, int set)
     {
+        if (set < this.contents.Length && this.contents[set] != 0)
+        {
+            return this.contents[set] - 1;
+        }
+
         var (content, direct, escaped) = (0, false, false);
         this.Work += this.sets.Count(set);
         foreach (var element in this.sets.Elements(set))
@@ -253,7 +268,11 @@ internal sealed partial class MirBorrows
             }
         }
 
-        return escaped || !direct ? this.sets.Union(content, (int)state[Escaped]) : content;
+        content = escaped || !direct ? this.sets.Union(content, (int)state[Escaped]) : content;
+        MirDataflow.Grow(ref this.contents, set + 1);
+        this.contents[set] = content + 1;
+        this.contentsRead.Add(set);
+        return content;
     }
 
     // refs(S) (A3 5) into the targets: the holders its direct Loans name, and E where it carries Φ_E or no direct Loan.
@@ -353,6 +372,7 @@ internal sealed partial class MirBorrows
         }
 
         var retained = this.Rows(call, out var untied);
+        var refsOf = Retention.Result; // The output whose referents the targets hold.
         foreach (var row in retained)
         {
             var value = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
@@ -362,7 +382,12 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            this.Refs(this.argValues[row.Output]);
+            if (row.Output != refsOf)
+            {
+                this.Refs(this.argValues[row.Output]);
+                refsOf = row.Output;
+            }
+
             foreach (var target in this.targets)
             {
                 this.AddSlot(target, value, 0, Joined, issue: false);
@@ -376,9 +401,10 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A Call's retention rows by operand position, into the scratch (A3 E14): its callee's contract (Retaining), slots to positions, with
-    // an intrinsic's row for the operand the builder adds beyond its declaration (MirDescriptors); a default template's call is an unknown
-    // callee until F9 (unit 2e): every input reaches the result and each exclusive input's referents, and its result is untied.
+    // A Call's retention rows by operand position, each output's together, into the scratch (A3 E14): its callee's contract (Retaining),
+    // slots to positions, with an intrinsic's row for the operand the builder adds beyond its declaration (MirDescriptors); a default
+    // template's call is an unknown callee until F9 (unit 2e): every input reaches the result and each exclusive input's referents, and its
+    // result is untied.
     private ReadOnlySpan<Retention> Rows(in MirTerminator call, out bool untied)
     {
         var (callee, count) = (call.Callee, 0);
@@ -442,13 +468,12 @@ internal sealed partial class MirBorrows
     private int Retained(ulong[] state, int operand, int position, RetentionKind kind)
     {
         var value = this.argValues[position];
-        var through = this.Content(state, value);
         if (kind == RetentionKind.Content)
         {
-            return through;
+            return this.Content(state, value);
         }
 
-        return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, through) : value;
+        return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, this.Content(state, value)) : value;
     }
 
     // An operand's case Type.
