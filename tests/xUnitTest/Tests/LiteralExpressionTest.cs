@@ -24,6 +24,7 @@ public class LiteralExpressionTest
         "require take(1 + 1) == \"value\" else => $abort(\"class\")\n" +
         "let n = 4 * 4\nlet m: i64 = n@i64 + (1 << 2)\nrequire m == 20 else => $abort(\"default\")\n" +
         "let buffer: [(2 * 3) of u8] = [(2 * 3) of 0]\nrequire buffer.length == 6 else => $abort(\"length\")\n" +
+        "let pairs = [(x, x), (x, 2000000000 + 2000000000)]\nrequire pairs[1].1 == 4000000000 else => $abort(\"element\")\n" +
         "Console.writeLine(\"ok\")";
 
     [Fact]
@@ -66,8 +67,9 @@ public class LiteralExpressionTest
         Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 14.9.2 step 3, 12.3: a literal source of a join, or a literal leaf of a Tuple, array or dictionary literal source, is not fixed
-    // before the join: it takes the Type the other sources supply, which no survey typed before binding them, nested too, and generates in it.
+    // SPEC 14.9.2 step 3, 4.3, 12.3: a literal source of a join, or a literal leaf of a Tuple, array or dictionary literal source or of an
+    // array or dictionary literal's element, is not fixed before its position's Type: it waits for the Type the other sources or elements
+    // supply, which no survey typed before binding them, nested too, is bound once at it and generates in it.
     [Theory]
     [InlineData("let t = if c => p.x else => 1", "1", "i64")]
     [InlineData("let t = if c => p.x + n else => 1", "1", "i64")]
@@ -91,6 +93,11 @@ public class LiteralExpressionTest
     [InlineData("let g = func [] (e: bool, a: i64)\n        if e => return (1, 2)\n        return (a, a)", "(1, 2)", "(i64, i64)")]
     [InlineData("let t = if c => [\"k\": p.x] else => [\"k\": 4000000000]", "[\"k\": 4000000000]", "Dictionary<string, i64>")]
     [InlineData("let t = if c => [p.x: \"x\"] else => [4000000000: \"y\"]", "[4000000000: \"y\"]", "Dictionary<i64, string>")]
+    [InlineData("let x = [(n, n), (n, 2000000000 + 2000000000)]", "2000000000 + 2000000000", "i64")]
+    [InlineData("let x = [(n, 4000000000), (n, n)]", "4000000000", "i64")]
+    [InlineData("let x = [[n], [4000000000]]", "4000000000", "i64")]
+    [InlineData("let x = [\"k\": (n, n), \"j\": (n, 4000000000)]", "4000000000", "i64")]
+    [InlineData("let x = [n, if c => 1 else => 4000000000]", "4000000000", "i64")]
     public void ALiteralSourceTakesItsJoinsType(string statement, string literal, string type)
     {
         var c = MinimalEmissionTest.Analyze("struct P\n    public var x: i64 = 5\nfunc f(c: bool, d: bool, n: i64, p: P) -> i64\n    " + statement + "\n    return 0\n" +
@@ -102,13 +109,16 @@ public class LiteralExpressionTest
         Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 14.9.2 step 4, 12.3: a literal source is checked once, at its join's Type, so one that does not fit that Type is the literal's
-    // own problem, on which the join rests.
+    // SPEC 14.9.2 step 4, 12.3: a literal source is checked once, at its join's Type or, with none decided, at its default, so one that
+    // does not fit that Type is the literal's own problem, on which the join rests; a source bound at its default is decided.
     [Theory]
     [InlineData("let t = if c => p.y else => 300", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
     [InlineData("let t = if c => p.b else => 1", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
     [InlineData("let t = if c => (p.y, p.y) else => (p.y, 300)", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
     [InlineData("let t = if c => [p.y] else => [300]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
+    [InlineData("let t = if c => [1, 4000000000] else => [2]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
+    [InlineData("let t = if c => [[1, 4000000000]] else => [[2]]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
+    [InlineData("let t = if c => [1, 4000000000] else => [(return)]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "4000000000")]
     public void ALiteralSourceThatDoesNotFitItsJoinsTypeIsItsOwnProblem(string statement, string code, string at)
     {
         var source = "struct P\n    public var y: i8 = 1\n    public var b: bool = true\nfunc f(c: bool, p: P)\n    " + statement + "\n    _ = t\npublic func main() => ()\n";

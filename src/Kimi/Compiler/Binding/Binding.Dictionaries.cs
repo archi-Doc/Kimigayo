@@ -12,36 +12,12 @@ public sealed partial class Binding
     {
         if (expected is not { Kind: BoundTypeKind.Dictionary, Components.Count: 2 })
         {
-            BoundType? inferredKey = null;
-            BoundType? inferredValue = null;
-            BoundType? keyDefault = null;
-            BoundType? valueDefault = null;
-            var inferred = true;
-            for (var i = 0; i < literal.Entries.Count; i++)
+            if (this.IndependentDictionaryType(literal, scope) is not { } independent)
             {
-                inferred &= this.CollectLiteralElementEvidence(literal.Entries[i].Key, scope, ref inferredKey, ref keyDefault);
-                inferred &= this.CollectLiteralElementEvidence(literal.Entries[i].Value, scope, ref inferredValue, ref valueDefault);
+                return null;
             }
 
-            if (!inferred)
-            {
-                return Complete(literal, null);
-            }
-
-            var defaulted = inferredKey is null || inferredValue is null;
-            inferredKey ??= keyDefault;
-            inferredValue ??= valueDefault;
-            if (inferredKey is null || inferredValue is null)
-            {
-                return this.Fail(literal, BindingFailure.MissingType, true);
-            }
-
-            if (defaulted && this.DefersToJoin(literal))
-            {
-                return Complete(literal, null); // SPEC 14.9.2 step 3: a key or value Type only literals supply waits for the join's.
-            }
-
-            expected = this.types.Intern(BoundTypeKind.Dictionary, this.Library.GetSymbol(KimiDeclarationId.Dictionary), SemanticsKind.Owner, [inferredKey, inferredValue]);
+            expected = independent;
         }
 
         BoundType? key = null;
@@ -86,6 +62,59 @@ public sealed partial class Binding
 
         this.dictionaryLiteralKeys.Clear();
         return Complete(literal, complete ? this.types.Intern(BoundTypeKind.Dictionary, expected.Symbol, SemanticsKind.Owner, [key ?? expected.Components[0], value ?? expected.Components[1]]) : null);
+    }
+
+    // SPEC 4.3, 12.4.3: without a Dictionary expectation, the key and value Types its entries establish, as for an array literal's
+    // element Type (BindIndependentArrayLiteral); null when the literal waits for its position's Type or fails.
+    private BoundType? IndependentDictionaryType(DictionaryLiteralKoto literal, BindingScope scope)
+    {
+        BoundType? inferredKey = null;
+        BoundType? inferredValue = null;
+        BoundType? keyDefault = null;
+        BoundType? valueDefault = null;
+        var collecting = this.collectingElements;
+        this.collectingElements = literal;
+        var inferred = true;
+        for (var i = 0; i < literal.Entries.Count; i++)
+        {
+            inferred &= this.CollectLiteralElementEvidence(literal.Entries[i].Key, scope, ref inferredKey, ref keyDefault);
+            inferred &= this.CollectLiteralElementEvidence(literal.Entries[i].Value, scope, ref inferredValue, ref valueDefault);
+        }
+
+        this.collectingElements = collecting;
+        if (inferred && (inferredKey is null || inferredValue is null) && this.DecidedLater(literal))
+        {
+            return Complete(literal, null); // SPEC 14.9.2 step 3, 4.3: a key or value Type only literals supply waits for its position's.
+        }
+
+        // Without an established Type, or when a part failed (SPEC 23.1.2: the others are still bound), the waiting parts default.
+        for (var i = 0; i < literal.Entries.Count; i++)
+        {
+            if (!inferred || inferredKey is null)
+            {
+                this.DefaultWaitingPart(literal.Entries[i].Key, ref keyDefault);
+            }
+
+            if (!inferred || inferredValue is null)
+            {
+                this.DefaultWaitingPart(literal.Entries[i].Value, ref valueDefault);
+            }
+        }
+
+        if (!inferred)
+        {
+            return Complete(literal, null);
+        }
+
+        inferredKey ??= keyDefault;
+        inferredValue ??= valueDefault;
+        if (inferredKey is null || inferredValue is null)
+        {
+            return this.Fail(literal, BindingFailure.MissingType, true);
+        }
+
+        var dictionary = this.Library.GetSymbol(KimiDeclarationId.Dictionary);
+        return this.types.Intern(BoundTypeKind.Dictionary, dictionary, SemanticsKind.Owner, [inferredKey, inferredValue]);
     }
 
     private bool TryDictionaryLiteralKey(Koto syntax, BoundType type, out PatternLiteral literal)

@@ -235,27 +235,39 @@ public sealed partial class Binding
 
     // SPEC 4.3: without a fixed-array expectation an independent literal constructs an Array whose element Type is the
     // one complete Type its elements establish; unfitted numeric literals follow ordinary inference. Call arguments keep
-    // candidate-local fitting and never take this default.
+    // candidate-local fitting and never take this default. While it collects that evidence, its parts' literals wait for it.
     private BoundType? BindIndependentArrayLiteral(ArrayLiteralKoto literal, BindingScope scope)
     {
         BoundType? established = null;
         BoundType? literalDefault = null;
-        for (var i = 0; i < literal.Elements.Count; i++)
+        var collecting = this.collectingElements;
+        this.collectingElements = literal;
+        var collected = true;
+        for (var i = 0; collected && i < literal.Elements.Count; i++)
         {
-            if (!this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault))
-            {
-                return Complete(literal, null);
-            }
+            collected = this.CollectLiteralElementEvidence(literal.Elements[i], scope, ref established, ref literalDefault);
+        }
+
+        this.collectingElements = collecting;
+        if (collected && established is null && this.DecidedLater(literal))
+        {
+            return Complete(literal, null); // SPEC 14.9.2 step 3, 4.3: no element establishes a Type, so the literal waits for its position's.
+        }
+
+        // Without an established Type, or when an element failed (SPEC 23.1.2: the others are still bound), the waiting parts default.
+        for (var i = 0; (!collected || established is null) && i < literal.Elements.Count; i++)
+        {
+            this.DefaultWaitingPart(literal.Elements[i], ref literalDefault);
+        }
+
+        if (!collected)
+        {
+            return Complete(literal, null);
         }
 
         if ((established ?? literalDefault) is not { } element)
         {
             return this.Fail(literal, BindingFailure.MissingType, true);
-        }
-
-        if (established is null && this.DefersToJoin(literal))
-        {
-            return Complete(literal, null); // SPEC 14.9.2 step 3: no element establishes a Type, so the literal waits for its join's.
         }
 
         for (var i = 0; i < literal.Elements.Count; i++)
@@ -280,7 +292,7 @@ public sealed partial class Binding
         var actual = this.BindNode(source, scope);
         if (actual is null)
         {
-            return false;
+            return this.Deferred(source); // SPEC 4.3, 14.9.2 step 3: a part waiting for the element Type supplies none; it is bound at it.
         }
 
         if (ReferenceEquals(actual, BoundType.Never))

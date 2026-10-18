@@ -1911,11 +1911,11 @@ R5 on the owner's request of 2026-10-18.
     join (`ResultCandidates`; when none supplies one, the sources' own Types compete), no element evidence of an array or
     Dictionary literal beside an element that is (alone, the awaiting elements' common Type), and at a call evidence only as a
     Literal's default is (late pass, for slots no other evidence binds); it takes the decided Type by its late Type (`LateTypeOf`:
-    a literal leaf the Type it fits, an array literal its target's element Type only when every element fits it, S2, every other
-    part its own Type), written only when that fits (`TryPropagate`), at the join's decision (`DecideResult`, `PropagateSources`),
+    an array literal its target's element Type only when every element fits it, S2, every other part its own Type; a literal
+    waits instead, BU-9), written only when that fits (`TryPropagate`), at the join's decision (`DecideResult`, `PropagateSources`),
     `BindTuple`, the array and Dictionary literals, a call's `CompleteArguments` (S5) and `CompletePayloads`. While a join collects
     its sources after its survey without a Target Result Type (`ResultContext.Collecting`), a numeric literal-only source, directly
-    or as a part of a Tuple or array literal source, is not bound (`WaitsForJoin`), nor is an array literal source no element of
+    or as a part of a Tuple or array literal source, is not bound (`WaitsForPosition`, BU-9), nor is an array literal source no element of
     which establishes a Type; a selection, `do` or `loop` all of whose sources await, one of them unbound, waits when it is itself
     such a source (`ResultContext.Waiting`; a function's value is itself, not its result) and is decided when its position binds
     it (`DecideWaiting`); otherwise the join binds each waiting source once, at its decided Type, so a misfit is the literal's own
@@ -2042,11 +2042,11 @@ R5 on the owner's request of 2026-10-18.
   MIR builds a literal whose Type holds a Never element at the Type Binding publishes, with no record (`MirBuilder.Aggregate`;
   `HoldsNeverElement`, its branch and its header clause are deleted). Binding publishes that Type through G129's three components:
   the relation (E1, `Binding.TypeRelations`: `FitsTypeCore` relates Never only to itself, SPEC 3.8; Type-to-Type comparisons call
-  `IsSubtype`, `IsStructuralSubtype`, `IsSubtypeAt` and `FitsStructuralPart`), value fitting (E2, `Binding.ValueFits`: Never fitting
-  only at a value position's root, `NeverFits`; SPEC 10.7's one result rule, `CallableSignatureFits` with `CompatibleResult`), and
+  `IsSubtype`, `IsStructuralSubtype`, `IsSubtypeAt` and `FitsStructuralPart`; SPEC 10.7's one result rule, `CallableSignatureFits`
+  with `CompatibleResult`), value fitting (E2, `Binding.ValueFits`: Never fitting only at a value position's root, `NeverFits`), and
   the late fit (E3, `Binding.ResultPropagation`: an expression that awaits its position, `AwaitsPosition`, takes the Type its join,
-  its literal's element evidence or its selected call decides, `LateType`, `TryPropagate`, `PropagateSources`; a literal-only part
-  waits for its join, `DefersToJoin`, `BindWaiting`). A literal that no position types keeps its own Type, which holds Never only
+  its literal's element evidence or its selected call decides, `LateType`, `TryPropagate`, `PropagateSources`; a literal waits
+  for it, `WaitsForPosition`, `BindWaiting`). A literal that no position types keeps its own Type, which holds Never only
   where the literal is a fresh value (`let t = (a, (return 1))` is `(i64, Never)`); such a literal never completes at run time. U5
   closes E3's family of aggregate literals: a dictionary literal awaits as Tuple and array literals do (`HoldsAwaitingEntry`,
   `LateDictionaryType`), and one whose keys or values only literals type waits for its join (`BindDictionaryLiteral`), so
@@ -2057,6 +2057,17 @@ R5 on the owner's request of 2026-10-18.
   (a third aggregate literal under the same late-fit rule, one row each in `AwaitsPosition` and `LateType`). Open (PLAN G159): a
   join whose every source awaits compares their own Types; 10.7 for a closure declaring `-> Never` and a `Callable` bound over a
   Never-result item; Never-holding Places on the old analysis; an expected Type does not reach the operand of `@move` or `@copy`.
+  Final review r1 (2026-10-19; redone, not patched): a literal is bound once. It waits, unbound, wherever its position's Type is
+  decided later, found by one walk (`DecidedLater`: through the forms that deliver it and the Tuple, array and dictionary literals
+  it is a part of, to an array or dictionary literal collecting its element evidence, `collectingElements`, a join collecting
+  without a Target Result Type, or the call deciding a Literal or waiting control-flow argument, `WaitsForCall`); one predicate,
+  `WaitsForPosition`, replaces `WaitsForJoin` and `WaitsUnderProbe` (BU-2). Once bound it is decided: `AwaitsPosition` holds only
+  while it waits, so the late fit writes no literal (`LateLiteralType` deleted) and a source bound at its default is never
+  propagated or checked again (`if c => [1, 4000000000] else => [2]`: the literal's record only, as on dev). `Awaiting` tells a
+  part holding a literal, which supplies a default, from one holding only Never parts, which takes the Type the defaults supply
+  (`if c => [1, 2] else => [(return 1)]`, rejected on dev, is valid). So `[(a, a), (a, 2000000000 + 2000000000)]`,
+  `[(a, a), (a, 4000000000)]`, `[[a], [4000000000]]` and `[a, if c => 1 else => 4000000000]` take the element Type (SPEC 4.3,
+  12.3; dev rejects them), and `g(1@move)` with `g(t: i64)` is `NoApplicableOverload_Kd` again, as on dev (owner question B1).
 
 ## R5 and R6 (adopted 2026-10-18)
 

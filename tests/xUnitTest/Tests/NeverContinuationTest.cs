@@ -71,8 +71,8 @@ public class NeverContinuationTest
 
     // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
     // none, and it takes the Target Result Type once the join selects it, nested, through @move, as an array element, a dictionary value,
-    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; MIR builds it at
-    // that Type with no record and no finding.
+    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; one holding only
+    // Never parts takes the Type a literal source's default supplies; MIR builds it at that Type with no record and no finding.
     [Theory]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
@@ -90,11 +90,12 @@ public class NeverContinuationTest
     [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1))]", "(a, (return 1))")]
     [InlineData("let t = if c => [\"k\": a] else => [\"k\": (return 1)]", "[\"k\": (return 1)]", "Dictionary<string, i64>")]
     [InlineData("let t = if c => (a, [\"k\": a]) else => (a, [\"k\": (return 1)])", "[\"k\": (return 1)]", "Dictionary<string, i64>")]
+    [InlineData("let t = if c => [1, 2] else => [(return 1)]", "[(return 1)]", "Array<i32>")]
     public void ANeverElementLiteralTakesItsJoinsType(string statement, string literal, string type = "(i64, i64)")
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
-        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or DictionaryLiteralKoto && x.ToString() == literal);
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && x.ToString() == literal);
         Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
         BuildsWithoutRecords(c);
     }

@@ -353,9 +353,9 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsUnderProbe(node, expected) || this.WaitsForJoin(node, expected))
+        if (this.WaitsForPosition(node, expected))
         {
-            return null; // SPEC 10.5.1, 14.9.2: a literal source waits for its expectation or its join's Type.
+            return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later.
         }
 
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).

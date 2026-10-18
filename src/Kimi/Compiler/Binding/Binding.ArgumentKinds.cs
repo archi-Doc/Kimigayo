@@ -109,18 +109,10 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 10.5.1, 14.9.2: whether a node bound without an expectation is a literal result source of a Literal or waiting control-flow
-    // part under the argument probe, which waits for its expectation as its part does instead of taking a default.
-    private bool WaitsUnderProbe(Koto node, BoundType? expected)
-    {
-        if (expected is not null || this.argumentProbe is not { } probe || !IsUnfittedLiteral(node))
-        {
-            return false;
-        }
-
-        return this.RecordedFact(probe).Kind is ArgumentKind.Literal or ArgumentKind.Waiting &&
-            ResultTarget(node) is { } target && this.UnderArgumentProbe(target);
-    }
+    // SPEC 10.5.1, 14.9.2: whether a join is a Literal or waiting control-flow part under the argument probe, or nested in one, so that
+    // its call decides the Type its literal sources take (DecidedLater).
+    private bool WaitsForCall(Koto target)
+        => this.argumentProbe is { } probe && this.RecordedFact(probe).Kind is ArgumentKind.Literal or ArgumentKind.Waiting && this.UnderArgumentProbe(target);
 
     // SPEC 23.1.2, 10.1: a call that ends unresolved, with no selected candidate or one that failed before completing its arguments,
     // binds each argument part still unbound on its own under the argument probe, so that the part's own problems are reported once
