@@ -11,9 +11,8 @@
 // borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
 // Outputs: a Result (Outcome, Value, Instance); Row(type) for the old scalar-value gate until G8. A Type without a row is an internal
 // error. The collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its own
-// failures): a limit to a Resource record at the Type's first use (R5-M44), CLayout to
-// InvalidCLayout_Kd at the use (K10b), Rejected to a derived failure without a record; codegen after acceptance treats any outcome
-// but Ok as a broken contract (InternalInvariant_Kd).
+// failures): a limit to a Resource record and CLayout to InvalidCLayout_Kd, each at the Type's first use (R5-M44, R5-M55), Rejected
+// to a derived failure without a record; codegen after acceptance treats any outcome but Ok as a broken contract (InternalInvariant_Kd).
 // After a failed Binding: Rejected for a declaration with InlineCycle, a null stored Field Type, null CaseTypes or a fixed array with
 // Length < 0; an unresolved base, which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
 // Invariants: an answer depends only on the Type and the program version, never on query order; one record per representation

@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M53, R5-M54): every body
+// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M53-55): every body
 // instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
 // each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
@@ -19,7 +19,8 @@
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
 // the Type argument of an intrinsic whose row names one) and each type-driven item's Type take one Layout verdict per erased Type: a limit is
-// GenerationResourceLimit_Kd at the first use, Rejected storage derives from a Binding error, and a type-driven item needs an Ok verdict.
+// GenerationResourceLimit_Kd and a C-layout instance storing a zero-sized Field InvalidCLayout_Kd, at the first use; Rejected storage derives
+// from a Binding error; a type-driven item needs an Ok verdict.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43) and a substitution TyCtxt
 // cannot make are the capability table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are
@@ -44,7 +45,7 @@ internal sealed partial class InstanceCollector
     private readonly MirCases cases;
     private readonly MirReach reach = new();
     private readonly Layout layout;
-    private readonly HashSet<BoundType> limited = new(); // The erased Types whose verdict is a limit, each reported once (K 4.8).
+    private readonly HashSet<BoundType> recorded = new(); // The erased Types whose layout verdict has a record, each reported once (K 4.8).
     private readonly Dictionary<MirDefKey, int> counts = new(); // Items per definition (X19).
     private (MirLocation At, bool Runtime)[] sites = []; // The templates: each body's sites, in body order.
     private int[] starts = []; // By body ordinal, its first site; the entry after the last body ends the sites.
@@ -81,7 +82,7 @@ internal sealed partial class InstanceCollector
 
         set.Clear(program.Version);
         this.counts.Clear();
-        this.limited.Clear();
+        this.recorded.Clear();
         (this.rootModules, this.Work) = (rootModules, 0);
         if (program.Findings.Count > 0)
         {

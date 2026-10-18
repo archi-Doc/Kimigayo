@@ -43,6 +43,10 @@ public sealed class InstanceCollectorTest
         "func pick<T>(value: T) -> T => value@move\nfunc one<T>() -> i32 => 1\nfunc run<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n    return f()\n" +
         "let p = pick<i32>\n";
 
+    // A C-layout struct over a Type parameter, which a zero-sized argument makes store a zero-sized Field.
+    private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
+        "    public init(n: i32, value: T) => (self.n, self.value) = (n, value@move)\n";
+
     // A generic function nested in a closed function, which has no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
 
@@ -435,6 +439,40 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var expected = refused.Length == 0 ? [] : refused.Split('|').Select(static x => (DiagnosticCode.Unsupported_Kd, x)).ToArray();
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
+    // depth, is InvalidCLayout_Kd at the Type's first use: an inferred instance in a generic body (make(())) and at the top level
+    // (P.init(1, ())), a written parameter of an unused function, nested in an Option and through an inferred Option<P<T>>; each valid twin
+    // has none. Subjects by their first line.
+    [Theory]
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n", "let p = P<T>.init(1, value@move)")]
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", null)]
+    [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())")]
+    [InlineData("let q = P.init(1, 2)\n", null)]
+    [InlineData("func f(p: P<()>) -> i32 => 1\n", "func f(p: P<()>) -> i32 => 1")]
+    [InlineData("func f(p: P<i32>) -> i32 => 1\n", null)]
+    [InlineData("let x: Option<P<()>> = .None\n", "let x: Option<P<()>> = .None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", "let x: Option<P<T>> = .None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", null)]
+    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtItsFirstUse(string uses, string? subject)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + uses);
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
+        Assert.Equal(subject is null ? [] : [(DiagnosticCode.InvalidCLayout_Kd, subject)], records);
+    }
+
+    // DECISIONS R5-M55 (a declared overlap, removed at G2b): Binding still reports a written instance eagerly at the written Type, so under
+    // MIR code generation a written by-value use is also reported at the use; an inferred one only at the use.
+    [Theory]
+    [InlineData("func f(p: P<()>) -> i32 => 1\n", 1)]
+    [InlineData("let q = P.init(1, ())\n", 0)]
+    public void BindingsEagerReportOfAWrittenInstanceStaysBesideTheUse(string uses, int eager)
+    {
+        var c = MirBuildTest.Compile(CLayoutP + uses);
+        Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
+        Assert.Single(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records, static x => x.Code == DiagnosticCode.InvalidCLayout_Kd);
     }
 
     // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never

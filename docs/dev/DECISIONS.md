@@ -2568,3 +2568,19 @@ structure is recorded here by the unit that first implements it.
   - Verified (`InstanceCollectorTest`): division and remainder of i128 and u128 instances at their generic-body locations, once for two
     instances and for a forwarded call, also after a return; independent operations at their own locations; the i64 instance none; the
     library (as roots) and the 44 milestones under sel give no record.
+- **R5-M55 C-layout instances in the checked set** (2026-10-18, planning session; plan K10b, the K package's §4.8 and §9 row K10b, S2-S4
+  X18; under R5-M18, R5-M37 and R5-M44) The collector maps `Layout.Of`'s CLayout outcome, a C-layout instance (`AdtDef.IsCLayout`)
+  storing a zero-sized Field at any depth in the 64-level window, to `InvalidCLayout_Kd` (Language; SPEC 6.7.1, 8.15.3) at the erased
+  Type's first by-value use, as R5-M44 maps the limits: one table, `RecordOf(outcome)` (Ok and Rejected none, the limits Resource,
+  CLayout Language), and one record per erased Type. Inferred instances are rejected at check under MIR code generation, which the old
+  generator refuses only at emission. The record joins `Compilation.MirRecords` with the others, so its requirement stays ControlFlow
+  until H3 (K10c aligns with it); `Generates` names Language records too.
+  - Declared overlap, removed at G2b: Binding's eager report of a written instance (`Binding.Attributes.cs`) stays, so under MIR code
+    generation a written by-value use is reported at the written Type by Binding and at the use by the collector; an inferred one only
+    at the use (`InstanceCollectorTest.BindingsEagerReportOfAWrittenInstanceStaysBesideTheUse`).
+  - Waiting: a collection's element (X34) is laid out by its glue item, so an empty `Array<P<()>>` local's record comes with K7.
+  - Rejected: a record per use (one Type would report at each local, temporary and erasure holding it); a second outcome table beside
+    R5-M44's.
+  - Verified (`InstanceCollectorTest`): `make(())` in a generic body, `P.init(1, ())` at the top level, an unused function's written
+    parameter, `Option<P<()>>` and an inferred `Option<P<T>>` each at its first use, every valid twin none; `Option<Never>` none
+    (R5-M44); the library (as roots) and the 44 milestones under sel give no record.
