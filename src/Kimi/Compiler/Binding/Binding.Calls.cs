@@ -236,68 +236,13 @@ public sealed partial class Binding
         this.activeRequirementContract = null;
         try
         {
-            return this.BindCallCore(call, scope, expected);
+            return this.CompleteUnselected(call, scope, this.BindCallCore(call, scope, expected));
         }
         finally
         {
             this.activeRequirementContract = enclosingRequirementContract;
             this.acquisitionFailure = enclosingAcquisition;
         }
-    }
-
-    // Independent argument evidence is prepared once for named and constraint-based calls.
-    private bool PrepareCallArguments(InvocationKoto call, BindingScope scope, BindingSymbol? group = null, bool callableContext = false)
-    {
-        var unknownArgument = false;
-        for (var i = 0; i < call.ArgumentNodes.Count; i++)
-        {
-            var argument = call.ArgumentNodes[i];
-            if (KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true })
-            {
-                continue; // A common-function argument supplies its fixed signature after selection.
-            }
-
-            if (IsAggregateArgument(argument))
-            {
-                unknownArgument |= !this.PrepareAggregateArgument(argument, scope);
-                continue;
-            }
-
-            if (NeedsEnumContext(argument))
-            {
-                unknownArgument |= !this.PrepareContextualEnumInputs(argument, scope);
-                continue;
-            }
-
-            // A literal is fitted after selection, unless the parser kept it as a recovery: that argument fails here, so the call rests on its Error.
-            if ((!IsUnfittedLiteral(argument) || argument.CodeContext.RecoveryCause(argument) is not null) && this.BindIndependentArgument(argument, scope) is null)
-            {
-                if (IsWaitingNestedCall(argument))
-                {
-                    continue; // SPEC 10.5: only a determined outer candidate supplies the missing expectation.
-                }
-
-                if (KotoHelper.UnwrapParentheses(argument) is { BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } item })
-                {
-                    if ((callableContext || this.TakesCallableContext(group)) && !IndependentFunctionItem(item, this.UnboundMemberReference(argument), this.ReferenceDeclaringType(argument)) &&
-                        !this.ExplicitReferenceValue(argument, item, scope))
-                    {
-                        continue; // SPEC 10.5: a waiting reference uses the selected fixed call signature once.
-                    }
-
-                    // SPEC 10.5: a single closed declaration supplies its own Item Type as generic argument evidence.
-                    // A generic Callable contract checks that Type without erasing it to a common Function handle.
-                    if (this.BindFunctionItem(argument, item, scope) is not null)
-                    {
-                        continue;
-                    }
-                }
-
-                unknownArgument = true;
-            }
-        }
-
-        return !unknownArgument;
     }
 
     private BoundType? BindCallCore(InvocationKoto call, BindingScope scope, BoundType? expected)
@@ -652,15 +597,9 @@ public sealed partial class Binding
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
             }
 
-            if (evaluated[winnerIndex].Unsolved)
+            if (!this.SolveSelected(ref evaluation, winnerIndex, selectedType))
             {
-                if (this.DeferNestedCall(call, expected))
-                {
-                    return Complete(call, null);
-                }
-
-                // SPEC 10.8, 10.6: the selected candidate's unsolved slot is the inference boundary; the checks that need it are derived.
-                return this.FailUnboundSlots(call, selected, scope, scratch, lengthArguments, mapping, operations.AsSpan(winnerIndex * operationStride, operationStride), expected, self, origins, inputs, selectedType);
+                return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
             }
 
             if (evaluated[winnerIndex].State == CandidateApplicability.Waiting)
@@ -668,36 +607,24 @@ public sealed partial class Binding
                 // SPEC 10.5: selection precedes bodies. Complete only this candidate; a body or capture failure
                 // never retries another overload, and its inferred result never supplies outer signature evidence.
                 var waitingOperations = operations.AsSpan(winnerIndex * operationStride, operationStride);
-                for (var i = 0; i < argumentCount; i++)
+                if (!this.CompleteWaiting(ref evaluation, winnerIndex, completedWaiting, waitingContexts))
                 {
-                    if (IsWaitingCallable(call.ArgumentNodes[i]) || IsWaitingNestedCall(call.ArgumentNodes[i]))
-                    {
-                        completedWaiting[i] = true;
-                        waitingContexts[i] = waitingOperations[i].ParameterType;
-                        var contract = this.activeRequirementContract;
-                        this.activeRequirementContract = null;
-                        var pattern = selected.Parameters[mapping[i]].Type.BoundType!;
-                        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                        var concrete = slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(selected), slotType.Symbol!) >= 0;
-                        var argument = call.ArgumentNodes[i];
-                        // SPEC 10.5: a candidate without a fixed expected call signature for this argument supplies none; a reference
-                        // is then a value only when it needs no S (FailUnfixedReference otherwise).
-                        var bound = concrete && KotoHelper.UnwrapParentheses(argument) is FunctionKoto { IsAnonymous: true } closure
-                            ? this.BindClosureArgument(argument, closure, scope, waitingOperations[i].ParameterType)
-                            : concrete && IsWaitingFunctionReference(argument)
-                                ? waitingOperations[i].ParameterType is { } signature
-                                    ? this.BindFunctionReference(argument, KotoHelper.UnwrapParentheses(argument).BoundSymbol!, signature, scope, erase: false)
-                                    : this.BindFunctionItem(argument, KotoHelper.UnwrapParentheses(argument).BoundSymbol!, scope)
-                                : this.BindNode(argument, scope, waitingOperations[i].ParameterType);
-                        this.activeRequirementContract = contract;
-                        if (bound is null)
-                        {
-                            return Complete(call, null);
-                        }
-                    }
+                    return Complete(call, null);
                 }
 
-                var state = this.TryCandidate(call, selected, generic, scope, scratch, lengthArguments, explicitLengths, mapping, evaluated[winnerIndex].ArgumentMap, expected, self, origins, inputs, selectedType, waitingOperations, out _, out _, out _, out _, out _, out _);
+                var state = this.TryCandidate(
+                    this.Solution(evaluation, selected, selectedType),
+                    explicitLengths,
+                    mapping,
+                    evaluated[winnerIndex].ArgumentMap,
+                    expected,
+                    waitingOperations,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _,
+                    out _);
                 if (state != CandidateApplicability.Applicable)
                 {
                     var rejected = new RejectedCandidate(selected, null, null, Selected: true);
@@ -797,18 +724,8 @@ public sealed partial class Binding
                 else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { Kind: BoundTypeKind.Function } erased &&
                     selectedOperations[i].Adaptation == ArgumentAdaptation.Erasure)
                 {
-                    if (!this.ErasesToFunction(call.ArgumentNodes[i], closureType, erased))
-                    {
-                        // SPEC 10.5, 7.7.4: the erasure conditions are judged after selection, at the argument: an environment that is not
-                        // Owned is the Constraint record, a receiver that is not Shared a Type mismatch with its Note. The call rests on it
-                        // and another candidate is never selected; every failing argument is reported (SPEC 23.1.2).
-                        this.RecordMismatch(call.ArgumentNodes[i], call.ArgumentNodes[i], closureType, erased);
-                        erasureFailed = true;
-                        continue;
-                    }
-
-                    // SPEC 7.7.4: the selected parameter fixes the common Function Type the Closure value is converted to.
-                    call.ArgumentNodes[i].ErasedFunctionType = erased;
+                    // SPEC 10.5: the call rests on a failed erasure and another candidate is never selected; every failing argument is reported.
+                    erasureFailed |= !this.ErasePart(call.ArgumentNodes[i], closureType, erased);
                     selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
                 }
             }
@@ -990,7 +907,19 @@ public sealed partial class Binding
     // The invariant slot bindings belong to one candidate; a nested call bound while it is evaluated keeps its own.
     // `unsolved` holds the required structural slots that no evidence binds (SPEC 10.8); an Applicable or Waiting candidate with such
     // slots stays rankable, and its selection is the inference-boundary record (FailUnboundSlots).
-    private CandidateApplicability TryCandidate(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, out ReferenceConstraintFailure? constraintFailure, out bool premiseUnknown, bool fixedConstruction = false)
+    private CandidateApplicability TryCandidate(
+        SlotSolution solution,
+        BoundLength?[] explicitLengths,
+        int[] mapping,
+        CallArgumentMap argumentMap,
+        BoundType? expected,
+        Span<BoundArgumentOperation> operations,
+        out int defaultsUsed,
+        out bool unsolved,
+        out ClosureReceiverRefutation? closureReceiver,
+        out bool independentRejection,
+        out ReferenceConstraintFailure? constraintFailure,
+        out bool premiseUnknown)
     {
         if (this.MeasureCallInference)
         {
@@ -999,15 +928,27 @@ public sealed partial class Binding
 
         var saved = this.invariantSlots;
         var savedInferenceFunction = this.activeInferenceFunction;
-        this.activeInferenceFunction = function;
+        this.activeInferenceFunction = solution.Function;
         var savedEnvironment = this.environmentEvidence;
         var savedAcquisition = this.acquisitionFailure;
         this.acquisitionFailure = null;
-        this.invariantSlots = this.RentSlotSet(CallSlotCount(function));
+        this.invariantSlots = this.RentSlotSet(CallSlotCount(solution.Function));
         this.environmentEvidence = false;
         try
         {
-            var result = this.TryCandidateCore(call, function, generic, scope, arguments, lengths, explicitLengths, mapping, argumentMap, expected, self, origins, inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, out constraintFailure, out premiseUnknown, fixedConstruction);
+            var result = this.TryCandidateCore(
+                ref solution,
+                explicitLengths,
+                mapping,
+                argumentMap,
+                expected,
+                operations,
+                out defaultsUsed,
+                out unsolved,
+                out closureReceiver,
+                out independentRejection,
+                out constraintFailure,
+                out premiseUnknown);
             if (result is CandidateApplicability.Applicable or CandidateApplicability.Waiting && this.acquisitionFailure is { } acquisition)
             {
                 // Only a candidate whose other inputs, result and Constraints fit can explain the absent spelling.
@@ -1031,8 +972,30 @@ public sealed partial class Binding
         }
     }
 
-    private CandidateApplicability TryCandidateCore(InvocationKoto call, FunctionKoto function, GenericsKoto? generic, BindingScope scope, BoundType?[] arguments, BoundLength?[] lengths, BoundLength?[] explicitLengths, int[] mapping, CallArgumentMap argumentMap, BoundType? expected, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, Span<BoundArgumentOperation> operations, out int defaultsUsed, out bool unsolved, out ClosureReceiverRefutation? closureReceiver, out bool independentRejection, out ReferenceConstraintFailure? constraintFailure, out bool premiseUnknown, bool fixedConstruction = false)
+    private CandidateApplicability TryCandidateCore(
+        ref SlotSolution solution,
+        BoundLength?[] explicitLengths,
+        int[] mapping,
+        CallArgumentMap argumentMap,
+        BoundType? expected,
+        Span<BoundArgumentOperation> operations,
+        out int defaultsUsed,
+        out bool unsolved,
+        out ClosureReceiverRefutation? closureReceiver,
+        out bool independentRejection,
+        out ReferenceConstraintFailure? constraintFailure,
+        out bool premiseUnknown)
     {
+        var call = solution.Call;
+        var function = solution.Function;
+        var scope = solution.Scope;
+        var arguments = solution.Types;
+        var lengths = solution.Lengths;
+        var generic = solution.Generic;
+        var self = solution.Self;
+        var origins = solution.Origins;
+        var inputs = solution.Inputs;
+        var declaringType = solution.DeclaringType;
         var waiting = this.RentSlotSet(call.ArgumentNodes.Count);
         var open = this.RentSlotSet(call.ArgumentNodes.Count);
         var openSignatures = this.RentSlotSet(call.ArgumentNodes.Count);
@@ -1062,11 +1025,10 @@ public sealed partial class Binding
                 return CandidateApplicability.Error;
             }
 
-            this.InitializeCallSlots(call, function, declaringType, arguments, fixedConstruction);
+            this.InitializeCallSlots(call, function, declaringType, arguments, solution.FixedConstruction);
             Array.Clear(lengths, 0, CallSlotCount(function));
             Array.Clear(origins, 0, function.Origins.Count);
             Array.Clear(inputs, 0, Math.Min(inputs.Length, InputOriginCount(function)));
-            OriginInference? originInference = null;
 
             for (var i = 0; i < CallOwnSlots(function).Count; i++)
             {
@@ -1128,7 +1090,7 @@ public sealed partial class Binding
                     return CandidateApplicability.Pending;
                 }
 
-                if (!InferInput(parameterType, receiverType, receiver, receiverPath, true))
+                if (!solution.InferInput(parameterType, receiverType, receiver, receiverPath, receiver: true))
                 {
                     if (this.CallMemberPattern(parameterType, function, declaringType) is { } memberType && this.ContractType(memberType, scope, self) is { } required && SharedObjectAuthorityMismatch(receiverType, required))
                     {
@@ -1144,10 +1106,10 @@ public sealed partial class Binding
             var waitingCallables = false;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                var slot = mapping[i];
-                contextualInputs |= NeedsEnumContext(call.ArgumentNodes[i]) || IsAggregateArgument(call.ArgumentNodes[i]);
-                contextualCallables |= KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(call.ArgumentNodes[i]);
-                var type = function.Parameters[slot].Type.BoundType;
+                var part = call.ArgumentNodes[i];
+                contextualInputs |= this.KindOf(part) == ArgumentKind.Composite;
+                contextualCallables |= KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(part);
+                var type = function.Parameters[mapping[i]].Type.BoundType;
                 if (type is null)
                 {
                     return CandidateApplicability.Pending;
@@ -1159,38 +1121,34 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (call.ArgumentNodes[i].BoundType is { } actual &&
-                    (type.Kind != BoundTypeKind.Function || KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is not FunctionKoto { IsAnonymous: true }) &&
-                    !InferInput(type, actual, call.ArgumentNodes[i]))
+                if (solution.Pattern(type) is { } evidencePattern
+                    ? !solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is not null)
                 {
-                    independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
-                    // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
-                    // applies; a successful overload selection publishes nothing from rejected alternatives.
-                    if (DifferentRangeShapes(actual, type))
+                    if (part.BoundType is { } actual)
                     {
-                        operations[i] = new(call.ArgumentNodes[i], actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
+                        independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
+                        // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
+                        // applies; a successful overload selection publishes nothing from rejected alternatives.
+                        if (DifferentRangeShapes(actual, type))
+                        {
+                            operations[i] = new(part, actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
+                        }
                     }
 
                     return CandidateApplicability.Inapplicable;
-                }
-
-                if (KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } literal &&
-                    this.TryCallable(type, this.ConstraintScope(function), out var headerPattern, out _) &&
-                    !InferClosureHeader(headerPattern, literal))
-                {
-                    return CandidateApplicability.Inapplicable; // SPEC 10.5: the written header is evidence for the generic parameters.
                 }
             }
 
             for (var i = 0; !waiting.IsEmpty && i < call.ArgumentNodes.Count; i++)
             {
-                if (waiting.Contains(i) && call.ArgumentNodes[i].BoundType is { } actual && !InferInput(function.Parameters[mapping[i]].Type.BoundType!, actual, call.ArgumentNodes[i]))
+                if (waiting.Contains(i) && (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } evidencePattern
+                    ? !solution.InferArgument(evidencePattern, call.ArgumentNodes[i], late: false) : call.ArgumentNodes[i].BoundType is not null))
                 {
                     return CandidateApplicability.Inapplicable;
                 }
             }
 
-            if (!InferCallableSignatures(operations))
+            if (!solution.InferCallableSignatures(mapping, operations))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1198,11 +1156,6 @@ public sealed partial class Binding
             // Supplied inputs have an independent mapping even when a required input is absent.
             // Preserve their known signature-refusal facts before rejecting the incomplete call.
             if (!argumentMap.Valid)
-            {
-                return CandidateApplicability.Inapplicable;
-            }
-
-            if (contextualInputs && !InferAggregateInputs(false))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1221,29 +1174,35 @@ public sealed partial class Binding
                 this.MatchResultOrigins(returnPattern, expected, function, origins, inputs);
                 if (returnPattern.CarriesOrigin)
                 {
-                    originInference ??= this.BeginOriginInference(call, function);
-                    this.CollectOriginInference(returnPattern, expected, originInference, result: true);
+                    solution.OriginInference ??= this.BeginOriginInference(call, function);
+                    this.CollectOriginInference(returnPattern, expected, solution.OriginInference, result: true);
                 }
             }
 
-            if (contextualInputs && !InferAggregateInputs(true))
+            // SPEC 10.2.1, 4.6.2: after the expected result, the Literal parts' defaults applied to the selected candidate and range typing.
+            for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                return CandidateApplicability.Inapplicable;
+                if (solution.Pattern(function.Parameters[mapping[i]].Type.BoundType!) is { } latePattern &&
+                    !solution.InferArgument(latePattern, call.ArgumentNodes[i], late: true))
+                {
+                    return CandidateApplicability.Inapplicable;
+                }
             }
 
-            if (originInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
+            if (solution.OriginInference is null && this.originDeclarations.GetValueOrDefault(function)?.Relations.Count > 0)
             {
-                originInference = this.BeginOriginInference(call, function);
+                solution.OriginInference = this.BeginOriginInference(call, function);
             }
 
-            if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType, select: true))
+            if (solution.OriginInference is not null &&
+                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, call, declaringType, select: true))
             {
                 return CandidateApplicability.Inapplicable;
             }
 
             if (receiverSlot >= 0)
             {
-                var requiredReceiver = this.CallType(function.Parameters[receiverSlot].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
+                var requiredReceiver = solution.Type(function.Parameters[receiverSlot].Type.BoundType!);
                 if (requiredReceiver is null)
                 {
                     return CandidateApplicability.Pending;
@@ -1270,23 +1229,22 @@ public sealed partial class Binding
                 {
                     var argument = KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]);
                     if (argument is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(argument) ? pass != ordinaryPasses :
-                        pass == ordinaryPasses || (contextualInputs && (NeedsEnumContext(argument) || IsAggregateArgument(argument)) != (pass == 1)))
+                        pass == ordinaryPasses || (contextualInputs && (this.KindOf(argument) == ArgumentKind.Composite) != (pass == 1)))
                     {
                         continue;
                     }
 
-                    var type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
+                    var type = solution.Type(function.Parameters[mapping[i]].Type.BoundType!);
                     if (type is null)
                     {
                         var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-                        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                        if (IsWaitingCallable(argument) &&
-                            slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) is var slot && slot >= 0 && arguments[slot] is null)
+                        if (IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
+                            arguments[ContainerSlot(solution.SlotOwner, slotType.Symbol!)] is null)
                         {
                             BoundType? signature = null;
                             if (this.TryCallable(slotType, this.ConstraintScope(function), out var required, out _))
                             {
-                                signature = this.CallType(required, function, arguments, scope, self, origins, inputs, declaringType, lengths);
+                                signature = solution.Type(required);
                                 if (signature is null)
                                 {
                                     // SPEC 10.8: every other piece of evidence is in, so a slot of S that is still unbound stays unsolved; the
@@ -1312,39 +1270,52 @@ public sealed partial class Binding
                             continue;
                         }
 
-                        // Default only otherwise unconstrained literals; all established inputs were processed above.
-                        if (this.LiteralDefault(argument) is not { } literalDefault)
+                        // SPEC 10.2.1, 10.5.1: a Literal is no evidence; its default is, once applied to the selected candidate (DefaultArguments),
+                        // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
+                        if (this.PartDefault(argument, scope) is not { } shape)
                         {
-                            if (!IsUnfittedLiteral(argument) && MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
+                            if (this.KindOf(argument) != ArgumentKind.Literal &&
+                                MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
-                                // candidate stays applicable on its other checks; it is completed only if the candidate is selected.
-                                open.Add(i);
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
+                                // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
+                                // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
+                                var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument)
+                                    ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
+                                if (WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
+                                {
+                                    waitingCallables = true;
+                                }
+                                else
+                                {
+                                    open.Add(i);
+                                }
+
                                 continue;
                             }
 
-                            return CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
+                            return solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
                         }
 
-                        if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, literalDefault, argument))
+                        if (!solution.FitsLiteralShape(pattern, shape))
                         {
-                            if (DifferentRangeShapes(literalDefault, function.Parameters[mapping[i]].Type.BoundType!))
+                            if (DifferentRangeShapes(shape, pattern))
                             {
-                                operations[i] = new(call.ArgumentNodes[i], literalDefault, function.Parameters[mapping[i]].Type.BoundType!, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
+                                operations[i] = new(
+                                    call.ArgumentNodes[i], shape, pattern, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
                             }
 
                             return CandidateApplicability.Inapplicable;
                         }
 
-                        type = this.CallType(function.Parameters[mapping[i]].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
+                        type = solution.Type(pattern);
                         if (type is null)
                         {
                             if (MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
-                                // Literal defaults cannot invert a projection or an unresolved selector.
+                                // A Literal waits for its default, which cannot invert a projection or an unresolved selector either.
                                 open.Add(i);
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
                                 continue;
@@ -1354,157 +1325,36 @@ public sealed partial class Binding
                         }
                     }
 
-                    if (IsWaitingNestedCall(argument))
+                    var applicability = this.FitArgument(call.ArgumentNodes[i], type, scope, call, out var operation);
+                    if (applicability == CandidateApplicability.Inapplicable && type.Kind == BoundTypeKind.Function)
                     {
-                        waitingCallables = true;
-                        operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
-                        continue;
+                        applicability = solution.FitPerCall(call.ArgumentNodes[i], type, out operation);
                     }
 
-                    if (IsAggregateArgument(argument))
+                    if (operation.Source is not null)
                     {
-                        var borrow = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
-                        var valueType = borrow ? type.Components[0] : type;
-                        var applicability = this.ProbeAggregateArgument(argument, valueType, scope);
-                        if (applicability != CandidateApplicability.Applicable)
-                        {
-                            return applicability;
-                        }
-
-                        operations[i] = new(
-                            call.ArgumentNodes[i],
-                            valueType,
-                            type,
-                            borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value,
-                            borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal,
-                            ParameterIndex: mapping[i]);
-                        continue;
+                        operations[i] = operation with { ParameterIndex = mapping[i] };
                     }
 
-                    if (argument is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
+                    waitingCallables |= applicability == CandidateApplicability.Waiting;
+                    if (applicability is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
                     {
-                        if (!this.ClosureSignatureFits(closure, type))
-                        {
-                            return CandidateApplicability.Inapplicable;
-                        }
-
-                        operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
-                        continue;
+                        return applicability;
                     }
 
-                    if (argument is { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } group })
+                    // SPEC 10.2: a borrowed literal temporary's Place Origin binds the parameter's input Origin like any other borrowed temporary.
+                    if (operation is { Kind: ArgumentOperationKind.Borrow, AdaptedType: not null } && argument.BoundType is null &&
+                        !solution.InferInput(function.Parameters[mapping[i]].Type.BoundType!, operation.SourceType!, argument))
                     {
-                        // SPEC 7.7.4: a function group argument fits when one of its functions converts to the parameter's common
-                        // Function Type; the reference is bound to that function after selection.
-                        var perCallOnly = false;
-                        if (type.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(argument, group, type, scope))
-                        {
-                            if (type.Kind == BoundTypeKind.Function && this.PerCallStandIn(type, call.ArgumentNodes[i], type, true) is { } instantiated &&
-                                this.FunctionGroupFits(argument, group, instantiated, scope))
-                            {
-                                // SPEC 10.7, 10.8: the argument's per-call input is instantiated to a required input over a fixed Origin.
-                                this.InstantiateOpenOrigins(arguments.AsSpan(0, CallOwnSlots(function).Count), call.ArgumentNodes[i], type);
-                                type = instantiated;
-                            }
-                            else if (type.Kind != BoundTypeKind.Function || this.PerCallStandIn(type, call.ArgumentNodes[i], type) is not { } standIn ||
-                                !this.FunctionGroupFits(argument, group, standIn, scope))
-                            {
-                                return CandidateApplicability.Inapplicable;
-                            }
-                            else
-                            {
-                                // SPEC 15.3.6: a fit that only the argument's own per-call Origin would satisfy is reported after selection.
-                                perCallOnly = true;
-                            }
-                        }
-
-                        operations[i] = new(call.ArgumentNodes[i], null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i], MissingOrigin: perCallOnly);
-                        continue;
-                    }
-
-                    if (IsUnfittedLiteral(argument) && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } borrowed &&
-                        (ScalarTypes.Supports(borrowed.Components[0]) || this.TakesGenericLiterals(borrowed.Components[0], scope) || this.IsSyntaxPositionType(borrowed.Components[0])) && this.FitsInputLiteral(argument, borrowed.Components[0], scope))
-                    {
-                        // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed;
-                        // its Place Origin binds the parameter's input Origin like any other borrowed temporary.
-                        if (!InferInput(function.Parameters[mapping[i]].Type.BoundType!, borrowed.Components[0], argument))
-                        {
-                            return CandidateApplicability.Inapplicable;
-                        }
-
-                        var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [borrowed.Components[0]], origin: this.PlaceOrigin(argument));
-                        operations[i] = new(call.ArgumentNodes[i], borrowed.Components[0], type, ArgumentOperationKind.Borrow, ArgumentAdaptation.CrossSemanticsBorrow, ParameterIndex: mapping[i], AdaptedType: literalBorrow);
-                        continue;
-                    }
-
-                    if (!this.FitsInputLiteral(argument, type, scope))
-                    {
-                        if (this.LiteralDefault(argument) is { } literalType && DifferentRangeShapes(literalType, type))
-                        {
-                            operations[i] = new(call.ArgumentNodes[i], literalType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal, ParameterIndex: mapping[i]);
-                        }
-
                         return CandidateApplicability.Inapplicable;
                     }
-
-                    if (NeedsEnumContext(argument))
-                    {
-                        var applicability = this.ProbeContextualEnum(argument, type, scope);
-                        if (applicability != CandidateApplicability.Applicable)
-                        {
-                            return applicability;
-                        }
-
-                        operations[i] = new(call.ArgumentNodes[i], type, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
-                        continue;
-                    }
-
-                    if (argument.BoundType is { } closureType && this.ErasureSignatureFits(closureType, type, argument))
-                    {
-                        // SPEC 7.7.4: a concrete Closure value converts to the parameter's common Function Type, as at an
-                        // initialization; the argument is bound with that expectation once the call is selected. Its receiver and
-                        // Owned conditions are judged then (SPEC 10.5).
-                        operations[i] = new(call.ArgumentNodes[i], closureType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
-                        continue;
-                    }
-
-                    if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } instantiatedValue && type.Kind == BoundTypeKind.Function &&
-                        this.PerCallStandIn(type, call.ArgumentNodes[i], type, true) is { } instantiatedType && this.ErasureSignatureFits(instantiatedValue, instantiatedType, argument))
-                    {
-                        // SPEC 10.7, 10.8: the value's per-call input is instantiated to a required input over a fixed Origin.
-                        this.InstantiateOpenOrigins(arguments.AsSpan(0, CallOwnSlots(function).Count), call.ArgumentNodes[i], type);
-                        operations[i] = new(call.ArgumentNodes[i], instantiatedValue, instantiatedType, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i]);
-                        continue;
-                    }
-
-                    if (argument.BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } perCallValue && type.Kind == BoundTypeKind.Function &&
-                        this.PerCallStandIn(type, call.ArgumentNodes[i], type) is { } valueStandIn && this.ErasureSignatureFits(perCallValue, valueStandIn, argument))
-                    {
-                        // SPEC 15.3.6: only the value's own per-call Origin would satisfy the slot; reported after selection.
-                        operations[i] = new(call.ArgumentNodes[i], perCallValue, type, ArgumentOperationKind.Value, ArgumentAdaptation.Erasure, ParameterIndex: mapping[i], MissingOrigin: true);
-                        continue;
-                    }
-
-                    var quality = ArgumentAdaptation.Literal;
-                    var kind = ArgumentOperationKind.Value;
-                    BoundType? adaptedType = null;
-                    if (argument.BoundType is { } actual)
-                    {
-                        if (!this.AdaptInput(argument, type, actual, scope, null, null, out var adapted, out quality, out kind, deferAcquisition: true) || !this.FitsStructurallyAt(adapted, type, call))
-                        {
-                            return CandidateApplicability.Inapplicable;
-                        }
-
-                        adaptedType = adapted;
-                    }
-
-                    operations[i] = new(call.ArgumentNodes[i], argument.BoundType, type, kind, quality, ParameterIndex: mapping[i], AdaptedType: adaptedType);
                 }
             }
 
             // Fitted literals can add Origin evidence after the first contextual pass.
             // Publish only the final substituted parameter Types, never preliminary binders.
-            if (originInference is not null && !this.SolveCallOriginInference(function, originInference, origins, inputs, call, declaringType, select: true))
+            if (solution.OriginInference is not null &&
+                !this.SolveCallOriginInference(function, solution.OriginInference, origins, inputs, call, declaringType, select: true))
             {
                 return CandidateApplicability.Inapplicable;
             }
@@ -1513,7 +1363,8 @@ public sealed partial class Binding
             // open position closed by a later literal default still keeps the candidate pending.
             UnsolvedSlots(call, function, arguments, lengths, mapping, ref unsolvedSlots, out var unrepresentable);
             unrepresentable |= this.environmentEvidence;
-            if ((!open.IsEmpty || !openSignatures.IsEmpty) && (unrepresentable || !this.OpenPositionsHold(call, function, arguments, mapping, open, openSignatures, unsolvedSlots, scope, self, origins, inputs, declaringType, lengths)))
+            if ((!open.IsEmpty || !openSignatures.IsEmpty) &&
+                (unrepresentable || !this.OpenPositionsHold(solution, mapping, open, openSignatures, unsolvedSlots)))
             {
                 return CandidateApplicability.Pending;
             }
@@ -1525,7 +1376,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < function.Parameters.Count; i++)
             {
-                var completed = this.CallType(function.Parameters[i].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
+                var completed = solution.Type(function.Parameters[i].Type.BoundType!);
                 // SPEC 10.8: a parameter Type that holds an unsolved slot, an open position or an unused default, is no failure of its own.
                 if (completed is null ? !(waitingCallables || MentionsSlots(function.Parameters[i].Type.BoundType!, CallSlotOwner(function), unsolvedSlots)) : !this.ProveTypeLengths(completed, scope.Function))
                 {
@@ -1533,10 +1384,10 @@ public sealed partial class Binding
                 }
             }
 
-            CompleteOperationTypes(operations);
+            solution.CompleteOperationTypes(operations);
 
             var resultPattern = function.IsConstructor && declaringType is not null ? this.SelfType(declaringType.Symbol!) : function.BoundSymbol!.Type;
-            var result = resultPattern is not null ? this.CallType(resultPattern, function, arguments, scope, self, origins, inputs, declaringType, lengths) : null;
+            var result = resultPattern is not null ? solution.Type(resultPattern) : null;
             if (result is not null && !this.ProveTypeLengths(result, scope.Function))
             {
                 return CandidateApplicability.Inapplicable;
@@ -1546,7 +1397,7 @@ public sealed partial class Binding
             {
                 // SPEC 15.3.6: an Origin of the callee that nothing at the call bounds, such as the result-only `s` of `constant() ->
                 // ref/i32 during s` initializing an unannotated local, is a local region of the call, never a pending candidate.
-                result = this.CallType(resultPattern!, function, arguments, scope, self, origins, inputs, declaringType, lengths);
+                result = solution.Type(resultPattern!);
             }
 
             // SPEC 10.8: a result that keeps an unsolved slot is no failure of its own; the parts of its fit that do not contain the slot are
@@ -1556,7 +1407,7 @@ public sealed partial class Binding
             {
                 // Result-only Origin inference needs the later call-site solver. Never retain a
                 // requirement's abstract binder as though it were this call's concrete Origin.
-                return result is null && CompleteArguments() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
+                return result is null && solution.IsComplete() ? CandidateApplicability.Inapplicable : CandidateApplicability.Pending;
             }
 
             if (expected is not null && result is not null && !this.FitsStructurallyAt(result, this.ContractType(expected, scope), call) &&
@@ -1569,8 +1420,8 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            var proof = ProveCandidate(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables, unsolvedSlots);
-            if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && PerCallCallables(operations))
+            var proof = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables, unsolvedSlots);
+            if (proof is ConstraintProof.Refuted or ConstraintProof.Unknown && !waitingCallables && solution.PerCallCallables(mapping, operations))
             {
                 proof = ConstraintProof.Proven;
             }
@@ -1604,7 +1455,8 @@ public sealed partial class Binding
                 this.permitClosureReceivers = true;
                 try
                 {
-                    closureReceiver = ProveCandidate(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables) == ConstraintProof.Proven ? mismatch : null;
+                    var permitted = solution.Prove(arguments.AsSpan(0, CallOwnSlots(function).Count), waitingCallables);
+                    closureReceiver = permitted == ConstraintProof.Proven ? mismatch : null;
                 }
                 finally
                 {
@@ -1627,286 +1479,6 @@ public sealed partial class Binding
                 ConstraintProof.Error => CandidateApplicability.Error,
                 _ => CandidateApplicability.Pending,
             };
-            bool InferAggregateInputs(bool fitLiterals)
-            {
-                for (var i = 0; i < call.ArgumentNodes.Count; i++)
-                {
-                    if (!IsAggregateArgument(call.ArgumentNodes[i]))
-                    {
-                        continue;
-                    }
-
-                    if (this.CallMemberPattern(function.Parameters[mapping[i]].Type.BoundType!, function, declaringType) is not { } pattern)
-                    {
-                        return false;
-                    }
-
-                    pattern = this.ContractType(pattern, scope, self);
-                    if (pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref })
-                    {
-                        if (pattern.Origin is { } origin)
-                        {
-                            this.MatchInputOrigin(origin, this.PlaceOrigin(call.ArgumentNodes[i]), function, origins, inputs);
-                        }
-
-                        pattern = pattern.Components[0];
-                    }
-
-                    if (!this.InferAggregateCall(pattern, call.ArgumentNodes[i], function, arguments, lengths, origins, inputs, fitLiterals))
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            bool InferInput(BoundType pattern, BoundType actual, Koto source, BoundMemberPath? path = null, bool receiver = false)
-            {
-                if (this.CallMemberPattern(pattern, function, declaringType) is not { } memberPattern)
-                {
-                    return false;
-                }
-
-                pattern = this.ContractType(memberPattern, scope, self);
-                var fixedOwner = !fixedConstruction && call.Method is MemberAccessKoto member && this.inferredConstructorTargets.Contains(member.Left) ? member.Left.BoundType : declaringType;
-                var adaptationPattern = function.IsConstructor ? this.MemberType(pattern, fixedOwner) ?? pattern : pattern;
-                if (!this.AdaptInput(source, adaptationPattern, actual, scope, path, declaringType, out actual, out _, out _, receiver: receiver, deferAcquisition: true))
-                {
-                    return false;
-                }
-
-                var callee = actual;
-                if (pattern.Kind == BoundTypeKind.Function && this.FunctionItemSignature(actual) is { } itemSignature)
-                {
-                    actual = itemSignature;
-                }
-                else if (pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Closure &&
-                    actual.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure })
-                {
-                    // SPEC 7.7.4, 10.5: a concrete Closure meets a common Function Type through its signature; the conversion itself,
-                    // its receiver and Owned conditions included, is judged once the call is selected.
-                    actual = closure.Signature;
-                }
-
-                pattern = this.FormedApplication(pattern, CallSlotOwner(function), arguments);
-                var known = pattern.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function ? new SignatureEvidence(CalleeBinder(callee, actual), source) : (SignatureEvidence?)null;
-                var quantifier = known is { } evidence ? evidence.Binder ?? evidence.Source : null; // The argument itself binds nothing.
-                this.MatchInputOrigins(pattern, actual, function, origins, inputs, quantifier);
-                if (pattern.CarriesOrigin && actual.CarriesOrigin)
-                {
-                    originInference ??= this.BeginOriginInference(call, function);
-                    this.CollectOriginInference(pattern, actual, originInference, known: quantifier);
-                    this.CollectInputPremises(pattern, originInference, call);
-                }
-
-                pattern = this.SubstituteStoredOrigins(pattern, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
-                // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-                return WasWaitingNestedCall(source) || this.Infer(pattern, actual, CallSlotOwner(function), arguments, true, lengths, generic is null && (!function.IsConstructor || (!fixedConstruction && call.Method is MemberAccessKoto inferredMember && this.inferredConstructorTargets.Contains(inferredMember.Left))), structural: pattern.Kind == BoundTypeKind.Function, evidence: known, relateLater: true);
-            }
-
-            bool InferClosureHeader(BoundType signature, FunctionKoto literal)
-            {
-                if (this.CallMemberPattern(signature, function, declaringType) is not { } memberSignature)
-                {
-                    return false;
-                }
-
-                signature = this.ContractType(memberSignature, scope, self);
-                var parameterTypes = signature.Components[0];
-                var count = ReferenceEquals(parameterTypes, BoundType.Unit) ? 0 : parameterTypes.Components.Count;
-                if (literal.Parameters.Count != count)
-                {
-                    return false;
-                }
-
-                var headerScope = this.scopes[literal];
-                for (var i = 0; i < count; i++)
-                {
-                    var written = literal.Parameters[i].Type;
-                    if (written is not SyntaxFormKoto { Akind: KotoKind.InferredType } &&
-                        (this.BindType(written, headerScope) is not { } actual ||
-                        !this.Infer(parameterTypes.Components[i], actual, CallSlotOwner(function), arguments, lengths: lengths, structural: true, evidence: new(literal, literal))))
-                    {
-                        return false;
-                    }
-                }
-
-                return literal.ReturnType is null || (this.BindType(literal.ReturnType, headerScope) is { } result &&
-                    this.Infer(signature.Components[1], result, CallSlotOwner(function), arguments, lengths: lengths, structural: true, evidence: new(literal, literal)));
-            }
-
-            bool InferCallableSignatures(Span<BoundArgumentOperation> signatureOperations)
-            {
-                // SPEC 10.8: the Type bound to F also supplies its independently known call signature. This is evidence
-                // alongside ordinary inputs, before expected results and literal defaults. An anonymous waiting body is
-                // never evidence; its written header is handled separately. The signature's own Origins become open regions.
-                for (var i = 0; i < call.ArgumentNodes.Count; i++)
-                {
-                    var source = call.ArgumentNodes[i];
-                    var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-                    var callableSlot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-                        ? pattern.Components[0] : pattern;
-                    if (callableSlot.Kind != BoundTypeKind.Parameter || ContainerSlot(CallSlotOwner(function), callableSlot.Symbol!) < 0 ||
-                        KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || WasWaitingNestedCall(source) || source.BoundType is not { } actual ||
-                        !this.TryCallable(callableSlot, this.ConstraintScope(function), out var requiredSignature, out _) ||
-                        !this.TryCallable(actual, scope, out var actualSignature, out _))
-                    {
-                        continue;
-                    }
-
-                    if (this.CallMemberPattern(requiredSignature, function, declaringType) is not { } memberSignature)
-                    {
-                        return false;
-                    }
-
-                    requiredSignature = this.ContractType(memberSignature, scope, self);
-                    if (!this.Infer(requiredSignature, actualSignature, CallSlotOwner(function), arguments, lengths: lengths, structural: true, evidence: new(CalleeBinder(actual, actualSignature), source)))
-                    {
-                        var required = this.CallType(requiredSignature, function, arguments, scope, self, origins, inputs, declaringType, lengths) ?? requiredSignature;
-                        signatureOperations[i] = new(source, actualSignature, required, ArgumentOperationKind.Value, ArgumentAdaptation.Exact);
-
-                        return false;
-                    }
-                }
-
-                return true;
-            }
-
-            // SPEC 15.3.6, 10.8: a Callable proof that fails only because a slot holds the open region of an argument's own per-call Origin,
-            // and holds once that per-call Origin stands in for it, is no inapplicability: the argument is reported after selection.
-            bool PerCallCallables(Span<BoundArgumentOperation> marks)
-            {
-                var count = CallOwnSlots(function).Count;
-                var restored = this.typeScratch.Rent(count);
-                try
-                {
-                    // SPEC 10.7, 10.8: first instantiate each argument's per-call input at a required input over a fixed Origin; when every
-                    // Constraint then holds, that instantiation solves the slots and nothing is reported.
-                    arguments.AsSpan(0, count).CopyTo(restored);
-                    if (StandIns(restored.AsSpan(0, count), marks, true) && ProveCandidate(restored.AsSpan(0, count), false) == ConstraintProof.Proven)
-                    {
-                        restored.AsSpan(0, count).CopyTo(arguments);
-                        CompleteOperationTypes(marks);
-                        return true;
-                    }
-
-                    arguments.AsSpan(0, count).CopyTo(restored);
-                    var marked = StandIns(restored.AsSpan(0, count), marks, false);
-                    if (!marked || ProveCandidate(restored.AsSpan(0, count), false) != ConstraintProof.Proven)
-                    {
-                        for (var i = 0; i < call.ArgumentNodes.Count && marked; i++)
-                        {
-                            marks[i] = marks[i] with { MissingOrigin = false };
-                        }
-
-                        return false;
-                    }
-
-                    return true;
-                }
-                finally
-                {
-                    this.typeScratch.Return(restored, clearArray: true);
-                }
-
-                // Replaces the open regions of each argument whose Callable signature holds one, marking that argument unless `fixedOnly`.
-                bool StandIns(Span<BoundType?> slots, Span<BoundArgumentOperation> targets, bool fixedOnly)
-                {
-                    var replaced = false;
-                    for (var i = 0; i < call.ArgumentNodes.Count; i++)
-                    {
-                        var source = call.ArgumentNodes[i];
-                        var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-                        var callableSlot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? pattern.Components[0] : pattern;
-                        if (callableSlot.Kind != BoundTypeKind.Parameter || ContainerSlot(CallSlotOwner(function), callableSlot.Symbol!) < 0 || source.BoundType is null ||
-                            !this.TryCallable(callableSlot, this.ConstraintScope(function), out var requiredSignature, out _) ||
-                            this.CallMemberPattern(requiredSignature, function, declaringType) is not { } memberSignature ||
-                            this.CallType(this.ContractType(memberSignature, scope, self), function, arguments, scope, self, origins, inputs, declaringType, lengths) is not { } required ||
-                            this.PerCallStandIn(required, source, required, fixedOnly) is null)
-                        {
-                            continue;
-                        }
-
-                        for (var g = 0; g < slots.Length; g++)
-                        {
-                            if (slots[g] is { } solution)
-                            {
-                                slots[g] = this.ReplaceOpenOrigins(solution, source, required, fixedOnly);
-                            }
-                        }
-
-                        if (!fixedOnly)
-                        {
-                            targets[i] = targets[i] with { MissingOrigin = true };
-                        }
-
-                        replaced = true;
-                    }
-
-                    return replaced;
-                }
-            }
-
-            void CompleteOperationTypes(Span<BoundArgumentOperation> targets)
-            {
-                for (var i = 0; i < targets.Length; i++)
-                {
-                    if (targets[i] is { Source: not null, ParameterIndex: >= 0 } operation)
-                    {
-                        var completed = this.CallType(function.Parameters[operation.ParameterIndex].Type.BoundType!, function, arguments, scope, self, origins, inputs, declaringType, lengths)!;
-                        if (completed is not null)
-                        {
-                            targets[i] = operation with { ParameterType = completed };
-                        }
-                    }
-                }
-            }
-
-            // SPEC 10.8: the Constraints and premises whose judgment needs an unsolved slot are not judged.
-            ConstraintProof ProveCandidate(ReadOnlySpan<BoundType?> slots, bool incomplete, SlotSet unbound = default)
-            {
-                var proof = this.CheckConstraints(function.TypeConstraints, function, function.IsConstructor ? arguments.AsSpan(0, CallSlotCount(function)) : slots, scope, self, function.IsConstructor ? null : declaringType, lengths, incomplete: incomplete || !unbound.IsEmpty, skipUnresolved: !unbound.IsEmpty, slotOwner: CallSlotOwner(function));
-                if (declaringType is not null)
-                {
-                    var closedOwner = function.IsConstructor ? this.ConstructionType(function, declaringType, arguments) : declaringType;
-                    if (closedOwner is not null)
-                    {
-                        proof = CombineProof(proof, this.CheckTypeConstraints(closedOwner, scope), true);
-                    }
-                    else if (function.IsConstructor && CallSlotOwner(function) is StructKoto owner)
-                    {
-                        proof = CombineProof(proof, this.CheckConstraints(owner.ConstraintNodes, owner, arguments.AsSpan(0, CallSlotCount(function)), scope, incomplete: true, skipUnresolved: !unbound.IsEmpty), true);
-                    }
-                }
-
-                proof = CombineProof(proof, this.CheckSignatureTypeConstraints(function), true);
-                // A substitution must be a valid complete Type independently of whether
-                // the function constrains or uses that slot (SPEC 8.1.3).
-                for (var i = 0; i < slots.Length; i++)
-                {
-                    var argumentProof = CallOwnSlots(function)[i] is LengthParameterKoto
-                        ? lengths[i] is not null ? ConstraintProof.Proven : ConstraintProof.Unknown
-                        : slots[i] is { } argument ? this.CheckTypeConstraints(argument, scope)
-                        : unbound.Contains(i) ? ConstraintProof.Proven : ConstraintProof.Unknown;
-                    proof = CombineProof(proof, argumentProof, true);
-                }
-
-                return CombineProof(proof, this.ProveMemberConditions(function.BoundSymbol!, declaringType, scope), true);
-            }
-
-            bool CompleteArguments()
-            {
-                for (var i = 0; i < CallOwnSlots(function).Count; i++)
-                {
-                    if (CallOwnSlots(function)[i] is LengthParameterKoto ? lengths[i] is null : arguments[i] is null)
-                    {
-                        return false;
-                    }
-                }
-
-                return true;
-            }
         }
         finally
         {
@@ -1957,12 +1529,6 @@ public sealed partial class Binding
     // invariant schema slot.
     private bool Infer(BoundType pattern, BoundType actual, Koto function, BoundType?[] arguments, bool inferOrigins = false, BoundLength?[]? lengths = null, bool commonOrigins = false, bool structural = false, SignatureEvidence? evidence = null, bool relateLater = false, bool invariant = false)
     {
-        // A Never-valued expression supplies no input value; a Never Type inside a known signature is exact evidence.
-        if (!structural && ReferenceEquals(actual, BoundType.Never))
-        {
-            return true;
-        }
-
         if (pattern.Kind == BoundTypeKind.AssociatedProjection)
         {
             // An associated Type is not an injective constructor: infer its receiver from
@@ -2132,7 +1698,18 @@ public sealed partial class Binding
         {
             var below = invariant || IsInvariantLayer(pattern, this) ||
                 (pattern.Kind == BoundTypeKind.Constructed && pattern.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count && schema.GenericSlots[i].OriginVariance is OriginVariance.Invariant or OriginVariance.Unused);
-            if (!this.Infer(pattern.Components[i], actual.Components[i], function, arguments, inferOrigins, lengths, commonOrigins, structural, evidence, relateLater, below))
+            if (!this.Infer(
+                pattern.Components[i],
+                actual.Components[i],
+                function,
+                arguments,
+                inferOrigins,
+                lengths,
+                commonOrigins,
+                structural,
+                evidence,
+                relateLater,
+                below))
             {
                 return false;
             }

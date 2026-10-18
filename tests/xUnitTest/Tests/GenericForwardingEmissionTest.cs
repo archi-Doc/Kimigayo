@@ -89,7 +89,7 @@ public class GenericForwardingEmissionTest
 
     [Fact]
     public void ForwardingPreservesOriginalOverloadSelection()
-        => ScalarEmissionTest.EmitFixture("GenericForwardingOverload", "func weight<T>(value: T) -> i32 => 1\nspecialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight(value: i32) -> i32 => 9\nfunc forward<T>(value: T) -> i32 => weight<T>(value@move)\nrequire forward<i32>(7) == 2 and weight(7) == 9 else => $abort(\"overload\")", string.Empty);
+        => ScalarEmissionTest.EmitFixture("GenericForwardingOverload", "func weight<T>(value: T) -> i32 => 1\nspecialize func weight<i32>(value: i32) -> i32 => 2\nfunc weight(value: i32) -> i32 => 9\nfunc forward<T>(value: T) -> i32 => weight<T>(value@move)\nrequire forward<i32>(7) == 2 and weight(7@i32) == 9 else => $abort(\"overload\")", string.Empty);
 
     [Theory]
     [InlineData("group W\n    public var value: i32 = 1\nrequire W.value == 1 else => $abort(\"value\")")]

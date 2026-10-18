@@ -6,21 +6,26 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // The declaration owning structural inference is independent of the function owning call Origins.
-    private static Koto CallSlotOwner(FunctionKoto function)
-        => function.IsConstructor ? function.BoundSymbol!.Scope.Owner : function;
+    // The declaration owning structural inference is independent of the binder owning the Origins: a function owns its slots and a
+    // constructor's structure owns them; an enum constructing a Case owns its own (SPEC 10.8.1).
+    private static Koto CallSlotOwner(Koto binder)
+        => binder is FunctionKoto { IsConstructor: true } constructor ? constructor.BoundSymbol!.Scope.Owner : binder;
 
     private static IReadOnlyList<TypeKoto> CallOwnSlots(FunctionKoto function)
         => function.IsConstructor ? ((StructKoto)CallSlotOwner(function)).GenericParameterNodes : function.GenericArguments;
 
-    private static int CallSlotCount(FunctionKoto function)
-        => function.IsConstructor ? CallSlotOwner(function).BoundSymbol!.Schema!.GenericSlots.Count : function.GenericArguments.Count;
+    private static int CallSlotCount(Koto binder)
+        => binder is FunctionKoto { IsConstructor: false } function
+            ? function.GenericArguments.Count : CallSlotOwner(binder).BoundSymbol!.Schema!.GenericSlots.Count;
+
+    // The Origin slots a binder binds: a function's, or a declaration's.
+    private static int CallOriginCount(Koto binder) => binder is FunctionKoto function ? function.Origins.Count : binder.BoundSymbol!.Schema!.Origins.Count;
 
     // Constructor slots already include their fixed enclosing environment. Apply structural
     // bindings once, to declaration patterns; never substitute inside an already-bound argument.
-    private BoundType? CallMemberPattern(BoundType type, FunctionKoto function, BoundType? declaringType)
-        => function.IsConstructor && declaringType is not null
-            ? this.SubstituteStoredOrigins(type, CallSlotOwner(function), (BoundOrigin[])declaringType.OriginArguments)
+    private BoundType? CallMemberPattern(BoundType type, Koto binder, BoundType? declaringType)
+        => !ReferenceEquals(CallSlotOwner(binder), binder) && declaringType is not null
+            ? this.SubstituteStoredOrigins(type, CallSlotOwner(binder), (BoundOrigin[])declaringType.OriginArguments)
             : this.MemberType(type, declaringType);
 
     private BoundType? ConstructionType(FunctionKoto function, BoundType template, BoundType?[] slots)

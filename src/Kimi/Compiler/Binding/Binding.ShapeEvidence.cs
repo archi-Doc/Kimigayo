@@ -218,8 +218,8 @@ public sealed partial class Binding
                         }
 
                         CollectTypes(pattern, actual, false);
-                        var callable = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var inner] } ? inner : pattern;
-                        if (callable.Kind == BoundTypeKind.Parameter && this.ExpectedCallSignature(function, pattern) is { } requiredSignature &&
+                        if (CallableSlotType(pattern, CallSlotOwner(function)) is not null &&
+                            this.ExpectedCallSignature(function, pattern) is { } requiredSignature &&
                             this.TryCallable(actual, scope, out var actualSignature, out _))
                         {
                             CollectTypes(requiredSignature, actualSignature, false);

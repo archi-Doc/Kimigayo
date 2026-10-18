@@ -109,9 +109,8 @@ public sealed partial class Binding
         {
             for (var a = 0; a < call.ArgumentNodes.Count; a++)
             {
-                var pattern = function.Parameters[mapping[a]].Type.BoundType;
-                var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? pattern.Components[0] : pattern;
-                if (slotType is { Kind: BoundTypeKind.Parameter } && ReferenceEquals(slotType.Symbol, slot))
+                if (function.Parameters[mapping[a]].Type.BoundType is { } pattern &&
+                    ReferenceEquals(CallableSlotType(pattern, CallSlotOwner(function))?.Symbol, slot))
                 {
                     return call.ArgumentNodes[a];
                 }

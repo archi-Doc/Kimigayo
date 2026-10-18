@@ -1446,7 +1446,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (option A: the lane, the core lane and R5's W1 would wait, and it is best designed with G130's SPEC 10.5.1 unit); holding the
   lane until G130 (B); the validator copying Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate
   at its consumer (a consumer deciding a fact Binding publishes); a walk of every component with a test of the HIR completion
-  (the planning session: the published Type alone decides, through the positions a literal builds).
+  (the planning session: the published Type alone decides, through the positions a literal builds). (G130 U5 removed its
+  Case-payload cause, BU-2: a payload literal is completed at its decided payload Type.)
 - **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
   state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
   G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
@@ -1643,6 +1644,152 @@ R5 on the owner's request of 2026-10-18.
   Origin, which its referent's Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a
   non-exclusive pair layer" below a writable invariant position. Rejected: removing rc and arc from the shared layers (a
   case per form; it would also make an rc payload held by value writable); a store row per handle input. Not temporary.
+- **BU-2** (2026-10-18; the BU planning session; PLAN G130, design B with its review's resolutions; the G130 entry, which its
+  later units extend) Argument kinds (SPEC 10.5.1) have one owner, the canonical component `Binding.ArgumentKinds`: the kind of
+  every argument part (a call argument and, recursively, an element of a Tuple or array literal argument, a written boundary
+  of a mixed range and a payload of a contextual `.Case(...)`) is Literal, Composite, Waiting or Typed, and consumers read it
+  through one query, `KindOf`; the component prepares a call's arguments and a Composite's parts and walks a Composite for
+  slot evidence and for its fit to a candidate. It replaces `Binding.NestedCalls` and `Binding.ArrayArguments`.
+  Representation: the kind a pass records for a part, keyed by syntax identity (`SourceRef`), replaces the Koto-keyed
+  `waitingNestedCalls` set; the first unit records the nested calls the argument probe defers, and `KindOf` otherwise
+  derives the kind from the part's syntax and binding state, as the consumers did. `SlotSolution` is the SPEC 10.8 solve
+  state of one candidate (its Type, length and Origin slots and input Origins, scope, Self, declaring Type, explicit Type
+  arguments, the fixed-construction flag and the Origin inference its evidence begins) with its own operations: an argument
+  part's evidence, substitution of the solution and the judgment of the candidate's Constraints over it. It replaces the
+  parallel arrays `TryCandidate` and its local evidence functions took; a Case construction is to supply its own data to it,
+  with no branch on a missing function. Owner decisions (2026-10-18, in the BU planning session), implemented by G130's later
+  units U2–U5: SPEC 10.5.1 is followed as written, so a contextual `.Case(...)` argument is Waiting and never probed per
+  candidate, and a control-flow argument is Literal only when all its result sources are Literal; SPEC 10.2.1's Literal
+  timing holds, so a Literal is no evidence during applicability and comparison and its default applies after selection,
+  with the ambiguities that follow. Why: each consumer decided an argument's
+  kind from syntax, and the element, payload and top-level paths decided it differently (PLAN G130). Rejected: fixing the
+  walkers in place (design A's option (i), and fixes inside each walker: the dispatch copies and the two leaf rules for
+  elements and top-level arguments stay); a Case construction as a synthesized constructor candidate through `BindCallCore`
+  (design B's option (iii): a `FunctionKoto` per Case without syntax and HIR and MIR changes for a single-candidate solve); a
+  Koto-keyed kind table (ARCH Code rules, Syntax identity). Open: a construction's unbound slot reports `MissingType`
+  (`UnresolvedBinding_Kd`) while a call's reports `UnboundTypeArgument_Kd`. Not temporary.
+  - U2, Literal timing (SPEC 10.2.1, 10.5.1; owner decision (2)): a Literal part is no evidence during applicability and
+    comparison. At a position that holds an unbound slot it is checked only by the slot-free shape its default would have and
+    leaves the slot unbound, so step 2 of 10.4 makes such candidates incomparable. For the selected candidate whose slot no
+    evidence binds, `SolveSelected` applies the defaults to its Literal parts at positions that hold the slot (12.3; 4.6.2 rule 3,
+    while rule 2, the other boundary's integer Type, stays range typing during candidate evaluation), records each as the part's
+    fact (`ArgumentFact.Default`, keyed by `SourceRef`) and runs the candidate's checks once more. A failure is that candidate's
+    own record and never reselects: a literal its default does not fit is its own `InvalidNumericLiteral_Kd`, a refuted
+    Constraint keeps its fact. Under the argument probe a nested call or construction waits when another candidate is applicable
+    or its result holds a Type or Semantics slot no evidence binds (a constructor's result holds all its slots; Origin slots
+    never count). Arithmetic operands have their own probe (SPEC 13.3.4), which waits only on an ambiguity or a slot no default
+    binds, so `identity(1) + identity(2)` stays typed. Gaps the timing exposed: a Contract argument holding an unbound slot leaves
+    its clause unresolved instead of judging the callee's own reference; a pair's target projection `T` mentions its pair slot.
+  - U3, one evidence walk and one fit walk (SPEC 10.5.1, 10.2, 10.8; owner decision (a) of PLAN G130): an element of a Tuple or
+    array literal argument and a payload of a contextual Case are parameter positions. `PrepareArgument` prepares every part by
+    its kind under the argument probe, which now covers elements, so a nested call there waits and a function name stays unbound
+    for its position (`AtArgumentPosition`). `SlotSolution.InferArgument` is the one evidence dispatch for arguments and
+    elements: a typed part through the common adaptation (a value read, erasure) and, at a Function pattern, its known call
+    signature; an anonymous function's written header; a Never-typed part none, and a literal holding one no Type at a bare slot
+    (D6). `FitArgument` is the one fit dispatch for call arguments, elements, contextual payloads and value calls
+    (`ProbeValueCall`). A waiting element at an `F` of the candidate binds it (`WaitingBindsSlot`) and is completed with `F`'s
+    signature after selection (`CompleteWaiting`), as a waiting argument is. Deleted: `InferAggregateCall`,
+    `InferAggregateInputs`, `ProbeAggregateArgument`'s leaf and literal branches, `PrepareAggregateArgument`'s binding without
+    expectation and `IndependentAggregateType`'s Never evidence. R11 is split (planning session, 2026-10-18): U3 lands its
+    expected-result half, so an expected result Never is ordinary evidence (`let x: Never = identity(stop())` gives `T = Never`);
+    the structural `Infer` skips a Never component until U5, whose commit removes the skip as it puts Case payloads on
+    `InferArgument` (then `h(u)` with `u: (Never, i64)` gives `T = Never`, and `P.Pair(1, ((return 1), a))` and its swapped
+    form give `T = i64`: U5's regression rows), since before U5 a Case payload bound whole would make its Never element
+    evidence. Departure from the designs' expected record: `g((identity(true), a))` is `NoApplicableOverload_Kd` at `g`, not
+    the inner call's error, because `identity(true)` is independently typable (`bool`) and that Type does not fit `i64`.
+  - U4, control-flow arguments (SPEC 10.5.1, 14.9.1-14.9.2; owner decision (1), review R5): an `if`, `match`, `loop` or `do`
+    part is Literal exactly when every result source is a literal, as ControlFlow's one source enumeration finds it
+    (`SurveyResult`, the walk `FindResultEvidence` already makes, now also telling Never sources and fitting each literal
+    source to a Type): it fits a candidate when every source does, takes its first literal source's default after selection
+    and is completed at the decided Type. Literals beside only Never or unknown sources (`if c => 1 else => stop()`, `if c =>
+    identity(1) else => 2`) need an expectation or a default, so the part waits. Any other control flow is bound under the
+    argument probe, which reaches its result sources (`ResultTarget`, the inverse of the survey's sources); a source call
+    that waits there makes the part wait (`if c => identity(1) else => identity(2)`). `KindOf` reads the recorded Literal or
+    Waiting of an unbound part (`WasWaitingPart` replaces `WasWaitingNestedCall`). Arithmetic operands use the same
+    predicate (`ResultSurvey.AllLiteral`), so a Never source no longer makes a right operand Literal: `x + (if c => 1 else
+    => stop())` with `x: i64` is now `TypeMismatch_Kd`, as the left-operand form already was (accepted by the planning
+    session with owner decision (1): SPEC 12.3.3 lets only literal-only expressions, never control flow, fit a provider's
+    counterpart, 13.3.4, and 14.9.2 gives the `if` no candidate but its literal's default). Limit (open): the survey binds no
+    source, so an unknown typed source beside literals makes the part wait rather than be typed (`keep(if c => foo.bar()
+    else => 2)` leaves `T` unbound, where SPEC 14.9.2 gives `foo.bar()`'s Type); it goes with G129's late fit (BU decision
+    E13: a join propagates its decided Type into its literal sources, after which such a part can be bound and is Typed).
+  - U4b, the parts of a call that completes none (SPEC 23.1.2, 10.1; planning session): a Literal or waiting part is bound
+    only once its call selects a candidate. A call that ends unresolved, with no selected candidate or one that failed before
+    completing its arguments, binds each argument part still unbound on its own under the argument probe
+    (`CompleteUnselected`, from `BindCall`), so the part's own problems are reported beside the call's record, once, and none
+    that only the missing expectation causes: a Literal or waiting control-flow part's literal sources wait under the probe
+    (`WaitsUnderProbe`) and its source calls defer, and the parts of a Tuple or array literal, a contextual Case and a
+    waiting nested call are completed alike; a control-flow part already bound in the pass is not bound again. No candidate
+    is selected again; anonymous functions stay under PLAN R1e. Rejected: binding the part before selection (a node bound
+    in a pass is not bound again, so its literal sources would keep their defaults, and binding a `match` twice reports its
+    arms as covered).
+  - U5, Case construction on the walks (SPEC 6.5.2 item 2, 10.8.1, 10.5.1; design B section 5, D7, R1, R9, R11): the slots its
+    qualifier and expected Type fix come first; a payload whose payload Type they settle is bound only at it, and every other
+    payload is prepared as an argument is and is evidence by its kind through `SlotSolution.InferArgument`, which now serves a
+    construction as data (the enum is binder and slot owner; `Binder`, `SlotOwner`, `OriginCount` and `Constructor` are fields,
+    and only a candidate's operations read its `Function`). Under the argument probe a construction with an unbound slot waits
+    (`takeOpt(Option.Some(1))`); otherwise the Literal defaults apply (`DefaultPayloads`) and are evidence; an unbound slot is
+    the construction's own `MissingType` record (Q4 open), on which its waiting payloads depend (`MarkWaitingHeaders`; a part
+    that still waits is no prerequisite its call consulted, so `let o = Option.Some(identity(1))` reports that root record).
+    Each payload in source order then fits its decided payload Type (`FitArgument`; a misfit is the construction's
+    `TypeMismatch_Kd`: `P.Pair(1, [a, a])`) and is completed there (`CompleteArgument`, G129's re-fit point, also used by the
+    call path; `ErasePart`, the call path's erasure step) and adapted. Owner decision (1), R1: a contextual `.Case(...)` argument
+    is Waiting and never probed per candidate, so `f(.Some(128))` over `Option<i8>` and `Option<i32>` is `AmbiguousBinding_Kd`.
+    R11's at-depth half: `Infer` no longer skips a Never component (`h(u)` with `u: (Never, i64)` gives `T = Never`; a Never
+    element is still no evidence, so `P.Pair(1, ((return 1), a))` gives `T = i64`). Deleted: the construction's three-pass
+    loop and second adaptation loop, `PrepareContextualEnumInputs` and `ProbeContextualEnum`.
+  - Completion (U6): G130 closes with U0 (SPEC 10.5.1 text), U1 (the component, behavior unchanged), U2 (Literal timing), U3
+    (one evidence and one fit walk), U4 and U4b (control-flow arguments; the parts of a call that completes none) and U5 (Case
+    construction; contextual Case waits). Rejected across the units: fixing each walker in place, a synthesized constructor
+    candidate per Case, a Koto-keyed kind table, a temporary per-part evidence loop in the construction before U5, binding a
+    Literal or waiting control-flow part before selection, and a second source walk for control flow. Open: a construction's
+    unbound slot reports `MissingType` while a call's reports `UnboundTypeArgument_Kd` (above); the survey's limit (PLAN
+    G152), which G129's late fit removes.
+  - U7a, the final review's redo, restructuring (B1, B4, N6; behavior unchanged): `SlotSolution` holds one datum, its
+    `Binder`; `SlotOwner`, `Constructor` and `OriginCount` derive from it, and `CallSlotOwner`, `CallSlotCount`,
+    `CallMemberPattern` and `CallType` take any binder. Invariant: a construction supplies data, and no operation of the
+    shared walks (`Pattern`, `Type`, the evidence walk, the defaults, the waiting-binds-F rule) reads `Function` (B1 was
+    `Pattern` reading it). The waiting-binds-F rule (SPEC 10.5, 10.5.4) has one F test (`CallableSlotType`) and one walk
+    (`TakeWaiting`) over a part and its Tuple and array literal elements at their positions; its consumers (`IWaitingTaker`)
+    are `WaitingSlots`, which removes the slots the callables bind (`UnsolvedSlots`, `WaitingPartsBind`), and
+    `SlotSolution.Take`, which completes a callable with S. Replaced: `WaitingBindsSlot`, `WaitingAt`,
+    `CompleteWaitingElements`, `SlotSolution.CallableSlot(int)` and the F tests of `TryCandidateCore`, `CompleteWaitingPart`
+    and `ExpectedCallSignature`. `CompleteUnselected` keeps its own walk: it binds the parts of a call without a candidate,
+    with no position or F. Rejected: a skip-indexed search per waiting callable (quadratic in a literal's waiting
+    elements); recording F bindings during the evidence walk (state carried across its passes).
+  - U7b, the redo's behavior (B1, B2, B3, N5, N7): a Case construction takes the waiting-binds-F rule from the shared walk.
+    `UnsolvedPayloadSlots` leaves out an F that a waiting callable binds (`WaitingSlots`), so the Literal defaults skip it as
+    a call's do; once every other slot is bound, the callables are completed with S (`SlotSolution.Take`) and are evidence:
+    `let x = Option.Some(func (v: i64) -> i64 => v)` and `W.Wrap(func (v: i64) -> i64 => v, 1)` are typed, and
+    `Option.Some(identity)` is the reference's own `UnboundTypeArgument_Kd`. Under the argument probe a construction with any
+    unbound slot still waits (U5). The construction owns its payloads' fit: a payload is bound at its decided Type with no
+    record of its own (`BindNode`), and a misfit is the construction's one `TypeMismatch_Kd` (B3), as at the merge base;
+    `CompleteArgument` is deleted, and the call path keeps `RequireType`, the owner of a completion misfit there. Every
+    Literal that its default does not fit is its own record (`DefaultArguments`, `DefaultPayloads`, `DefaultPart`; N5, SPEC
+    23.1.2), and `DefaultPayloads` reads the construction's unsolved slots. N7: `Two.Both(1, 2.0)` stays the construction's
+    record, as `two(1, 2.0)` is the call's `NoApplicableOverload_Kd`; the merge base's record at `2.0` came from rebinding the
+    literal at the decided Type. Rejected: judging a payload in its completion and dropping the construction's check (a
+    settled or typed payload's misfit would leave the construction, unlike a call's). Open: under the argument probe a
+    construction whose only unbound slots waiting callables bind waits, while such a nested call is typed; SPEC 10.5.1 makes
+    the call Waiting when a callable needs S (`takeF(wrap(func (v) => v))` reports `UnresolvedBinding_Kd`, while
+    `takeF(Option.Some(func (v) => v))` is accepted), so the call path's deferral is the one to change.
+  - U8, one rule for calls and constructions (final review round 2, B5; owner decision 2026-10-18: 「共通の規則にして下さい」;
+    SPEC 10.5.1-10.5.4, 10.8 Unbound slots; D4). Under the argument probe a nested call or construction is typed without its
+    outer expectation unless its result holds a slot that neither evidence nor a waiting callable fixes. A slot that only a
+    waiting callable binds is fixed exactly when the callable needs no S (`FixesWithoutExpectation`, the one predicate both read
+    through `OpenWaitingSlots`: a reference that does not need S, SPEC 10.5.3; an anonymous function whose header writes every
+    parameter Type and its result Type), or when its F's Callable Constraint gives S, the callee's own (SPEC 10.5.2), which no
+    outer expectation supplies. Otherwise the callee waits and its outer candidate types it. So `takeF(Option.Some(func (v:
+    i64) -> i64 => v))` and `takeF(wrap(...))` are both typed and both `NoApplicableOverload_Kd`, `keep(Option.Some(...))` and
+    `keep(wrap(...))` both valid, and `takeF(Option.Some(func (v) => v))` and `takeF(wrap(func (v) => v))` both wait and are
+    valid; this resolves U7b's Open. The call path reads it in `ResultHoldsUnsolved`, now asked of every selected candidate with
+    a waiting part (`SolveSelected`), the construction in `HoldsOpenSlot`, replacing U5's deferral on any unbound slot. Selection
+    keeps SPEC 10.8's rule that an F a waiting argument binds is no unbound slot (`UnsolvedSlots`, `WaitingSlots`). The three
+    older F tests (`ComparableCallableSlots`, `CallableOriginFailure`'s argument lookup, `CheckCallShapeContracts`' argument
+    evidence) have that contract and read `CallableSlotType`. Open: the call path still binds a function-reference argument on
+    its own when no candidate takes a callable there (`PrepareArgument`'s `TakesCallableContext`), so `wrap(identity)` reports
+    the reference's `UnboundTypeArgument_Kd` even at `let o: Option<(i64) -> i64> = wrap(identity)`, while a payload's waits
+    (`Option.Some(identity)` there is valid).
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one
