@@ -2995,3 +2995,26 @@ structure is recorded here by the unit that first implements it.
   records and the HIR version unchanged. Rejected: the match re-expressed over `Subst.Declaring` in TyCtxt (a second copy); a Builtin
   without the bound reference (the substitution needs it for the signature); a twin over collector sites (no mapping from a MIR site
   back to its CallPlan pair exists); reading a None of the core as Limit (an Unknown proof is no depth limit).
+- **R5-M62 `VTableDef` and `TyCtxt.Applies`, a struct family's dispatch shape** (2026-10-19, planning session; plan F4, package F
+  §4.1–§4.3, §5 and §6, S2-S4 X5; under R5-M18 form 1 and R5-M61) A permanent declaration table (`Binding/VTableDef.cs`, R2b-D3's
+  deferred view) kept on the struct's `AdtDef` (`VTable`), and a view beside `TyCtxt.Witness` (`TyCtxt.Dispatch.cs`).
+  `PrepareVirtualOverrides` fills the table at its end, once slot selection is complete, for every struct in every pass, into the same
+  arrays: a struct's table is its base's table, then its own virtuals in member order (SPEC 6.2.1: fragments merge in logical
+  declaration order; a conditional-conformance Block's members in its place), with no path or span sort; `Implementations[slot]` is
+  the struct's own override, else its base's entry, else the original; `BaseCount` counts the base's slots. `VTableDef.Of(struct)` is
+  null for a struct with no slot and for one whose declaration, base table, virtuals or overrides had failed by then, a dependent of a
+  failed part (`CompleteDependent`) included (R4-M18);
+  `VTableDef.Slot(original)` searches the original owner's own range, the same index in every table of the family. A failure later in
+  the pass (an override condition, an effect bound, the objuniq receiver's `Unsupported_Kd`) keeps the table and leaves Binding's result
+  incomplete; such an entry names a definition without a MIR body (R4-M18), which a reader meets as any unresolved callee. Consumer
+  rule (K8, C6c): slot i of a closed T runs `Implementations[i]` in the first layer on T's `AdtDef.Base` chain that declares it, under
+  `TyCtxt.Synthesized(implementation, layer, [])`; where `TyCtxt.Applies` of the slot's original at the layer that declares the original
+  is false, the entry is null and the body is checked only (R4-M28); a Virtual callee loads `Slot(original)` (X5).
+  `TyCtxt.Applies(original, declaring)` gives `Binding.VirtualApplicability`'s proof under the public premises: Proven true, Refuted
+  false, else null, which for a closed declaring Type is a broken contract its reader records as `InternalInvariant_Kd`. One answer
+  per (original, declaring), discarded at an edit by `ResetDispatch`, which `TyCtxt.ResetViews` already calls; a warm rebind refills
+  the same arrays and a warm `Applies` allocates 0 B. `VirtualGenerationPlan` keeps its own sort and slots until G7 (D5). Rejected:
+  a path or span sort (member order is the logical order, F fact 6); filling after the pass's later checks (the package places the
+  fill after slot selection, and nothing reads a table during a pass); a table per closed instance or a layer per slot (one table per
+  declaration with the consumer's Base walk serves every instance); applicability in the table (a closed instance's proof, the view's);
+  a per-pass side set of filled structs (the table carries its pass's storage version, as `AdtDef` and `InstanceStorage` do).
