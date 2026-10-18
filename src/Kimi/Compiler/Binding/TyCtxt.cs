@@ -302,6 +302,15 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
         return failed ? null : this.Intern(inner.Target, inner.Self is { } self ? this.Apply(self, outer) : null, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
     }
 
+    // R4-M51: every view's memos, which hold across passes with no edit (retentions, instance classes, requirement targets), discarded
+    // together at an edit (Binding.Invalidate; DECISIONS R5-M61).
+    internal void ResetViews()
+    {
+        this.ResetRetentions();
+        this.ResetInstances();
+        this.ResetDispatch();
+    }
+
     // SPEC 8.4.3: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
     // generic container's instance declares a member; null for a reference to the requirement's own Contract or another call.
     private static BoundType? BoundContract(CallPlan call)

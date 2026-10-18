@@ -2253,8 +2253,9 @@ structure is recorded here by the unit that first implements it.
   false. The built-in target symbols (comparison, formatting and the six arithmetic ones) take their requirement's name,
   declaration, result Type and receiver slot once per pass after headers (`PrepareBuiltinTargets`; F fact 11a) instead of on
   every call, so the core writes nothing beyond interning, proof caches and instance storage preparation. F5b's `TyCtxt.Witness`
-  will call the core. Refused is unreachable today: conformance verification rejects an inherited witness with an exclusive or
-  object receiver first (`ProjectedReceiverProof`; R1g), and no test exercises it. Rejected: built-in targets created lazily by
+  will call the core. Refused is unreachable today: conformance verification rejects an inherited witness with an exclusive
+  receiver first (`ProjectedReceiverProof`), the receiver match excludes an object receiver (`ProjectRequirementReceiver` projects
+  only a `ref` or `uniq` receiver of Self to the base), and no test exercises it. Rejected: built-in targets created lazily by
   the core (a view would create symbols); the arithmetic built-ins left with per-call writes (the same cause); the refusal left in
   the materializer (F5b resolves without a CallPlan); extracting `InstanceReference`'s matching half before F5b, its second caller.
 - **R5-M23 The R6-check prerequisite package Q8** (owner, 2026-10-18: 「Q8を承認」, answering the request to approve the package
@@ -2964,3 +2965,33 @@ structure is recorded here by the unit that first implements it.
   by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
   (ARCH "Capability gates"); a separate C-convention component (the order, records and reuse are one rule with two conventions);
   keeping the per-ordinal `Signature` record, whose logical shapes also compare zero-sized parameters that have no slot.
+- **R5-M61 `TyCtxt.Witness`, a requirement call's target under a closed substitution** (2026-10-19, planning session; plan F5b,
+  package F §4.1, §4.5, §5 and §6, S2-S4 X1, X16, X28; under R5-M18 and R5-M22) A permanent view of the dispatch facts
+  (`Binding/TyCtxt.Dispatch.cs`): `TyCtxt.Witness(requirement, contract, subst)`, given a requirement, the Contract reference its
+  call recorded (`MirCallee.Contract`) and the call's closed substitution, returns `RequirementTarget(Kind, Target, Subst, Access)`,
+  whose kind enum is local, not an ARCH vocabulary. Body: a conformance witness (inherited ones included) under its declaring
+  instance with the call's Types and lengths and its Origins in the call's terms, an accessor-call witness's executing accessor under
+  its implementing Type's instance, or a fixed-array or integer Position member under its own slots. Builtin: the compiler function
+  under the call's own substitution, whose bound reference instantiates the requirement's signature (the CallPlan form drops it, its
+  CallPlan already carrying that signature). Storage: a standard property witness's implementing Field under the call's
+  substitution, `Access` its `PropertyWitnessKind` (AccessorCall for every other kind). Refused: OCC-X. Limit: the conforming Self's
+  storage does not complete (`PrepareTypeStorage`, the depth bound of R4-M51's Limit), for a Self no `Apply` instantiated, such as the
+  Self-bearing `Synthesized` factory's (F6). None: no answer, a broken contract for a closed accepted Self that its reader records as
+  `InternalInvariant_Kd`; an abstract Self has None, since the materializer's SPEC 8.15 forwarding keeps such a call. The view calls the
+  core under the library root's premises (`EffectPremises(null)`) with the Contract reference `Binding.InstanceContract` matches,
+  the matching half R5-M22 deferred, now one function for both forms: from the recorded reference, Self and the bound reference in
+  the instance (the materializer instantiates it in its caller's CallPlan; a substitution holds it as its declaring Type, F fact 5)
+  to the conformance of Self's Type that names it. Both forms share Binding's per-kind rules: `WitnessOrigin` (a witness Origin in
+  the call's terms), `RentFixedArrayArguments` and `IntegerPositionSlot`; the core gives a Property witness its implementing Type's
+  instance (`Declaring`). Memo per (requirement, contract, subst), kept until an edit; `TyCtxt.ResetViews`, the one reset of every
+  view's memos (retentions, instance classes, requirement targets), replaces `Binding.Invalidate`'s two calls (R4-M51, R5-M21), so
+  `Binding.cs` shrinks and later views add a line there instead (R4's step-2 unit 2a0-2); a warm call allocates 0 B. Twin
+  (`TyCtxtTest.WitnessIsTheForwardedRequirementCall`): each requirement call in a generic function's body under each closed call of
+  that function, over the library and the milestones (37 calls: Body 34, Builtin 2, Storage 1; 3 bound references) and a direct
+  program reaching every kind but Refused (16), has the target `InstantiateForwardedCall` materializes: a Body the forwarded call's
+  function and `SubstOf`; a Builtin its compiler function, and Storage the Field its bridge reads with the bridge's operation, under the
+  call's own substitution, which binds the same Self, Types, lengths and Origins; `Subst.Declaring` is the instantiated bound
+  reference wherever the reference is bound (fact 5 holds, so the reference needs no Subst slot of its own); the views leave Binding's
+  records and the HIR version unchanged. Rejected: the match re-expressed over `Subst.Declaring` in TyCtxt (a second copy); a Builtin
+  without the bound reference (the substitution needs it for the signature); a twin over collector sites (no mapping from a MIR site
+  back to its CallPlan pair exists); reading a None of the core as Limit (an Unknown proof is no depth limit).
