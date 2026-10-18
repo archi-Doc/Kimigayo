@@ -339,19 +339,23 @@ public class LayoutTest
         Assert.Equal(new Layout.Result(expected, null, null, expected == Layout.Outcome.Oversized), result);
     }
 
-    // DECISIONS R5-M52: a CLayout outranks Oversized and both hold at once (Result.Oversized), in either part order; Oversized outranks
-    // limits and Rejected parts, a lower bound sufficing; a C-layout instance storing an exactly zero-sized, count-limited Field is CLayout
-    // (KC7), one whose Field's size is not exact (a Rejected part) a limit.
+    // DECISIONS R5-M52: a CLayout outranks Oversized and both hold at once (Result.Oversized), in either part order, while beside a part
+    // that brings the Tuple to 2^63 - 4 bytes it is not oversized; Oversized outranks limits and Rejected parts, a lower bound sufficing; a
+    // C-layout instance storing an exactly zero-sized, count-limited Field is CLayout (KC7), one storing an exactly zero-sized CLayout
+    // instance names that inner instance, and one whose Field's size is not exact (a Rejected part) is a limit.
     [Fact]
     public void CLayoutAndOversizedOutrankTheRest()
     {
-        var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "func probe(over: (" + M + ", u8), wide: [2147483648 of u8], zeros: [2147483648 of ()]) => ()");
+        var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "#Layout(\"C\")\nstruct Z<T>\n    var value: T\n" +
+            "func probe(over: (" + M + ", u8), wide: [9223372036854775800 of u8], zeros: [2147483648 of ()]) => ()");
         var (over, wide, zeros) = (Parameters(c)[0], Parameters(c)[1], Parameters(c)[2]);
         var p = P(c, BoundType.Unit);
+        var inner = c.Types.Intern(BoundTypeKind.Constructed, Declared(c, "Z").Symbol, SemanticsKind.Owner, [BoundType.Unit]);
         Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, true), c.Layout.Of(c.Types.Tuple([p, over])));
         Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, true), c.Layout.Of(c.Types.Tuple([over, p])));
         Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, false), c.Layout.Of(c.Types.Tuple([p, wide])));
         Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, P(c, zeros), false), c.Layout.Of(P(c, zeros)));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, inner, false), c.Layout.Of(P(c, inner)));
 
         var failed = CompilationTestHelper.Parse(CLayoutGeneric + "struct Node\n    let value: i32\n    let next: Node\n" +
             "func probe(a: [9223372036854775807 of u16], b: [4611686018427387904 of u8], z: [2147483648 of ()]) => ()");

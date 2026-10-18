@@ -466,25 +466,29 @@ public sealed class InstanceCollectorTest
 
     // K 4.8, SPEC 6.7.1, 8.15.3, DECISIONS R5-M55: a by-value use whose Type places a C-layout instance storing a zero-sized Field, at any
     // depth, is InvalidCLayout_Kd at each such use (one record per subject): an inferred instance in a generic body (make(())) and at the
-    // top level (P.init(1, ())), with the instance's constructor, a written parameter of an unused function, nested in an Option and through
-    // an inferred Option<P<T>>, with the .None that makes it; each valid twin has none. Subjects by their first line.
+    // top level (P.init(1, ()), P.init(1, Q.init()) for a zero-sized struct Q), with the instance's constructor, a written parameter of an
+    // unused function, nested in an Option and through an inferred Option<P<T>>, with the .None that makes it; each valid twin has none.
+    // Binding reports exactly a written instance's eager InvalidCLayout_Kd, so an inferred one is Binding-clean. Subjects by their first line.
     [Theory]
     [InlineData(
         "func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(())\n",
+        0,
         "let p = P<T>.init(1, value@move)|" + Init)]
-    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", "")]
-    [InlineData("let q = P.init(1, ())\n", "let q = P.init(1, ())|" + Init)]
-    [InlineData("let q = P.init(1, 2)\n", "")]
-    [InlineData("func f(p: P<()>) -> i32 => 1\n", "func f(p: P<()>) -> i32 => 1")]
-    [InlineData("func f(p: P<i32>) -> i32 => 1\n", "")]
-    [InlineData("let x: Option<P<()>> = .None\n", "let x: Option<P<()>> = .None|.None")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", "let x: Option<P<T>> = .None|.None")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", "")]
-    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", "")]
-    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, string subjects)
+    [InlineData("func make<T>(value: T) -> i32\n    let p = P<T>.init(1, value@move)\n    return p.n\nlet r = make(5)\n", 0, "")]
+    [InlineData("let q = P.init(1, ())\n", 0, "let q = P.init(1, ())|" + Init)]
+    [InlineData("let q = P.init(1, 2)\n", 0, "")]
+    [InlineData("struct Q\n    public init() => ()\nlet q = P.init(1, Q.init())\n", 0, "let q = P.init(1, Q.init())|" + Init)]
+    [InlineData("struct Q\n    public var n: i32 = 1\n    public init() => ()\nlet q = P.init(1, Q.init())\n", 0, "")]
+    [InlineData("func f(p: P<()>) -> i32 => 1\n", 1, "func f(p: P<()>) -> i32 => 1")]
+    [InlineData("func f(p: P<i32>) -> i32 => 1\n", 0, "")]
+    [InlineData("let x: Option<P<()>> = .None\n", 1, "let x: Option<P<()>> = .None|.None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(())\n", 0, "let x: Option<P<T>> = .None|.None")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = g(1)\n", 0, "")]
+    [InlineData("func g<T>(value: T) -> i32\n    let x: Option<ref/P<T>> = .None\n    return 0\nlet r = g(())\n", 0, "")]
+    public void AZeroSizedFieldOfACLayoutInstanceIsARecordAtEachUse(string uses, int eager, string subjects)
     {
         var c = MirBuildTest.Compile(CLayoutP + uses);
-        Assert.All(c.Binding.Issues, static x => Assert.Equal(DiagnosticCode.InvalidCLayout_Kd, x.Code)); // A written instance's eager report.
+        Assert.Equal(Enumerable.Repeat(DiagnosticCode.InvalidCLayout_Kd, eager), c.Binding.Issues.Select(static x => x.Code));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var expected = subjects.Length == 0 ? [] : subjects.Split('|').Select(static x => (DiagnosticCode.InvalidCLayout_Kd, x)).ToArray();
         Assert.Equal(expected, set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));

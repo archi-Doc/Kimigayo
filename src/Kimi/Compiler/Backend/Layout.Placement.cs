@@ -37,7 +37,8 @@ internal sealed partial class Layout
     internal Layout() => this.recordsByKey = this.records.GetAlternateLookup<ReadOnlySpan<char>>();
 
     /// <summary>Forgets the entries and records of the previous program version (Compilation.InvalidateSourceAnalysis); a pass
-    /// without an edit keeps every Type's stored Types, IsCLayout and InlineCycle (R4-M51's premise), so warm passes keep them.</summary>
+    /// without an edit keeps every Type's stored Types, IsCLayout, InlineCycle and CLayoutRejected (R4-M51's premise), so warm
+    /// passes keep them.</summary>
     internal void Clear()
     {
         this.memo.Clear();
@@ -317,20 +318,21 @@ internal sealed partial class Layout
 
         internal Fold(BoundType type) => (this.type, this.exact) = (type, true);
 
-        // Folds a part's entry and returns it; an exactly zero-sized one, whatever its outcome, makes a C-layout struct CLayout (KC7).
+        // Folds a part's entry and returns it; a CLayout part names its own instance, and any other exactly zero-sized one, whatever its
+        // outcome, makes a C-layout struct CLayout (KC7).
         internal Entry Add(Entry part, bool cField)
         {
             this.height = Math.Max(this.height, part.Height);
             this.exact &= part.Exact;
             this.over |= part.Size == Over;
             var result = part.Result;
-            if (cField && part.Exact && part.Size == 0)
-            {
-                this.clayout ??= this.type;
-            }
-            else if (result.Outcome == Outcome.CLayout)
+            if (result.Outcome == Outcome.CLayout)
             {
                 this.clayout ??= result.Instance;
+            }
+            else if (cField && part.Exact && part.Size == 0)
+            {
+                this.clayout ??= this.type;
             }
             else if (result.Outcome == Outcome.Rejected)
             {
@@ -372,7 +374,7 @@ internal sealed partial class Layout
             var limited = this.limit == Outcome.Ok ? ownCount : this.limit;
             if (limited != Outcome.Ok)
             {
-                return Entry.Of(limited, null, null, height, stored, this.rejected is null ? known : 0);
+                return Entry.Of(limited, null, null, height, stored, known);
             }
 
             if (this.rejected is not null)

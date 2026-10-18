@@ -2051,18 +2051,18 @@ structure is recorded here by the unit that first implements it.
     goes at H11, not R7); F6's signature, order and group; the legacy comparison composition suspends A5 plan §7's one-producer rule
     for comparison leaves until A-12 or R7; window W1 also covers `Mir/MirValidator*.cs` (F11) and C0b1 waits for W1.
   - New representations approved: `MonoKind` (nine members, `LegacyRow` `[Transitional("R8")]`), the capability rows, the
-    intrinsic rows' `Target` column, `Layout.Of`'s OK/Limit/CLayout result and its Never rows, the chapter-F facts (F-package §5),
-    `TyCtxt.Witness`'s `(Kind, Target, Subst, Access)`. Each component, representation and temporary structure is still recorded by
-    the unit that first implements it.
+    intrinsic rows' `Target` column, `Layout.Of`'s OK/Limit/CLayout result (Oversized added by R5-M52) and its Never rows, the
+    chapter-F facts (F-package §5), `TyCtxt.Witness`'s `(Kind, Target, Subst, Access)`. Each component, representation and temporary
+    structure is still recorded by the unit that first implements it.
   - Temporary sel-only behaviors: K10b's double report of a written by-value C-layout instance until G2b (grouping, which SPEC
     23.1.2 leaves implementation-defined), and a generation-gate refusal that may hide independent coverage gaps until the R5
     plan's unit X2 (a temporary SPEC 23.1.2 limit).
   - Acceptance changes, from G2: collector records publish at `check` (R5-M4); K10b's `InvalidCLayout_Kd` (Language) at check for
-    inferred C-layout instances; K10a's layout-depth limit at check; at G2b written borrow-only C-layout instances become valid (an
-    (a) correction). Facts recorded: R5-M13(b)'s premise is corrected (the old analysis also accepts immutable static scalars in
-    generic containers' groups); "no representation change" holds for the slot state only: P42's generic storage keys need the
-    container's Type arguments on each access's `staticEnsure` operand, and since the static constant fold keeps no slot state, P42
-    narrows the fold or restores the state for SPEC 22.4.3's shutdown rule.
+    inferred C-layout instances; K10a's layout-depth limit at check; K10c's `OversizedLayout_Kd` (Language) at check (R5-M52); at
+    G2b written borrow-only C-layout instances become valid (an (a) correction). Facts recorded: R5-M13(b)'s premise is corrected (the
+    old analysis also accepts immutable static scalars in generic containers' groups); "no representation change" holds for the slot
+    state only: P42's generic storage keys need the container's Type arguments on each access's `staticEnsure` operand, and since the
+    static constant fold keeps no slot state, P42 narrows the fold or restores the state for SPEC 22.4.3's shutdown rule.
   - Rejected: the alternatives each decision row names (`S2-S4-decisions.md`); for X33, (b) a constant-fold whitelist (a KD1
     exception) and (c) carrying Type arguments before G2 (MIR representation work in W1 for a form no library or milestone uses);
     for the successor code, reusing `ProjectPreparationFailed_Kd`, recategorizing `GenerationFailed_Kd`, or
@@ -2731,15 +2731,11 @@ structure is recorded here by the unit that first implements it.
   - Derived in the owning component (review B1): a C-layout declaration Binding rejects for a direct zero-sized Field
     (`ValidateCLayoutFields`, which reports at the Field and the struct and keeps `IsCLayout`, R5-M26) is published as
     `AdtDef.CLayoutRejected`, written in every pass like `InlineCycle` (R5-M37); `Layout` lays such a struct out as Rejected storage, so
-    its by-value uses add no record and the collector never repeats Binding's declaration check (DIAGNOSTICS rule 1). This overlap is not
-    temporary: X26 keeps Binding's declaration check.
+    its by-value uses add no record and the collector never repeats Binding's declaration check (DIAGNOSTICS rule 1). Binding's
+    declaration check is lasting (X26).
   - Waiting: a collection's element (X34) is laid out by its glue item, so an empty `Array<P<()>>` local's record comes with K7.
   - Rejected: one Language record per Type (SPEC 8.15.3 places it at the use; R5-M44's rejected record per use concerns the Resource code);
     a second outcome table beside R5-M44's.
-  - Verified (`InstanceCollectorTest`): `make(())` in a generic body and `P.init(1, ())` at the top level, each at its use and at the
-    instance constructor's, an unused function's written parameter, `Option<P<()>>` and an inferred `Option<P<T>>` at the local and at the
-    `.None` that makes the value, every valid twin none; `Option<Never>` none (R5-M44); the library (as roots) and the 44 milestones under
-    sel give no record.
 - **R5-M52 A layout over 2^63 - 1 bytes: `Layout.Outcome.Oversized` and `OversizedLayout_Kd`** (2026-10-18, planning session; owner,
   2026-10-18, on PLAN G146: 「新しい言語エラーのコードを追加して下さい」; plan unit K10c after K10b, full process, package
   `draft/Sketches/R5 K10c/K10c-package.md` at `2158a768`; supersedes R5-M37's outcome list and precedence, R5-M18's X18 and K §4.8 mapping
@@ -2764,16 +2760,11 @@ structure is recorded here by the unit that first implements it.
     from this unit, on every pipeline from G2.
   - The old pool never reaches Oversized (accepted parts, its own count check) and treats it as a broken contract like Rejected; until G2
     the default pipeline reports such a program at build as `GenerationResourceLimit_Kd` (STATUS). No R5-M6 row: both refuse.
-  - Correction to the package (L3, H there): `(P<()>, [4611686018427387903 of u16])` is 2^63 + 2 bytes in Kimigayo grouping, so it is
-    an oversized CLayout; the test's non-oversized CLayout row uses `[2147483648 of u8]`.
+  - Correction to the package (L3, H there): `(P<()>, [4611686018427387903 of u16])` is 2^63 + 4 bytes in Kimigayo grouping, its tail
+    padding included, so it is an oversized CLayout; the test's near-bound row, a CLayout that is not oversized, uses
+    `[9223372036854775800 of u8]` (2^63 - 4 bytes).
   - Rejected: a flag on SizeLimit (a different rank); an exact-size view outside `Layout`; 64-bit record sizes; exact sizes only (a
     DepthLimit or Rejected part would hide a visible oversize); one record for CLayout and Oversized (omits an independent failure);
     per-operation saturation; a published size or an Instance for Oversized (no consumer); one Language record per Type (SPEC 8.15.3
     places it at the use); K10c before K10b (check under sel would accept the moved C-layout form); a requirement for this code before H3;
     a legacy fix (R5-M6).
-  - Verified: `LayoutTest` (the bound and its neighbours, padding in both modes, limited parts feeding their parent, an enum's tag, a
-    zero-length array, CLayout with and without the co-report in both orders, Rejected parts, KC7 and its inexact twin, the window rule in
-    both part and query orders, warm 0 B with Oversized); `InstanceCollectorTest` (records at each use: parameters, a generic instance and its
-    callers' arguments, an intrinsic's Type argument; Resource records for M and a 2^31-byte array; none behind a borrow, a raw pointer or an
-    unused struct; both codes at one use); `PipelineSwitchTest` (sel rejects at check with the Language error; the default pipeline accepts
-    and the old generator refuses at build); the library (as roots) and the 44 milestones under sel give no record.

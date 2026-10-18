@@ -8,8 +8,8 @@
 // the sequence handles (Slice, Array, Dictionary words).
 // Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums, Closures and Function Items, memoized
 // per program version; Weak<S> comes with its operations (P41).
-// Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, InlineCycle, CLayoutRejected); IMPL
-// 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
+// Inputs: a closed, interned Type of the owning compilation; AdtDef (stored Types, IsCLayout, InlineCycle, CLayoutRejected);
+// IMPL 21.1.3's rows. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
 // Outputs: a Result (Outcome, Value, Instance, Oversized); Row(type) for the old scalar-value gate until G8. A Type without a row is an
 // internal error. The collector (InstanceCollector) alone maps the outcomes (and, until G8, the old AggregateLayout.Represent onto its
 // own failures): a limit to a Resource record at the Type's first use (R5-M44), CLayout to InvalidCLayout_Kd and Oversized to
@@ -21,8 +21,8 @@
 // Invariants: an answer depends only on the Type and the program version, never on query order; one record per representation
 // within a program version; Oversized only for Outcome Oversized and an oversized CLayout; every memo entry's size is exact or a lower
 // bound, 2^63 for any size above 2^63 - 1; warm calls allocate 0 B; at most 65 placement levels per call and 65 memo entries per Type;
-// the complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL 21.1.3), while
-// the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is unchanged.
+// the complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL 21.1.3),
+// while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is unchanged.
 // Must not read syntax (AdtDef.IsCLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
 // pool keeps its callbacks until G8), keep static mutable state, detect cycles itself (Binding's InlineCycle), decide derived
 // failures (the collector's), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), use LINQ, be called concurrently on one
