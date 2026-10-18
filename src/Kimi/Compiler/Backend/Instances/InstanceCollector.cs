@@ -9,7 +9,8 @@
 // outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
-// Compilation.MirRecords publishes under MIR code generation (K4b).
+// Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
+// location of a record at a site of its body (Subject).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5, InstanceCollector.Edges.cs): one template per body and version lists its sites that may carry a target (Fn, Requirement and
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
@@ -30,7 +31,7 @@
 // 16 ancestors of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a representative that is open or
 // leaves its body open is InternalInvariant_Kd. A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
-// root-module site the admission chain first reached.
+// root-module site the admission chain first reached; code generation's records take the same rule.
 // Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); at most one target per site of a
 // body; a type-driven item's targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its
 // environment's glue; a repeated run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
@@ -112,6 +113,14 @@ internal sealed partial class InstanceCollector
 
         return set;
     }
+
+    /// <summary>Gets a Type of an item's body in the item's instance (S2-S4 X2), the one instance rule of the collector's edges and layout
+    /// obligations and of code generation (R5 C0b1): the Type itself for a closed item, else its application under the representative.</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="type">A Type of its body.</param>
+    /// <returns>The Type in the instance, or null when TyCtxt cannot make it (the collector's storage-nesting gap).</returns>
+    internal BoundType? TypeOf(int item, BoundType type)
+        => this.Set.Items[item].Representative is { } representative ? this.types.Apply(type, representative) : type;
 
     // K 4.5 rows 1-9: a call carries a target by its callee: a Fn, Requirement or Value callee, or an intrinsic whose row names one; a
     // Virtual call none, its receiver's VTable holding the entries (X5).
