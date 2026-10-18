@@ -279,13 +279,17 @@ public sealed partial class Binding
                 return BoundType.Unit;
             case UnaryKoto { Akind: KotoKind.Not } or BinaryKoto { Akind: KotoKind.And or KotoKind.Or or KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals }:
                 return BoundType.Boolean;
-            case UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.PrefixPlus } sign:
+            case UnaryKoto { Akind: KotoKind.PrefixMinus } negation:
+                return this.BuiltinRouteEvidence(negation.Operand, null, scope);
+            case UnaryKoto { Akind: KotoKind.PrefixPlus } sign:
                 return this.ResultEvidence(sign.Operand, scope);
             case BinaryKoto binary when binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals:
                 return BoundType.Unit;
             case BinaryKoto binary when binary.Akind is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan:
                 return this.ResultEvidence(binary.Left, scope);
-            case BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret:
+            case BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent:
+                return this.BuiltinRouteEvidence(binary.Left, binary.Right, scope);
+            case BinaryKoto binary when binary.Akind is KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret:
                 return this.ResultEvidence(binary.Left, scope) ?? this.ResultEvidence(binary.Right, scope);
             case ConversionKoto conversion:
                 if (!this.ConversionCanComplete(conversion.Left, scope))
@@ -381,6 +385,35 @@ public sealed partial class Binding
             default:
                 return null;
         }
+    }
+
+    // SPEC 13.3.4, 14.9.2: an operator a user provider may route (binary +, -, *, /, % and unary -) has its operands' Type only on
+    // the built-in route, which the survey selects when every operand is literal-only or ends, past safe reference layers, in a
+    // built-in numeric Type; that Type is the evidence. A user provider's result is its conformance's Output and an unknown operand
+    // may be one, so either supplies none. Built-in-only operators (bitwise, shift, unary +) keep their operands' Type.
+    private BoundType? BuiltinRouteEvidence(Koto left, Koto? right, BindingScope scope)
+    {
+        BoundType? rightType = null;
+        return this.BuiltinOperandEvidence(left, scope, out var leftType) && (right is null || this.BuiltinOperandEvidence(right, scope, out rightType))
+            ? leftType ?? rightType : null;
+    }
+
+    // A literal-only operand selects nothing; any other operand selects the built-in route by a surveyed built-in numeric terminal.
+    private bool BuiltinOperandEvidence(Koto operand, BindingScope scope, out BoundType? terminal)
+    {
+        terminal = null;
+        if (IsUnfittedLiteral(operand))
+        {
+            return true;
+        }
+
+        if (this.ResultEvidence(operand, scope) is not { } type)
+        {
+            return false;
+        }
+
+        terminal = this.ArithmeticTerminal(operand, type);
+        return this.BuiltinNumeric(terminal, scope);
     }
 
     // A signature's result Origins belong to the declaration and must be instantiated by the actual call before a join.

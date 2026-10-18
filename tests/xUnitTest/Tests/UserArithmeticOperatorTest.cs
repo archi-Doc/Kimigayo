@@ -30,9 +30,40 @@ public class UserArithmeticOperatorTest
             drop => ()
         """;
 
+    // SPEC 13.3.3's Vec2, whose Left provider's Output differs from both operands.
+    private const string Vector = "\nstruct Vec2\n    Self is LeftMultipliable<f64>\n    associate LeftMultipliable<f64>.Output is Vec2\n    public let x: f64\n    public let y: f64\n" +
+        "    public init(x: f64, y: f64)\n        self.x = x\n        self.y = y\n    public func multipliedFrom(left: ref/f64, self: ref/Self) -> Vec2\n        return Vec2.init(left * self.x, left * self.y)\n";
+
     [Fact]
     public void SharedNonCopyProvidersKeepDistinctInputsAndOutputs()
         => ScalarEmissionTest.EmitFixture("UserArithmeticShared", Declarations + "\nlet value = Value.init()\nrequire value + 2 == 42 and value - value == 0 and -value == -40 else => $abort(\"ordinary\")\nrequire 2.0 * value == 80.0 and (1.0 + 1.0) * value == 80.0 else => $abort(\"left\")\nrequire value.value == 40 else => $abort(\"not consumed\")", string.Empty);
+
+    // SPEC 13.3.4, 14.9.2: a result source routed to a user provider has its conformance's Output, not an operand's Type, so a join
+    // takes no evidence from its operands; a built-in route's operands (literal-only or ending in a numeric Type) still supply it.
+    [Theory]
+    [InlineData("let g = func [] (x: Value, y: Value)\n    return x - y\nlet result = g(Value.init(), Value.init())", "i32")]
+    [InlineData("func pick(c: bool, x: Value) -> i32\n    let result = if c => x - x else => -x\n    return result", "i32")]
+    [InlineData("let k = func [] (s: f64, v: Vec2)\n    return s * v\nlet result = k(2.0, Vec2.init(1.0, 2.0))", "Vec2")]
+    [InlineData("func pick(c: bool, a: i64) -> i64\n    let result = if c => a + 1 else => 2\n    return result", "i64")]
+    [InlineData("func pick(c: bool, a: i64) -> i64\n    let result = if c => -a else => 5000000000\n    return result", "i64")]
+    [InlineData("func pick(c: bool, r: ref/i64) -> i64\n    let result = if c => r * 2 else => 5000000000\n    return result", "i64")]
+    [InlineData("func pick(c: bool, a: i64) -> i64\n    let result = if c => 1 + 2 else => a\n    return result", "i64")]
+    public void AJoinTakesAnOperatorResultFromItsRoute(string source, string type)
+    {
+        var c = MinimalEmissionTest.Analyze(Declarations + Vector + source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<VariableKoto>().Single(x => x.NameKoto.IdentifierName == "result");
+        Assert.Equal(type, result.SymbolOf()!.Type!.Name);
+    }
+
+    [Fact]
+    public void JoinedUserRoutesExecuteTheirOutputs()
+    {
+        const string Program = "let g = func [] (x: Value, y: Value)\n    return x - y\nfunc pick(c: bool, x: Value) -> i32\n    let result = if c => x - x else => -x\n    return result\n" +
+            "let k = func [] (s: f64, v: Vec2)\n    return s * v\nrequire g(Value.init(), Value.init()) == 0 and pick(false, Value.init()) == -40 and pick(true, Value.init()) == 0 else => $abort(\"user\")\n" +
+            "require k(2.0, Vec2.init(1.0, 2.0)).y == 4.0 else => $abort(\"left\")";
+        ScalarEmissionTest.EmitFixture("UserArithmeticJoin", Declarations + Vector + Program, string.Empty);
+    }
 
     [Fact]
     public void AnEnumCanProvideAnArithmeticRequirement()
