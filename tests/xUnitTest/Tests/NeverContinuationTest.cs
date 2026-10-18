@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -40,6 +41,38 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
+    }
+
+    // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such
+    // a Type is a Copy. The old path's Unsupported_Kd for every Place of a Type holding Never stays its only record until R6-check.
+    [Theory]
+    [InlineData("func f()\n    var t = (1, stop())\n", "t", 0)]
+    [InlineData("func f()\n    let a: Option<Never> = .None\n", "a", 0)]
+    [InlineData("func f(a: Option<Never>) => ()\n", "a", 0)]
+    [InlineData("func f()\n    let a: Option<Never> = .None\n    let b = a\n    let c = a\n", "a", 2)]
+    [InlineData("func g(a: Never, b: Never) => ()\nfunc f(x: Never) => g(x, x)\n", "x", 2)]
+    public void APlaceHoldingNeverIsReadByCopy(string source, string place, int copies)
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + source);
+        Assert.Empty(c.Binding.Issues);
+        Assert.All(LegacyRecords.Of(c).Select(static x => x.Code).Concat(c.Problems.Select(static x => x.Code)), static x => Assert.Equal(DiagnosticCode.Unsupported_Kd, x));
+        HirTables.Publish(c);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == place && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
+        Assert.Equal(copies, reads.Length);
+        Assert.All(reads, static x => Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(x).Acquire));
+    }
+
+    // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move
+    // (SPEC 3.5).
+    [Fact]
+    public void APlaceHoldingNeverAndANonCopyPartIsNotCopied()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(a: Option<(string, Never)>)\n    let b = a\n    let c = a\n");
+        Assert.Contains(LegacyRecords.Of(c), static x => x.Code == DiagnosticCode.TransferRequired_Kd);
+        HirTables.Publish(c);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "a" && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
+        Assert.Equal(2, reads.Length);
+        Assert.All(reads, static x => Assert.Equal(HirAcquire.Move, HirTables.AdjustOf(x).Acquire));
     }
 
     [Fact]

@@ -686,7 +686,7 @@ public sealed partial class OwnershipAnalysis
         // (SPEC 8.15, 21.3.1); a fixed acquisition or an explicit transfer is never reselected.
         if (plannedAcquisition is null || acquisition == AcquisitionKind.CopyOrMove)
         {
-            var proof = this.CopyProof(type, source, this.Active, neverResult);
+            var proof = this.CopyProof(type, source, this.Active);
             invalidCopy = proof == ConstraintProof.Error;
             acquisition = this.ExactAcquisition(proof, type, source);
         }
@@ -708,9 +708,9 @@ public sealed partial class OwnershipAnalysis
 
     // SPEC 3.5.2, 8.15 (PLAN G82): the Copy capability of a Type resolved in a context, proved in that context's environment: a
     // default's replica at its root invocation, the root context at the operation's own source. Primitive classification needs
-    // no environment.
-    private ConstraintProof CopyProof(BoundType type, Koto source, InterpretationContext context, bool neverResult = false)
-        => type.Kind == BoundTypeKind.Primitive && (!ReferenceEquals(type, BoundType.Never) || neverResult)
+    // no environment; Never is Copy (SPEC 3.1.3).
+    private ConstraintProof CopyProof(BoundType type, Koto source, InterpretationContext context)
+        => type.Kind == BoundTypeKind.Primitive
             ? (type.Name == "string" ? ConstraintProof.Refuted : ConstraintProof.Proven)
             : this.compilation.Binding.ProveCopy(type, this.body.ProofAnchor(context) ?? source);
 
