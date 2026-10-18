@@ -3188,3 +3188,16 @@ structure is recorded here by the unit that first implements it.
   - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
     places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
     plans).
+- **R5-M71 A staticEnsure's operand is its static's slot** (2026-10-19, planning session; F10's follow-up, R4's step-2 plan AR-8
+  split by the planning session the same day) Rule (`MirValidator`, `MirViolation.StaticSlot`): the builder names the static a
+  `staticEnsure` initializes by one operand, an Integer constant holding the static's index in the calling body's `Statics`
+  (`MirBuilder.Places.Static`, re-indexed when a default template is folded), the form `MirProgram.StaticInit` decodes and the
+  collector reads (R5-M60); any other operand (another constant kind, an index outside `Statics`, a Place) is a validator finding,
+  `InternalInvariant_Kd` at the access, so consumers read the slot unchecked. A constant id out of range stays the Const finding;
+  whether the program has the static's initializer stays `StaticInit`'s null, a consumer's broken contract (F10), since the
+  validator sees one body. No library, corpus or mir-sweep body breaks it. AR-8's other two rules wait for a design with R4: a
+  write, Move or exclusive borrow past a shared Deref (G147 (2)) and one Ref per argument temp (G136) fail on valid programs today
+  (G147 (3)'s `&uniq (*_1).0` past `ref/closure`; a conditional argument's two Refs in one argument temp, so
+  `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
+  Move Paths, Binding-rejected Moves, default templates' prepared `ref` inputs). Rejected: the `Arity` row (a count rule); a Type
+  requirement on the constant (`StaticInit` reads only its value).
