@@ -1,28 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
-
 namespace Kimi.Compiler.Mir;
 
-// A5's conflict check (A3 5, Check sets and err(conflict), with E1, E3 and E5): at an access of a borrowed root, the Loans of the check set
-// by holder, compared with the access syntactically; a guard candidate's EndBorrow against the values that keep its guard-local Origin
-// (E7); then the location's activations (MirBorrows.Activations).
+// A5's conflict check (A3 5, Check sets and err(conflict), with E1, E3, E5 and E13 (1)): at an access of a borrowed root, the Loans of its
+// check set (MirBorrows.CheckSets) on that root, by holder, compared with the access syntactically; a guard candidate's EndBorrow against
+// the values that keep its guard-local Origin (E7); then the location's activations (MirBorrows.Activations).
 internal sealed partial class MirBorrows
 {
-    private readonly List<int> pending = []; // Slots live at the check whose stores are still to read.
-    private readonly List<int> scanning = []; // Slots whose states are still to read.
     private readonly MirFact[] facts = new MirFact[3];
     private Access[] accesses = [];
-    private Candidate[] candidates = [];
     private Step[] accessSteps = [];
-    private int[] reached = []; // By slot: the check that made it live.
-    private int[] scanned = []; // By slot: the check that read its state.
-    private int[] loanMarks = []; // By Loan: the check << 2 that saw it, with bit 0 for a shared mode and bit 1 for a unique one.
-    private int[] markSeen = []; // By marker (τ_s, γ_H): the check that saw it.
-    private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
     private int accessCount;
-    private int candidateCount;
-    private int stamp;
 
     /// <summary>What an access does (A3 5's access): read, borrow shared or exclusive, Move, write, destroy, or destroy observing what the
     /// Place holds (exclusive and deep, A3 5's obs; E3 leaves it no shared cut); a destruction past the destruction walk's bound is not
@@ -49,23 +37,23 @@ internal sealed partial class MirBorrows
                 right.Kind is MirProjectionKind.Index or MirProjectionKind.ConstIndex;
         }
 
-        return left.Kind == right.Kind && (left.Kind is MirProjectionKind.Deref or MirProjectionKind.PairLayer || left.Arg == right.Arg);
+        return left.Kind == right.Kind && (left.Kind == MirProjectionKind.Deref || left.Arg == right.Arg);
     }
 
-    // A check of the accesses at a location of a borrowed root against CS(ℓ) (A3 5): the states before ℓ of the holders live after it but
-    // those it overwrites, E's, and the values its plan stores into a holder live after it or made live by the closure, or into E (transit,
-    // a borrow's stored value only seeding the closure), closed through the holders their direct Loans name (E5: with the holders its own
-    // Loans name); the first conflicting Loan of each access is its problem, and a guard candidate's EndBorrow checks its γ. Then its
-    // activations, on their own check sets.
+    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow and its activations, on the
+    // check sets of one gather; the first conflicting Loan of each access is its problem.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
         var at = new MirLocation(block, index);
-        var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? this.body.Statements[location].Kind : MirStatementKind.Assign);
+        var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
+        var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
-        if (this.accessCount > 0)
+        this.Reserving(state, at);
+        var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.body.Locals[guard].Role == MirLocalRole.GuardCandidate;
+        if (this.accessCount + this.reserving.Count > 0 || ended)
         {
-            this.Gather(state, this.live, -1, this.entryCount);
+            this.Gather(state, at, this.entryCount);
         }
 
         for (var a = 0; a < this.accessCount; a++)
@@ -78,13 +66,15 @@ internal sealed partial class MirBorrows
             }
 
             var count = this.Walk(access.Place, access.Reborrow, ref this.accessSteps);
-            this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd, at, -1);
+            if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking) is var c and not None)
+            {
+                this.Report(this.Code(this.candidates[c], DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1);
+            }
         }
 
-        if (index < this.body.Blocks[block].Count && this.body.Statements[location] is { Kind: MirStatementKind.EndBorrow, Place.Root: var ended } &&
-            this.body.Locals[ended].Role == MirLocalRole.GuardCandidate)
+        if (ended)
         {
-            this.Ended(state, at, ended);
+            this.Ended(at, statement.Place.Root);
         }
 
         if (index == this.body.Blocks[block].Count && this.Retaining(this.body.Blocks[block].Terminator) is { IsLimit: true })
@@ -92,196 +82,25 @@ internal sealed partial class MirBorrows
             this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, this.Subject(at), this.views)); // A contract Binding does not instantiate.
         }
 
-        this.Activations(state, at);
+        this.Activations(at);
     }
 
-    // Restarts the checks' stamps for the view: those of its slots, Loans and markers are cleared, so a view's cost is its own (markVia is
-    // read only where markSeen holds the check's stamp).
-    private void Restamp()
+    // The first Loan on an access's root in its check set (Takes) it conflicts with (A3 5's conflicts and hits), None for none: a write,
+    // Move, exclusive borrow or destruction with any mode, another access with a unique one.
+    private int Conflict(int root, ReadOnlySpan<Step> steps, AccessKind kind, int taking)
     {
-        this.stamp = 0;
-        MirDataflow.Grow(ref this.reached, this.holderCount);
-        MirDataflow.Grow(ref this.scanned, this.holderCount);
-        MirDataflow.Grow(ref this.loanMarks, this.loanCount);
-        MirDataflow.Grow(ref this.markSeen, this.loanBase);
-        MirDataflow.Grow(ref this.markVia, this.loanBase);
-        this.reached.AsSpan(0, this.holderCount).Clear();
-        this.scanned.AsSpan(0, this.holderCount).Clear();
-        this.loanMarks.AsSpan(0, this.loanCount).Clear();
-        this.markSeen.AsSpan(0, this.loanBase).Clear();
-        this.Work += (2 * this.holderCount) + this.loanCount + this.loanBase;
-    }
-
-    // A check set's Loans, each with its mode by the holder it was found in (a transit value is no reservation holder): the states before ℓ
-    // of the given live holders, E's, and of the values the location's first stores put into a holder made live (transit, whose stored
-    // borrows and own Loans seed the closure, E5), closed through the holders their direct Loans name. An activation's reservation holder
-    // (own) is not read; its Loans seed the closure (CS_call, E5).
-    private void Gather(ulong[] state, ulong[] holders, int own, int stores)
-    {
-        this.stamp++;
-        this.candidateCount = 0;
-        if (own >= 0)
+        for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
-            (this.reached[own], this.scanned[own]) = (this.stamp, this.stamp);
-            this.Seed((int)state[own]);
-        }
-
-        this.Reach(Escaped, scan: true);
-        this.Work += (this.holderCount + 63) >> 6;
-        for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
-        {
-            for (var bits = holders[word]; bits != 0; bits &= bits - 1)
-            {
-                var slot = (word << 6) + BitOperations.TrailingZeroCount(bits);
-                this.Reach(slot, scan: !this.Overwritten(slot, stores));
-            }
-        }
-
-        while (this.pending.Count > 0 || this.scanning.Count > 0)
-        {
-            if (this.pending.Count > 0)
-            {
-                var slot = this.pending[^1];
-                this.pending.RemoveAt(this.pending.Count - 1);
-                this.Work += stores;
-                for (var e = 0; e < stores; e++)
-                {
-                    if (this.entries[e] is { Op: not Cleared } entry && entry.Slot == slot)
-                    {
-                        this.Stored(entry);
-                    }
-                }
-
-                continue;
-            }
-
-            var scan = this.scanning[^1];
-            this.scanning.RemoveAt(this.scanning.Count - 1);
-            foreach (var element in this.sets.Elements((int)state[scan]))
-            {
-                this.Consider(element, scan);
-            }
-
-            this.Work += this.sets.Count((int)state[scan]) + 1;
-        }
-    }
-
-    // A holder made live at the check: its stores count, and its state is read unless the location overwrites it.
-    private void Reach(int slot, bool scan)
-    {
-        if (this.reached[slot] != this.stamp)
-        {
-            this.reached[slot] = this.stamp;
-            this.pending.Add(slot);
-        }
-
-        if (scan && this.scanned[slot] != this.stamp)
-        {
-            this.scanned[slot] = this.stamp;
-            this.scanning.Add(slot);
-        }
-    }
-
-    private bool Overwritten(int slot, int stores)
-    {
-        this.Work += stores;
-        for (var e = 0; e < stores; e++)
-        {
-            if (this.entries[e] is { Op: Replaced } entry && entry.Slot == slot)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    // A stored value at the check (transit): a flow's Loans are candidates; the holders a borrow's parents and every issued Loan name seed the
-    // closure (E5).
-    private void Stored(in Entry entry)
-    {
-        if (!entry.Issue)
-        {
-            this.Work += this.sets.Count(entry.Value);
-            foreach (var element in this.sets.Elements(entry.Value))
-            {
-                this.Consider(element, -1);
-            }
-        }
-
-        this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own);
-    }
-
-    // E5's seed: the holders a set's direct Loans name, and E where it carries Φ_E, are made live.
-    private void Seed(int set)
-    {
-        this.Work += this.sets.Count(set);
-        foreach (var element in this.sets.Elements(set))
-        {
-            if (element == Escaped || (element >= this.loanBase && this.loans[element - this.loanBase] is { Direct: true, Named: >= 0 }))
-            {
-                this.Reach(element == Escaped ? Escaped : this.loans[element - this.loanBase].Named, scan: true);
-            }
-        }
-    }
-
-    // An element of CS(ℓ) found in a holder (-1: a transit value): a Loan once per mode (A3 5's mode: a two-phase Loan is shared only in its
-    // reservation holder), whose named holder the closure reads; Φ_E makes E live.
-    private void Consider(int element, int via)
-    {
-        if (element == Escaped)
-        {
-            this.Reach(Escaped, scan: true);
-            return;
-        }
-
-        if (element < this.loanBase)
-        {
-            // A marker never conflicts; the holder it is first seen in witnesses err(ended) for a guard-local γ_H.
-            if (this.markSeen[element] != this.stamp)
-            {
-                (this.markSeen[element], this.markVia[element]) = (this.stamp, via);
-            }
-
-            return;
-        }
-
-        var index = element - this.loanBase;
-        ref readonly var loan = ref this.loans[index];
-        var unique = loan.Mode == MirRefKind.Uniq || (loan.Mode == MirRefKind.TwoPhaseUniq && via != loan.Holder);
-        var bit = unique ? 2 : 1;
-        if (this.loanMarks[index] >> 2 != this.stamp)
-        {
-            this.loanMarks[index] = this.stamp << 2;
-        }
-
-        if ((this.loanMarks[index] & bit) == 0)
-        {
-            this.loanMarks[index] |= bit;
-            MirDataflow.Grow(ref this.candidates, this.candidateCount + 1);
-            this.candidates[this.candidateCount++] = new(index, unique, via);
-        }
-
-        if (loan is { Direct: true, Named: >= 0 })
-        {
-            this.Reach(loan.Named, scan: true);
-        }
-    }
-
-    // The first Loan of the check set an access conflicts with (A3 5's conflicts and hits), as a problem at the location: a write, Move,
-    // exclusive borrow or destruction with any mode, another access with a unique one.
-    private void Conflict(int root, ReadOnlySpan<Step> steps, AccessKind kind, DiagnosticCode code, MirLocation at, int reservation)
-    {
-        for (var c = 0; c < this.candidateCount; c++)
-        {
-            var candidate = this.candidates[c];
+            ref readonly var candidate = ref this.candidates[c];
             this.Work++;
-            if ((candidate.Unique || kind is not (AccessKind.Read or AccessKind.SharedBorrow)) && this.Hits(root, steps, kind, candidate))
+            if (candidate.Takes(taking) && (candidate.Unique || kind is not (AccessKind.Read or AccessKind.SharedBorrow)) &&
+                this.Hits(root, steps, kind, candidate))
             {
-                this.Report(this.Code(candidate, code), this.loans[candidate.Loan].Site, candidate.Via, at, reservation);
-                return;
+                return c;
             }
         }
+
+        return None;
     }
 
     // hits(A, X, k) (A3 5, E1, E3): within(A, X), or within(X, A) where the access is deep, or no borrow or raw Deref of X lies below A, or
@@ -328,9 +147,8 @@ internal sealed partial class MirBorrows
     // err(ended) (A3 E7, SPEC 14.8.3): at a guard candidate's EndBorrow its guard-local Origin ends, so a value live after it that carries its
     // γ (CS(ℓ), transit included) is a borrow that escapes the guard: ComparisonLoanConflict_Kd at the cleanup (DIAGNOSTICS, escaped
     // borrows), anchored at the candidate.
-    private void Ended(ulong[] state, MirLocation at, int candidate)
+    private void Ended(MirLocation at, int candidate)
     {
-        this.Gather(state, this.live, -1, this.entryCount);
         var mark = this.guardBase + candidate;
         if (this.markSeen[mark] == this.stamp)
         {
@@ -339,9 +157,18 @@ internal sealed partial class MirBorrows
         }
     }
 
+    // A conflicting candidate's problem: its Loan's anchor, and its witness for the check set (E13 (6)): a holder it was found live in (for
+    // an activation, other than its own), else the location, whose operation uses the value that carries it.
+    private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation)
+    {
+        ref readonly var found = ref this.candidates[candidate];
+        var live = taking <= Activating ? (found.Flags & Based) != 0 && Activation(found.Via) != taking : (found.Flags & (Based | Stored)) != 0;
+        this.Report(code, this.loans[found.Loan].Site, live ? found.Via : Taken, at, reservation);
+    }
+
     // A problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
-    // when that lies in a later chain), from the location itself for a reservation's check set (CS_call), or a transit value's or E's store;
-    // and the reservation's anchor.
+    // when that lies in a later chain), from the location itself for a reservation's check set, the location for a value it takes, or a
+    // transit value's or E's store; and the reservation's anchor.
     private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation)
     {
         var (subject, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
@@ -350,7 +177,7 @@ internal sealed partial class MirBorrows
         this.facts[count++] = new(MirFactKind.Anchor, anchor);
         if (witness is { } site)
         {
-            this.facts[count++] = new(via > Escaped ? MirFactKind.Use : MirFactKind.Store, site);
+            this.facts[count++] = new(via > Escaped || via == Taken ? MirFactKind.Use : MirFactKind.Store, site);
         }
 
         if (reservation >= 0)
@@ -437,30 +264,31 @@ internal sealed partial class MirBorrows
         return loan >= 0 && this.loans[loan].Destroying ? AccessKind.Read : AccessKind.SharedBorrow;
     }
 
-    private void Accessed(MirPlace place, AccessKind kind, bool reborrow)
+    private void Accessed(in Access access)
     {
-        if (this.borrowed[this.Key(place.Root)])
+        if (this.borrowed[this.Key(access.Place.Root)])
         {
             MirDataflow.Grow(ref this.accesses, this.accessCount + 1);
-            this.accesses[this.accessCount++] = new(place, kind, reborrow);
+            this.accesses[this.accessCount++] = access;
         }
     }
 
-    /// <summary>An access of a borrowed root: its Place, a Reborrow's of its Place's referent, and its kind.</summary>
-    private readonly record struct Access(MirPlace Place, AccessKind Kind, bool Reborrow);
+    /// <summary>An access of a borrowed root: its Place, a Reborrow's of its Place's referent, its kind and its check set (A3 E13 (1)):
+    /// its operand's index from 0, TakesParents for a borrow, TakesValue for an observing destruction, else TakesStores.</summary>
+    private readonly record struct Access(MirPlace Place, AccessKind Kind, bool Reborrow, int Taking);
 
-    /// <summary>A Loan of the check set: its index, whether its mode in the holder it was found in is unique, and that holder (-1: a
-    /// transit value).</summary>
-    private readonly record struct Candidate(int Loan, bool Unique, int Via);
-
-    // The accesses of one location (A3 5's access): Copy, FakeRead, Discriminant, Len and an index read; Move; a Ref borrows (Borrowing), a
-    // Reborrow uniquely; a destination is written; StorageDead destroys, and a Drop as Dropping says. An Opaque site's roots are its
-    // problems' (derived, R4-M10).
-    private struct Accessing(MirBorrows owner, MirLocation at, MirStatementKind statement) : IMirUses
+    // The accesses of one location (A3 5's access, E13 (1)): Copy, FakeRead, Discriminant, Len and an index read; Move; a Ref borrows
+    // (Borrowing), a Reborrowing PairAcquire too, as its Use's marker says (reborrow; TwoPhaseUniq reserves, a shared access); a
+    // destination is written; StorageDead destroys, and a Drop as Dropping says. Each operand's accesses, its index locals' and its own,
+    // take its operand's check set. An Opaque site's roots are its problems' (derived, R4-M10).
+    private struct Accessing(MirBorrows owner, MirLocation at, MirStatementKind statement, MirRefKind reborrow) : IMirUses
     {
         private MirOperand operand;
+        private int operands; // The operands reported: the current one's index plus 1.
+        private bool inOperand; // Whether the Places reported are the current operand's.
 
-        public void Operand(in MirOperand operand) => this.operand = operand;
+        public void Operand(in MirOperand operand)
+            => (this.operand, this.operands, this.inOperand) = (operand, this.operands + 1, operand.Kind != MirOperandKind.Const);
 
         public readonly void Effect(MirEffect effects, int site)
         {
@@ -468,16 +296,18 @@ internal sealed partial class MirBorrows
 
         public void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
-            var reborrow = this.operand is { Kind: MirOperandKind.PairAcquire } acquire && acquire.Place == place && owner.Reborrowing(acquire);
-            this.operand = this.operand.Place == place ? default : this.operand; // An operand's index locals precede its Place.
+            var (taking, reborrows) = (this.inOperand ? this.operands - 1 : TakesStores, this.inOperand && this.operand.Kind == MirOperandKind.PairAcquire &&
+                reborrow != MirRefKind.Raw && this.operand.Place == place);
+            this.inOperand &= this.operand.Place != place; // An operand's index locals precede its Place.
             var opaque = (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
-            if (!opaque && this.Kind(place, access, kind, reborrow) is { } known)
+            if (!opaque && this.Kind(place, access, reborrows ? reborrow : kind, reborrows) is { } known)
             {
-                owner.Accessed(place, known, reborrow);
+                taking = known == AccessKind.Observe ? TakesValue : reborrows || (access & MirAccess.Borrows) != 0 ? TakesParents : taking;
+                owner.Accessed(new(place, known, reborrows, taking));
             }
         }
 
-        private readonly AccessKind? Kind(MirPlace place, MirAccess access, MirRefKind kind, bool reborrow)
+        private readonly AccessKind? Kind(MirPlace place, MirAccess access, MirRefKind kind, bool reborrows)
         {
             if ((access & MirAccess.Kills) != 0)
             {
@@ -494,7 +324,7 @@ internal sealed partial class MirBorrows
                 return AccessKind.Write;
             }
 
-            if ((access & MirAccess.Borrows) != 0)
+            if (reborrows || (access & MirAccess.Borrows) != 0)
             {
                 return owner.Borrowing(at, kind);
             }
@@ -502,11 +332,6 @@ internal sealed partial class MirBorrows
             if ((access & MirAccess.Moves) != 0)
             {
                 return AccessKind.Move;
-            }
-
-            if (reborrow)
-            {
-                return AccessKind.UniqueBorrow;
             }
 
             return (access & MirAccess.Reads) != 0 ? AccessKind.Read : null;

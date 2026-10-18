@@ -1250,7 +1250,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Loan); persistent tree sets (no int identity, an allocation per insertion); `Remove` by element (one call per ended Loan and
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
-  planning session's instruction of the same day) A5's Loan stratum, its joint core. `MirBorrows` (`MirBorrows.cs`, the pre-pass;
+  planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
+  CS_call over live_in(ℓ) superseded) A5's Loan stratum, its joint core. `MirBorrows` (`MirBorrows.cs`, the pre-pass;
   `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view decides (as A1), and reports each
   conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as facts: the witness holder's next use
   in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows per problem (`MirFact`, kinds `Anchor`,
@@ -1547,6 +1548,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: R2's every Place operand through a temp (more MIR for no change of what is read, R4-M55's reason, which still
     holds); a reservation A5 derives from the MIR shape (prototype 134d's `ShapeReservation`, unsound); a quadratic scan of the later
     arguments per argument. Not temporary.
+  Unit E13b, A5 (E13 (1), (3), (5), (6) and (4)'s A5 part; supersedes R4-M57's "a borrow's stored value only seeds" and its 1b-3
+  CS_call over live_in(ℓ), and its "a Call takes t as an argument" reads "as an input"):
+  - Each access at ℓ is checked on the closure of σ_in of the holders live after ℓ that ℓ does not overwrite and of E, with the
+    values it takes: operand i's (MirUses's order, a Value callee first), the values of the operands up to it and the roots of the
+    later ones; a reservation's activation in t and a destroying call's destroy, the operands' values but those found in t, seeded
+    by σ_in(t), t left out (so `let r = y@ref; give(y@uniq, r@follow)` is valid); a Ref's or Reborrowing PairAcquire's borrow, its
+    R2 parents within E3's bound whatever its destination's liveness, and E5's seed (without the parents prototype 41o, rf1 and rf2
+    were accepted); an observing destruction, its value; a destination write, a store and an access that takes no value, transit
+    and E5's seed as before. An operand's value is found under its root's holder, so a reservation there stays shared; Discriminant,
+    Len and FakeRead take none; an Opaque site's accesses stay unchecked (R4-M10).
+  - One gather per location (`MirBorrows.CheckSets`) builds every set: passes Based (the live holders, E), Stored (transit, E5),
+    Parented, Observed, Seeded (each activation holder's seed), then each operand's value in operand order, so a Loan keeps the first
+    operand that reaches it, and each operand's root in reverse, so it keeps the last; a pass reads a holder's state once. Candidates
+    are per Loan and mode, tagged by their passes and listed by root, so an access scans its root's; an activation's set holds one the
+    Based, Seeded or Valued passes found in a holder other than t (the first two such holders are kept).
+  - Every reservation input activates at its Call (review B1, landed). A PairAcquire the view makes a Reborrow is issued at its
+    Assign in its marker's mode (TwoPhaseUniq: a reservation in its temp; Uniq: live); a pair layer the view makes a reference or
+    handle is a Deref step (review N3). A Loan found only through a value an access takes has the access's location as its Use
+    witness; codes stay (unit 1c). Deleted: `loanOfOperand` and the operand-range `Reborrows`, the operands' own Loans in calls
+    (`argOwns`), the activation's live-in holders (`LiveInto`) and its separate gather.
+  - Not done: a call's effects, and the uniq mode of an operand's reservation at its own call's effects and cleanup (unit 2b; Binding
+    rejects borrows of statics today). Found, for the planning session: `TyCtxt.Retains` gives a pair-layer input of an abstract
+    Type (`inner11<s/T>(a: s/T, b: i32)`) a store row into its own referent (both name one carrier), so after
+    `inner11(x@(s/T), peek(x@ref))` x carries its own Loan and x's observing end now errs (prototype 139c with a non-Copy T; the
+    prototype and the old path accept it; with `T is Copy` it is valid); and 29b's s, whose new value carries p's Loan as its
+    reborrow's parent (SPEC 15.6.3), errs at its own end too.
+  - Rejected: a gather per access or per activation (quadratic in an operation's operands, E13 (5)); leaving out only t's
+    reservations (a choice by Loan id, A3 §3). Not temporary.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

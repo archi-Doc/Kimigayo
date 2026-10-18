@@ -14,7 +14,6 @@ internal sealed partial class MirBorrows
     private readonly List<int> targets = []; // The holders a reference's value refers to (refs).
     private Entry[] entries = [];
     private int[] argValues = [];
-    private int[] argOwns = [];
     private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
     private int entryCount;
     private int chainHead = -1; // The checks replay's chain: its head and first block.
@@ -105,17 +104,16 @@ internal sealed partial class MirBorrows
         else if (statement.Kind == MirStatementKind.Assign)
         {
             var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
-            var (value, own) = this.Value(state, rvalue, data.Start + index);
+            var (value, own) = this.Reborrowing(statement) != MirRefKind.Raw
+                ? this.Issued(state, this.body.Operands[rvalue.Start].Place, reborrow: true, this.loanAt[data.Start + index])
+                : this.Value(state, rvalue, data.Start + index);
             if (statement.Place is { Projection: 0, Root: >= 0 } into && this.body.Locals[into.Root].Role == MirLocalRole.GuardCandidate)
             {
                 own = this.sets.Add(own, this.guardBase + into.Root); // E7: a value issued into a guard candidate H carries γ_H.
             }
 
             this.Moves(rvalue.Start, rvalue.Count);
-            var issue = rvalue.Kind == MirRvalueKind.Ref ||
-                (rvalue.Kind == MirRvalueKind.Use && this.body.Operands[rvalue.Start] is { Kind: MirOperandKind.PairAcquire } acquire &&
-                    cases.Reborrows(acquire));
-            this.Store(state, statement.Place, value, own, issue);
+            this.Store(state, statement.Place, value, own, rvalue.Kind == MirRvalueKind.Ref || this.Reborrowing(statement) != MirRefKind.Raw);
         }
     }
 
@@ -158,18 +156,17 @@ internal sealed partial class MirBorrows
             case MirRvalueKind.Use:
             case MirRvalueKind.Adapt:
             case MirRvalueKind.Cast when (MirCastKind)rvalue.Op is MirCastKind.Erasure or MirCastKind.Upcast or MirCastKind.Pointer:
-                return this.Operand(state, rvalue.Start);
+                return (this.Operand(state, rvalue.Start), 0);
             case MirRvalueKind.Ref when (MirRefKind)rvalue.Op != MirRefKind.Raw:
                 return this.Issued(state, rvalue.Place, reborrow: false, this.loanAt[location]);
             case MirRvalueKind.Aggregate:
-                var (value, own) = (0, 0);
+                var value = 0;
                 for (var o = rvalue.Start; o < rvalue.Start + rvalue.Count; o++)
                 {
-                    var operand = this.Operand(state, o);
-                    (value, own) = (this.sets.Union(value, operand.Value), this.sets.Union(own, operand.Own));
+                    value = this.sets.Union(value, this.Operand(state, o));
                 }
 
-                return (value, own);
+                return (value, 0);
             case MirRvalueKind.Opaque:
                 var site = this.body.OpaqueSites[rvalue.Arg];
                 var opaque = this.sets.Add(this.escapedSet, 1 + rvalue.Arg);
@@ -184,19 +181,9 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // An operand's value: a constant's none, a Place's read, a Reborrow's Loan and parents.
-    private (int Value, int Own) Operand(ulong[] state, int index)
-    {
-        var operand = this.body.Operands[index];
-        if (operand.Kind == MirOperandKind.Const)
-        {
-            return (0, 0);
-        }
-
-        return operand.Kind == MirOperandKind.PairAcquire && cases.Reborrows(operand)
-            ? this.Issued(state, operand.Place, reborrow: true, this.loanOfOperand[index])
-            : (this.Read(state, operand.Place), 0);
-    }
+    // An operand's value: a constant's none, a Place's read (a PairAcquire's that Copies; one that Reborrows is its Use's issue, Plan).
+    private int Operand(ulong[] state, int index)
+        => this.body.Operands[index] is { Kind: not MirOperandKind.Const } operand ? this.Read(state, operand.Place) : 0;
 
     // A root's state: a holder's, a static's {Φ_E}, none for another local.
     private int Root(ulong[] state, int root)
@@ -351,15 +338,14 @@ internal sealed partial class MirBorrows
     private void Call(ulong[] state, in MirTerminator call)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
-        MirDataflow.Grow(ref this.argOwns, call.Count);
         for (var i = 0; i < call.Count; i++)
         {
-            (this.argValues[i], this.argOwns[i]) = this.Operand(state, call.Start + i);
+            this.argValues[i] = this.Operand(state, call.Start + i);
         }
 
         var callee = call.Callee;
         var result = callee.Kind == MirCalleeKind.Value && call.Operand.Kind != MirOperandKind.Const ? this.Read(state, call.Operand.Place) : 0;
-        (result, var resultOwn) = (result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result, 0);
+        result = result != 0 && MirTypes.IsReference(this.TypeOf(call.Operand)) ? this.Content(state, result) : result;
         this.Moves(call.Start, call.Count);
         if (callee.Kind == MirCalleeKind.Value && call.Operand is { Kind: MirOperandKind.Move, Place: { Projection: 0 } moved })
         {
@@ -369,24 +355,24 @@ internal sealed partial class MirBorrows
         var retained = this.Rows(call, out var untied);
         foreach (var row in retained)
         {
-            var (value, own) = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
+            var value = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
             if (row.Output == Retention.Result)
             {
-                (result, resultOwn) = (this.sets.Union(result, value), this.sets.Union(resultOwn, own));
+                result = this.sets.Union(result, value);
                 continue;
             }
 
-            this.Refs(this.sets.Union(this.argValues[row.Output], this.argOwns[row.Output]));
+            this.Refs(this.argValues[row.Output]);
             foreach (var target in this.targets)
             {
-                this.AddSlot(target, value, own, Joined, issue: false);
+                this.AddSlot(target, value, 0, Joined, issue: false);
             }
         }
 
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         if (call.Target >= 0)
         {
-            this.Store(state, call.Place, result, resultOwn, issue: false);
+            this.Store(state, call.Place, result, 0, issue: false);
         }
     }
 
@@ -453,19 +439,19 @@ internal sealed partial class MirBorrows
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
     // a read through it only.
-    private (int Value, int Own) Retained(ulong[] state, int operand, int position, RetentionKind kind)
+    private int Retained(ulong[] state, int operand, int position, RetentionKind kind)
     {
-        var (value, own) = (this.argValues[position], this.argOwns[position]);
-        var through = this.Content(state, this.sets.Union(value, own));
+        var value = this.argValues[position];
+        var through = this.Content(state, value);
         if (kind == RetentionKind.Content)
         {
-            return (through, 0);
+            return through;
         }
 
-        return Borrows(this.TypeOf(operand)) ? (this.sets.Union(value, through), own) : (value, own);
+        return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, through) : value;
     }
 
-    // An operand's case Type: a Reborrow's is its Place's reference.
+    // An operand's case Type.
     private BoundType? TypeOf(int operand) => this.TypeOf(this.body.Operands[operand]);
 
     private BoundType? TypeOf(in MirOperand operand)

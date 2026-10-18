@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M63) per body and Semantics case view.
+// Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M63, R4-M66) per body and Semantics
+// case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
 // verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains, an intrinsic's declaration included, with the intrinsic table's
 // retained operand, MirDescriptors) and published rows (TyCtxt.Published). Output: each Loan
@@ -12,10 +13,13 @@
 // (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
 // state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, τ_s, and a guard candidate's γ, E7). A
-// Loan exists per non-raw Ref site and view whose Place passes no shared borrow Deref (E3), named by its whole Place; access is syntactic,
-// by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it overwrites, E, the values it
-// stores into a live holder (transit), the holders their direct Loans name (the closure) and those its own Loans name (E5); an activation
-// the holders live into it but its reservation holder, whose Loans seed the closure. A two-phase Loan is shared only in its reservation
+// Loan exists per non-raw Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no
+// shared borrow Deref (E3), named by its whole Place; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the
+// holders live after the access but those it overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's
+// operands' values up to it and roots after it in evaluation order; a borrow's R2 parents and E5's seed; an observing destruction's
+// value; another access's, the values it stores into a live holder, transit, and E5's seed), closed through the holders their direct
+// Loans name; an activation the operation's operands' values and its reservation holder's seed, that holder left out, all from one gather
+// per location. A two-phase Loan is shared only in its reservation
 // holder, where a write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path
 // it exactly prefixes (E8), after the checks and the transfer: the Loans are ordered by the Move Path of their Places' longest inline
 // prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A holder a direct Loan names keeps its state at
@@ -46,8 +50,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private Step[] loanSteps = []; // The Loans' Places, each a run.
     private Step[] walk = []; // A Place's steps.
     private int[] chain = []; // A Place's projections, last first.
-    private int[] loanAt = []; // By location (Location): the Loan its Ref issues, or -1.
-    private int[] loanOfOperand = []; // By operand: the Loan its Reborrow issues, or -1.
+    private int[] loanAt = []; // By location (Location): the Loan its Ref or Reborrowing PairAcquire issues, or -1.
     private int[] loanStart = []; // By group (Loan.Group): its first Loan, the Loans being in group order.
     private Loan[] ordered = []; // The Loans being put in group order.
     private int[] renumbered = []; // By Loan in issue order: its id in group order.
@@ -154,22 +157,23 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     // A root's key: a local, or a static after the locals.
     private int Key(int root) => root >= 0 ? root : this.body.Locals.Length + ~root;
 
-    // Whether a PairAcquire Reborrows under the view.
-    private bool Reborrowing(in MirOperand acquire) => cases.Reborrows(acquire);
+    // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
+    // an invocation's input), or Raw where it Copies or the statement is none.
+    private MirRefKind Reborrowing(in MirStatement statement)
+        => statement is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Use, Op: not 0 } use } && cases.Reborrows(this.body.Operands[use.Start])
+            ? (MirRefKind)use.Op : MirRefKind.Raw;
 
-    // The Loans of the view (A3 4's issued, E3): a non-raw Ref of a Place that passes no shared borrow Deref, by its location, and a
-    // PairAcquire the view makes a Reborrow, by its operand; each named by its whole Place, then ordered by group.
+    // The Loans of the view (A3 4's issued, E3): a non-raw Ref of a Place that passes no shared borrow Deref and a PairAcquire the view makes a
+    // Reborrow, of its Place's referent in its marker's mode (A3 E13 (4)), by location; each named by its whole Place, then ordered by group.
     private void Loans()
     {
         var (locals, locations) = (this.body.Locals.Length, this.body.Statements.Length + this.body.Blocks.Length);
         var keys = locals + this.body.Statics.Length;
         MirDataflow.Grow(ref this.loanAt, locations);
-        MirDataflow.Grow(ref this.loanOfOperand, this.body.Operands.Length);
         MirDataflow.Grow(ref this.borrowed, keys);
         MirDataflow.Grow(ref this.named, locals);
         MirDataflow.Grow(ref this.lent, locals);
         Array.Fill(this.loanAt, -1, 0, locations);
-        Array.Fill(this.loanOfOperand, -1, 0, this.body.Operands.Length);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
         for (var i = 0; i < locals; i++)
@@ -198,19 +202,16 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
                         this.lent[into.Root] = rvalue.Place;
                     }
                 }
-
-                this.Reborrows(statement.Rvalue.Start, statement.Rvalue.Count, statement.Source);
-            }
-
-            if (data.Terminator.Kind == MirTerminatorKind.Call)
-            {
-                this.Reborrows(data.Terminator.Start, data.Terminator.Count, data.Terminator.Source);
+                else if (this.Reborrowing(statement) is var kind and not MirRefKind.Raw)
+                {
+                    var place = this.body.Operands[rvalue.Start].Place;
+                    this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, statement.Source);
+                }
             }
         }
 
         this.Order(moves.Paths.Length + this.body.Statics.Length);
         this.Renumber(this.loanAt.AsSpan(0, locations));
-        this.Renumber(this.loanOfOperand.AsSpan(0, this.body.Operands.Length));
         this.Work += locations;
     }
 
@@ -252,18 +253,6 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         }
 
         this.Work += sites.Length;
-    }
-
-    // The PairAcquire operands the view makes Reborrows, each a Loan of its Place's referent.
-    private void Reborrows(int start, int count, in SourceInfo source)
-    {
-        for (var o = start; o < start + count; o++)
-        {
-            if (this.body.Operands[o] is { Kind: MirOperandKind.PairAcquire } operand && cases.Reborrows(operand))
-            {
-                this.loanOfOperand[o] = this.Issue(operand.Place, reborrow: true, MirRefKind.Uniq, -1, source);
-            }
-        }
     }
 
     // A Loan of a Place issued into a local (-1: none), or -1 past a shared borrow Deref (E3).
@@ -435,8 +424,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         return (this.loanStart[path], this.loanStart[moves.Paths[path].End]);
     }
 
-    // The steps of a Place under the view, root first (A3 3): a Base of depth d is d steps, an owner-case pair layer is none (SPEC 13.5.5),
-    // and a Reborrow adds its referent's exclusive Deref; returns their number.
+    // The steps of a Place under the view, root first (A3 3): a Base of depth d is d steps, an owner-case pair layer is none (SPEC 13.5.5)
+    // and another a Deref, the step a borrow Deref of its case is (A3 E13 (4), review N3), and a Reborrow adds its referent's exclusive
+    // Deref; returns their number.
     private int Walk(MirPlace place, bool reborrow, ref Step[] into)
     {
         var projections = this.body.Projections;
@@ -463,7 +453,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
             for (var depth = row.Kind == MirProjectionKind.Base ? row.Arg : 1; @class is { } known && depth > 0; depth--)
             {
                 MirDataflow.Grow(ref into, count + 2);
-                into[count++] = new(row.Kind, row.Kind == MirProjectionKind.Base ? 1 : row.Arg, known);
+                var kind = row.Kind == MirProjectionKind.PairLayer ? MirProjectionKind.Deref : row.Kind;
+                into[count++] = new(kind, row.Kind == MirProjectionKind.Base ? 1 : row.Arg, known);
             }
         }
 
