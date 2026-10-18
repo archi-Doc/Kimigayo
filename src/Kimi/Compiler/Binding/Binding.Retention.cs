@@ -57,14 +57,27 @@ public sealed partial class Binding
     private static bool IsFixed(in RetentionAtom atom)
         => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto };
 
+    // An input retained through one of its occurrences: Value over Content.
+    private static void Mark(RetentionKind?[] kinds, in RetentionAtom atom)
+        => kinds[atom.Input] = atom.Kind == RetentionKind.Value ? RetentionKind.Value : kinds[atom.Input] ?? RetentionKind.Content;
+
     // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
-    // Slice, a shared borrow of its elements (SPEC 4.8.1); a UniqSlice, an exclusive one, its `source` the outer Origin (SPEC 4.8.2).
-    private static BoundType? BorrowReferent(BoundType type, out BoundOrigin? outer, out bool exclusive)
+    // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
+    // an exclusive borrow is admitted (DECISIONS BU-3); a Slice, a shared borrow of its elements (SPEC 4.8.1); a UniqSlice, an exclusive
+    // one, its `source` the outer Origin (SPEC 4.8.2).
+    private BoundType? BorrowReferent(BoundType type, out BoundOrigin? outer, out bool exclusive)
     {
         (outer, exclusive) = (type.Origin, IsExclusive(type.Semantics));
         if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && IsBorrow(type.Semantics))
         {
             return referent;
+        }
+
+        if (this.LayerAdmitted(type) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0 &&
+            TryPairLayer(type, out _, out var target))
+        {
+            (outer, exclusive) = (this.OuterOrigin(type), (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0);
+            return target;
         }
 
         if (type is { Kind: BoundTypeKind.Slice, Components: [var elements] })
@@ -80,10 +93,6 @@ public sealed partial class Binding
 
         return null;
     }
-
-    // An input retained through one of its occurrences: Value over Content.
-    private static void Mark(RetentionKind?[] kinds, in RetentionAtom atom)
-        => kinds[atom.Input] = atom.Kind == RetentionKind.Value ? RetentionKind.Value : kinds[atom.Input] ?? RetentionKind.Content;
 
     private CallRetention RetentionOf(
         Koto use,
@@ -134,14 +143,14 @@ public sealed partial class Binding
     }
 
     // An input's atoms: a borrowed input (BorrowReferent) gives Value through its outer Origin and Content through its referent (SPEC
-    // 15.6.4 step 4), which an exclusive one lets the call write.
+    // 15.6.4 step 4), which an exclusive one lets the call write, its referent invariant there (SPEC 15.3.5).
     private void RetentionInput(BoundType input, int index)
     {
-        if (BorrowReferent(input, out var outer, out var exclusive) is { } referent)
+        if (this.BorrowReferent(input, out var outer, out var exclusive) is { } referent)
         {
             this.AddRetentionAtom(new(index, RetentionKind.Value, Writable: false, outer, null, null), callable: false);
             var content = new RetentionAtom(index, RetentionKind.Content, exclusive, null, null, outer);
-            this.RetentionWalk(referent, content, this.ComponentVariance(input, 0), callable: false);
+            this.RetentionWalk(referent, content, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant, callable: false);
         }
         else
         {
@@ -187,7 +196,7 @@ public sealed partial class Binding
             this.AddRetentionAtom(at with { Origin = type.OriginArguments[i], Writable = at.Writable && position == OriginVariance.Invariant }, callable);
         }
 
-        var layer = BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
+        var layer = this.BorrowReferent(type, out var outer, out _) is not null ? outer ?? at.Layer : at.Layer;
         var inside = callable || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem;
         var shared = type.Kind == BoundTypeKind.Slice ||
             (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
