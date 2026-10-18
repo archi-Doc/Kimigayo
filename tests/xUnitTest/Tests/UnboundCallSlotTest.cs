@@ -69,6 +69,18 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), Assert.Single(DiagnosticCorpus.Check(open).Diagnostics).Code);
     }
 
+    // SPEC 14.9.2, 23.1.2: the open result is inferred from the body's own sources, so their conflict (the value i32 and a returned bool)
+    // is an independent problem reported beside the call's unbound slot.
+    [Fact]
+    public void AConflictAmongTheBodysOwnSourcesStaysVisible()
+    {
+        var source = RunR + "public func main() -> ()\n    let r = run(func (n) => if n > 0 => n else => (return true))\n";
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(2, diagnostics.Length);
+        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "run(func (n) => if n > 0 => n else => (return true))"), (diagnostics[0].Code, Text(source, diagnostics[0].Span)));
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "func (n) => if n > 0 => n else => (return true)"), (diagnostics[1].Code, Text(source, diagnostics[1].Span)));
+    }
+
     // SPEC 10.4, 10.5, 10.8: a candidate with an unsolved slot, or one whose F has no Callable Constraint, is compared unchanged, with the
     // waiting position equal in step 2; the selected candidate's signature types the body, and a candidate that is not selected never
     // needs to supply one.

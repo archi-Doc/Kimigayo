@@ -608,25 +608,22 @@ public sealed partial class Binding
             }
         }
 
-        if (function.Body is { } block)
+        if (symbol.Type is null && (function.Body ?? function.ExpressionBody) is { } body)
         {
-            if (symbol.Type is null)
-            {
-                // The function owns its result context; nested functions and defer bodies keep their own boundaries.
-                // Survey independent return evidence before binding, then include structural end Unit in the same join.
-                var context = this.BeginResult(function, scope, null);
-                this.BindNode(block, scope);
-                symbol.Type = this.FinishResult(function, context);
-            }
-            else
-            {
-                this.BindNode(block, scope);
-            }
+            // SPEC 14.9: the function owns its result context; nested functions and defer bodies keep their own boundaries.
+            // Survey independent evidence before binding, then join the return operands with the single-item body's value,
+            // which takes the surveyed Type as an if branch does, or with the indented body's structural end Unit.
+            var context = this.BeginResult(function, scope, null);
+            this.BindNode(body, scope, function.Body is null ? context.Expected : null);
+            symbol.Type = this.FinishResult(function, context);
+        }
+        else if (function.Body is { } block)
+        {
+            this.BindNode(block, scope);
         }
         else if (function.ExpressionBody is { } expression)
         {
-            var result = this.RequireType(expression, scope, symbol.Type);
-            symbol.Type ??= result;
+            this.RequireType(expression, scope, symbol.Type);
         }
 
         if (symbol.Type is null)

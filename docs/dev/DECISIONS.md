@@ -1668,6 +1668,32 @@ R5 on the owner's request of 2026-10-18.
   pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
   Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
   Constraint already did, until R6. Not temporary.
+- **BU-5** (2026-10-18; the BU planning session; G129 E5, before R4-M59's removal) An anonymous function's result sources
+  (SPEC 14.9.1, 14.9.2) and the survey of an operator's result (SPEC 13.3.4). (1) Without a declared or expected result, an
+  anonymous function with a single-item body is a result target exactly as one with an indented body: `BeginResult`
+  surveys the body's value and every self-targeted `return` operand, the body takes the surveyed Type as an `if` branch
+  does, and `FinishResult` joins the operands with the body's value (an indented body: its structural end Unit) and checks
+  each. A declared or expected result stays the Target Result Type. (2) The 14.9.2 survey (`ResultEvidence`) gives binary
+  `+ - * / %` and unary `-` their operands' terminal Type only on the built-in route, selected when every operand is
+  literal-only or has a surveyed Type ending, past safe reference layers, in a built-in numeric Type; a user provider (its
+  result is its conformance's Output) or an unknown operand gives no evidence. Comparisons, logical operators and
+  assignments are route-independent; bitwise, shift and unary `+` are built-in only and keep their operands' Type. Why: (1)
+  the single-item path only bound its body, so a `return` operand was no evidence, no source and unchecked (`func [] (c:
+  bool, a: i64) => if c => a else => (return 1)` kept an i32 `1` in an i64 function: `GenerationFailed_Kd`, mir
+  `InternalInvariant_Kd`; `(return true)` was accepted; `func [] () => (return 1)` was Never; `try` in a single-item body
+  was `InvalidTryReturn_Kd`); (2) the survey typed these operators by `Left ?? Right`, so `return x - y` (Value's
+  `Subtractable<Value>.Output is i32`) or `if c => x - x else => -x` took Value and `s * v` (Vec2's
+  `LeftMultipliable<f64>`) f64, and (1) would have exposed every single-item body to it. Census (both pipelines, Session
+  default and mir, MilestoneSourcesTest, library unchanged): those forms valid; an open-result closure argument also
+  reports its own sources' conflict beside `UnboundTypeArgument_Kd` (SPEC 23.1.2). Rejected: a separate return check for
+  single-item bodies (a second copy of 14.9); keeping `Left ?? Right` for unknown operands (wrong evidence for an unknown
+  user provider). Open: (N1) the join reports `TypeMismatch_Kd` for a valid form whose literal source is typed before the
+  join: a literal-leaf Tuple (`if c => (a, a) else => (1, 2)`, also `(return (1, 2))` beside `(a, a)`) and a literal beside
+  a source the survey cannot type (`if c => p.x else => 1`; with (2) also `if c => p.x + n else => 1`, accepted before by
+  the operand guess): a conservative Language error AGENTS forbids; required repair: the join reports a located
+  `Unsupported_Kd` until literal leaves are classified (G129 E10(2), G130 D9(2)). (N3) `if c => a else => true` as a
+  result source reports `TypeMismatch_Kd` twice, at the `if` and at its target (one per cause required); pre-existing in
+  indented bodies, and (1) extends it to single-item bodies. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 

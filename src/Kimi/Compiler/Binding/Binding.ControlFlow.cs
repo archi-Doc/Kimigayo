@@ -425,7 +425,10 @@ public sealed partial class Binding
     {
         switch (target)
         {
-            case FunctionKoto { Body: { } body }:
+            case FunctionKoto function:
+                // SPEC 14.9.1: a single-item body's value and every self-targeted return operand; an indented body supplies no value.
+                var body = (function.Body ?? function.ExpressionBody)!;
+                this.BodyEvidence(body, scope, context);
                 this.TransferEvidence(body, target, scope, context);
                 return;
             case IfKoto conditional:
@@ -579,10 +582,11 @@ public sealed partial class Binding
         }
 
         var structural = this.ResultStructure();
+        var completion = node is FunctionKoto function ? (function.Body ?? function.ExpressionBody)! : node;
         switch (node)
         {
-            case FunctionKoto { Body: { } body }:
-                this.AddBodyResult(body, context, structural);
+            case FunctionKoto:
+                this.AddBodyResult(completion, context, structural);
                 break;
             case IfKoto conditional:
                 for (var i = 0; i < conditional.Branches.Count; i++)
@@ -667,7 +671,6 @@ public sealed partial class Binding
             return Complete(node, null);
         }
 
-        var completion = node is FunctionKoto { Body: { } functionBody } ? functionBody : node;
         return Complete(node, !suppliedValue && !structural.CanComplete(completion) ? BoundType.Never : common);
     }
 

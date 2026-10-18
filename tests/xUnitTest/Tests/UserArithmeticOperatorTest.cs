@@ -39,11 +39,16 @@ public class UserArithmeticOperatorTest
         => ScalarEmissionTest.EmitFixture("UserArithmeticShared", Declarations + "\nlet value = Value.init()\nrequire value + 2 == 42 and value - value == 0 and -value == -40 else => $abort(\"ordinary\")\nrequire 2.0 * value == 80.0 and (1.0 + 1.0) * value == 80.0 else => $abort(\"left\")\nrequire value.value == 40 else => $abort(\"not consumed\")", string.Empty);
 
     // SPEC 13.3.4, 14.9.2: a result source routed to a user provider has its conformance's Output, not an operand's Type, so a join
-    // takes no evidence from its operands; a built-in route's operands (literal-only or ending in a numeric Type) still supply it.
+    // (also an anonymous function's single-item body) takes no evidence from its operands; a built-in route's operands (literal-only or
+    // ending in a numeric Type) still supply it.
     [Theory]
     [InlineData("let g = func [] (x: Value, y: Value)\n    return x - y\nlet result = g(Value.init(), Value.init())", "i32")]
     [InlineData("func pick(c: bool, x: Value) -> i32\n    let result = if c => x - x else => -x\n    return result", "i32")]
     [InlineData("let k = func [] (s: f64, v: Vec2)\n    return s * v\nlet result = k(2.0, Vec2.init(1.0, 2.0))", "Vec2")]
+    [InlineData("let f = func [] (x: Value) => x + 2\nlet result = f(Value.init())", "i32")]
+    [InlineData("let g = func [] (x: Value, y: Value) => x - y\nlet result = g(Value.init(), Value.init())", "i32")]
+    [InlineData("let h = func [] (x: Value) => -x\nlet result = h(Value.init())", "i32")]
+    [InlineData("let k = func [] (s: f64, v: Vec2) => s * v\nlet result = k(2.0, Vec2.init(1.0, 2.0))", "Vec2")]
     [InlineData("func pick(c: bool, a: i64) -> i64\n    let result = if c => a + 1 else => 2\n    return result", "i64")]
     [InlineData("func pick(c: bool, a: i64) -> i64\n    let result = if c => -a else => 5000000000\n    return result", "i64")]
     [InlineData("func pick(c: bool, r: ref/i64) -> i64\n    let result = if c => r * 2 else => 5000000000\n    return result", "i64")]
@@ -61,7 +66,9 @@ public class UserArithmeticOperatorTest
     {
         const string Program = "let g = func [] (x: Value, y: Value)\n    return x - y\nfunc pick(c: bool, x: Value) -> i32\n    let result = if c => x - x else => -x\n    return result\n" +
             "let k = func [] (s: f64, v: Vec2)\n    return s * v\nrequire g(Value.init(), Value.init()) == 0 and pick(false, Value.init()) == -40 and pick(true, Value.init()) == 0 else => $abort(\"user\")\n" +
-            "require k(2.0, Vec2.init(1.0, 2.0)).y == 4.0 else => $abort(\"left\")";
+            "require k(2.0, Vec2.init(1.0, 2.0)).y == 4.0 else => $abort(\"left\")\n" +
+            "let f = func [] (x: Value) => x + 2\nlet d = func [] (x: Value, y: Value) => x - y\nlet h = func [] (x: Value) => -x\nlet m = func [] (s: f64, v: Vec2) => s * v\n" +
+            "require f(Value.init()) == 42 and d(Value.init(), Value.init()) == 0 and h(Value.init()) == -40 and m(2.0, Vec2.init(1.0, 2.0)).y == 4.0 else => $abort(\"expression\")";
         ScalarEmissionTest.EmitFixture("UserArithmeticJoin", Declarations + Vector + Program, string.Empty);
     }
 
