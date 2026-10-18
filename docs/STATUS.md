@@ -65,7 +65,7 @@ Known defects are not safe rejection boundaries:
 | Conditional temporaries | A Unit/struct temporary on the right of `and`/`or` can pass checking and fail generation during conditional destruction. |
 | Static initialization | Cycle detection uses `KIMI_E_ABORT` at the Field declaration, rather than `KIMI_E_STATIC_CYCLE` at the accessing Place expression. |
 | Nested specializations | A call that selects a specialization of a named function nested two or more levels inside a generic declaration runs the original body (the old generator forwards one level). MIR code generation keys such instances by SPEC 6.1.3 (R5 K1; DECISIONS R5-M34). |
-| Never payloads | Binding rejects a read of a Never payload binding (`.Err(let e) => e` on `Result<i32, Never>`), and `x@move` on a Never Place does not move (PLAN G145). The old analysis's `Unsupported_Kd` for a Place of a Never-holding Type is accompanied by a cascaded `UninitializedPlace_Kd` at the function; it goes with the old analysis at R6-check. |
+| Never payloads | Binding rejects a read of a Never payload binding (`.Err(let e) => e` on `Result<i32, Never>`; PLAN G145). MIR's A1 does not track a Place of Type Never, so the read after `x@move` of one is not reported there (PLAN G139). The old analysis's `Unsupported_Kd` for a Place of a Never-holding Type is accompanied by a cascaded `UninitializedPlace_Kd` at the function; it goes with the old analysis at R6-check. |
 
 ## 4. LLVM Generation Coverage
 

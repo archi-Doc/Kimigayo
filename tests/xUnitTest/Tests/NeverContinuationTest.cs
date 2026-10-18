@@ -62,6 +62,25 @@ public class NeverContinuationTest
         Assert.All(reads, static x => Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(x).Acquire));
     }
 
+    // SPEC 14.9.3, 14.10.3, 13.5.3: an explicit acquisition of a Place of Type Never supplies no normal completion and keeps its effect:
+    // `x@move` Moves x, and the later bare read is a Copy checked on the assumed path; `x@copy` stays an Identity.
+    [Theory]
+    [InlineData("x@move", true)]
+    [InlineData("x@copy", false)]
+    public void AnExplicitAcquisitionOfANeverPlaceKeepsItsOperation(string acquisition, bool moves)
+    {
+        var operand = moves ? HirAcquire.Move : HirAcquire.Copy;
+        var c = MinimalEmissionTest.Analyze("func pass(x: Never, y: Never) => ()\nfunc absurd(x: Never) => pass(" + acquisition + ", x)\n");
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(moves, LegacyRecords.Of(c).Any(static x => x.Code == DiagnosticCode.MovedPlace_Kd));
+        HirTables.Publish(c);
+        var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
+        Assert.Equal((HirOp.Group, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
+        Assert.Equal(operand, HirTables.AdjustOf(conversion.Left).Acquire);
+        var read = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto), x => x.ToString() == "x" && !ReferenceEquals(x, conversion.Left) && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset);
+        Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(read).Acquire);
+    }
+
     // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move
     // (SPEC 3.5).
     [Fact]

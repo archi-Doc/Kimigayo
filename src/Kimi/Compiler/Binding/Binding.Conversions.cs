@@ -269,10 +269,12 @@ public sealed partial class Binding
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
 
-        conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
+        conversion.ConversionBinding = ConversionBinding.Identity;
         return Complete(conversion, type);
     }
 
+    // SPEC 13.5.3: @move keeps its operation for an operand of Type Never too (SPEC 14.10.3: x@move Moves x on an assumed path),
+    // whose Type alone makes it supply no normal completion (SPEC 14.9.3).
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
         // SPEC 6.3.4: construction also allows no Non-Copy Move out of its receiver.
@@ -311,7 +313,7 @@ public sealed partial class Binding
             source = KotoHelper.UnwrapParentheses(projection.Left);
         }
 
-        conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
+        conversion.ConversionBinding = ConversionBinding.Transfer;
         return Complete(conversion, type);
     }
 
@@ -542,7 +544,8 @@ public sealed partial class Binding
 
         if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation, OriginName: null, OriginExpression: null, OriginArguments: null })
         {
-            // SPEC 13.5.3: @copy Copies a proven-Copy value and never transfers or borrows; a Temporary Value is used as is.
+            // SPEC 13.5.3: @copy Copies a proven-Copy value and never transfers or borrows; a Temporary Value is used as is. Like
+            // @move, it keeps its operation for an operand of Type Never (SPEC 14.10.3; CompleteTransfer).
             var copied = this.BindNode(conversion.Left, scope);
             if (copied is null)
             {
@@ -550,12 +553,6 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (ReferenceEquals(copied, BoundType.Never))
-            {
-                conversion.ConversionBinding = ConversionBinding.Abrupt;
-                return Complete(conversion, copied);
-            }
-
             if (this.ProveCopy(copied, conversion) != ConstraintProof.Proven)
             {
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);

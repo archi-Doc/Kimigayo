@@ -1819,6 +1819,24 @@ R5 on the owner's request of 2026-10-18.
   pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
   Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
   Constraint already did, until R6. Not temporary.
+- **BU-6** (2026-10-18; owner decision, 「推奨の通りでお願いします」, on the BU planning session's question from R5's F12 finding;
+  an explicitly authorized SPEC revision of 14.9.3 and 14.10.3, not of SPECJ, GUIDE or history) Every expression of Type
+  Never, a read or an explicit acquisition of a Place of Type Never included, supplies no normal completion (SPEC 14.9.3),
+  and on an assumed path it continues after it is evaluated with its explicit acquisition taking effect (SPEC 14.10.3:
+  `x@move` Moves `x`, so `pass(x@move, x)` with `x: Never` is an error; the new example lines). Binding: StructuralCompletion
+  already reads completion from the node's Type, so the HIR Completion of `x@move` is Diverges; the conversion keeps its
+  operation instead of Abrupt, Transfer for `@move` (`CompleteTransfer`) and Identity for `@copy` (Never is Copy, BU-4;
+  `CompleteIdentity`'s unreachable Never case goes too), so the HIR publishes the inner Place acquired by Move (`@copy`:
+  Copy) and a bare read stays Copy. The old analysis reports `MovedPlace_Kd` at the read where it analyzes the body; MIR's A1 does not
+  track a Never Place until PLAN G139 (R5's F12), recorded as the 14.10.3 example's MIR difference. Why: Never has no
+  values, so no expression of that Type completes at run time; one rule read from the expression's Type replaces a list of
+  forms, and explicit acquisitions stay checked where code cannot run. Principles: one canonical form (one completion rule
+  for every Never expression), local reasoning (completion follows from the expression's own Type), explicit semantics
+  (`@move` keeps its meaning on assumed paths). Rejected: SPEC as written (option 1: a read or explicit acquisition of a
+  Never Place completes structurally, 14.9.3 listing only divergence, Never calls and Abort), which would need a second,
+  form-based completion rule beside the Type's and would leave the read after `x@move` reachable only by that list. A
+  conversion of a Never operand (`@follow`, `x@T` including `x@Never`, an object conversion, `@wrap`, `@bits`) stays Abrupt:
+  it converts nothing, and its operand is acquired by the bare rule (a Never Place: Copy). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
