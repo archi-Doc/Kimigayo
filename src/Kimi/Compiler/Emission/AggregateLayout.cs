@@ -65,6 +65,9 @@ internal sealed class AggregateLayoutPool
     /// <param name="layout">The compilation's <see cref="Layout"/>, which places every record this pool interns.</param>
     internal AggregateLayoutPool(Layout layout) => this.layout = layout;
 
+    /// <summary>Gets the compilation's <see cref="Backend.Layout"/>, which the old callers pass to <see cref="Abi"/>.</summary>
+    internal Layout Layout => this.layout;
+
     /// <summary>Gets or sets the source of the element-specific drop helper that stored collection destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
     internal Func<BoundType, string?>? CollectionDrop { get; set; }

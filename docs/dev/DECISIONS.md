@@ -2217,9 +2217,12 @@ structure is recorded here by the unit that first implements it.
   `StartupResult.Function` stays and goes with its last syntax reader, `LlvmEmitter`, at G7; tests read `Symbol` and `Kind`.
   F2b applies it to library imports: `LibraryImport.Decl` (`Binding/BindingModel.cs`), the imported function's symbol, replaces
   `LibraryImport.Function`, since every reader (the old emitter, `EmissionArtifacts`, tests) derives the Koto as `Decl.Declaration`;
-  its first Backend reader is P8's C-convention `Abi.Of`. F2c applies it to the legacy Dictionary rows' callees (R5-M28).
-  Rejected: a module ordinal column (plan row F2a; always 0); replacing `Function` by `Symbol` now (for the Implicit body a
-  reader would derive the Koto from `Kind`, not from the symbol).
+  P8's C-convention `Abi.Of` takes the import's Types, which the old emitter reads through `Decl.Declaration`, so the column's
+  first Backend reader comes with the MIR generator's import calls and declarations. F2c applies it to the legacy Dictionary
+  rows' callees (R5-M28).
+  Rejected: a module ordinal column (plan row F2a; always 0); replacing `StartupResult.Function` by `StartupResult.Symbol` now
+  (F2a: for the Implicit body a reader would derive the Koto from `Kind`, not from the symbol); `LibraryImport.Decl` beside
+  `LibraryImport.Function` (F2b: every reader derives the Koto as `Decl.Declaration`).
 - **R5-M26 `AdtDef.IsCLayout`** (2026-10-18, planning session; plan F1, package F §4.9 and §9, S2-S4 X18 and X26, under R5-M18)
   Binding's published fact that a struct's C layout validated (SPEC 21.1). Producer: `ValidateLayoutFragments`
   (`Binding/Binding.Attributes.cs`), true exactly for a struct whose selected mode is `#Layout("C")` with valid fragments and that
@@ -2760,3 +2763,23 @@ structure is recorded here by the unit that first implements it.
   the return reads `_0`). Rejected: delivering per transfer after a drop tree of its own (one drop tree per target); a result temp
   for every construct (MIR on every path, not only where a scope is left); the delivery block and temp as new Target
   parameters (the record already has seven; its Destination and Break take them).
+- **R5-M58 `Abi`** (2026-10-19, C lane; plan P8, C design §2.6, package C §3.5, under R5-M18 form 1; promoted under R5-M14) A
+  permanent Backend component that owns the physical signature of a closed function instance for every generator: `Abi.Of(layout,
+  convention, flags, result, parameters)` returns a `FunctionAbi` without a name, which its definition names (`FunctionAbi.Named`:
+  the old pool `__kimi_f<n>`, the old imports their external symbol, ModuleCodegen its items), and `Abi.Matches` whether an existing
+  signature is that one, without allocating. Inputs: the result Type and the parameter Types in slot order, laid out by `Layout.Of`
+  (any outcome but Ok is a broken contract), the convention (`Internal`, IMPL 21.3.1; `C`, SPEC 22.6) and `Abi.Flags`, the facts the
+  Types do not give (an erased or concrete closure environment, a constructor's or destructor's result slot, the caller location);
+  `NoReturn` follows a Never result. The internal rules are `FunctionAbiPool.Build`'s and `Get`'s, moved: the order [environment]
+  [ret] a0..an [context] [location, location_length], a `ref/string` SharedReference, a slot Type OwnedSlot, zero-sized parameters
+  omitted, the result slot and result Type (`Abi.HasResultSlot`, `Abi.ResultType`, which the old pool's statics also answer with).
+  Under C every parameter is a Value of its argument Type and nothing is omitted or a slot; on SPEC 22.6's table this is the old
+  `LlvmEmitter.CreateImportAbi`, so it, `ImportType`, the import `Matches` and the unreachable failure "A foreign import needs an
+  unsupported parameter or result representation." are deleted. `Abi` has no gate: the old callers keep `FunctionAbiPool.Supports`
+  and `GetValue` until R6-gen (every Type they admit is laid out Ok) and pass `AggregateLayoutPool.Layout`. Deleted from the old
+  pool: `Build`, the static `Matches`, `Shape`, `ParameterShape` and `Signature`; `Get` and the new `Import` (C) reuse the previous
+  signature by `Matches`, keeping no Type or syntax. Not ported: `PreparedSlot` (`DefaultGenerationPlan` keeps its own ABI). Staged:
+  C design §2.6's memo keyed by (convention, flags, interned signature Type) comes with ModuleCodegen (C0b1); the old callers reuse
+  by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
+  (ARCH "Capability gates"); a separate C-convention component (the order, records and reuse are one rule with two conventions);
+  keeping the per-ordinal `Signature` record, whose logical shapes also compare zero-sized parameters that have no slot.

@@ -189,15 +189,15 @@ public class FunctionEmissionTest
 
         var c = MinimalEmissionTest.Analyze($"func renamed(x: {type}) -> {type} => x\n()");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
-        var abi = pool.Get(0, function);
+        var abi = pool.Get(0, function, c.Layout);
         Assert.Same(old.Abi, abi);
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         c.Analyze();
-        Assert.Same(abi, pool.Get(0, function));
+        Assert.Same(abi, pool.Get(0, function, c.Layout));
         Assert.Equal("__kimi_f0", abi.Name);
         var changed = MinimalEmissionTest.Analyze("func renamed(x: bool) -> bool => x\n()");
-        Assert.NotSame(abi, pool.Get(0, KotoTree.Walk(changed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed")));
+        Assert.NotSame(abi, pool.Get(0, KotoTree.Walk(changed.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed"), changed.Layout));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -223,6 +223,6 @@ public class FunctionEmissionTest
     {
         var c = MinimalEmissionTest.Analyze($"func temporary(x: {type}) -> {type} => x\n()");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "temporary");
-        return (new(function), pool.Get(0, function));
+        return (new(function), pool.Get(0, function, c.Layout));
     }
 }
