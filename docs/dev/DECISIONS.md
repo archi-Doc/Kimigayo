@@ -1692,6 +1692,23 @@ R5 on the owner's request of 2026-10-18.
     form give `T = i64`: U5's regression rows), since before U5 a Case payload bound whole would make its Never element
     evidence. Departure from the designs' expected record: `g((identity(true), a))` is `NoApplicableOverload_Kd` at `g`, not
     the inner call's error, because `identity(true)` is independently typable (`bool`) and that Type does not fit `i64`.
+  - U4, control-flow arguments (SPEC 10.5.1, 14.9.1-14.9.2; owner decision (1), review R5): an `if`, `match`, `loop` or `do`
+    part is Literal exactly when every result source is a literal, as ControlFlow's one source enumeration finds it
+    (`SurveyResult`, the walk `FindResultEvidence` already makes, now also telling Never sources and fitting each literal
+    source to a Type): it fits a candidate when every source does, takes its first literal source's default after selection
+    and is completed at the decided Type. Literals beside only Never or unknown sources (`if c => 1 else => stop()`, `if c =>
+    identity(1) else => 2`) need an expectation or a default, so the part waits. Any other control flow is bound under the
+    argument probe, which reaches its result sources (`ResultTarget`, the inverse of the survey's sources); a source call
+    that waits there makes the part wait (`if c => identity(1) else => identity(2)`). `KindOf` reads the recorded Literal or
+    Waiting of an unbound part (`WasWaitingPart` replaces `WasWaitingNestedCall`). Arithmetic operands use the same
+    predicate (`ResultSurvey.AllLiteral`), so a Never source no longer makes a right operand Literal: `x + (if c => 1 else
+    => stop())` with `x: i64` is now `TypeMismatch_Kd`, as the left-operand form already was. Limits (open): the survey binds
+    no source, so an unknown typed source beside literals makes the part wait rather than be typed (`keep(if c => foo.bar()
+    else => 2)` leaves `T` unbound, where SPEC 14.9.2 gives `foo.bar()`'s Type), the initializer survey's open issue; and a
+    Literal or waiting control-flow part is bound only once its call selects a candidate, as an anonymous function is, so a
+    problem inside it (`consume(if ready => 1 else => 0)` with `ready` unresolved) is not reported while the call selects
+    none. Binding it before selection was rejected: a node bound in a pass is not bound again, so its literal sources would
+    keep their defaults, and leaving them unbound under the probe broke `exit` operands and `match` arms.
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one

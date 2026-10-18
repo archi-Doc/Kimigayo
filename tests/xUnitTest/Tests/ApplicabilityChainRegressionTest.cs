@@ -14,6 +14,11 @@ namespace XunitTest;
 // PLAN G76: the blocking review cases, with expectations from SPEC 10.4, 10.5, 10.7 and 23.1.2.
 public class ApplicabilityChainRegressionTest
 {
+    private const string ControlFlowDeclarations =
+        "func identity<T>(value: T) -> T => value@move\nfunc keep<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\n" +
+        "func take(value: i64) -> () => ()\nfunc choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\n" +
+        "func h(value: i8) -> () => ()\nfunc h(value: i64) -> () => ()\nfunc g(value: (i64, i64)) -> () => ()\nlet c = true\nlet x: i64 = 2\n";
+
     [Theory]
     [InlineData(false, false, false)]
     [InlineData(false, true, false)]
@@ -119,6 +124,36 @@ public class ApplicabilityChainRegressionTest
             Assert.Equal("Generic parameter 'T' is not bound", error.Label);
             Assert.Contains("No explicit Type argument or evidence binds T", error.Note, StringComparison.Ordinal);
         }
+    }
+
+    // SPEC 10.5.1, 14.9.2 (owner decision (1)): a control-flow argument that is no Literal is bound under the argument probe, which
+    // reaches its result sources: literals beside only Never or waiting sources, or a waiting source call, make it Waiting, checked
+    // against the selected candidate's Type; a typed source makes it independently typable.
+    [Theory]
+    [InlineData("take(if c => 1 else => stop())")]
+    [InlineData("take(if c => identity(1) else => 2)")]
+    [InlineData("take(if c => identity(1) else => identity(2))")]
+    [InlineData("take(if c => 1 else => x)")]
+    [InlineData("let k: i64 = keep(if c => identity(1) else => x)")]
+    public void AControlFlowArgumentIsClassifiedByItsResultSources(string use)
+    {
+        var c = MinimalEmissionTest.Analyze(ControlFlowDeclarations + use);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.5.1, 10.4: a Literal or waiting control-flow argument is no evidence and ranks equally at every candidate it fits; the
+    // Literal fits a candidate only when every source does.
+    [Theory]
+    [InlineData("choose(if c => 1 else => 2)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if c => 1 else => 2)")]
+    [InlineData("h(if c => 200 else => stop())", nameof(DiagnosticCode.AmbiguousBinding_Kd), "h(if c => 200 else => stop())")]
+    [InlineData("g((if c => 1 else => 2.0, x))", nameof(DiagnosticCode.NoApplicableOverload_Kd), "g((if c => 1 else => 2.0, x))")]
+    [InlineData("keep(if c => 1 else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if c => 1 else => stop())")]
+    public void AControlFlowArgumentRanksAsItsKind(string use, string code, string at)
+    {
+        var source = ControlFlowDeclarations + use + "\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
     [Fact]

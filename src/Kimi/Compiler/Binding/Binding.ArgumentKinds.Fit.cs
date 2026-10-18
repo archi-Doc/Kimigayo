@@ -157,7 +157,7 @@ public sealed partial class Binding
         var target = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? type.Components[0] : null;
         if (target is not null &&
             (ScalarTypes.Supports(target) || this.TakesGenericLiterals(target, scope) || this.IsSyntaxPositionType(target)) &&
-            this.FitsInputLiteral(node, target, scope))
+            this.FitsLiteralPart(node, target, scope))
         {
             // SPEC 10.2: a literal owner temporary is fitted to T, materialized once and shared-borrowed.
             var literalBorrow = this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [target], origin: this.PlaceOrigin(node));
@@ -165,14 +165,14 @@ public sealed partial class Binding
             return CandidateApplicability.Applicable;
         }
 
-        if (this.FitsInputLiteral(node, type, scope))
+        if (this.FitsLiteralPart(node, type, scope))
         {
             operation = new(part, null, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal);
             return CandidateApplicability.Applicable;
         }
 
         // The rejected candidate's range shape, which explains a failed selection.
-        operation = this.LiteralDefault(node) is { } literalType && DifferentRangeShapes(literalType, type)
+        operation = this.PartDefault(node, scope) is { } literalType && DifferentRangeShapes(literalType, type)
             ? new(part, literalType, type, ArgumentOperationKind.Value, ArgumentAdaptation.Literal) : default;
         return CandidateApplicability.Inapplicable;
     }

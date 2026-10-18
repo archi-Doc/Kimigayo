@@ -1284,26 +1284,27 @@ public sealed partial class Binding
 
                         // SPEC 10.2.1, 10.5.1: a Literal is no evidence; its default is, once applied to the selected candidate (DefaultArguments),
                         // and before that only checks the slot-free shape of the fit. All established inputs were processed above.
-                        if (this.LiteralDefault(argument) is not { } shape)
+                        if (this.PartDefault(argument, scope) is not { } shape)
                         {
                             if (this.KindOf(argument) != ArgumentKind.Literal &&
                                 MentionsSlots(pattern, CallSlotOwner(function), UnboundTypeSlots(function, arguments, ref unboundSlots)))
                             {
-                                if (WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
-                                {
-                                    // SPEC 10.5.4, 10.8: the waiting parts at this position bind its slots, completed with the selected candidate.
-                                    waitingCallables = true;
-                                    operations[i] = new(
-                                        call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
-                                    continue;
-                                }
-
                                 // SPEC 10.8: an argument that supplies no evidence, such as an omitted header at `(T) -> i32` or `.None` at
                                 // Option<T>, at a parameter Type that holds a slot no evidence binds: the position stays open and the
-                                // candidate stays applicable on its other checks; it is completed only if the candidate is selected.
-                                open.Add(i);
-                                var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument) ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
+                                // candidate stays applicable on its other checks; it is completed only if the candidate is selected. Waiting
+                                // parts that bind the position's slots are completed with the selected candidate instead (SPEC 10.5.4).
+                                var adaptation = pattern.Kind == BoundTypeKind.Function && IsWaitingCallable(argument)
+                                    ? ArgumentAdaptation.Erasure : ArgumentAdaptation.Exact;
                                 operations[i] = new(call.ArgumentNodes[i], null, null, ArgumentOperationKind.Value, adaptation, ParameterIndex: mapping[i]);
+                                if (WaitingPartsBind(argument, pattern, function, unboundSlots, ref unsolvedSlots))
+                                {
+                                    waitingCallables = true;
+                                }
+                                else
+                                {
+                                    open.Add(i);
+                                }
+
                                 continue;
                             }
 

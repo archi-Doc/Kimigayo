@@ -91,7 +91,7 @@ public sealed partial class Binding
             {
                 var source = arguments[i];
                 if (this.CallableSlot(mapping[i]) is not { } callableSlot ||
-                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasWaitingNestedCall(source) ||
+                    KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasWaitingPart(source) ||
                     source.BoundType is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
                     !binding.TryCallable(actual, this.Scope, out var actualSignature, out _))
@@ -211,7 +211,7 @@ public sealed partial class Binding
 
             pattern = binding.SubstituteStoredOrigins(pattern, function, this.Origins.AsSpan(0, function.Origins.Count), this.InputSpan());
             // SPEC 10.5: a nested call checked against this candidate supplies relations for checking, never outer slot evidence.
-            if (binding.WasWaitingNestedCall(source))
+            if (binding.WasWaitingPart(source))
             {
                 return true;
             }
@@ -383,7 +383,7 @@ public sealed partial class Binding
             var source = KotoHelper.UnwrapParentheses(part);
             if (binding.KindOf(source) == ArgumentKind.Literal)
             {
-                return this.Default(source, binding.LiteralDefault(source), ref applied);
+                return this.Default(source, binding.PartDefault(source, this.Scope), ref applied);
             }
 
             Koto? misfit = null;
@@ -435,7 +435,7 @@ public sealed partial class Binding
 
             binding.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(literal))] = new(ArgumentKind.Literal, type);
             applied = true;
-            if (binding.FitsInputLiteral(literal, type, this.Scope))
+            if (binding.FitsLiteralPart(literal, type, this.Scope))
             {
                 return null;
             }

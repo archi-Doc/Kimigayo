@@ -7,12 +7,15 @@ namespace Kimi.Compiler;
 // Argument kinds (SPEC 10.5.1; DECISIONS BU-2): what each argument part is to the candidates of a call.
 // - Responsibility: the kind of every argument part: a call argument and, recursively, an element of a Tuple or array literal
 //   argument, a written boundary of a mixed range and a payload of a contextual `.Case(...)`. Literal: an unfitted literal (SPEC
-//   12.3). Composite: a Tuple or array literal, a mixed range or a contextual Case, whose parts are classified instead. Waiting: an
-//   anonymous function, a function reference that needs S, or a nested call the argument probe deferred, until the selected
-//   candidate completes it. Typed: every other part.
-// - Inputs: the part's syntax and binding state; the argument probe (BindIndependentArgument), under which each part that is not a
-//   Composite is bound: a nested call that only an outer expectation could type defers (DeferNestedCall) and its kind is recorded,
-//   and a function name stays unbound (AtArgumentPosition); arithmetic operands have their own probe (SPEC 13.3.4).
+//   12.3), or control flow whose result sources are all such (SPEC 14.9.1). Composite: a Tuple or array literal, a mixed range or a
+//   contextual Case, whose parts are classified instead. Waiting: an anonymous function, a function reference that needs S, a nested
+//   call the argument probe deferred, or control flow whose literals have only Never or unknown sources beside them or whose
+//   source call the probe deferred, until the selected candidate completes it. Typed: every other part.
+// - Inputs: the part's syntax and binding state; ControlFlow's survey of a control-flow part's result sources (SurveyResult); the
+//   argument probe (BindIndependentArgument), which reaches the result sources of a control-flow part (UnderArgumentProbe) and under
+//   which each part that is not a Composite is bound: a nested call that only an outer expectation could type defers (DeferNestedCall)
+//   and its kind is recorded, and a function name stays unbound (AtArgumentPosition); arithmetic operands have their own probe (SPEC
+//   13.3.4) and share the Literal control-flow predicate (ResultSurvey.AllLiteral).
 // - Outputs: KindOf; the preparation of a call's arguments and of each part (PrepareArgument, PrepareComposite); the fit walk, a
 //   part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments, elements,
 //   contextual Case payloads and value calls; SolveSelected, the selected candidate of a call whose slot no evidence binds: a nested
@@ -22,7 +25,7 @@ namespace Kimi.Compiler;
 //   Binding.ArgumentKinds.Evidence.cs), applies the defaults (DefaultArguments), substitutes the solution (Type) and judges the
 //   Constraints over it (Prove).
 // - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
-//   nested call stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingNestedCall); a Literal
+//   part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal
 //   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
 // - Prohibitions: a consumer reads a part's kind from KindOf and tells only the forms of one kind apart (an anonymous function from a
 //   reference) to fit them; the call, element, contextual payload and value-call paths keep no evidence or fit dispatch of their own;
@@ -50,7 +53,8 @@ public sealed partial class Binding
         => KotoHelper.UnwrapParentheses(source) is RangeKoto range && !IsLiteralOnlyRange(range) &&
             ((range.Start is { } start && IsLiteralOnlyPosition(start)) || (range.End is { } end && IsLiteralOnlyPosition(end)));
 
-    // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far.
+    // SPEC 10.5.1: the kind of an argument part as this pass has decided it so far; an unbound part that PrepareArgument or the argument
+    // probe classified (a control-flow part, a deferred nested call) by its recorded fact.
     private ArgumentKind KindOf(Koto part)
     {
         if (IsUnfittedLiteral(part))
@@ -63,11 +67,18 @@ public sealed partial class Binding
             return ArgumentKind.Composite;
         }
 
-        return IsWaitingCallable(part) || this.IsWaitingNestedCall(part) ? ArgumentKind.Waiting : ArgumentKind.Typed;
+        if (IsWaitingCallable(part) || this.IsWaitingPart(part))
+        {
+            return ArgumentKind.Waiting;
+        }
+
+        var literal = part.BoundType is null && this.RecordedFact(KotoHelper.UnwrapParentheses(part)).Kind == ArgumentKind.Literal;
+        return literal ? ArgumentKind.Literal : ArgumentKind.Typed;
     }
 
-    private bool WasWaitingNestedCall(Koto node)
-        => KotoHelper.UnwrapParentheses(node) is InvocationKoto call && this.RecordedFact(call).Kind == ArgumentKind.Waiting;
+    // Whether the part waited for its call's selected candidate: a deferred part stays waiting after its completion, so its Type is
+    // never evidence for an outer slot.
+    private bool WasWaitingPart(Koto node) => this.RecordedFact(KotoHelper.UnwrapParentheses(node)).Kind == ArgumentKind.Waiting;
 
     // SPEC 10.2.1: the default a Literal part takes for the selected candidate of its call, once DefaultArguments applied it.
     private BoundType? DefaultOf(Koto part)
@@ -76,7 +87,38 @@ public sealed partial class Binding
     private ArgumentFact RecordedFact(Koto node)
         => node.SyntaxOwner is { } owner && this.argumentKinds.TryGetValue(new(owner.Module, node.SyntaxId), out var fact) ? fact : default;
 
-    private bool IsWaitingNestedCall(Koto node) => node.BoundType is null && this.WasWaitingNestedCall(node);
+    private bool IsWaitingPart(Koto node) => node.BoundType is null && this.WasWaitingPart(node);
+
+    // SPEC 10.5.1, 14.9.2: whether the part is the argument probe's, or a result source of a control-flow expression that is: nested
+    // results propagate the same way.
+    private bool UnderArgumentProbe(Koto part)
+    {
+        for (Koto? node = part; this.argumentProbe is not null && node is not null and not FunctionKoto; node = ResultTarget(node))
+        {
+            if (ReferenceEquals(this.argumentProbe, node))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other
+    // source must fit once it applies.
+    private BoundType? PartDefault(Koto part, BindingScope scope)
+    {
+        if (ControlFlowExpression(part) is not { } flow)
+        {
+            return this.LiteralDefault(part);
+        }
+
+        return this.KindOf(part) == ArgumentKind.Literal ? this.SurveyResult(flow, scope).Default : null;
+    }
+
+    // SPEC 10.5.1, 12.3, 14.9.2: whether a Literal part fits the Type; a control-flow one when every literal source does.
+    private bool FitsLiteralPart(Koto part, BoundType type, BindingScope scope)
+        => ControlFlowExpression(part) is { } flow ? this.SurveyResult(flow, scope, type).Fits : this.FitsInputLiteral(part, type, scope);
 
     // SPEC 10.5: a function name that is a call argument or the part under the argument probe is not bound as its Item without an
     // expectation; PrepareArgument decides whether it is evidence or waits for S.
@@ -96,9 +138,10 @@ public sealed partial class Binding
     }
 
     // SPEC 10.5.1: prepares an argument part once per pass, by its kind. An anonymous function waits for a candidate's signature; a
-    // Composite prepares its parts; a Literal is fitted after selection, unless the parser kept it as a recovery, which fails here
-    // so that the call rests on its Error; every other part is bound under the argument probe, where a nested call that only an
-    // expectation could type waits, and a function reference that needs S waits for the selected candidate's (SPEC 10.5.3).
+    // Composite prepares its parts; control flow is classified by the survey of its result sources (SPEC 14.9.1); a Literal is fitted
+    // after selection, unless the parser kept it as a recovery, which fails here so that the call rests on its Error; every other part
+    // is bound under the argument probe, where a nested call that only an expectation could type waits, also as a result source of
+    // a control-flow part, which then waits with it, and a function reference that needs S waits for the selected candidate's (10.5.3).
     private bool PrepareArgument(Koto part, BindingScope scope, BindingSymbol? group, bool callableContext)
     {
         if (KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true })
@@ -111,8 +154,18 @@ public sealed partial class Binding
             return this.PrepareComposite(part, scope);
         }
 
+        if (part.CodeContext.RecoveryCause(part) is null && ControlFlowExpression(part) is { } flow &&
+            this.SurveyResult(flow, scope) is { Literal: true, Typed: false } survey)
+        {
+            // SPEC 10.5.1 (owner decision (1), DECISIONS BU-2): control flow is Literal when every result source is a literal; with only
+            // Never or unknown sources beside its literals it needs an expectation or a default, so it waits. It is bound once its call
+            // selects a candidate, as an anonymous function is. A recovered part is bound as any other.
+            this.argumentKinds[SourceRef.Of(KotoHelper.UnwrapParentheses(part))] = new(survey.Other ? ArgumentKind.Waiting : ArgumentKind.Literal, null);
+            return true;
+        }
+
         if ((this.KindOf(part) == ArgumentKind.Literal && part.CodeContext.RecoveryCause(part) is null) ||
-            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingNestedCall(part))
+            this.BindIndependentArgument(part, scope) is not null || this.IsWaitingPart(part))
         {
             return true;
         }
@@ -163,12 +216,17 @@ public sealed partial class Binding
 
     private bool DeferNestedCall(InvocationKoto call, BoundType? expected)
     {
-        if (expected is not null || !(ReferenceEquals(this.argumentProbe, call) || ReferenceEquals(this.nestedOperandProbe, call)))
+        if (expected is not null || !(this.UnderArgumentProbe(call) || ReferenceEquals(this.nestedOperandProbe, call)))
         {
             return false;
         }
 
         this.argumentKinds[SourceRef.Of(call)] = new(ArgumentKind.Waiting, null);
+        if (this.argumentProbe is { } probe && this.UnderArgumentProbe(call))
+        {
+            this.argumentKinds[SourceRef.Of(probe)] = new(ArgumentKind.Waiting, null); // SPEC 14.9.2: so does its control-flow argument.
+        }
+
         return true;
     }
 
@@ -181,7 +239,7 @@ public sealed partial class Binding
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, selected, declaringType);
-        var argument = evaluation.Expected is null && ReferenceEquals(this.argumentProbe, call);
+        var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
         if (argument && (evaluation.Applicable > 1 || (evaluation.Evaluated[winner].Unsolved && solution.ResultHoldsUnsolved(evaluation.Mapping))))
         {
             this.DeferNestedCall(call, evaluation.Expected);
