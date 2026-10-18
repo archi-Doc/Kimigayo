@@ -1638,7 +1638,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     under OQ11 (a)), takes SPEC's letter with a re-spelling of the program (R4-M64's pattern).
   - OQ8 (a): a new loss from a prototype round, or a reading that needs a SPEC revision, is approved as a SPEC clause,
     integrated in one SPEC session per family before the unit that reports its Language code; until then PD30 applies. The
-    owner's G148 answer (PLAN G148) applies it to losses with no library or milestone use; any other is O3.
+    owner's G148 answer (PLAN G148) applies it to losses with no library or milestone use; any other is O3 (P13: R4-M76).
   - OQ9 (a): at X-2 the SPEC rules left as a located `Unsupported_Kd` at R4's exit and the removal stage of each remaining MIR
     `Unsupported_Kd` producer go to the owner as one list (O4).
   - OQ10 (b) preferred: a G106 signature still mixed after X-1's re-triage is classified whole with per-row notes; the D5 exception
@@ -1648,20 +1648,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     compares each record with A5's problem.
   - OQ12 (a): S3's clarification of SPEC 15.3.6 ("A variable's bounds are followed through other variables to fixed or finite
     Origins and `static`. If none is reached, the variable has no candidate") is made as a SPEC revision before 2a0-3b.
-  - OQ13 (a): S5 is adopted: an effect atom on an associated projection that grows under polymorphic recursion widens to an
-    unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding that changes the rule returns to the
-    owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for S2 (planning session).
-- **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4 planning session on
-  2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one owner-approved design and
-  share one final review before the group merges into dev; each unit is still verified and pushed, and a unit that departs
-  from the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts only with Loans whose
-  mode is shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot or its owned contents
-  `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries `MirFactKind.Inlined` and is dropped
-  while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's evaluation places into its pending slot
-  carries that slot's default taint, a Loan problem found only through tainted sets is a located `Unsupported_Kd` at the
-  omitting call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with the key (code, subject, body) and
-  R4-M11's cross-body merge at publication (R4-M71). Each unit's entry records its decision as implemented; 1c-9 (records)
-  keeps its own review.
+  - OQ13 (a) (superseded in part by R4-M76): S5 is adopted: an effect atom on an associated projection that grows under
+    polymorphic recursion widens to an unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding
+    that changes the rule returns to the owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for
+    S2 (planning session). - **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4
+    planning session on 2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one
+    owner-approved design and share one final review before the group merges into dev; each unit is still verified and pushed, and
+    a unit that departs from the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts
+    only with Loans whose mode is shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot
+    or its owned contents `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries
+    `MirFactKind.Inlined` and is dropped while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's
+    evaluation places into its pending slot carries that slot's default taint, a Loan problem found only through tainted sets is a
+    located `Unsupported_Kd` at the omitting call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with
+    the key (code, subject, body) and R4-M11's cross-body merge at publication (R4-M71). Each unit's entry records its decision as
+    implemented; 1c-9 (records) keeps its own review. - **R4-M76 Owner answers on G148 and the step-2 drafts** (owner, 2026-10-19,
+    relayed by the R4 planning session; on G148's completed design review and the reviewed drafts 2x-S1, 2f-S1 and 2x-S5 in
+    `draft/Sketches/A5 Step 2/` and the S5 proposal `draft/Proposals/2026-10-19 Effect Atoms Widen.md` on branch
+    `claude/a5-2x-s5`) Library and milestones count 0 under each answer.
+  - G148: rule G, no SPEC change (R4-M73 records it with G148's unit). Its loss P13 (the Type guard is per holder, so a store
+    follows a shared Loan past a holder whose Type passes the guard only through a Type argument, a pair layer or an abstract
+    part) is recovered by a representation, not a SPEC clause (OQ8 (b), for P13 in place of the earlier G148 answer's OQ8 (a)):
+    until a step-2 unit makes the guard per part (it reads a generic Type's Fields and takes no Type argument as an exclusive
+    reference), before R4's exit (else OQ9's list), a conflict that depends on such a store is a located `Unsupported_Kd` (PD30).
+    A precision refinement such as GXS stays an unscheduled candidate, as G127.
+  - S5 (OQ13 made precise, superseding its "grows"; 2x-S5's question Q1): form (c). A parameter-dependent effect on a projection
+    one of whose bases the premises of the summary's declaration prove to conform to a recursive Contract widens to unknown
+    environment effects (a destruction counts only when its Type is not proven Copy). A Contract `C` is recursive when `T is C`
+    supplies (SPEC 8.3.2), directly or through the Constraints of the Contracts so supplied, a conformance of a projection of `T`
+    to `C`'s declaration, with any Type arguments, or to a Contract that refines it. This departs from OQ13's "grows": it also
+    widens effects that do not grow, only in code no concrete Type can instantiate. Rejected: form (a) (it needs a SPEC definition
+    of summary dependencies, their cycles and a self-map rule); a list of Constraint forms (two blocking rounds on that
+    definition, the review's B2 and B5); a hold. Its SPEC session follows the proposal's review.
+  - S1-a (2x-S1, the `g5` form): (a). A3's approved P1 is completed in SPEC: storage the body does not own that a part carries
+    follows its holder, as Loans do. A5 is unchanged. Until the sentence is integrated in OQ12's SPEC session, A5's Language code
+    for the form stands, an exception to PD30 and to R4-M35's interim (a violation of an approved loss is a located
+    `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c).
+  - G1 (2f-S1): (ii′). A conformance's earlier result is taken from its body (SPEC 8.11.3's "its results"), and an unclassifiable
+    destruction, one in a concrete callee's summary included, conflicts with every Loan the earlier result keeps. Eight test rows
+    rejected today become valid; every other rejection stays.
+  - G2 (2f-S1): (a). Values of one abstract Type share its Origin atoms for rule 1 (SPEC 8.11.4, 8.11.5's `Merge`), and c24's
+    answer also sets the conformance carrier granularity, one rule for callers and conformances. `EffectBoundCallerTest`'s rows
+    `zip` and `both`, valid today, become errors; their unit cites this answer. c24's own verdict stays open (the sketch's §9).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
