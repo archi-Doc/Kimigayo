@@ -2,8 +2,9 @@
 
 using System.Collections.Concurrent;
 using System.Diagnostics.Tracing;
+using System.Globalization;
+using System.Reflection.Emit;
 using System.Runtime;
-using System.Runtime.InteropServices;
 
 namespace XunitTest;
 
@@ -25,16 +26,15 @@ internal static class AllocationMeasurement
     // once per process, charged to the running thread; optimized code needs none. A comparison that OSR or inlined code ran
     // first therefore creates it whenever tiering first runs it at tier 0, such as in a callee first called on its own once its
     // caller's tier-1 code stops inlining it. A window that allocated while the measuring thread compiled such a comparer's
-    // class constructor, as the runtime's JIT events report, is invalid in the same way; any other compilation excuses
-    // nothing. Not covered: a comparer whose class constructor is precompiled (ReadyToRun) or shared (a reference type T) or
-    // was compiled by another thread before this one ran it, and any comparer off Windows. Cost: every compilation in the
-    // process sends the listener an event, each window starts after a spin of twice the margin, and a window that allocated
-    // while compiling waits for the thread's events (up to 10 s, then nothing is excused).
+    // class constructor, as the runtime's JIT events report in the thread's order between the window's two markers, is invalid
+    // in the same way; any other compilation excuses nothing. The whole window is invalid, so the operation's own one-time
+    // allocation in it is not measured either, as with a trim. Not covered: a comparer whose class constructor is precompiled
+    // (ReadyToRun) or shared (a reference type T) or was compiled by another thread before this one ran it. Cost: every
+    // compilation in the process sends the listener an event, each window compiles a start marker, and a window that allocated
+    // while compiling compiles an end marker and waits for it (at most MarkerWait; nothing is excused without it).
     private const int MaximumWindows = 3;
 
-    // Runtime events reach the listener asynchronously but in order. Their clock and the window's differ by far less than this
-    // margin, and a window starts twice the margin after the warm-up's last compilation, so the margin keeps them apart.
-    private static readonly TimeSpan Margin = TimeSpan.FromMilliseconds(1);
+    private static readonly TimeSpan MarkerWait = TimeSpan.FromSeconds(10);
 
     private static readonly PoolEvents Pool = new();
 
@@ -50,11 +50,9 @@ internal static class AllocationMeasurement
         Exception? failure = null;
         var thread = new Thread(() =>
         {
-            var self = CompileEvents.CurrentThread();
             try
             {
                 Pool.RecordCurrentThread();
-                Compiles.Record(self);
                 List<string>? causes = null;
                 var run = 0;
                 for (var window = 1; window <= MaximumWindows; window++)
@@ -69,7 +67,14 @@ internal static class AllocationMeasurement
                     run += WarmupOperations;
                     var readings = new long[run + 8 + 1];
                     var events = Pool.OnCurrentThread;
-                    var (start, compiled) = BeginWindow();
+                    var marker = CompileEvents.Start();
+
+                    // A runtime pause that is not a collection can charge the unused tail of a partially used
+                    // allocation context (up to ~8 KB) to this thread. Retire it so zero-allocation work holds none.
+                    // A gen0 collection retires it; a full one would also trim shared pools (gen2 callbacks) under
+                    // the measurements running on other threads.
+                    GC.Collect(0, GCCollectionMode.Forced, blocking: true);
+                    var compiled = JitInfo.GetCompiledMethodCount(currentThread: true);
                     readings[0] = GC.GetAllocatedBytesForCurrentThread();
                     for (var i = 1; i < readings.Length; i++)
                     {
@@ -77,11 +82,12 @@ internal static class AllocationMeasurement
                         readings[i] = GC.GetAllocatedBytesForCurrentThread();
                     }
 
-                    var end = DateTime.UtcNow;
                     compiled = JitInfo.GetCompiledMethodCount(currentThread: true) - compiled;
                     run += readings.Length - 1;
                     var largest = Largest(readings);
-                    var cause = Disturbance(self, largest, Pool.FollowTrims(events, trims), (start, end), compiled);
+                    var cause = Pool.FollowTrims(events, trims) ? "High-pressure ArrayPool trims or full pools"
+                        : largest > 0 && compiled > 0 && Compiles.CreatedComparer(marker, MarkerWait) ? $"a default comparer created on the measuring thread, {largest} bytes"
+                        : null;
                     if (cause is null)
                     {
                         allocated = largest;
@@ -96,10 +102,6 @@ internal static class AllocationMeasurement
             catch (Exception exception)
             {
                 failure = exception;
-            }
-            finally
-            {
-                Compiles.Forget(self);
             }
         }) { IsBackground = true };
         using (ExecutionContext.SuppressFlow())
@@ -120,37 +122,6 @@ internal static class AllocationMeasurement
         }
 
         return allocated;
-    }
-
-    // Starts a window on the measuring thread: its start time and the thread's compilation count, twice the margin after the
-    // warm-up.
-    private static (DateTime Start, long Compiled) BeginWindow()
-    {
-        // A runtime pause that is not a collection can charge the unused tail of a partially used allocation context (up to
-        // ~8 KB) to this thread. Retire it so zero-allocation work holds none. A gen0 collection retires it; a full one would
-        // also trim shared pools (gen2 callbacks) under the measurements running on other threads.
-        GC.Collect(0, GCCollectionMode.Forced, blocking: true);
-        var until = DateTime.UtcNow + Margin + Margin;
-        while (DateTime.UtcNow < until)
-        {
-            Thread.SpinWait(64);
-        }
-
-        return (DateTime.UtcNow, JitInfo.GetCompiledMethodCount(currentThread: true));
-    }
-
-    // Why a window is invalid, or null when it is valid: pooled allocations that trims explain, or an allocation in a window
-    // in which the measuring thread created a default comparer.
-    private static string? Disturbance(long self, long largest, bool trimmed, (DateTime Start, DateTime End) window, long compiled)
-    {
-        if (trimmed)
-        {
-            return "High-pressure ArrayPool trims or full pools";
-        }
-
-        return largest > 0 && compiled > 0 && Compiles.CreatedComparer(self, window.Start - Margin, window.End + Margin, compiled)
-            ? $"a default comparer created on the measuring thread, {largest} bytes"
-            : null;
     }
 
     // The largest allocation of MeasuredOperations consecutive operations of a window's readings.
@@ -251,49 +222,47 @@ internal static class AllocationMeasurement
     }
 
     // The runtime reports each method it compiles, with the compiling thread, on its JIT keyword (0x10); the events reach the
-    // listener on another thread, in order. For each measuring thread it keeps when the thread compiled a method and whether
-    // that was the class constructor of EqualityComparer<T> or Comparer<T>, which creates the Type's default comparer.
+    // listener on one thread, in each compiling thread's order. A window is bounded by two marker methods that the measuring
+    // thread compiles, named after the window; a class constructor of EqualityComparer<T> or Comparer<T>, which creates the
+    // Type's default comparer, that the same thread compiled between them is in the window.
     private sealed class CompileEvents : EventListener
     {
         private const EventKeywords Jit = (EventKeywords)0x10;
+        private const string StartName = "AllocationWindowStart:";
+        private const string EndName = "AllocationWindowEnd:";
 
-        private static readonly ConcurrentDictionary<long, List<(DateTime Time, bool Comparer)>> Threads = new();
+        // The window each thread has open, by marker, and whether the thread created a default comparer in it; then the
+        // closed windows' results until the measuring thread reads them. Only the listener's thread writes Open.
+        private static readonly ConcurrentDictionary<long, (long Marker, bool Comparer)> Open = new();
+        private static readonly ConcurrentDictionary<long, bool> Closed = new();
+        private static long markers;
 
-        // The OS identity of the current thread, which runtime events carry; 0 off Windows, where nothing is excused.
-        internal static long CurrentThread() => OperatingSystem.IsWindows() ? GetCurrentThreadId() : 0;
-
-        internal void Record(long thread)
+        // Opens a window on the current thread: compiles its start marker and returns the marker.
+        internal static long Start()
         {
-            if (thread != 0)
-            {
-                Threads[thread] = [];
-            }
+            var marker = Interlocked.Increment(ref markers);
+            Compile(StartName + marker);
+            return marker;
         }
 
-        internal void Forget(long thread) => Threads.TryRemove(thread, out _);
-
-        // Whether the thread compiled a default comparer's class constructor between the times. It first waits until the
-        // listener holds as many of the thread's compilations since the start, which include the interval's in order.
-        internal bool CreatedComparer(long thread, DateTime from, DateTime to, long compiled)
+        // Whether the current thread created a default comparer in the window: compiles its end marker and waits at most the
+        // bound for the listener to close the window; without that, nothing is excused.
+        internal bool CreatedComparer(long marker, TimeSpan wait)
         {
-            if (!Threads.TryGetValue(thread, out var methods))
+            Compile(EndName + marker);
+            var deadline = DateTime.UtcNow + wait;
+            bool created;
+            while (!Closed.TryRemove(marker, out created))
             {
-                return false;
-            }
-
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-            while (true)
-            {
-                lock (methods)
+                if (DateTime.UtcNow > deadline)
                 {
-                    if (methods.Count(x => x.Time >= from) >= compiled || DateTime.UtcNow > deadline)
-                    {
-                        return methods.Any(x => x.Comparer && x.Time >= from && x.Time <= to);
-                    }
+                    return false;
                 }
 
                 Thread.Sleep(10);
             }
+
+            return created;
         }
 
         protected override void OnEventSourceCreated(EventSource eventSource)
@@ -306,24 +275,43 @@ internal static class AllocationMeasurement
 
         protected override void OnEventWritten(EventWrittenEventArgs eventData)
         {
-            if (eventData.EventName?.StartsWith("MethodLoadVerbose", StringComparison.Ordinal) != true ||
-                !Threads.TryGetValue(eventData.OSThreadId, out var methods))
+            if (eventData.EventName?.StartsWith("MethodLoadVerbose", StringComparison.Ordinal) != true)
             {
                 return;
             }
 
             var names = eventData.PayloadNames!;
-            var type = eventData.Payload![names.IndexOf("MethodNamespace")] as string;
-            var comparer = eventData.Payload[names.IndexOf("MethodName")] as string == ".cctor" &&
-                (type?.StartsWith("System.Collections.Generic.EqualityComparer`1[", StringComparison.Ordinal) == true ||
-                type?.StartsWith("System.Collections.Generic.Comparer`1[", StringComparison.Ordinal) == true);
-            lock (methods)
+            var name = eventData.Payload![names.IndexOf("MethodName")] as string ?? string.Empty;
+            var thread = eventData.OSThreadId;
+            if (name.StartsWith(StartName, StringComparison.Ordinal))
             {
-                methods.Add((eventData.TimeStamp.ToUniversalTime(), comparer));
+                Open[thread] = (long.Parse(name.AsSpan(StartName.Length), CultureInfo.InvariantCulture), false);
+            }
+            else if (Open.TryGetValue(thread, out var open))
+            {
+                if (name.StartsWith(EndName, StringComparison.Ordinal))
+                {
+                    Open.TryRemove(thread, out _);
+                    if (long.Parse(name.AsSpan(EndName.Length), CultureInfo.InvariantCulture) == open.Marker)
+                    {
+                        Closed[open.Marker] = open.Comparer;
+                    }
+                }
+                else if (name == ".cctor" && eventData.Payload[names.IndexOf("MethodNamespace")] is string type &&
+                    (type.StartsWith("System.Collections.Generic.EqualityComparer`1[", StringComparison.Ordinal) ||
+                    type.StartsWith("System.Collections.Generic.Comparer`1[", StringComparison.Ordinal)))
+                {
+                    Open[thread] = (open.Marker, true);
+                }
             }
         }
 
-        [DllImport("kernel32.dll")]
-        private static extern uint GetCurrentThreadId();
+        // Compiles and runs a fresh empty method with the name on the current thread.
+        private static void Compile(string name)
+        {
+            var method = new DynamicMethod(name, null, null, typeof(CompileEvents).Module, skipVisibility: true);
+            method.GetILGenerator().Emit(OpCodes.Ret);
+            method.CreateDelegate<Action>()();
+        }
     }
 }
