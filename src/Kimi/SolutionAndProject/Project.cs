@@ -523,15 +523,23 @@ public partial class Project
             context.Compilation = compilation; // SPEC 23.2.2, step 3: every input is established; the front end runs from here on.
         }
 
-        var binding = compilation.Bind();
+        compilation.Bind();
         compilation.Binding.ReportDiagnostics();
-        var startup = compilation.IsTestBuild ? compilation.Binding.CheckTestStartup() : compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
+        if (compilation.IsTestBuild)
+        {
+            compilation.Binding.CheckTestStartup();
+        }
+        else
+        {
+            compilation.Binding.CheckStartup(this.ProjectFile.OutputKind);
+        }
+
         compilation.Binding.ReportStartupDiagnostics();
-        var analysis = compilation.Analyze();
+        compilation.Analyze();
         compilation.ReportAnalysis();
 
         // SPEC 23.2.2: acceptance reads the error state of every front-end partition, never the displayed list.
-        var accepted = binding.IsComplete && startup.IsComplete && analysis.IsVerified && !compilation.Diagnostics.HasErrorsThrough(DiagnosticPartition.Ownership);
+        var accepted = compilation.Accepts;
         if (accepted && prepared is not null)
         {
             compilation.Tests.Discover(compilation);

@@ -2961,8 +2961,8 @@ structure is recorded here by the unit that first implements it.
   and `GetValue` until R6-gen (every Type they admit is laid out Ok) and pass `AggregateLayoutPool.Layout`. Deleted from the old
   pool: `Build`, the static `Matches`, `Shape`, `ParameterShape` and `Signature`; `Get` and the new `Import` (C) reuse the previous
   signature by `Matches`, keeping no Type or syntax. Not ported: `PreparedSlot` (`DefaultGenerationPlan` keeps its own ABI). Staged:
-  C design §2.6's memo keyed by (convention, flags, interned signature Type) comes with ModuleCodegen (C0b1); the old callers reuse
-  by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
+  C design §2.6's memo keyed by (convention, flags, interned signature Type) comes with ModuleCodegen (C0b1; R5-M65 replaces it with
+  ModuleCodegen's per-item reuse by `Abi.Matches`); the old callers reuse by physical shape across compilations. Rejected: a name or ordinal input to `Of` (naming is the definition's); a gate in `Abi`
   (ARCH "Capability gates"); a separate C-convention component (the order, records and reuse are one rule with two conventions);
   keeping the per-ordinal `Signature` record, whose logical shapes also compare zero-sized parameters that have no slot.
 - **R5-M61 `TyCtxt.Witness`, a requirement call's target under a closed substitution** (2026-10-19, planning session; plan F5b,
@@ -3044,3 +3044,34 @@ structure is recorded here by the unit that first implements it.
   - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
     `MayNeedDrop` says; Parts derived from `MirTypes.Destruction` (a deep forward walk, and Mir does not read the Backend); a
     collector-side element table (X4).
+- **R5-M65 The frame of MIR code generation: `ModuleCodegen` and `FunctionCodegen`** (2026-10-19, C lane; plan C0b1, package C §3.2,
+  §3.3 and §3.9, D2 §2.2, §2.3 and §2.12, PD11; under R5-M18 form 1 and R5-M64) Two permanent Backend components (`Backend/Codegen/`,
+  contract entries), one `ModuleCodegen` per `Compilation`. Under MIR code generation `Compilation.Generate` passes gate step 1, then
+  needs the check's acceptance `Compilation.Accepts` (SPEC 23.2.2; `Project` reads it instead of its own copy; the old generator keeps
+  its `CheckInputs`), and runs `ModuleCodegen.Write`: every item of the checked set in admission order (K11's Generated mark narrows
+  them), a body item `__kimi_f<item>` under `Abi.Of`'s internal signature from local 0 and the argument locals in slot order
+  (`CallerLocation` from `KimiLibraryCatalog.RequiresCallerLocation`; the old constructor and destructor result-slot flag is the old
+  generator's ABI choice, which local 0's Type replaces), reused per item while `Abi.Matches` holds; an Application's `__kimi_start`
+  (the startup item, then `__kimi_exit(0)`), a Library without an entry; the frame through `LlvmModuleText` in the old order; the module
+  all or nothing. `FunctionCodegen` writes a body item: one aligned alloca per local of nonzero size (bool `i8`), Value arguments stored,
+  pointer-passed arguments and the result slot in place; exactly the blocks `MirReach.Walk(body, 0, checks: false)` reaches; the
+  no-op statements, a `Use` into an unprojected local from an unprojected Copy or Move or a Bool, Integer or Unit constant (zero-sized
+  writes nothing, a slot Type's copy is C2b's), Goto, SwitchInt, Return and Unreachable. PD11's coverage rows are the two components'
+  dispatch arms (MIR vocabularies; body kinds Closure (C5a) and DefaultTemplate (C3a); `MonoKind`s DropGlue (C4a), ClosureErasure and
+  ItemAdapter (C5b); a test build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the
+  collector's one rule (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation
+  runs over every item and then discards the text; `Generate` publishes the records in the Emission partition once per document span,
+  since the nodes an expansion synthesizes share its span and the diagnostics cannot order two records there. Types come from
+  `InstanceCollector.TypeOf`, the collector's own instance rule (`Apply` under the representative), which its edges now read too.
+  R5-M35's and R5-M64's sel refusal is deleted.
+  - Moved here from C0b2: module assembly, the Application entry and the Library form (a frame fixture needs a linkable module).
+    Staged to their first readers: the intrinsic rows' writer column (C3a or C8a, PLAN G151), the zero-sized address symbol (C2b),
+    view selection (C2a), Float constants (C1b, which promotes the old writer's hex spelling). R5-M58's staged nameless memo is replaced
+    by the per-item reuse (a nameless memo would still allocate each name).
+  - P8's review: ARCH's Backend row lists the root Type predicates `SlotTypes` and `ReferenceTypes`; `Abi` throws for flags or a
+    parameter without an argument value under C; `VirtualGenerationPlan` names its entry with `FunctionAbi.Named`.
+  - Rejected: a coverage table or predicate beside the dispatch (a second copy); streaming functions to the caller (a partial module on
+    a gap); a destructor fact in Binding for the old result-slot flag (the MIR signature needs none); records at library sites (the
+    collector's rule is the one location rule); a Diagnostics tie-break or a per-record condition for synthesized siblings (it would
+    show identical records, and the order fault guards every reporter); moving synthesized sites in the location rule (no published fact
+    names an expansion's source node).

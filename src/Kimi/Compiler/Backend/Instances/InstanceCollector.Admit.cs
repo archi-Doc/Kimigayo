@@ -20,6 +20,16 @@ internal sealed partial class InstanceCollector
         Open,
     }
 
+    /// <summary>Gets the subject of a record caused at a site of an item's body (K 4.9), the one location rule of the collector's records and
+    /// code generation's (R5 C0b1): the site located in its body, if that lies in a root module; else the root-module site the item's
+    /// admission chain first reached, which each item keeps.</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="body">Its body.</param>
+    /// <param name="source">The source of a statement, a terminator or a local of the body, or none for the body itself.</param>
+    /// <returns>The subject.</returns>
+    internal SourceRef Subject(int item, MirBody body, in SourceInfo source)
+        => this.Located(body, source) is var subject && subject.Module < this.rootModules ? subject : this.Set.Items[item].Site;
+
     // SPEC 6.1.3: whether a substitution carries the instance of the function enclosing its binder's definition, as its binder (a Closure's
     // context, R5-M36) or its declaring Type (Binding writes one level into a generic function).
     private static bool Carries(Subst subst, BindingSymbol enclosing)
@@ -177,11 +187,6 @@ internal sealed partial class InstanceCollector
 
         return (byte)BitOperations.TrailingZeroCount(views);
     }
-
-    // K 4.9: the subject of a record caused at a site of an item's body: the site located in its body, if that lies in a root module; else
-    // the root-module site the item's admission chain first reached, which each item keeps.
-    private SourceRef Subject(int item, MirBody body, in SourceInfo source)
-        => this.Located(body, source) is var subject && subject.Module < this.rootModules ? subject : this.Set.Items[item].Site;
 
     // K 4.9: a site of a body, moved out of the inline defaults of templates outside the root modules to the outermost omitting call; in a
     // root-module body, always a root-module site.

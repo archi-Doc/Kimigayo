@@ -3,7 +3,8 @@
 // Owns the Backend's row of each intrinsic (R5 package K 4.5, C 3.2; S2-S4 X15, X27; DECISIONS R5-M35), the one table the instance
 // collector and code generation read by IntrinsicId. Column Target: the item a call of the intrinsic names as its collector target, the
 // whitelist of target-bearing intrinsic sites (X15); every other intrinsic carries none. Column LaysOutType: the call's Type argument is a
-// by-value use whose layout the collector checks (K 4.8; DECISIONS R5-M44). C0b1 adds the writer column.
+// by-value use whose layout the collector checks (K 4.8; DECISIONS R5-M44). The first code generation unit that writes an intrinsic call (C3a,
+// C8a; DECISIONS R5-M65) adds the writer column.
 // Input: an IntrinsicId other than None. Output: its row.
 // Invariants: one row per IntrinsicId; an id without a row, None included, is a broken MIR contract.
 // Must not: resolve a target's item (the collector's), or restate the descriptor table's columns (MirDescriptors).

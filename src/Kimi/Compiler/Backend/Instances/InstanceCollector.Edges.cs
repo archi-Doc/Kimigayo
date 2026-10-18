@@ -123,15 +123,10 @@ internal sealed partial class InstanceCollector
         return program.Callee(new(MirCalleeKind.Fn, this.types.Implementation(symbol, subst, 0))) is { } target ? this.Admit(item, subject, target, subst) : -1;
     }
 
-    // A Type of an item's body in the item's instance; null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
+    // A Type of an item's body in the item's instance (TypeOf); null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
     private BoundType? In(int item, SourceRef subject, BoundType type)
     {
-        if (this.Set.Items[item].Representative is not { } representative)
-        {
-            return type;
-        }
-
-        var closed = this.types.Apply(type, representative);
+        var closed = this.TypeOf(item, type);
         if (closed is null)
         {
             this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
