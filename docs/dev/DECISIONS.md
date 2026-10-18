@@ -1808,3 +1808,24 @@ structure is recorded here by the unit that first implements it.
   added (PD21). Rejected: a parallel enumeration mapped from `OwnershipFailure` (a second copy); moving
   `OwnershipFailure` unchanged (its name describes the old analysis); one cross-partition requirement enumeration now (R7's
   replacement of `BindingFailure`, PLAN10 §7).
+- **R5-M25 Backend roots and externs named by symbol** (2026-10-18, planning session; plan F2a, package F §4.10 and fact 8,
+  S2-S4 decision 4, under R5-M18) Rule: a Backend root or extern names its definition the way `MirDefKey` does. A Koto column is
+  replaced where every reader can derive the Koto from the symbol; otherwise the symbol is added, and the Koto column goes with
+  its last syntax reader. F2a applies it to startup: `StartupResult.Symbol` (`Binding/Binding.Startup.cs`) holds the explicit
+  `main`, and `Kind == Implicit` means the startup body is the generated function of top-level statements, `MirDefKey(null, Fn,
+  0)`: the startup module is always ordinal 0 (`SourceModules[0]` is `Compilation.Kotonoha`), so no module column is published.
+  The Implicit body has no symbol, so not every reader can derive the Koto from `Symbol`: by the Rule's otherwise clause
+  `StartupResult.Function` stays and goes with its last syntax reader, `LlvmEmitter`, at G7; tests read `Symbol` and `Kind`.
+  F2b and F2c apply the rule to library imports and the legacy Dictionary rows' callees. Rejected: a module ordinal column (plan
+  row F2a; always 0); replacing `Function` by `Symbol` now (the Implicit body would lose its only name).
+- **R5-M26 `AdtDef.IsCLayout`** (2026-10-18, planning session; plan F1, package F §4.9 and §9, S2-S4 X18 and X26, under R5-M18)
+  Binding's published fact that a struct's C layout validated (SPEC 21.1). Producer: `ValidateLayoutFragments`
+  (`Binding/Binding.Attributes.cs`), true exactly for a struct whose selected mode is `#Layout("C")` with valid fragments and that
+  is neither open, derived nor empty. It is written true or false for every struct in every pass; on a first pass the shape is
+  created there (`Adt ??= new()`) and `PrepareStorage` reuses it, and no reader in between distinguishes an empty shape from a
+  missing one. Reader: `ValidateCLayoutFields`, which filters the storage declarations by it; the pass-local `cLayouts` list, a
+  second representation, is deleted. Readers that still use the attributes: `HasCLayout` for header and Type binding, which run
+  before the fact; `CExchangeable` in `ValidateLibraryImports`, which runs before `PrepareStorage` (an open issue in PLAN); and
+  the deferred `CheckCLayoutInstance`, which goes at G2b. First consumer outside Binding: P7b's `Layout.Of`, the one owner of the
+  zero-sized C-layout rule (X18), which deletes the old Emission's attribute walk and `Open` re-check. Rejected: a C-layout
+  instance view in `TyCtxt.Instances` (X26); keeping `cLayouts` beside the fact.

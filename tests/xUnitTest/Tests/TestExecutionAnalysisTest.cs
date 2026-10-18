@@ -20,7 +20,8 @@ public class TestExecutionAnalysisTest
         c.Tests.Discover(c);
         Assert.Single(c.Tests.Cases);
         Assert.NotEmpty(c.Tests.Sites);
-        Assert.Null(c.Binding.Startup.Function);
+        Assert.Equal(StartupKind.Test, c.Binding.Startup.Kind);
+        Assert.Null(c.Binding.Startup.Symbol);
         var output = new StringWriter();
         Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
         Assert.Contains("@__kimi_test_observe", output.ToString());
