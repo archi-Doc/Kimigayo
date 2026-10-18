@@ -149,9 +149,9 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 3.8, 14.9.2, DECISIONS R4-M59: a literal whose Type holds a Never element (a Tuple's component or an array's element, through
-    // those kinds), since Binding typed it before its position's Type was decided (an if branch, a Case payload), is an Opaque value at its
-    // one record, and no validator finding follows; so is one holding a Never Place. A literal fitted to its expected Type, and one whose
-    // Type has a Never elsewhere (a Function's result, a Type argument), are built.
+    // those kinds), since Binding typed it before its position's Type was decided (an if branch), is an Opaque value at its one record, and
+    // no validator finding follows; so is one holding a Never Place. A literal fitted to its expected Type, a Case payload completed at its
+    // payload Type (G130, DECISIONS BU-2) and one whose Type has a Never elsewhere (a Function's result, a Type argument) are built.
     [Theory]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]

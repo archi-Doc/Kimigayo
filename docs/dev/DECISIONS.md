@@ -1734,6 +1734,13 @@ R5 on the owner's request of 2026-10-18.
     R11's at-depth half: `Infer` no longer skips a Never component (`h(u)` with `u: (Never, i64)` gives `T = Never`; a Never
     element is still no evidence, so `P.Pair(1, ((return 1), a))` gives `T = i64`). Deleted: the construction's three-pass
     loop and second adaptation loop, `PrepareContextualEnumInputs` and `ProbeContextualEnum`.
+  - Completion (U6): G130 closes with U0 (SPEC 10.5.1 text), U1 (the component, behavior unchanged), U2 (Literal timing), U3
+    (one evidence and one fit walk), U4 and U4b (control-flow arguments; the parts of a call that completes none) and U5 (Case
+    construction; contextual Case waits). Rejected across the units: fixing each walker in place, a synthesized constructor
+    candidate per Case, a Koto-keyed kind table, a temporary per-part evidence loop in the construction before U5, binding a
+    Literal or waiting control-flow part before selection, and a second source walk for control flow. Open: a construction's
+    unbound slot reports `MissingType` while a call's reports `UnboundTypeArgument_Kd` (above); the survey's limit (PLAN
+    G146), which G129's late fit removes.
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one
