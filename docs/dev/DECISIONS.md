@@ -1941,13 +1941,15 @@ R5 on the owner's request of 2026-10-18.
   its own budget. Why: the stamp recorded success at the depth of the first walk and survived a failing Type component, so
   `h<Box^62>` was the gap alone and an instance beside `h<Box^61>` in either order, a Type stored twice passed or failed by Field
   order (`AB<Box^57, Box^4<Box^57>>`), and `Tag<Array^61<i32>>`, whose `T` no Field stores, was refused once, then admitted.
-  Known residual (PLAN G153 (2)): a member of a storage cycle keeps the height computed with the cycle cut at 0 where its first walk
-  entered, so cyclic storage near the bound still depends on order (`Option<rc/L<Box^61>>` after `L<Box^61>`), and the bound counts
-  levels through handles, so a ring of 17 non-generic structs linked by `Option<rc/…>` is refused. Rejected: clearing the stamp
-  when a Type component fails, alone (the memo still ignores depth); no memo below the root (exponential over shared parts,
-  `Pair^25`); not keeping cycle members (exponential over mutually recursive Types); heights shared per strongly connected
-  component with a growth cap on the walk (A2) and inline-only preparation (B), which change what G128 and PD30 define the bound to
-  mean. Not temporary (G128's bound goes at R7).
+  Known residual (pre-existing, as before BU-11; PLAN G153 (2)): a member of a storage cycle keeps the height computed with the
+  cycle cut at 0 where its first walk entered, so cyclic storage still depends on order: near the bound (`Option<rc/L<Box^61>>`
+  after `L<Box^61>`), and at any depth when the cycle's entry then fails, since the member's kept height counted the failed entry
+  as 0 (with `R<T> { x: X<T>, y: Box^200<T> }` and `X<T> { r: Option<rc/R<T>> }`, `h<X<i32>>` is the gap alone and passes after
+  `h<R<i32>>`); A2 removes both. The bound counts levels through handles, so a ring of 17 non-generic structs linked by
+  `Option<rc/…>` is refused. Rejected: clearing the stamp when a Type component fails, alone (the memo still ignores depth); no
+  memo below the root (exponential over shared parts, `Pair^25`); not keeping cycle members (exponential over mutually recursive
+  Types); heights shared per strongly connected component with a growth cap on the walk (A2) and inline-only preparation (B),
+  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7).
 
 ## R5 and R6 (adopted 2026-10-18)
 

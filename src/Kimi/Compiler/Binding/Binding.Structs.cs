@@ -77,8 +77,7 @@ public sealed partial class Binding
         // Stamped first at height 0, so an instance reached again through its own storage counts 0 and is not walked twice.
         instance.Prepared = this.storageVersion;
         instance.Height = 0;
-        if ((AdtDef.IsEnum(type) && instance.Cases is null) || (instance.Base is { } parent && !this.Highest([parent], budget - 1, ref height)) ||
-            !this.Highest(instance.Fields, budget - 1, ref height) || !this.Highest(instance.Cases, budget - 1, ref height) ||
+        if ((AdtDef.IsEnum(type) && instance.Cases is null) || !this.StoredHeight(instance, budget - 1, ref height) ||
             !this.Highest((BoundType[])type.Components, budget - 1, ref height))
         {
             instance.Prepared = 0;
@@ -88,6 +87,12 @@ public sealed partial class Binding
         instance.Height = height;
         return height;
     }
+
+    // Raises height to one above each stored Type of an instance (its base, Fields and Case payload Tuples); false when one is missing
+    // or fails (StorageHeight).
+    private bool StoredHeight(AdtDef.InstanceStorage instance, int budget, ref int height)
+        => (instance.Base is not { } parent || this.Highest([parent], budget, ref height)) && this.Highest(instance.Fields, budget, ref height) &&
+            this.Highest(instance.Cases, budget, ref height);
 
     // Raises height to one above each Type's storage height; false when one is missing or fails (StorageHeight).
     private bool Highest(ReadOnlySpan<BoundType?> types, int budget, ref int height)
