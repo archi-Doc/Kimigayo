@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.6, 4.8, 4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44): every body
+// Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M53): every body
 // instance and type-driven item a root requires through runtime or check-only edges, its instance-stage records, and the one resolution of
 // each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
@@ -14,6 +14,8 @@
 // Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a function item
 // constant), each with its runtime bit from one MirReach walk without CheckTarget edges. Replaying an item's template resolves each site
 // under the item's representative; a type-driven item's targets follow from its representative Type. K6-K8 add the other rows.
+// Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
+// Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
 // the Type argument of an intrinsic whose row names one) and each type-driven item's Type take one Layout verdict per erased Type: a limit is
 // GenerationResourceLimit_Kd at the first use, Rejected storage derives from a Binding error, and a type-driven item needs an Ok verdict.
@@ -141,28 +143,49 @@ internal sealed partial class InstanceCollector
         foreach (var body in bodies)
         {
             this.starts[body.Ordinal] = count;
-            var blocks = body.Blocks;
-            this.reach.Clear(blocks.Length);
-            this.reach.Walk(body, 0, checks: false);
-            for (var block = 0; block < blocks.Length; block++)
-            {
-                var (start, end) = (blocks[block].Start, blocks[block].Count);
-                for (var index = 0; index <= end; index++)
-                {
-                    if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
-                    {
-                        if (count == this.sites.Length)
-                        {
-                            Array.Resize(ref this.sites, Math.Max(256, count * 2));
-                        }
+            count = this.Template(body, count);
+        }
 
-                        this.sites[count++] = (new(block, index), this.reach[block]);
-                    }
+        this.starts[bodies.Length] = count;
+    }
+
+    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
+    // the capability table on the way (A3b). Returns the new count.
+    private int Template(MirBody body, int count)
+    {
+        var blocks = body.Blocks;
+        var root = body.Source.Module < this.rootModules;
+        this.reach.Clear(blocks.Length);
+        this.reach.Walk(body, 0, checks: false);
+        for (var block = 0; block < blocks.Length; block++)
+        {
+            var (start, end) = (blocks[block].Start, blocks[block].Count);
+            for (var index = 0; index <= end; index++)
+            {
+                if (index < end && root)
+                {
+                    this.CheckOperation(body, body.Statements[start + index]);
+                }
+
+                if (index < end ? IsSite(body, body.Statements[start + index]) : IsSite(blocks[block].Terminator))
+                {
+                    count = this.AddSite(count, new(block, index), this.reach[block]);
                 }
             }
         }
 
-        this.starts[bodies.Length] = count;
+        return count;
+    }
+
+    private int AddSite(int count, MirLocation at, bool runtime)
+    {
+        if (count == this.sites.Length)
+        {
+            Array.Resize(ref this.sites, Math.Max(256, count * 2));
+        }
+
+        this.sites[count] = (at, runtime);
+        return count + 1;
     }
 
     // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;

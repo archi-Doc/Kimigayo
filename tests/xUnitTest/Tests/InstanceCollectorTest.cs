@@ -328,6 +328,59 @@ public sealed class InstanceCollectorTest
         Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
     }
 
+    // K 4.7, IMPL 21.3.3, DECISIONS R5-M53: Binding refuses a closed 128-bit division, remainder (compound forms included) or float
+    // conversion at the node, which MIR builds as an Opaque value, so the definition-stage check (A3b) does not repeat its record; a direct
+    // literal conversion is a constant and no record at all.
+    [Theory]
+    [InlineData("let x: i128 = 10\nlet y = x / 3\n", "x / 3")]
+    [InlineData("var x: i128 = 10\nx /= 3\n", "x /= 3")]
+    [InlineData("var x: u128 = 10\nx %= 3\n", "x %= 3")]
+    [InlineData("let x: i128 = 1\nlet y = x@f64\n", "x@f64")]
+    [InlineData("let x: f64 = 3.9\nlet y = x@i128\n", "x@i128")]
+    [InlineData("let a = 170141183460469231731687303715884105727@f64\nlet c = 3.5e10@i128\n", null)]
+    public void BindingsRefusalsAreNotRepeated(string source, string? refused)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Equal(refused is null ? [] : [(DiagnosticCode.Unsupported_Kd, refused)], c.Binding.Issues.Select(static x => (x.Code, x.Node.ToString())));
+        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+    }
+
+    // A3b (R4-M8): once Binding's gate is gone (H7), a closed operation of the table is Unsupported_Kd at its own location, in any block,
+    // an unreachable one included, and its supported twin is none; an operation whose Types depend on slots is left to the instance stage.
+    // The tests append the operation, rebuilt from an addition the program has, in a new unreachable block of the top-level body.
+    [Theory]
+    [InlineData("let x: i128 = 10\nlet y = x + 3\n", "Div", true)]
+    [InlineData("let x: u128 = 10\nlet y = x + 3\n", "Rem", true)]
+    [InlineData("let x: i64 = 10\nlet y = x + 3\n", "Div", false)]
+    [InlineData("let x: i128 = 10\nlet y = x + 3\n", "f64", true)]
+    [InlineData("let x: f32 = 1.5\nlet y = x + 1.0\n", "i128", true)]
+    [InlineData("let x: i64 = 10\nlet y = x + 3\n", "f64", false)]
+    public void AClosedOperationOfTheTableIsAGapAtItsLocation(string source, string form, bool gap)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var top = program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0);
+        var add = top.Statements.ToArray().Single(static x => x.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Add });
+        var rvalue = form is "Div" or "Rem"
+            ? add.Rvalue with { Op = (byte)(form == "Div" ? MirBinaryOp.Div : MirBinaryOp.Rem) }
+            : new MirRvalue(MirRvalueKind.Cast, (byte)MirCastKind.Numeric, Start: add.Rvalue.Start, Count: 1, Type: BoundType.Primitives[form]);
+        var block = top.AddBlock();
+        top.Push(block, add with { Rvalue = rvalue });
+        top.Terminate(block, MirTerminator.Unreachable(add.Source));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(gap ? [(DiagnosticCode.Unsupported_Kd, add.Source.Syntax)] : [], set.Records.Select(static x => (x.Code, x.Subject)));
+    }
+
+    // K 4.7: an operation whose Types depend on slots is no definition-stage record (K9b checks it per instance).
+    [Fact]
+    public void AnOpenOperationIsNoDefinitionStageRecord()
+    {
+        var c = MirBuildTest.Compile("func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nfunc keep() -> i32 => 1\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+    }
+
     // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never
     // gives such a call, so the test forges one: its substitution becomes the callee's own identity.
     [Fact]

@@ -2535,3 +2535,19 @@ structure is recorded here by the unit that first implements it.
   capacity routines, because one member names them with the memory declarations; splitting it adds a vocabulary entry. Rejected:
   that split here (beyond G134's rows); keeping the hand-set flag for every Array operation (G133's cause, a flag set by its
   requester instead of its row).
+- **R5-M53 The capability table's operation rows and the definition-stage check (A3b)** (2026-10-18, planning session; plan K9a, the K
+  package's §4.7, §9 row K9a and D-A; implements R4-M8; under R5-M18) `Capability.Of(rvalue, operand)` gives the row of an operation the
+  backend does not generate (IMPL 21.3.3's 128-bit subset), or none: `WideDivision`, a `BinaryOp` `Div` or `Rem` of i128 or u128 (a
+  compound form builds as the same operation), and `WideFloatConversion`, a `Cast(Numeric)` between i128 or u128 and f32 or f64; both
+  are `Unsupported_Kd`. A direct literal conversion is a constant (Binding fits the literal), never a Cast, so the row needs no exception.
+  A3b runs in the collector's template walk, once per definition and program version: every operation of a root-module body whose Types
+  are closed, in every block (unused and check-only ones included), is checked against the table and reported once per location (R5-M40's
+  rule; in a root-module body the site itself or the omitting call of an inlined library default); an operation whose Types depend on slots
+  is the instance stage's (K9b). Binding still refuses the closed forms at the node until H7, and MIR builds a refused node as an Opaque
+  value, which has no row, so the two never both report.
+  - Rejected: a Mir pass (D-A: the table is the Backend's and the driver R4's); checking library bodies per compilation (P5: the library
+    test collects them as roots); an exception for literal conversions (no such Cast exists).
+  - Verified (`InstanceCollectorTest`): the closed division, compound remainder and both conversions Binding refuses give no collector
+    record; literal conversions give none; each table row appended as an operation in an unreachable block is `Unsupported_Kd` at its own
+    location and its 64-bit twin none; an open division in a generic body is no definition-stage record; the library (as roots) and the
+    44 milestones under sel give no record. `InstanceCollector.Template` also brings the template walk within the nesting limit.
