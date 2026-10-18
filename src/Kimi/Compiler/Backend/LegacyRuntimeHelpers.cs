@@ -6,26 +6,33 @@
 // formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
 // through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
 // primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
-// and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs) and the string-comparison routines. Each
-// generator's module holds one instance, and both write the helpers through this component (promoted, never copied).
+// and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs), the storage-boundary, Raw.slice and
+// capacity kernels written inline in their caller's body with the library record Field addressing they share with the old
+// writer (LegacyRuntimeHelpers.Storage.cs) and the string-comparison routines. Each generator's module holds one instance, and both
+// write the helpers through this component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
 // offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
-// by DictionaryCallee; the formatting wrappers' ABIs and the compiled functions they call; the runtime templates (.ll.in); a
-// writer, LLVM SSA names and sizes.
+// by DictionaryCallee; the formatting wrappers' ABIs and the compiled functions they call; the runtime templates (.ll.in); for
+// an inline storage kernel, StorageKernelInput (the spellings of the address it reads and of its result, its number, its
+// result record's Field offsets, the number naming its temporaries); a writer, LLVM SSA names and sizes.
 // Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
 // collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
-// writer and HelperNeeds (the Array runtime for every kind but BorrowStorage, the element's drop glue for Clear and Drop), and no
-// Array row declares a library callee, since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI
-// shape, writer, HelperNeeds (the Array runtime for every kind, the Dictionary runtime for CheckKey, the element's drop glue for
-// Drop) and its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
+// writer and HelperNeeds (the Array runtime for the kinds that grow a buffer or copy or move elements, every kind but Clear,
+// Drop, BorrowStorage and OwnStorage; the element's drop glue for Clear and Drop), and no Array row declares a library callee,
+// since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI shape, writer, HelperNeeds (the Array
+// runtime for Place, which copies its key and value; the Dictionary runtime for CheckKey; the element's drop glue for Drop) and
+// its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
 // CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
 // DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
 // for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
 // row, and the old lowering also requests it for a Dictionary's construction. Each formatting compiler function's row
 // (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
 // formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
-// published library rows state (Formats, SPEC 4.9.6), which the collector reads there. The storage kernels follow in P2a-P2b.
+// published library rows state (Formats, SPEC 4.9.6), which the collector reads there. Each inline storage kernel's row
+// (StorageRow; P2a) holds its writer over StorageKernelInput and HelperNeeds, which are none: its text is loads, stores and
+// address arithmetic in the caller's body, so it declares no callee and nothing is requested for it. The Raw.slice and capacity
+// kernels (P2b) are plain writers without a row: their calls are intrinsics, whose rows are IntrinsicRows'.
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
 // requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
 // row declares;
@@ -47,7 +54,8 @@ internal enum HelperNeeds : byte
 {
     None = 0,
 
-    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5).</summary>
+    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5): a helper that grows a buffer or copies or
+    /// moves elements needs them.</summary>
     ArrayRuntime = 1,
 
     /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it

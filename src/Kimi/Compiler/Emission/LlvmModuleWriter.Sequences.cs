@@ -34,31 +34,58 @@ internal static partial class LlvmModuleWriter
         return first >= 0 && first <= last && last <= fixedLength;
     }
 
+    // The inline storage-boundary kernel a sequence operation names (SPEC 22.2), or null for another operation.
+    private static StorageKernelKind? StorageKernelOf(string? operation) => operation switch
+    {
+        "DictionaryLayout" => StorageKernelKind.DictionaryLayout,
+        "DictionaryEntryAddress" => StorageKernelKind.EntryAddress,
+        "FixedStorage" => StorageKernelKind.BorrowFixed,
+        "DictionaryBorrowStorage" => StorageKernelKind.BorrowDictionary,
+        "DictionaryOwnStorage" => StorageKernelKind.OwnDictionary,
+        _ => null,
+    };
+
+    // Decodes an inline storage kernel into its row's input: operand 0 is the address it reads, operand 1 its number (an entry
+    // stride, an array length or an entry offset) and the rest its result record's Field offsets; its result is the
+    // instruction's slot, or its value when it has none.
+    private static void WriteStorageKernel(TextWriter output, EmissionFunction function, EmissionInstruction instruction, StorageKernelKind kind)
+    {
+        var operands = function.GetOperands(instruction);
+        Span<int> fields = stackalloc int[operands.Length - 2];
+        for (var i = 0; i < fields.Length; i++)
+        {
+            fields[i] = (int)operands[i + 2].Value;
+        }
+
+        Span<char> source = stackalloc char[OperandLength];
+        Span<char> result = stackalloc char[OperandLength];
+        var input = new StorageKernelInput(
+            SpellStorageAddress(function, operands[0], source),
+            instruction.Place < 0 ? Spell(new(EmissionOperandKind.Value, instruction.Operation), result) : SpellSlot(function, instruction.Place, result),
+            (long)operands[1].Value,
+            fields,
+            instruction.Operation);
+        LegacyRuntimeHelpers.StorageRow(kind).Write(output, input);
+    }
+
     private static void WriteSequence(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
-        if (instruction.ScalarOperator is "DictionaryBorrowStorage" or "DictionaryOwnStorage" or "DictionaryEntryAddress" or "DictionaryLayout" or "FixedStorage")
+        if (StorageKernelOf(instruction.ScalarOperator) is { } kernel)
         {
-            WriteDictionaryIteration(output, function, instruction);
+            WriteStorageKernel(output, function, instruction, kernel);
             return;
         }
 
         if (instruction.ScalarOperator == "RawSlice")
         {
-            // SPEC 5.6: Raw.slice writes the Slice record {buffer, length} into its result slot.
+            // SPEC 5.6: operands 0 and 1 are the raw pointer and the element count of the Slice record.
             var record = function.GetOperands(instruction);
-            output.Write("  store ptr ");
-            WriteOperand(output, record[0]);
-            output.Write(", ptr ");
-            WriteSlot(output, function, instruction.Place);
-            output.Write(", align 8\n  %rslen");
-            WriteNumber(output, instruction.Operation);
-            output.Write(" = getelementptr i8, ptr ");
-            WriteSlot(output, function, instruction.Place);
-            output.Write(", i64 8\n  store i64 ");
-            WriteOperand(output, record[1]);
-            output.Write(", ptr %rslen");
-            WriteNumber(output, instruction.Operation);
-            output.Write(", align 8\n");
+            LegacyRuntimeHelpers.WriteRawSlice(
+                output,
+                Spell(record[0], stackalloc char[OperandLength]),
+                Spell(record[1], stackalloc char[OperandLength]),
+                SpellSlot(function, instruction.Place, stackalloc char[OperandLength]),
+                instruction.Operation);
             return;
         }
 
@@ -312,15 +339,11 @@ internal static partial class LlvmModuleWriter
         }
         else if (instruction.ScalarOperator == "capacity")
         {
-            // SPEC 4.9.5: an Array handle stores its capacity after the buffer and length.
-            Name(output, "  %seqcapptr", id);
-            output.Write(" = getelementptr i8, ptr ");
-            Address();
-            output.Write(", i64 16\n");
-            Name(output, "  %v", id);
-            output.Write(" = load i64, ptr ");
-            Name(output, "%seqcapptr", id);
-            output.Write(", align 8\n");
+            LegacyRuntimeHelpers.WriteCapacity(
+                output,
+                SpellStorageAddress(function, addressOperand, stackalloc char[OperandLength]),
+                Spell(new(EmissionOperandKind.Value, id), stackalloc char[OperandLength]),
+                id);
         }
         else if (instruction.ScalarOperator == "fromEnd")
         {

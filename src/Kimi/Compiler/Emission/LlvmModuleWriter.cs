@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using System.Runtime.InteropServices;
 using Kimi.Compiler.Backend;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -334,72 +335,52 @@ internal static partial class LlvmModuleWriter
     }
 
     private static void WriteSlot(TextWriter output, EmissionFunction function, int place)
+        => output.Write(SpellSlot(function, place, stackalloc char[OperandLength]));
+
+    // A slot's address, formatted into text, which holds OperandLength characters: its alloca or projection %p<n>, its
+    // argument or the return slot.
+    private static ReadOnlySpan<char> SpellSlot(EmissionFunction function, int place, Span<char> text)
     {
         var address = function.SlotAddresses[place];
         switch (address.Kind)
         {
             case EmissionOperandKind.SlotAddress:
             case EmissionOperandKind.ProjectedSlot:
-                Name(output, "%p", (int)address.Value);
+                place = (int)address.Value;
                 break;
             case EmissionOperandKind.Argument:
-                WriteOperand(output, address);
-                break;
+                return Spell(address, text);
             case EmissionOperandKind.ReturnAddress:
-                output.Write("%ret");
-                break;
+                return "%ret";
             case EmissionOperandKind.CaptureAddress:
-                Name(output, "%p", place);
                 break;
             default:
                 throw new InvalidOperationException("Unprepared slot address.");
         }
+
+        "%p".CopyTo(text);
+        place.TryFormat(text[2..], out var length, default, CultureInfo.InvariantCulture);
+        return text[..(2 + length)];
     }
 
     private static void WriteStorageAddress(TextWriter output, EmissionFunction function, EmissionOperand address)
-    {
-        if (address.Kind == EmissionOperandKind.EnvironmentAddress)
-        {
-            output.Write("%environmentSlot");
-        }
-        else if (address.Kind == EmissionOperandKind.SlotAddress)
-        {
-            WriteSlot(output, function, (int)address.Value);
-        }
-        else
-        {
-            WriteOperand(output, address);
-        }
-    }
+        => output.Write(SpellStorageAddress(function, address, stackalloc char[OperandLength]));
 
-    // A library record Field at its named layout offset: offset 0 is the record's own address, and a nonzero offset is
-    // reached through `{name}{id}_{offset}`, which DefineField writes before its use.
-    private static void DefineField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+    // An address operand, formatted into text, which holds OperandLength characters: a slot's address, a closure's
+    // environment slot or the operand's own spelling.
+    private static ReadOnlySpan<char> SpellStorageAddress(EmissionFunction function, EmissionOperand address, Span<char> text) => address.Kind switch
     {
-        if (offset != 0)
-        {
-            output.Write("  ");
-            WriteField(output, function, record, name, id, offset);
-            output.Write(" = getelementptr i8, ptr ");
-            WriteStorageAddress(output, function, record);
-            output.Write(", i64 ");
-            WriteNumber(output, offset);
-            output.Write('\n');
-        }
-    }
+        EmissionOperandKind.EnvironmentAddress => "%environmentSlot",
+        EmissionOperandKind.SlotAddress => SpellSlot(function, (int)address.Value, text),
+        _ => Spell(address, text),
+    };
+
+    // A library record Field at its named layout offset (LegacyRuntimeHelpers.DefineField).
+    private static void DefineField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+        => LegacyRuntimeHelpers.DefineField(output, SpellStorageAddress(function, record, stackalloc char[OperandLength]), name, id, (long)offset);
 
     private static void WriteField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
-    {
-        if (offset == 0)
-        {
-            WriteStorageAddress(output, function, record);
-            return;
-        }
-
-        Name(output, name, id);
-        output.Write('_');
-        WriteNumber(output, offset);
-    }
+        => LegacyRuntimeHelpers.WriteField(output, SpellStorageAddress(function, record, stackalloc char[OperandLength]), name, id, (long)offset);
 
     private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null, bool indirect = false)
     {

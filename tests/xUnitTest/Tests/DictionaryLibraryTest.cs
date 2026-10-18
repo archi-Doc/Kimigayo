@@ -69,6 +69,8 @@ public class DictionaryLibraryTest
             Assert.Contains("define internal void @" + call.Groups[1].Value + "(", ir, StringComparison.Ordinal);
         }
 
+        // X4 (PLAN G134): the Drop helper grows no buffer, so the module holds no capacity routine.
+        Assert.DoesNotContain("@__kimi_array_grow(", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryFieldDrop" + name, ir, string.Empty);
     }
 

@@ -233,7 +233,9 @@ internal sealed partial class LegacyRuntimeHelpers
 
     private static readonly AbiParameter Result = new("ptr", "result", AbiParameterKind.ResultSlot);
 
-    // One row per kind, in ArrayHelperKind order (SPEC 4.9.3, 4.9.7, 22.2); a new kind adds a row.
+    // One row per kind, in ArrayHelperKind order (SPEC 4.9.3, 4.9.7, 22.2); a new kind adds a row. A row declares the Array
+    // runtime only when its text grows the buffer or copies or moves elements: Clear and Drop destroy elements and release
+    // through the main runtime, and the storage boundary only loads and stores the handle's words.
     private static readonly ArrayHelperRow[] ArrayRows =
     [
         new(
@@ -277,14 +279,14 @@ internal sealed partial class LegacyRuntimeHelpers
             static (name, _, _) => Located(name, []),
             ArrayHelperPrologue,
             WriteArrayClear,
-            HelperNeeds.ArrayRuntime | HelperNeeds.ElementGlue),
+            HelperNeeds.ElementGlue),
         new(
             ArrayHelperKind.Drop,
             "__kimi_array_drop_",
             static (name, _, _) => Located(name, []),
             ArrayHelperPrologue,
             WriteArrayClear,
-            HelperNeeds.ArrayRuntime | HelperNeeds.ElementGlue),
+            HelperNeeds.ElementGlue),
         new(
             ArrayHelperKind.Swap,
             "__kimi_array_swap_",
@@ -305,7 +307,7 @@ internal sealed partial class LegacyRuntimeHelpers
             static (name, _, _) => Slotted(name, [new("ptr", "value"), Result]),
             "entry:\n",
             WriteArrayOwn,
-            HelperNeeds.ArrayRuntime),
+            HelperNeeds.None),
         new(
             ArrayHelperKind.OwnFixedStorage,
             "__kimi_fixed_own_",

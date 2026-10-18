@@ -119,7 +119,8 @@ internal sealed partial class LegacyRuntimeHelpers
         """.Replace("REASON_DUPLICATE", Number(AbortReasons.DuplicateKey), StringComparison.Ordinal);
 
     // One row per kind, in DictionaryHelperKind order; a new kind adds a row. A request joins the row's needs to the module's:
-    // CheckKey's duplicate callback reports through the Dictionary runtime's adapter.
+    // CheckKey's duplicate callback reports through the Dictionary runtime's adapter, Place copies its key and value through the
+    // memory declarations of the Array runtime, and Drop releases through the main runtime.
     private static readonly DictionaryHelperRow[] DictionaryRows =
     [
         new(
@@ -128,7 +129,7 @@ internal sealed partial class LegacyRuntimeHelpers
             static (output, helper, find, requireAbsent) => WriteKeyCheck(output, helper, find!, requireAbsent!),
             DictionaryCallee.FindEntry,
             DictionaryCallee.RequireAbsent,
-            HelperNeeds.ArrayRuntime | HelperNeeds.DictionaryRuntime),
+            HelperNeeds.DictionaryRuntime),
         new(
             DictionaryHelperKind.Place,
             static (suffix, key, value) => Located("__kimi_dictionary_place" + suffix, [Argument(key, "key"), Argument(value, "value")]),
@@ -142,7 +143,7 @@ internal sealed partial class LegacyRuntimeHelpers
             static (output, _, clear, _) => WriteDictionaryDrop(output, clear),
             DictionaryCallee.ClearEntries,
             DictionaryCallee.None,
-            HelperNeeds.ArrayRuntime | HelperNeeds.ElementGlue),
+            HelperNeeds.ElementGlue),
     ];
 
     // The module's resolved DictionaryStorage functions, indexed by DictionaryCallee (KimiLibrary's view, F2c); None and the
@@ -270,8 +271,8 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write("(ptr %handle, i64 ");
         WriteNumber(output, helper.Entry.Stride);
         output.Write(", ptr %location, i64 %location_length)\n");
-        WriteEntryAddress(output, "%new_key", helper.Entry.KeyOffset);
-        WriteEntryAddress(output, "%new_value", helper.Entry.ValueOffset);
+        WriteEntryAddress(output, "%new_key", "%new_slot", helper.Entry.KeyOffset);
+        WriteEntryAddress(output, "%new_value", "%new_slot", helper.Entry.ValueOffset);
         WriteStoredArgument(output, helper.Key, "%key", "%new_key", "%key_inserted");
         WriteStoredArgument(output, helper.Value, "%value", "%new_value", "%value_inserted");
         output.Write("  ret void\n");
@@ -288,15 +289,6 @@ internal sealed partial class LegacyRuntimeHelpers
         }
 
         output.Write("  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n  ret void\n");
-    }
-
-    private static void WriteEntryAddress(TextWriter output, string name, long offset)
-    {
-        output.Write("  ");
-        output.Write(name);
-        output.Write(" = getelementptr i8, ptr %new_slot, i64 ");
-        WriteNumber(output, offset);
-        output.Write('\n');
     }
 
     // The empty-Dictionary initialization bridge; the ordered-link algorithms are compiled from DictionaryStorage.kimi, and the
