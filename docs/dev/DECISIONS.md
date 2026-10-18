@@ -1470,8 +1470,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   diverges writes through its reservation, and a construction around a Never form keeps its operands' Moves and Loans; A4 counts
   the effects of the statements this builds (R4-M6a). Rejected: keeping `Reached` with a located `Unsupported_Kd` (owner); an
   A5-side rule over operands the MIR does not build; a diverging Call writing its destination on its check edge (SPEC 14.10.3
-  leaves it open). Not temporary. Superseded in part by R5-M38: "every acquisition takes it as it is" and `Set`'s test hold for
-  the Never value only, a node's temp; a named Place of Type Never takes the acquisition Binding publishes.
+  leaves it open). Not temporary. Amended by R5-M38: the Never value is a node's temp; a named Place of Type Never is acquired as
+  Binding publishes it into the node's Never temp, which every consumer takes as it is, the placement rule unchanged.
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
   of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result")
   A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
@@ -2281,20 +2281,24 @@ structure is recorded here by the unit that first implements it.
     rebind would rebuild the old generator's CallPlans); a canonical CallPlan per context (A5P's C2: a fact outside R7's shape); a
     comparer modulo Origins (D1's Design B).
 - **R5-M38 A named Never Place takes the acquisition Binding publishes** (2026-10-18, planning session; plan F12, PLAN G139,
-  R4's consent to amending R4-M62's acquisition clause, after BU-4; supersedes that clause of R4-M62) Rule (`MirBuilder.Values.cs`):
-  the Never value, the temp of a node of Type Never that nothing writes (`IsNeverValue`), is taken as it is by every acquisition and
-  makes `Set` build nothing, as R4-M62 has it; a named Place of Type Never (a parameter, a binding, a payload) is a Place as any
-  other: `Acquire` gives it the operand kind Binding publishes for it (Copy for a bare read, since Never is Copy, BU-4; Copy for
-  an in-place use, `None`) with no adaptation (it has no referent to read or borrow), and `Set` writes it and reads it, also into
-  a Never temp that secures its value (`g2(x, k())`), building nothing only for the Never value's own inputs. `IsNever` (any Place of Type Never) stays for
-  the sites that would borrow or view it (a runtime Type test's handle, a verification's message, `$tryWrite`'s writer). So
-  `func absurd(x: Never) => g(x, x)` has no MovedPlace, and `absurd(x: Never) -> i32 => x` writes `_0 = copy _1`. Per BU-6
-  (pending, owner decision 2026-10-18, G129) every expression of Type Never supplies no normal completion and an explicit
-  acquisition keeps its effect on assumed paths, so an explicit `x@move` on a Never Place is a Move. Binding publishes it today as
-  a Convert (Diverges) whose name it reads by Copy, so MIR moves nothing there; MIR builds whatever Binding publishes, so once
-  Binding publishes the Move (after G129), the moved read in `g(x@move, x)` is A1's `MovedPlace`, whose row R5 adds then (BU adds
-  the Binding and HIR rows). No library, milestone or corpus program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a
-  Copy Place read twice became two Moves); Move for every named Never Place (a second rule beside Binding's published kind).
+  R4's consent to amending R4-M62's acquisition clause, after BU-4; R4's review choice (a), which keeps R4-M62's placement rule)
+  Rule (`MirBuilder.Values.cs`): the Never value is the temp of a node of Type Never (`IsNeverValue`); every acquisition takes it as
+  it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type Never (a parameter, a binding, a payload) is not
+  the Never value: `Acquire` builds the acquisition Binding publishes for it (Copy for a bare read, since Never is Copy, BU-4) into
+  the node's Never temp, the one writer of such a temp, and gives that temp, so whatever takes it places nothing. So
+  `func absurd(x: Never) => g(x, x)` copies x twice and has no MovedPlace, and `g2(x, k())` secures the acquired temp; and since a
+  read of a Never Place supplies no normal completion (SPEC 14.10.3, Binding's Diverges; BU-6), its assumed completion initializes
+  nothing it is placed into: `let y: i32 = x`, `y = x` and `var y: Never = x` leave y uninitialized, each later read of it an
+  `UninitializedPlace`. `IsNever` (any Place of Type Never) stays for the sites that would borrow or view it (a runtime Type
+  test's handle, a verification's message, `$tryWrite`'s writer). Per BU-6 (pending, owner decision 2026-10-18, G129) every
+  expression of Type Never supplies no normal completion and an explicit acquisition keeps its effect on assumed paths, so an
+  explicit `x@move` on a Never Place is a Move. Binding publishes it today as a Convert (Diverges) whose name it reads by Copy, so
+  MIR moves nothing there; MIR builds whatever Binding publishes, so once Binding publishes the Move (after G129), the moved read
+  in `g(x@move, x)` is A1's `MovedPlace`, whose row R5 adds then (BU adds the Binding and HIR rows). No library, milestone or corpus
+  program changes its MIR. Rejected: every Never-typed Place as the Never value (R4-M62's clause: a Copy Place read twice became
+  two Moves); `Set` placing a named Never Place's value (an earlier follow-up's exemption: a written and an unwritten Never temp
+  were one spelling, and `let y: i32 = x` initialized y, against SPEC 14.10.3); an adaptation override or a `None` arm for Never
+  in `Acquire` (Binding publishes Copy or None with no adaptation at every traced site; the validator reports a `ref/Never`).
 - **R5-M42 A jump without a target row is derived from Binding's record** (2026-10-18, planning session; plan F13, PLAN G143, R4's
   ask A-8's jump part (G103-E9b's), handed to R5; after Q11, R5-M31) Rule (`MirBuilder.Transfer`): the builder reads the target
   row the jump binding publishes. A null row means Binding recorded row 9 or 10 at the jump (R5-M31's HIR contract), so the jump

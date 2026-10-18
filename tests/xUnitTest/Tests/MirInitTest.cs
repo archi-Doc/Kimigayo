@@ -213,7 +213,7 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 3.1.3 (DECISIONS R5-M38): a named Place of Type Never takes the acquisition Binding publishes, Copy for a bare read (Never is
-    // Copy, BU-4), so a Never parameter read twice is no MovedPlace; only the Never value, a node's unwritten temp, is taken as it is.
+    // Copy, BU-4), into its node's Never temp, so a Never parameter read twice is no MovedPlace.
     [Fact]
     public void ANeverPlaceIsAcquiredAsBindingPublishes()
     {
@@ -225,8 +225,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Empty(Problems(Source));
     }
 
-    // SPEC 12.2 (DECISIONS R5-M38): a named Never Place read before a later operand builds code is secured, its value copied into a
-    // temp that the call then moves: made a Place of the program, the temp has no problem, where an unwritten one is uninitialized.
+    // SPEC 12.2 (DECISIONS R5-M38): a named Never Place read before a later operand builds code is acquired into its node's Never temp,
+    // which secures it and the call then moves: made a Place of the program, the temp has no problem, where an unwritten one is
+    // uninitialized.
     [Fact]
     public void ASecuredNeverPlaceIsWritten()
     {
@@ -241,6 +242,18 @@ public sealed class MirInitTest(ITestOutputHelper output)
         new MirAnalysis(c.Types).Run(program);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
+
+    // SPEC 14.10.3, 3.8 (DECISIONS R4-M62, R5-M38; BU-6): a read of a named Never Place supplies no normal completion, so its assumed
+    // completion initializes nothing it is placed into: the Place a let, an assignment or a Never var takes from it stays uninitialized,
+    // each later read of it an UninitializedPlace.
+    [Theory]
+    [InlineData("func absurd(x: Never) -> i32\n    let y: i32 = x\n    return y\n", "UninitializedPlace_Kd y 1")]
+    [InlineData("func absurd(x: Never) -> i32\n    let y: i32\n    y = x\n    return y\n", "UninitializedPlace_Kd y 1")]
+    [InlineData(
+        "func g(a: Never) => ()\nfunc absurd(x: Never)\n    var y: Never = x\n    g(y)\n    g(y)\n",
+        "UninitializedPlace_Kd y 1 | UninitializedPlace_Kd y 1")]
+    public void ANeverReadPlacesNothing(string source, string expected)
+        => Assert.Equal(expected.Split(" | "), Problems(source));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
