@@ -2299,10 +2299,11 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a process-wide selector only (no compilation could select MIR code generation in a test); sharing the driver's `MirReach`
     (an edit of the driver); the refusal in the old generator's `TryPrepare` or `ReportFailure` (it is not that generator's failure).
 - **R5-M36 Closure contexts as `Subst`** (2026-10-18, planning session; plan K2 (A5P-C1), package K §4.2 and §9, S2-S4 X10, under
-  R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes` interns it through
-  `TyCtxt.ClosureContext(enclosing, declaring, types, lengths, origins, inputs)`, the value the old synthetic CallPlan's `SubstOf` gave
-  (a call with a conforming Self, a Direct virtual call or a bound contract would add Self, which `CloseClosureTypes` does not receive;
-  PLAN G142), so one instance's closures share it, and interning replaces the never-cleared list of synthetic CallPlans and its linear scan; the
+  R5-M18) `BoundType.ClosureContext` is the `Subst` of the instance that closed the closure. `CloseClosureTypes(type, instance)` sets it to
+  exactly the substitution `Binding.InstantiateStorageType(type, subst)` instantiates under, its conforming Self included (PLAN G142,
+  closed: `TyCtxt.Apply` passes its substitution whole; the CallPlan form instantiates under `TyCtxt.StorageSubst(call)`, the Self-less
+  substitution the old synthetic CallPlan's `SubstOf` gave and the old paths have always applied), so one instance's closures share it,
+  and interning replaces the never-cleared list of synthetic CallPlans and its linear scan; the
   closure's result in the instance stays the failure check, while the CallPlan's ReturnType, a function of the rest, is dropped.
   `SubstOfClosure` reads the field, `ClosureSignature` is `Apply(signature, context)`, and Hover identifies a context by
   `SubstIdentity` (`Checking/Hover/HoverBuilder.Substitutions.cs`; `HoverBuilder.cs` is over the token limit): its binder and every
