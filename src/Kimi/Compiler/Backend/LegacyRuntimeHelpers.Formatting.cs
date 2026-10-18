@@ -57,15 +57,21 @@ internal sealed partial class LegacyRuntimeHelpers
     }
 
     /// <summary>Registers a <c>Text.toString</c> or <c>Text.tryFormat</c> conversion over a write wrapper (SPEC 22.9.2): it is
-    /// written in request order, and the needs of its kind's row join the module's. The planner requests each conversion once,
-    /// for those two kinds only.</summary>
+    /// written in request order, and the needs of its kind's row join the module's. The planner requests each conversion once;
+    /// any other kind is a broken contract.</summary>
     /// <param name="kind">TextToString, which formats into a heap buffer, or TextTryFormat, into the caller's array.</param>
     /// <param name="wrapper">The conversion's ABI.</param>
     /// <param name="write">The write wrapper it calls.</param>
     internal void RequestFormattingConversion(CompilerFunctionKind kind, FunctionAbi wrapper, FunctionAbi write)
     {
+        var fixedBuffer = kind switch
+        {
+            CompilerFunctionKind.TextTryFormat => true,
+            CompilerFunctionKind.TextToString => false,
+            _ => throw new InvalidOperationException("A formatting conversion kind has no writer."),
+        };
         this.JoinNeeds(FormattingRow(kind)!.Needs);
-        this.formattingConversions.Add((wrapper, write, kind == CompilerFunctionKind.TextTryFormat));
+        this.formattingConversions.Add((wrapper, write, fixedBuffer));
     }
 
     /// <summary>Writes the formatting runtime when the module needs it, then each requested write wrapper and conversion.</summary>
