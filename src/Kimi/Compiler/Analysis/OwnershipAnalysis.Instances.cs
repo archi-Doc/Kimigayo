@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -75,7 +76,7 @@ public sealed partial class OwnershipAnalysis
                 {
                     // A refused checked instance must retain a cause. An unexplained refusal is an invariant failure,
                     // never evidence that the user's universally verified generic definition is invalid.
-                    target.ReportIssue(new(generic.Function, OwnershipFailure.Internal));
+                    target.ReportIssue(new(generic.Function, OwnershipRequirement.Internal));
                 }
 
                 return null;
@@ -112,7 +113,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 8.15: a followed layer belongs to a resolved binder, which every case run and instance substitutes; a layer
             // that survives the substitution is an internal invariant failure, never a silent owner view.
-            this.body.ReportIssue(new(conversion, this.Substituting ? OwnershipFailure.Internal : OwnershipFailure.Unsupported));
+            this.body.ReportIssue(new(conversion, this.Substituting ? OwnershipRequirement.Internal : OwnershipRequirement.Unsupported));
             return false;
         }
 

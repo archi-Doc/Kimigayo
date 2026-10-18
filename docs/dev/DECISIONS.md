@@ -464,7 +464,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (code, subject, Reason)); a merge keeps the first problem's facts. Construction records keep their own merge in
   `MirProgram` until R6 unit a folds them into `MirReport` (stage ledger).
   No Requirement: Mir may not name the legacy `OwnershipFailure` (KR1001), and moving that enum into a shared area would
-  make old-path vocabulary a shared concept; R6 unit a derives the published requirement from the code and the facts (this
+  make old-path vocabulary a shared concept (this naming clause is superseded by R5-M24: Diagnostics owns the kinds as
+  `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
   derivation clause is superseded by R5-M23: each recording rule names the requirement; revised ask A-5). No
   Related: related sites are facts, and fact rows (pooled, with their own index on the problem) are added by their first
   producer. The ledger fills its requirement column from the old side only. Rejected: design A's (Code, Subject, Related,
@@ -1776,3 +1777,14 @@ structure is recorded here by the unit that first implements it.
     reassignability view and Tuple-element `PlanRow.Folded` rows (Q16); the jump target row's writer; `MirProblem.Requirement`
     (R4's record under A-5). Rejected: restructuring `HirPublisher.Consume`; a judgment at the publisher's visit; node failures
     for lints; a new `BindingFailure`; a code → requirement table (kept only as the fallback if R4 declines A-5).
+- **R5-M24 Ownership requirement kinds owned by Diagnostics** (2026-10-18, planning session; plan Q7, package Q8 §3.1, under
+  R5-M23; supersedes R4-M3a's naming clause) `OwnershipRequirement` (`Diagnostics/DiagnosticRequirement.cs`) is the kind
+  enumeration of the Ownership partition: the 18 members of the former `OwnershipFailure` in the same order, so every Kind,
+  requirement name and requirement-table row stays. `DiagnosticRequirement.Ownership`, `All` and `NameOf` take it; the old
+  analysis records it as its failure kind (`OwnershipIssue.Failure`), and Mir may name it. `OwnershipFailure` is deleted.
+  R4-M3a's reason no longer holds: the names were already public diagnostic vocabulary (the requirement table), not old-path
+  state. Invariant: one kind enumeration per partition (Binding's is `BindingFailure`). Prohibitions: no copy or mapping in an
+  analysis; a member leaves with its last producer (`TransferRequired` at H1, the others at H10/H11), and no member is
+  added (PD21). Rejected: a parallel enumeration mapped from `OwnershipFailure` (a second copy); moving
+  `OwnershipFailure` unchanged (its name describes the old analysis); one cross-partition requirement enumeration now (R7's
+  replacement of `BindingFailure`, PLAN10 §7).

@@ -2,6 +2,7 @@
 
 using System.Text.Json;
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -83,8 +84,8 @@ public class GenericOwnershipCaseTest
 
             rejected = true;
             var (at, loan) = Locate(row.Source, expected);
-            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipFailure.ComparisonLoanConflict && LineAt(row.Source, x.Source.Span.Start) == at &&
-                x.LoanSource is { } holder && Text(holder).Contains(loan, StringComparison.Ordinal));
+            Assert.Contains(c.Ownership.Issues, x => x.Failure == OwnershipRequirement.ComparisonLoanConflict &&
+                LineAt(row.Source, x.Source.Span.Start) == at && x.LoanSource is { } holder && Text(holder).Contains(loan, StringComparison.Ordinal));
         }
 
         if (!rejected)

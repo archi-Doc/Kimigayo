@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using static Kimi.Compiler.OwnershipFlow;
 
 namespace Kimi.Compiler;
@@ -385,13 +386,13 @@ public sealed partial class OwnershipBody
                                 if (own >= 0 && reserved < 0)
                                 {
                                     // The reserved input itself meets a retained Loan; its activation decides the record.
-                                    (this.preparedLoanConflicts ??= new()).Add((own, new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source, Input: this.Lending(own))));
+                                    (this.preparedLoanConflicts ??= new()).Add((own, new(at, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source, Input: this.Lending(own))));
                                     continue;
                                 }
 
                                 if (activating)
                                 {
-                                    var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: r, Activation: true, LoanSource: this.Places[holder].Source, Input: this.Lending(r));
+                                    var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, Reservation: r, Activation: true, LoanSource: this.Places[holder].Source, Input: this.Lending(r));
                                     if (reserved >= 0)
                                     {
                                         // Another reserved input of an enclosing or the same call; its preparation may already state the overlap.
@@ -416,14 +417,14 @@ public sealed partial class OwnershipBody
                                 {
                                     // The call's own effect after activation, such as an intrinsic update through one target while
                                     // another target is lent, is part of activating that call.
-                                    this.HoldOverlapActivation(reserved, -1, new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved, Activation: true, LoanSource: this.Places[holder].Source));
+                                    this.HoldOverlapActivation(reserved, -1, new(operation.Source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, Reservation: reserved, Activation: true, LoanSource: this.Places[holder].Source));
                                     continue;
                                 }
 
                                 if (reserved >= 0)
                                 {
                                     // SPEC 15.6.7: the operation conflicts with a reservation, which is shown as its lending point.
-                                    this.ReportReservationConflict(new(at, OwnershipFailure.ComparisonLoanConflict, Place: holder, Reservation: reserved), own, reserved);
+                                    this.ReportReservationConflict(new(at, OwnershipRequirement.ComparisonLoanConflict, Place: holder, Reservation: reserved), own, reserved);
                                     continue;
                                 }
 
@@ -438,7 +439,7 @@ public sealed partial class OwnershipBody
                                 }
 
                                 this.ReportIssue(destruction ? this.DestructionIssue(operation.Source, holder, root, lending)
-                                    : new(operation.Source, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source));
+                                    : new(operation.Source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: this.Places[holder].Source));
                             }
                         }
                     }
@@ -913,8 +914,8 @@ public sealed partial class OwnershipBody
                 var source = this.Operations[op].Source;
                 this.ReportIssue(effect.Preserves && effect.Requirement is BoundType && ReferenceEquals(earlier.Requirement, effect.Requirement) &&
                     this.RelatedValues(earlier.Receiver, effect.Receiver, count, false) ?
-                    new(source, OwnershipFailure.Unsupported) :
-                    new(source, OwnershipFailure.CallEffectConflict, Place: p, LoanSource: this.Places[p].Source, Related: this.Operations[earlier.Call].Source));
+                    new(source, OwnershipRequirement.Unsupported) :
+                    new(source, OwnershipRequirement.CallEffectConflict, Place: p, LoanSource: this.Places[p].Source, Related: this.Operations[earlier.Call].Source));
                 checkedCall = op;
                 break;
             }
@@ -1924,7 +1925,7 @@ public sealed partial class OwnershipBody
 
         var temporary = name is null && this.Places[root].Kind == OwnershipPlaceKind.Temporary ? this.Places[root].Source : null;
         var loan = this.Places[holder].Source;
-        return new(source, OwnershipFailure.ComparisonLoanConflict, Place: holder, LoanSource: loan, Borrow: borrowed, BorrowCapture: capture, Destroyed: name ?? string.Empty, DestroyedTemporary: temporary);
+        return new(source, OwnershipRequirement.ComparisonLoanConflict, Place: holder, LoanSource: loan, Borrow: borrowed, BorrowCapture: capture, Destroyed: name ?? string.Empty, DestroyedTemporary: temporary);
     }
 
     private void PrepareSlicePaths()

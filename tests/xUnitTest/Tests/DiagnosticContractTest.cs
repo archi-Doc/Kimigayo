@@ -305,7 +305,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "let a = b\nconsume(resource)\n");
         var target = owner.GetOrAddCollection("main").For(document);
-        var key = new DiagnosticKey(null, 0, 18, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        var key = new DiagnosticKey(null, 0, 18, 8, DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired));
         DiagnosticRepairFact[] repairs =
         [
             new(RepairKind.ReplaceToken, ["b", "c"], [target.Edit(new(8, 1), "c")], RepairConditionSet.None),
@@ -371,7 +371,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var document = new SourceDocument("main.kimi", "consume(resource)");
         var builtIn = new SourceDocument("compiler://Kimi/Core.kimi", "struct Core");
         var target = owner.GetOrAddCollection("main").For(document);
-        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired));
         var exception = Assert.Throws<DiagnosticContractException>(() =>
         {
             DiagnosticRepairFact[] repairs = shape switch
@@ -407,7 +407,7 @@ public sealed class DiagnosticContractTest(ITestOutputHelper output)
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "if a&&b => fire()\nconsume(resource)\n");
         var target = owner.GetOrAddCollection("main").For(document);
-        var key = new DiagnosticKey(null, 0, 26, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        var key = new DiagnosticKey(null, 0, 26, 8, DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired));
         target.Report(DiagnosticPartition.Ownership, key, new(26, 8), DiagnosticCode.TransferRequired_Kd, null, null, "resource is a let binding of a Non-Copy Type", null, document, repairs:
             [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(34, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
         target.Report(DiagnosticPartition.Syntax, new(null, 0, 4, 2, DiagnosticRequirement.Syntax), new(4, 2), DiagnosticCode.IndentationLevelMismatch_Kd, null, null, null, null, document, repairs:

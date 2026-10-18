@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -106,7 +107,7 @@ public sealed partial class OwnershipBody
 
             if (!this.checkedUses.Contains((operation.Source, operation.Kind, operation.Place)))
             {
-                this.ReportIssue(new(operation.Source, OwnershipFailure.Unsupported, operation.Place));
+                this.ReportIssue(new(operation.Source, OwnershipRequirement.Unsupported, operation.Place));
                 return;
             }
         }
@@ -416,7 +417,7 @@ public sealed partial class OwnershipBody
 
                 if (place.Kind == OwnershipPlaceKind.Local && !place.Mutable && (state & PlaceState.MayAssigned) != 0)
                 {
-                    this.ReportIssue(new(operation.Source, OwnershipFailure.ReassignedLet, operation.Place));
+                    this.ReportIssue(new(operation.Source, OwnershipRequirement.ReassignedLet, operation.Place));
                 }
 
                 if (operation.Input >= 0)
@@ -444,7 +445,7 @@ public sealed partial class OwnershipBody
 
             this.ReportIssue(new(
                 source,
-                (state & PlaceState.MayMoved) != 0 ? OwnershipFailure.PossiblyMovedUse : OwnershipFailure.UninitializedUse,
+                (state & PlaceState.MayMoved) != 0 ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse,
                 place));
         }
     }

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -57,7 +58,7 @@ public sealed partial class OwnershipAnalysis
                     {
                         // A rejected capture is read as the Copy it asks for, so the binding stays initialized and later uses report only
                         // their own problems (SPEC 23.1.2).
-                        this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired, Capture: i));
+                        this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired, Capture: i));
                         acquisition = AcquisitionKind.Copy;
                     }
                 }
