@@ -246,6 +246,7 @@ internal sealed partial class MirBuilder
                     HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
                     HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, input), node, into),
                     HirAcquire.Copy => MirOperand.Copy(place),
+                    HirAcquire.None when ReferenceEquals(type, BoundType.Never) => MirOperand.Copy(place), // In place: no referent to adapt.
                     _ => MirOperand.Move(place),
                 };
             case HirAdaptation.ReferentRead:
@@ -502,16 +503,21 @@ internal sealed partial class MirBuilder
     // The one assignment: a node's own value or a part of it, made where it is built from the operands evaluated before it, also where
     // only the checks continue (assumed completion, SPEC 14.10.3; DECISIONS R4-M62). Nothing is built that has no value: an rvalue that
     // has an input (an operand, or the Place a Ref, Len or Discriminant reads) whose every input is the Never value, or a value assigned
-    // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
+    // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type, and a
+    // named Place of Type Never's value, which a temp of that Type secures; DECISIONS R5-M38).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
         var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
-        for (var i = 0; never && i < rvalue.Count; i++)
+        var named = false;
+        for (var i = 0; i < rvalue.Count; i++)
         {
-            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);
+            var operand = this.body.Operands[rvalue.Start + i];
+            var place = operand.Kind == MirOperandKind.Const ? (MirPlace?)null : operand.Place;
+            never &= place is { } value && this.IsNeverValue(value);
+            named |= place is { } held && this.IsNever(held) && !this.IsNeverValue(held);
         }
 
-        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNeverValue(destination)))
+        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || named || !this.IsNeverValue(destination)))
         {
             this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
         }

@@ -214,24 +214,32 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 3.1.3 (DECISIONS R5-M38): a named Place of Type Never takes the acquisition Binding publishes, Copy for a bare read (Never is
     // Copy, BU-4), so a Never parameter read twice is no MovedPlace; only the Never value, a node's unwritten temp, is taken as it is.
-    // Binding publishes x@move of a Never Place as an Abrupt conversion that does not complete, its name read by Copy: MIR moves nothing
-    // and A1 finds no problem in g(x@move, x) either (whether it should move is Binding's publication, R5-M38).
     [Fact]
     public void ANeverPlaceIsAcquiredAsBindingPublishes()
     {
-        const string G = "func g(a: Never, b: Never) => ()\n";
-        var c = MirBuildTest.Compile(G + "func absurd(x: Never) => g(x@move, x)\n");
+        const string Source = "func g(a: Never, b: Never) => ()\nfunc absurd(x: Never) => g(x, x)\n";
+        var c = MirBuildTest.Compile(Source);
+        Assert.Empty(c.BuildMir().Findings);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "x" && x.Parent is InvocationKoto);
+        Assert.Equal([HirAcquire.Copy, HirAcquire.Copy], reads.Select(static x => HirTables.AdjustOf(x).Acquire));
+        Assert.Empty(Problems(Source));
+    }
+
+    // SPEC 12.2 (DECISIONS R5-M38): a named Never Place read before a later operand builds code is secured, its value copied into a
+    // temp that the call then moves: made a Place of the program, the temp has no problem, where an unwritten one is uninitialized.
+    [Fact]
+    public void ASecuredNeverPlaceIsWritten()
+    {
+        var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc g2(a: Never, b: i32) => ()\nfunc absurd(x: Never) => g2(x, k())\n");
         var program = c.BuildMir();
-        Assert.Empty(program.Findings);
-        var arguments = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() is "x" or "x@move");
-        Assert.Equal(
-            ["x@move Convert Temporary Abrupt Diverges", "x Name Copy None Diverges", "x Name Copy None Diverges"],
-            arguments.Select(static x => $"{x} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire} " +
-                $"{(x is BinaryKoto ? (ConversionBinding)HirTables.PlanOf(x).Mode : ConversionBinding.None)} {HirTables.CompletionOf(x)}"));
-        var absurd = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
-        Assert.DoesNotContain(MirOperand.Move(new(1)), absurd.Operands.ToArray());
-        Assert.Empty(Problems(G + "func absurd(x: Never) => g(x@move, x)\n"));
-        Assert.Empty(Problems(G + "func absurd(x: Never) => g(x, x)\n"));
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x.Callee.Symbol?.Name == "g2");
+        var secured = body.Operands[call.Start];
+        Assert.Equal((MirOperandKind.Move, MirLocalKind.Temp), (secured.Kind, body.Locals[secured.Place.Root].Kind));
+        ref readonly var local = ref body.Locals[secured.Place.Root];
+        Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
+        new MirAnalysis(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
