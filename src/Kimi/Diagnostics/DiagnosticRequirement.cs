@@ -10,8 +10,8 @@ namespace Kimi.Diagnostics;
 
 /// <summary>The requirement kinds of the Ownership partition: the Kind of a requirement named <c>Ownership.&lt;Kind&gt;</c>, each with
 /// its row in the requirement table. Invariant: the one kind enumeration of its partition, which the ownership analysis records
-/// as its failure kind. Prohibitions: no copy or mapping in an analysis; a member is removed with its last producer, and a new
-/// one is a vocabulary change.</summary>
+/// as its failure kind. Prohibitions: no copy or mapping in an analysis; a member is removed with its last producer, and none
+/// is added (PD21).</summary>
 public enum OwnershipRequirement : byte
 {
     UninitializedUse,
@@ -92,7 +92,7 @@ public readonly record struct DiagnosticRequirement(DiagnosticPartition Partitio
     internal static DiagnosticRequirement Binding(BindingFailure failure) => new(DiagnosticPartition.Binding, (ushort)failure);
 }
 
-/// <summary>The requirement vocabulary: stable names from each phase's failure enumeration with their descriptions, and for
+/// <summary>The requirement vocabulary: stable names from each partition's kind enumeration with their descriptions, and for
 /// syntax forms the phrase their diagnostics display, validated when loaded.</summary>
 public static class DiagnosticRequirements
 {

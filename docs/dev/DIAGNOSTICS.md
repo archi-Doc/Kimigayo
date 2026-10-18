@@ -39,7 +39,7 @@ Constructor inference follows SPEC §10.8 and §23.1. Keep Type lookup, missing 
 | --- | --- |
 | `src/Kimi/Diagnostics/DiagnosticCode.tinyhand` and `DiagnosticEntry` | Severity, category, and default Message, Label and Note |
 | Phase-specific reporting conversions (C#), checked against the catalog schemas | Argument and evidence values, roles of related locations, conditional explanations |
-| `DiagnosticRequirement` (a C# value of the owning partition and that phase's failure enumeration) | The requirement's stable name (public vocabulary, like code names), its owning partition and its semantic order |
+| `DiagnosticRequirement` (a C# value of the owning partition and that partition's kind enumeration) | The requirement's stable name (public vocabulary, like code names), its owning partition and its semantic order |
 | `DiagnosticRequirement.tinyhand` | A short description per stable name; for a syntax form also the `Phrase` its diagnostics display |
 | `SyntaxForm` (`src/Kimi/Compiler/Parsing/SyntaxForm.cs`) | The forms the parser expects or finds misplaced: the requirement Kind of the Syntax partition, named `Syntax.<Form>` (§4.4) |
 | `OwnershipRequirement` (`src/Kimi/Diagnostics/DiagnosticRequirement.cs`) | The requirement Kind of the Ownership partition, named `Ownership.<Kind>`, which the ownership analysis records as its failure kind |

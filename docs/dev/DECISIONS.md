@@ -1784,7 +1784,7 @@ structure is recorded here by the unit that first implements it.
   analysis records it as its failure kind (`OwnershipIssue.Failure`), and Mir may name it. `OwnershipFailure` is deleted.
   R4-M3a's reason no longer holds: the names were already public diagnostic vocabulary (the requirement table), not old-path
   state. Invariant: one kind enumeration per partition (Binding's is `BindingFailure`). Prohibitions: no copy or mapping in an
-  analysis; a member leaves with its last producer (`TransferRequired` at H1, the others at H10/H11), and a new member is a
-  vocabulary change (PD21). Rejected: a parallel enumeration mapped from `OwnershipFailure` (a second copy); moving
+  analysis; a member leaves with its last producer (`TransferRequired` at H1, the others at H10/H11), and no member is
+  added (PD21). Rejected: a parallel enumeration mapped from `OwnershipFailure` (a second copy); moving
   `OwnershipFailure` unchanged (its name describes the old analysis); one cross-partition requirement enumeration now (R7's
   replacement of `BindingFailure`, PLAN10 §7).
