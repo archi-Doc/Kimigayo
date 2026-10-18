@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -24,7 +25,7 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.ProveCopy(payload, source) != ConstraintProof.Proven)
         {
-            this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+            this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
             return this.Temporary(source);
         }
 

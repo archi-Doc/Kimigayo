@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -40,7 +41,7 @@ public class ValueCallActivationTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var issue = Assert.Single(c.Ownership.Issues);
-        Assert.True(issue.Failure == OwnershipFailure.ComparisonLoanConflict && issue.Activation, issue.ToString());
+        Assert.True(issue.Failure == OwnershipRequirement.ComparisonLoanConflict && issue.Activation, issue.ToString());
         Assert.False(c.Validate(out _));
     }
 

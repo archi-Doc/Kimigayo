@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -18,12 +19,12 @@ internal sealed partial class BodyLowering
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
     // Physical entry metadata is independent of the operations that acquire or destroy its stored values.
-    private static (long KeyOffset, long ValueOffset, long Stride) GetDictionaryEntryLayout(in ArrayElement key, in ArrayElement value)
+    private static DictionaryEntryLayout GetDictionaryEntryLayout(in ArrayElement key, in ArrayElement value)
     {
         var alignment = Math.Max(8, Math.Max(key.Value.Layout.Alignment, value.Value.Layout.Alignment));
         var keyOffset = AlignDictionary(16, key.Value.Layout.Alignment);
         var valueOffset = AlignDictionary(keyOffset + key.Value.Layout.Size, value.Value.Layout.Alignment);
-        return (keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
+        return new(keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
     }
 
     private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value)
@@ -49,8 +50,7 @@ internal sealed partial class BodyLowering
                 DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
                 _ => new(name, "void", [handle, location, length]),
             };
-            var layout = GetDictionaryEntryLayout(key, value);
-            helper = new(kind, abi, key.Value, key.Layout, key.IsString, value.Value, value.Layout, value.IsString, layout.KeyOffset, layout.ValueOffset, layout.Stride, related);
+            helper = new(kind, abi, key.ToStored(), value.ToStored(), GetDictionaryEntryLayout(key, value), related);
             this.dictionaryHelperCache.Add(cacheKey, helper);
         }
 
@@ -58,7 +58,7 @@ internal sealed partial class BodyLowering
         return helper;
     }
 
-    private bool LowerDictionaryLiteral(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerDictionaryLiteral(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -69,7 +69,7 @@ internal sealed partial class BodyLowering
             !FitsValue(body.Places[operation.Input].Type, dictionary.Components[0], operation.Source) ||
             (inserting && ((uint)valuePlace >= (uint)body.Places.Count || !FitsValue(body.Places[valuePlace].Type, dictionary.Components[1], operation.Source))) ||
             !this.TryGetArrayElement(dictionary.Components[0], out var key) || !this.TryGetArrayElement(dictionary.Components[1], out var value) ||
-            !this.TryGetLocation(operation.Source, directory, constants, out var location))
+            !this.TryGetLocation(operation.Source, constants, out var location))
         {
             return Fail("Dictionary literal requires an initialized handle and matching acquired key/value storage.", out failure);
         }
@@ -146,7 +146,7 @@ internal sealed partial class BodyLowering
             this.callOperands.Add(operand);
         }
 
-        function.AddCall(id, transfer ? WindowsLowering.TransferBytes : WindowsLowering.TryAllocateBytes, CollectionsMarshal.AsSpan(this.callOperands));
+        function.AddCall(id, transfer ? RuntimeAbi.TransferBytes : RuntimeAbi.TryAllocateBytes, CollectionsMarshal.AsSpan(this.callOperands));
         this.storageBytesUsed = true;
         return true;
 
@@ -156,7 +156,7 @@ internal sealed partial class BodyLowering
     // SPEC 4.9.6: placeEntry appends one slot, growing the storage first, and transfers the acquired key and value into
     // it through the literal's typed placement helper. The ordinary source bodies prove that no equal key is stored, and
     // growth failure reports the standard operation's forwarded caller location.
-    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerDictionaryPlacement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         const int inputs = 3;
@@ -201,7 +201,7 @@ internal sealed partial class BodyLowering
         }
         else
         {
-            if (!this.TryGetLocation(call, directory, constants, out var location))
+            if (!this.TryGetLocation(call, constants, out var location))
             {
                 return Fail("Dictionary placement has no diagnostic source location.", out failure);
             }

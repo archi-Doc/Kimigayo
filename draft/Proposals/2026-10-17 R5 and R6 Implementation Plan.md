@@ -4,7 +4,10 @@ Date: 2026-10-17
 
 Status: Adopted working plan. On 2026-10-18 the owner adopted it as the formal plan for R5, R6-gen and R6-check, with its
 three exit gates (§5), decided that R5 runs now in parallel with R4 under its own planning session, and answered OQ1–OQ17
-(§2.2 records the outcomes; DECISIONS R5-M1–R5-M13). OQ17 (b) and (c) differ from the recommendations. The text below is
+(§2.2 records the outcomes; DECISIONS R5-M1–R5-M13). OQ17 (b) and (c) differ from the recommendations. The owner approved
+the step-0 package S2–S4 the same day (DECISIONS R5-M18) and the Q8 package after it (DECISIONS R5-M23, which changes rows Q11,
+Q13, Q14, Q17, H0, H1, H3 and ask A-5 and adds Q21 and H1a); where their unit and PD changes differ from §2.1 and §4, the packages
+govern. The text below is
 otherwise the 2026-10-17 proposal: the owner asked for a unit-level plan for R5, R6-gen and R6-check and for an assessment of
 the parts that are too large or too hard (§6); an independent six-lens review with a skeptic pass checked it, and its
 confirmed findings are applied. It changes no SPEC, compiler or test.
@@ -157,13 +160,13 @@ Three packets, each answerable "as recommended" (the OD13 pattern). "Blocks" nam
 | OQ1 | Adopted, with the three exit gates; R5 starts now, in parallel with R4 (option (a); OD4 stands) | R5-M1 |
 | OQ2 | PRE5 §2 superseded as recommended; the cited pre-R5 evidence directory does not exist, so PLAN §3's baseline line is corrected and E6 retakes the variance | R5-M2 |
 | OQ3 | Waived; B's first slice is measured against legacy (E13 at C1a's group review); S6 does not run | R5-M3 |
-| OQ4 | S2–S4 approved as one package, the owner looking once after its design review; the summary highlights PD3 and PD11 | R5-M1 |
+| OQ4 | S2–S4 approved as one package, the owner looking once after its design review; the summary highlights PD3 and PD11. Approved on 2026-10-18 after three review rounds, with X33 (a), `ArtifactPublicationFailed_Kd` and F11's rule X30′ | R5-M1, R5-M18 |
 | OQ5 | Every sub-item as recommended | R5-M4 |
 | OQ6 | Option (e): Q1–Q3, Q4 superseding OD10's clause, deletion at G7 | R5-M5 |
 | OQ7 | (e) as PLAN10, plus (a) legacy-wrong and (d) intended, each with item, reason and SPEC clause | R5-M6 |
 | OQ8 | PD20's hold list is an ARCH rule | R5-M7 |
 | OQ9 | Metric, stop rules, VERIFICATION's R5 rows and ask A-10 adopted; no CI sel lane | R5-M8 |
-| OQ10, OQ11 | Q8 and H0 approved as packages, each once after its design review | R5-M1 |
+| OQ10, OQ11 | Q8 and H0 approved as packages, each once after its design review. Q8 approved on 2026-10-18 after two review rounds, with the proposals Q8-6 and Q8-7 | R5-M1, R5-M23 |
 | OQ12 | R7 for Binding's forwarding-property reads and ARCH's Binding-wide Syntax restriction; Parsing and root-helper reads at H14 | R5-M9 |
 | OQ13 | R7, after the CallPlan pipeline gives syntax-free selection | R5-M9 |
 | OQ14 | ARCH:135 and ARCH:149 amended; the 17 real sites fixed (Q16) | R5-M10 |

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal static partial class WindowsLowering
@@ -61,6 +63,6 @@ internal static partial class WindowsLowering
         return functions;
 
         void Add(CompilerFunctionKind kind, string name, string result, AbiParameter[] parameters, bool resultSlot = false)
-            => functions[(int)kind] = new(name, result, parameters, resultSlot: resultSlot);
+            => functions[(int)kind] = new(name, result, parameters) { ResultSlot = resultSlot };
     }
 }

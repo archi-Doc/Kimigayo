@@ -67,7 +67,7 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             // Repeat after full-size preparation: retained capacity must never bypass the logical limit.
             OwnershipStorage.ByteLimit = 4096;
             Assert.False(c.Analyze().IsVerified);
-            var issue = Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.StorageLimit);
+            var issue = Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipRequirement.StorageLimit);
             Assert.True(issue.RequiredBytes > 4096);
             Assert.Equal(4096, issue.LimitBytes);
             Assert.Contains("func check()", issue.Source.ToString(), StringComparison.Ordinal);
@@ -94,7 +94,7 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             Assert.Contains(sent, x => x.Range == error.Display!.Range && x.Message.Contains("4096", StringComparison.Ordinal));
 
             Assert.False(c.Analyze().IsVerified);
-            Assert.Equal(issue, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipFailure.StorageLimit));
+            Assert.Equal(issue, Assert.Single(c.Ownership.Issues, static x => x.Failure == OwnershipRequirement.StorageLimit));
         }
         finally
         {

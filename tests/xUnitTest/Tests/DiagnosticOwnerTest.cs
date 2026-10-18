@@ -185,7 +185,7 @@ public sealed class DiagnosticOwnerTest
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "consume(resource)\n");
         var target = owner.GetOrAddCollection("main.kimi").For(document);
-        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired));
         target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs:
             [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
         var result = owner.Finalize();

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
@@ -11,7 +13,7 @@ internal static partial class LlvmModuleWriter
         if (instruction.Check == ArithmeticCheckKind.Bounds && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value >= 0 && operands[1].Value < operands[2].Value)
         {
             // SPEC 4.8.6: a constant element position proven inside the fixed array needs no runtime check.
-            WriteArithmeticFailure(output, constants, instruction, ProvenValid);
+            WriteArithmeticFailure(output, constants, instruction, LlvmScalarText.ProvenValid);
         }
         else if (instruction.Check == ArithmeticCheckKind.Bounds)
         {

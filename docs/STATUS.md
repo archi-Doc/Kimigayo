@@ -39,7 +39,7 @@ Public declarations and guarantees belong in [LIBRARY](LIBRARY.md). The followin
 | Ownership and objects | Whole-value replace/exchange/swap; concrete obj/rc/arc factories, clone/cleanup, supported payload Copy reads, base views, fields, shared calls and temporary-handle borrows. | Weak, checked casts, runtime Contract Views and general flow refinement are not implemented. Object and reference-layer defects are listed in §3; object support does not imply complete ObjectCallCompatible effects. |
 | Text and formatting | Fixed/heap buffers, UTF-8 validation, erased Writers, builtin/user formatters, Text conversion, owning interpolation, `$tryWrite`, reserve-effect checks and bounded Console stack output. | Effect analysis keeps the conservative call/alias limits below. Stack formatting is bounded to 1,024 bytes; unknown bounds use the ordinary buffer path. The revised allocation guarantees still fall under S1015. |
 | Time and numeric wrappers | Windows Duration/Stopwatch and supported Wrapping integer operations, conversions and formatting. | Per-operation numeric and generation boundaries remain; this does not establish every revised library guarantee. |
-| Option and Result | Optional Types, supported enum storage, `try`, explicit discard and ordinary acquisition/cleanup. | Never/static scalar-reference payloads and general aggregate covariance/Origin-polymorphic ABI remain incomplete. |
+| Option and Result | Optional Types, supported enum storage, `try`, explicit discard and ordinary acquisition/cleanup. | Never/static scalar-reference payloads and general aggregate covariance/Origin-polymorphic ABI remain incomplete. The in-memory nonnull Option of IMPL §21.1.3 (one pointer word for `ref`, `uniq`, `obj`, `rc`, `arc`, `objref` and `objuniq` payloads) is not laid out: such Options keep the tagged enum layout (PLAN U8). |
 
 ## 3. Control Flow and Ownership
 
@@ -64,6 +64,7 @@ Known defects are not safe rejection boundaries:
 | Generic temporaries | A temporary of bare generic `T` is not yet a definition-time Loan root; its later borrow use is judged only at instantiation. Concrete object-handle temporary checks do not close this gap. |
 | Conditional temporaries | A Unit/struct temporary on the right of `and`/`or` can pass checking and fail generation during conditional destruction. |
 | Static initialization | Cycle detection uses `KIMI_E_ABORT` at the Field declaration, rather than `KIMI_E_STATIC_CYCLE` at the accessing Place expression. |
+| Nested specializations | A call that selects a specialization of a named function nested two or more levels inside a generic declaration runs the original body (the old generator forwards one level). MIR code generation keys such instances by SPEC 6.1.3 (R5 K1; DECISIONS R5-M21). |
 
 ## 4. LLVM Generation Coverage
 

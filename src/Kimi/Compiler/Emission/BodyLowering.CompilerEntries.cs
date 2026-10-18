@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
@@ -21,7 +23,7 @@ internal sealed partial class BodyLowering
         {
             case CompilerFunctionKind.ArrayReserve:
             case CompilerFunctionKind.ArrayShrinkToFit:
-                entry = kind == CompilerFunctionKind.ArrayReserve ? WindowsLowering.ArrayReserve : WindowsLowering.ArrayShrink;
+                entry = kind == CompilerFunctionKind.ArrayReserve ? RuntimeAbi.ArrayReserve : RuntimeAbi.ArrayShrink;
                 operands.Add(new(EmissionOperandKind.Integer, element.Stride));
                 if (kind == CompilerFunctionKind.ArrayReserve)
                 {

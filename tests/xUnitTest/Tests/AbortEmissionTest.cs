@@ -105,6 +105,34 @@ public class AbortEmissionTest
         Assert.DoesNotContain("ret void", runtime);
     }
 
+    // IMPL 20.1, 21.4.2: a location names its source by the logical name, the project-relative path with `/` separators; a project
+    // without a directory is the current directory's, so a fully qualified source path is displayed relative to it, never as the
+    // checkout's path.
+    [Theory]
+    [InlineData("", "Hello.kimi:1:1")]
+    [InlineData("sub", "sub/Hello.kimi:1:1")]
+    public void LocationsNameTheLogicalSource(string directory, string location)
+    {
+        var c = MinimalEmissionTest.Analyze("$abort(\"x\")", Path.GetFullPath(Path.Combine(directory, "Hello.kimi")));
+        Assert.Equal(location, c.Locations.Text(SourceRef.Of(Abort(c))));
+    }
+
+    // The location memo holds the current program only: an edit releases the texts of the documents it replaced.
+    [Fact]
+    public void AnEditReleasesTheReplacedLocationTexts()
+    {
+        var c = MinimalEmissionTest.Analyze("$abort(\"before\")");
+        var replaced = LocationText(c);
+        c.Kotonoha.RootKoto.Clear();
+        c.Kotonoha.CreateCodeContext().Parse(c.Kotonoha.RootKoto, "\n$abort(\"after\")");
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.EndsWith(":2:1", c.Locations.Text(SourceRef.Of(Abort(c))));
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.False(replaced.TryGetTarget(out _));
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RebindReloadAndWarmPassesPreserveTheBuiltin()
@@ -125,4 +153,9 @@ public class AbortEmissionTest
         Assert.True(success);
         Assert.Equal(0, allocated);
     }
+
+    private static MacroKoto Abort(Compilation c) => KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MacroKoto>().Single();
+
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static WeakReference<string> LocationText(Compilation c) => new(c.Locations.Text(SourceRef.Of(Abort(c)))!);
 }

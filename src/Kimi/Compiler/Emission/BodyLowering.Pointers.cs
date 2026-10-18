@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -37,7 +38,7 @@ internal sealed partial class BodyLowering
         return false;
     }
 
-    private bool LowerPointerProjection(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerPointerProjection(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         // SPEC 5.2, 12: displace the containing raw address to one stored part. A computed array
         // index is bounds-checked like ordinary fixed-array access (SPEC 4); the result keeps the
@@ -62,8 +63,8 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        var stride = index < 0 ? 0 : FunctionAbi.GetValue(part!, this.aggregateLayouts)?.Layout.Stride ?? -1;
-        if (index >= 0 && (stride < 0 || !this.TryGetLocation(element, directory, constants, out location)))
+        var stride = index < 0 ? 0 : FunctionAbiPool.GetValue(part!, this.aggregateLayouts)?.Layout.Stride ?? -1;
+        if (index >= 0 && (stride < 0 || !this.TryGetLocation(element, constants, out location)))
         {
             return Fail("Pointer element bounds check requires an element stride and a source location.", out failure);
         }
@@ -81,7 +82,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerPointer(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerPointer(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -149,7 +150,7 @@ internal sealed partial class BodyLowering
         if (store)
         {
             var location = -1;
-            if ((text || layout is { NeedsDestruction: true }) && !this.TryGetLocation(operation.Source, directory, constants, out location))
+            if ((text || layout is { NeedsDestruction: true }) && !this.TryGetLocation(operation.Source, constants, out location))
             {
                 return Fail("Pointer replacement requires a destruction location.", out failure);
             }

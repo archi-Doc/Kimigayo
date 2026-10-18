@@ -3,6 +3,7 @@
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -93,8 +94,8 @@ public class ForeignEmissionTest
     [InlineData("é\t", "\"\\C3\\A9\\09\"")]
     public void ExternalNamesRoundTrip(string symbol, string name)
     {
-        Assert.Equal(name, LlvmModuleWriter.ExternalName(symbol));
-        Assert.Equal(symbol, LlvmModuleWriter.SymbolFromName(name));
+        Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
+        Assert.Equal(symbol, LlvmModuleText.SymbolFromName(name));
     }
 
     [Fact]
@@ -575,7 +576,7 @@ public class ForeignEmissionTest
         // SPEC 13.7.2: simple and compound assignments run their right-hand side before locating the target.
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerIndex", source, "amount\ntarget\nindex\namount\ntarget\nindex\namount\nindex ok\n");
         Assert.DoesNotContain("getelementptr inbounds i8", ir);
-        Assert.DoesNotContain("call void @__kimi_abort(i32 " + WindowsLowering.IndexBoundsReason, ir);
+        Assert.DoesNotContain("call void @__kimi_abort(i32 " + AbortReasons.IndexBounds, ir);
     }
 
     [Theory]

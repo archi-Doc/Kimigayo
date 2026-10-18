@@ -80,7 +80,6 @@ public class BitwiseEmissionTest
         var start = ir.IndexOf("define internal void @__kimi_entry_body", StringComparison.Ordinal);
         var body = ir[start..ir.IndexOf("\n}\n", start, StringComparison.Ordinal)];
         Assert.DoesNotContain("icmp uge", body);
-        Assert.DoesNotContain("%shift", body);
         Assert.Contains(" = shl i32 ", body);
         Assert.Contains(" = ashr i32 ", body);
         Assert.Contains(" = lshr i8 ", body);

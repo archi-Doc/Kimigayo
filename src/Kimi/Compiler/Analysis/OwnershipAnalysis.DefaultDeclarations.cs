@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -214,7 +215,7 @@ public sealed partial class OwnershipAnalysis
                     {
                         if (entries[entry].Name == capture.Source.Name)
                         {
-                            this.Report(new(closure, OwnershipFailure.DefaultArgumentMove, Capture: entry));
+                            this.Report(new(closure, OwnershipRequirement.DefaultArgumentMove, Capture: entry));
                             break;
                         }
                     }
@@ -270,7 +271,7 @@ public sealed partial class OwnershipAnalysis
             if (root is IdentifierNameKoto { BoundSymbol: { } symbol } && this.PrecedingParameter(symbol) &&
                 (this.transfer || owner.compilation.Binding.ProveCopy(type, source) == ConstraintProof.Refuted))
             {
-                this.Report(new(source, OwnershipFailure.DefaultArgumentMove));
+                this.Report(new(source, OwnershipRequirement.DefaultArgumentMove));
             }
         }
     }

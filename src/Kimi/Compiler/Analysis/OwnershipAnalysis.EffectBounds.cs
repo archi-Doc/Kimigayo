@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -44,20 +45,20 @@ public sealed partial class OwnershipAnalysis
     {
         this.effectViolations.Clear();
         this.compilation.Binding.ValidateDestructionEffects(this.effectViolations);
-        this.AddEffectIssues(OwnershipFailure.EffectBound);
+        this.AddEffectIssues(OwnershipRequirement.EffectBound);
         this.compilation.Binding.ValidateCallableEffects(this.effectViolations);
-        this.AddEffectIssues(OwnershipFailure.CallableEffectBound);
+        this.AddEffectIssues(OwnershipRequirement.CallableEffectBound);
         this.compilation.Binding.ValidateVirtualDestructionEffects(this.effectViolations);
-        this.AddEffectIssues(OwnershipFailure.VirtualEffectBound);
+        this.AddEffectIssues(OwnershipRequirement.VirtualEffectBound);
     }
 
     // A check that stopped at an effect Binding cannot classify yet is the located limit (plan rule 5).
-    private void AddEffectIssues(OwnershipFailure failure)
+    private void AddEffectIssues(OwnershipRequirement failure)
     {
         for (var i = 0; i < this.effectViolations.Count; i++)
         {
             var use = this.effectViolations[i];
-            this.issues.Add(new(use, this.compilation.Binding.IsEffectLimit(use) ? OwnershipFailure.Unsupported : failure));
+            this.issues.Add(new(use, this.compilation.Binding.IsEffectLimit(use) ? OwnershipRequirement.Unsupported : failure));
         }
 
         this.effectViolations.Clear();

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 
@@ -13,7 +14,7 @@ public sealed partial class LlvmEmitter
 {
     private readonly Compilation compilation;
     private readonly EmissionModule module = new();
-    private readonly BodyLowering lowering = new();
+    private readonly BodyLowering lowering;
     private readonly FunctionAbiPool signatures = new();
     private readonly GenericStoragePlan generics = new();
     private readonly ObjectGenerationPlan objects = new();
@@ -23,7 +24,6 @@ public sealed partial class LlvmEmitter
     private readonly Dictionary<FunctionKoto, FunctionAbi> functions = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<BoundProperty, FunctionAbi> staticGetters = new(ReferenceEqualityComparer.Instance);
     private readonly List<StaticScalarEntry> staticEntries = new();
-    private readonly SourceLocationTable staticLocations = new();
     private readonly List<(string Symbol, FunctionAbi Abi)> importAbis = new();
     private bool resourceLimit;
     private string? instanceFailureContext;
@@ -32,6 +32,7 @@ public sealed partial class LlvmEmitter
     internal LlvmEmitter(Compilation compilation)
     {
         this.compilation = compilation;
+        this.lowering = new(compilation.Locations);
         this.lowering.RequireDictionaryOperation = (find, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(find, key, value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
@@ -135,7 +136,7 @@ public sealed partial class LlvmEmitter
                 }
 
                 var source = body.Function;
-                var abi = source.IsGenerated ? WindowsLowering.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
+                var abi = source.IsGenerated ? RuntimeAbi.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
                 this.functions.Add(source, abi);
             }
 
@@ -165,7 +166,7 @@ public sealed partial class LlvmEmitter
 
                 var slot = this.staticEntries[slotOrdinal];
 
-                if (!StaticScalar.IsDynamic(property) || !this.staticLocations.TryGet(property.Declaration, c.Project.Directory, out var location))
+                if (!StaticScalar.IsDynamic(property) || c.Locations.Text(SourceRef.Of(property.Declaration)) is not { } location)
                 {
                     failure = "Static initializer requires a verified closed scalar declaration and source location.";
                     return false;
@@ -188,13 +189,14 @@ public sealed partial class LlvmEmitter
             this.lowering.Virtuals = this.virtuals;
             this.objects.Virtuals = this.virtuals;
 
-            module.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
-            module.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
-            module.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
-            module.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
-            module.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
-            module.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
-            module.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
+            var helpers = module.RuntimeHelpers;
+            helpers.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
+            helpers.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
+            helpers.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
+            helpers.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
+            helpers.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
+            helpers.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
+            helpers.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {
@@ -227,12 +229,12 @@ public sealed partial class LlvmEmitter
                 }
 
                 var function = module.AddFunction(this.functions[body.Function], exported: false);
-                if (!this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
+                if (!this.lowering.Lower(c.Library, body, function, module.Constants, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
                 {
                     return false;
                 }
 
-                module.NeedsStringComparison |= function.NeedsStringComparison;
+                helpers.NeedsStringComparison |= function.NeedsStringComparison;
                 this.lowering.RegisterAggregates(module);
             }
 
@@ -268,9 +270,9 @@ public sealed partial class LlvmEmitter
                 return false;
             }
 
-            var start = module.AddFunction(WindowsLowering.Start, exported: true);
+            var start = module.AddFunction(RuntimeAbi.Start, exported: true);
             start.AddCall(-1, entry, []);
-            start.AddCall(-1, WindowsLowering.Exit, [new(EmissionOperandKind.Integer, 0)]);
+            start.AddCall(-1, RuntimeAbi.Exit, [new(EmissionOperandKind.Integer, 0)]);
             start.Add(EmissionOpcode.Unreachable, -1);
             return module.Complete(out failure);
         }
@@ -330,7 +332,7 @@ public sealed partial class LlvmEmitter
             }
 
             var cached = ordinal < this.importAbis.Count && this.importAbis[ordinal].Symbol == import.Symbol ? this.importAbis[ordinal].Abi : null;
-            var name = cached?.Name ?? LlvmModuleWriter.ExternalName(import.Symbol);
+            var name = cached?.Name ?? LlvmModuleText.ExternalName(import.Symbol);
             FunctionAbi? abi = null;
             for (var e = 0; e < module.Externals.Count && abi is null; e++)
             {
@@ -389,7 +391,7 @@ public sealed partial class LlvmEmitter
         {
             var function = import.Function;
             var result = function.BoundSymbol!.Type!;
-            var resultType = ReferenceEquals(result, BoundType.Unit) ? WindowsLowering.Unit.ComputationType : ImportType(result);
+            var resultType = ReferenceEquals(result, BoundType.Unit) ? RuntimeAbi.Unit.ComputationType : ImportType(result);
             var parameters = new AbiParameter[function.Parameters.Count];
             for (var i = 0; i < parameters.Length; i++)
             {
@@ -434,7 +436,7 @@ public sealed partial class LlvmEmitter
                 this.lowering.SetInstance(c.Binding, call, entry);
                 try
                 {
-                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure);
+                    lowered = this.lowering.Lower(c.Library, body, function, module.Constants, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure);
                 }
                 finally
                 {
@@ -443,7 +445,7 @@ public sealed partial class LlvmEmitter
 
                 if (lowered)
                 {
-                    module.NeedsStringComparison |= function.NeedsStringComparison;
+                    module.RuntimeHelpers.NeedsStringComparison |= function.NeedsStringComparison;
                     this.lowering.RegisterAggregates(module);
                     this.generics.LoweredCount++;
                 }
@@ -585,7 +587,8 @@ public sealed partial class LlvmEmitter
 
             var result = function.BoundSymbol?.Type ?? (function.IsGenerated ? BoundType.Unit : null);
             if (!body.IsConcrete || !body.IsVerified || (!function.IsGenerated && function.BoundSymbol is null) ||
-                (!FunctionAbi.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) || (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
+                (!FunctionAbiPool.Supports(result, this.lowering.AggregateLayouts) && !ReferenceEquals(result, BoundType.Never)) ||
+                (function.AttributeChain is not null && !(c.IsTestBuild && TestDefinition.IsValidSyntax(function))) ||
                 (function.IsAnonymous && function.BoundClosure is null) || (function.IsSpecialization && !c.Binding.IsVerifiedSpecialization(function)) || function.IsRequirement || (function.Captures is { Length: > 0 } && function.BoundClosure is null) ||
                 (!function.IsSpecialization && function.GenericArguments.Count != 0) || function.TypeConstraints.Count != 0)
             {
@@ -595,7 +598,7 @@ public sealed partial class LlvmEmitter
             for (var i = 0; i < function.Parameters.Count; i++)
             {
                 var parameter = function.Parameters[i];
-                if (!FunctionAbi.Supports(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
+                if (!FunctionAbiPool.Supports(parameter.Type.BoundType, this.lowering.AggregateLayouts) ||
                     (ReferenceTypes.IsString(parameter.Type.BoundType) && parameter.Type.BoundType!.Origin is null))
                 {
                     return "Parameters require verified value, owned-slot or shared-string representations.";

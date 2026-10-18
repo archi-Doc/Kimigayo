@@ -2,6 +2,7 @@
 
 using System.Runtime.InteropServices;
 using System.Text;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -167,7 +168,7 @@ internal sealed class ObjectGenerationPlan
             call.ReturnType.Semantics != call.Target.CompilerFunction switch { CompilerFunctionKind.MakeObj => SemanticsKind.Obj, CompilerFunctionKind.MakeRc => SemanticsKind.Rc, _ => SemanticsKind.Arc } ||
             call.ArgumentOperations.Length != 1 || call.ArgumentOperations[0] is not { Kind: ArgumentOperationKind.Value or ArgumentOperationKind.CopyRead, Source: { } source } argument ||
             !ReferenceEquals(argument.ParameterType, payload) ||
-            FunctionAbi.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)
+            FunctionAbiPool.GetValue(payload, layouts) is not { } value || value.Layout.Alignment > 16 || value.Layout.Stride != value.Layout.Size)
         {
             failure = "Object creation requires a checked concrete payload acquisition and supported layout.";
             return false;
@@ -218,7 +219,7 @@ internal sealed class ObjectGenerationPlan
                 parameters.Add(new("i64", "controlValue", AbiParameterKind.Context));
                 parameters.Add(new("ptr", "location", AbiParameterKind.Location));
                 parameters.Add(new("i64", "length", AbiParameterKind.LocationLength));
-                var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray(), resultSlot: true);
+                var abi = new FunctionAbi("__kimi_make_object" + id, "void", parameters.ToArray()) { ResultSlot = true };
                 var destroy = drop == -1 ? null : drop == -2 ? "__kimi_destroy_string" : "__kimi_drop_aggregate" + drop;
                 entry = new(id, typeKey, value, destroy, copy == ConstraintProof.Proven, abi, token, this.bases.ToArray(), slots);
                 if (id == this.physical.Count)

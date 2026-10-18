@@ -27,7 +27,7 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | Binding | Syntax tree, its own tables | Mir, Backend |
 | MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, syntax children, `SourceRef` | Binding internals, semantic slots on Koto, parent-walking inference |
 | MIR analyses | MIR, declaration tables, pure `TyCtxt` functions | Syntax, HIR |
-| Backend | MIR, declaration tables, `TyCtxt` | HIR, borrow-checker state, syntax |
+| Backend | MIR, declaration tables, `TyCtxt`, Core's runtime-location text (`Compilation.Locations`), the Testing catalog's symbol column (DECISIONS R5-M18) | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
 Dependency and member restrictions are review obligations after the analyzer retirement (DECISIONS CR-R1).
@@ -44,7 +44,8 @@ MIR has 5 statement, 10 rvalue, 6 terminator (plus the `CheckTarget` attribute),
 kinds; the HIR vocabularies and `IntrinsicId` have fixed limits too (listed below). Enum
 aliases count separately; implicit fields do not. A
 form not yet implemented has one diagnostic code, the location-only `Unsupported_Kd`, reported by Binding, MIR
-construction or the capability check. A new vocabulary entry or a second Unsupported code is a design change that needs
+construction or the capability check (until the R5 plan's unit X2, under MIR code generation only, also by the codegen
+coverage rows, the sel `build` refusal from K1 to C0b1 included; DECISIONS R5-M18, PD11). A new vocabulary entry or a second Unsupported code is a design change that needs
 a SPEC basis and owner approval.
 
 | Vocabulary | Maximum entries |
@@ -89,13 +90,15 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | Syntax identity | Dense pre-order `SyntaxId` per module; `SourceRef(Module, SyntaxId)`, the only way MIR and its records name syntax | `Parsing/Koto/Common/SyntaxTable.cs`, `Core/SourceRef.cs` |
 | Phases after Binding | The `Compilation` entry points (`Analyze`, `Analysis`, `Problems`, `ReportAnalysis`, `WriteIr`, `Validate`, `SyntaxOf`) and the pipeline switch | `Core/Compilation.Pipeline.cs` |
 | Analysis records | `Problem(Code, SourceRef)`, merged per code and location; until R6-check the MIR analyses' problems stay unpublished on `MirProgram.Problems` (DECISIONS R4-M1) | `Core/Compilation.Pipeline.cs` |
+| Runtime locations | `SourceLocationTable` (`Compilation.Locations.Text(SourceRef)`): the `path:line:column` an Abort reports (SPEC 22.5.1), its source's logical name (IMPL 20.1) escaped (IMPL 21.4.2), memoized for the current program (cleared when the source analysis is revoked); the Backend reads it, and which site an Abort reports stays its generator's rule | `Core/SourceLocationTable.cs` |
 | Binding facts for MIR | `HirTables` columns (`Op`, `Res`, `Completion`, `Adjust`, PlaceShape) and `PlanRow`s keyed by `SyntaxId`; `HirAdjust.Of`, the one conversion from Binding's acquisition vocabularies; `Binding.BareAcquire`, the one bare-acquisition rule; a definition's parts are published only when Binding resolved the definition; `Binding.HasFacts`, the facts each published Op guarantees, which the builder trusts (a node Binding resolved without them is published Error and listed in `HirTables.Broken`, which the builder records as `InternalInvariant_Kd`; DECISIONS R4-M61) | `Binding/HirTables.cs`, `Binding/HirVocabulary.cs`, `Binding/Binding.Hir.cs`, `Binding/Binding.Hir.Adjust.cs`, `Binding/Binding.Hir.Facts.cs` |
 | Binding facts for Hover, LSP and tests | `SemanticQuery` (`Compilation.Semantics`) | `Binding/SemanticQuery.cs` |
 | Calls | `CallPlan`, reached only through `CallPlan.Of(node, ordinal)`; an omitted default is its `DefaultDecl` | `Binding/CallPlan.cs` |
 | Desugared forms | `ExpansionPlan.Of`; the Pattern plans `BoundMatch.Of`, closures `BoundClosure.Of` and enum Case construction `BoundEnumConstruction.Of` | `Binding/ExpansionPlan.cs` |
 | Stored shape of a struct or enum | `AdtDef` | `Binding/AdtDef.cs` |
-| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Adaptation` (Binding's selection of an explicit adaptation), `Name` for display; `Retains`, a call's retention under the premises its callee's body is checked under, kept until an edit (DECISIONS R4-M51) | `Binding/TyCtxt.cs`, `Binding/TyCtxt.Retention.cs`, `Binding/Binding.Retention.cs` |
-| Effect facts | `TyCtxt.EffectObligations` (who owes `confined`: `EffectObligation` rows), `DispatchBounds` and `CallableBounds` (the bounds a requirement or virtual call and a call through an abstract Callable input may use under a definition's premises; `ItemContract` a requirement item's Contract reference), `Bodyless` (what a function without a body does), `Implementation` (the bodies a call may run), `Published` (an operation's published row) and `Witnesses` (what a requirement runs on a Type that is not abstract), `Copy`, `Sealed`, all under one premise scope per definition, `Binding.EffectPremises` (DECISIONS R4-M23, R4-M28) | `Binding/TyCtxt.Effects.cs`, `Binding/Binding.EffectObligations.cs` |
+| Types and substitutions | `TyCtxt` (`Compilation.Types`): interning, `Subst` (`SubstOf`, `Apply`, `Compose`, `Signature`), implicit `Layer`s, `CaseType`, `Adaptation` (Binding's selection of an explicit adaptation), `Name` for display; `Retains`, a call's retention under the premises its callee's body is checked under, kept until an edit (DECISIONS R4-M51); `Instantiates`, whether a definition's body is generated per closed substitution (it or an enclosing declaration has a Type, Semantics or length slot and no specialization lies between them), the null rule of instance keys, kept until an edit (DECISIONS R5-M21) | `Binding/TyCtxt.cs`, `Binding/TyCtxt.Retention.cs`, `Binding/Binding.Retention.cs`, `Binding/TyCtxt.Instances.cs` |
+| Effect facts | `TyCtxt.EffectObligations` (who owes `confined`: `EffectObligation` rows), `DispatchBounds` and `CallableBounds` (the bounds a requirement or virtual call and a call through an abstract Callable input may use under a definition's premises; `ItemContract` a requirement item's Contract reference), `Bodyless` (what a function without a body does), `Implementation` (the bodies a call may run), `Published` (an operation's published row) and `Witnesses` (what a requirement runs on a Type that is not abstract, from the witness core), `Copy`, `Sealed`, all under one premise scope per definition, `Binding.EffectPremises` (DECISIONS R4-M23, R4-M28) | `Binding/TyCtxt.Effects.cs`, `Binding/Binding.EffectObligations.cs` |
+| Dispatch facts | `Binding.ResolveRequirementWitness`, the one witness rule from a requirement, a Self that is not abstract, the Contract reference the call selected and a premise scope to what the requirement runs (Builtin, Conformance, Property, FixedArrayEntry, IntegerPosition, Refused or None), shared by the CallPlan materializer, which keeps SPEC 8.15's abstract-Self forwarding, and `Witnesses`; the built-in targets take their requirements' signatures once per pass after headers (DECISIONS R5-M22) | `Binding/Binding.RequirementWitness.cs` |
 | Semantics cases | `PairBinder` (a body's binders, `CaseProduct`, `CaseBound`); `Binding.CaseLimits`, the one decision of the bound per definition before its parts are bound; `MirCases`, per-case views of one body that is never copied, under which an `Adapt` is the operation its case selects, and `Views`, the views of a callee a call's substitution selects | `Binding/BindingModel.cs`, `Binding/Binding.CaseLimits.cs`, `Mir/MirCases.cs` |
 | Library operations | `IntrinsicDisposition.Of`: a Kimigayo body, an `IntrinsicId` or a shim for each `CompilerFunctionKind`; `IntrinsicDisposition.Effect`, its effect class (SPEC 8.11.2); `KimiLibraryCatalog.Row`, an operation's published row `PublishedRow(Runs, On, Destroys, InPlace)` (SPEC 4.9.6, 12.4.3), which `TyCtxt.Published` gives MIR | `Binding/KimiLibraryKinds.cs`, `Binding/KimiLibraryCatalog.cs` |
 | MIR storage | `MirBody` struct arrays with interned projection chains, `ProjectedType` the one projection Type rule; `MirProgram`, bodies by `MirDefKey` and `Ordinal`, the body a callee runs (`Callee`), pooled for warm rebuilds | `Mir/MirVocabulary.cs`, `Mir/MirBody.cs`, `Mir/MirProgram.cs` |
@@ -115,6 +118,10 @@ Each entry file begins with the component's contract (AGENTS). Paths are under `
 | Loan sets | `MirLoanSets`: A5's sets of Loan and marker ids as interned ascending runs in one pooled array, a set's id its identity (0 the empty set); memoized `Add`, `Union` and `Remove` (DECISIONS R4-M53) | `Mir/Analysis/MirLoanSets.cs` |
 | MIR analysis problems | `MirReport`: one `MirProblem(Code, Subject, Views)` per code and subject with its views merged and its first producer's facts (`MirFact`); the one home of the derived-problem rules (DECISIONS R4-M3a, R4-M10) | `Mir/Analysis/MirReport.cs` |
 | MIR text | `MirDump.Write`, with A2's verdicts and flags on an analyzed program, compared by the dump goldens and the MIR snapshot | `Mir/MirDump.cs`, its operations `Mir/MirDump.Operations.cs` and drop elaboration's output `Mir/MirDump.Drops.cs` |
+| LLVM module text | `LlvmModuleText`, the module frame every generator writes through: header with the pooled constants, runtime template with its ABI splice and test variant, external declarations, overflow and memory declarations, footer, external symbol spelling, number formatting; `LlvmConstantPool`, a module's private UTF-8 constants (DECISIONS R5-M14) | `Backend/LlvmModuleText.cs`, `Backend/LlvmConstantPool.cs` |
+| Runtime ABI and representation records | `RuntimeAbi`, the runtime ABI: Unit, string and string-handle representations, release kind, zero-sized buffer address, one `FunctionAbi` per runtime routine and the `RuntimeDefinitions` `LlvmModuleText` splices; `AbortReasons`, the closed abort reason table and its template expansion; the records `TypeLayout`, `ValueLowering`, `AbiParameter` and `FunctionAbi`, which take no Type (DECISIONS R5-M15) | `Backend/RuntimeAbi.cs`, `Backend/AbortReasons.cs`, `Backend/AbiRecords.cs` |
+| Scalar arithmetic text | `LlvmScalarText`, the LLVM text of scalar arithmetic, numeric conversions and their checks every generator writes through: instructions, overflow intrinsics, the division, remainder and shift checks with IMPL 21.3.3's literal −1 rules and SPEC 13.3.1's divisor substitution, the plain, range-checked, floating-narrowing and position conversions, and each check's own failure block; its stack-only inputs `ScalarOperation`, `ScalarConversion` with `ScalarBounds`, and `ScalarCheck` (DECISIONS R5-M17) | `Backend/LlvmScalarText.cs` |
+| Storage layout | `Layout.Of`, the size, alignment, stride, Field offsets and LLVM representation of a closed Type for every generator: IMPL 21.1.3's rows (scalars, Unit, string, Never, borrows and raw pointers, object and function handles, `Loan<T>`) and the Slice, Array and Dictionary handles; struct, Tuple, fixed-array, enum, Closure and Function Item placement with the OK/Limit/CLayout result from P7b; the old pool and `WindowsLowering.GetValue`'s scalar-value gate read it (DECISIONS R5-M19) | `Backend/Layout.cs` |
 
 ## Structure limits
 
@@ -157,6 +164,7 @@ automated build diagnostics. `ArchitectureRulesTest` separately retains its exis
 | Density | At most 160 UTF-16 units per physical line, excluding whole multiline-string lines; no nested conditional expression. |
 | Deconstruction | Computed tuple literals do not initialize all-new-local deconstructions; existing-variable assignments remain allowed. |
 | Unused code | Remove unused/unread private members and unused parameters while preserving behavior. |
+| LINQ | No System.Linq.Enumerable in the Backend (`Backend/`, since R5's unit P0; DECISIONS R5-M14); Mir analyses follow at R5 (below); tests are exempt (owner, 2026-10-18, DECISIONS R5-M13). |
 
 Existing excess cannot grow. Only statement and nesting limits admit `CodeRuleException`, with an explicit
 bound and reason. `Transitional` records a removal obligation; neither attribute is an analyzer certificate.
@@ -165,9 +173,8 @@ and earlier stages do not. Mechanical evasions fail review. At a stage exit, rec
 exceptions and transitional declarations with the owner; the deleted Report command is not a gate.
 
 At R7, Syntax's restriction extends to the whole Binding layer (moved from R6, DECISIONS R5-M9), and UnwrapParentheses
-is restricted to Parsing/Binding. At R5, add Backend and forbid System.Linq.Enumerable in Mir analyses and Backend,
-rewriting existing uses first; the no-LINQ rule does not extend to tests (owner, 2026-10-18, DECISIONS R5-M13). IntrinsicId
-returns to 30 at R8.
+is restricted to Parsing/Binding. At R5, the no-LINQ rule extends from the Backend to Mir analyses, rewriting existing uses
+first. IntrinsicId returns to 30 at R8.
 
 ## Rules during the migration
 
@@ -189,10 +196,14 @@ returns to 30 at R8.
   forwarding properties (R7, their Parsing and root-helper reads at R6-check; DECISIONS R5-M9); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
-  ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23).
-  Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version contract is unmarked;
-  only its publisher walk and private state disappear at R7. LegacyRuntimeHelpers has no declaration yet; its future
-  producer must record the R8 obligation when introducing it.
+  ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23);
+  `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
+  (R8, DECISIONS R5-M16); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's planned
+  temporaries, recorded by their first units (DECISIONS R5-M18): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4); the codegen coverage rows (the R5
+  plan's unit X2); `MonoKind.LegacyRow` (R8); the out-string `WriteIr`/`Validate` adapters (C0a to G9b); the sel `build` refusal
+  (K1 to C0b1); Binding's eager C-layout instance check beside `Layout.Of`, with K10b's double report under sel (G2b); the legacy comparison composition (A-12 or R7); the F2c Dictionary-storage view (R8); the
+  `Binding.ClosureCall` bridge (R6-gen). Transitional attributes identify these declarations (CR-A7). The lasting HIR publication/version
+  contract is unmarked; only its publisher walk and private state disappear at R7.
 - **Performance and allocation.** Generated native code may not regress in O2 run time or allocation counts (plan §18
   P1, P2); O0 run time and compiler processing time may, when recorded (P1, P3). A timing regression exceeds the
   variation of repeated matched runs (P4). Compiler allocations follow the owner's decision of 2026-10-11 (AGENTS,

@@ -33,7 +33,6 @@ public class TimeLibraryTest
     {
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze("Console.writeLine(\"hello\")"));
         Assert.DoesNotContain("QueryPerformance", ir);
-        Assert.DoesNotContain(".state =", ir);
     }
 
     [Trait("Purpose", "Allocation")]

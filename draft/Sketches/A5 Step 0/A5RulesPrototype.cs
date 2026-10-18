@@ -22,6 +22,45 @@
 //               Cases: rounds 3-10, the case 23a review's 50-94 (EndBorrow, PrefixKill and its mutations), and the 1b
 //               design review's 100-112b and its round 2's 120-127b. Exit code = S1′ failures (unchanged mode; it
 //               models none of round 10's rules).
+//        Round 11 (A mode; the core lane's group review B1, B2, B4; A3 E13, E14): E13, a Call's inputs are its argument
+//               operands and a Value callee's operand. (1) The accesses they make AT the Call (Node.Input: a read or Move of
+//               a direct Place operand the MIR leaves at the Call; Node.AcquireAt: an exclusive PairAcquire Reborrow left at
+//               the Call) are checked on CS_call(ℓ, −): holders live into ℓ, none excluded, a reservation in its own holder
+//               `ref`; the Call's destination write and stores keep CS(ℓ). (2) Every reserved input activates at the Call,
+//               a Value callee's included (Node.Callee). (3) A PairAcquire Reborrow secured into a temp before its Call is a
+//               TwoPhaseUniq reservation in that temp (Node.Acquire). E14: a Call whose contract writes an input into storage
+//               reached through a raw pointer stores the input's value into E (Node.RawStore: Raw.initialize). Variants:
+//               CalleeNotActivated (B1), InputsOnCS (B2), PairAcquireLive (the live Uniq encoding), NoRawStore (B4),
+//               Implemented1b (all four, the reviewed branch), SecureAcquire (round 11's finding: every PairAcquire that a
+//               later input of its Call left at the Call follows is secured into a temp; Case.Secured).
+//        Round 12 (A mode; A3 E13 as the owner chose on 2026-10-18, option R1: A5 handles operand evaluation order; the E13
+//               design review's cases 134a-135c and its AlwaysSecure, merged first): (1) every operation's operands left at
+//               ℓ (Node.Input, in evaluation order, SPEC 12.2: a receiver or Value callee first; Node.Operation marks an
+//               operation other than a Call) are checked on CS_i(ℓ) = closure(σ_in of the holders live after ℓ that ℓ does not
+//               overwrite, val_in of every earlier operand (attributed to its root's holder for mode), σ_in of every later
+//               operand's root, σ_in(E)); the destination write and the stores keep CS(ℓ). (3) M′: every PairAcquire is
+//               secured into its own temp (Case.Always, else Case.Secured, else the case), a marked one (an invocation input)
+//               a reservation there (Node.Acquire), an unmarked one (a let, a control-flow result, an aggregate operand, a
+//               capture) a live Uniq Borrow. Variants: Round11 (round 11's E13 on round 11's MIR), AcquireAtOperation (E13 (1)
+//               on G123's MIR), ShapeReservation, IntrinsicAllOperands, NoEarlierValues, NoLaterRoots, EarlierRoots.
+//               Planning session on the round's findings: CS_i holds val_in(o_j) for j ≤ i, the operand's own value included
+//               (NoOwnValue: E13 as first stated, j < i), and a single-operand rvalue's operand (a Use of a Copy or Move, a Cast,
+//               a UnaryOp; not a Ref) is checked against its own value on CS(ℓ) too (OwnValueEverywhere: the term on every
+//               node Read or Move, an upper bound).
+//        Round 13 (A mode; A3 E13 as rewritten after its second design review, the owner's "one rule for every access"; the
+//               second design review's cases and variants merged first): each access at ℓ is checked on closure(σ_in of the
+//               holders live after ℓ that ℓ does not overwrite ∪ σ_in(E) ∪ T), T by the access: an operand's as round 12; an
+//               activation of a reservation in t and a destroying call's destroy: the values of the operands other than t (not
+//               CS_call's live_in), seeded by σ_in(t); a Ref's or Reborrowing PairAcquire's borrow of X: its R2 parents as E3
+//               bounds them, ⋃_{m≤j<k} content^j(σ_in(root(X))) (m the index of the last shared Deref, else 0), whatever its
+//               destination's liveness, and E5's seed (no transit); an observing destruction of X: val(X) (no transit: MIR's
+//               Drop is a terminator, the store follows it); the destination write and the stores: transit and E5's seed.
+//               E13 (2): the MIR leaves Place operands in evaluation order (named arguments, a setter's value; captures by the
+//               same rule). THE DESIGN is design A with E8's ending (PrefixKill): Analysis(c, Mode.A, x, prefixKill: true);
+//               Abl.None alone keeps A3 §3's base kill (last base). Variants: NoDestroyValue, BorrowSeedOnly (R4-M57),
+//               ParentsAsTransit (the review's RefParentsInTransit with a seed whatever the liveness), ActivationLiveIn,
+//               CurrentBuilder (Case.Built: today's builder), KeepCSTerms, BorrowWithoutSeed (the round's first run: the borrow
+//               row without E5's seed accepts 41o), ParentsEveryLayer (⋃_{j<k}) and OnePointDrop (Case.OnePoint).
 using System.Text;
 using Fact = (string H, string L);
 
@@ -31,21 +70,77 @@ var modes = new[] { Mode.PROV, Mode.S1, Mode.S1P };
 if (args.Length == 2 && args[0] == "-dump") // dotnet run proto.cs -- -dump 8b : per-node carries, liveness and Loan places
 {
     foreach (var m in modes.Append(Mode.A)) Console.WriteLine($"== {m}\n" + new Analysis(Cases.All().Single(c => c.Id == args[1]), m).Dump());
+    Console.WriteLine("== the design (A with PrefixKill)\n" + new Analysis(Cases.All().Single(c => c.Id == args[1]), Mode.A, prefixKill: true).Dump()); // round 13
     return 0;
 }
+// Round 13 (A3 E13 rewritten; the second design review's -r13 run, folded into named variants): THE DESIGN is design A with
+// E8's ending (PrefixKill). Its totals, the last-base mode, and each round-12 and round-13 variant on the design; then the
+// cases 130+ under the design and each round-13 variant. -r13 prints only this section.
+Analysis Design(Case c, Abl x = Abl.None) => new(c, Mode.A, x, prefixKill: true);
+var round13Variants = new[] { Abl.NoDestroyValue, Abl.BorrowSeedOnly, Abl.ParentsAsTransit, Abl.ActivationLiveIn, Abl.CurrentBuilder, Abl.KeepCSTerms, Abl.BorrowWithoutSeed, Abl.ParentsEveryLayer, Abl.OnePointDrop };
+void Round13()
+{
+    string Group(Analysis a, Case c) => Cls(c, a) is var s && s.StartsWith("(a)") ? "listed loss" : s;
+    string Row(string name, Func<Case, Analysis> run)
+    {
+        var g = Cases.All().GroupBy(c => Group(run(c), c)).ToDictionary(x => x.Key, x => x.Select(c => c.Id).ToList());
+        string N(string k, bool list) => g.TryGetValue(k, out var v) ? v.Count + (list ? " (" + string.Join(", ", v) + ")" : "") : "0";
+        return $"| {name} | {N("same", false)} | {N("same verdict, error moves", false)} | {N("listed loss", false)} | {N("**(b) unlisted loss**", true)} | {N("**(c) UNSOUND**", true)} |";
+    }
+    Console.WriteLine($"\nRound 13 (E13 rewritten; {Cases.All().Count} cases):\n| Mode | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |\n| --- | ---: | ---: | ---: | ---: | ---: |");
+    Console.WriteLine(Row("**The design** (design A with PrefixKill)", c => Design(c)));
+    Console.WriteLine(Row("Design A (last base)", c => new Analysis(c, Mode.A)));
+    foreach (var ab in round13Variants.Concat(new[] { Abl.NoOwnValue, Abl.NoEarlierValues, Abl.NoLaterRoots, Abl.EarlierRoots, Abl.AcquireAtOperation, Abl.ShapeReservation, Abl.IntrinsicAllOperands, Abl.OwnValueEverywhere, Abl.RefParentsInTransit, Abl.Round11, Abl.CalleeNotActivated, Abl.InputsOnCS, Abl.PairAcquireLive, Abl.NoRawStore, Abl.Implemented1b }))
+        Console.WriteLine(Row("`" + ab + "`", c => Design(c, ab)));
+    Console.WriteLine("\nRound 13 cases (130+) under the design:\n| Case | Program | SPEC | design | last base | " + string.Join(" | ", round13Variants) + " | class design |\n|" + string.Concat(Enumerable.Repeat(" --- |", round13Variants.Length + 6)));
+    foreach (var c in Cases.All().Where(Cases.Round11))
+    {
+        string W(Analysis a) => V(a) + (c.Err && a.Errors.Count == 0 ? " **UNSOUND**" : !c.Err && a.Errors.Count > 0 ? " (over-strict)" : "");
+        var d = Design(c);
+        var spec = c.Err ? "error" + (c.At.Length > 0 ? " at `" + string.Join("`, `", c.At) + "`" : "") : "valid";
+        Console.WriteLine($"| {c.Id} | {c.Title} | {spec} | {W(d)} | {W(new Analysis(c, Mode.A))} | {string.Join(" | ", round13Variants.Select(x => W(Design(c, x))))} | {Cls(c, d)} |");
+    }
+    foreach (var ab in round13Variants)
+        Console.WriteLine($"The design with {ab}: " + string.Join("; ", Cases.All().Select(c => (c, a: Design(c, ab), b: Design(c))).Where(x => !x.a.ErrorNodes().SequenceEqual(x.b.ErrorNodes()))
+            .Select(x => $"{x.c.Id}: {V(x.a)}" + (x.c.Err && x.a.Errors.Count == 0 ? " **UNSOUND**" : !x.c.Err && x.a.Errors.Count > 0 ? " (over-strict)" : "")).DefaultIfEmpty("no change")));
+    if (verbose)
+        foreach (var c in Cases.All().Where(Cases.Round11))
+            Console.WriteLine($"{c.Id,-8} D   : " + (Design(c) is var a && a.Errors.Count == 0 ? "no errors" : string.Join("; ", a.Errors.Select(e => $"{e.L} live at `{a.LabelAt(e.P)}` vs {e.What}"))));
+}
+if (args.Contains("-r13")) { Round13(); return 0; }
 var table3 = new StringBuilder("| Case | SPEC | S1′ | design A | Class |\n| --- | --- | --- | --- | --- |\n");
 string V(Analysis a) => a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
-void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact
-{
-    foreach (var (tag, a) in new[] { ("A", am), ("AF", new Analysis(c, Mode.A, Abl.FirstDerefBase)) })
-        Console.WriteLine($"{c.Id,-4} {tag,-4}: " + (a.Errors.Count == 0 ? "no errors" : string.Join("; ", a.Errors.Select(e => $"{e.L} live at `{c.Nodes[e.P].Label}` vs {e.What}"))));
+void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact; round 11: SA = SecureAcquire's encoding;
+{                                  // round 12: R11 = Round11, AO = AcquireAtOperation, NV = NoOwnValue (cases 130+)
+    foreach (var (tag, a) in new[] { ("A", am), ("AF", new Analysis(c, Mode.A, Abl.FirstDerefBase)) }.Concat(c.Secured != null ? [("SA", new Analysis(c, Mode.A, Abl.SecureAcquire))] : [])
+        .Concat(Cases.Round11(c) ? [("R11", new Analysis(c, Mode.A, Abl.Round11)), ("AO", new Analysis(c, Mode.A, Abl.AcquireAtOperation)), ("NV", new Analysis(c, Mode.A, Abl.NoOwnValue))] : []))
+        Console.WriteLine($"{c.Id,-4} {tag,-4}: " + (a.Errors.Count == 0 ? "no errors" : string.Join("; ", a.Errors.Select(e => $"{e.L} live at `{a.LabelAt(e.P)}` vs {e.What}"))));
 }
 string Cls(Case c, Analysis a)
 {
     bool ae = a.Errors.Count > 0;
-    if (ae == c.Err) return !ae || a.ErrorNodes().ToHashSet().SetEquals(c.At) ? "same" : "same verdict, error moves";
+    // Round 12: a round-11/12 case's other MIR form (Secured, Always, Shape, IntrinsicRow) names its own nodes, so its own
+    // error location is the expected one (the same source operation); every other case keeps the case's.
+    var at = (Cases.Round11(c) || a.Enc == c.OnePoint) && a.Enc.At.Length > 0 ? a.Enc.At : c.At; // round 13: OnePoint names its own
+    if (ae == c.Err) return !ae || a.ErrorNodes().ToHashSet().SetEquals(at) ? "same" : "same verdict, error moves";
     if (!ae) return "**(c) UNSOUND**";
     return c.S1Err == true ? "(a) S1′ loss" : c.ALoss != null ? "(a) " + c.ALoss : "**(b) unlisted loss**";
+}
+if (args.Contains("-cases")) // -cases [variant ...]: one tab-separated row per case and variant (round 12: variants by name;
+{                             // round 13: a name ending in +PK runs on the design, e.g. None+PK, NoDestroyValue+PK)
+    var named = args.SkipWhile(x => x != "-cases").Skip(1).ToArray();
+    foreach (var c in Cases.All())
+    {
+        foreach (var name in named.Length > 0 ? named : ["None", "PrefixKill", "FirstDerefBase"])
+        {
+            bool pk = name.EndsWith("+PK");
+            var ab = Enum.Parse<Abl>(pk ? name[..^3] : name);
+            var a = new Analysis(c, Mode.A, ab, prefixKill: pk);
+            var facts = string.Join("; ", a.Errors.Select(e => $"{e.L}@{a.LabelAt(e.P)} vs {e.What}").OrderBy(x => x, StringComparer.Ordinal));
+            Console.WriteLine($"{c.Id}	{name}	{(c.Err ? "error" : "valid")}	{V(a)}	{Cls(c, a)}	{facts}");
+        }
+    }
+    return 0;
 }
 var table = new StringBuilder();
 table.AppendLine("| Case | Program | SPEC | PROV | S1 intended | S1 as written | S1′ (final rules) |");
@@ -94,7 +189,7 @@ var aVar = Cases.All().Select(c => (c, a: new Analysis(c, Mode.A, Abl.AIssueNotE
 Console.WriteLine("Design A without the round-3 fix (issued Loan not ended at its base's destruction): " + string.Join("; ", aVar.DefaultIfEmpty("none")));
 // Round 4: exclusion by Loan id (old) against exclusion by holder (new), in S1′ and A modes; design A's letter (AText).
 Console.WriteLine("\nRound 4 (rows that differ, plus the loop cases):\n| Case | SPEC | S1′ by id | S1′ by holder | A by id | A text | A by holder |\n| --- | --- | --- | --- | --- | --- | --- |");
-foreach (var c in Cases.All())
+foreach (var c in Cases.All().Where(c => !Cases.Round11(c))) // S1′ models none of round 11's rules
 {
     var row = new[] { new Analysis(c, Mode.S1P, Abl.IdExclusion), new Analysis(c, Mode.S1P), new Analysis(c, Mode.A, Abl.IdExclusion), new Analysis(c, Mode.A, Abl.AText), new Analysis(c, Mode.A) };
     string W(Analysis a) => V(a) + (c.Err && a.Errors.Count == 0 ? " **UNSOUND**" : "");
@@ -106,7 +201,13 @@ var phantomVariants = new[] { Abl.PhantomAlone, Abl.PhantomKeepsReceiver, Abl.Ph
 var round10Variants = new[] { Abl.NoRouteReach, Abl.RouteWriteOnly, Abl.RouteAllParents, Abl.ExcuseAtCallOnly, Abl.LoanPastShared,
     Abl.ObsSharedCut, Abl.NoFreshClosure, Abl.RefParentsInTransit, Abl.SliceIndexInline, Abl.PrefixKill, Abl.EndedByLoan, Abl.GammaGuardsOnly, Abl.FreshParents, Abl.FreshOnly, Abl.DestroyAsDrop, Abl.SeedLiveOutOnly };
 var reviewMutations = new[] { Abl.NoP3A, Abl.NoParentsA };
-foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.FirstDerefBase, Abl.NoTransit }.Concat(phantomVariants).Concat(round10Variants))
+// Round 11 (E13, E14): each variant restores one behavior of the reviewed 1b branch, or applies round 11's fix (SecureAcquire).
+// Round 12: the first four apply to round 12's design A; Implemented1b keeps the reviewed branch's MIR (G123); SecureAcquire and
+// AlwaysSecure are round 11's E13 on round 11's M and on M′ (the E13 design review's run).
+var round11Variants = new[] { Abl.CalleeNotActivated, Abl.InputsOnCS, Abl.PairAcquireLive, Abl.NoRawStore, Abl.Implemented1b, Abl.SecureAcquire, Abl.AlwaysSecure };
+// Round 12 (E13 as the owner chose, R1): each variant restores an earlier rule or MIR form, or removes one clause of CS_i.
+var round12Variants = new[] { Abl.Round11, Abl.AcquireAtOperation, Abl.ShapeReservation, Abl.IntrinsicAllOperands, Abl.NoEarlierValues, Abl.NoLaterRoots, Abl.EarlierRoots, Abl.NoOwnValue, Abl.OwnValueEverywhere };
+foreach (var ab in new[] { Abl.KillAcrossDeref, Abl.FirstDerefBase, Abl.NoTransit }.Concat(phantomVariants).Concat(round10Variants).Concat(round11Variants).Concat(round12Variants))
 {
     var aKill = Cases.All().Select(c => (c, a: new Analysis(c, Mode.A, ab), b: new Analysis(c, Mode.A)))
         .Where(x => !x.a.ErrorNodes().SequenceEqual(x.b.ErrorNodes())).Select(x => $"{x.c.Id}: {V(x.a)}" + (x.c.Err && x.a.Errors.Count == 0 ? " **UNSOUND**" : !x.c.Err && x.a.Errors.Count > 0 ? " (over-strict)" : ""));
@@ -127,6 +228,26 @@ foreach (var c in Cases.All().Where(c => c.Id is "10a" or "10b" or "10c" or "10d
 {
     string W(Analysis a) => V(a) + (c.Err && a.Errors.Count == 0 ? " **UNSOUND**" : !c.Err && a.Errors.Count > 0 ? " (over-strict)" : "");
     Console.WriteLine($"| {c.Id} | {(c.Err ? "error" : "valid")} | {string.Join(" | ", r10cols.Select(x => W(new Analysis(c, Mode.A, x))))} |");
+}
+// Round 11 (E13, E14): the core review's B1, B2 and B4 cases under design A, PrefixKill and each round-11 variant.
+Console.WriteLine("\nRound 11 (E13, E14):\n| Case | Program | SPEC | A | A PrefixKill | " + string.Join(" | ", round11Variants) + " | class A | class PrefixKill |\n|"
+    + string.Concat(Enumerable.Repeat(" --- |", round11Variants.Length + 7)));
+foreach (var c in Cases.All().Where(Cases.Round11))
+{
+    string W(Analysis a) => V(a) + (c.Err && a.Errors.Count == 0 ? " **UNSOUND**" : !c.Err && a.Errors.Count > 0 ? " (over-strict)" : "");
+    var a0 = new Analysis(c, Mode.A); var pk = new Analysis(c, Mode.A, Abl.PrefixKill);
+    var spec = c.Err ? "error" + (c.At.Length > 0 ? " at `" + string.Join("`, `", c.At) + "`" : "") : "valid";
+    Console.WriteLine($"| {c.Id} | {c.Title} | {spec} | {W(a0)} | {W(pk)} | {string.Join(" | ", round11Variants.Select(x => W(new Analysis(c, Mode.A, x))))} | {Cls(c, a0)} | {Cls(c, pk)} |");
+}
+// Round 12 (E13, owner's option R1): the cases 130+ under design A, PrefixKill and each round-12 variant, with each one's class.
+Console.WriteLine("\nRound 12 (E13, operand order):\n| Case | Program | SPEC | A | A PrefixKill | " + string.Join(" | ", round12Variants) + " | class A | class PrefixKill | class Round11 | class NoOwnValue |\n|"
+    + string.Concat(Enumerable.Repeat(" --- |", round12Variants.Length + 9)));
+foreach (var c in Cases.All().Where(Cases.Round11))
+{
+    string W(Analysis a) => V(a) + (c.Err && a.Errors.Count == 0 ? " **UNSOUND**" : !c.Err && a.Errors.Count > 0 ? " (over-strict)" : "");
+    var a0 = new Analysis(c, Mode.A); var pk = new Analysis(c, Mode.A, Abl.PrefixKill);
+    var spec = c.Err ? "error" + (c.At.Length > 0 ? " at `" + string.Join("`, `", c.At) + "`" : "") : "valid";
+    Console.WriteLine($"| {c.Id} | {c.Title} | {spec} | {W(a0)} | {W(pk)} | {string.Join(" | ", round12Variants.Select(x => W(new Analysis(c, Mode.A, x))))} | {Cls(c, a0)} | {Cls(c, pk)} | {Cls(c, new Analysis(c, Mode.A, Abl.Round11))} | {Cls(c, new Analysis(c, Mode.A, Abl.NoOwnValue))} |");
 }
 // Case 23a review (cases 50-94 and their G110 forms): A, FirstDerefBase, PrefixKill (no base: a destroyed Move Path ends
 // every Loan whose path it prefixes exactly) and round 2's KillAcrossDeref.
@@ -153,14 +274,19 @@ foreach (var ab in reviewMutations.Concat([Abl.NoTransit, Abl.IdExclusion]))
     var lost = Cases.All().Where(c => c.Err && new Analysis(c, Mode.A, Abl.None, true).Errors.Count > 0 && new Analysis(c, Mode.A, ab, true).Errors.Count == 0).Select(c => c.Id);
     Console.WriteLine($"FirstDerefBase with {ab}: newly UNSOUND " + string.Join(", ", lost.DefaultIfEmpty("none")));
 }
+Round13(); // round 13: the design (A with PrefixKill), its variants and the cases 130+
 Console.WriteLine("\nSummary (all cases):");
 foreach (var (ab, fd) in new[] { (Abl.None, false), (Abl.FirstDerefBase, false), (Abl.PrefixKill, false), (Abl.PhantomParentsAtCall, false),
-    (Abl.EndedByLoan, false), (Abl.EndedByLoan, true), (Abl.GammaGuardsOnly, false), (Abl.GammaGuardsOnly, true), (Abl.FreshParents, false), (Abl.FreshParents, true), (Abl.FreshOnly, false), (Abl.FreshOnly, true), (Abl.DestroyAsDrop, false), (Abl.DestroyAsDrop, true), (Abl.SeedLiveOutOnly, false), (Abl.SeedLiveOutOnly, true) })
+    (Abl.EndedByLoan, false), (Abl.EndedByLoan, true), (Abl.GammaGuardsOnly, false), (Abl.GammaGuardsOnly, true), (Abl.FreshParents, false), (Abl.FreshParents, true), (Abl.FreshOnly, false), (Abl.FreshOnly, true), (Abl.DestroyAsDrop, false), (Abl.DestroyAsDrop, true), (Abl.SeedLiveOutOnly, false), (Abl.SeedLiveOutOnly, true),
+    (Abl.Implemented1b, false), (Abl.Implemented1b, true), (Abl.SecureAcquire, false), (Abl.SecureAcquire, true), (Abl.AlwaysSecure, false), (Abl.AlwaysSecure, true),
+    (Abl.CalleeNotActivated, false), (Abl.InputsOnCS, false), (Abl.PairAcquireLive, false), (Abl.NoRawStore, false),
+    (Abl.Round11, false), (Abl.Round11, true), (Abl.AcquireAtOperation, false), (Abl.AcquireAtOperation, true), (Abl.ShapeReservation, false), (Abl.IntrinsicAllOperands, false),
+    (Abl.NoEarlierValues, false), (Abl.NoLaterRoots, false), (Abl.EarlierRoots, false), (Abl.NoOwnValue, false), (Abl.NoOwnValue, true), (Abl.OwnValueEverywhere, false), (Abl.OwnValueEverywhere, true) })
     Console.WriteLine($"Design A{(fd ? " with FirstDerefBase" : "")}{(ab == Abl.None ? "" : (fd ? " and " : " with ") + ab)}: " + string.Join(", ", Cases.All()
         .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab, fd)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
         .Select(g => $"{g.Count()} {g.Key}" + (g.Key != "same" ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
 Console.WriteLine();
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Where(c => !Cases.NoS1P(c)).Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -206,7 +332,39 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     FreshParents,       // B1 without the CS_call seed: a stored Ref's own Loan and R2 parents seed every check at ℓ
     FreshOnly,          // 39o's row (the chosen 1b rule before the design review): only a stored Ref's own direct Loan seeds
     DestroyAsDrop,      // a destroying call's destruction as a Drop checked on CS, with the drop's write (rounds 6-10's encoding)
-    SeedLiveOutOnly }   // E5's stored value only into a holder in live_out(ℓ) or E, not one made live by the closure
+    SeedLiveOutOnly,    // E5's stored value only into a holder in live_out(ℓ) or E, not one made live by the closure
+    // Round 11 (E13, E14). Each restores one behavior of the reviewed 1b branch (claude/a5-1b-core 8961f577), in A mode:
+    CalleeNotActivated, // B1: a Value callee's reservation is never activated (it stays `ref` in its holder)
+    InputsOnCS,         // B2: the accesses a Call's inputs make at the Call are checked on CS(ℓ), the holders live after ℓ
+    PairAcquireLive,    // E13 (3) off: a PairAcquire Reborrow is a live Uniq Loan wherever it is formed (no reservation)
+    NoRawStore,         // B4: a raw-storing intrinsic stores nothing (A3 §4: every operand → result)
+    Implemented1b,      // all four above: the reviewed branch
+    SecureAcquire,      // round 11's finding: the MIR also secures a PairAcquire that a later operand left at its Call follows
+    AlwaysSecure,       // reviewer (E13 M'): every PairAcquire operand is secured into its own temp (Case.Always)
+    // Round 12 (A3 E13, the owner's option R1: A5 handles operand evaluation order). Design A runs E13 as stated on the round-12
+    // builder's MIR (M′ and the input marker). Each variant restores an earlier rule or MIR form, or changes one clause of CS_i:
+    Round11,            // round 11's E13: a Call's inputs on CS_call(ℓ, −), any other operation's operands on CS(ℓ); round 11's MIR (G123)
+    AcquireAtOperation, // E13 (1) on G123's MIR: a PairAcquire an operation's later operand follows is left at ℓ as an operand (no M′)
+    ShapeReservation,   // no marker: A5 derives a PairAcquire's reservation from the MIR shape `$t = acquire X` moved into a Call (Case.Shape)
+    IntrinsicAllOperands, // A3 §4's intrinsic row that E14 replaced: every operand → result, Value (Case.IntrinsicRow)
+    NoEarlierValues,    // CS_i without ⋃_{j<i} val_in(o_j)
+    NoLaterRoots,       // CS_i without ⋃_{j>i} σ_in(root(o_j))
+    EarlierRoots,       // CS_i with σ_in(root(o_j)) for j<i instead of val_in(o_j) (round 11's CS_call(ℓ, −) at every operation)
+    NoOwnValue,         // E13 as first stated: CS_i with val_in(o_j) for j < i only, and no own value at a single-operand rvalue
+    OwnValueEverywhere, // the own-value term on every node Read or Move (Calls, BinaryOps, discards, Discriminant and Len reads
+                        // included): an upper bound for the operands rounds 1-11 encode without marking them
+    // Round 13 (A3 E13 rewritten, "one rule for every access"; the second design review's flags DOV, ROP, AV, ROS+RPT folded in).
+    // The design takes each term; each variant restores the clause it superseded, or tries the review's alternative:
+    NoDestroyValue,     // DOV off: an observing destruction of X does not take val(X) (round 12: CS(ℓ), CS_call(ℓ, t_K))
+    BorrowSeedOnly,     // ROP off: DECISIONS R4-M57, a borrow's stored value only seeds (E5), into a live destination
+    ParentsAsTransit,   // ROP off, the review's other fix: the R2 parents' holders in transit (RefParentsInTransit) and the
+                        // stored value seeding whatever the destination's liveness (ROS)
+    ActivationLiveIn,   // AV off: an activation and a destroying call's destroy on CS_call(ℓ, t)'s live_in(ℓ) (round 12)
+    CurrentBuilder,     // today's builder MIR (Case.Built): named arguments in slot order, captures without G123 or M′
+    KeepCSTerms,        // a borrow and an observing Drop also take CS(ℓ)'s transit and E5's seed (the review's additive run)
+    BorrowWithoutSeed,  // round 13's first run: the borrow row without E5's seed (its own Loan into a live destination): 41o accepted
+    ParentsEveryLayer,  // the borrow row's parents over every layer, ⋃_{j<k}, instead of E3's bound ⋃_{m≤j<k} (round 13's first run)
+    OnePointDrop }      // the one-point encodings of 24c, 29b and 91 (Case.OnePoint): a drop and a store at one location
 
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
@@ -214,8 +372,12 @@ enum Mode { PROV, S1, S1P, A }
 // a ref-case pair layer); 0 when the path has no shared Deref.
 // Marker (round 10, finding 1, GuardOrigin): γ_H, the guard-local Origin g of a guard candidate H (SPEC 14.8.3); it names no
 // Place and never conflicts.
-record Issue(string Id, string Place, bool Uniq, string Into, bool Reserve, bool Param, bool InPlace = false, bool Phantom = false, string Recv = null, int SharedAt = 0, bool Marker = false);
-record Acc(K Kind, string Place, string Except, bool InPlace = false); // InPlace: the exclusive borrow is a `replace` target
+// Pair (round 11, E13 (3)): a PairAcquire Reborrow secured into a temp, a reservation there.
+// OpAccess (round 12, AcquireAtOperation's MIR): a Borrow left at its operation as an operand; its access is that operand's.
+record Issue(string Id, string Place, bool Uniq, string Into, bool Reserve, bool Param, bool InPlace = false, bool Phantom = false, string Recv = null, int SharedAt = 0, bool Marker = false, bool Pair = false, bool OpAccess = false);
+// InPlace: the exclusive borrow is a `replace` target. Input (round 11, E13 (1)): an access a Call's input makes at the Call.
+// From (round 13): the Issue whose borrow access this is (a Ref's or a Reborrowing PairAcquire's borrow of its Place).
+record Acc(K Kind, string Place, string Except, bool InPlace = false, bool Input = false, Issue From = null);
 record Res(HashSet<string> Names, HashSet<string> Leaves, HashSet<string> Auth);
 
 // Holder and Place paths: segments joined by '.', "*" = follow a reference, "[]" = non-path index, digits = constant index.
@@ -269,6 +431,27 @@ class Node
     public Node Drop(string h) => A(K.Destroy, h);                    // destroying h's old value runs a user drop that may reach through it
     // Review r2: A3's err(destroy) at a destroying call, checked on CS_call(ℓ, t_K) (live into the call, t_K excluded, seeded by σ_in(t_K)).
     public Node DestroyAt(string h, string reservation) { Accs.Add(new(K.Destroy, h, reservation)); return this; }
+    // Round 11 (E13): a Call's inputs. Input: the access an input makes AT the Call (a Copy or Move of a direct Place operand
+    // left at the Call), checked on CS_call(ℓ, −); AcquireAt: an exclusive PairAcquire Reborrow left at the Call, whose
+    // formation and activation coincide there; Acquire: one secured into a temp, a TwoPhaseUniq reservation issued into it
+    // (activated by Activate at its Call); Callee: a Value callee's reservation, activated at the Call like an argument's.
+    // Round 12 (E13 (1)): Input marks every operand the MIR leaves at its operation ℓ, a Call's or any other's, in evaluation
+    // order (the order of the Input calls); a Move of a secured temp included. Operation marks an operation other than a Call
+    // (an Aggregate, a Closure, a BinaryOp), whose operands Round11 checks on CS(ℓ) as before round 11.
+    public Node Input(K kind, string place) { Accs.Add(new(kind, place, null, Input: true)); return Use(place); }
+    public Node AcquireAt(string place) => Input(K.UBorrow, place);
+    public bool NotCall;
+    public Node Operation() { NotCall = true; return this; }
+    // Round 12 (AcquireAtOperation's MIR): a PairAcquire left at a non-Call operation as its operand, a live Uniq Loan stored
+    // into `into` (the aggregate), its access the operand's, in order.
+    public Node AcquireOp(string id, string place, string into) { Issues.Add(new(id, place, true, into, false, false, OpAccess: true)); return Input(K.UBorrow, place); }
+    public Node Acquire(string id, string place, string into) { Issues.Add(new(id, place, true, into, true, false, Pair: true)); return Use(place); }
+    public readonly List<string> Callees = new();
+    public Node Callee(string id) { Callees.Add(id); return Activate(id); }
+    // Round 11 (E14): a Call whose contract writes the value of `src` into storage reached through the raw pointer `ptr`
+    // stores it into E, the referent of a raw pointer (A3 §5: val(raw-derived Place) ∪= {Φ_E}; SPEC 15.6).
+    public readonly List<(string Ptr, string Src)> RawStores = new();
+    public Node RawStore(string ptr, string src) { RawStores.Add((ptr, src)); return Use(ptr, src); }
     public Node Goto(params string[] labels) { Succ = labels.ToList(); return this; }
     public Node Assume(string label) { Assumed.Add(label); return this; }                        // assumed edge (§14.10.3)
 }
@@ -280,6 +463,12 @@ class Case
     public string ALoss; // the listed design-A loss that explains an extra rejection (round 3)
     public Case Inline;  // round 10: the same program with a Slice Index as an inline step (SliceIndexInline, A3's letter)
     public Case AsDrop;  // round 10: the same program with a destroying call's destruction as a Drop on CS (DestroyAsDrop)
+    public Case Always;  // reviewer: M', every PairAcquire secured into its own temp (AlwaysSecure)
+    public Case Secured; // round 11: the same program with a PairAcquire that a later at-Call input follows secured (SecureAcquire)
+    public Case Shape;        // round 12: the same program with A5 deriving a reservation from the MIR shape (ShapeReservation)
+    public Case IntrinsicRow; // round 12: the same program with A3 §4's intrinsic row, every operand → result (IntrinsicAllOperands)
+    public Case Built;        // round 13: the MIR today's builder makes where E13 (2) prescribes another order (CurrentBuilder)
+    public Case OnePoint;     // round 13: rounds 5-12's encoding with a drop and a store at one location (OnePointDrop)
     public Case(string id, string title) { Id = id; Title = title; }
     public Node N(string label) { var n = new Node(label, Nodes.Count); Nodes.Add(n); return n; }
     public Case Error(params string[] at) { Err = true; At = at; return this; }
@@ -290,25 +479,36 @@ class Case
 class Analysis
 {
     readonly Mode M; readonly Abl X; readonly bool F; readonly List<Node> ns; readonly int N; // F: FirstDerefBase under another variant (review)
+    readonly bool Pk; // round 13: E8's ending (PrefixKill) under another variant; the design is Mode.A with it
     readonly Dictionary<string, Issue> issue = new(); readonly Dictionary<string, int> issueAt = new(), activeAt = new();
     readonly Dictionary<string, HashSet<string>> places = new();
     readonly HashSet<string>[] excusedAt;
     readonly HashSet<string> gamma = new(); // the holders with a region marker
     HashSet<Fact>[] In; HashSet<string>[] liveIn; List<int>[] succ;
     public readonly List<(string L, int P, string What)> Errors = new();
+    public readonly Case Enc; // round 12: the MIR form analysed (the case itself, or one of its other forms)
 
-    public Analysis(Case c, Mode m, Abl x = Abl.None, bool firstDeref = false)
+    public Analysis(Case c, Mode m, Abl x = Abl.None, bool firstDeref = false, bool prefixKill = false)
     {
-        M = m; X = x; F = firstDeref; ns = (x == Abl.SliceIndexInline && c.Inline != null ? c.Inline : x == Abl.DestroyAsDrop && c.AsDrop != null ? c.AsDrop : c).Nodes; N = ns.Count;
+        // Round 12: the MIR form. Design A and its variants run the round-12 builder's MIR (M′: Always, else Secured, else the
+        // case's own); Round11, Implemented1b and AcquireAtOperation run round 11's (G123: the case's own); SecureAcquire runs M.
+        // Round 13: CurrentBuilder runs today's builder MIR where E13 (2) prescribes another one (Case.Built).
+        M = m; X = x; F = firstDeref; Pk = prefixKill;
+        Enc = x == Abl.CurrentBuilder && c.Built != null ? c.Built : x == Abl.OnePointDrop && c.OnePoint != null ? c.OnePoint : x == Abl.SliceIndexInline && c.Inline != null ? c.Inline : x == Abl.DestroyAsDrop && c.AsDrop != null ? c.AsDrop
+            : x == Abl.ShapeReservation && c.Shape != null ? c.Shape : x == Abl.IntrinsicAllOperands && c.IntrinsicRow != null ? c.IntrinsicRow
+            : x == Abl.SecureAcquire ? c.Secured ?? c : x is Abl.Round11 or Abl.Implemented1b or Abl.AcquireAtOperation ? c
+            : c.Always ?? c.Secured ?? c;
+        ns = Enc.Nodes; N = ns.Count;
         foreach (var n in ns)
         {
             foreach (var s0 in n.Issues)
             {
-                var s = x == Abl.NoReservation ? s0 with { Reserve = false } : s0;
+                var s = x == Abl.NoReservation || s0.Pair && PairLive ? s0 with { Reserve = false } : s0; // PairLive: a live Uniq Loan
                 issue[s.Id] = s; issueAt[s.Id] = n.Ix; places[s.Id] = new(); if (s.Param || m != Mode.PROV) places[s.Id].Add(s.Place);
             }
             if (x != Abl.NoReservation) foreach (var a in n.Activates) activeAt[a] = n.Ix;
         }
+        if (PairLive) foreach (var a in activeAt.Keys.Where(a => issue[a].Pair).ToList()) activeAt.Remove(a); // never reserved, never activated
         foreach (var d in ns.SelectMany(n => n.Disturbs).Distinct()) // Φ_c^dist: the same phantom, no longer excusable
         { issue[d + "^dist"] = issue[d] with { Id = d + "^dist" }; issueAt[d + "^dist"] = issueAt[d]; places[d + "^dist"] = new(places[d]); }
         // Round 10, 33c (A3 §5 excused, second row, the round-7 erratum): excused(L, ℓ) also where ℓ forms an argument
@@ -325,6 +525,28 @@ class Analysis
         BuildEdges(); Carries();
         if (m == Mode.A) { LivenessA(); CheckA(); } else { Liveness(); Check(); }
     }
+
+    // Round 11: the reviewed 1b branch's behaviors (each variant restores one; Implemented1b all four).
+    bool CalleeOff => X is Abl.CalleeNotActivated or Abl.Implemented1b;
+    bool InputsOnCS => X is Abl.InputsOnCS or Abl.Implemented1b;
+    bool PairLive => X is Abl.PairAcquireLive or Abl.Implemented1b;
+    bool NoRawStore => X is Abl.NoRawStore or Abl.Implemented1b;
+    // Round 12: round 11's E13 (1) (a Call's inputs on CS_call(ℓ, −), any other operation's operands on CS(ℓ)), kept by the
+    // variants that reproduce round 11's runs.
+    bool R11Rule => X is Abl.Round11 or Abl.SecureAcquire or Abl.AlwaysSecure;
+    // Round 12 (planning session on finding 1): an operand's value, its own included, is used by its operation after the
+    // access (SPEC 15.6; rustc E0505). Off in the variants that reproduce earlier rules.
+    bool OwnValue => X is not (Abl.NoOwnValue or Abl.Round11 or Abl.SecureAcquire or Abl.AlwaysSecure or Abl.Implemented1b);
+    // Round 13 (E13 rewritten): the values each access takes. Off in the variants that reproduce rounds 11-12's runs.
+    bool Earlier => X is Abl.Round11 or Abl.SecureAcquire or Abl.AlwaysSecure or Abl.Implemented1b;
+    bool DestroyValue => X != Abl.NoDestroyValue && !Earlier;                                   // an observing destruction takes val(X)
+    bool BorrowParents => X is not (Abl.BorrowSeedOnly or Abl.ParentsAsTransit) && !Earlier;    // a borrow takes its R2 parents
+    bool ActivationOnValues => X != Abl.ActivationLiveIn && !Earlier;                           // ⋃_{o_j≠t} val(o_j), not live_in(ℓ)
+    // E13 (1): a borrow and an observing Drop take no transit; a borrow keeps E5's seed (Seed), a Drop takes none. The variants
+    // that restore round 12's check for one of them restore its CS(ℓ) (transit and seed) with it; KeepCSTerms keeps CS(ℓ) and adds
+    // the own term (the review's additive run).
+    bool OwnTerm(Acc a) => !Earlier && X != Abl.KeepCSTerms && (a.From != null ? X is not (Abl.BorrowSeedOnly or Abl.ParentsAsTransit)
+        : a.Kind == K.Destroy && a.Except == null && X != Abl.NoDestroyValue);
 
     int IxOf(string l) { int i = ns.FindIndex(n => n.Label == l); return i >= 0 ? i : throw new Exception("no label " + l); }
 
@@ -393,7 +615,7 @@ class Analysis
     // K. KillAcrossDeref restores round 2's rule (the first move path entered may be destroyed).
     bool EndedBy(string l, IEnumerable<string> dip)
     {
-        if (X == Abl.PrefixKill) // review N1: direct Loans too; Defs are move paths, so K holds no Deref
+        if (X == Abl.PrefixKill || Pk) // review N1: direct Loans too; Defs are move paths, so K holds no Deref (round 13: the design)
         {
             var ps = Path.Segs(issue[l].Place);
             return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && !ks.Contains("*") && ps.Length >= ks.Length && ps.Take(ks.Length).SequenceEqual(ks));
@@ -559,6 +781,10 @@ class Analysis
             var targets = Steps(place) == 0 ? [Root(place)] : Refs(S);
             foreach (var l in Sigma(inn, Root(src))) foreach (var t in targets) o.Add((t, l));
         }
+        // Round 11 (E14): a raw store of a call stores its input's value into E, ret(i, Value) = val ∪ content(val) (the
+        // cases' values are references; content is empty there). NoRawStore: the intrinsic stores nothing (B4).
+        if (!NoRawStore)
+            foreach (var (_, src) in n.RawStores) { var v = Sigma(inn, Root(src)); v.UnionWith(Content(inn, v)); foreach (var l in v) o.Add(("E", l)); }
         foreach (var s in n.Issues)                                 // issue + parents of every followed layer
         {
             if (gamma.Contains(Root(s.Into))) o.Add((Root(s.Into), "γ" + Root(s.Into))); // finding 1: besides its Loan, if any
@@ -613,8 +839,13 @@ class Analysis
         {
             var n = ns[i]; var accs = n.Accs.ToList();
             // A2 keeps the `replace` exemption: a destroying Ref is a shallow read, and its activation is not deep.
-            accs.AddRange(n.Issues.Where(s => !s.Param && !s.Phantom).Select(s => new Acc(s.InPlace ? K.Read : s.Uniq && !s.Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace)));
-            accs.AddRange(n.Activates.Select(id => new Acc(K.UBorrow, issue[id].Place, id, issue[id].InPlace)));
+            // Round 11: PairLive forms a PairAcquire as a live Uniq Loan (issue[].Reserve is false), never activated;
+            // CalleeOff never activates a Value callee's reservation (B1).
+            // Round 12: an OpAccess Borrow (a PairAcquire left at its operation) makes its access as that operation's operand.
+            // Round 13: each such borrow access names its Issue (From), so E13 (1) gives it its R2 parents.
+            accs.AddRange(n.Issues.Where(s => !s.Param && !s.Phantom && !s.OpAccess).Select(s => new Acc(s.InPlace ? K.Read : s.Uniq && !issue[s.Id].Reserve ? K.UBorrow : K.SBorrow, s.Place, null, s.InPlace, From: s)));
+            accs.AddRange(n.Activates.Where(id => !(CalleeOff && n.Callees.Contains(id)) && !(PairLive && issue[id].Pair))
+                .Select(id => new Acc(K.UBorrow, issue[id].Place, id, issue[id].InPlace)));
             accs.AddRange(n.Exchanges.Select(h => new Acc(K.Move, h, null)));
             var after = succ[i].SelectMany(q => liveIn[q]).ToHashSet();
             var dest = n.Defs.Concat(n.Exchanges).Where(h => !h.Contains('.')).ToHashSet();
@@ -636,9 +867,12 @@ class Analysis
             // a reference with a live destination.
             var transit = X == Abl.NoTransit ? [] : n.Flows.Where(f => after.Contains(Root(f.To)) || Esc(Root(f.To)))
                 .SelectMany(f => SrcHolders(f.From))
-                .Concat(n.Throughs.Where(t => Targets(t.Place).Any(h => after.Contains(h) || Esc(h))).Select(t => Root(t.Src))).ToHashSet();
-            var stored = n.Issues.Where(s => !s.Param && !s.Phantom && (after.Contains(Root(s.Into)) || Esc(Root(s.Into)))).ToList();
-            if (X == Abl.RefParentsInTransit) // the holders each Ref's carried parents are read from (layers from the last shared on)
+                .Concat(n.Throughs.Where(t => Targets(t.Place).Any(h => after.Contains(h) || Esc(h))).Select(t => Root(t.Src)))
+                .Concat(NoRawStore ? [] : n.RawStores.Select(t => Root(t.Src))).ToHashSet(); // round 11 (E14): a store into E
+            // Round 13: ParentsAsTransit, the review's other fix: the stored value seeds whatever its destination's liveness (ROS),
+            // and the Ref's parent holders are in transit (RefParentsInTransit, RPT).
+            var stored = n.Issues.Where(s => !s.Param && !s.Phantom && (after.Contains(Root(s.Into)) || Esc(Root(s.Into)) || X == Abl.ParentsAsTransit)).ToList();
+            if (X is Abl.RefParentsInTransit or Abl.ParentsAsTransit) // the holders each Ref's carried parents are read from (layers from the last shared on)
                 foreach (var s in stored)
                 {
                     var S = Sigma(In[i], Root(s.Place)); var hs = new HashSet<string> { Root(s.Place) };
@@ -691,8 +925,45 @@ class Analysis
             }
             HashSet<string> Seed(Acc a) // CS_call(ℓ, t): the direct Loans of σ_in(t); FreshOnly, FreshParents: the store seed everywhere
             {
+                if (a.Input && !InputsOnCS && !(R11Rule && n.NotCall)) return []; // round 11 (E13): CS_call(ℓ, −) excludes no holder, so it needs no seed; round 12: CS_i states none
+                // Round 13 (E13 (1)): E5's seed belongs to the destination write, the stores and a borrow (BorrowWithoutSeed: not the
+                // borrow); an observing Drop takes only val(X) (KeepCSTerms: CS(ℓ)'s seed too).
+                if (OwnTerm(a) && (a.From == null || X == Abl.BorrowWithoutSeed)) return []; // a borrow keeps E5's seed (41o)
                 if (a.Except == null || X is Abl.NoFreshClosure or Abl.FreshOnly or Abl.FreshParents) return seedStore;
                 var t = new HashSet<string>(); foreach (var l in Sigma(In[i], issue[a.Except].Into)) Name(t, l); return t;
+            }
+            // Round 12: val_in(o): the value operand o reads at ℓ, from σ_in: a Copy or Move of a Place with k borrow Derefs
+            // reads content^k(σ_in(root)); a Borrow left at ℓ (AcquireAtOperation) carries its R2 parents, its own Loan being
+            // formed at ℓ and in no entry set.
+            HashSet<string> OpVal(Acc o)
+            {
+                if (o.Kind is K.UBorrow or K.SBorrow) return Parents(o.Place);
+                var S = Sigma(In[i], Root(o.Place));
+                for (int k = Steps(o.Place); k > 0; k--) S = Content(In[i], S);
+                return S;
+            }
+            // Round 13 (E13 (1)): a borrow's R2 parents over its k borrow Derefs, as E3 bounds them: ⋃_{m≤j<k} content^j(σ_in(root(X))),
+            // m the index of the last shared Deref (SharedAt - 1), else 0. ParentsEveryLayer: m = 0, every layer.
+            HashSet<string> Parents(string x, int sharedAt = 0)
+            {
+                int m = sharedAt > 0 && X != Abl.ParentsEveryLayer ? sharedAt - 1 : 0;
+                var S = Sigma(In[i], Root(x)); var P = new HashSet<string>();
+                for (int j = 0; j < Steps(x); j++) { if (j >= m) P.UnionWith(S); S = Content(In[i], S); }
+                return P;
+            }
+            var baseSet = In[i].Where(t => Esc(t.H) || after.Contains(t.H) && !dest.Contains(t.H)).ToHashSet(); // live_out(ℓ) not overwritten, E
+            bool marked = n.Accs.Any(o => o.Input); // the node marks its operands (rounds 11+)
+            HashSet<Fact> OperandSet(Acc a)
+            {
+                var ops = n.Accs.Where(o => o.Input).ToList(); int at = ops.FindIndex(o => ReferenceEquals(o, a));
+                var cs = In[i].Where(t => Esc(t.H) || after.Contains(t.H) && !dest.Contains(t.H)).ToHashSet();
+                for (int j = 0; j < ops.Count; j++)
+                {
+                    var h = Root(ops[j].Place);
+                    if (j < at && X == Abl.EarlierRoots || j > at && X != Abl.NoLaterRoots) cs.UnionWith(In[i].Where(t => t.H == h));
+                    else if (j < at && X != Abl.NoEarlierValues || j == at && OwnValue) foreach (var l in OpVal(ops[j])) cs.Add((h, l));
+                }
+                return cs;
             }
             foreach (var h0 in n.EndBorrows)
             {
@@ -716,9 +987,46 @@ class Analysis
                 // "L not issued at ℓ", activation L ≠ R), both by Loan id.
                 HashSet<Fact> F;
                 if (X == Abl.IdExclusion) F = In[i].Where(t => Esc(t.H) || liveIn[i].Contains(t.H)).ToHashSet();
+                // Round 13 (E13 (1), the review's AV): an activation of a reservation in t, and a destroying call's destroy, take the
+                // values of the operation's operands other than t, ⋃_{o_j≠t} val(o_j), on live_out(ℓ) without t, seeded by σ_in(t)
+                // (Seed, E5); this replaces CS_call(ℓ, t)'s live_in(ℓ). A node whose operands rounds 1-10 do not mark keeps live_in(ℓ),
+                // whose closure bounds the operands' values from above; ActivationLiveIn keeps it everywhere.
+                else if (a.Except != null && ActivationOnValues && marked)
+                {
+                    F = baseSet.Where(t => t.H != issue[a.Except].Into).ToHashSet();
+                    foreach (var o in n.Accs.Where(o => o.Input && Root(o.Place) != issue[a.Except].Into)) foreach (var l in OpVal(o)) F.Add((Root(o.Place), l));
+                }
                 else if (a.Except != null) F = In[i].Where(t => Esc(t.H) || liveIn[i].Contains(t.H) && (X == Abl.AText || t.H != issue[a.Except].Into)).ToHashSet();
+                // Round 11 (E13 (1)): an access a Call's input makes at the Call happens before the call, while the holders of
+                // the Call's other inputs are live: CS_call(ℓ, −), every holder live into ℓ (no exclusion; a reservation in its
+                // own holder stays `ref` through `Reserved`), and E. InputsOnCS: CS(ℓ), the reviewed branch (B2).
+                // Round 12: round 11's rule (R11Rule) checks only a Call's inputs so; another operation's operands keep CS(ℓ).
+                else if (a.Input && !InputsOnCS && R11Rule && !n.NotCall) F = In[i].Where(t => Esc(t.H) || liveIn[i].Contains(t.H)).ToHashSet();
+                // Round 12 (E13 (1), the owner's option R1; SPEC 12.2): operand i is evaluated before the operation and after
+                // operands 1..i-1, so it is checked on CS_i(ℓ): the holders live after ℓ that ℓ does not overwrite, E, the values
+                // of the earlier operands (attributed to their roots' holders, so a reservation in its own holder stays `ref`)
+                // and the holders of the later ones, the operand's own value included (j ≤ i; NoOwnValue: j < i). No transit
+                // and no seed.
+                else if (a.Input && !InputsOnCS && !(R11Rule && n.NotCall)) F = OperandSet(a);
                 else if (X == Abl.AText) F = outSet.Where(t => Esc(t.H) || after.Contains(t.H)).ToHashSet();
+                // Round 13 (E13 (1)): a borrow (From) and an observing Drop take their own term, added below, and no transit (MIR
+                // never destroys and stores at one location). KeepCSTerms: CS(ℓ) as before, the own term added (the review's run).
+                else if (OwnTerm(a)) F = baseSet;
                 else F = In[i].Where(t => Esc(t.H) || after.Contains(t.H) && !dest.Contains(t.H) || transit.Contains(t.H)).ToHashSet();
+                // Round 12 (planning session on finding 2): a single-operand rvalue (a Use of a Copy or Move, a Cast, a UnaryOp;
+                // not a Ref, whose access is a Borrow) uses its operand's value at ℓ too, so its operand's access is also checked
+                // against val_in(o) on CS(ℓ). A round 1-11 node marks no operand; the prototype takes a node's Read or Move whose
+                // Place is the source of one of its flows (the value ℓ stores). OwnValueEverywhere adds the term to every node Read
+                // or Move; the term only adds Loans, so it bounds every finer reading from above.
+                if (OwnValue && !a.Input && a.Except == null && a.Kind is K.Read or K.Move && n.Accs.Any(o => ReferenceEquals(o, a))
+                    && (X == Abl.OwnValueEverywhere || n.Flows.Any(f => f.From == a.Place)))
+                    foreach (var l in OpVal(a)) F.Add((Root(a.Place), l));
+                // Round 13 (E13 (1), the review's DOV): an observing destruction of X, a Drop or a destroying call's destroy, takes
+                // val(X) (SPEC 15.6: a Loan is live including an observation by its destruction; 15.6.6).
+                if (DestroyValue && a.Kind == K.Destroy) foreach (var l in OpVal(a)) F.Add((Root(a.Place), l));
+                // Round 13 (E13 (1), the review's ROP): a Ref's or Reborrowing PairAcquire's borrow of X takes its R2 parents,
+                // whatever its destination's liveness (supersedes R4-M57's "a borrow's stored value only seeds": BorrowSeedOnly).
+                if (BorrowParents && a.From != null) foreach (var l in Parents(a.Place, a.From.SharedAt)) F.Add((Root(a.Place), l));
                 IEnumerable<Fact> basis = X == Abl.AText && a.Except == null ? outSet : In[i];
                 var seed = Seed(a); F.UnionWith(basis.Where(t => seed.Contains(t.H)));
                 for (var work = new Queue<Fact>(F); work.Count > 0;) // a live direct Loan naming T makes σ(T) live
@@ -775,6 +1083,7 @@ class Analysis
         (X is Abl.IdExclusion or Abl.AText ? i <= at : h == issue[l].Into && issueAt[l] < i && i <= at);
 
     public IEnumerable<string> ErrorNodes() => Errors.Select(e => ns[e.P].Label).Distinct();
+    public string LabelAt(int p) => ns[p].Label; // the analysed encoding's node (Inline, AsDrop and Secured have their own)
     public bool CarriesAt(string label, string h, string l) => In[IxOf(label)].Contains((h, l));
     public string Dump() => string.Join("\n", ns.Select(n => $"{n.Label,-44} carries {{{string.Join(" ", In[n.Ix].OrderBy(t => t.H).Select(t => t.H + ":" + t.L))}}} live {{{string.Join(" ", liveIn[n.Ix].Order())}}}"))
         + "\nplaces: " + string.Join("; ", places.Select(p => p.Key + " = {" + string.Join(", ", p.Value) + "}"));
@@ -837,7 +1146,245 @@ static class Cases
         // Design review of the 1b choice (cases 100+)
         .. new[] { "100", "100b", "100c", "100d", "101", "102", "103", "104", "105", "106", "107", "108", "109", "110", "111", "112", "112b" }.Select(c => c == "105" ? ReviewSlice() : Review(c)),
         // Design review round 2 of the 1b choice (cases 120+)
-        .. new[] { "120", "120b", "121", "122", "123", "123b", "123c", "124", "125", "126", "127", "127b" }.Select(Review2)];
+        .. new[] { "120", "120b", "121", "122", "123", "123b", "123c", "124", "125", "126", "127", "127b" }.Select(Review2),
+        // Round 11 (A3 E13, E14; the core lane's group review B1, B2, B4)
+        .. new[] { "130a", "130b", "130c", "130d", "130e", "130f", "130g" }.Select(ClosureCall),
+        .. new[] { "131a", "131b", "131c", "131d", "131e", "131f", "131g" }.Select(CallInputs),
+        .. new[] { "132a", "132b", "132c", "132d", "132e", "132f", "132g", "132h", "132i", "132j", "132k", "132l", "132m", "132n" }.Select(PairInputs),
+        .. new[] { "133a", "133b", "133c", "133d" }.Select(RawInit),
+        .. new[] { "134a", "134b", "134c", "134d", "134e", "134f", "134g", "135a", "135b", "135c" }.Select(Reviewer.Make),
+        // Round 12 (A3 E13, the owner's option R1: operand evaluation order)
+        .. Round12.All(),
+        // Round 13 (A3 E13 rewritten): the second design review's cases and this round's (ids r13…, family 141)
+        .. R13.All()];
+
+    // ---- Round 11 (A3 E13, E14; the core lane's group review B1, B2, B4) ----
+    // E13: a Call's inputs are its argument operands and a Value callee's operand. Input: an access the MIR leaves AT the Call
+    // (checked on CS_call(ℓ, −)); Callee: the Value callee's reservation, activated at the Call; Acquire: a PairAcquire
+    // Reborrow secured into a temp (a reservation there); AcquireAt: one left at the Call. E14: RawStore.
+
+    // B1: closure calls. bump = func [r] (k: i32) => r@follow += k is an Exclusive call: `$7 = &uniq two-phase bump;
+    // bump-call(move $7, …)` (MIR forms the callee's receiver as a reservation); peek = func [r] () => inspect(r@follow) is a
+    // Shared call: `$7 = &peek`.
+    static Case ClosureCall(string id)
+    {
+        var c = new Case(id, "B1: " + id switch
+        {
+            "130a" => "`let v = bump@ref; bump(); inspect(v)` (the review's program)",
+            "130b" => "`let u = bump@uniq; let v = u@ref; u(); inspect(v)`",
+            "130c" => "a Shared call: `let v = peek@ref; peek(); inspect(v)`",
+            "130d" => "`bump(do { let v = bump@ref; inspect(v); 1 })` (v ends before the activation)",
+            "130e" => "`let v = bump@ref; bump(n); inspect(v)` (n: a direct Place operand at the Call)",
+            "130f" => "`let u = bump@uniq; var keep = other@ref; u(do { keep = u@ref; 1 }); inspect(keep)` (the argument's borrow stays live)",
+            _ => "`bump(value)` (`bump-call(move $7, copy value)`: the callee's holder carries r's Loan on value as a parent)",
+        });
+        bool shared = id == "130c";
+        var f = shared ? "peek" : "bump";
+        c.N("var value: i32 = 1; var n = 2; var other = 3").Def("value", "n", "other");
+        c.N(shared ? "let r = value@ref" : "let r = value@uniq").Def("r").Borrow("Lr", "value", !shared, "r");
+        c.N(shared ? "var peek = func [r] () => inspect(r@follow)" : "var bump = func [r] (k: i32) => r@follow += k").Def(f).A(K.Move, "r").Flow("r", f);
+        string call;
+        switch (id)
+        {
+            case "130a": case "130c": case "130e":
+                c.N($"let v = {f}@ref").Def("v").Borrow("Lv", f, Ref, "v");
+                if (shared) c.N("$7 = &peek (callee, Shared call)").Def("$7").Borrow("L7", "peek", Ref, "$7");
+                else c.N("$7 = &uniq two-phase bump (callee, reserved)").Def("$7").Borrow("L7", "bump", Uniq, "$7", reserve: true);
+                var cn = c.N(call = id == "130e" ? "bump-call(move $7, copy n)" : $"{f}-call(move $7)").Input(K.Move, "$7");
+                if (!shared) cn.Callee("L7");
+                if (id == "130e") cn.Input(K.Read, "n");
+                c.N("inspect(v)").A(K.Read, "v.*");
+                return shared ? c.Valid() : c.Error(call);
+            case "130b":
+                c.N("let u = bump@uniq").Def("u").Borrow("Lu", "bump", Uniq, "u");
+                c.N("let v = u@ref").Def("v").Borrow("Lv", "u", Ref, "v");
+                c.N("$7 = &uniq two-phase (*u) (callee, reserved)").Def("$7").Borrow("L7", "u.*", Uniq, "$7", reserve: true);
+                c.N(call = "u-call(move $7)").Input(K.Move, "$7").Callee("L7");
+                c.N("inspect(v)").A(K.Read, "v.*");
+                return c.Error(call);
+            case "130d":
+                c.N("$7 = &uniq two-phase bump (callee, reserved)").Def("$7").Borrow("L7", "bump", Uniq, "$7", reserve: true);
+                c.N("  let v = bump@ref (argument)").Def("v").Borrow("Lv", "bump", Ref, "v");
+                c.N("  inspect(v)").A(K.Read, "v.*");
+                c.N("  $k = 1 (end of do: StorageDead v)").Def("$k", "v");
+                c.N("bump-call(move $7, move $k)").Input(K.Move, "$7").Input(K.Move, "$k").Callee("L7");
+                return c.Valid();
+            case "130g":
+                c.N("$7 = &uniq two-phase bump (callee, reserved)").Def("$7").Borrow("L7", "bump", Uniq, "$7", reserve: true);
+                c.N(call = "bump-call(move $7, copy value)").Input(K.Move, "$7").Callee("L7").Input(K.Read, "value");
+                return c.Error(call);
+            default: // 130f
+                c.N("let u = bump@uniq").Def("u").Borrow("Lu", "bump", Uniq, "u");
+                c.N("var keep = other@ref").Def("keep").Borrow("Lo", "other", Ref, "keep");
+                c.N("$7 = &uniq two-phase (*u) (callee, reserved)").Def("$7").Borrow("L7", "u.*", Uniq, "$7", reserve: true);
+                c.N("  keep = u@ref (argument)").Assign("keep").Borrow("Lk", "u", Ref, "keep");
+                c.N("  $k = 1").Def("$k");
+                c.N(call = "u-call(move $7, move $k)").Input(K.Move, "$7").Input(K.Move, "$k").Callee("L7");
+                c.N("inspect(keep)").A(K.Read, "keep.*");
+                return c.Error(call);
+        }
+    }
+
+    // B2: the accesses a Call's own operands make AT the Call. give(a: uniq/i32, b: i32); giveR(a: ref/i32, b: i32);
+    // giveS(a: uniq/i32, b: ref/i32); S {n: i32} with set(self: uniq/S, n: i32). A Place operand that no later operand's code
+    // follows is read at the Call (G123, DECISIONS R4-M55).
+    static Case CallInputs(string id)
+    {
+        var c = new Case(id, "B2: " + id switch
+        {
+            "131a" => "`let r = x@uniq; give(r, x)` (MIR: `$4 = &uniq two-phase (*r)`, carrying r's Loan on x; `give(move $4, copy x)`)",
+            "131b" => "`let r = x@uniq; giveR(r, x)`, giveR(a: ref/i32, b: i32) (`$4 = &(*r)`; `giveR(move $4, copy x)`)",
+            "131c" => "`let r = x@uniq; giveS(r, x)`, giveS(a: uniq/i32, b: ref/i32) (`$5 = &x` is formed before the Call)",
+            "131d" => "`give(x@uniq, x)` (the read precedes the activation)",
+            "131e" => "`let r = x@uniq; give(r, r@follow)` (a read of the reserved referent at the Call)",
+            "131f" => "`s.set(s.n)` (`$r = &uniq two-phase s`; `set(move $r, copy s.n)`)",
+            _ => "`Kimi.Intrinsics.replace(x@uniq, with: x)` (SPEC 15.6.7's form with the read left at the Call)",
+        });
+        c.N("var x = 1; var s = S(n: 1)").Def("x", "s");
+        string call;
+        switch (id)
+        {
+            case "131d":
+                c.N("$4 = x@uniq (reserved)").Def("$4").Borrow("L4", "x", Uniq, "$4", reserve: true);
+                c.N("give(move $4, copy x)").Input(K.Move, "$4").Activate("L4").Input(K.Read, "x");
+                return c.Valid();
+            case "131g":
+                c.N("$t = x@uniq (reserved, replace target)").Def("$t").Borrow("Lt", "x", Uniq, "$t", reserve: true, inPlace: true);
+                c.N("replace(move $t, copy x)").Input(K.Move, "$t").Activate("Lt").Input(K.Read, "x").Through("$t.*", "x");
+                return c.Valid();
+            case "131f":
+                c.N("$r = s (set's receiver, reserved)").Def("$r").Borrow("Lr", "s", Uniq, "$r", reserve: true);
+                c.N("set(move $r, copy s.n)").Input(K.Move, "$r").Activate("Lr").Input(K.Read, "s.n");
+                return c.Valid();
+        }
+        c.N("let r = x@uniq").Def("r").Borrow("Lr", "x", Uniq, "r");
+        switch (id)
+        {
+            case "131a": case "131e":
+                c.N("$4 = &uniq two-phase (*r) (reserved)").Def("$4").Borrow("L4", "r.*", Uniq, "$4", reserve: true);
+                c.N(call = id == "131a" ? "give(move $4, copy x)" : "give(move $4, copy (*r))").Input(K.Move, "$4").Activate("L4").Input(K.Read, id == "131a" ? "x" : "r.*");
+                return id == "131a" ? c.Error(call) : c.Valid();
+            case "131b":
+                c.N("$4 = &(*r)").Def("$4").Borrow("L4", "r.*", Ref, "$4");
+                c.N(call = "giveR(move $4, copy x)").Input(K.Move, "$4").Input(K.Read, "x");
+                return c.Error(call);
+            default: // 131c
+                c.N("$4 = &uniq two-phase (*r) (reserved)").Def("$4").Borrow("L4", "r.*", Uniq, "$4", reserve: true);
+                c.N(call = "$5 = &x").Def("$5").Borrow("L5", "x", Ref, "$5");
+                c.N("giveS(move $4, move $5)").Input(K.Move, "$4").Input(K.Move, "$5").Activate("L4");
+                return c.Error(call);
+        }
+    }
+
+    // B2 with pair layers (the Semantics view decides a PairAcquire: a Copy in the ref view, a Reborrow in the uniq view).
+    // inner2<s/T>(a: ref/(s/T), b: s/T); inner3<s/T>(a: s/T, b: ref/(s/T)); inner7<s/S>(a: s/S, b: i32); bumpS<s/S>(q: s/S)
+    // -> i32; inner8<s/S>(b: i32, a: s/S); inner9<s/T>(a: s/T, b: s/T); inner11<s/S>(a: s/S, b: i32); innerW<s/T>(a: s/T,
+    // b: W<s/T>); s is ref or uniq; S {n: i32}; W<s/T> {a: s/T}. The caller is generic: outer<s/T>(p: s/T). G123 (R4-M55,
+    // MirBuilder.Builds on claude/a5-1b-mir) secures an operand into a temp when a later operand builds code: every operand
+    // builds code but a constant and a Place read as it is (Copied or Moved), so a PairAcquire (HirAcquire.ByCase) builds code
+    // and a Copy or Move of a Place does not. Secured (SecureAcquire): the same program with the PairAcquire secured.
+    static Case PairInputs(string id) { var c = PairInputsCase(id, false); if (id is "132j" or "132m") c.Secured = PairInputsCase(id, true); c.Always = Reviewer.PairAlways(id); return c; }
+
+    static Case PairInputsCase(string id, bool secure)
+    {
+        bool uniqView = id is not ("132b" or "132d" or "132i" or "132l" or "132n");
+        var c = new Case(id, "B2 pair, " + (uniqView ? "uniq view: " : "ref view: ") + id switch
+        {
+            "132a" or "132b" => "`var v = p; inner2(v@ref, v)` (`$4 = &v`; `inner2(move $4, acquire v)`, the PairAcquire left at the Call)",
+            "132c" or "132d" => "`var v = p; inner3(v, v@ref)` (G123 secures the PairAcquire: `$3 = acquire v`; `$4 = &v`)",
+            "132e" => "`inner7(p, p.n + 1)` (`$3 = acquire p`, a reservation; a shared read of p.n during it)",
+            "132f" => "`inner7(p, bumpS(p))` (a second exclusive acquisition of p during the reservation)",
+            "132g" => "`inner8(p.n + 1, p)` (`$3 = p.n + 1`; `inner8(move $3, acquire p)`)",
+            "132h" or "132i" => "`var v = p; inner9(v, v)` (the second PairAcquire builds code, so `$3 = acquire v` is secured; `inner9(move $3, acquire v)`)",
+            "132j" => "`inner11(p, p.n)` (`inner11(acquire p, copy (*p).n)`: both left at the Call)",
+            "132m" or "132n" => "`var v = p; let u = v@follow@ref; innerR(v, u)`, innerR<s/T>(a: s/T, b: ref/T) (`innerR(acquire v, copy u)`: both left at the Call)",
+            _ => "`var w = W(a: p); innerW(w.a, w@move)` (round 13, the builder's MIR: `w@move` builds code, so `$4 = acquire w.a; $5 = move w; innerW(move $4, move $5)`; round 12: the valid spelling of round 11's `innerW(w.a, w)`, a TransferRequired_Kd)",
+        } + (secure ? " [secured: SecureAcquire]" : ""));
+        c.N("func outer<s/T>(p: s/T), " + (uniqView ? "uniq view" : "ref view")).Param("Lp", "p");
+        string call;
+        Node AtCall(Node n, string place) => uniqView ? n.AcquireAt(place + ".*") : n.Input(K.Read, place); // PairAcquire
+        switch (id)
+        {
+            case "132a": case "132b":
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                c.N("$4 = v@ref").Def("$4").Borrow("L4", "v", Ref, "$4");
+                AtCall(c.N(call = "inner2(move $4, acquire v)").Input(K.Move, "$4"), "v");
+                return uniqView ? c.Error(call) : c.Valid();
+            case "132c": case "132d":
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                if (uniqView) c.N("$3 = acquire v (secured: a reservation)").Def("$3").Acquire("L3", "v.*", "$3");
+                else c.N("$3 = acquire v (secured: a Copy)").Def("$3").A(K.Read, "v").Flow("v", "$3");
+                c.N("$4 = v@ref").Def("$4").Borrow("L4", "v", Ref, "$4");
+                var n3 = c.N(call = "inner3(move $3, move $4)").Input(K.Move, "$3").Input(K.Move, "$4");
+                if (uniqView) n3.Activate("L3");
+                return uniqView ? c.Error(call) : c.Valid();
+            case "132e": case "132f":
+                c.N("$3 = acquire p (secured: a reservation)").Def("$3").Acquire("L3", "p.*", "$3");
+                if (id == "132e") c.N("$4 = p.n + 1").Def("$4").A(K.Read, "p.*.n");
+                else c.N(call = "$4 = bumpS(acquire p)").Def("$4").AcquireAt("p.*");
+                c.N("inner7(move $3, move $4)").Input(K.Move, "$3").Input(K.Move, "$4").Activate("L3");
+                return id == "132e" ? c.Valid() : c.Error("$4 = bumpS(acquire p)");
+            case "132g":
+                c.N("$3 = p.n + 1").Def("$3").A(K.Read, "p.*.n");
+                c.N("inner8(move $3, acquire p)").Input(K.Move, "$3").AcquireAt("p.*");
+                return c.Valid();
+            case "132h": case "132i":
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                call = "Call inner9(v, v)";
+                if (uniqView) c.N("$3 = acquire v (secured: a reservation)").Def("$3").Acquire("L3", "v.*", "$3");
+                else c.N("$3 = acquire v (secured: a Copy)").Def("$3").A(K.Read, "v").Flow("v", "$3");
+                var n9 = AtCall(c.N(call).Input(K.Move, "$3"), "v");
+                if (uniqView) n9.Activate("L3");
+                return uniqView ? c.Error(call) : c.Valid();
+            case "132j":
+                call = "Call inner11(p, p.n)";
+                if (secure) { c.N("$3 = acquire p (secured: a reservation)").Def("$3").Acquire("L3", "p.*", "$3"); c.N(call).Input(K.Move, "$3").Activate("L3").Input(K.Read, "p.*.n"); }
+                else c.N(call).AcquireAt("p.*").Input(K.Read, "p.*.n");
+                return c.Valid();
+            case "132m": case "132n": // a Copy after an at-Call PairAcquire: its Loans sit in its source holder, live into ℓ
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                c.N("let u = v@follow@ref").Def("u").Borrow("Lu", "v.*", Ref, "u", sharedAt: uniqView ? 0 : 1);
+                call = "Call innerR(v, u)";
+                if (secure) { c.N("$3 = acquire v (secured: a reservation)").Def("$3").Acquire("L3", "v.*", "$3"); c.N(call).Input(K.Move, "$3").Activate("L3").Input(K.Read, "u"); }
+                else AtCall(c.N(call), "v").Input(K.Read, "u");
+                return uniqView ? c.Error(call) : c.Valid();
+            default: // 132k, 132l
+                if (uniqView) c.N("var w = W(a: p) (a Reborrow of *p, stored)").Def("w").Borrow("Lw", "p.*", Uniq, "w.a");
+                else c.N("var w = W(a: p) (a Copy of p)").Def("w").A(K.Read, "p").Flow("p", "w.a");
+                // Round 13 (the second design review's MIR dump p1/a132k): an explicit `@move` builds code, so G123 secures the
+                // PairAcquire before it, and the Move is its own Use (rounds 11-12 left both at the Call).
+                if (uniqView) c.N("$4 = acquire w.a (secured: a reservation)").Def("$4").Acquire("L4", "w.a.*", "$4");
+                else c.N("$4 = acquire w.a (secured: a Copy)").Def("$4").A(K.Read, "w.a").Flow("w.a", "$4");
+                c.N(call = "$5 = move w").Def("$5").A(K.Move, "w").Flow("w", "$5");
+                var nw = c.N("innerW(move $4, move $5)").Input(K.Move, "$4").Input(K.Move, "$5"); if (uniqView) nw.Activate("L4");
+                return uniqView ? c.Error(call) : c.Valid();
+        }
+    }
+
+    // B4 (E14): Raw.initialize(storage: raw/T, value: T) stores value into the referent of a raw storage operand, E (SPEC
+    // 15.6: storage the body does not own, "a value stored there may be used after every point"). p[0] reads E.
+    static Case RawInit(string id)
+    {
+        var c = new Case(id, "B4: " + id switch
+        {
+            "133a" => "`let p: raw/(ref/i32) = Raw.allocate(1); Raw.initialize(p, x@ref); x = 2; let q = p[0]; inspect(q)` (the review's program)",
+            "133b" => "133a with `x = 2` before the initialize",
+            "133c" => "133a without the write: `…; let q = p[0]; inspect(q); inspect(x)`",
+            _ => "`let p: raw/(uniq/i32) = …; Raw.initialize(p, x@uniq); inspect(x)` (the reservation is retained into E)",
+        });
+        c.N("var x = 1").Def("x");
+        c.N("let p = Raw.allocate(1)").Def("p");
+        if (id == "133b") c.N("x = 2").Assign("x");
+        if (id == "133d") c.N("$a = x@uniq (reserved)").Def("$a").Borrow("La", "x", Uniq, "$a", reserve: true);
+        else c.N("$a = x@ref").Def("$a").Borrow("La", "x", Ref, "$a");
+        var init = c.N("Raw.initialize(copy p, move $a)").Input(K.Read, "p").Input(K.Move, "$a").RawStore("p", "$a");
+        if (id == "133d") { init.Activate("La"); c.N("inspect(x)").A(K.Read, "x"); return c.Error("inspect(x)"); }
+        if (id == "133a") c.N("x = 2").Assign("x");
+        c.N("let q = p[0]").Def("q").Flow("p.*.0", "q");
+        c.N("inspect(q)").A(K.Read, "q.*");
+        if (id == "133c") c.N("inspect(x)").A(K.Read, "x");
+        return id == "133a" ? c.Error("x = 2") : c.Valid();
+    }
 
     static Case Review2(string id) { var c = Review2Case(id, false); if (id is "123" or "123c") c.AsDrop = Review2Case(id, true); return c; }
 
@@ -1081,10 +1628,11 @@ static class Cases
         return c.Error("x = 5");
     }
 
-    static int Num(Case c) => char.IsDigit(c.Id[0]) ? int.Parse(new string(c.Id.TakeWhile(char.IsDigit).ToArray())) : 0;
+    static int Num(Case c) => c.Id.StartsWith("r13") ? 141 : char.IsDigit(c.Id[0]) ? int.Parse(new string(c.Id.TakeWhile(char.IsDigit).ToArray())) : 0; // round 13: r13… is family 141
     public static bool NoS1P(Case c) => Num(c) >= 50 || c.Nodes.Any(n => n.EndBorrows.Count > 0); // reviews' cases: design A only
     public static bool Review23a(Case c) => Num(c) is >= 50 and < 100;
-    public static bool Review1b(Case c) => Num(c) >= 100;
+    public static bool Review1b(Case c) => Num(c) is >= 100 and < 130;
+    public static bool Round11(Case c) => Num(c) >= 130;
 
     // ---- Round 10 (1b rules, designer A) ----
     // G119 (SPEC 15.6.7): during a call reservation its Place, owner and the references it was reached through are
@@ -1989,16 +2537,21 @@ static class Cases
 
     // 24c through two borrow Derefs: T's drop writes through self.r@follow@follow; the old value's drop and the store of
     // a value carrying the child happen at one point, so the check (transit) precedes the first-dereference ending.
-    static Case DropMerged2()
+    // Round 13: as MIR builds it, the Drop terminator (MirTerminatorKind.Drop), then the store at the next location (the second
+    // design review's dump fD2: `drop _2 -> bb3; _2 = move _7`); rounds 5-12's one-point encoding is Case.OnePoint (OnePointDrop).
+    static Case DropMerged2() { var c = DropMerged2Case(false); c.OnePoint = DropMerged2Case(true); return c; }
+
+    static Case DropMerged2Case(bool onePoint)
     {
-        var c = new Case("91", "`t = T(r: slot2@uniq, c: t.r@follow@follow@uniq)`, T's drop writes through self.r@follow@follow (drop and store at one point)");
+        var c = new Case("91", "`t = T(r: slot2@uniq, c: t.r@follow@follow@uniq)`, T's drop writes through self.r@follow@follow (" + (onePoint ? "drop and store at one point)" : "MIR: `drop t`, then `t = move $v`; the case 23a review: one point)"));
         c.N("var x = 1; var y = 2; var z = 3").Def("x", "y", "z");
         c.N("var slot = x@uniq; var slot2 = z@uniq").Def("slot", "slot2").Borrow("L1", "x", Uniq, "slot").Borrow("Lz", "z", Uniq, "slot2");
         c.N("var t = T(r: slot@uniq, c: y@uniq)").Def("t").Borrow("Lo", "slot", Uniq, "t.r").Borrow("Ly", "y", Uniq, "t.c");
         c.N("$c = t.r@follow@follow@uniq").Def("$c").Borrow("L2", "t.r.*.*", Uniq, "$c");
         c.N("$v = T(r: slot2@uniq, c: $c)").Def("$v").Borrow("Lo2", "slot2", Uniq, "$v.r").Flow("$c", "$v.c");
-        const string st = "t = move $v (drops old t)";
-        c.N(st).Assign("t").Drop("t").A(K.Write, "t.r.*.*").A(K.Move, "$v").Flow("$v", "t");
+        string st;
+        if (onePoint) c.N(st = "t = move $v (drops old t)").Assign("t").Drop("t").A(K.Write, "t.r.*.*").A(K.Move, "$v").Flow("$v", "t");
+        else { c.N(st = "drop t (old value)").Drop("t").A(K.Write, "t.r.*.*"); c.N("t = move $v").Assign("t").A(K.Move, "$v").Flow("$v", "t"); }
         c.N("inspect(t)").Use("t");
         return c.Error(st);
     }
@@ -2613,14 +3166,20 @@ static class Cases
     }
 
     // Transit into an escaped destination: p: uniq/S; S's drop writes through self.r; drop and store at one point.
-    static Case EscapedTransit()
+    // Round 13: as MIR builds it, the Drop terminator (MirTerminatorKind.Drop), then the store at the next location (the second
+    // design review's dump fD2: `drop _2 -> bb3; _2 = move _7`); rounds 5-12's one-point encoding is Case.OnePoint (OnePointDrop).
+    static Case EscapedTransit() { var c = EscapedTransitCase(false); c.OnePoint = EscapedTransitCase(true); return c; }
+
+    static Case EscapedTransitCase(bool onePoint)
     {
-        var c = new Case("29b", "`p: uniq/S`; `p@follow = S(r: p.r@follow@uniq)`, S's drop writes through self.r (one point)");
+        var c = new Case("29b", "`p: uniq/S`; `p@follow = S(r: p.r@follow@uniq)`, S's drop writes through self.r (" + (onePoint ? "one point)" : "MIR: `drop (*p)`, then `(*p) = move $v`; rounds 6-12: one point)"));
         c.N("func f(p: uniq/S)").Param("Lp", "p");
         c.N("$t = p.r@follow@uniq").Def("$t").Borrow("L2", "p.*.r.*", Uniq, "$t");
         c.N("$v = S(r: $t)").Def("$v").Flow("$t", "$v.r");
-        c.N("p@follow = move $v (drops old *p)").Through("p.*", "$v").Drop("p.*").A(K.Write, "p.*.r.*").A(K.Move, "$v");
-        return c.Error("p@follow = move $v (drops old *p)");
+        string st;
+        if (onePoint) c.N(st = "p@follow = move $v (drops old *p)").Through("p.*", "$v").Drop("p.*").A(K.Write, "p.*.r.*").A(K.Move, "$v");
+        else { c.N(st = "drop (*p) (old value)").Drop("p.*").A(K.Write, "p.*.r.*"); c.N("p@follow = move $v").Through("p.*", "$v").A(K.Move, "$v"); }
+        return c.Error(st);
     }
 
     // Linked-list traversal (Temp shape). struct Node {var value: i32; var next: Option<L>}; `.some` is the payload
@@ -2915,16 +3474,22 @@ static class Cases
     }
 
     // 24a with the destruction and the store at one point: the new value is in transit from the dying $v.
-    static Case DropMerged()
+    // Round 13: as MIR builds it, the Drop terminator (MirTerminatorKind.Drop), then the store at the next location (the second
+    // design review's dump fD2: `drop _2 -> bb3; _2 = move _7`); rounds 5-12's one-point encoding is Case.OnePoint (OnePointDrop).
+    static Case DropMerged() { var c = DropMergedCase(false); c.OnePoint = DropMergedCase(true); return c; }
+
+    static Case DropMergedCase(bool onePoint)
     {
-        var c = new Case("24c", "24a with the old value's drop and the store at one point");
+        var c = new Case("24c", "24a with the old value's drop and the store " + (onePoint ? "at one point" : "as MIR builds them: `drop s`, then `s = move $v` (rounds 5-12: at one point)"));
         c.N("var x = 1").Def("x");
         c.N("var s = S(r: x@uniq)").Def("s").Borrow("L1", "x", Uniq, "s.r");
         c.N("$t = s.r@follow@uniq").Def("$t").Borrow("L2", "s.r.*", Uniq, "$t");
         c.N("$v = S(r: $t)").Def("$v").Flow("$t", "$v.r");
-        c.N("s = move $v (drops old s)").Assign("s").Drop("s").A(K.Write, "s.r.*").A(K.Move, "$v").Flow("$v", "s");
+        string st;
+        if (onePoint) c.N(st = "s = move $v (drops old s)").Assign("s").Drop("s").A(K.Write, "s.r.*").A(K.Move, "$v").Flow("$v", "s");
+        else { c.N(st = "drop s (old value; its drop writes self.r@follow)").Drop("s").A(K.Write, "s.r.*"); c.N("s = move $v").Assign("s").A(K.Move, "$v").Flow("$v", "s"); }
         c.N("inspect(s)").Use("s");
-        return c.Error("s = move $v (drops old s)");
+        return c.Error(st);
     }
 
     // ---- Round 6 (review r2) ----
@@ -3097,5 +3662,562 @@ static class Cases
         c.N("inspect(r)").Use("r").Goto("exit");
         c.N("exit").Goto();
         return c.Error("x = 3");
+    }
+}
+
+
+// ---- Reviewer (E13/E14 design review): M' encodings of the 132 family and new probes 134-135 ----
+// Round 12: the operands of every operation are listed in evaluation order (Node.Input; Node.Operation for a non-Call). A case
+// whose reviewer encoding is a form round 12 rejects keeps it as its other form: 134a and 134e the G123 MIR (Always: M′, which
+// design A runs), 134d the shape-derived reservation (Shape), 135b A3 §4's intrinsic row (IntrinsicRow).
+static class Reviewer
+{
+    const bool Uniq = true, Ref = false;
+
+    // M': every PairAcquire is secured into its own temp where it is evaluated (a reservation there in the uniq view, a Copy in the
+    // ref view); null where the case already has that form (132c-e; round 13: 132k, 132l), and 132j/m use their Secured encoding.
+    public static Case PairAlways(string id)
+    {
+        if (id is "132c" or "132d" or "132e" or "132j" or "132k" or "132l" or "132m") return null; // round 13: 132k, 132l are built so
+        bool uniqView = id is not ("132b" or "132i" or "132l" or "132n");
+        var c = new Case(id, "M' " + id);
+        c.N("func outer<s/T>(p: s/T), " + (uniqView ? "uniq view" : "ref view")).Param("Lp", "p");
+        void Acq(string tmp, string place, string loan)
+        {
+            if (uniqView) c.N($"{tmp} = acquire {place} (secured: a reservation)").Def(tmp).Acquire(loan, place + ".*", tmp);
+            else c.N($"{tmp} = acquire {place} (secured: a Copy)").Def(tmp).A(K.Read, place).Flow(place, tmp);
+        }
+        string call;
+        switch (id)
+        {
+            case "132a": case "132b":
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                c.N("$4 = v@ref").Def("$4").Borrow("L4", "v", Ref, "$4");
+                Acq("$5", "v", "L5");
+                var na = c.N(call = "inner2(move $4, move $5)").Input(K.Move, "$4").Input(K.Move, "$5"); if (uniqView) na.Activate("L5");
+                return uniqView ? c.Error(call) : c.Valid();
+            case "132f":
+                Acq("$3", "p", "L3");
+                Acq("$5", "p", "L5");
+                c.N(call = "$4 = bumpS(move $5)").Def("$4").Input(K.Move, "$5").Activate("L5");
+                c.N("inner7(move $3, move $4)").Input(K.Move, "$3").Input(K.Move, "$4").Activate("L3");
+                return c.Error(call);
+            case "132g":
+                c.N("$3 = p.n + 1").Def("$3").A(K.Read, "p.*.n");
+                Acq("$4", "p", "L4");
+                c.N("inner8(move $3, move $4)").Input(K.Move, "$3").Input(K.Move, "$4").Activate("L4");
+                return c.Valid();
+            case "132h": case "132i":
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                Acq("$3", "v", "L3"); Acq("$4", "v", "L4");
+                var nh = c.N(call = "Call inner9(v, v)").Input(K.Move, "$3").Input(K.Move, "$4"); if (uniqView) nh.Activate("L3").Activate("L4");
+                return uniqView ? c.Error(call) : c.Valid();
+            default: // 132n
+                c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+                c.N("let u = v@follow@ref").Def("u").Borrow("Lu", "v.*", Ref, "u", sharedAt: 1);
+                Acq("$3", "v", "L3");
+                c.N("Call innerR(v, u)").Input(K.Move, "$3").Input(K.Read, "u");
+                return c.Valid();
+        }
+    }
+
+    public static Case Make(string id) => id switch
+    {
+        "134a" => With(Z1(id, false), always: Z1(id, true)),
+        "134b" => Z1(id, true),
+        "134c" => X2(id, false),
+        "134d" => With(X2(id, false), shape: X2(id, true)),
+        "134e" => With(V1(id, false), always: V1(id, true)),
+        "134f" => V1(id, true),
+        "134g" => W1(id),
+        "135b" => With(Clone(id, false), row: Clone(id, true)),
+        _ => Clone(id, false),
+    };
+
+    static Case With(Case c, Case always = null, Case shape = null, Case row = null) { c.Always = always; c.Shape = shape; c.IntrinsicRow = row; return c; }
+
+    // 134a, 134b: z1, `var v = p; let u = v@follow@ref; _ = (v, u)`, uniq view; $t is dead after (a discard's shallow drop of a
+    // non-observing Type is no use, A3 §5 use(H, ℓ), so no node follows). G123 leaves the PairAcquire at the Aggregate:
+    // `$t = (acquire v, copy u)`; M′ secures it, unmarked (an aggregate operand): `$1 = acquire v` (a live Uniq), `$t = (move $1, copy u)`.
+    static Case Z1(string id, bool m2)
+    {
+        var c = new Case(id, id == "134b" ? "z1 under M' for every operation: `_ = (v, u)` -> `$1 = acquire v; $t = (move $1, copy u)`"
+            : "z1, uniq view: `var v = p; let u = v@follow@ref; _ = (v, u)` (G123's MIR `$t = (acquire v, copy u)`; $t dead; design A builds 134b's M′)");
+        c.N("func outer<s/T>(p: s/T), uniq view").Param("Lp", "p");
+        c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+        c.N("let u = v@follow@ref").Def("u").Borrow("Lu", "v.*", Ref, "u");
+        string at;
+        if (m2)
+        {
+            c.N(at = "$1 = acquire v (secured: live Uniq)").Def("$1").Borrow("L1", "v.*", Uniq, "$1");
+            c.N("$t = (move $1, copy u)").Def("$t").Input(K.Move, "$1").Flow("$1", "$t").Input(K.Read, "u").Flow("u", "$t").Operation();
+        }
+        else c.N(at = "$t = (acquire v, copy u)").Def("$t").AcquireOp("Lt", "v.*", "$t").Input(K.Read, "u").Flow("u", "$t").Operation();
+        return c.Error(at);
+    }
+
+    // 134c, 134d: x2, `inner11(do => v, peek(v@follow@ref))`, uniq view: `$a = acquire v; $b = &(*v); $c = peek(move $b);
+    // inner11(move $a, move $c)`. The builder leaves a control-flow result's PairAcquire unmarked (a live Uniq, SPEC 15.6.7);
+    // shape: A5 reads `$a = acquire v` moved into a Call as a reservation (x1's shape, 139a), the rejected option.
+    static Case X2(string id, bool shape)
+    {
+        var c = new Case(id, (id == "134d" ? "x2, reservation derived from the MIR shape (design A: the marker, as 134c; ShapeReservation: the shape): "
+            : "x2 (SPEC 15.6.7: a control-flow result is live): ")
+            + "`inner11(do => v, peek(v@follow@ref))` (`$a = acquire v; $b = &(*v); $c = peek(move $b); inner11(move $a, move $c)`)");
+        c.N("func outer<s/T>(p: s/T), uniq view").Param("Lp", "p");
+        c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+        if (shape) c.N("$a = acquire v (do => v; read as a reservation)").Def("$a").Acquire("La", "v.*", "$a");
+        else c.N("$a = acquire v (do => v; live Uniq)").Def("$a").Borrow("La", "v.*", Uniq, "$a");
+        c.N("$b = &(*v)").Def("$b").Borrow("Lb", "v.*", Ref, "$b");
+        c.N("$c = peek(move $b)").Def("$c").Input(K.Move, "$b");
+        var n = c.N("inner11(move $a, move $c)").Input(K.Move, "$a").Input(K.Move, "$c"); if (shape) n.Activate("La");
+        return c.Error("$b = &(*v)");
+    }
+
+    // 134e, 134f: v1, `let t = (v, v@follow); inspect(t)`, uniq view, T Copy; t live. G123: `t = (acquire v, copy (*v))`; M′,
+    // unmarked: `$1 = acquire v` (a live Uniq), `t = (move $1, copy (*v))`.
+    static Case V1(string id, bool m2)
+    {
+        var c = new Case(id, id == "134f" ? "v1 under M' for every operation: `$1 = acquire v; t = (move $1, copy (*v))`"
+            : "v1, uniq view: `let t = (v, v@follow); inspect(t)` (G123's MIR `t = (acquire v, copy (*v))`; design A builds 134f's M′)");
+        c.N("func outer<s/T>(p: s/T), uniq view").Param("Lp", "p");
+        c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+        string at;
+        if (m2)
+        {
+            c.N("$1 = acquire v (secured: live Uniq)").Def("$1").Borrow("L1", "v.*", Uniq, "$1");
+            c.N(at = "t = (move $1, copy (*v))").Def("t").Input(K.Move, "$1").Flow("$1", "t").Input(K.Read, "v.*").Flow("v.*", "t").Operation();
+        }
+        else c.N(at = "t = (acquire v, copy (*v))").Def("t").AcquireOp("Lt", "v.*", "t").Input(K.Read, "v.*").Flow("v.*", "t").Operation();
+        c.N("inspect(t)").A(K.Read, "t");
+        return c.Error(at);
+    }
+
+    // 134g: w1, `_ = (x@uniq, x)`: `$1 = &uniq x; $t = (move $1, copy x)`, $t dead (the old path rejects it at the read of x).
+    static Case W1(string id)
+    {
+        var c = new Case(id, "w1: `_ = (x@uniq, x)` (`$1 = &uniq x; $t = (move $1, copy x)`; $t dead)");
+        c.N("var x = 1").Def("x");
+        c.N("$1 = x@uniq").Def("$1").Borrow("L1", "x", Uniq, "$1");
+        c.N("$t = (move $1, copy x)").Def("$t").Input(K.Move, "$1").Flow("$1", "$t").Input(K.Read, "x").Flow("x", "$t").Operation();
+        return c.Error("$t = (move $1, copy x)");
+    }
+
+    // 135a-c: Kimi.Intrinsics.clone<s/T>(value: ref/(s/T)) -> s/T, s is rc or arc. E14: the declaration retains the payload's
+    // Loans (Content); A3 §4's intrinsic row (every operand -> result, Value) is 135b's IntrinsicRow form.
+    static Case Clone(string id, bool valueRow)
+    {
+        var c = new Case(id, id switch
+        {
+            "135a" => "clone, Content row (its declaration): `let owner = makeRc(S(r: x@ref)); let c = clone(owner@ref); _ = owner@move; inspect(c)`",
+            "135b" => "135a with A3 4's intrinsic row (every operand -> result, Value): c carries the borrow of owner (design A: E14's Content row, as 135a; IntrinsicAllOperands: the row)",
+            _ => "135a's Content row is sound: `...; let c = clone(owner@ref); x = 5; inspect(c)`",
+        });
+        c.N("var x = 1").Def("x");
+        c.N("let owner = makeRc(S(r: x@ref))").Def("owner").Borrow("Lx", "x", Ref, "owner");
+        c.N("$t = owner@ref").Def("$t").Borrow("Lo", "owner", Ref, "$t");
+        var cl = c.N("let c = clone(move $t)").Def("c").Input(K.Move, "$t");
+        if (valueRow) cl.Flow("$t", "c"); else cl.Flow("$t.*", "c");
+        if (id == "135c") { c.N("x = 5").Assign("x"); c.N("inspect(c)").A(K.Read, "c"); return c.Error("x = 5"); }
+        c.N("_ = owner@move").A(K.Move, "owner");
+        c.N("inspect(c)").A(K.Read, "c");
+        return c.Valid();
+    }
+}
+
+// ---- Round 12 (A3 E13 as the owner chose on 2026-10-18, option R1: A5 handles operand evaluation order) ----
+// E13 (1): the operands an operation leaves at ℓ (Node.Input, in evaluation order: SPEC 12.2, a receiver or Value callee first)
+// are checked on CS_i(ℓ); Node.Operation marks an operation other than a Call. E13 (3), M′: the builder secures every PairAcquire
+// into its own temp; Acquire is a marked one (it produces an invocation input: a reservation in its temp, activated at its
+// Call), a Uniq Borrow an unmarked one (a let, a control-flow result, an aggregate operand, a capture). G123: a Place operand is
+// secured into a temp when a later operand of the same operation builds code; a Ref, a PairAcquire and a Call build code.
+// give2(a: i32, b: i32); give2T<T>(a: T, b: i32); inner11<s/T>(a: s/T, b: i32); peek<T>(x: ref/T) -> i32; run<F>(f: F,
+// k: i32); contract Plus { Self is Copy; func plus(self: Self, other: Self) -> i32 }; S3<T> {r: T, n: i32} with T = ref/i32.
+static class Round12
+{
+    const bool Uniq = true, Ref = false;
+
+    public static IEnumerable<Case> All() => [
+        .. new[] { "136a", "136b", "136c", "136d", "136e", "136f", "136g", "136h" }.Select(Order),
+        .. new[] { "137a", "137b", "137c", "137d", "137e" }.Select(Aggregate),
+        .. new[] { "138a", "138b", "138c", "138d" }.Select(c => { var k = Capture(c); k.Built = CaptureBuilt(c); return k; }),
+        .. new[] { "139a", "139b", "139c", "139d" }.Select(Marker),
+        .. new[] { "140a", "140b", "140c", "140d", "140e", "140f", "140g" }.Select(OwnValue)];
+
+    // 136: evaluation order (the E13 review's o1-o4, both orders; a by-value receiver first).
+    static Case Order(string id)
+    {
+        bool rFirst = id is "136a" or "136c" or "136e" or "136h";
+        var (op, dest) = id switch
+        {
+            "136a" or "136b" => ("give2", (string)null), "136c" or "136d" => ("t = ", "t"), "136e" or "136f" => ("s = Add", "s"), _ => ("k = plus", "k"),
+        };
+        var args = rFirst ? "copy (*r), copy x" : "copy x, copy (*r)";
+        var label = dest == "t" ? $"t = ({args})" : $"{op}({args})";
+        var c = new Case(id, id switch
+        {
+            "136a" => "o1: `let r = x@uniq; give2(r@follow, x)` (SPEC 12.2: r is not used after its operand; the old path accepts)",
+            "136b" => "o2: `let r = x@uniq; give2(x, r@follow)` (x is read while r is still to be read; old path: ComparisonLoanConflict_Kd at x)",
+            "136c" => "o3: `let r = x@uniq; let t = (r@follow, x); inspect(t)` (t live)",
+            "136d" => "o3 reversed: `let t = (x, r@follow); inspect(t)`",
+            "136e" => "o4: `let r = x@uniq; let s = r@follow + x`",
+            "136f" => "o4 reversed: `let s = x + r@follow`",
+            "136g" => "receiver first: `var x = x0; let r = x@uniq; let k = x.plus(r@follow)`, T is Plus (a Copy receiver)",
+            _ => "receiver first: `var x = x0; let r = x@uniq; let k = r@follow.plus(x)`",
+        } + $" (`{label}`)");
+        c.N(id is "136g" or "136h" ? "var x = x0 (T is Plus, Copy)" : "var x = 1").Def("x");
+        c.N("let r = x@uniq").Def("r").Borrow("Lr", "x", Uniq, "r");
+        var n = c.N(label);
+        if (rFirst) n.Input(K.Read, "r.*").Input(K.Read, "x"); else n.Input(K.Read, "x").Input(K.Read, "r.*");
+        if (dest != null) n.Def(dest); // an i32 result: plus and give2 retain nothing, an Add carries no Loan
+        if (dest is "t" or "s") n.Operation();
+        if (dest == "t") { n.Flow("r.*", "t").Flow("x", "t"); c.N("inspect(t)").A(K.Read, "t"); }
+        return rFirst ? c.Valid() : c.Error(label);
+    }
+
+    // 137: aggregates (the E13 review's w1-w3; 134g is w1 itself).
+    static Case Aggregate(string id)
+    {
+        var c = new Case(id, id switch
+        {
+            "137a" => "w1's counterpart: `_ = (x, x@uniq)` (G123 secures x: `$1 = copy x; $2 = &uniq x; $t = (move $1, move $2)`; SPEC 12.2: x is read before the Borrow, and its i32 Copy carries no Loan)",
+            "137b" => "w1 with the tuple used: `let t = (x@uniq, x); inspect(t)` (`$1 = &uniq x; t = (move $1, copy x)`)",
+            "137c" => "w3: `let r = x@uniq; _ = (r, x)` (`$1 = &uniq (*r)`, a bare acquisition live when formed, SPEC 15.6.7; `$t = (move $1, copy x)`)",
+            "137d" => "w3's counterpart, a dead aggregate that reads only: `let r = x@ref; _ = (r, x)` (`$t = (copy r, copy x)`)",
+            _ => "`let r = x@uniq; _ = (x, r)` (G123 secures x: `$1 = copy x; $2 = &uniq (*r); $t = (move $1, move $2)`)",
+        });
+        c.N("var x = 1").Def("x");
+        string at = null;
+        switch (id)
+        {
+            case "137a":
+                c.N("$1 = copy x").Def("$1").A(K.Read, "x").Flow("x", "$1");
+                c.N("$2 = &uniq x").Def("$2").Borrow("L2", "x", Uniq, "$2");
+                c.N("$t = (move $1, move $2)").Def("$t").Input(K.Move, "$1").Flow("$1", "$t").Input(K.Move, "$2").Flow("$2", "$t").Operation();
+                break;
+            case "137b":
+                c.N("$1 = &uniq x").Def("$1").Borrow("L1", "x", Uniq, "$1");
+                c.N(at = "t = (move $1, copy x)").Def("t").Input(K.Move, "$1").Flow("$1", "t").Input(K.Read, "x").Flow("x", "t").Operation();
+                c.N("inspect(t)").A(K.Read, "t");
+                break;
+            case "137c":
+                c.N("let r = x@uniq").Def("r").Borrow("Lr", "x", Uniq, "r");
+                c.N("$1 = &uniq (*r)").Def("$1").Borrow("L1", "r.*", Uniq, "$1");
+                c.N(at = "$t = (move $1, copy x)").Def("$t").Input(K.Move, "$1").Flow("$1", "$t").Input(K.Read, "x").Flow("x", "$t").Operation();
+                break;
+            case "137d":
+                c.N("let r = x@ref").Def("r").Borrow("Lr", "x", Ref, "r");
+                c.N("$t = (copy r, copy x)").Def("$t").Input(K.Read, "r").Flow("r", "$t").Input(K.Read, "x").Flow("x", "$t").Operation();
+                break;
+            default: // 137e
+                c.N("let r = x@uniq").Def("r").Borrow("Lr", "x", Uniq, "r");
+                c.N(at = "$1 = copy x").Def("$1").A(K.Read, "x").Flow("x", "$1");
+                c.N("$2 = &uniq (*r)").Def("$2").Borrow("L2", "r.*", Uniq, "$2");
+                c.N("$t = (move $1, move $2)").Def("$t").Input(K.Move, "$1").Flow("$1", "$t").Input(K.Move, "$2").Flow("$2", "$t").Operation();
+                break;
+        }
+        return at == null ? c.Valid() : c.Error(at);
+    }
+
+    // 138: Closure captures with a PairAcquire (SPEC 7.7: explicit entries execute left to right; a capture's PairAcquire is
+    // unmarked, a live Uniq in the uniq view, SPEC 15.6.7: no reservation passes through captures).
+    static Case Capture(string id)
+    {
+        bool uniqView = id != "138b";
+        var c = new Case(id, (uniqView ? "uniq view: " : "ref view: ") + id switch
+        {
+            "138a" => "z3: `var v = p; let u = v@follow@ref; let c = func [v, u] () => ()` (`$1 = acquire v`, unmarked; `c = Closure(move $1, copy u)`)",
+            "138b" => "z3: `var v = p; let u = v@follow@ref; let c = func [v, u] () => ()` (`$1 = acquire v`: a Copy)",
+            "138c" => "the other capture order: `let c = func [u, v] () => ()` (G123 secures u: `$1 = copy u; $2 = acquire v; c = Closure(move $1, move $2)`)",
+            _ => "a capture inside an invocation input: `run(func [v] () => (), peek(v@follow@ref))` (`$1 = acquire v`, unmarked; `$c = Closure(move $1)`; `$b = &(*v)`; compare 139a)",
+        });
+        c.N("func outer<s/T>(p: s/T), " + (uniqView ? "uniq view" : "ref view")).Param("Lp", "p");
+        c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+        void Acq(string tmp, string loan)
+        {
+            if (uniqView) c.N($"{tmp} = acquire v (unmarked: a capture; live Uniq)").Def(tmp).Borrow(loan, "v.*", Uniq, tmp);
+            else c.N($"{tmp} = acquire v (a Copy)").Def(tmp).A(K.Read, "v").Flow("v", tmp);
+        }
+        if (id == "138d")
+        {
+            Acq("$1", "L1");
+            c.N("$c = Closure(move $1)").Def("$c").Input(K.Move, "$1").Flow("$1", "$c").Operation();
+            c.N("$b = &(*v)").Def("$b").Borrow("Lb", "v.*", Ref, "$b");
+            c.N("$r = peek(move $b)").Def("$r").Input(K.Move, "$b");
+            c.N("run(move $c, move $r)").Input(K.Move, "$c").Input(K.Move, "$r");
+            return c.Error("$b = &(*v)");
+        }
+        c.N("let u = v@follow@ref").Def("u").Borrow("Lu", "v.*", Ref, "u", sharedAt: uniqView ? 0 : 1);
+        if (id == "138c")
+        {
+            c.N("$1 = copy u").Def("$1").A(K.Read, "u").Flow("u", "$1");
+            Acq("$2", "L2");
+            c.N("c = Closure(move $1, move $2)").Def("c").Input(K.Move, "$1").Flow("$1", "c").Input(K.Move, "$2").Flow("$2", "c").Operation();
+            return c.Error("$2 = acquire v (unmarked: a capture; live Uniq)");
+        }
+        Acq("$1", "L1");
+        c.N("c = Closure(move $1, copy u)").Def("c").Input(K.Move, "$1").Flow("$1", "c").Input(K.Read, "u").Flow("u", "c").Operation();
+        return uniqView ? c.Error("$1 = acquire v (unmarked: a capture; live Uniq)") : c.Valid();
+    }
+
+    // Round 13: today's builder builds captures without G123 or M′ (the second design review's MIR dump p1/a138: outerA
+    // `Closure(acquire b0 _2, copy _3)`, outerC `Closure(copy _3, acquire b0 _2)`): the PairAcquire stays at the Closure as its
+    // operand, a live Uniq formed there in the uniq view (AcquireOp), a Copy in the ref view. Case 138's own nodes are E13 (2)/(4)'s.
+    static Case CaptureBuilt(string id)
+    {
+        bool uniqView = id != "138b";
+        var c = new Case(id, "today's builder: captures at the Closure");
+        c.N("func outer<s/T>(p: s/T), " + (uniqView ? "uniq view" : "ref view")).Param("Lp", "p");
+        c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+        Node Acq(Node n, string into, string loan) => uniqView ? n.AcquireOp(loan, "v.*", into) : n.Input(K.Read, "v").Flow("v", into);
+        if (id == "138d")
+        {
+            Acq(c.N("$c = Closure(acquire v)").Def("$c"), "$c", "L1").Operation();
+            c.N("$b = &(*v)").Def("$b").Borrow("Lb", "v.*", Ref, "$b");
+            c.N("$r = peek(move $b)").Def("$r").Input(K.Move, "$b");
+            c.N("run(move $c, move $r)").Input(K.Move, "$c").Input(K.Move, "$r");
+            return c.Error("$b = &(*v)");
+        }
+        c.N("let u = v@follow@ref").Def("u").Borrow("Lu", "v.*", Ref, "u", sharedAt: uniqView ? 0 : 1);
+        string at;
+        if (id == "138c") Acq(c.N(at = "c = Closure(copy u, acquire v)").Def("c").Input(K.Read, "u").Flow("u", "c"), "c", "L2").Operation();
+        else Acq(c.N(at = "c = Closure(acquire v, copy u)").Def("c"), "c", "L1").Input(K.Read, "u").Flow("u", "c").Operation();
+        return uniqView ? c.Error(at) : c.Valid();
+    }
+
+    // 139: the marker (E13 (3)): x1 (x2 is 134c) and an explicit case adaptation at an input, against its unmarked `let` form.
+    static Case Marker(string id)
+    {
+        bool uniqView = id != "139b";
+        var c = new Case(id, (uniqView ? "uniq view: " : "ref view: ") + id switch
+        {
+            "139a" or "139b" => "x1: `var v = p; inner11(v, peek(v@follow@ref))` (`$a = acquire v`, marked; `$b = &(*v)`; `$c = peek(move $b)`; `inner11(move $a, move $c)`)",
+            "139c" => "an explicit case adaptation at an input: `var x = item@move; inner11(x@(s/T), peek(x@ref))` (`$a = x@(s/T)`, marked)",
+            _ => "the adaptation stored first: `let a = x@(s/T); let k = peek(x@ref); inner11(a, k)` (`a = x@(s/T)`, unmarked: a let, live when formed)",
+        });
+        c.N("func outer<s/T>(p: s/T, item: T), " + (uniqView ? "uniq view" : "ref view")).Param("Lp", "p");
+        if (id is "139a" or "139b")
+        {
+            c.N("var v = p").Def("v").A(K.Move, "p").Flow("p", "v");
+            if (uniqView) c.N("$a = acquire v (marked: a reservation)").Def("$a").Acquire("La", "v.*", "$a");
+            else c.N("$a = acquire v (a Copy)").Def("$a").A(K.Read, "v").Flow("v", "$a");
+            c.N("$b = &(*v)").Def("$b").Borrow("Lb", "v.*", Ref, "$b", sharedAt: uniqView ? 0 : 1);
+            c.N("$c = peek(move $b)").Def("$c").Input(K.Move, "$b");
+            var n = c.N("inner11(move $a, move $c)").Input(K.Move, "$a").Input(K.Move, "$c"); if (uniqView) n.Activate("La");
+            return c.Valid();
+        }
+        c.N("var x = item@move").Def("x");
+        if (id == "139c")
+        {
+            c.N("$a = x@(s/T) (marked: a reservation)").Def("$a").Acquire("La", "x", "$a");
+            c.N("$b = &x").Def("$b").Borrow("Lb", "x", Ref, "$b");
+            c.N("$c = peek(move $b)").Def("$c").Input(K.Move, "$b");
+            c.N("inner11(move $a, move $c)").Input(K.Move, "$a").Input(K.Move, "$c").Activate("La");
+            return c.Valid();
+        }
+        c.N("let a = x@(s/T) (unmarked: a let; live Uniq)").Def("a").Borrow("La", "x", Uniq, "a");
+        c.N("$b = &x").Def("$b").Borrow("Lb", "x", Ref, "$b");
+        c.N("let k = peek(move $b)").Def("k").Input(K.Move, "$b");
+        c.N("$a2 = acquire a (marked: a reservation)").Def("$a2").Acquire("La2", "a.*", "$a2");
+        c.N("inner11(move $a2, copy k)").Input(K.Move, "$a2").Input(K.Read, "k").Activate("La2");
+        return c.Error("$b = &x");
+    }
+
+    // 140: the operand's own value (round 12, finding 1). `var z = 0; var s = S3(r: z@ref, n: 1); s.r = s.n@ref` makes s carry
+    // its own Loan Ln on s.n; Moving s as an operand moves a value the operation then uses (SPEC 15.6: checked against the Loans
+    // of the values used after the Move; rustc E0505). The old path rejects 140a-140c, 140e and 140f at `s@move`. 140e-140g
+    // (planning session on finding 2): a single-operand Assign `let t = s@move` uses s's value at ℓ, t dead or not; 140g's s
+    // carries a Loan on another root only (`let r2 = y@ref; s.r = r2`).
+    static Case OwnValue(string id)
+    {
+        var c = new Case(id, "own value: `var s = S3(r: z@ref, n: 1); s.r = s.n@ref; " + id switch
+        {
+            "140a" => "give2T(s@move, 1)` (round 13, the builder's MIR: `$7 = move s; give2T(move $7, const 1)`; give2T retains nothing)",
+            "140b" => "_ = (s@move, 1)` (round 13: `$7 = move s; $t = (move $7, const 1)`; $t dead)",
+            "140c" => "let t = (s@move, 1); inspect(t)` (round 13: `$7 = move s; t = (move $7, const 1)`, t live)",
+            "140d" => "give2(s.n, s.n)` (`give2(copy s.n, copy s.n)`: reads only)",
+            "140e" => "let t = s@move` (`t = move s`, a single-operand Use; t dead)",
+            "140f" => "let t = s@move; inspect(t)` (t used)",
+            _ => "…` with `let r2 = y@ref; s.r = r2; let t = s@move` instead (s carries Ly on another root)",
+        });
+        c.N("var z = 0").Def("z"); c.N("var s = S3(r: z@ref, n: 1)").Def("s").Borrow("Lz", "z", Ref, "s.r");
+        if (id == "140g")
+        {
+            c.N("var y = 0").Def("y"); c.N("let r2 = y@ref").Def("r2").Borrow("Ly", "y", Ref, "r2");
+            c.N("s.r = r2").Assign("s.r").A(K.Read, "r2").Flow("r2", "s.r");
+            c.N("let t = s@move").Def("t").A(K.Move, "s").Flow("s", "t");
+            return c.Valid();
+        }
+        c.N("s.r = s.n@ref").Assign("s.r").Borrow("Ln", "s.n", Ref, "s.r");
+        string at;
+        switch (id)
+        {
+            // Round 13 (the second design review's MIR dump p2/b140): an explicit `@move` builds code, so the Move is its own Use
+            // into a temp the operation reads (round 12 left `move s` at the operation; the review's r13m140a/b are these forms).
+            case "140a": c.N(at = "$7 = move s").Def("$7").A(K.Move, "s").Flow("s", "$7"); c.N("give2T(move $7, const 1)").Input(K.Move, "$7"); break;
+            case "140b": c.N(at = "$7 = move s").Def("$7").A(K.Move, "s").Flow("s", "$7"); c.N("$t = (move $7, const 1)").Def("$t").Input(K.Move, "$7").Flow("$7", "$t").Operation(); break;
+            case "140c": c.N(at = "$7 = move s").Def("$7").A(K.Move, "s").Flow("s", "$7"); c.N("t = (move $7, const 1)").Def("t").Input(K.Move, "$7").Flow("$7", "t").Operation(); c.N("inspect(t)").A(K.Read, "t"); break;
+            case "140e": case "140f": c.N(at = "let t = s@move").Def("t").A(K.Move, "s").Flow("s", "t"); if (id == "140f") c.N("inspect(t)").A(K.Read, "t"); break;
+            default: c.N("give2(copy s.n, copy s.n)").Input(K.Read, "s.n").Input(K.Read, "s.n"); return c.Valid();
+        }
+        return c.Error(at);
+    }
+}
+
+
+// ---- Round 13 (A3 E13 rewritten after its second design review; the owner's "one rule for every access") ----
+// The second design review's cases (its r13 ids, taken as written except n1 and n2, which run E13 (2)'s order with the review's
+// MIR as Case.Built; its m140a and m140b are 140a and 140b as corrected below), and this round's d3, s1 and s2. Old-path
+// verdicts are the review's (Kimi.dll check, legacy pipeline; d3 from its ledger record). S3<T> {r: T, n: i32}, S4 = S3;
+// Q2 {a} {r: uniq/i32 during a, n: i32} whose drop writes `self.r@follow = 0`; S7 {a} {r: uniq/i32, q: ref/i32 during a};
+// give(a: uniq/i32, b: i32); give2(a: i32, b: i32); G {level: i32 with set(value: i32)}; S5 {r: ref/i32}; W5 {a} {p: uniq/S5,
+// q: uniq/(ref/i32) during a}. b1 and b2 are this round's too (the planning session's E3 bound).
+static class R13
+{
+    const bool Uniq = true, Ref = false;
+    public static IEnumerable<Case> All() => [D1(), D2(), D3(), RF1(), RF2(), U1(), U2(), N1(), N2(), A1(), A2(), C1(), Setter("r13s1", false), Setter("r13s2", true), Past("r13b1", false), Past("r13b2", true)];
+
+    // a1, a2: an activation takes the values of the other operands, not their holders (E13 (1); CS_call's live_in(ℓ) rejects a1).
+    static Case A(string id, bool used)
+    {
+        var c = new Case(id, "activation after a shared read through a dead reference: `let r = y@ref; give(y@uniq, r@follow)`" + (used ? "; inspect(r)" : "") + (used ? " (error)" : " (valid; old path valid)"));
+        c.N("var y = 1").Def("y");
+        c.N("let r = y@ref").Def("r").Borrow("Lr", "y", Ref, "r");
+        c.N("$4 = &uniq two-phase y").Def("$4").Borrow("L4", "y", Uniq, "$4", reserve: true);
+        c.N("give(move $4, copy (*r))").Input(K.Move, "$4").Input(K.Read, "r.*").Activate("L4");
+        if (used) c.N("inspect(r)").A(K.Read, "r");
+        return used ? c.Error("give(move $4, copy (*r))") : c.Valid();
+    }
+    static Case A1() => A("r13a1", false);
+    static Case A2() => A("r13a2", true);
+
+    // c1: j = i at a Closure (a capture's own value): today's builder and E13 (2) both build `Closure(move s)`.
+    static Case C1()
+    {
+        var c = new Case("r13c1", "capture Move of a self-ref holder: `s.r = s.n@ref; let c = func [s@move] () => ()` (MIR c = Closure(move s), c dead; old path error)");
+        c.N("var z = 0").Def("z"); c.N("var s = S3(r: z@ref, n: 1)").Def("s").Borrow("Lz", "z", Ref, "s.r");
+        c.N("s.r = s.n@ref").Assign("s.r").Borrow("Ln", "s.n", Ref, "s.r");
+        c.N("c = Closure(move s)").Def("c").Input(K.Move, "s").Flow("s", "c").Operation();
+        return c.Error("c = Closure(move s)");
+    }
+
+    // d1-d3: an observing destruction of X takes val(X) (SPEC 15.6, 15.6.6).
+    static Case D1()
+    {
+        var c = new Case("r13d1", "self-ref observing drop: `var q = Q2(r: z@uniq); q.r = q.n@uniq` (scope end: drop q writes through q.r); old path: error");
+        c.N("var z = 0").Def("z");
+        c.N("var q = Q2(r: z@uniq)").Def("q").Borrow("Lz", "z", Uniq, "q.r");
+        c.N("q.r = q.n@uniq").Assign("q.r").Borrow("Ln", "q.n", Uniq, "q.r");
+        c.N("drop q (scope end)").Drop("q").A(K.Write, "q.r.*");
+        return c.Error("drop q (scope end)");
+    }
+    static Case D2()
+    {
+        var c = new Case("r13d2", "d1's counterpart: `q.r = y@uniq` (another root), drop q at scope end");
+        c.N("var z = 0").Def("z"); c.N("var y = 0").Def("y");
+        c.N("var q = Q2(r: z@uniq)").Def("q").Borrow("Lz", "z", Uniq, "q.r");
+        c.N("q.r = y@uniq").Assign("q.r").Borrow("Ly", "y", Uniq, "q.r");
+        c.N("drop q (scope end)").Drop("q").A(K.Write, "q.r.*");
+        return c.Valid();
+    }
+    // d3 (the review's probe d3; MIR `drop _2; _2 = move _7`): the old value's drop at a whole assignment, q dead in between.
+    static Case D3()
+    {
+        var c = new Case("r13d3", "d1 by reassignment: `q.r = q.n@uniq; q = Q2(r: z2@uniq)` (`drop q; q = move $7`: the old value's drop writes through q.r); old path: valid (wrong)");
+        c.N("var z = 0; var z2 = 0").Def("z", "z2");
+        c.N("var q = Q2(r: z@uniq)").Def("q").Borrow("Lz", "z", Uniq, "q.r");
+        c.N("q.r = q.n@uniq").Assign("q.r").Borrow("Ln", "q.n", Uniq, "q.r");
+        c.N("$7 = Q2(r: z2@uniq)").Def("$7").Borrow("L7", "z2", Uniq, "$7");
+        c.N("drop q (old value)").Drop("q").A(K.Write, "q.r.*");
+        c.N("q = move $7").Assign("q").A(K.Move, "$7").Flow("$7", "q");
+        c.N("drop q (scope end)").Drop("q").A(K.Write, "q.r.*");
+        return c.Error("drop q (old value)");
+    }
+
+    // rf1, rf2: a Ref's borrow of X takes its R2 parents whatever its destination's liveness (supersedes R4-M57's seed).
+    static Case RF(string id, bool live)
+    {
+        var c = new Case(id, "Ref through a self-ref holder: `var s = S7(r: z@uniq, q: w@ref); s.q = s.r@follow@ref; let t = s.r@follow@uniq`" + (live ? "; inspect(t)" : " (t dead)") + "; old path: valid (wrong)");
+        c.N("var z = 0").Def("z"); c.N("var w = 0").Def("w");
+        c.N("var s = S7(r: z@uniq, q: w@ref)").Def("s").Borrow("Lz", "z", Uniq, "s.r").Borrow("Lw", "w", Ref, "s.q");
+        c.N("s.q = s.r@follow@ref").Assign("s.q").Borrow("Lq", "s.r.*", Ref, "s.q");
+        c.N("let t = s.r@follow@uniq").Def("t").Borrow("Lt", "s.r.*", Uniq, "t");
+        if (live) c.N("inspect(t)").A(K.Read, "t.*");
+        return c.Error("let t = s.r@follow@uniq");
+    }
+    static Case RF1() => RF("r13rf1", false);
+    static Case RF2() => RF("r13rf2", true);
+
+    // u1, u2: j = i at a Call and at a single-operand Use (MIR `give2(copy _2.1, const 1)`, `_6 = copy _2.1`).
+    static Case U1()
+    {
+        var c = new Case("r13u1", "Copy operand of a self-ref holder at the Call: `s.r = s.n@uniq; give2(s.n, 1)` (MIR give2(copy s.n, const 1)); old path: valid (wrong)");
+        c.N("var z = 0").Def("z"); c.N("var s = S4(r: z@uniq, n: 1)").Def("s").Borrow("Lz", "z", Uniq, "s.r");
+        c.N("s.r = s.n@uniq").Assign("s.r").Borrow("Ln", "s.n", Uniq, "s.r");
+        c.N("give2(copy s.n, const 1)").Input(K.Read, "s.n");
+        return c.Error("give2(copy s.n, const 1)");
+    }
+    static Case U2()
+    {
+        var c = new Case("r13u2", "single-operand Copy of a self-ref holder: `s.r = s.n@uniq; let t = s.n` (t dead); old path: valid (wrong)");
+        c.N("var z = 0").Def("z"); c.N("var s = S4(r: z@uniq, n: 1)").Def("s").Borrow("Lz", "z", Uniq, "s.r");
+        c.N("s.r = s.n@uniq").Assign("s.r").Borrow("Ln", "s.n", Uniq, "s.r");
+        c.N("let t = s.n").Def("t").A(K.Read, "s.n").Flow("s.n", "t");
+        return c.Error("let t = s.n");
+    }
+
+    // n1, n2: named arguments in another order (SPEC 10.1.1). E13 (2): a Place operand evaluated before an operand that precedes it
+    // in operand order is secured where it is evaluated. Built: today's builder passes them by slot (`give2(copy x, copy (*r))`).
+    static Case N(string id)
+    {
+        bool n1 = id == "r13n1";
+        var c = new Case(id, n1 ? "`let r = x@uniq; give2(b: r@follow, a: x)`: evaluated r.*, then x (valid, old path valid); E13 (2): `$1 = copy (*r); give2(copy x, move $1)`"
+            : "`let r = x@uniq; give2(b: x, a: r@follow)`: evaluated x, then r.* (error at x, old path error); E13 (2): `$1 = copy x; give2(copy (*r), move $1)`");
+        c.N("var x = 1").Def("x"); c.N("let r = x@uniq").Def("r").Borrow("Lr", "x", Uniq, "r");
+        if (n1) { c.N("$1 = copy (*r) (b, secured)").Def("$1").A(K.Read, "r.*").Flow("r.*", "$1"); c.N("give2(copy x, move $1)").Input(K.Read, "x").Input(K.Move, "$1"); c.Valid(); }
+        else { c.N("$1 = copy x (b, secured)").Def("$1").A(K.Read, "x").Flow("x", "$1"); c.N("give2(copy (*r), move $1)").Input(K.Read, "r.*").Input(K.Move, "$1"); c.Error("$1 = copy x (b, secured)"); }
+        var b = new Case(id, "today's builder, by slot");
+        b.N("var x = 1").Def("x"); b.N("let r = x@uniq").Def("r").Borrow("Lr", "x", Uniq, "r");
+        if (n1) { b.N("give2(copy x, copy (*r))").Input(K.Read, "x").Input(K.Read, "r.*"); b.Valid(); }
+        else { b.N("give2(copy (*r), copy x)").Input(K.Read, "r.*").Input(K.Read, "x"); b.Error("give2(copy (*r), copy x)"); }
+        c.Built = b;
+        return c;
+    }
+    static Case N1() => N("r13n1");
+    static Case N2() => N("r13n2");
+
+    // b1, b2: a borrow past a shared Deref takes its R2 parents as E3 bounds them (SPEC 15.6.3: it derives only from the
+    // reference of its last shared Deref, s.r, and carries its Loans). Reaching s.r reads w.p, but w's value is not used
+    // after ℓ in b1, so w's Lq (a uniq borrow of s.r, held in w.q) is not checked; in b2 w is used after ℓ. ParentsEveryLayer
+    // takes w's Loans too (layer 0) and rejects b1.
+    static Case Past(string id, bool used)
+    {
+        var c = new Case(id, "Ref past a shared Deref: `var s = S5(r: y@ref); var w = W5(p: s@uniq, q: o@uniq); w.q = w.p@follow.r@uniq; let t = w.p@follow.r@follow@ref; inspect(t)"
+            + (used ? "; inspect(w.q)`" : "` (w dead after t)") + "; old path not probed");
+        c.N("var y = 1; var o: ref/i32 = y@ref").Def("y", "o").Borrow("Ly0", "y", Ref, "o");
+        c.N("var s = S5(r: y@ref)").Def("s").Borrow("Ly", "y", Ref, "s.r");
+        c.N("var w = W5(p: s@uniq, q: o@uniq)").Def("w").Borrow("Ls", "s", Uniq, "w.p").Borrow("Lo", "o", Uniq, "w.q");
+        c.N("w.q = w.p@follow.r@uniq").Assign("w.q").Borrow("Lq", "w.p.*.r", Uniq, "w.q");
+        c.N("let t = w.p@follow.r@follow@ref").Def("t").Borrow("Lt", "w.p.*.r.*", Ref, "t", sharedAt: 2);
+        c.N("inspect(t)").Use("t");
+        if (!used) return c.Valid();
+        c.N("inspect(w.q)").A(K.Read, "w.q");
+        return c.Error("let t = w.p@follow.r@follow@ref");
+    }
+
+    // s1, s2: a setter's value is evaluated before its receiver (SPEC 13.7.1), so E13 (2) secures a Place value before the
+    // receiver's reservation: `$1 = copy (*r).level; $5 = &uniq two-phase g; level.Set(move $5, move $1)`. Today's builder for a
+    // Place value is not probed (a Call value is built first: the review's bsetter probe), so there is no Built form.
+    static Case Setter(string id, bool used)
+    {
+        var c = new Case(id, "setter value first: `var g = G(); let r = g@uniq; g.level = r@follow.level`" + (used ? "; inspect(r)" : "") + " (E13 (2): the value secured before the receiver's reservation)");
+        c.N("var g = G()").Def("g");
+        c.N("let r = g@uniq").Def("r").Borrow("Lr", "g", Uniq, "r");
+        c.N("$1 = copy (*r).level (value, secured)").Def("$1").A(K.Read, "r.*.level").Flow("r.*.level", "$1");
+        c.N("$5 = &uniq two-phase g (receiver)").Def("$5").Borrow("L5", "g", Uniq, "$5", reserve: true);
+        c.N("level.Set(move $5, move $1)").Input(K.Move, "$5").Input(K.Move, "$1").Activate("L5");
+        if (!used) return c.Valid();
+        c.N("inspect(r)").A(K.Read, "r");
+        return c.Error("$5 = &uniq two-phase g (receiver)", "level.Set(move $5, move $1)");
     }
 }

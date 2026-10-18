@@ -1,29 +1,34 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LegacyRuntimeHelpers;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    private static void WriteDictionaryHelpers(EmissionModule module, TextWriter output)
+    private static void WriteDictionaryHelpers(LegacyRuntimeHelpers helpers, TextWriter output)
     {
-        foreach (var helper in module.DictionaryHelpers)
+        foreach (var helper in helpers.DictionaryHelpers)
         {
             output.Write(helper.Abi.GetDefinition(false));
             output.Write("entry:\n");
             switch (helper.Kind)
             {
                 case DictionaryHelperKind.CheckKey:
-                    WriteDictionaryKeyCheck(output, helper, module.FunctionReferences[helper.Related], module.DictionaryRequireAbsent!);
+                    WriteDictionaryKeyCheck(output, helper, helpers.FunctionReferences[helper.Related], helpers.DictionaryRequireAbsent!);
                     break;
                 case DictionaryHelperKind.Place:
-                    WriteDictionaryInsertion(output, helper, module.DictionaryAppend ?? throw new InvalidOperationException("Dictionary append source was not compiled."));
+                    var append = helpers.DictionaryAppend ?? throw new InvalidOperationException("Dictionary append source was not compiled.");
+                    WriteDictionaryInsertion(output, helper, append);
                     output.Write("  ret void\n");
                     break;
                 case DictionaryHelperKind.Drop:
                     if (helper.Related >= 0)
                     {
                         output.Write("  call void @");
-                        output.Write(module.FunctionReferences[helper.Related].Name);
+                        output.Write(helpers.FunctionReferences[helper.Related].Name);
                         output.Write("(ptr %handle, ptr %location, i64 %location_length)\n");
                     }
 
@@ -70,16 +75,16 @@ internal static partial class LlvmModuleWriter
     private static void WriteDictionaryKeyStorage(TextWriter output, DictionaryHelper helper)
     {
         output.Write("  %key_slot = alloca ");
-        output.Write(helper.Key.Layout.StorageType);
+        output.Write(helper.Key.Value.Layout.StorageType);
         output.Write(", align ");
-        WriteNumber(output, helper.Key.Layout.Alignment);
+        WriteNumber(output, helper.Key.Value.Layout.Alignment);
         output.Write('\n');
-        WriteStoredArgument(output, helper.Key, true, "%key", "%key_slot", "%key_input");
+        WriteStoredArgument(output, helper.Key, "%key", "%key_slot", "%key_input");
     }
 
     private static void WriteDictionaryKeyCheck(TextWriter output, DictionaryHelper helper, FunctionAbi find, FunctionAbi requireAbsent)
     {
-        var scalar = helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0;
+        var scalar = helper.Key.IsScalar;
         if (scalar)
         {
             WriteDictionaryKeyStorage(output, helper);
@@ -104,11 +109,11 @@ internal static partial class LlvmModuleWriter
         output.Write("  %new_slot = call ptr @");
         output.Write(append.Name);
         output.Write("(ptr %handle, i64 ");
-        WriteNumber(output, helper.Stride);
+        WriteNumber(output, helper.Entry.Stride);
         output.Write(", ptr %location, i64 %location_length)\n");
-        DictionaryAddress(output, "%new_key", "%new_slot", helper.KeyOffset);
-        DictionaryAddress(output, "%new_value", "%new_slot", helper.ValueOffset);
-        WriteStoredArgument(output, helper.Key, helper.KeyLayout is null && !helper.KeyIsString && helper.Key.Layout.Size != 0, "%key", "%new_key", "%key_inserted");
-        WriteStoredArgument(output, helper.Value, helper.ValueLayout is null && !helper.ValueIsString && helper.Value.Layout.Size != 0, "%value", "%new_value", "%value_inserted");
+        DictionaryAddress(output, "%new_key", "%new_slot", helper.Entry.KeyOffset);
+        DictionaryAddress(output, "%new_value", "%new_slot", helper.Entry.ValueOffset);
+        WriteStoredArgument(output, helper.Key, "%key", "%new_key", "%key_inserted");
+        WriteStoredArgument(output, helper.Value, "%value", "%new_value", "%value_inserted");
     }
 }

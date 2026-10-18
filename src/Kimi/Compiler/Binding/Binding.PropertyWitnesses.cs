@@ -106,14 +106,13 @@ public sealed partial class Binding
         }
     }
 
-    private CallPlan? InstantiatePropertyRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination)
+    // SPEC 11.9.2: a Property requirement call at the operation ResolveRequirementWitness verified: the accessor a call witness executes,
+    // or the standard bridge.
+    private CallPlan? InstantiatePropertyRequirementCall(CallPlan call, BoundType self, RequirementWitness resolved, CallPlan? destination)
     {
         var requirement = ((FunctionKoto)call.Target.Declaration).Accessor!;
-        if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
-            this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.PropertyWitnessMap.TryGetValue((new(requirement.Property.Symbol, contract), requirement.Kind), out var witness) ||
-            witness.ObjectCompatibility != ConstraintProof.Proven || this.PropertyWitnessFunction(path, witness) is not { } function ||
-            this.StoredType(witness.ImplementationType, self) is not { } declaring)
+        var witness = resolved.Property;
+        if (this.PropertyWitnessFunction(resolved.Path!, witness) is not { } function || this.StoredType(witness.ImplementationType, self) is not { } declaring)
         {
             return null;
         }
@@ -140,7 +139,12 @@ public sealed partial class Binding
 
             var result = destination ?? new CallPlan();
             result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: storage ? self : declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
-            return storage || this.ProjectWitnessCall(result, witness.BasePath, declaring) ? result : null;
+            if (!storage)
+            {
+                this.ProjectWitnessCall(result, witness.BasePath, declaring);
+            }
+
+            return result;
         }
         finally
         {

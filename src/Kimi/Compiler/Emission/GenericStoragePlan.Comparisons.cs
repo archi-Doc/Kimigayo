@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -143,8 +144,8 @@ internal sealed partial class GenericStoragePlan
         {
             var a = next++;
             var b = next++;
-            function.AddScalar(EmissionOpcode.LoadPointer, a, [left], "ptr", representation: WindowsLowering.StringReference);
-            function.AddScalar(EmissionOpcode.LoadPointer, b, [right], "ptr", representation: WindowsLowering.StringReference);
+            function.AddScalar(EmissionOpcode.LoadPointer, a, [left], "ptr", representation: RuntimeAbi.StringReference);
+            function.AddScalar(EmissionOpcode.LoadPointer, b, [right], "ptr", representation: RuntimeAbi.StringReference);
             function.AddCall(result, children[0], [new(EmissionOperandKind.Value, a), new(EmissionOperandKind.Value, b)]);
         }
         else if (implementation is not null)
@@ -165,7 +166,7 @@ internal sealed partial class GenericStoragePlan
         }
         else if (ReferenceEquals(plan.Type, BoundType.String))
         {
-            module.NeedsStringComparison = true;
+            module.RuntimeHelpers.NeedsStringComparison = true;
             function.AddScalar(plan.Equality ? EmissionOpcode.StringEquals : EmissionOpcode.StringCompare, result, [left, right], op: plan.Equality ? "eq" : "order");
         }
         else if (WindowsLowering.GetValue(plan.Type) is { } scalar)

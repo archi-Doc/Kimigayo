@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -48,7 +49,7 @@ public class GenericCompositeValueTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies.Single(x => x.Matches.Count != 0);
         var place = Assert.Single(body.SymbolPlaces, x => x.Key.Name == "items").Value;
-        var function = Assert.Single(Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction), x => ReferenceEquals(x.Abi, WindowsLowering.Entry));
+        var function = Assert.Single(Enumerable.Range(0, module.FunctionCount).Select(module.GetFunction), x => ReferenceEquals(x.Abi, RuntimeAbi.Entry));
         var slot = Assert.Single(function.Slots, x => x.Place == place);
         Assert.Equal(0, slot.Value.Layout.Size);
     }

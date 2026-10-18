@@ -1,5 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
@@ -63,7 +66,7 @@ internal static partial class LlvmModuleWriter
         var addressOperand = operands[0];
         var id = instruction.Operation;
         var fixedLength = (long)operands[1].Value;
-        var range = instruction.Representation == WindowsLowering.Unit;
+        var range = instruction.Representation == RuntimeAbi.Unit;
         if (instruction.ScalarOperator is "Read" or "ArrayRead" or "ArrayStorageRead" or "SliceStorageRead" or "SliceAddress" or "ArrayAddress")
         {
             // A fixed array's bounds are static; a Slice loads its handle's length.
@@ -87,7 +90,7 @@ internal static partial class LlvmModuleWriter
             // SPEC 4.8.6: a constant position proven inside a fixed array needs no runtime check.
             if (arrayRead && operands[1].Kind == EmissionOperandKind.Integer && operands[1].Value >= 0 && operands[1].Value < operands[2].Value)
             {
-                WriteArithmeticFailure(output, constants, instruction, ProvenValid, function.Abi.CallerLocation);
+                WriteArithmeticFailure(output, constants, instruction, LlvmScalarText.ProvenValid, function.Abi.CallerLocation);
             }
             else
             {
@@ -189,7 +192,8 @@ internal static partial class LlvmModuleWriter
                 output.Write(" = or i64 0, ");
                 WriteNumber(output, constantEnd);
                 output.Write('\n');
-                WriteArithmeticFailure(output, constants, instruction with { Place = (int)operands[5].Value }, ProvenValid, function.Abi.CallerLocation);
+                WriteArithmeticFailure(
+                    output, constants, instruction with { Place = (int)operands[5].Value }, LlvmScalarText.ProvenValid, function.Abi.CallerLocation);
             }
             else if (instruction.ScalarOperator == "SliceResolved")
             {

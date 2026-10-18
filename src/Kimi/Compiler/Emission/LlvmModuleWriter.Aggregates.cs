@@ -1,5 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
@@ -246,7 +249,7 @@ internal static partial class LlvmModuleWriter
         {
             for (var i = aggregate.Count - 1; i >= 0; i--)
             {
-                if (!ReferenceEquals(aggregate.Fields[i], WindowsLowering.String) && aggregate.Children[i]?.NeedsDestruction != true)
+                if (!ReferenceEquals(aggregate.Fields[i], RuntimeAbi.String) && aggregate.Children[i]?.NeedsDestruction != true)
                 {
                     continue;
                 }

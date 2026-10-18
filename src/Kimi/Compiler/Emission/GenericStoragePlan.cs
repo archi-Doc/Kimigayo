@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -65,7 +66,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => function.RequiresInstantiation;
+        => function.BoundSymbol is { } symbol && function.CodeContext.Compilation.Types.Instantiates(symbol);
 
     internal void Clear()
     {
@@ -228,9 +229,12 @@ internal sealed partial class GenericStoragePlan
         {
             if (!this.formattingWrites.TryGetValue(abi, out var wrapper))
             {
-                wrapper = new("__kimi_writer_write_user" + this.formattingWrites.Count, "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)], resultSlot: true);
+                wrapper = new(
+                    "__kimi_writer_write_user" + this.formattingWrites.Count,
+                    "void",
+                    [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)]) { ResultSlot = true };
                 this.formattingWrites.Add(abi, wrapper);
-                module.FormattingWrites.Add(new(wrapper, abi));
+                module.RuntimeHelpers.FormattingWrites.Add(new(wrapper, abi));
             }
 
             abi = wrapper;
@@ -410,18 +414,18 @@ internal sealed partial class GenericStoragePlan
         var parameters = this.parameterScratch.AsSpan(0, target.Parameters.Count);
         var result = call.ReturnType;
         var noReturn = ReferenceEquals(result, BoundType.Never);
-        if (FunctionAbi.GetValue(result, layouts) is null && !noReturn)
+        if (FunctionAbiPool.GetValue(result, layouts) is null && !noReturn)
         {
             return Fail("Generic entry result has no concrete representation.", out failure);
         }
 
-        var resultSlot = target.IsConstructor || target.IsDestructor || FunctionAbi.HasResultSlot(result, layouts);
+        var resultSlot = target.IsConstructor || target.IsDestructor || FunctionAbiPool.HasResultSlot(result, layouts);
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
             var borrowedStorage = ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type);
-            if (type is null || FunctionAbi.GetValue(type, layouts) is null ||
-                (borrowedStorage && FunctionAbi.GetValue(type.Components[0], layouts) is null))
+            if (type is null || FunctionAbiPool.GetValue(type, layouts) is null ||
+                (borrowedStorage && FunctionAbiPool.GetValue(type.Components[0], layouts) is null))
             {
                 return Fail("Generic entry parameter requires a concrete storage representation.", out failure);
             }
@@ -563,9 +567,9 @@ internal sealed partial class GenericStoragePlan
         var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
         var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
         AbiParameter[] parameters = fixedBuffer ? [ret, value, new("ptr", "destination", LogicalIndex: 1), new("i64", "capacity", AbiParameterKind.Context), location, length] : [ret, value, location, length];
-        result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters, resultSlot: true);
+        result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters) { ResultSlot = true };
         this.formattingConversions.Add((write, kind), result);
-        module.FormattingConversions.Add((result, write, fixedBuffer));
+        module.RuntimeHelpers.FormattingConversions.Add((result, write, fixedBuffer));
         return result;
     }
 

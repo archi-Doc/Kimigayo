@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -250,7 +251,10 @@ internal sealed class VirtualGenerationPlan
         }
         else
         {
-            entry = new("__kimi_virtual_item" + ordinal.ToString(CultureInfo.InvariantCulture), body.Result, body.Parameters, body.NoReturn, body.ResultSlot, body.CallerLocation);
+            entry = new("__kimi_virtual_item" + ordinal.ToString(CultureInfo.InvariantCulture), body.Result, body.Parameters)
+            {
+                NoReturn = body.NoReturn, ResultSlot = body.ResultSlot, CallerLocation = body.CallerLocation,
+            };
             if (ordinal == this.entries.Count)
             {
                 this.entries.Add((body, entry));

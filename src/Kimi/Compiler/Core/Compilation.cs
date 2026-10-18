@@ -118,6 +118,11 @@ public partial class Compilation
 
     internal Testing.TestCatalog Tests => field ??= new();
 
+    private SourceLocationTable? locations;
+
+    /// <summary>Gets the runtime location texts of this compilation's syntax (SPEC 22.5.1), which both generators read.</summary>
+    internal SourceLocationTable Locations => this.locations ??= new(this);
+
     /// <summary>Gets the facts Binding publishes to Hover, the LSP and tests.</summary>
     internal SemanticQuery Semantics => this.Binding.Semantics;
 
@@ -313,6 +318,7 @@ public partial class Compilation
         this.Diagnostics.InvalidateSemantics();
         this.binding?.Invalidate();
         this.InvalidateOwnership();
+        this.locations?.Clear();
     }
 
     /// <summary>Records a syntax edit. Every edit revokes the whole source analysis, since Types, Origins, effects and

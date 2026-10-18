@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -50,7 +51,7 @@ internal sealed class DefaultGenerationPlan
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(function.Parameters[i].Type.BoundType!, call);
-            if (type is null || !FunctionAbi.Supports(type, layouts))
+            if (type is null || !FunctionAbiPool.Supports(type, layouts))
             {
                 failure = "Default evaluator input has no concrete representation.";
                 return null;
@@ -60,7 +61,7 @@ internal sealed class DefaultGenerationPlan
         }
 
         var result = binding.InstantiateStorageType(function.Parameters[evaluation.Parameter].Type.BoundType!, call);
-        if (result is null || !FunctionAbi.Supports(result, layouts))
+        if (result is null || !FunctionAbiPool.Supports(result, layouts))
         {
             failure = "Default evaluator result has no concrete representation.";
             return null;
@@ -103,12 +104,12 @@ internal sealed class DefaultGenerationPlan
             this.names.Add("__kimi_default" + this.names.Count.ToString(CultureInfo.InvariantCulture));
         }
 
-        var slot = FunctionAbi.HasResultSlot(result, layouts);
+        var slot = FunctionAbiPool.HasResultSlot(result, layouts);
         var previous = this.count < this.pool.Count ? this.pool[this.count] : null;
         Entry entry;
         if (previous is not null && ReferenceEquals(previous.Function, function) && previous.Parameter == evaluation.Parameter &&
             previous.Parameters.AsSpan().SequenceEqual(parameters) && ReferenceEquals(previous.Result, result) &&
-            previous.Abi.ResultSlot == slot && previous.Abi.Result == FunctionAbi.ResultType(result, layouts))
+            previous.Abi.ResultSlot == slot && previous.Abi.Result == FunctionAbiPool.ResultType(result, layouts))
         {
             entry = previous;
             entry.Call = call;
@@ -148,7 +149,7 @@ internal sealed class DefaultGenerationPlan
             parameters[offset + i] = new("ptr", "a" + i.ToString(CultureInfo.InvariantCulture), AbiParameterKind.PreparedSlot, i);
         }
 
-        return new(name, FunctionAbi.ResultType(result, layouts)!, parameters, resultSlot: resultSlot);
+        return new(name, FunctionAbiPool.ResultType(result, layouts)!, parameters) { ResultSlot = resultSlot };
     }
 
     internal sealed class Entry(FunctionKoto function, int parameter, CallPlan call, BoundType[] parameters, BoundType result, FunctionAbi abi)
