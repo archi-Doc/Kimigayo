@@ -64,6 +64,13 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(!conflict, c.Analysis.IsVerified);
         Assert.Equal(conflict, c.Problems.Any(x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
+
+        // SPEC 6.4.5 on MIR (DECISIONS R5-M49): the receiver borrows the whole payload, then upcasts to the slot's view, so A5 sees the
+        // Derived Field's update conflict with the result's Loan.
+        var mir = c.BuildMir();
+        var statements = mir.Bodies.ToArray().SelectMany(static x => x.Statements.ToArray());
+        Assert.Contains(statements, static x => x.Rvalue is { Kind: MirRvalueKind.Cast, Op: (byte)MirCastKind.Upcast });
+        Assert.Equal(conflict, mir.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
     [Fact]

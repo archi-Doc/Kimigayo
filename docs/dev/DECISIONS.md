@@ -2473,3 +2473,10 @@ structure is recorded here by the unit that first implements it.
   Rejected: a located `Unsupported_Kd` at the jump (a second record of an invalid program, the operand unbuilt); an Opaque value
   of the jump's whole syntax (the operand's records lost and its accesses unbuilt); a target lookup in MIR (the jump binding owns
   targets since Q11).
+- **R5-M49 A virtual receiver borrows the whole payload** (2026-10-18, planning session; plan F14, PLAN G147 (4) from R4's 1b-5
+  ledger; SPEC 6.4.5) Rule (`MirBuilder.Dispatched`, call assembly): a dispatched virtual call (`CallPlan` Virtual, not direct)
+  borrows its receiver as the view of the receiver payload's own Type, in the slot view's Semantics and Origin, and upcasts that
+  view to the slot's (`Cast` Upcast, SPEC 13.6.1), so the Loan lies on the whole payload and an update of a derived Field
+  conflicts with the call's result. A receiver whose payload is the slot's own Type, a direct base call and a nonvirtual call keep
+  the borrow `Lent` forms (a base view's subobject). Rejected: widening the base subobject's Loan in A5 (an analysis rule for a
+  builder fact); borrowing the payload under the slot's view Type (the validator's Ref Type agreement).
