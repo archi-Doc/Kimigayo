@@ -351,21 +351,6 @@ public sealed partial class Binding
         return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
     }
 
-    private BoundType? Join(Koto node, BoundType? a, BoundType? b)
-    {
-        if (a is null || ReferenceEquals(a, BoundType.Never))
-        {
-            return b;
-        }
-
-        if (b is null || ReferenceEquals(b, BoundType.Never) || ReferenceEquals(a, b))
-        {
-            return a;
-        }
-
-        return this.FailMismatch(node, node, b, a);
-    }
-
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
         if (this.WaitsUnderProbe(node, expected))
@@ -1415,11 +1400,11 @@ public sealed partial class Binding
             {
                 var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
                 var type = this.BindNode(tuple.Elements[i], scope, element);
-                buffer[i] = ReferenceEquals(type, BoundType.Never) && element is not null ? element : type!; // SPEC 3.8: Never fits its expected element.
+                buffer[i] = type!;
                 complete &= type is not null;
             }
 
-            return Complete(tuple, complete ? this.types.Tuple(buffer.AsSpan(0, tuple.Elements.Count)) : null);
+            return Complete(tuple, complete ? this.FittedTupleType(buffer.AsSpan(0, tuple.Elements.Count), expected) : null);
         }
         finally
         {

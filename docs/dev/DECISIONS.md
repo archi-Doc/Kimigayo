@@ -1819,6 +1819,14 @@ R5 on the owner's request of 2026-10-18.
   pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
   Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
   Constraint already did, until R6. Not temporary.
+  - U2, the components of G129's chosen design (E1, E3; restructuring, behavior unchanged): `Binding.ValueFits` owns the
+    value-fit entries (`FitsType`, `FitsTypeAt`, `FitsStructurally(At)`, `FitsStructuralPart`, `FitsVerifiedTypeAt`) and the
+    use-site fit `CheckTypeUse` with `AddOriginFit`, whose recursion is `CheckTypeUseCore`; the Type relation `FitsTypeCore`
+    stays in `Binding.TypeRelations`. `Binding.ResultPropagation` owns a literal's Type at its position's Type, so far α's
+    `FittedTupleType`, which `BindTuple` reads. The 14.9.2 survey (`SurveyResult`, `InferResultExpected`, `ResultEvidence`
+    and its walks) moves from `Binding.ControlFlow`, which keeps the join, to `Binding.ResultSurvey`, and SPEC 13.5.4's explicit
+    numeric conversions from `Binding.Conversions` to `Binding.NumericConversions`, so the late fit and E5's survey rule fit
+    the structure limits. Deleted: the unused `Join`.
 - **BU-6** (2026-10-18; owner decision, 「推奨の通りでお願いします」, on the BU planning session's question from R5's F12 finding;
   an explicitly authorized SPEC revision of 14.9.3 and 14.10.3, not of SPECJ, GUIDE or history) Every expression of Type
   Never, a read or an explicit acquisition of a Place of Type Never included, supplies no normal completion (SPEC 14.9.3),
