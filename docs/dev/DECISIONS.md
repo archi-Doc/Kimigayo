@@ -1151,7 +1151,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   input is a ref, uniq, objref or objuniq layer, a Slice or a UniqSlice (`BorrowReferent`, also the layer above a carrier;
   SPEC 4.8.1, 4.8.2: `toArray` keeps the dependencies inside `T` but not the outer borrow; A5 1a3). Stores:
   invariant positions (`ComponentVariance`) reached through storage the call may write: not past a shared layer unless a
-  raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type. Untied: a
+  raw pointer is followed again (SPEC 5.2.1), nor past a non-exclusive pair layer, nor in a callable Type (BU-1 corrects
+  the cut below a writable invariant position). Untied: a
   non-static result atom or carrier no input reaches. Caller relations among the caller's own Origins add no row. The memo
   lives until an edit: passes with no edit reuse its rows, so a warm rebuild allocates nothing, and `Binding.Invalidate`
   discards it at every edit, whether or not a pass finished, as it does the item contexts (A5 1a2; rejected:
@@ -1417,6 +1418,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
     whose Move is forbidden, not with a reference result that the index expression follows; the caller's choice it wanted
     (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
     the ABI to that of the reference result.
+
+## Binding units (2026-10-18)
+
+Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4 and
+R5 on the owner's request of 2026-10-18.
+
+- **BU-1** (2026-10-18; the BU planning session; correction of R4-M51's Stores clause, found by R4's E14 implementer at
+  `f6b365bb`; R4-M51's contract stands) Stores of call retention (SPEC 15.6.4): an Origin occurrence is writable storage of
+  its input when `RetentionWalk` has reached an invariant position through storage the call may write (an exclusive or raw
+  referent, or an invariant position of a value the call may write, whose nominal Type may hide an exclusive layer) at or
+  above it; every occurrence below that position is in it, past any layer, since a value stored there brings its whole
+  Type. A shared layer or a non-exclusive pair layer stops the walk from reaching writable storage only before such a
+  position (an rc payload held by value and a shared input's referent stay read only, SPEC 15.6.2, 5.2.1); a callable Type
+  stores nothing. Why: rc and arc have no outer Origin, so the cut lost their payload's Origins (`Array<rc/S>.append`
+  stored nothing, so A5 accepted writing `x` while the Array held `x@ref`); a borrow layer's writable outer Origin, which
+  its referent's Origins outlive (R2), hid the cut for borrows. Supersedes R4-M51's "not past a shared layer … nor past a
+  non-exclusive pair layer" below a writable invariant position. Rejected: removing rc and arc from the shared layers (a
+  case per form; it would also make an rc payload held by value writable); a store row per handle input. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
