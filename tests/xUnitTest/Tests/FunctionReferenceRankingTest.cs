@@ -37,7 +37,7 @@ public class FunctionReferenceRankingTest(ITestOutputHelper output)
         var source = Types + (reverse ? Narrow + Broad : Broad + Narrow) + use;
         if (borrowed)
         {
-            source = VerificationWorkloads.BorrowFunctionReferenceInputs(source).Replace("(value: F)", "(value: ref/F)", StringComparison.Ordinal);
+            source = VerificationWorkloads.BorrowFunctionReferenceInputs(source);
         }
 
         ScalarEmissionTest.EmitFixture("FunctionReferenceRanking" + reverse + erased + borrowed, source, string.Empty);

@@ -1459,7 +1459,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   lane until G130 (B); the validator copying Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate
   at its consumer (a consumer deciding a fact Binding publishes); a walk of every component with a test of the HIR completion
   (the planning session: the published Type alone decides, through the positions a literal builds). (G130 U5 removed its
-  Case-payload cause, BU-2: a payload literal is completed at its decided payload Type.)
+  Case-payload cause, BU-2: a payload literal is completed at its decided payload Type.) Superseded by BU-9 (G129 U5).
 - **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
   state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
   G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
@@ -2038,6 +2038,25 @@ R5 on the owner's request of 2026-10-18.
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
   the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
+- **BU-9** (2026-10-19; the BU planning session; PLAN G129 design E7, unit U5; supersedes R4-M59, whose removal condition holds)
+  MIR builds a literal whose Type holds a Never element at the Type Binding publishes, with no record (`MirBuilder.Aggregate`;
+  `HoldsNeverElement`, its branch and its header clause are deleted). Binding publishes that Type through G129's three components:
+  the relation (E1, `Binding.TypeRelations`: `FitsTypeCore` relates Never only to itself, SPEC 3.8; Type-to-Type comparisons call
+  `IsSubtype`, `IsStructuralSubtype`, `IsSubtypeAt` and `FitsStructuralPart`), value fitting (E2, `Binding.ValueFits`: Never fitting
+  only at a value position's root, `NeverFits`; SPEC 10.7's one result rule, `CallableSignatureFits` with `CompatibleResult`), and
+  the late fit (E3, `Binding.ResultPropagation`: an expression that awaits its position, `AwaitsPosition`, takes the Type its join,
+  its literal's element evidence or its selected call decides, `LateType`, `TryPropagate`, `PropagateSources`; a literal-only part
+  waits for its join, `DefersToJoin`, `BindWaiting`). A literal that no position types keeps its own Type, which holds Never only
+  where the literal is a fresh value (`let t = (a, (return 1))` is `(i64, Never)`); such a literal never completes at run time. U5
+  closes E3's family of aggregate literals: a dictionary literal awaits as Tuple and array literals do (`HoldsAwaitingEntry`,
+  `LateDictionaryType`), and one whose keys or values only literals type waits for its join (`BindDictionaryLiteral`), so
+  `if c => ["k": a] else => ["k": (return 1)]`, `["k": (a, (return 1))]` beside `["k": (a, a)]` and `["k": 4000000000]` beside
+  `["k": p.x]` take the join's Type (before: `UnresolvedBinding_Kd`, `TypeMismatch_Kd`, `InvalidNumericLiteral_Kd`; Ua's mir:
+  `InternalInvariant_Kd`). Why: R4-M59 was temporary until Binding published these Types; MIR builds what Binding publishes.
+  Rejected: keeping the record for a fresh literal (a valid program, SPEC 3.1.3); `Unsupported_Kd` for a dictionary literal source
+  (a third aggregate literal under the same late-fit rule, one row each in `AwaitsPosition` and `LateType`). Open (PLAN G159): a
+  join whose every source awaits compares their own Types; 10.7 for a closure declaring `-> Never` and a `Callable` bound over a
+  Never-result item; Never-holding Places on the old analysis; an expected Type does not reach the operand of `@move` or `@copy`.
 
 ## R5 and R6 (adopted 2026-10-18)
 

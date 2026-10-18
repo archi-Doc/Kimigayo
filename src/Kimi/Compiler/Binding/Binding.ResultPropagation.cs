@@ -4,26 +4,27 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Result propagation (SPEC 14.9.2 step 3, 3.8, 12.3; DECISIONS R4-M52, BU-4): a literal takes its position's Type.
+// Result propagation (SPEC 14.9.2 step 3, 3.8, 12.3; DECISIONS R4-M52, BU-4, BU-9): a literal takes its position's Type.
 // - Responsibility: (1) α, the Type a Tuple literal takes from its elements' Types at its position's Type (FittedTupleType: an element
 //   of Type Never takes its position's element Type, every other element keeps its own Type) where the position is known when the
 //   literal is bound (BindTuple); (2) the late fit, where it is decided only after the expression is bound: an expression that awaits
-//   its position (AwaitsPosition: a literal-only expression, SPEC 12.3; a Tuple or array literal with a part of Type Never or a part
-//   that awaits; a result target every value source of which awaits or has Type Never; through parentheses, labels, expression bodies,
-//   @move and @copy) is no evidence beside one that is (SPEC 14.9.2 step 2, 4.3, 10.8), and takes the Type that a join, its literal's
-//   element evidence or its selected call decides (TryPropagate); (3) the literal deferral of a join (SPEC 14.9.2 step 3: a literal
+//   its position (AwaitsPosition: a literal-only expression, SPEC 12.3; a Tuple, array or dictionary literal with a part of Type Never
+//   or a part that awaits; a result target every value source of which awaits or has Type Never; through parentheses, labels,
+//   expression bodies, @move and @copy) is no evidence beside one that is (SPEC 14.9.2 step 2, 4.3, 10.8), and takes the Type that a
+//   join, its literal's element evidence or its selected call decides (TryPropagate); (3) the literal deferral of a join (SPEC 14.9.2 step 3: a literal
 //   result is not fixed before outer constraints): while a join collects its sources without a Target Result Type, a numeric
-//   literal-only source, directly, through the forms that deliver it or as a part of a Tuple or array literal source, is not bound
-//   (WaitsForJoin, DefersToJoin), and a join all of whose sources await and one of which waited, itself such a source, waits too
+//   literal-only source, directly, through the forms that deliver it or as a part of a Tuple, array or dictionary literal source, is
+//   not bound, nor is an array or dictionary literal source whose element, key or value Type only literals supply (WaitsForJoin,
+//   DefersToJoin), and a join all of whose sources await and one of which waited, itself such a source, waits too
 //   (AwaitsWithoutCandidate); the join's decision (DecideResult) binds each waiting source once (BindWaiting), at the decided Type
 //   (PropagateSources) or, without a candidate, at its default, the defaulted sources then supplying the candidates
 //   (AwaitsWithoutCandidate), and a waiting join is decided when its position binds it (DecideWaiting).
 // - Inputs: the bound expression, its parts' Types, the value sources a join recorded (ResultContext.SourceNodes) and whether it still
 //   collects them (ResultContext.Collecting), the target Type.
 // - Outputs: LateTypeOf, the Type the expression takes at the target, computed from its parts: a literal leaf takes its position's
-//   Type when it fits it (FitsInputLiteral), an array literal its target's element Type only when every element fits it, any other
-//   part keeps its own Type; TryPropagate writes that Type into the expression and every part and wrapper the computation passed
-//   when it fits the target at the use, and writes nothing otherwise; a waiting source bound at its join's Type.
+//   Type when it fits it (FitsInputLiteral), an array or dictionary literal its target's element, key and value Types only when every
+//   part fits them, any other part keeps its own Type; TryPropagate writes that Type into the expression and every part and wrapper
+//   the computation passed when it fits the target at the use, and writes nothing otherwise; a waiting source bound at its join's Type.
 // - Invariants: a typed part is never re-typed or re-bound (SPEC 14.9.2: a typed binding is never reinferred); only literal leaves,
 //   the literals and wrappers around them and nested result targets are written; a bound expression holds no waiting part.
 // - Prohibitions: no inference or record here; a waiting source is bound only by BindNode at its decided Type, which reports its own
@@ -101,6 +102,7 @@ public sealed partial class Binding
         {
             TupleLiteralKoto tuple => this.HoldsAwaitingPart(tuple.Elements),
             ArrayLiteralKoto array => this.HoldsAwaitingPart(array.Elements),
+            DictionaryLiteralKoto dictionary => this.HoldsAwaitingEntry(dictionary.Entries),
             _ when DeliversResult(node) => this.resultContexts.TryGetValue(node, out var context) && this.SourcesAwait(context),
             _ => NumericLiteralDefault(node) is not null,
         };
@@ -110,7 +112,7 @@ public sealed partial class Binding
     {
         for (var i = 0; i < parts.Count; i++)
         {
-            if (ReferenceEquals(parts[i].BoundType, BoundType.Never) || this.AwaitsPosition(parts[i]))
+            if (this.AwaitsAsPart(parts[i]))
             {
                 return true;
             }
@@ -118,6 +120,21 @@ public sealed partial class Binding
 
         return false;
     }
+
+    private bool HoldsAwaitingEntry(List<DictionaryLiteralEntry> entries)
+    {
+        for (var i = 0; i < entries.Count; i++)
+        {
+            if (this.AwaitsAsPart(entries[i].Key) || this.AwaitsAsPart(entries[i].Value))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AwaitsAsPart(Koto part) => ReferenceEquals(part.BoundType, BoundType.Never) || this.AwaitsPosition(part);
 
     // A result target awaits when it delivers a value and each of its value sources awaits or has Type Never.
     private bool SourcesAwait(ResultContext context)
@@ -145,18 +162,19 @@ public sealed partial class Binding
     }
 
     // SPEC 14.9.2 step 3, 12.3: a numeric literal-only expression bound without an expected Type waits, unbound, for the Type of the join
-    // whose value source it is, directly or as a part of a Tuple or array literal source, while that join collects its sources without
-    // a Target Result Type: it is no evidence, and it is bound once that Type, or its default, is decided (PropagateSources).
+    // whose value source it is, directly or as a part of a Tuple, array or dictionary literal source, while that join collects its
+    // sources without a Target Result Type: it is no evidence, and it is bound once that Type, or its default, is decided
+    // (PropagateSources).
     private bool WaitsForJoin(Koto node, BoundType? expected)
         => expected is null && node.BindingState == BindingState.Unvisited && NumericLiteralDefault(node) is not null && this.DefersToJoin(node);
 
     // Whether the node is a value source of a join that collects its sources without a Target Result Type (SPEC 14.9.1, 14.9.2): directly,
-    // through the forms that deliver it (DeliveredOperand), or as a part of a Tuple or array literal source.
+    // through the forms that deliver it (DeliveredOperand), or as a part of a Tuple, array or dictionary literal source.
     private bool DefersToJoin(Koto node)
     {
         var source = node;
         while (source.Parent is { } parent &&
-            (ReferenceEquals(DeliveredOperand(parent), source) || parent is TupleLiteralKoto or ArrayLiteralKoto { FillLength: null }))
+            (ReferenceEquals(DeliveredOperand(parent), source) || parent is TupleLiteralKoto or ArrayLiteralKoto { FillLength: null } or DictionaryLiteralKoto))
         {
             source = parent;
         }
@@ -361,6 +379,7 @@ public sealed partial class Binding
         {
             TupleLiteralKoto tuple => this.LateTupleType(tuple, target),
             ArrayLiteralKoto array => this.LateArrayType(array, target),
+            DictionaryLiteralKoto dictionary => this.LateDictionaryType(dictionary, target),
             _ when DeliversResult(node) => this.LateResultType(node, target),
             _ => this.FitsInputLiteral(node, target, this.ConstraintScope(node)) ? this.LateLiteralType(node, target) : null,
         };
@@ -420,7 +439,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < array.Elements.Count; i++)
         {
-            if (this.LateType(array.Elements[i], target.Components[0]) is not { } element || !this.FitsTypeAt(element, target.Components[0], array.Elements[i]))
+            if (!this.LateFits(array.Elements[i], target.Components[0]))
             {
                 return null;
             }
@@ -428,6 +447,27 @@ public sealed partial class Binding
 
         return target;
     }
+
+    // SPEC 12.4.3: a dictionary literal takes the target's key and value Types when every key and value fits them.
+    private BoundType? LateDictionaryType(DictionaryLiteralKoto dictionary, BoundType target)
+    {
+        if (dictionary.BoundType?.Kind != BoundTypeKind.Dictionary || target.Kind != BoundTypeKind.Dictionary || target.Components.Count != 2)
+        {
+            return null;
+        }
+
+        for (var i = 0; i < dictionary.Entries.Count; i++)
+        {
+            if (!this.LateFits(dictionary.Entries[i].Key, target.Components[0]) || !this.LateFits(dictionary.Entries[i].Value, target.Components[1]))
+            {
+                return null;
+            }
+        }
+
+        return target;
+    }
+
+    private bool LateFits(Koto part, BoundType target) => this.LateType(part, target) is { } late && this.FitsTypeAt(late, target, part);
 
     // SPEC 14.9.2: nested results propagate the same way; each value source of an awaiting result target takes the target Type.
     private BoundType? LateResultType(Koto node, BoundType target)

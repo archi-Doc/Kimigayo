@@ -28,11 +28,17 @@ public sealed partial class Binding
                 return Complete(literal, null);
             }
 
+            var defaulted = inferredKey is null || inferredValue is null;
             inferredKey ??= keyDefault;
             inferredValue ??= valueDefault;
             if (inferredKey is null || inferredValue is null)
             {
                 return this.Fail(literal, BindingFailure.MissingType, true);
+            }
+
+            if (defaulted && this.DefersToJoin(literal))
+            {
+                return Complete(literal, null); // SPEC 14.9.2 step 3: a key or value Type only literals supply waits for the join's.
             }
 
             expected = this.types.Intern(BoundTypeKind.Dictionary, this.Library.GetSymbol(KimiDeclarationId.Dictionary), SemanticsKind.Owner, [inferredKey, inferredValue]);

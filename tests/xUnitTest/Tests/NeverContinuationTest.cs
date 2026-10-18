@@ -21,6 +21,8 @@ public class NeverContinuationTest
         "func nested(c: bool, d: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (if d => (a, (return 8)) else => (a, (return 9)))\n    return t.1\n" +
         "func array(c: bool, a: i64) -> i64\n    let x = if c => [(a, a)] else => [(a, a), (a, (return 6))]\n    return x[0].0\n" +
         "func dictionary(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, a), \"j\": (a, (return 4))]\n    return x[\"k\"].1\n" +
+        "func entries(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 3))]\n    return x[\"k\"].1\n" +
+        "func values(c: bool, p: P) -> i64\n    let x = if c => [\"k\": p.x] else => [\"k\": 4000000000]\n    return x[\"k\"]\n" +
         "func moved(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, (return 5))@move\n    return t.1\n" +
         "func literal(c: bool, p: P) -> i64\n    let t = if c => p.x else => 4000000000\n    return t\n" +
         "func leaf(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, 3000000000)\n    return t.1\n" +
@@ -30,6 +32,7 @@ public class NeverContinuationTest
         "require nested(true, true, 3) == 3 and nested(false, true, 3) == 8 and nested(false, false, 3) == 9 else => $abort(\"nested\")\n" +
         "require array(true, 2) == 2 and array(false, 2) == 6 and dictionary(true, 2) == 2 and dictionary(false, 2) == 4 else => $abort(\"array\")\n" +
         "require moved(true, 2) == 2 and moved(false, 2) == 5 else => $abort(\"moved\")\n" +
+        "require entries(true, 2) == 2 and entries(false, 2) == 3 and values(false, P.init()) == 4000000000 else => $abort(\"entries\")\n" +
         "require literal(true, P.init()) == 5 and literal(false, P.init()) == 4000000000 and leaf(false, 2) == 3000000000 else => $abort(\"literal\")\n" +
         "require elements(false, P.init()) == 4000000000 and deep(false, true, P.init()) == 4000000000 and deep(false, false, P.init()) == 3000000000 else => $abort(\"deep\")\n" +
         "Console.writeLine(\"ok\")";
@@ -67,8 +70,9 @@ public class NeverContinuationTest
     }
 
     // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
-    // none, and it takes the Target Result Type once the join selects it, nested, through @move, as an array element, a dictionary value
-    // and a call argument too, which its published Type shows.
+    // none, and it takes the Target Result Type once the join selects it, nested, through @move, as an array element, a dictionary value,
+    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; MIR builds it at
+    // that Type with no record and no finding.
     [Theory]
     [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
@@ -81,12 +85,18 @@ public class NeverContinuationTest
     [InlineData("let x = [\"k\": (a, a), \"j\": (a, (return 1))]", "(a, (return 1))")]
     [InlineData("g(if c => (a, (return 1)) else => (a, (return 2)))", "(a, (return 2))")]
     [InlineData("let r: (i64, i64) = id(if c => (a, (return 1)) else => (a, (return 2)))", "(a, (return 1))")]
-    public void ANeverElementLiteralTakesItsJoinsType(string statement, string literal)
+    [InlineData("let t = if c => ((a, a), a) else => ((a, (return 1)), a)", "(a, (return 1))")]
+    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1))]", "(a, (return 1))")]
+    [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1))]", "(a, (return 1))")]
+    [InlineData("let t = if c => [\"k\": a] else => [\"k\": (return 1)]", "[\"k\": (return 1)]", "Dictionary<string, i64>")]
+    [InlineData("let t = if c => (a, [\"k\": a]) else => (a, [\"k\": (return 1)])", "[\"k\": (return 1)]", "Dictionary<string, i64>")]
+    public void ANeverElementLiteralTakesItsJoinsType(string statement, string literal, string type = "(i64, i64)")
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
-        var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
-        Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or DictionaryLiteralKoto && x.ToString() == literal);
+        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
+        BuildsWithoutRecords(c);
     }
 
     // SPEC 14.9.2 step 3: the literals a join types late run at its Type: a Never element diverges where it is evaluated, and a literal
@@ -100,6 +110,7 @@ public class NeverContinuationTest
     [Theory]
     [InlineData("let t = if c => (d, d) else => (a, (return 1))")]
     [InlineData("let t = if c => [(a, a)] else => [(a, (return 1)), (a, true)]")]
+    [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1)), \"j\": (a, true)]")]
     public void ANeverElementLiteralThatDoesNotFitItsJoinIsAMismatch(string statement)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
@@ -149,12 +160,14 @@ public class NeverContinuationTest
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move", "(a, (return 1))")]
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
     [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
     public void ANeverElementLiteralFitsAnExpectedJoinByItsLateType(string statement, string literal)
     {
         var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
         Assert.Empty(c.Binding.Issues);
         var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
         Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+        BuildsWithoutRecords(c);
     }
 
     // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such
@@ -259,4 +272,12 @@ public class NeverContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    // MIR builds the program with no record and no validator finding.
+    private static void BuildsWithoutRecords(Compilation c)
+    {
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+    }
 }
