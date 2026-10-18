@@ -1842,7 +1842,7 @@ structure is recorded here by the unit that first implements it.
   `KimiLibrary` declaration the old emitter resolves each from, until F2c's symbol view; the emitter maps a row's `Entries`
   callee to its generic function exhaustively and fails closed on any other. `CallsEntries(destroysEntries)` is the one decision
   whether a helper calls its `Entries` function (always, or under `ElementGlue` only when an entry needs destruction), read by
-  BodyLowering's `Related`, `HasUnresolvedReference` and the writer. `HelperNeeds` is shared by the Array and Dictionary rows:
+  BodyLowering's `Related` and `HasUnresolvedReference`. `HelperNeeds` is shared by the Array and Dictionary rows:
   `ArrayRuntime` (every Dictionary kind), `DictionaryRuntime` (P1c2; CheckKey, whose duplicate callback reports through the
   runtime's adapter) and `ElementGlue` (Drop). A request's runtime flags come from its row (`Request`, through one `JoinNeeds`
   for both families), and every requested helper is written after the runtimes its row declares: before P1c2 a Drop helper
