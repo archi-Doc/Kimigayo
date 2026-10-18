@@ -1265,11 +1265,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
   planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
-  CS_call over live_in(ℓ) superseded) A5's Loan stratum, its joint core. `MirBorrows` (`MirBorrows.cs`, the pre-pass;
-  `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view decides (as A1), and reports each
-  conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as facts: the witness holder's next use
-  in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows per problem (`MirFact`, kinds `Anchor`,
-  `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's. The choices within A3:
+  CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68) A5's Loan stratum, its joint core. `MirBorrows`
+  (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
+  decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
+  facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
+  per problem (`MirFact`, kinds `Anchor`, `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's.
+  The choices within A3:
   - Holder slots: E is slot 0, then the flow holders, then the chain-local ones. A holder is a flow holder when MirMoveData makes its
     root a flow root or a direct Loan names it, since content, refs and the closure read a named holder's state at any location;
     A3 §3's rule by MirMoveData alone would read a chain-local state outside its chain.
@@ -1608,6 +1609,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
   supersedes R4-M3a's naming clause, as R5-M23 records. `MirDropTable.ViewsOf(body)` gives the views A1 and A2 completed (R4-M15a): 0
   past A1's arena limit or for a body not analyzed. A5's driver step reads it, and R5's C4a will. It replaces the driver's private
   `completed` array and amends R4-M6a's drop table. Rejected: the code-to-requirement table of the plan row (R5-M23's departure D7).
+- **R4-M68** (2026-10-18; planning session after group 1c's two designs and their design review; A3 §5 err(activate), R4-M57 1b-3).
+  An activation conflicts only with Loans whose mode is shared in the holder where it is found; an exclusive Loan that hits the
+  reservation was met where the later Borrow was formed or activated: at the reservation's formation (`ComparisonLoanConflict_Kd`) or
+  at its own formation or inner activation (`CallReservationConflict_Kd`), so each (Loan, reservation) is reported once (SPEC
+  15.6.7). A destroying reservation's shallow write is treated the same way; err(destroy) keeps every mode. Representation: the
+  conflicts relation's rows `Activate` and `ActivateInPlace`. Evidence: the prototype with the rule, 332 cases, 0 unsound, 16 cases
+  lose only a duplicate; the corpus loses 54 CallActivation and 10 PlacementActivation records, each with a same-anchor survivor.
+  Rejected: an A6 merge by (anchor, reservation), a merge after the fact; reporting at the activation only (unsound on 38j).
+  Conditions for 2f: a Φ_c met at a receiver's formation is located at its later call (DIAGNOSTICS); a shared-receiver Φ_c takes the
+  receiver's mode, or 2f reruns this rule's prototype variant with that case.
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each

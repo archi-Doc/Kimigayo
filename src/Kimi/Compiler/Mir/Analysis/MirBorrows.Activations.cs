@@ -61,7 +61,8 @@ internal sealed partial class MirBorrows
     }
 
     // Each reservation activated (A3 5's err(activate)) as an exclusive borrow of its Place, the destroying one as a write of its target
-    // (shallow, and by E1 a destruction of the reservations it prefixes), whose call then destroys the old value there (Destroyed).
+    // (shallow, and by E1 a destruction of the reservations it prefixes), each meeting only Loans shared in the holder found (R4-M68), whose
+    // call then destroys the old value there (Destroyed, every mode).
     private void Activations(MirLocation at)
     {
         foreach (var (local, reservation, code) in this.reserving)
@@ -69,7 +70,7 @@ internal sealed partial class MirBorrows
             var loan = this.loans[reservation];
             var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
             var taking = Activation(this.slots[local]);
-            if (this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.Write : AccessKind.UniqueBorrow, taking) is var c and not None)
+            if (this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate, taking) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], code), c, taking, at, reservation);
             }

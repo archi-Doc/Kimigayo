@@ -748,6 +748,61 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let first = view[0]
                 """));
 
+    // SPEC 15.6.7 (DECISIONS R4-M68): the target is checked once, so each Loan and reservation are one problem. An activation conflicts only
+    // with a Loan shared in the holder it is found in (f3, a live view, an overlapping reservation); an exclusive Loan that hits the
+    // reservation is reported where the later Borrow met the other: at the reservation's formation, a call's (f1, i2), a writeback's (f4) or
+    // a destroying call's (i4), or at its own formation or inner activation while the reservation waits (issuedDuring, a reservation then).
+    [Fact]
+    public void AReservationMeetsEachLoanOnce()
+        => Assert.Equal(
+            [
+                "f1: x@uniq", "f3: give(x@uniq, 1) CallActivationConflict_Kd", "f4: x += 1", "i2: x@uniq", "i4: s@uniq",
+                "sortView: values.sort() CallActivationConflict_Kd", "issuedDuring: takeU(arr[0]@uniq) CallReservationConflict_Kd",
+                "swapSame: Kimi.Intrinsics.swap(p@uniq, p@uniq) CallReservationConflict_Kd", "f6: giveTwo(x@uniq, x@uniq) CallReservationConflict_Kd",
+            ],
+            Problems("""
+                func giveTwo(a: uniq/i32, b: uniq/i32) => ()
+                func takeU(a: uniq/i32) -> i32 => a@follow
+                func f1()
+                    var x = 1
+                    let c = x@uniq
+                    give(x@uniq, 1)
+                    inspect(c)
+                func f3()
+                    var x = 1
+                    let r = x@ref
+                    give(x@uniq, 1)
+                    inspect(r)
+                func f4()
+                    var x = 1
+                    let c = x@uniq
+                    x += 1
+                    inspect(c)
+                func i2()
+                    var x = 1
+                    let c = x@uniq
+                    giveTwo(x@uniq, c)
+                func i4()
+                    var s: Array<i32> = [1]
+                    let k = s@uniq
+                    Kimi.Intrinsics.replace(s@uniq, with: [2])
+                    inspect(k)
+                func sortView()
+                    var values: Array<i32> = [3, 1]
+                    let view = values.slice()
+                    values.sort()
+                    inspect(view)
+                func issuedDuring()
+                    var arr: Array<i32> = [1, 2]
+                    arr.append(takeU(arr[0]@uniq))
+                func swapSame()
+                    var p = 1
+                    Kimi.Intrinsics.swap(p@uniq, p@uniq)
+                func f6()
+                    var x = 1
+                    giveTwo(x@uniq, x@uniq)
+                """));
+
     // SPEC 7.7.3, 15.6.7 (A3 5's use of the callee operand): an Exclusive call takes its Closure as uniq/Self, so a Value callee's receiver
     // reservation activates at its Call as an argument's does, also through a reference and beside arguments; a Shared call borrows its
     // Closure shared, and a read of the Closure while the arguments are evaluated precedes the activation.
@@ -940,12 +995,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 15.6.6, 15.6.3, 15.7.1 (A3 err(destroy), E8, E11; 26a, 26b, 123, 123c, 15a, 15b): a call that destroys its target in place
     // reads the target where it is reserved and writes it at activation, and its old value's observing destruction uses the Places past it,
     // before the call ends the Loans it prefixes (SPEC 15.6.3's replace keeps c's parent Loan, 15b); a `clear` activates as an exclusive
-    // borrow, after its receiver's reservation met the same Loan (a formation and an activation, A6's merge: unit 1c).
+    // borrow, and its receiver's reservation met c's Loan at its formation, which reports the pair (R4-M68, as for s2 and in
+    // AReservationMeetsEachLoanOnce).
     [Fact]
     public void ADestroyingCallChecksWhatItDestroys()
         => Assert.Equal(
             [
-                "d26a: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "d26b: arr", "d26b: arr.clear() CallActivationConflict_Kd",
+                "d26a: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "d26b: arr",
                 "d123: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))",
                 "d123c: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))", "d15b: x = 3",
             ],
@@ -1109,7 +1165,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         => Assert.Equal(
             [
                 "o136b: give2(x, r@follow)", "o136d: (x, r@follow)", "o136f: x + r@follow", "o136g: x.plus(r@follow)", "o137b: (x@uniq, x)",
-                "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "s2: g.level = r@follow.level CallActivationConflict_Kd", "rs1: x",
+                "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "rs1: x",
                 "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o130g: bump(value)",
             ],
             Problems(Order + """
