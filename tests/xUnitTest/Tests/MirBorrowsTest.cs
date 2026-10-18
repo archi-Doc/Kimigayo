@@ -982,7 +982,10 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     [Fact]
     public void AnObservingDestructionIsAnExclusiveDeepUse()
         => Assert.Equal(
-            ["o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)", "o29b: var s = D.init(r: x@uniq)"],
+            [
+                "o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)",
+                "o29b: var s = D.init(r: x@uniq)",
+            ],
             Problems("""
                 func o1566()
                     var x = 1

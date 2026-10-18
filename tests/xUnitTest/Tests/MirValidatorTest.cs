@@ -157,9 +157,9 @@ public sealed class MirValidatorTest
     // pointer's displacement, a comparison's operands below their layers, a Cast, a Ref, an object upcast and a branch's operand that their
     // kind does not admit; an Adapt whose operand is no by-value acquisition, whose source token is not its operand's Type, that a case
     // view selects no operation for (i32 to f64), or whose object borrow there takes a Place other than the payload, and one whose Op has a
-    // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of a compiler function it
-    // serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more arguments than its
-    // declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
+    // bit besides its shorthand and input flags, of an unknown kind; an intrinsic callee whose function is not the library declaration of
+    // a compiler function it serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
+    // arguments than its declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
     // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
     // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32.
     [Theory]
@@ -261,7 +261,8 @@ public sealed class MirValidatorTest
     [InlineData("constant")]
     public void APairAcquireIsTheWholeRvalueOfAnAssignToALocal(string? broken)
     {
-        var c = MirBuildTest.Compile("func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
+        var c = MirBuildTest.Compile(
+            "func both<s/T, t/U>(a: s/T, b: t/U) -> ()\n    s is owner or uniq\n    t is owner or ref\n    T is Copy\n    U is Copy\n    _ = a\n    _ = b\n");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "both");
         var body = new MirBody();
         body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
@@ -278,8 +279,10 @@ public sealed class MirValidatorTest
         var mark = broken switch { "unmarked" => MirRefKind.Shared, "raw" => MirRefKind.Raw, _ => MirRefKind.Uniq };
         Assign(first, MirRvalue.Acquire(body.AddOperand(acquire), mark), broken is "unmarked" or "raw" ? broken : string.Empty);
         Assign(second, MirRvalue.Acquire(body.AddOperand(MirOperand.PairAcquire(1, b)), MirRefKind.TwoPhaseUniq), string.Empty);
-        Assign(broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
-        Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]), 2, body.TypeOf(tuple)!), "aggregate");
+        var projected = broken == "projection" ? body.Project(tuple, MirProjectionKind.Field, 0) : first;
+        Assign(projected, MirRvalue.Acquire(body.AddOperand(acquire), MirRefKind.Uniq), "projection");
+        var elements = AddOperands(body, [broken == "aggregate" ? acquire : MirOperand.Move(first), one]);
+        Assign(tuple, MirRvalue.Aggregate(MirAggregateKind.Tuple, elements, 2, body.TypeOf(tuple)!), "aggregate");
         Assign(number, MirRvalue.Use(body.AddOperand(one)) with { Op = (byte)(broken == "constant" ? MirRefKind.Uniq : MirRefKind.Shared) }, "constant");
         var passed = AddOperands(body, [broken == "argument" ? acquire : MirOperand.Move(first), MirOperand.Move(second)]);
         body.Terminate(block, MirTerminator.Call(new(MirCalleeKind.Fn, function.SymbolOf()), passed, 2, new(0), next, Where("argument")));
@@ -470,7 +473,8 @@ public sealed class MirValidatorTest
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.Uniq));
         Assign(pair, MirRvalue.Acquire(Operands(MirOperand.PairAcquire(0, pair)), MirRefKind.TwoPhaseUniq));
         var layer = body.Project(pair, MirProjectionKind.PairLayer, 0);
-        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), Const(MirConstKind.TypeToken, body.TypeOf(layer)!)), layer, types.Pair, shorthand: true, input: true));
+        var token = Const(MirConstKind.TypeToken, body.TypeOf(layer)!);
+        Assign(pair, MirRvalue.Adapt(Operands(MirOperand.Copy(layer), token), layer, types.Pair, shorthand: true, input: true));
         Assign(flag, MirRvalue.Opaque(BoundType.Boolean, body.AddOpaque(default, [point.Root])));
         Assign(index, MirRvalue.Discriminant(shape));
         Assign(index, MirRvalue.Len(array));
