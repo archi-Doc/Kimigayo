@@ -130,7 +130,7 @@ public sealed partial class Binding
         }
 
         if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
-            (ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration) || ComparisonTypes.IsComposite(self)))
+            ComparisonKindOf(self, contract.LibraryDeclaration, operators: false) is ComparisonKind.Composite or ComparisonKind.Builtin)
         {
             return Prepared(contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals : this.builtinCompare);
         }
@@ -160,17 +160,11 @@ public sealed partial class Binding
 
         void Prepare(ref BindingSymbol? target, KimiDeclarationId id, CompilerFunctionKind kind)
         {
-            var contract = this.Library.GetSymbol(id)!;
-            var requirements = contract.Contract!.RequirementStorage;
-            for (var i = 0; i < requirements.Count; i++)
+            if (this.Library.GetSymbol(id)!.Contract!.OwnRequirement() is { } requirement)
             {
-                if (ReferenceEquals(requirements[i].Contract, contract))
-                {
-                    var requirement = requirements[i].Symbol;
-                    target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
-                    target.Type = requirement.Type;
-                    target.ReceiverIndex = requirement.ReceiverIndex;
-                }
+                target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
+                target.Type = requirement.Type;
+                target.ReceiverIndex = requirement.ReceiverIndex;
             }
         }
     }

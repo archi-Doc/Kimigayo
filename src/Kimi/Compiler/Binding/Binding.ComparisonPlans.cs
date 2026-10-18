@@ -7,10 +7,10 @@ public sealed partial class Binding
     [Transitional("R7", Reason = "The legacy comparison composition beside TyCtxt.Comparison, read by A4's Witnesses until A-12 reads the view, else R7.")]
     private readonly Dictionary<(BindingSymbol Site, BoundType Type, KimiDeclarationId Contract, bool Operators), (ulong Version, BoundComparison Plan)> comparisonPlans = new();
 
-    // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan and of
-    // TyCtxt.Comparison: elementwise over its parts (a Tuple or a safe `ref` layer), natively (a built-in Type; under source operators also
-    // a numeric Type, by IEEE), else by the Contract's mapping for the Type: its witness when the Type is closed, its requirement in every
-    // instance when it has an abstract part.
+    // SPEC 13.4, 13.4.1, 12.4.3: how a comparison under Equatable or Comparable composes a Type, the one rule of the legacy plan, of
+    // TyCtxt.Comparison and of the built-in target (CompilerRequirementTarget): elementwise over its parts (a Tuple or a safe `ref` layer),
+    // natively (a built-in Type; under source operators also a numeric Type, by IEEE), else by the Contract's mapping for the Type: its
+    // witness when the Type is closed, its requirement in every instance when it has an abstract part.
     internal static ComparisonKind ComparisonKindOf(BoundType self, KimiDeclarationId? contract, bool operators)
         => ComparisonTypes.IsComposite(self) ? ComparisonKind.Composite
             : ComparisonTypes.IsBuiltin(self, contract) || (operators && self.IsNumeric) ? ComparisonKind.Builtin

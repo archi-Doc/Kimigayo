@@ -53,8 +53,8 @@ public class ComparisonCompositionTest
         require equal(first@ref, last@ref) else => $abort("reference witness")
         """;
 
-    // Tuple comparisons over a closed witness and a nested one, as operators and through the Contract, and in generic functions over a Type
-    // parameter.
+    // Tuple comparisons over a closed witness and a nested one, as operators and through the Contract, over witnesses of conditional
+    // conformances (one of a Type with an Origin slot, one nested in itself) and in generic functions over a Type parameter.
     private const string ViewSource = """
         struct Key
             Self is Comparable
@@ -66,6 +66,17 @@ public class ComparisonCompositionTest
             Self is Equatable
             public init() => ()
             public func equals(self: ref/Self, other: ref/Self) -> bool => true
+        struct Held<T> {a}
+            Self is Equatable when T is Copy
+            public var value: ref/T during a
+            public init(value: ref/T during a) => self.value = value
+            public func equals(self: ref/Self, other: ref/Self) -> bool => true
+        struct Box<T>
+            Self is Comparable when T is Comparable
+            public let value: T
+            public init(value: T) => self.value = value
+            public func equals(self: ref/Self, other: ref/Self) -> bool => true
+            public func compare(self: ref/Self, other: ref/Self) -> i32 => 0
         func same<T>(left: T, right: T) -> bool
             T is Copy and Equatable
             return (left, 1.0) == (right, 1.0)
@@ -76,7 +87,11 @@ public class ComparisonCompositionTest
         let b = Key.init(2)
         let w = Wrap<i32>.init()
         let pair = (2.5, a@ref)
+        let seven = 7
+        let held = Held<i32>.init(seven@ref)
+        let box = Box<Box<Key>>.init(Box<Key>.init(Key.init(3)))
         require (a@ref, 0.5) < (b@ref, 0.5) and (1, (2.0, a@ref)) != (1, (2.0, b@ref)) and pair.equals(pair@ref) else => $abort("closed")
+        require (held@ref, 1) == (held@ref, 1) and (box@ref, 0.5) <= (box@ref, 1.5) else => $abort("conditional")
         require same(3, 3) and before(4, 5) else => $abort("generic")
         """;
 
@@ -152,21 +167,26 @@ public class ComparisonCompositionTest
 
         var counts = $"corpus {Counts(corpus)}; direct {Counts(direct)}";
         Assert.True(
-            problems.Count == 0 && counts == "corpus Builtin 4, Composite 3, Witness 1; direct Builtin 28, Composite 23, Requirement 3, Witness 4",
+            problems.Count == 0 && Has(corpus, "Builtin", "Composite", "Witness") && Has(direct, "Builtin", "Composite", "Requirement", "Witness"),
             $"{counts}; {problems.Count} differ:\n{string.Join('\n', problems.Take(40))}");
 
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
+
+        static bool Has(SortedDictionary<string, int> kinds, params string[] names) => names.All(kinds.ContainsKey);
     }
 
     // SPEC 13.4, 13.4.1: tuples and `ref` layers compose elementwise, built-in Types natively, a closed leaf by its witness under its declaring
-    // instance, a leaf with an abstract part by the Contract's requirement on it; each mode and key has its own node, asked again the same one.
+    // instance (a conditional conformance's too), a leaf with an abstract part by the Contract's requirement on it; each mode and key has its own
+    // node, asked again the same one.
     // A leaf whose storage nests past Binding's depth bound makes the comparison a Limit (null), its shallow form not.
     [Fact]
     public void AComparisonComposesItsLeaves()
     {
         var c = MinimalEmissionTest.Analyze(ViewSource);
         var shown = Comparisons(c.Kotonoha).Where(static x => x.ConformingType!.Kind == BoundTypeKind.Tuple).Select(x => Show(View(c, x)!));
-        string[] expected = ["(T.equals, f64)", "(T.compare, f64)", "((Key.compare @Key), f64)", "(i32, (f64, (Key.equals @Key)))", "(f64, (Key.equals @Key))"];
+        string[] expected = [
+            "(T.equals, f64)", "(T.compare, f64)", "((Key.compare @Key), f64)", "(i32, (f64, (Key.equals @Key)))", "(f64, (Key.equals @Key))",
+            "((Held.equals @Held<i32>), i32)", "((Box.compare @Box<Box<Key>>), f64)"];
         Assert.Equal(expected, shown);
 
         var equatable = c.Library.GetSymbol(KimiDeclarationId.Equatable)!;

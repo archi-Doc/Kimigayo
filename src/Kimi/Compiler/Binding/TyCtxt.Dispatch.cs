@@ -120,24 +120,7 @@ internal sealed partial class TyCtxt
         return node;
     }
 
-    // A requirement's substitution on a Self, as a compiler function calls the requirement: a Requirement leaf's, and that of a compiler
-    // function's call of a user witness (F package 4.6); its Origins are the analyses' to relate.
-    internal Subst Synthesized(BindingSymbol requirement, BoundType self) => this.Intern(requirement, self, null, [], [], [], []);
-
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
-
-    // The requirement a comparison Contract declares itself (Equatable's equals, Comparable's compare), which its built-in target executes.
-    private static BindingSymbol OwnRequirement(BindingSymbol contract)
-    {
-        var requirements = contract.Contract!.Requirements;
-        var i = 0;
-        while (!ReferenceEquals(requirements[i].Contract, contract))
-        {
-            i++;
-        }
-
-        return requirements[i].Symbol;
-    }
 
     private void ResetDispatch()
     {
@@ -172,7 +155,7 @@ internal sealed partial class TyCtxt
             return new(self, kind, null, null, []);
         }
 
-        var requirement = OwnRequirement(contract);
+        var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.
         var subst = this.Synthesized(requirement, self);
         if (kind == ComparisonKind.Requirement)
         {

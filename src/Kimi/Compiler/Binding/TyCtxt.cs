@@ -261,6 +261,10 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // arguments; its Origins are the analyses' to relate.
     internal Subst Synthesized(BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types) => this.Intern(target, null, declaring, types, [], [], []);
 
+    // A call a compiler function makes of a requirement on a Self (a comparison's Requirement leaf, a compiler function's call of a user
+    // witness); its Origins are the analyses' to relate.
+    internal Subst Synthesized(BindingSymbol requirement, BoundType self) => this.Intern(requirement, self, null, [], [], [], []);
+
     // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst) => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst);
