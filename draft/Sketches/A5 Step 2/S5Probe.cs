@@ -54,6 +54,17 @@ var cases = new (string Name, string Source)[]
         Tree + "struct Holder<T>\n    T is Tree\n    public var node: T\n    public init(node: T) => self.node = node@move\n    drop\n        Trees.look(self.node@ref)\n" +
         "group Trees\n    public func look<T>(n: ref/T)\n        T is Tree\n        match n.child()\n            .Some(let next) => Trees.make(next@move)\n            .None => return\n" +
         "    public func make<U>(n: U)\n        U is Tree\n        let h = Holder.init(n@move)\n"),
+    ("rv-G, a Constraint on a deeper projection of Self: A.X is B, Self.(A).X.(B).Y is A (B.Y unconstrained)",
+        "contract B\n    associate Y\n    func toA(self: ref/Self) -> Option<Self.Y>\n        effect confined\n" +
+        "contract A\n    associate X is B\n    Self.(A).X.(B).Y is A\n    func toB(self: ref/Self) -> Option<Self.X>\n        effect confined\n" +
+        "group M\n    public func f<T>(value: T, budget: i32)\n        T is A\n        if budget == 0 => return\n        match value.toB()\n" +
+        "            .Some(let next) => M.g(next@move, budget - 1)\n            .None => return\n" +
+        "    public func g<U>(value: U, budget: i32)\n        U is B\n        U.(B).Y is A\n        if budget == 0 => return\n        match value.toA()\n" +
+        "            .Some(let next) => M.f(next@move, budget - 1)\n            .None => return\n"),
+    ("rv-G3, a concrete A", "contract B\n    associate Y\n    func toA(self: ref/Self) -> Option<Self.Y>\n        effect confined\n" +
+        "contract A\n    associate X is B\n    Self.(A).X.(B).Y is A\n" +
+        "struct Leaf\n    Self is B\n    associate B.Y is Root\n    public var n: i32 = 0\n    public func toA(self: ref/Self) -> Option<Root> => .None\n" +
+        "struct Root\n    Self is A\n    associate A.X is Leaf\n    public var n: i32 = 0\n    public func toB(self: ref/Self) -> Option<Leaf> => .None\n"),
     ("recursion through a non-recursive Contract", Layer + string.Format(Unwind, string.Empty)),
     ("recursion with a depth-1 premise", Layer + string.Format(Unwind, "        T.(Layer).Inner is Layer\n")),
     ("ping: swapped arguments, Source not recursive", "contract Source\n    associate Item\n    func make(self: ref/Self) -> Self.Item\n        effect confined\n" +
@@ -72,10 +83,11 @@ var cases = new (string Name, string Source)[]
 if (args.Length > 0 && args[0] == "contracts")
 {
     // Per unit (a .kimi file, a fenced block of a .md file, a physical line of a .cs or .json file, whose "\n" escapes are undone): each
-    // `contract` declaration (its indented block; inside a string literal it starts at indentation 0), its parents and the Contract
-    // names on the right of its associated-Type Constraints (`associate X is ...`, `Self.(C).X is ...`), Type arguments ignored (review
-    // B2). A Contract is recursive when those names, its parents' included, lead through the Constraints of the unit's Contracts to it
-    // or to one that refines it (proposal 2.1). A grep-level scan: a declaration split over several C# lines is not followed.
+    // `contract` declaration (its indented block; inside a string literal it starts at indentation 0), its parents (and `Self is C`),
+    // and the Contract names on the right of its Constraints on projections of Self at any depth (`associate X is ...`,
+    // `Self.(C).X.(D).Y is ...`; review B5), Type arguments ignored (review B2). A Contract C is recursive when those names, its parents'
+    // included, lead through the Constraints of the unit's Contracts to C or to one that refines it: the proof-rule definition of
+    // proposal 2.1 as text can show it. A grep-level scan: a declaration split over several C# lines is not followed.
     var (direct, transitive) = (0, 0);
     foreach (var root in args.Skip(1))
     {
@@ -279,13 +291,16 @@ static List<(string Name, int Line, bool Self)> RecursiveContracts(string unit)
 
         for (var j = i + 1; j < lines.Length && (lines[j].Trim().Length == 0 || Indent(lines[j]) > indent); j++)
         {
+            // A Constraint on a projection of Self at any depth (`associate X is ...`, `Self.(C).X.(D).Y is ...`) yields its Contracts;
+            // `Self is C` supplies a conformance of Self itself, as a parent does.
             var line = lines[j].Trim();
-            if ((line.StartsWith("associate ", StringComparison.Ordinal) || Regex.IsMatch(line, @"^Self\.\(\w+\)\.\w+\s+is\s"))
-                && line.IndexOf(" is ", StringComparison.Ordinal) is var at and >= 0)
+            var projection = line.StartsWith("associate ", StringComparison.Ordinal) || Regex.IsMatch(line, @"^Self(\.\([^)]*\))?\.\w+");
+            var self = Regex.IsMatch(line, @"^Self\s+is\s");
+            if ((projection || self) && line.IndexOf(" is ", StringComparison.Ordinal) is var at and >= 0)
             {
                 foreach (Match target in Regex.Matches(line[(at + 4)..].Split("//")[0].Split('"')[0], @"\b([A-Z]\w*)"))
                 {
-                    entry.Yields.Add(target.Groups[1].Value);
+                    (projection ? entry.Yields : entry.Parents).Add(target.Groups[1].Value);
                 }
             }
         }

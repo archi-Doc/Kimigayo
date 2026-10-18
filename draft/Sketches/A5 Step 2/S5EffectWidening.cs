@@ -5,13 +5,18 @@
 // parameter or an associated-Type projection) that its declaration's premises do not prove Copy as an atom; a concrete part is resolved,
 // a Type with a drop body runs that body's summary. Every parameter-dependent effect kind (destruction, a published row's requirement, a
 // call through a Callable input) behaves alike here, so only destructions are modelled.
-// Rules ("a recursive base": one of the projection's bases, at any depth, proven to conform to a recursive Contract, SPEC 8.3.3):
+// A Contract C is recursive when T is C supplies (SPEC 8.3.2), directly or through the Constraints of the Contracts so supplied, a
+// conformance of a projection of T to C's declaration or to a Contract that refines it (Prog.Recursive). "A recursive base": one of the
+// projection's bases, at any depth, proven to conform to a recursive Contract.
+// Rules:
 //   EXACT  the current letter: no widening; a projection-depth cap marks an infinite fixed point (the cap is the model's, not a rule).
-//   S5C    option (c), recommended: an atom with a recursive base is recorded as unknown environment effects, wherever it is recorded.
-//   S5A    option (a): an atom with a recursive base that passes along a dependency on a cycle of dependencies (calls and drop bodies),
-//          and whose substituted Type is not itself in the same declaration, is recorded as unknown environment effects.
-//   S5A1   option (a) with cycles over call edges only (the first draft; review B3).
-//   IMM    option (a) with the immediate base only (review B1's reading).
+//   S5C    form (c), the owner's choice: an atom with a recursive base is recorded as unknown environment effects, wherever it is kept.
+//   ENUM   S5C with "recursive" defined by the second draft's enumeration, which misses Constraints on deeper projections of Self
+//          (review B5; case 18).
+//   S5A    form (a), rejected: an atom with a recursive base that passes along a dependency on a cycle of dependencies (calls and drop
+//          bodies), and whose substituted Type is not itself in the same declaration, is recorded as unknown environment effects.
+//   S5A1   form (a) with cycles over call edges only (the first draft; review B3).
+//   IMM    form (a) with the immediate base only (review B1's reading).
 //   LIT    the open-key transcription: any projection atom that passes along a dependency cycle and is not mapped to itself.
 //   DEPTH  alternative (b): exact up to projection depth 4; a deeper atom is a Resource failure.
 // A use's verdict: Unknown (unknown environment effects, or an abstract atom its premises do not prove Copy), Env (a concrete destruction
@@ -22,10 +27,10 @@ using System.Text;
 var verbose = args.Contains("-v");
 var randomIndex = Array.IndexOf(args, "-random");
 var randomCount = randomIndex >= 0 ? int.Parse(args[randomIndex + 1]) : 50000;
-var rules = new[] { Rule.Exact, Rule.S5C, Rule.S5A, Rule.S5A1, Rule.Imm, Rule.Lit, Rule.Depth };
+var rules = new[] { Rule.Exact, Rule.S5C, Rule.Enum, Rule.S5A, Rule.S5A1, Rule.Imm, Rule.Lit, Rule.Depth };
 var failures = 0;
 
-Console.WriteLine("case | use | instantiable | expected | EXACT | S5C | S5A | S5A1 | IMM | LIT | DEPTH");
+Console.WriteLine("case | use | instantiable | expected | EXACT | S5C | ENUM | S5A | S5A1 | IMM | LIT | DEPTH");
 foreach (var c in Cases.All())
 {
     var results = rules.ToDictionary(r => r, r => new Solver(c.Program, r).Run());
@@ -61,7 +66,7 @@ failures += RandomSearch.Run(randomCount);
 Console.WriteLine(failures == 0 ? "OK" : $"FAILURES {failures}");
 return failures;
 
-enum Rule { Exact, S5C, S5A, S5A1, Imm, Lit, Depth }
+enum Rule { Exact, S5C, Enum, S5A, S5A1, Imm, Lit, Depth }
 
 abstract record Ty
 {
@@ -125,6 +130,13 @@ sealed class Prog
 
     public Dictionary<string, Decl> Decls { get; } = [];
 
+    // Contract-wide Constraints on a deeper projection of Self, `Self.(K).P1.(...).Pn is M` declared in K (SPEC Appendix F
+    // ConstraintSubject; review B5): (K, [P1 ... Pn], M).
+    public List<(string Contract, string[] Path, string Target)> Nested { get; } = [];
+
+    // Whether Recursive counts Nested (false only under ENUM, which reproduces the second draft's enumeration).
+    public bool CountNested { get; set; } = true;
+
     public static Par X { get; } = new("$", "X"); // A conformance rule's argument.
 
     public bool Refines(string k, string c) => k == c || this.Contracts[k].Parents.Any(p => this.Refines(p, c));
@@ -144,14 +156,16 @@ sealed class Prog
         return [.. (own ?? []).Concat(inherited).Concat(refined).Distinct()];
     }
 
-    // SPEC 8.3.3 as the proposal defines it: conjunction elimination of the Constraints on its associated Types (declared, inherited or
-    // placed on inherited ones) yields a conformance to it or to a Contract that refines it, directly or through the Constraints of the
-    // Contracts so yielded.
+    // SPEC 8.3.3 as the proposal defines it, through the proof rule "Contract refinement" (SPEC 8.3.2): T is k supplies the conformances
+    // of projections of T that k's Constraints (declared on its associated Types, inherited, placed on inherited ones, or on deeper
+    // projections of Self) require, and then those the supplied Contracts' Constraints require; k is recursive when one of them is a
+    // conformance to k or to a Contract that refines it.
     public bool Recursive(string k)
     {
-        if (!this.recursive.TryGetValue(k, out var known))
+        var key = this.CountNested ? k : k + "#enumeration";
+        if (!this.recursive.TryGetValue(key, out var known))
         {
-            this.recursive[k] = known = this.FindRecursion(k);
+            this.recursive[key] = known = this.FindRecursion(k);
         }
 
         return known;
@@ -183,7 +197,10 @@ sealed class Prog
         return false;
     }
 
-    private IEnumerable<string> Yields(string k) => this.AllAssocs(k).SelectMany(a => this.Constraints(k, a) ?? []);
+    // The Contracts whose conformance T is k supplies for a projection of T, one Constraint deep (every Constraint here names a nonempty
+    // path, so each is a projection of T).
+    private IEnumerable<string> Yields(string k) => this.AllAssocs(k).SelectMany(a => this.Constraints(k, a) ?? [])
+        .Concat(this.CountNested ? this.Nested.Where(n => this.Refines(k, n.Contract)).Select(n => n.Target) : []);
 }
 
 // Proofs, normalization and destruction resolution in one declaration's scope; conformances in progress supply no evidence (SPEC 8.3.3).
@@ -289,8 +306,29 @@ sealed class Scope(Prog program, Decl decl, HashSet<Conformance> valid)
                 return true;
             }
 
-            return x is Proj(var b, var a) && program.Contracts.Keys.Any(k => program.Constraints(k, a) is { } cons
-                && cons.Any(m => program.Refines(m, c)) && this.Proves(b, k, depth + 1));
+            if (x is Proj(var b, var a) && program.Contracts.Keys.Any(k => program.Constraints(k, a) is { } cons
+                && cons.Any(m => program.Refines(m, c)) && this.Proves(b, k, depth + 1)))
+            {
+                return true;
+            }
+
+            // A Contract-wide Constraint on a deeper projection: x is y.P1...Pn with y proven to conform to the declaring Contract.
+            foreach (var (k, path, target) in program.Nested.Where(n => program.Refines(n.Target, c)))
+            {
+                var (y, matched) = (x, true);
+                for (var i = path.Length - 1; i >= 0 && matched; i--)
+                {
+                    matched = y is Proj(_, var step) && step == path[i];
+                    y = (y as Proj)?.Base;
+                }
+
+                if (matched && y is not null && this.Proves(y, k, depth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         if (x is not Con con)
@@ -410,6 +448,19 @@ sealed class Solver(Prog program, Rule rule, int cap = 8)
     // so the cycles are those of the final graph.
     public Result Run()
     {
+        program.CountNested = rule != Rule.Enum;
+        try
+        {
+            return this.RunRule();
+        }
+        finally
+        {
+            program.CountNested = true;
+        }
+    }
+
+    private Result RunRule()
+    {
         var valid = Validate(program);
         foreach (var (name, decl) in program.Decls)
         {
@@ -496,7 +547,7 @@ sealed class Solver(Prog program, Rule rule, int cap = 8)
     }
 
     // Adds what destroying a value of the Type contributes to the declaration's summary: nothing for a Type its premises prove Copy
-    // (SPEC 8.7.2, 16.3.3); under S5C unknown environment effects for an atom with a recursive base; under DEPTH a Resource failure past
+    // (SPEC 16.3.3 "unless the Type is Copy", 8.11.2's row "not proven Copy"); under S5C unknown environment effects for an atom with a recursive base; under DEPTH a Resource failure past
     // depth 4; the drop bodies it runs as dependencies.
     private void Add(string name, Ty type)
     {
@@ -519,7 +570,7 @@ sealed class Solver(Prog program, Rule rule, int cap = 8)
                 continue;
             }
 
-            if (rule == Rule.S5C && scope.RecursiveBase(atom))
+            if (rule is Rule.S5C or Rule.Enum && scope.RecursiveBase(atom))
             {
                 s.Unknown = true;
             }
@@ -756,6 +807,20 @@ static class Cases
             p.Decls["g"] = new("g", ["V"], [(P("g", "V"), "CopyTree")], [], [], [("f", [("T", P("g", "V"))])]);
             yield return new("17 stronger caller, self", false, p, [("g", "None")]);
         }
+
+        // 18. (Review B5, probe rv-G.) A Contract-wide Constraint on a two-step projection of Self: A.X is B, Self.(A).X.(B).Y is A, B.Y
+        //     unconstrained. f<T: A> destroys T and calls g<T.X>; g<U: B, U.Y: A> destroys U and calls f<U.Y>. A is recursive by the
+        //     proof rule (T is A supplies T.X.Y is A); the second draft's enumeration missed it, so ENUM does not terminate.
+        {
+            var p = new Prog();
+            p.Contracts["B"] = new("B", [], [("Y", [])], []);
+            p.Contracts["A"] = new("A", [], [("X", ["B"])], []);
+            p.Nested.Add(("A", ["X", "Y"], "A"));
+            var (t, u) = (P("f", "T"), P("g", "U"));
+            p.Decls["f"] = new("f", ["T"], [(t, "A")], [], [t], [("g", [("U", J(t, "X"))])]);
+            p.Decls["g"] = new("g", ["U"], [(u, "B"), (J(u, "Y"), "A")], [], [u], [("f", [("T", J(u, "Y"))])]);
+            yield return new("18 deeper Constraint of Self", false, p, [("f", "Unknown"), ("g", "Unknown")]);
+        }
     }
 
     private static Par P(string decl, string name) => new(decl, name);
@@ -769,18 +834,19 @@ static class Cases
     }
 }
 
-// Random small programs: two Contracts (K1 with A and C, K2 with B) and an optional refinement R, the conformances of three concrete
-// constructors (Wrap, Leaf and, half the time, Hold with a drop body under X: K1), one or two declarations with premises, drops and
-// calls whose substitutions come from a small grammar and prove the callee's premises. Contracts have no Type arguments (review B2 is
-// not generated). Each well-formed program is solved under EXACT, S5C, S5A, S5A1 and IMM. Checked: S5C and S5A always terminate; a
-// program whose exact fixed point reaches the cap has an atom with a recursive base (the proposal's lemma); and where no exact atom has
-// one, S5C and S5A equal EXACT (same atoms, no unknown effects from widening). Counted: how often S5A1 and IMM do not terminate.
+// Random small programs: two Contracts (K1 with A and C, K2 with B), an optional refinement R and, when C is K2, sometimes a Constraint
+// Self.(K1).C.(K2).B is ...; the conformances of three concrete constructors (Wrap, Leaf and, half the time, Hold with a drop body
+// under X: K1); one or two declarations with premises, drops and calls whose substitutions come from a small grammar and prove the
+// callee's premises. Contracts have no Type arguments (review B2 is not generated). Each well-formed program is solved under EXACT,
+// S5C, S5A, S5A1, IMM and ENUM. Checked: S5C and S5A always terminate; a program whose exact fixed point reaches the cap has an atom
+// with a recursive base (the proposal's lemma); and where no exact atom has one, S5C and S5A equal EXACT (same atoms, no unknown
+// effects from widening). Counted: how often S5A1, IMM and ENUM do not terminate.
 static class RandomSearch
 {
     public static int Run(int count)
     {
         var random = new Random(20261019);
-        var (wellFormed, recursiveContracts, bodies, infinite, widenedC, widenedA, a1Infinite, immInfinite, failures) = (0, 0, 0, 0, 0, 0, 0, 0, 0);
+        var (wellFormed, recursiveContracts, bodies, nested, infinite, widenedC, widenedA, a1Infinite, immInfinite, enumInfinite, failures) = (0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
         for (var i = 0; i < count; i++)
         {
             var p = Generate(random);
@@ -792,11 +858,13 @@ static class RandomSearch
             wellFormed++;
             recursiveContracts += p.Contracts.Keys.Any(p.Recursive) ? 1 : 0;
             bodies += p.DropBodies.Count > 0 ? 1 : 0;
+            nested += p.Nested.Count > 0 ? 1 : 0;
             var exact = new Solver(p, Rule.Exact).Run();
             var s5c = new Solver(p, Rule.S5C).Run();
             var s5a = new Solver(p, Rule.S5A).Run();
             a1Infinite += new Solver(p, Rule.S5A1).Run().Infinite ? 1 : 0;
             immInfinite += new Solver(p, Rule.Imm).Run().Infinite ? 1 : 0;
+            enumInfinite += new Solver(p, Rule.Enum).Run().Infinite ? 1 : 0;
             var valid = Solver.Validate(p);
             var recursiveAtom = exact.Summaries.Any(kv => kv.Value.Atoms.Any(a => new Scope(p, p.Decls[kv.Key], valid).RecursiveBase(a)));
             infinite += exact.Infinite ? 1 : 0;
@@ -819,8 +887,8 @@ static class RandomSearch
         }
 
         Console.WriteLine($"random: {count} generated, {wellFormed} well-formed, {recursiveContracts} with a recursive Contract, {bodies} with a drop body, "
-            + $"{infinite} with an infinite exact fixed point; S5C changed {widenedC}, S5A changed {widenedA}; {failures} failures; "
-            + $"did not terminate: S5A1 {a1Infinite}, IMM {immInfinite}");
+            + $"{nested} with a Constraint on a deeper projection of Self, {infinite} with an infinite exact fixed point; S5C changed {widenedC}, S5A changed {widenedA}; {failures} failures; "
+            + $"did not terminate: S5A1 {a1Infinite}, IMM {immInfinite}, ENUM {enumInfinite}");
         return failures;
     }
 
@@ -835,6 +903,10 @@ static class RandomSearch
         string[] constraint() => Pick<string[]>(r, [], ["K1"], ["K2"], ["Copy"], ["K1", "Copy"], ["K2", "Copy"]);
         p.Contracts["K1"] = new("K1", [], [("A", constraint()), ("C", Pick<string[]>(r, [], ["K2"], ["K2", "Copy"], ["Copy"]))], []);
         p.Contracts["K2"] = new("K2", [], [("B", constraint())], []);
+        if (p.Contracts["K1"].Assocs[1].Constraints.Contains("K2") && r.Next(3) == 0)
+        {
+            p.Nested.Add(("K1", ["C", "B"], Pick(r, "K1", "K2", "Copy"))); // Self.(K1).C.(K2).B is ...
+        }
         if (r.Next(3) == 0)
         {
             p.Contracts["R"] = new("R", ["K1"], [], [("A", Pick(r, "R", "K2", "Copy"))]);
