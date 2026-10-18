@@ -247,8 +247,9 @@ public sealed class SemanticSnapshotTest
 
             var text = this.text;
             var (binding, startup, ownership) = (compilation.Binding.Result, compilation.Binding.Startup, compilation.Analysis);
+            var body = startup.Kind == StartupKind.Implicit ? compilation.Kotonoha.GeneratedFunction : startup.Symbol?.Declaration;
             text.Append("= binding ").Append(binding.Mode).Append(' ').Append(binding.ResolvedCount).Append('/').Append(binding.UnresolvedCount).Append('/').Append(binding.InvalidCount)
-                .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(LegacyRecords.Location(startup.Function))
+                .Append(" startup ").Append(startup.Kind).Append(' ').Append(startup.IsComplete).Append(' ').Append(LegacyRecords.Location(body))
                 .Append(" ownership ").Append(ownership.IsVerified).Append(' ').Append(ownership.BodyCount).Append('/').Append(ownership.ErrorCount).Append('\n');
             foreach (var (requirement, code, node) in LegacyRecords.Of(compilation))
             {
@@ -256,7 +257,7 @@ public sealed class SemanticSnapshotTest
                 {
                     DiagnosticPartition.Binding => $"? binding {code} {(BindingFailure)requirement.Kind} ",
                     DiagnosticPartition.ControlFlow => $"? flow {code} ",
-                    _ => $"? ownership {code} {(OwnershipFailure)requirement.Kind} ",
+                    _ => $"? ownership {code} {(OwnershipRequirement)requirement.Kind} ",
                 }).Append(LegacyRecords.Location(node)).Append('+').Append(node.Span.Length).Append('\n');
             }
 

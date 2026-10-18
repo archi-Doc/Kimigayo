@@ -43,17 +43,7 @@ internal static partial class LlvmModuleWriter
             WriteFormattingWrappers(helpers, output);
         }
 
-        if (helpers.NeedsStorageBytes)
-        {
-            output.Write(StorageBytePrimitives);
-        }
-
-        if (helpers.NeedsDictionaryRuntime)
-        {
-            output.Write(DictionaryDuplicateAdapter);
-            WriteDictionaryStorage(helpers, output);
-            WriteDictionaryHelpers(helpers, output);
-        }
+        helpers.WriteDictionaries(output);
 
         if (helpers.NeedsStringComparison)
         {

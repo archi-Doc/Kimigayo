@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -175,7 +176,7 @@ public sealed partial class OwnershipAnalysis
             if (this.body.ConflictsWithLoan(this.body.Operations.Count - 1, loan))
             {
                 // The diagnostic is deliberately Place-independent, matching ReportIssue's key.
-                this.body.ReportIssue(new(source, OwnershipFailure.ComparisonLoanConflict));
+                this.body.ReportIssue(new(source, OwnershipRequirement.ComparisonLoanConflict));
                 break;
             }
         }

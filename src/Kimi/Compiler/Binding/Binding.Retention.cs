@@ -151,11 +151,13 @@ public sealed partial class Binding
 
     // The atoms and carriers of a Type at a position of `variance` within its input (OwnedOrigins and the outer Origin, SPEC 15.2.3): a pair
     // layer's slot and target; a Type parameter or a pair's target as a carrier; the Origin, Origin arguments and components of any other,
-    // so a projection or a dependent Semantics term is its parts and joins its base. An occurrence is writable storage of its input at an
-    // invariant position the walk reaches through storage the call may write (`at.Writable`): not past a shared layer, where only reads
-    // are possible (SPEC 15.6.2), unless a raw pointer is followed again (raw access within its authority, SPEC 5.2.1); not past a pair
-    // layer whose binder admits no exclusive Semantics; never in a callable Type, which stores nothing and whose per-call Origins belong to
-    // no value of it (SPEC 15.2.3).
+    // so a projection or a dependent Semantics term is its parts and joins its base. An occurrence is writable storage of its input when
+    // the walk has reached an invariant position through storage the call may write (`at.Writable`: an exclusive or raw referent, or a
+    // value the call may write, whose nominal Type may hide an exclusive layer) at or above it: a value stored there brings its whole
+    // Type, so every occurrence below that position is in it, past any layer (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the
+    // walk reaches no writable storage past a shared layer, where only reads are possible (SPEC 15.6.2), unless a raw pointer is followed
+    // again (raw access within its authority, SPEC 5.2.1), nor past a pair layer whose binder admits no exclusive Semantics. A callable
+    // Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
         var here = at with { Writable = at.Writable && variance == OriginVariance.Invariant };
@@ -165,7 +167,7 @@ public sealed partial class Binding
             var slot = this.OuterOrigin(type);
             this.AddRetentionAtom(here with { Origin = slot }, callable);
             var inner = ComposeVariance(variance, exclusive ? OriginVariance.Invariant : OriginVariance.Covariant);
-            this.RetentionWalk(target, at with { Writable = at.Writable && exclusive, Layer = slot ?? at.Layer }, inner, callable);
+            this.RetentionWalk(target, at with { Writable = here.Writable || (at.Writable && exclusive), Layer = slot ?? at.Layer }, inner, callable);
             return;
         }
 
@@ -190,7 +192,7 @@ public sealed partial class Binding
         var shared = type.Kind == BoundTypeKind.Slice ||
             (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
-        var below = at with { Layer = layer, Writable = !inside && (raw || (at.Writable && !shared)) };
+        var below = at with { Layer = layer, Writable = !inside && (raw || here.Writable || (at.Writable && !shared)) };
         for (var i = 0; i < type.Components.Count; i++)
         {
             this.RetentionWalk(type.Components[i], below, ComposeVariance(variance, this.ComponentVariance(type, i)), inside);

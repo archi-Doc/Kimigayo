@@ -359,9 +359,9 @@ public sealed partial class Binding
     // shapes; a Field whose size depends on a Type argument is checked when its layout is formed.
     private void ValidateCLayoutFields()
     {
-        foreach (var container in this.cLayouts)
+        foreach (var container in this.storageDeclarations)
         {
-            for (var m = 0; m < container.Members.Count; m++)
+            for (var m = 0; container.BoundSymbol!.Adt!.IsCLayout && m < container.Members.Count; m++)
             {
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
                     field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
@@ -404,7 +404,6 @@ public sealed partial class Binding
 
     private void ValidateLayoutFragments()
     {
-        this.cLayouts.Clear();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not StructKoto container)
@@ -469,10 +468,9 @@ public sealed partial class Binding
                 this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
                 valid = false;
             }
-            else if (mode == "C" && valid)
-            {
-                this.cLayouts.Add(container);
-            }
+
+            // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
+            (container.BoundSymbol!.Adt ??= new()).IsCLayout = mode == "C" && valid;
 
             if (!valid)
             {

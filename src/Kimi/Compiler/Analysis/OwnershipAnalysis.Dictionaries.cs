@@ -13,7 +13,7 @@ public sealed partial class OwnershipAnalysis
         var dictionary = this.ConstructAggregate(source, []);
         if (source.Entries.Count != 0)
         {
-            this.CollectLibraryBody(this.compilation.Library.DictionaryRequireAbsent);
+            this.CollectLibraryBody((FunctionKoto)this.compilation.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration);
         }
 
         var completes = true;

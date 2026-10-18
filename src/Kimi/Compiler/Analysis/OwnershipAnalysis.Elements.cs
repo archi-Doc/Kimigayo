@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -214,12 +215,12 @@ public sealed partial class OwnershipAnalysis
         this.body.LoanStates[plan.Operation] = loan;
         if (this.body.ElementWriteLoanConflicts(loan, reservations: false))
         {
-            this.body.ReportIssue(new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
+            this.body.ReportIssue(new(this.body.Operations[plan.Operation].Source, OwnershipRequirement.ComparisonLoanConflict));
         }
         else if (this.body.ElementWriteLoanConflicts(loan))
         {
             // Only call reservations enclose the write; the completed plan decides whether it reports it against one.
-            this.body.HoldReservedElementWrite(projection, new(this.body.Operations[plan.Operation].Source, OwnershipFailure.ComparisonLoanConflict));
+            this.body.HoldReservedElementWrite(projection, new(this.body.Operations[plan.Operation].Source, OwnershipRequirement.ComparisonLoanConflict));
         }
     }
 
@@ -250,7 +251,7 @@ public sealed partial class OwnershipAnalysis
                 }
                 else
                 {
-                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                    this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
                 }
             }
 
@@ -259,7 +260,7 @@ public sealed partial class OwnershipAnalysis
             {
                 // SPEC 15.1.3: an explicit Move of an element without a static Move Path is rejected. The element is then not
                 // taken, so later uses of the array are explained by this failure rather than by a Move.
-                this.body.ReportIssue(new(source, OwnershipFailure.StaticMovePathRequired));
+                this.body.ReportIssue(new(source, OwnershipRequirement.StaticMovePathRequired));
                 var produce = this.body.Operations.Count - 1;
                 this.body.OperationStorage[produce] = this.body.OperationStorage[produce] with { Acquisition = AcquisitionKind.None };
             }

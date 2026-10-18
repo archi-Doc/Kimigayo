@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -84,7 +85,7 @@ public sealed partial class OwnershipAnalysis
         if (use == PlaceUseKind.Consume && acquisition is null && !copy)
         {
             // SPEC 3.5, 5.2.3: a raw Place, like every Place, never Moves by bare acquisition; (*p)@move takes its value.
-            this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+            this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
         }
 
         var pointer = this.PointerAddress(source);
@@ -299,7 +300,7 @@ public sealed partial class OwnershipAnalysis
             if (acquisition is null && element is not null && this.compilation.Binding.ProveCopy(element, call) != ConstraintProof.Proven)
             {
                 var source = call.Parent is IndexKoto index && ReferenceEquals(this.compilation.Binding.IndexerCall(index, false), call) ? (Koto)index : call;
-                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
                 // Keep checking the call and its typed result after this rejected acquisition, as for a bare local.
                 // Dropping the result would invent an uninitialized return and hide independent argument/Loan errors.
             }

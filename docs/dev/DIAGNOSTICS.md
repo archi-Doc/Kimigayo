@@ -39,9 +39,10 @@ Constructor inference follows SPEC §10.8 and §23.1. Keep Type lookup, missing 
 | --- | --- |
 | `src/Kimi/Diagnostics/DiagnosticCode.tinyhand` and `DiagnosticEntry` | Severity, category, and default Message, Label and Note |
 | Phase-specific reporting conversions (C#), checked against the catalog schemas | Argument and evidence values, roles of related locations, conditional explanations |
-| `DiagnosticRequirement` (a C# value of the owning partition and that phase's failure enumeration) | The requirement's stable name (public vocabulary, like code names), its owning partition and its semantic order |
+| `DiagnosticRequirement` (a C# value of the owning partition and that partition's kind enumeration) | The requirement's stable name (public vocabulary, like code names), its owning partition and its semantic order |
 | `DiagnosticRequirement.tinyhand` | A short description per stable name; for a syntax form also the `Phrase` its diagnostics display |
 | `SyntaxForm` (`src/Kimi/Compiler/Parsing/SyntaxForm.cs`) | The forms the parser expects or finds misplaced: the requirement Kind of the Syntax partition, named `Syntax.<Form>` (§4.4) |
+| `OwnershipRequirement` (`src/Kimi/Diagnostics/DiagnosticRequirement.cs`) | The requirement Kind of the Ownership partition, named `Ownership.<Kind>`, which the ownership analysis records as its failure kind |
 
 - Enumerations are written by hand; a consistency test keeps enumeration, catalog and description table equal. No enumeration is generated.
 - The catalog is validated when it loads: unknown, duplicate and missing entries, invalid severities/categories, malformed or duplicate fact names and a template whose placeholders differ from its schema's arity are catalog anomalies. Message templates are parsed once, at load. Record-time checks reject nonnumeric Number values, undefined Enumeration values, non-Boolean Boolean values and a Requirement value without a phrase. The reporting APIs currently accept objects; this validation is not a claim that every recorder has a separate statically typed generator.

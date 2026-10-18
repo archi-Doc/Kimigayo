@@ -14,7 +14,7 @@ internal sealed partial class BodyLowering
     private bool dictionaryRuntimeUsed;
     private bool storageBytesUsed;
 
-    internal Func<bool, BoundType, BoundType, int>? RequireDictionaryOperation { get; set; }
+    internal Func<DictionaryCallee, BoundType, BoundType, int>? RequireDictionaryOperation { get; set; }
 
     private static long AlignDictionary(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
 
@@ -27,11 +27,13 @@ internal sealed partial class BodyLowering
         return new(keyOffset, valueOffset, AlignDictionary(valueOffset + value.Value.Layout.Size, alignment));
     }
 
+    // The kind's row declares the generic DictionaryStorage function its helpers call over the entry Types and names and shapes
+    // the helper; the name ends with this pool's helper count.
     private DictionaryHelper GetDictionaryHelper(DictionaryHelperKind kind, in ArrayElement key, in ArrayElement value)
     {
-        var find = kind == DictionaryHelperKind.CheckKey;
-        var related = find || (kind == DictionaryHelperKind.Drop && (key.NeedsDestruction || value.NeedsDestruction))
-            ? this.RequireDictionaryOperation!(find, key.Type, value.Type) : -1;
+        var row = LegacyRuntimeHelpers.DictionaryRow(kind);
+        var related = row.CallsEntries(key.NeedsDestruction || value.NeedsDestruction)
+            ? this.RequireDictionaryOperation!(row.Entries, key.Type, value.Type) : -1;
         var cacheKey = (kind, key.Value, key.Layout?.Id ?? -1, value.Value, value.Layout?.Id ?? -1, related);
         if (this.dictionaryHelpers.TryGetValue(cacheKey, out var helper))
         {
@@ -40,17 +42,8 @@ internal sealed partial class BodyLowering
 
         if (!this.dictionaryHelperCache.TryGetValue(cacheKey, out helper))
         {
-            var name = "__kimi_dictionary_" + kind.ToString().ToLowerInvariant() + this.dictionaryHelperCache.Count.ToString(CultureInfo.InvariantCulture);
-            var handle = new AbiParameter("ptr", "handle");
-            var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
-            var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
-            FunctionAbi abi = kind switch
-            {
-                DictionaryHelperKind.CheckKey => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), location, length]),
-                DictionaryHelperKind.Place => new(name, "void", [handle, new(key.IsScalar ? key.Value.ComputationType : "ptr", "key"), new(value.IsScalar ? value.Value.ComputationType : "ptr", "value"), location, length]),
-                _ => new(name, "void", [handle, location, length]),
-            };
-            helper = new(kind, abi, key.ToStored(), value.ToStored(), GetDictionaryEntryLayout(key, value), related);
+            var suffix = this.dictionaryHelperCache.Count.ToString(CultureInfo.InvariantCulture);
+            helper = DictionaryHelper.Create(kind, key.ToStored(), value.ToStored(), GetDictionaryEntryLayout(key, value), related, suffix);
             this.dictionaryHelperCache.Add(cacheKey, helper);
         }
 
@@ -93,8 +86,6 @@ internal sealed partial class BodyLowering
         this.callOperands.Add(new(EmissionOperandKind.ConstantAddress, location));
         this.callOperands.Add(new(EmissionOperandKind.ConstantLength, location));
         function.AddCall(id, helper.Abi, CollectionsMarshal.AsSpan(this.callOperands));
-        this.dictionaryRuntimeUsed = true;
-        this.arrayRuntimeUsed = true;
         return true;
 
         EmissionOperand Argument(int place, in ArrayElement element, int operand) => element.IsZeroSized
@@ -211,8 +202,6 @@ internal sealed partial class BodyLowering
         }
 
         function.AddCall(id, this.GetDictionaryHelper(DictionaryHelperKind.Place, key, value).Abi, CollectionsMarshal.AsSpan(this.callOperands));
-        this.dictionaryRuntimeUsed = true;
-        this.arrayRuntimeUsed = true;
         return true;
     }
 }

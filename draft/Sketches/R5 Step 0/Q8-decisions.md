@@ -1,5 +1,7 @@
 # Q8: planning-session decisions on the package's open points
 
+**Approved by the owner on 2026-10-18 (「Q8を承認」), with the proposals Q8-6 and Q8-7 (DECISIONS R5-M23).**
+
 The planning session's decisions on `Q8-package.md` §open points (2026-10-18). With them the package goes to its design review
 and then once to the owner (OQ10, DECISIONS R5-M1). Where the package and this file disagree, this file governs.
 

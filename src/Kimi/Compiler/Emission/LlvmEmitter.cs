@@ -33,7 +33,9 @@ public sealed partial class LlvmEmitter
     {
         this.compilation = compilation;
         this.lowering = new(compilation.Locations);
-        this.lowering.RequireDictionaryOperation = (find, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(find, key, value));
+        // A Dictionary helper row's Entries callee is generic over the entry Types (Binding.DictionaryStorageCall fails closed on others).
+        this.lowering.RequireDictionaryOperation = (callee, key, value)
+            => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(callee, key, value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
     }
@@ -189,14 +191,13 @@ public sealed partial class LlvmEmitter
             this.lowering.Virtuals = this.virtuals;
             this.objects.Virtuals = this.virtuals;
 
+            // The module resolves each function of the DictionaryStorage view (F2c); findEntry and clearEntries, generic over the
+            // entry Types, have no one compiled function and stay unresolved: a helper reaches its instance through Related.
             var helpers = module.RuntimeHelpers;
-            helpers.DictionaryAppendSlot = this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot);
-            helpers.DictionaryInitialize = this.functions.GetValueOrDefault(c.Library.DictionaryInitialize);
-            helpers.DictionaryClearLinks = this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks);
-            helpers.DictionaryRequireAbsent = this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent);
-            helpers.DictionaryReserveStorage = this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage);
-            helpers.DictionaryAppend = this.functions.GetValueOrDefault(c.Library.DictionaryAppend);
-            helpers.DictionaryShrink = this.functions.GetValueOrDefault(c.Library.DictionaryShrink);
+            for (var callee = DictionaryCallee.FindEntry; callee <= DictionaryCallee.Reserve; callee++)
+            {
+                helpers.Resolve(callee, this.functions.GetValueOrDefault((FunctionKoto)c.Library.DictionaryStorage(callee).Declaration));
+            }
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {

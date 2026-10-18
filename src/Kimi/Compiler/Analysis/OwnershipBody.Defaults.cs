@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -51,14 +52,14 @@ public sealed partial class OwnershipBody
 
                 if (conflict)
                 {
-                    this.ReportIssue(new(op.Source, OwnershipFailure.DefaultArgumentAccess, Related: parameter.Source));
+                    this.ReportIssue(new(op.Source, OwnershipRequirement.DefaultArgumentAccess, Related: parameter.Source));
                     break;
                 }
             }
 
             if (escaped >= 0)
             {
-                this.ReportIssue(new(this.Operations[escaped].Source, OwnershipFailure.DefaultArgumentBorrow, Related: parameter.Source));
+                this.ReportIssue(new(this.Operations[escaped].Source, OwnershipRequirement.DefaultArgumentBorrow, Related: parameter.Source));
             }
         }
 

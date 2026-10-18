@@ -16,6 +16,8 @@ public sealed class RetentionTest
 {
     private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
 
+    private const string Box = "struct B<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
+
     private const string View = "struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func read(self: ref/Self) -> ref/T during self.source => self.data\n    public func whole(self: ref/Self) -> ref/Self during self => self\n";
 
@@ -79,8 +81,10 @@ public sealed class RetentionTest
 
     // SPEC 15.6, 15.6.4, 15.3.5: an input written through an exclusive or raw layer, also one an owned aggregate holds (an invariant slot),
     // is an output; another input whose Origin outlives the written positions is stored there, the target's own content too. An exclusive
-    // input with no Origin below its layer stores nothing, nor one past a shared layer (SPEC 15.6.2), unless a raw pointer is followed
-    // again (raw access within its authority, SPEC 5.2.1).
+    // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read
+    // (SPEC 15.6.2: a shared input, an rc payload held by value) unless a raw pointer is followed again (raw access within its authority,
+    // SPEC 5.2.1); a value stored into a writable slot brings its whole Type, so an Origin below an rc or arc layer there, or below a
+    // pair layer admitting only them, is stored (DECISIONS BU-1).
     [Theory]
     [InlineData("func f(dst: uniq/(ref/i32 during q), v: ref/i32 during q) => dst@follow = v", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f(dst: uniq/i32, v: ref/i32) => dst@follow = v@follow", "")]
@@ -90,8 +94,26 @@ public sealed class RetentionTest
     [InlineData("func f(storage: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
     [InlineData(Cell + "func f(dst: Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
     [InlineData(Cell + "func f(dst: ref/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
+    [InlineData(Box + "func f(dst: uniq/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => dst@follow = v@move", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Box + "func f(dst: uniq/(arc/B<ref/i32 during q>), v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Cell + Box + "func f(dst: Cell<rc/B<ref/i32 during q>>, v: rc/B<ref/i32 during q>) => ()", "0 Value store 0, 1 Value store 0")]
+    [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
+    [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
+    // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.
+    [Fact]
+    public void HandleElementsAreStores()
+    {
+        var c = Bind("struct S {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nvar x = 1\n" +
+            "var e: Array<S> = []\ne.append(S.init(r: x@ref))\nvar o: Array<obj/S> = []\no.append(Kimi.Intrinsics.makeObj(S.init(r: x@ref)))\n" +
+            "var p: Array<rc/S> = []\np.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))\n" +
+            "var q: Array<arc/S> = []\nq.append(Kimi.Intrinsics.makeArc(S.init(r: x@ref)))\n");
+        Assert.Equal(Enumerable.Repeat("0 Content store 0, 1 Value store 0", 4), Calls(c, "append"));
+    }
 
     // SPEC 15.6.4: a method writing through `uniq/Self` stores an input into the receiver's referent; one reading through it is
     // Content into its result.
