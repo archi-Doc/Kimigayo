@@ -2510,7 +2510,8 @@ structure is recorded here by the unit that first implements it.
     accepted only because the same body had resolved its inner Types first now reports `GenerationResourceLimit_Kd` (a chain of
     one-component Tuple locals, `InlineLayoutTest`; a trace found no other in the suite, fixtures and milestones). MIR's bound counts
     placed levels only, so a Type of height 64 whose leaf legacy counts (the chain `S0 { v: i32 }` … `S63`) is accepted by MIR and
-    refused by legacy: an R5-M6 (d) row at the first MIR observation. (R5-M44: the first observation found none.)
+    refused by legacy: an R5-M6 (d) row at the first MIR observation. (R5-M44: the first observation found none.) The outcome list and
+    the precedence are superseded by R5-M52 (Oversized).
   - Rejected: a static Type-keyed memo (stale after an edit, retains every compilation's Types); a static weak table with an edit
     epoch (couples compilations); a memo reached through the Type (structural Types unmemoized); clearing per pass (re-placement on
     each warm rebuild); records kept for the compilation's life (grow across edits; the old pool's interning compares child shapes);
@@ -2733,3 +2734,40 @@ structure is recorded here by the unit that first implements it.
     instance constructor's, an unused function's written parameter, `Option<P<()>>` and an inferred `Option<P<T>>` at the local and at the
     `.None` that makes the value, every valid twin none; `Option<Never>` none (R5-M44); the library (as roots) and the 44 milestones under
     sel give no record.
+- **R5-M52 A layout over 2^63 - 1 bytes: `Layout.Outcome.Oversized` and `OversizedLayout_Kd`** (2026-10-18, planning session; owner,
+  2026-10-18, on PLAN G146: 「新しい言語エラーのコードを追加して下さい」; plan unit K10c after K10b, full process, package
+  `draft/Sketches/R5 K10c/K10c-package.md` at `2158a768`; supersedes R5-M37's outcome list and precedence, R5-M18's X18 and K §4.8 mapping
+  ("OK, Limit or CLayout; any other failure `InternalInvariant_Kd`"), K §11's "No new diagnostic code" and P7c's Q3) IMPL 21.1.1 makes a
+  size, stride or Field offset over 2^63 - 1 a Language error at the use that needs the layout (SPEC 8.15.3, 23.2.2), never only a
+  Resource record (23.1.1); `Layout`'s 2^31 - 1 SizeLimit preempted it.
+  - `Layout` measures each placement exactly in 128 bits and keeps each memo entry's size as `ulong`, 2^63 standing for every larger size:
+    exact (`Entry.Exact`, alignment nonzero) when every part was laid out within the 64-level window and resolved by Binding, else a lower
+    bound (such parts add no bytes; every arrangement is monotone). Sizes stay private. New outcome Oversized: the size exceeds 2^63 - 1 or a
+    part is Oversized (a zero-length array of one included). `Result` publishes `Oversized`, derived from the entry's size where the entry
+    is built, true for Oversized and for a CLayout whose size is over, so a use reports both Language errors (SPEC 23.1.2). One decision
+    function of the fold (`Fold.Decide`) owns the precedence and the own size; `Exceeded` and the three early exits go (commit 1, behavior
+    unchanged).
+  - Precedence: CLayout, Oversized, DepthLimit, a limit (parts, then own count), Rejected, the own size; within each, the first in placement
+    order. An oversize that needs bytes past the window stays behind DepthLimit, reported only as a Resource record (R5-M37's residue
+    extended; STATUS). Declared: a C-layout instance storing an exactly zero-sized, count-limited Field (`[2147483648 of ()]`) is CLayout,
+    no longer CountLimit (KC7); K10b landed first, so it reports `InvalidCLayout_Kd` at once.
+  - `OversizedLayout_Kd` (Error, Language, no facts, a Message and a Label): the collector maps `Oversized` to it at each by-value use
+    (R5-M44's uses, R5-M40's location rule, one record per code and subject; R5-M44's per-Type rule stays for the Resource code),
+    requirement `ControlFlow` like every collector record and K10b's `InvalidCLayout_Kd`, until H3 lets the collector's recording rules name
+    their requirements (a new requirement name is then a separate owner question). Acceptance change at check: under MIR code generation
+    from this unit, on every pipeline from G2.
+  - The old pool never reaches Oversized (accepted parts, its own count check) and treats it as a broken contract like Rejected; until G2
+    the default pipeline reports such a program at build as `GenerationResourceLimit_Kd` (STATUS). No R5-M6 row: both refuse.
+  - Correction to the package (L3, H there): `(P<()>, [4611686018427387903 of u16])` is 2^63 + 2 bytes in Kimigayo grouping, so it is
+    an oversized CLayout; the test's non-oversized CLayout row uses `[2147483648 of u8]`.
+  - Rejected: a flag on SizeLimit (a different rank); an exact-size view outside `Layout`; 64-bit record sizes; exact sizes only (a
+    DepthLimit or Rejected part would hide a visible oversize); one record for CLayout and Oversized (omits an independent failure);
+    per-operation saturation; a published size or an Instance for Oversized (no consumer); one Language record per Type (SPEC 8.15.3
+    places it at the use); K10c before K10b (check under sel would accept the moved C-layout form); a requirement for this code before H3;
+    a legacy fix (R5-M6).
+  - Verified: `LayoutTest` (the bound and its neighbours, padding in both modes, limited parts feeding their parent, an enum's tag, a
+    zero-length array, CLayout with and without the co-report in both orders, Rejected parts, KC7 and its inexact twin, the window rule in
+    both part and query orders, warm 0 B with Oversized); `InstanceCollectorTest` (records at each use: parameters, a generic instance and its
+    callers' arguments, an intrinsic's Type argument; Resource records for M and a 2^31-byte array; none behind a borrow, a raw pointer or an
+    unused struct; both codes at one use); `PipelineSwitchTest` (sel rejects at check with the Language error; the default pipeline accepts
+    and the old generator refuses at build); the library (as roots) and the 44 milestones under sel give no record.

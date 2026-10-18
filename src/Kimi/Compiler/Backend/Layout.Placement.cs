@@ -8,10 +8,11 @@ namespace Kimi.Compiler.Backend;
 // Placement (IMPL 21.1.1, 21.1.2): a struct, Tuple, Closure or Function Item places its parts, a fixed array repeats its element and
 // an enum places an i32 tag before the union of its Case payloads. The walk (DECISIONS R5-M37) places a Type with a budget of the
 // levels left in the 64-level window: a Type within its budget gets one complete entry, its own answer at every budget; a deeper one
-// gets one exhausted entry per budget, holding its first CLayout in the window, so every answer is a function of the Type alone and
-// placement stays linear over shared parts. Each placement is measured in 128 bits before one decision (Fold.Decide) owns its outcome,
-// the own size included; every entry keeps its size, exact when every part was laid out within the window and resolved by Binding, else
-// a lower bound (such parts add no bytes), Over for any size above 2^63 - 1. Each representation has one record within a program version.
+// gets one exhausted entry per budget, holding its first CLayout in the window or its oversize, so every answer is a function of the Type
+// alone and placement stays linear over shared parts. Each placement is measured in 128 bits before one decision (Fold.Decide) owns its
+// outcome, the own size included; every entry keeps its size, exact when every part was laid out within the window and resolved by
+// Binding, else a lower bound (such parts add no bytes; every arrangement is monotone in its parts), Over for any size above 2^63 - 1
+// (DECISIONS R5-M52). Each representation has one record within a program version.
 internal sealed partial class Layout
 {
     // IMPL 21.3.2: the generation limit of a size, offset or element count, which the LLVM text writes as a signed 32-bit number.
@@ -48,7 +49,7 @@ internal sealed partial class Layout
     private static UInt128 Align(UInt128 size, int alignment) => (size + (uint)(alignment - 1)) & ~(UInt128)(uint)(alignment - 1);
 
     // A storage declaration, fixed array or enum Binding rejected is a leaf one level high, of no known size.
-    private static Entry Rejected(BoundType type) => new(new(Outcome.Rejected, null, type), 1, 0, 0);
+    private static Entry Rejected(BoundType type) => Entry.Of(Outcome.Rejected, null, type, 1, 0, 0);
 
     // A Type placed with `budget` levels left. A row is 0 high; a complete entry serves every budget not below its height; at budget
     // 0 a placed Type lies outside the window; an exhausted entry is `budget` + 1 high.
@@ -58,7 +59,7 @@ internal sealed partial class Layout
             !AdtDef.IsStruct(type) && !AdtDef.IsEnum(type))
         {
             var row = Row(type);
-            return new(new(Outcome.Ok, row, null), 0, (ulong)row.Layout.Size, row.Layout.Alignment);
+            return Entry.Of(Outcome.Ok, row, null, 0, (ulong)row.Layout.Size, row.Layout.Alignment);
         }
 
         if (this.memo.TryGetValue(type, out var entry) && entry.Height <= budget)
@@ -68,7 +69,7 @@ internal sealed partial class Layout
 
         if (budget == 0)
         {
-            return new(new(Outcome.DepthLimit, null, null), 1, 0, 0);
+            return Entry.Of(Outcome.DepthLimit, null, null, 1, 0, 0);
         }
 
         var window = new Window(type, budget);
@@ -173,7 +174,7 @@ internal sealed partial class Layout
 
     // The record of an arrangement every part of which is laid out, within the generation limit: C mode writes the parts' storage
     // types (ordinary LLVM structs derive the same ABI padding; never packed structs), Kimigayo mode the bytes.
-    private Result Write(ReadOnlySpan<Entry> parts, UInt128 size, int alignment, bool cLayout)
+    private ValueLowering Write(ReadOnlySpan<Entry> parts, UInt128 size, int alignment, bool cLayout)
     {
         var local = this.scratch;
         local.Begin();
@@ -192,7 +193,7 @@ internal sealed partial class Layout
             local.WriteBytes(alignment, (long)size);
         }
 
-        return new(Outcome.Ok, this.Record((int)size, alignment, local.Offsets(parts.Length)), null);
+        return this.Record((int)size, alignment, local.Offsets(parts.Length));
     }
 
     // A fixed array: its elements at consecutive strides, with no Field offsets; more than 2^31 - 1 elements, of any size, is
@@ -220,7 +221,7 @@ internal sealed partial class Layout
 
         this.scratch.Begin();
         this.scratch.WriteBytes(alignment, (long)size);
-        return fold.Laid(new(Outcome.Ok, this.Record((int)size, alignment, []), null), size, alignment);
+        return fold.Laid(this.Record((int)size, alignment, []), size, alignment);
     }
 
     // An enum: an i32 tag at offset 0, then the union of its Case payload Tuples, aligned for the most aligned payload (IMPL 21.1.3:
@@ -255,7 +256,7 @@ internal sealed partial class Layout
         local.Write("{ i32, ");
         local.WriteBytes(alignment, (long)Align(payload, alignment));
         local.Write(" }");
-        return fold.Laid(new(Outcome.Ok, this.Record((int)size, Math.Max(4, alignment), [0, (int)offset]), null), size, Math.Max(4, alignment));
+        return fold.Laid(this.Record((int)size, Math.Max(4, alignment), [0, (int)offset]), size, Math.Max(4, alignment));
     }
 
     // Completes the key written as the storage text and returns the representation's one record, created at its first use.
@@ -285,19 +286,25 @@ internal sealed partial class Layout
         return record;
     }
 
-    // A placed Type's answer, placement height (an exhausted entry's is its budget + 1), size and alignment. Invariant: Alignment is 0
-    // exactly when the size is not exact (a lower bound, or Over); a measure reads it only through Math.Max(Alignment, 1).
+    // A placed Type's answer, placement height (an exhausted entry's is its budget + 1), size and alignment. Invariants: Alignment is 0
+    // exactly when the size is not exact (a lower bound, or Over), and a measure reads it only through Math.Max(Alignment, 1); Size is Over
+    // exactly when the answer is Oversized or a CLayout over the bound, the one fact Result.Oversized publishes.
     private readonly record struct Entry(Result Result, int Height, ulong Size, int Alignment)
     {
         internal bool Exact => this.Alignment > 0;
+
+        // The one construction of an entry: Result.Oversized derives from the size.
+        internal static Entry Of(Outcome outcome, ValueLowering? value, BoundType? instance, int height, ulong size, int alignment)
+            => new(new(outcome, value, instance, size == Over), height, size, alignment);
     }
 
     // An exhausted entry's key: the Type, by reference (BoundType's identity), and its remaining budget.
     private readonly record struct Window(BoundType Type, int Budget);
 
-    // One placement's parts folded in placement order and its one decision, the owner of R5-M37's precedence: the first CLayout in the
-    // window, then DepthLimit when a part reaches past the budget, then the first limit (the parts', then the Type's own count), then the
-    // first Rejected, then the Type's own size.
+    // One placement's parts folded in placement order and its one decision, the owner of the precedence (DECISIONS R5-M52, amending
+    // R5-M37): the first CLayout in the window, then Oversized (a size over 2^63 - 1, a lower bound sufficing, or an oversized part), then
+    // DepthLimit when a part reaches past the budget, then the first limit (the parts', then the Type's own count), then the first Rejected,
+    // then the Type's own size.
     private struct Fold
     {
         private readonly BoundType type;
@@ -306,16 +313,18 @@ internal sealed partial class Layout
         private Outcome limit;
         private int height;
         private bool exact;
+        private bool over;
 
         internal Fold(BoundType type) => (this.type, this.exact) = (type, true);
 
-        // Folds a part's entry and returns it; a laid-out zero-sized one makes a C-layout struct CLayout.
+        // Folds a part's entry and returns it; an exactly zero-sized one, whatever its outcome, makes a C-layout struct CLayout (KC7).
         internal Entry Add(Entry part, bool cField)
         {
             this.height = Math.Max(this.height, part.Height);
             this.exact &= part.Exact;
+            this.over |= part.Size == Over;
             var result = part.Result;
-            if (result.Outcome == Outcome.Ok && cField && part.Size == 0)
+            if (cField && part.Exact && part.Size == 0)
             {
                 this.clayout ??= this.type;
             }
@@ -342,35 +351,41 @@ internal sealed partial class Layout
         // Type's own size admits its record.
         internal readonly Entry? Decide(int budget, UInt128 size, int alignment, Outcome ownCount)
         {
-            var stored = size < Over ? (ulong)size : Over;
+            var stored = this.over || size >= Over ? Over : (ulong)size;
             var known = this.exact && stored < Over ? alignment : 0;
-            if (this.height > budget)
-            {
-                var exhausted = this.clayout is null ? new Result(Outcome.DepthLimit, null, null) : new Result(Outcome.CLayout, null, this.clayout);
-                return new Entry(exhausted, budget + 2, stored, 0);
-            }
-
+            var height = this.height > budget ? budget + 2 : this.height + 1;
             if (this.clayout is not null)
             {
-                return new Entry(new(Outcome.CLayout, null, this.clayout), this.height + 1, stored, known);
+                return Entry.Of(Outcome.CLayout, null, this.clayout, height, stored, known);
+            }
+
+            if (stored == Over)
+            {
+                return Entry.Of(Outcome.Oversized, null, null, height, Over, 0);
+            }
+
+            if (this.height > budget)
+            {
+                return Entry.Of(Outcome.DepthLimit, null, null, height, stored, 0);
             }
 
             var limited = this.limit == Outcome.Ok ? ownCount : this.limit;
             if (limited != Outcome.Ok)
             {
-                return new Entry(new(limited, null, null), this.height + 1, stored, this.rejected is null ? known : 0);
+                return Entry.Of(limited, null, null, height, stored, this.rejected is null ? known : 0);
             }
 
             if (this.rejected is not null)
             {
-                return new Entry(new(Outcome.Rejected, null, this.rejected), this.height + 1, stored, 0);
+                return Entry.Of(Outcome.Rejected, null, this.rejected, height, stored, 0);
             }
 
-            return size > MaximumSize ? new Entry(new(Outcome.SizeLimit, null, null), this.height + 1, stored, known) : null;
+            return size > MaximumSize ? Entry.Of(Outcome.SizeLimit, null, null, height, stored, known) : null;
         }
 
         // The record the Type's own size admitted.
-        internal readonly Entry Laid(Result own, UInt128 size, int alignment) => new(own, this.height + 1, (ulong)size, alignment);
+        internal readonly Entry Laid(ValueLowering record, UInt128 size, int alignment)
+            => Entry.Of(Outcome.Ok, record, null, this.height + 1, (ulong)size, alignment);
     }
 
     // The placement buffers: the parts of the placements in progress, innermost last, and one record's offsets and key, written

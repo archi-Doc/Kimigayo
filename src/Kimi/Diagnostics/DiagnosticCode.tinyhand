@@ -571,6 +571,11 @@
     Category="Language"
     Message="A Type that contains itself by value without indirection has no finite inline layout"
 
+  + Name="OversizedLayout_Kd"
+    Category="Language"
+    Message="This by-value use needs a layout larger than 2^63 - 1 bytes"
+    Label="layout larger than 2^63 - 1 bytes"
+
   + Name="InvalidEscape_Kd"
     Category="Language"
     Message="The escape sequence '{0}' is not valid"

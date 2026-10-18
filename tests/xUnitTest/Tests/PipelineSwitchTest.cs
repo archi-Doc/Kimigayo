@@ -127,6 +127,30 @@ public sealed class PipelineSwitchTest
         Assert.Equal(("Unsupported_Kd", "pick(v@move)"), (record.Code, record.Text));
     }
 
+    // R5 K10c (DECISIONS R5-M52): under MIR code generation a layout over 2^63 - 1 bytes is a Language error at check, at its by-value use;
+    // until G2 the default pipeline accepts at check and the old generator refuses the build with its generation limit, without throwing.
+    [Fact]
+    public void MirCodegenRejectsAnOversizedLayoutAtCheck()
+    {
+        const string Over = "func over(value: ([649657 of [92737 of [153092023 of u8]]], u8)) => ()";
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        c.Codegen = CompilerCodegen.Legacy;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Over + "\nlet x = 1\n"));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        Assert.False(c.Validate(out var failure));
+        Assert.Contains("generation limit of 2147483647", failure, StringComparison.Ordinal);
+
+        c.Codegen = CompilerCodegen.Mir;
+        Assert.False(Analyze(c, OutputKind.Application));
+        var problem = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.OversizedLayout_Kd, Over), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        c.ReportAnalysis();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(("OversizedLayout_Kd", Over["func ".Length..], "layout larger than 2^63 - 1 bytes"), (record.Code, record.Text, record.Label));
+    }
+
     // Under mir the MIR's records are the analysis's problems and control-flow Errors that reject the program and block generation;
     // switching back to legacy gives the old path's diagnostics and IR unchanged.
     [Fact]

@@ -180,13 +180,14 @@ internal sealed class AggregateLayoutPool
 
     // Layout's record of a Type whose parts this pool accepted; null after mapping a size, count or depth limit to the resource limit
     // and CLayout (a C-layout instance storing a zero-sized Field) to a refusal. Generation follows a complete Binding, so Rejected
-    // storage is a broken contract.
+    // storage is a broken contract, and so is Oversized: this pool accepted every part (at most 2^31 - 1 bytes, fewer than 2^31 of them)
+    // and checks counts itself, so no Type it asks about exceeds 2^63 - 1 bytes (DECISIONS R5-M52).
     private ValueLowering? Represent(BoundType type)
     {
         var layout = this.layout.Of(type);
-        if (layout.Outcome == Layout.Outcome.Rejected)
+        if (layout.Outcome is Layout.Outcome.Rejected or Layout.Outcome.Oversized)
         {
-            throw new InvalidOperationException("Generation reached " + type.Name + ", whose storage Binding rejected.");
+            throw new InvalidOperationException($"Generation reached {type.Name}, whose layout is {layout.Outcome}.");
         }
 
         if (layout.Outcome == Layout.Outcome.CLayout)

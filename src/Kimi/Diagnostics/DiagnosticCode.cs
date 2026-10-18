@@ -185,6 +185,7 @@ public enum DiagnosticCode
     SplitCLayoutStorage_Kd,
     InvalidCLayout_Kd,
     InvalidInlineLayout_Kd,
+    OversizedLayout_Kd,
 
     UnavailableFeature_Kd,
 

@@ -46,6 +46,18 @@ public sealed class InstanceCollectorTest
     // The first line of CLayoutP's constructor, the subject of its instance's by-value uses.
     private const string Init = "public init(n: i32, value: T) => (self.n, self.value) = (n, value@move)";
 
+    // Exactly 2^63 - 1 bytes (649657 * 92737 * 153092023), every count within 2^31 - 1.
+    private const string Big = "[649657 of [92737 of [153092023 of u8]]]";
+
+    // Uses of a Type one byte over the layout bound: two functions' parameters, and two callers passing theirs to a generic function, whose
+    // records are each caller's parameter and argument and the generic instance's parameter.
+    private const string Over = "func over(value: (" + Big + ", u8)) => ()";
+    private const string Again = "func again(value: (" + Big + ", u8)) => ()";
+    private const string One = "func one(value: (" + Big + ", u8)) => pass(value@move)";
+    private const string Two = "func two(value: (" + Big + ", u8)) => pass(value@move)";
+    private const string PassRecords = "OversizedLayout_Kd " + One + "|OversizedLayout_Kd value@move|OversizedLayout_Kd " + Two +
+        "|OversizedLayout_Kd value@move|OversizedLayout_Kd func pass<T>(value: T) => ()";
+
     // A C-layout struct over a Type parameter, which a zero-sized argument makes store a zero-sized Field.
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
         "    public init(n: i32, value: T) => (self.n, self.value) = (n, value@move)\n";
@@ -477,6 +489,50 @@ public sealed class InstanceCollectorTest
         Assert.Equal(eager, c.Binding.Issues.Count(static x => x.Code == DiagnosticCode.InvalidCLayout_Kd));
         var records = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records;
         Assert.Contains((DiagnosticCode.InvalidCLayout_Kd, use), records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
+    }
+
+    // IMPL 21.1.1, SPEC 8.15.3, DECISIONS R5-M52: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at each
+    // use (one record per subject), not a Resource record: a parameter (at its function), two functions' parameters, a generic instance's
+    // parameter and each caller's uses, a generic instance's Raw.allocate Type argument; M, exactly at the bound, and a 2^31-byte array are
+    // one Resource record each. Subjects by their first line, codes in record order.
+    [Theory]
+    [InlineData(Over + "\n", "OversizedLayout_Kd " + Over)]
+    [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Over + "|OversizedLayout_Kd " + Again)]
+    [InlineData("func pass<T>(value: T) => ()\n" + One + "\n" + Two + "\n", PassRecords)]
+    [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<(" + Big + ", u8)>()\nunsafe => Raw.release(p)\n", "OversizedLayout_Kd Raw.allocate<T>(0)")]
+    [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd func at(value: " + Big + ") => ()")]
+    [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd func at(value: [2 of [1073741824 of u8]]) => ()")]
+    public void ALayoutOverTheBoundIsARecordAtEachUse(string source, string records)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(records, string.Join("|", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0]}")));
+    }
+
+    // SPEC 8.15.3, DECISIONS R5-M52: a Type formed only behind a borrow or a raw pointer, or by a struct nothing uses by value, is no use.
+    [Theory]
+    [InlineData("func r(value: ref/(" + Big + ", u8)) => ()\n")]
+    [InlineData("func p(value: raw/(" + Big + ", u8)) => ()\n")]
+    [InlineData("struct Huge\n    var a: " + Big + "\n    var b: u8\n")]
+    public void AnOversizedTypeBehindAnIndirectionIsNoUse(string source)
+    {
+        var c = MirBuildTest.Compile(source + "let x = 1\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.Empty(new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records);
+    }
+
+    // DECISIONS R5-M52 (KC6): one use of a Type that places a C-layout instance storing a zero-sized Field and needs a layout over
+    // 2^63 - 1 bytes reports both Language errors there.
+    [Fact]
+    public void BothLanguageLayoutErrorsAtOneUse()
+    {
+        var c = MirBuildTest.Compile(CLayoutP + "func both(value: (P<()>, (" + Big + ", u8))) => ()\n");
+        var records = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1).Records;
+        var use = "func both(value: (P<()>, (" + Big + ", u8))) => ()";
+        Assert.Equal(
+            [(DiagnosticCode.OversizedLayout_Kd, use), (DiagnosticCode.InvalidCLayout_Kd, use)],
+            records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0])));
     }
 
     // K 4.3: a representative that leaves its body open is a broken contract, InternalInvariant_Kd at the call and no item. Binding never
