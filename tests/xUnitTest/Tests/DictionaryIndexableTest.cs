@@ -135,9 +135,9 @@ public class DictionaryIndexableTest
                 D is UniqIndexable<K>
                 return values[key]@uniq
             var values = [1: "before"]
-            Console.writeLine(read(values, 1))
+            Console.writeLine(read(values, 1@i32))
             slot(values@uniq, 1)@follow = "after"
-            Console.writeLine(read(values, 1))
+            Console.writeLine(read(values, 1@i32))
             """;
         ScalarEmissionTest.EmitFixture("DictionaryIndexableGeneric", Source, "before\nafter\n");
     }

@@ -15,7 +15,8 @@ public sealed partial class Binding
 
     private Dictionary<Koto, UnboundSlotFact>? unboundSlots;
 
-    // Whether `type` names one of the callee's Type slots in `slots`, directly or as the selector of an `s/U` application.
+    // Whether `type` names one of the callee's Type slots in `slots`, directly, as the selector of an `s/U` application or as the target
+    // projection of a pair slot.
     private static bool MentionsSlots(BoundType type, Koto function, SlotSet slots, int depth = 0)
     {
         if (slots.IsEmpty || depth > 64)
@@ -23,7 +24,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation && type.Symbol is { } symbol &&
+        if (type.Kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation or BoundTypeKind.TargetProjection &&
+            type.Symbol is { } symbol &&
             ContainerSlot(function, symbol) is var slot && slots.Contains(slot))
         {
             return true;
@@ -66,32 +68,35 @@ public sealed partial class Binding
             if (CallOwnSlots(function)[g] is LengthParameterKoto)
             {
                 unrepresentable |= lengths[g] is null;
-                continue;
             }
-
-            if (arguments[g] is not null || WaitingBindsSlot(call, function, mapping, g))
+            else if (arguments[g] is null)
             {
-                continue;
+                unsolved.Add(g);
             }
+        }
 
-            unsolved.Add(g);
+        var waiting = new WaitingSlots(ref unsolved, CallSlotOwner(function));
+        for (var a = 0; a < call.ArgumentNodes.Count; a++)
+        {
+            TakeWaiting(call.ArgumentNodes[a], function.Parameters[mapping[a]].Type.BoundType!, CallSlotOwner(function), waiting);
         }
     }
 
-    // Whether a waiting argument binds the slot as its F, `ref/F` or `uniq/F` (SPEC 10.5).
-    private static bool WaitingBindsSlot(InvocationKoto call, FunctionKoto function, int[] mapping, int slot)
+    // Whether the waiting parts of an argument bind every slot of its parameter Type that no evidence binds (SPEC 10.5, 10.8), so the
+    // position is completed with them after selection instead of left open. `rest` is scratch.
+    private static bool WaitingPartsBind(Koto part, BoundType pattern, FunctionKoto function, SlotSet unbound, ref SlotSet rest)
     {
-        for (var a = 0; a < call.ArgumentNodes.Count; a++)
+        rest.Clear();
+        for (var g = 0; g < CallOwnSlots(function).Count; g++)
         {
-            var pattern = function.Parameters[mapping[a]].Type.BoundType!;
-            var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-            if (IsWaitingCallable(call.ArgumentNodes[a]) && slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) == slot)
+            if (unbound.Contains(g))
             {
-                return true;
+                rest.Add(g);
             }
         }
 
-        return false;
+        TakeWaiting(part, pattern, CallSlotOwner(function), new WaitingSlots(ref rest, CallSlotOwner(function)));
+        return !MentionsSlots(pattern, CallSlotOwner(function), rest);
     }
 
     private static void ReportUnboundSlots(Koto node, UnboundSlotFact fact, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -106,8 +111,7 @@ public sealed partial class Binding
     // Function Type; null otherwise.
     private BoundType? ExpectedCallSignature(FunctionKoto function, BoundType pattern)
     {
-        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } ? pattern.Components[0] : pattern;
-        if (slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) >= 0)
+        if (CallableSlotType(pattern, CallSlotOwner(function)) is { } slotType)
         {
             return this.TryCallable(slotType, this.ConstraintScope(function), out var required, out _) ? required : null;
         }
@@ -117,8 +121,10 @@ public sealed partial class Binding
 
     // An open position stays open only while its parameter Type still holds an unsolved slot; a later literal default may have closed it,
     // and then the position was never fitted, so the candidate stays pending.
-    private bool OpenPositionsHold(InvocationKoto call, FunctionKoto function, BoundType?[] arguments, int[] mapping, SlotSet open, SlotSet openSignatures, SlotSet unsolved, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType, BoundLength?[] lengths)
+    private bool OpenPositionsHold(in SlotSolution solution, int[] mapping, SlotSet open, SlotSet openSignatures, SlotSet unsolved)
     {
+        var call = solution.Call;
+        var function = solution.Function;
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             if (!open.Contains(i) && !openSignatures.Contains(i))
@@ -129,7 +135,7 @@ public sealed partial class Binding
             var pattern = function.Parameters[mapping[i]].Type.BoundType!;
             var signature = open.Contains(i) ? pattern : this.ExpectedCallSignature(function, pattern);
             if (signature is null || !MentionsSlots(signature, CallSlotOwner(function), unsolved) ||
-                this.CallType(signature, function, arguments, scope, self, origins, inputs, declaringType, lengths) is not null)
+                solution.Type(signature) is not null)
             {
                 return false;
             }

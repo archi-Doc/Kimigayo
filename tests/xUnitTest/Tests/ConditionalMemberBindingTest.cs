@@ -198,7 +198,7 @@ public class ConditionalMemberBindingTest
     [InlineData(true)]
     public void UnknownConditionCannotCommitAnAlternative(bool proven)
     {
-        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use<T>(x: S<T>) -> i32\n" + (proven ? "    T is Copy\n" : string.Empty) + "    return S<T>.f(1)");
+        var c = Parse("contract C\nstruct S<T>\n    Self is C when T is Copy\n        public func f(x: i32) -> i32 => 1\n    public func f<U>(x: U) -> i32 => 2\nfunc use<T>(x: S<T>) -> i32\n" + (proven ? "    T is Copy\n" : string.Empty) + "    return S<T>.f(1@i32)");
         Assert.True(c.Bind().IsComplete == proven, Describe(c));
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         if (proven)
@@ -407,7 +407,7 @@ public class ConditionalMemberBindingTest
         var source = new System.Text.StringBuilder("contract A\n    associate E\n    func f(x: i32) -> i32\ncontract B: A\n");
         for (var i = 0; i < count; i++)
         {
-            source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32 => S").Append(i).Append("<i32>.f(S").Append(i).Append("<i32>.f(1))\n");
+            source.Append("struct S").Append(i).Append("<T>\n    Self is B when T is Copy\n        associate A.E is i32\n        public func f(x: i32) -> i32 => x\n        public func f<U>(x: U) -> i32 => 2\nfunc use").Append(i).Append("() -> i32\n    let inner = S").Append(i).Append("<i32>.f(1@i32)\n    return S").Append(i).Append("<i32>.f(inner)\n");
         }
 
         var c = Parse(source.ToString());

@@ -235,14 +235,15 @@ internal sealed partial class MirBuilder
         this.Unit(destination, verification);
     }
 
-    // SPEC 17.6.2: observe a verification's bool before cleaning its temporaries, then branch with the bool's storage live.
+    // SPEC 17.6.2: observe a verification's bool, its values recorded, before cleaning its temporaries, then branch with the bool's storage
+    // live.
     private MirPlace Observe(Koto condition, int whenFalse, int whenTrue, MirPlace issue, MirOperand site)
     {
         var tested = this.OpenScope(block: false);
         var test = this.Temp(BoundType.Boolean, condition);
         var temporaries = this.OpenScope(block: false);
         var mark = this.arguments.Count;
-        this.Assign(test, condition);
+        this.Recorded(test, condition);
         this.arguments.Add(MirOperand.Copy(test));
         this.arguments.Add(site);
         this.Invoke(issue, MirCallee.Intrinsic(IntrinsicId.TestObserve), this.arguments.Count - 2, condition);
@@ -252,6 +253,48 @@ internal sealed partial class MirBuilder
         this.Branch(test, condition, whenFalse, whenTrue);
         this.CloseScope(tested, clean: false);
         return test;
+    }
+
+    // SPEC 17.6.3 (PD22): a verification's condition into the tested bool. A built-in comparison's Scalar operands, each read once where it
+    // is evaluated and secured there (Secure: the records are code built after them), are recorded from their temps with their side (0 the
+    // left, 1 the right) for the failure report (testRecordValue) before the comparison moves them. Another condition records nothing.
+    private void Recorded(MirPlace test, Koto condition)
+    {
+        var compared = condition;
+        while (InPlace(HirTables.AdjustOf(compared)) && HirTables.Op(compared) == HirOp.Group)
+        {
+            compared = Child(compared);
+        }
+
+        if (!InPlace(HirTables.AdjustOf(compared)) || HirTables.Op(compared) != HirOp.PrimitiveOp || compared is not BinaryKoto binary ||
+            BinaryOp(binary.Akind) is not (>= MirBinaryOp.Eq and var op))
+        {
+            this.Assign(test, condition);
+            return;
+        }
+
+        var start = this.Operands(binary);
+        for (var side = 0; side < 2; side++)
+        {
+            if (ScalarTypes.Supports(this.TypeOf(this.arguments[start + side])))
+            {
+                this.arguments[start + side] = this.Secure(this.arguments[start + side], side == 0 ? binary.Left : binary.Right);
+            }
+        }
+
+        for (var side = 0; side < 2; side++)
+        {
+            var value = this.arguments[start + side];
+            if (ScalarTypes.Supports(this.TypeOf(value)))
+            {
+                var record = this.arguments.Count;
+                this.arguments.Add(MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.I32, side))));
+                this.arguments.Add(value.Kind == MirOperandKind.Const ? value : MirOperand.Copy(value.Place));
+                this.Invoke(this.Temp(BoundType.Unit, condition), MirCallee.Intrinsic(IntrinsicId.TestRecordValue), record, condition);
+            }
+        }
+
+        this.Binary(test, binary, op, start, TypeOf(compared));
     }
 
     // SPEC 14.2.3, 3.6: evaluate a condition once, clean its temporaries, then branch; Enter ends the bool's storage in each successor.

@@ -102,7 +102,19 @@ public sealed partial class Binding
             }
 
             this.activeRequirementContract = evaluation.Requirements?.Contracts[index] ?? (callee as RequirementCalleeKoto)?.Contract;
-            state = this.TryCandidate(call, function, evaluation.Generic, scope, evaluation.Scratch, evaluation.LengthArguments, evaluation.ExplicitLengths, evaluation.Mapping, argumentMap, evaluation.Expected, evaluation.Self, evaluation.Origins, evaluation.Inputs, declaringType, operations, out defaultsUsed, out unsolved, out closureReceiver, out independentRejection, out rejectedConstraint, out premiseUnknown);
+            state = this.TryCandidate(
+                this.Solution(evaluation, function, declaringType),
+                evaluation.ExplicitLengths,
+                evaluation.Mapping,
+                argumentMap,
+                evaluation.Expected,
+                operations,
+                out defaultsUsed,
+                out unsolved,
+                out closureReceiver,
+                out independentRejection,
+                out rejectedConstraint,
+                out premiseUnknown);
             this.activeRequirementContract = null;
         }
 

@@ -231,9 +231,18 @@ public sealed partial class Binding
         }
     }
 
-    private BoundType? CallType(BoundType type, FunctionKoto function, BoundType?[] arguments, BindingScope scope, BoundType? self, BoundOrigin[] origins, BoundOrigin[] inputs, BoundType? declaringType = null, ReadOnlySpan<BoundLength?> lengths = default)
+    private BoundType? CallType(
+        BoundType type,
+        Koto binder,
+        BoundType?[] arguments,
+        BindingScope scope,
+        BoundType? self,
+        BoundOrigin[] origins,
+        BoundOrigin[] inputs,
+        BoundType? declaringType = null,
+        ReadOnlySpan<BoundLength?> lengths = default)
     {
-        if (this.CallMemberPattern(type, function, declaringType) is not { } memberType)
+        if (this.CallMemberPattern(type, binder, declaringType) is not { } memberType)
         {
             return null;
         }
@@ -244,13 +253,13 @@ public sealed partial class Binding
             type = this.ContractType(type, scope, self);
         }
 
-        var result = this.SubstituteType(type, CallSlotOwner(function), arguments, lengths);
+        var result = this.SubstituteType(type, CallSlotOwner(binder), arguments, lengths);
         if (result is not null)
         {
-            for (var i = 0; i < function.Parameters.Count && i < inputs.Length; i++)
+            for (var i = 0; i < InputCount(binder) && i < inputs.Length; i++)
             {
-                if (function.Parameters[i].Type.BoundType?.Origin is { BorrowCondition: { } selector } &&
-                    ContainerSlot(CallSlotOwner(function), selector) is var slot && slot >= 0 && slot < arguments.Length &&
+                if (InputType(binder, i)?.BoundType?.Origin is { BorrowCondition: { } selector } &&
+                    ContainerSlot(CallSlotOwner(binder), selector) is var slot && slot >= 0 && slot < arguments.Length &&
                     arguments[slot] is { Semantics: not SemanticsKind.Parameter } binding && !IsBorrow(binding.Semantics))
                 {
                     inputs[i] = BoundOrigin.Static;
@@ -258,7 +267,8 @@ public sealed partial class Binding
             }
 
             result = this.ContractType(result, scope, self);
-            result = this.SubstituteStoredOrigins(result, function, origins.AsSpan(0, function.Origins.Count), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(function))));
+            result = this.SubstituteStoredOrigins(
+                result, binder, origins.AsSpan(0, CallOriginCount(binder)), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
         }
 
         return result;

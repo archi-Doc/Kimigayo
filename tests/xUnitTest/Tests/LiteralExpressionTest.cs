@@ -46,6 +46,24 @@ public class LiteralExpressionTest
             1,
             "Hello.kimi:2:15: abort KIMI_E_INT_SHIFT_COUNT: Shift count out of range\n");
 
+    // SPEC 10.5.1, 14.9.2: a control-flow argument whose result sources are all literals is a Literal: each candidate's Type propagates to
+    // every source, at a position of a Tuple literal too and shared-borrowed at `ref/T`, and only a candidate every source fits applies.
+    [Theory]
+    [InlineData("func take(value: i64) -> () => ()\ntake(if c => 1 else => 2)")]
+    [InlineData("func pick(value: u8) -> () => ()\npick(if c => 255 else => 0)")]
+    [InlineData("func read(value: ref/i32) -> () => ()\nread(if c => 1 else => 2)")]
+    [InlineData("func take(value: i64) -> () => ()\ntake(if c => (if d => 1 else => 2) else => 3)")]
+    [InlineData("func take(value: i64) -> () => ()\ntake(match c\n    true => 1\n    false => 2\n)")]
+    [InlineData("func take(value: i64) -> () => ()\ntake(loop => exit 1)")]
+    [InlineData("func g(x: (i64, i64)) => ()\nlet a: i64 = 2\ng((if c => 1 else => 2, a))")]
+    [InlineData("func f(value: i8) -> () => ()\nfunc f(value: i64) -> () => ()\nf(if c => 1 else => 200)")]
+    public void AControlFlowArgumentOfLiteralsIsALiteral(string source)
+    {
+        var c = MinimalEmissionTest.Analyze("let c = true\nlet d = false\n" + source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+    }
+
     [Theory]
     [InlineData("func choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\nchoose(2 * 5)")]
     [InlineData("let a: u8 = -(1)")]

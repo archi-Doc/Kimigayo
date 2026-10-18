@@ -172,13 +172,13 @@ public class CallOriginRelationTest(ITestOutputHelper output)
         Assert.Equal([nameof(DiagnosticCode.AmbiguousBinding_Kd), nameof(DiagnosticCode.AmbiguousBinding_Kd)], DiagnosticCorpus.Check(literal).Diagnostics.Select(static x => x.Code));
 
         // The nongeneric candidate wins by step 3; its relation is then Unproven (it was the generic one, printing 2).
-        var generic = "func k(x: ref/i32 during static, y: i32) -> i32 => 1\nfunc k<T>(x: ref/i32, y: T) -> i32 => 2\nfunc caller(p: ref/i32) -> i32 => k(p, 1)\n" + Main;
+        var generic = "func k(x: ref/i32 during static, y: i32) -> i32 => 1\nfunc k<T>(x: ref/i32, y: T) -> i32 => 2\nfunc caller(p: ref/i32) -> i32 => k(p, 1@i32)\n" + Main;
         var error = Assert.Single(DiagnosticCorpus.Check(generic).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "p"), (error.Code, Text(generic, error.Span)));
     }
 
     [Theory]
-    [InlineData("Ranked", "func m<T>(x: ref/i32 during static, y: T) -> i32 => 1\nfunc m(x: ref/i32, y: i32) -> i32 => 2\nfunc caller(p: ref/i32) -> i32 => m(p, 1)\nlet v: i32 = 5\nrequire caller(v@ref) == 2 else => $abort(\"ranked\")")]
+    [InlineData("Ranked", "func m<T>(x: ref/i32 during static, y: T) -> i32 => 1\nfunc m(x: ref/i32, y: i32) -> i32 => 2\nfunc caller(p: ref/i32) -> i32 => m(p, 1@i32)\nlet v: i32 = 5\nrequire caller(v@ref) == 2 else => $abort(\"ranked\")")]
     [InlineData("Explicit", "func k(x: ref/i32 during static, y: i32) -> i32 => 1\nfunc k<T>(x: ref/i32, y: T) -> i32 => 2\nfunc localCaller(p: ref/i32) -> i32 => k<i32>(p, 1)\nlet v: i32 = 5\nrequire localCaller(v@ref) == 2 else => $abort(\"explicit\")")]
     public void AStructuralSelectionRuns(string name, string source)
         => ScalarEmissionTest.EmitFixture("CallOriginRelation" + name, source, string.Empty);
