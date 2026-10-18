@@ -130,7 +130,9 @@ internal sealed partial class MirBuilder
 
         if (index < 0)
         {
-            this.Unsupported(jump); // A published target no construct around the jump has opened.
+            // A published target no construct around the jump opened, though every target construct opens one: a broken HIR contract.
+            this.program.Report(SourceRef.Of(jump), DiagnosticCode.InternalInvariant_Kd);
+            this.Unsupported(jump, derived: true);
             return;
         }
 
