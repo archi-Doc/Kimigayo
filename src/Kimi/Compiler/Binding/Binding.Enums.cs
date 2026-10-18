@@ -92,6 +92,29 @@ public sealed partial class Binding
     private static bool EnumArityMatches(int payloadCount, InvocationKoto? call)
         => payloadCount == (call?.ArgumentNodes.Count ?? 0) && (call is null) == (payloadCount == 0);
 
+    // SPEC 10.8, 10.5: the construction's slots that no evidence binds, other than an F that a waiting callable binds (`unsolved`); false
+    // when every slot is bound.
+    private static bool UnsolvedPayloadSlots(ReadOnlySpan<Koto> payload, in SlotSolution solution, ref SlotSet unsolved)
+    {
+        unsolved.Clear();
+        for (var g = 0; g < CallSlotCount(solution.Binder); g++)
+        {
+            if (solution.Types[g] is null)
+            {
+                unsolved.Add(g);
+            }
+        }
+
+        var unbound = !unsolved.IsEmpty;
+        var waiting = new WaitingSlots(ref unsolved, solution.SlotOwner);
+        for (var i = 0; i < payload.Length; i++)
+        {
+            TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, waiting);
+        }
+
+        return unbound;
+    }
+
     private BoundType? EnumQualifierType(Koto qualifier, BindingSymbol symbol, BindingScope scope, BoundType? expected)
     {
         BoundType? type;
@@ -282,12 +305,13 @@ public sealed partial class Binding
 
     // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction's own slots after those its qualifier and expected Type fix. A payload whose
     // payload Type those fixed slots settle (`settled`) is bound only at it, on completion; every other payload is prepared as an argument
-    // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot no evidence binds
-    // waits; otherwise the Literal parts' defaults apply, and are evidence once applied. False when the construction is complete: failed
+    // is and is evidence by its kind (SlotSolution.InferArgument). Under the argument probe a construction with a slot that no evidence
+    // binds waits; otherwise the Literal parts' defaults apply to the slots that neither evidence nor a waiting callable at an F binds
+    // (SPEC 10.5, TakeWaiting), and are evidence once applied. Once every other slot is bound, the waiting callables at an F are
+    // completed with S and are evidence (SPEC 10.5.4), as a call's are after selection. False when the construction is complete: failed
     // or waiting.
     private bool SolveConstruction(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, BoundType? expected, ref SlotSet settled)
     {
-        var count = solution.SlotOwner.BoundSymbol!.Schema!.GenericSlots.Count;
         for (var i = 0; i < payload.Length; i++)
         {
             if (solution.Call.GetArgumentLabel(i) is not null || payload[i].BoundType is null)
@@ -309,38 +333,66 @@ public sealed partial class Binding
             }
         }
 
-        for (var late = 0; late < 2; late++)
+        var unsolved = this.RentSlotSet(CallSlotCount(solution.Binder));
+        try
         {
-            for (var i = 0; i < payload.Length; i++)
+            for (var late = 0; late < 2; late++)
             {
-                if (!settled.Contains(i) && !solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late: late == 1))
+                if (!this.InferPayloads(use, payload, ref solution, settled, late == 1))
                 {
-                    this.Fail(use, BindingFailure.TypeMismatch);
+                    return false;
+                }
+
+                if (!UnsolvedPayloadSlots(payload, solution, ref unsolved))
+                {
+                    return true;
+                }
+
+                // SPEC 10.5.1: a construction's result holds all its slots, so under the argument probe one that no evidence binds waits.
+                if (late == 0 && this.DeferNestedCall(use, expected))
+                {
+                    Complete(use, null);
+                    return false;
+                }
+
+                if (unsolved.IsEmpty || late == 1)
+                {
+                    break;
+                }
+
+                if (solution.DefaultPayloads(payload, unsolved) is { } misfit)
+                {
+                    this.CompleteDependent(use, misfit); // SPEC 12.3: the literals' own records, on which the construction rests.
                     return false;
                 }
             }
 
-            var unbound = false;
-            for (var i = 0; i < count; i++)
+            for (var i = 0; i < payload.Length && unsolved.IsEmpty; i++)
             {
-                unbound |= solution.Types[i] is null;
+                if (!TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, solution))
+                {
+                    Complete(use, null); // The callable's own failure, on which the construction rests.
+                    return false;
+                }
             }
 
-            if (late == 1 || !unbound)
-            {
-                break;
-            }
+            return !unsolved.IsEmpty || this.InferPayloads(use, payload, ref solution, settled, false);
+        }
+        finally
+        {
+            this.ReturnSlotSet(unsolved);
+        }
+    }
 
-            // SPEC 10.5.1: a construction's result holds all its slots, so under the argument probe one that no evidence binds waits.
-            if (this.DeferNestedCall(use, expected))
+    // SPEC 10.8: each payload but a settled one is evidence by its kind, in the early or the late pass; a payload that refutes the slots
+    // is the construction's Type mismatch.
+    private bool InferPayloads(Koto use, ReadOnlySpan<Koto> payload, ref SlotSolution solution, SlotSet settled, bool late)
+    {
+        for (var i = 0; i < payload.Length; i++)
+        {
+            if (!settled.Contains(i) && !solution.InferArgument(payload[i].BoundType!, solution.Call.ArgumentNodes[i], late))
             {
-                Complete(use, null);
-                return false;
-            }
-
-            if (solution.DefaultPayloads(payload, out _) is { } misfit)
-            {
-                this.CompleteDependent(use, misfit); // SPEC 12.3: the literal's own record, on which the construction rests.
+                this.Fail(use, BindingFailure.TypeMismatch);
                 return false;
             }
         }
@@ -349,8 +401,9 @@ public sealed partial class Binding
     }
 
     // SPEC 6.5.2, 10.5.1, 10.2: each payload in source order fits its decided payload Type as an argument does (a settled one is bound at
-    // it instead), is completed at it (CompleteArgument, ErasePart) and adapted to it. A misfit is a Type mismatch of the construction;
-    // one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required spelling (SPEC 6.5.2).
+    // it instead), is completed at it (ErasePart for a callable) and adapted to it. The construction judges the fit once: a misfit is its
+    // Type mismatch, one only in Origin relations fails at the payload (SPEC 15.6.1), and a bare Non-Copy Place names its required
+    // spelling (SPEC 6.5.2); a payload's own failure while bound is its record, on which the construction rests.
     private bool CompletePayloads(
         Koto use,
         ReadOnlySpan<Koto> payload,
@@ -372,7 +425,7 @@ public sealed partial class Binding
             }
 
             this.acquisitionFailure = null;
-            if (fit == CandidateApplicability.Error || this.CompleteArgument(source, type, scope) is not { } completed ||
+            if (fit == CandidateApplicability.Error || (source.BoundType ?? this.BindNode(source, scope, type)) is not { } completed ||
                 (fitted.Adaptation == ArgumentAdaptation.Erasure && completed is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } &&
                 !this.ErasePart(source, completed, type)))
             {

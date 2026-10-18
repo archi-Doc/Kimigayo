@@ -1753,6 +1753,22 @@ R5 on the owner's request of 2026-10-18.
     and `ExpectedCallSignature`. `CompleteUnselected` keeps its own walk: it binds the parts of a call without a candidate,
     with no position or F. Rejected: a skip-indexed search per waiting callable (quadratic in a literal's waiting
     elements); recording F bindings during the evidence walk (state carried across its passes).
+  - U7b, the redo's behavior (B1, B2, B3, N5, N7): a Case construction takes the waiting-binds-F rule from the shared walk.
+    `UnsolvedPayloadSlots` leaves out an F that a waiting callable binds (`WaitingSlots`), so the Literal defaults skip it as
+    a call's do; once every other slot is bound, the callables are completed with S (`SlotSolution.Take`) and are evidence:
+    `let x = Option.Some(func (v: i64) -> i64 => v)` and `W.Wrap(func (v: i64) -> i64 => v, 1)` are typed, and
+    `Option.Some(identity)` is the reference's own `UnboundTypeArgument_Kd`. Under the argument probe a construction with any
+    unbound slot still waits (U5). The construction owns its payloads' fit: a payload is bound at its decided Type with no
+    record of its own (`BindNode`), and a misfit is the construction's one `TypeMismatch_Kd` (B3), as at the merge base;
+    `CompleteArgument` is deleted, and the call path keeps `RequireType`, the owner of a completion misfit there. Every
+    Literal that its default does not fit is its own record (`DefaultArguments`, `DefaultPayloads`, `DefaultPart`; N5, SPEC
+    23.1.2), and `DefaultPayloads` reads the construction's unsolved slots. N7: `Two.Both(1, 2.0)` stays the construction's
+    record, as `two(1, 2.0)` is the call's `NoApplicableOverload_Kd`; the merge base's record at `2.0` came from rebinding the
+    literal at the decided Type. Rejected: judging a payload in its completion and dropping the construction's check (a
+    settled or typed payload's misfit would leave the construction, unlike a call's). Open: under the argument probe a
+    construction whose only unbound slots waiting callables bind waits, while such a nested call is typed; SPEC 10.5.1 makes
+    the call Waiting when a callable needs S (`takeF(wrap(func (v) => v))` reports `UnresolvedBinding_Kd`, while
+    `takeF(Option.Some(func (v) => v))` is accepted), so the call path's deferral is the one to change.
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one

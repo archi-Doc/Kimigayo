@@ -140,8 +140,9 @@ public sealed partial class Binding
         }
 
         // SPEC 10.2.1: after selection, each Literal part at a position that holds an unsolved slot takes its default (SPEC 12.3, and
-        // 4.6.2 rule 3 for a literal-only range boundary), recorded for the candidate's checks to run once more. Returns the first such
-        // part that its default does not fit, bound at it for its own record; `applied` tells whether any default applied.
+        // 4.6.2 rule 3 for a literal-only range boundary), recorded for the candidate's checks to run once more. Each part that its
+        // default does not fit is bound at it for its own record (SPEC 23.1.2), and one of them is returned; `applied` tells whether any
+        // default applied.
         internal readonly Koto? DefaultArguments(int[] mapping, out bool applied)
         {
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
@@ -152,7 +153,8 @@ public sealed partial class Binding
                 Koto? misfit = null;
                 for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
                 {
-                    misfit ??= this.DefaultPart(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, unsolved, ref applied);
+                    var pattern = this.Function.Parameters[mapping[i]].Type.BoundType!;
+                    misfit = this.DefaultPart(this.Call.ArgumentNodes[i], pattern, unsolved, ref applied) ?? misfit;
                 }
 
                 return misfit;
@@ -163,35 +165,19 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 10.2.1, 6.5.2: a Case construction's defaults, after its evidence: each payload's Literal leaves at positions that hold a
-        // slot no evidence binds take their defaults. Returns the first part its default does not fit, bound at it for its own record.
-        internal readonly Koto? DefaultPayloads(ReadOnlySpan<Koto> payload, out bool applied)
+        // SPEC 10.2.1, 6.5.2: a Case construction's defaults, after its evidence: each payload's Literal leaves at positions that hold an
+        // unsolved slot take their defaults. Each part that its default does not fit is bound at it for its own record, and one of them
+        // is returned.
+        internal readonly Koto? DefaultPayloads(ReadOnlySpan<Koto> payload, SlotSet unsolved)
         {
-            var count = CallSlotCount(this.Binder);
-            var unsolved = this.Binding.RentSlotSet(count);
-            try
+            var applied = false;
+            Koto? misfit = null;
+            for (var i = 0; i < payload.Length; i++)
             {
-                for (var i = 0; i < count; i++)
-                {
-                    if (this.Types[i] is null)
-                    {
-                        unsolved.Add(i);
-                    }
-                }
-
-                applied = false;
-                Koto? misfit = null;
-                for (var i = 0; i < payload.Length; i++)
-                {
-                    misfit ??= this.DefaultPart(this.Call.ArgumentNodes[i], payload[i].BoundType!, unsolved, ref applied);
-                }
-
-                return misfit;
+                misfit = this.DefaultPart(this.Call.ArgumentNodes[i], payload[i].BoundType!, unsolved, ref applied) ?? misfit;
             }
-            finally
-            {
-                this.Binding.ReturnSlotSet(unsolved);
-            }
+
+            return misfit;
         }
 
         // An anonymous function: once bound, its Type at any pattern but a Function Type (where its signature meets the pattern after
@@ -423,7 +409,7 @@ public sealed partial class Binding
                 for (var i = 0; i < tuple.Elements.Count; i++)
                 {
                     var element = pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count ? pattern.Components[i] : pattern;
-                    misfit ??= this.DefaultPart(tuple.Elements[i], element, unsolved, ref applied);
+                    misfit = this.DefaultPart(tuple.Elements[i], element, unsolved, ref applied) ?? misfit;
                 }
             }
             else if (source is ArrayLiteralKoto array)
@@ -431,14 +417,15 @@ public sealed partial class Binding
                 var element = pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray ? pattern.Components[0] : pattern;
                 for (var i = 0; i < array.Elements.Count; i++)
                 {
-                    misfit ??= this.DefaultPart(array.Elements[i], element, unsolved, ref applied);
+                    misfit = this.DefaultPart(array.Elements[i], element, unsolved, ref applied) ?? misfit;
                 }
             }
             else if (source is RangeKoto range && IsMixedRange(range))
             {
                 var ranged = pattern is { Kind: BoundTypeKind.Constructed, Components.Count: 2 };
-                misfit = this.DefaultBoundary(range.Start, range.End, ranged ? pattern.Components[0] : pattern, binding.EndType, unsolved, ref applied) ??
-                    this.DefaultBoundary(range.End, range.Start, ranged ? pattern.Components[1] : pattern, binding.StartType, unsolved, ref applied);
+                misfit = this.DefaultBoundary(range.Start, range.End, ranged ? pattern.Components[0] : pattern, binding.EndType, unsolved, ref applied);
+                misfit = this.DefaultBoundary(
+                    range.End, range.Start, ranged ? pattern.Components[1] : pattern, binding.StartType, unsolved, ref applied) ?? misfit;
             }
 
             return misfit;

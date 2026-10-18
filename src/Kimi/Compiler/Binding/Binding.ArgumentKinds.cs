@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 //   13.3.4) and share the Literal control-flow predicate (ResultSurvey.AllLiteral).
 // - Outputs: KindOf; the preparation of a call's arguments and of each part (PrepareArgument, PrepareComposite); the fit walk, a
 //   part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments, elements, Case
-//   payloads and value calls, and its completion there (CompleteArgument, ErasePart); SolveSelected, the selected candidate of a call
+//   payloads and value calls, and the erasure of a callable completed there (ErasePart); SolveSelected, the selected candidate of a call
 //   whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its checks run once more
 //   (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments; the waiting-binds-F rule (TakeWaiting,
 //   Binding.ArgumentKinds.Waiting.cs), the one walk to the waiting callables at an F that the call's queries and the completions share;
@@ -182,11 +182,6 @@ public sealed partial class Binding
         part.ErasedFunctionType = erased;
         return true;
     }
-
-    // SPEC 10.5.1, 6.5.2: completes an argument part, element or payload at its decided Type: a Literal is fitted there, a waiting part
-    // checked and a Composite built; a part bound on its own keeps its Type. G129 re-fits a literal here, the one place where a part
-    // takes its decided Type.
-    private BoundType? CompleteArgument(Koto part, BoundType? type, BindingScope scope) => part.BoundType ?? this.RequireType(part, scope, type);
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other
     // source must fit once it applies.

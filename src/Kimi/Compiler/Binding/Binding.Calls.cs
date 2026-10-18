@@ -712,7 +712,7 @@ public sealed partial class Binding
                     // The argument is an expression of the caller's context, not of the selected requirement.
                     var selectedContract = this.activeRequirementContract;
                     this.activeRequirementContract = null;
-                    this.CompleteArgument(call.ArgumentNodes[i], selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType, scope);
+                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType);
                     this.activeRequirementContract = selectedContract;
                     if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
                     {

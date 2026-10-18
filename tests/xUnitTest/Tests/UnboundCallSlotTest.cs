@@ -145,6 +145,17 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
     }
 
+    // SPEC 10.2.1, 23.1.2: every Literal that its default does not fit is its own record, an argument, element or payload alike.
+    [Theory]
+    [InlineData("func f2<T>(a: T, b: T) => ()\npublic func main() -> ()\n    f2(3000000000, 5000000000)\n", "3000000000", "5000000000")]
+    [InlineData("func id<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let x = id((3000000000, 4000000000))\n", "3000000000", "4000000000")]
+    [InlineData("enum Two<T>\n    Both(T, T)\npublic func main() -> ()\n    let x = Two.Both(3000000000, 5000000000)\n", "3000000000", "5000000000")]
+    public void EveryLiteralItsDefaultDoesNotFitIsItsOwnRecord(string source, string first, string second)
+    {
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))).ToArray();
+        Assert.Equal(new[] { (nameof(DiagnosticCode.InvalidNumericLiteral_Kd), first), (nameof(DiagnosticCode.InvalidNumericLiteral_Kd), second) }, errors);
+    }
+
     // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.
     [Fact]
     public void EveryOutputCarriesTheSlotAndTheWaitingArgument()

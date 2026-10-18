@@ -8,7 +8,8 @@ namespace Kimi.Compiler;
 // of the slot owner, binds F: F takes no evidence from it, and it is completed after the other evidence with the call signature S of F's
 // Callable Constraint, or without S when F has none. A position is an argument's or a payload's, or that of a Tuple or array literal
 // element within one. TakeWaiting is the one walk that finds such callables and CallableSlotType the one test of F; they read a pattern
-// and a slot owner only, so a call's queries (UnsolvedSlots, WaitingPartsBind) and the completions over a SlotSolution share them.
+// and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case construction (UnsolvedPayloadSlots)
+// and the completions over a SlotSolution share them.
 public sealed partial class Binding
 {
     // A consumer of TakeWaiting: it takes each waiting callable at its position and slot F, and stops the walk by returning false.
