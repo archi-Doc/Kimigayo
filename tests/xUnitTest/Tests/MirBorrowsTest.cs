@@ -390,6 +390,34 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     inspect(slot)
                 """));
 
+    // SPEC 15.6.4 (DECISIONS BU-1): a value stored into writable storage brings its whole Type, so Array<rc/S>.append stores the borrow
+    // its element's payload holds into the Array, below the rc layer: a write of the borrowed Place while the Array is used later errs; a
+    // read, or a write before the append, does not.
+    [Fact]
+    public void ACallStoresBelowAnRcLayer()
+        => Assert.Equal(
+            ["appended: x = 2"],
+            Problems("""
+                func appended()
+                    var x = 1
+                    var e: Array<rc/S> = []
+                    e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
+                    x = 2
+                    inspect(e@ref)
+                func appendedRead()
+                    var x = 1
+                    var e: Array<rc/S> = []
+                    e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
+                    inspect(x@ref)
+                    inspect(e@ref)
+                func writtenBefore()
+                    var x = 1
+                    var e: Array<rc/S> = []
+                    x = 2
+                    e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
+                    inspect(e@ref)
+                """));
+
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
     // into the raw storage, which the body does not own (E), so its Loans are checked at every later point: a write or an exclusive use of
     // the borrowed Place after it errs, and a local's borrow outlives the local (its end errs) unless a write ended it first; a parameter's
