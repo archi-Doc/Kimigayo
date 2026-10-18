@@ -1821,7 +1821,8 @@ structure is recorded here by the unit that first implements it.
   the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a Backend input); a scalar
   flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form); a needs flag on the built helper (the
   collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit). The
-  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27.
+  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27, the formatting rows (P1d) by
+  R5-M30.
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -2047,7 +2048,8 @@ structure is recorded here by the unit that first implements it.
   Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
   `cLayouts` beside the fact.
 - **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
-  refines R5-M16; refined by R5-M28) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
+  refines R5-M16; refined by R5-M28 and by R5-M30, which adds the formatting rows and the `HelperNeeds` member
+  `FormattingRuntime`) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
   `LegacyRuntimeHelpers.DictionaryRow(kind)`, which fails closed: `Kind`; `Shape`, the ABI over the generator's name suffix and
   the key and value descriptors, with the kind's name prefix inside it; `Write`, the body's writer over the helper and the ABIs
   of its two callees; `Entries`, the `DictionaryStorage` function generic over the entry Types, which a helper reaches through
@@ -2056,8 +2058,8 @@ structure is recorded here by the unit that first implements it.
   `KimiLibrary` declaration the old emitter resolves each from, until F2c's symbol view; the emitter maps a row's `Entries`
   callee to its generic function exhaustively and fails closed on any other. `CallsEntries(destroysEntries)` is the one decision
   whether a helper calls its `Entries` function (always, or under `ElementGlue` only when an entry needs destruction), read by
-  BodyLowering's `Related`, `HasUnresolvedReference` and the writer. `HelperNeeds` is shared by the Array and Dictionary rows:
-  `ArrayRuntime` (every Dictionary kind), `DictionaryRuntime` (P1c2; CheckKey, whose duplicate callback reports through the
+  BodyLowering's `Related` and `LegacyRuntimeHelpers.HasUnresolvedReference`. `HelperNeeds` is shared by the Array and
+  Dictionary rows: `ArrayRuntime` (every Dictionary kind), `DictionaryRuntime` (P1c2; CheckKey, whose duplicate callback reports through the
   runtime's adapter) and `ElementGlue` (Drop). A request's runtime flags come from its row (`Request`, through one `JoinNeeds`
   for both families), and every requested helper is written after the runtimes its row declares: before P1c2 a Drop helper
   requested only by a Field's drop glue set no flag and was never written (PLAN G133). The row callees are exactly the functions
@@ -2094,3 +2096,27 @@ structure is recorded here by the unit that first implements it.
   (a temporary view in a held file); one symbol property per function (each consumer would map a row's callee to its property);
   a key beside `DictionaryCallee` (two names for one concept); reading the symbol from the declaration's HIR column (a forwarding
   property, removed at R6); keeping appendSlot and clearLinks (no legacy text calls them).
+- **R5-M30 Legacy formatting rows** (2026-10-18, planning session; plan P1d, PD2, S2-S4 X4, K package §4.5 row 2 and K6;
+  refines R5-M16 and R5-M27) `FormattingHelperRow(Kind, Abi, Needs)` is one row per formatting compiler function, the 28
+  `CompilerFunctionKind`s TextFixed through BuiltinFormat (the 26 Body-disposition kinds and the routines of the ErasedWriter
+  intrinsic and the BuiltinFormat shim), read by `LegacyRuntimeHelpers.FormattingRow(kind)`, which returns null outside that
+  range and throws on a missing row. `Abi` is the routine's ABI in the formatting runtime: the fixed symbol every call names and
+  the runtime splice defines (rows sharing a symbol share its routine, defined by the first of them in kind order). A row declares
+  only what its text calls or needs: every row's `Needs` is the new `HelperNeeds` member `FormattingRuntime` (the UTF-8 buffer,
+  writer, formatting and floating-point runtime and the memory declarations), and no row declares a library callee, since the
+  formatting runtime calls none. The formatting witness that WriterWrite, TextToString and TextTryFormat run is already
+  published once: their `KimiLibraryCatalog` rows carry SPEC 4.9.6's `Formats` and `FormatsValue` rows (Runs `Utf8Format`, On
+  parameter 0 or 1), read through `TyCtxt.Published` as A4 reads them (`MirEffects`). K6 takes the witness target of these
+  Body-disposition calls from `TyCtxt.Published` (refining K row 2 and K6); TextWriter's is the ErasedWriter intrinsic's target
+  (K row 6) and BuiltinFormat's leaves are its Builtin item's. The wrapper requests (`RequestFormattingWrite`, for WriterWrite's
+  row; `RequestFormattingConversion`, for TextToString's or TextTryFormat's) join their row's needs through the `JoinNeeds` the
+  three families share; the planner (`GenericStoragePlan`) requests each wrapper once and only for those kinds, and
+  `WriteFormatting` writes every requested wrapper after the runtime, no longer under its flag (G133's shape; a full-suite probe
+  at 70f06c4b found no module with a wrapper but no flag, so no output changed). The old lowering still sets the flag for its
+  direct calls of formatting routines and for interpolation: calls, not helper requests, like R5-M27's direct capacity calls.
+  The rows are per compiler function because the collector reads a Body-disposition call by its compiler function (K row 2)
+  and C9a calls the routines through their row ABIs; the wrappers are codegen's, derived from the witness target. Rejected: no
+  rows (C9a would read the old Emission's table); rows per wrapper kind (the collector never sees a wrapper); a
+  `FormattingWitness` row bit (a third statement of the published `Formats` rows, beside `IntrinsicDisposition.Effect`'s
+  `Formatting` class, naming neither the requirement nor the parameter; and no formatting routine's text calls a witness, unlike
+  an `ElementGlue` helper's); wrappers written only under the runtime flag (G133).
