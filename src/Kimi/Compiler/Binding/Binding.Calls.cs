@@ -597,7 +597,7 @@ public sealed partial class Binding
                 allInputs.AsSpan(winnerIndex * inputSlots, inputSlots).CopyTo(inputs);
             }
 
-            if ((applicable > 1 || evaluated[winnerIndex].Unsolved) && !this.SolveSelected(ref evaluation, winnerIndex, selectedType))
+            if (!this.SolveSelected(ref evaluation, winnerIndex, selectedType))
             {
                 return null; // SPEC 10.5.1, 10.2.1: the nested call waits, or the call rests on its record (SolveSelected).
             }

@@ -97,14 +97,21 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 10.5.1: whether the result holds a Type or Semantics slot that no evidence binds; a constructor's result holds all its
-        // slots. Origin slots are not counted.
+        // SPEC 10.5.1 (D4): whether the result holds a Type or Semantics slot that neither evidence nor a waiting callable fixes with
+        // no outer expectation (OpenWaitingSlots), as a construction's does (HoldsOpenSlot); a constructor's result holds all its slots.
+        // Origin slots are not counted.
         internal readonly bool ResultHoldsUnsolved(int[] mapping)
         {
             var unsolved = this.Binding.RentSlotSet(CallSlotCount(this.Function));
             try
             {
                 UnsolvedSlots(this.Call, this.Function, this.Types, this.Lengths, mapping, ref unsolved, out _);
+                var open = new OpenWaitingSlots(ref unsolved, this);
+                for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
+                {
+                    TakeWaiting(this.Call.ArgumentNodes[i], this.Function.Parameters[mapping[i]].Type.BoundType!, this.SlotOwner, open);
+                }
+
                 return !unsolved.IsEmpty &&
                     (this.Function.IsConstructor || (this.Function.BoundSymbol?.Type is { } result && MentionsSlots(result, this.SlotOwner, unsolved)));
             }

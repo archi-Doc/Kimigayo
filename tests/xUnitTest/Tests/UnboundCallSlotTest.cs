@@ -145,6 +145,25 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
     }
 
+    // SPEC 10.5.1, 10.5.3, 10.5.4 (D4; owner decision 2026-10-18): a nested call or construction whose slot only a waiting callable binds
+    // is typed by that callable when it needs no S and otherwise waits for its outer expectation, a call and a construction alike: the
+    // typed result is then fitted as a typed argument is, and a waiting one that no expectation types is the outer call's record.
+    [Theory]
+    [InlineData("takeF(Option.Some(func (v: i64) -> i64 => v))", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("takeF(wrap(func (v: i64) -> i64 => v))", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("keep(Option.Some(func (v: i64) -> i64 => v))", null)]
+    [InlineData("keep(wrap(func (v: i64) -> i64 => v))", null)]
+    [InlineData("takeF(Option.Some(func (v) => v))", null)]
+    [InlineData("takeF(wrap(func (v) => v))", null)]
+    [InlineData("keep(Option.Some(func (v) => v))", nameof(DiagnosticCode.UnboundTypeArgument_Kd))]
+    [InlineData("keep(wrap(func (v) => v))", nameof(DiagnosticCode.UnboundTypeArgument_Kd))]
+    public void AWaitingCallableFixesItsSlotWhenItNeedsNoS(string call, string? code)
+    {
+        var source = "func wrap<T>(value: T) -> Option<T> => Option.Some(value@move)\nfunc takeF(value: Option<(i64) -> i64>) => ()\nfunc keep<T>(value: T) => ()\npublic func main() -> ()\n    " + call + "\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))).ToArray();
+        Assert.Equal(code is null ? [] : new[] { (code, call) }, errors);
+    }
+
     // SPEC 10.2.1, 23.1.2: every Literal that its default does not fit is its own record, an argument, element or payload alike.
     [Theory]
     [InlineData("func f2<T>(a: T, b: T) => ()\npublic func main() -> ()\n    f2(3000000000, 5000000000)\n", "3000000000", "5000000000")]

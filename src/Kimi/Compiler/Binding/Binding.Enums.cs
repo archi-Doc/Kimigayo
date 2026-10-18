@@ -348,8 +348,9 @@ public sealed partial class Binding
                     return true;
                 }
 
-                // SPEC 10.5.1: a construction's result holds all its slots, so under the argument probe one that no evidence binds waits.
-                if (late == 0 && this.DeferNestedCall(use, expected))
+                // SPEC 10.5.1 (D4): under the argument probe a construction waits while its result, which holds all its slots, holds one
+                // that neither evidence nor a waiting callable fixes, as a nested call does.
+                if (late == 0 && this.HoldsOpenSlot(payload, solution, unsolved) && this.DeferNestedCall(use, expected))
                 {
                     Complete(use, null);
                     return false;
@@ -381,6 +382,32 @@ public sealed partial class Binding
         finally
         {
             this.ReturnSlotSet(unsolved);
+        }
+    }
+
+    // SPEC 10.5.1: whether the construction holds a slot that no evidence binds (`unsolved`) or an F that its waiting callable does not
+    // fix with no outer expectation (OpenWaitingSlots).
+    private bool HoldsOpenSlot(ReadOnlySpan<Koto> payload, in SlotSolution solution, SlotSet unsolved)
+    {
+        if (!unsolved.IsEmpty)
+        {
+            return true;
+        }
+
+        var open = this.RentSlotSet(CallSlotCount(solution.Binder));
+        try
+        {
+            var taker = new OpenWaitingSlots(ref open, solution);
+            for (var i = 0; i < payload.Length; i++)
+            {
+                TakeWaiting(solution.Call.ArgumentNodes[i], payload[i].BoundType!, solution.SlotOwner, taker);
+            }
+
+            return !open.IsEmpty;
+        }
+        finally
+        {
+            this.ReturnSlotSet(open);
         }
     }
 

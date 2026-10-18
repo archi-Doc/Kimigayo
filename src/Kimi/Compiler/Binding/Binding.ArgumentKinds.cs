@@ -310,17 +310,23 @@ public sealed partial class Binding
         return true;
     }
 
-    // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds, or of a nested call with another applicable
-    // candidate. Under the argument probe the nested call waits when another candidate is applicable or its result holds an unsolved
-    // slot. Otherwise the Literal parts' defaults apply to the selected candidate and its checks run once more; a failure reports that
-    // candidate, never another, and a slot still unbound is the inference boundary. False when the call is complete: waiting or failed.
+    // SPEC 10.5.1, 10.2.1, 10.8: the selected candidate of a call whose slot no evidence binds or that holds a waiting part, or of a
+    // nested call with another applicable candidate. Under the argument probe the nested call waits when another candidate is applicable
+    // or its result holds a slot that neither evidence nor a waiting callable fixes (ResultHoldsUnsolved). Otherwise the Literal parts'
+    // defaults apply to the selected candidate and its checks run once more; a failure reports that candidate, never another, and a slot
+    // still unbound is the inference boundary. False when the call is complete: waiting or failed.
     private bool SolveSelected(ref CallEvaluation evaluation, int winner, BoundType? declaringType)
     {
+        if (evaluation.Applicable <= 1 && evaluation.Evaluated[winner] is { Unsolved: false, State: not CandidateApplicability.Waiting })
+        {
+            return true;
+        }
+
         var call = evaluation.Call;
         var selected = (FunctionKoto)evaluation.Evaluated[winner].Symbol!.Declaration;
         var solution = this.Solution(evaluation, selected, declaringType);
         var argument = evaluation.Expected is null && this.UnderArgumentProbe(call);
-        if (argument && (evaluation.Applicable > 1 || (evaluation.Evaluated[winner].Unsolved && solution.ResultHoldsUnsolved(evaluation.Mapping))))
+        if (argument && (evaluation.Applicable > 1 || solution.ResultHoldsUnsolved(evaluation.Mapping)))
         {
             this.DeferNestedCall(call, evaluation.Expected);
             Complete(call, null);

@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 // Callable Constraint, or without S when F has none. A position is an argument's or a payload's, or that of a Tuple or array literal
 // element within one. TakeWaiting is the one walk that finds such callables and CallableSlotType the one test of F; they read a pattern
 // and a slot owner only, so the queries of a call (UnsolvedSlots, WaitingPartsBind) and of a Case construction (UnsolvedPayloadSlots)
-// and the completions over a SlotSolution share them.
+// and the completions over a SlotSolution share them. Whether such an F is fixed with no outer expectation, so that a nested call's or
+// construction's result is typed without one, is FixesWithoutExpectation, read through OpenWaitingSlots by both (DECISIONS BU-2, D4).
 public sealed partial class Binding
 {
     // A consumer of TakeWaiting: it takes each waiting callable at its position and slot F, and stops the walk by returning false.
@@ -53,6 +54,33 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 10.5.1, 10.5.2-10.5.4 (D4; owner decision 2026-10-18): whether a waiting callable fixes its slot F with no expectation from
+    // outside its callee. It does when it needs no S: a function reference that does not need S (SPEC 10.5.3), or an anonymous function
+    // whose header writes every parameter Type and its result Type; or when F's Callable Constraint gives S, the callee's own (SPEC
+    // 10.5.2). Otherwise the outer expectation is what can fix F, so a nested callee whose result holds it waits for that expectation.
+    private bool FixesWithoutExpectation(Koto callable, BoundType slot, Koto binder)
+    {
+        if (this.TryCallable(slot, this.ConstraintScope(binder), out _, out _))
+        {
+            return true;
+        }
+
+        if (KotoHelper.UnwrapParentheses(callable) is not FunctionKoto closure)
+        {
+            return IndependentFunctionItem(callable.BoundSymbol!, this.UnboundMemberReference(callable), this.ReferenceDeclaringType(callable));
+        }
+
+        for (var i = 0; i < closure.Parameters.Count; i++)
+        {
+            if (closure.Parameters[i].Type is SyntaxFormKoto { Akind: KotoKind.InferredType })
+            {
+                return false;
+            }
+        }
+
+        return closure.ReturnType is not null;
+    }
+
     // Removes from a slot set each slot F that a waiting callable binds.
     private readonly ref struct WaitingSlots : IWaitingTaker
     {
@@ -68,6 +96,31 @@ public sealed partial class Binding
         public bool Take(Koto part, BoundType position, BoundType slot)
         {
             this.slots.Remove(ContainerSlot(this.owner, slot.Symbol!));
+            return true;
+        }
+    }
+
+    // Adds to a slot set each slot F of the solution that no evidence binds and that its waiting callable does not fix with no outer
+    // expectation (FixesWithoutExpectation).
+    private readonly ref struct OpenWaitingSlots : IWaitingTaker
+    {
+        private readonly ref SlotSet slots;
+        private readonly SlotSolution solution;
+
+        internal OpenWaitingSlots(ref SlotSet slots, in SlotSolution solution)
+        {
+            this.slots = ref slots;
+            this.solution = solution;
+        }
+
+        public bool Take(Koto part, BoundType position, BoundType slot)
+        {
+            var index = ContainerSlot(this.solution.SlotOwner, slot.Symbol!);
+            if (this.solution.Types[index] is null && !this.solution.Binding.FixesWithoutExpectation(part, slot, this.solution.Binder))
+            {
+                this.slots.Add(index);
+            }
+
             return true;
         }
     }
