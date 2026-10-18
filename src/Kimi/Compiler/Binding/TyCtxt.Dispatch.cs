@@ -16,16 +16,18 @@
 // false makes the slot's entry null (VTableDef's consumer rule). One answer per (original, declaring), discarded at an edit.
 // Input: a requirement, the Contract reference its call recorded (MirCallee.Contract; null for none) and the call's closed substitution
 // (TyCtxt.Compose with a representative), whose Self is the conforming Type and whose declaring Type holds the instantiated bound
-// reference (TyCtxt.SubstOf).
+// reference (TyCtxt.SubstOf); or, for a compiler function's call of a user witness (K package 4.5 rows 2 and 6, a comparison's leaf) and a
+// requirement's function item (rows 5, 12 and 13, Witness(item)), the requirement, the Contract reference and its call on a Self
+// (Synthesized); OwnRequirement names a library Contract's requirement for such a call.
 // Output: RequirementTarget(Kind, Target, Subst, Access), one per (requirement, contract, subst), kept across passes with no edit and
 // discarded at an edit (ResetViews). Body: a function with a MIR body under its instance: a conformance witness (inherited ones included)
 // under its declaring instance with the call's Types, lengths and its Origins in the call's terms (Binding.WitnessOrigin), an accessor-call
 // witness's executing accessor under its implementing Type's instance, a fixed-array or integer Position member under its own slots.
 // Builtin: a compiler function under the call's substitution, whose bound reference instantiates the requirement's signature. Storage: a
 // standard property witness's implementing Field under the call's substitution, Access its operation (Copy, Borrow or Set; AccessorCall for
-// every other kind). Refused: OCC-X. Limit: the conforming Self's storage does not complete (nested past its depth bound; a Self no Apply
-// instantiated). None: no answer, also for an abstract Self, which for a closed accepted Self is a broken contract that its reader records
-// as InternalInvariant_Kd.
+// every other kind). Refused: OCC-X. Limit: the conforming Self's storage does not complete (PrepareTypeStorage: nested past its depth
+// bound). None: no answer, also for an abstract Self, which for a closed accepted Self is a broken contract that its reader records as
+// InternalInvariant_Kd.
 // Invariants: an answer is the CallPlan materializer's (InstantiateRequirementCall) for the same call in the same instance (TyCtxtTest's
 // twin); a comparison of a closed Type has the legacy plan's leaves wherever that plan exists, which it does not for an inherited witness
 // (ComparisonCompositionTest's twin); no receiver projection is returned, since a base subobject is a layout prefix (Layout.Of, X1).
@@ -36,7 +38,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>What a requirement call runs under a closed substitution (<see cref="TyCtxt.Witness"/>).</summary>
+/// <summary>What a requirement call runs under a closed substitution (<see cref="TyCtxt.Witness(BindingSymbol, BindingSymbol?, Subst)"/>).</summary>
 internal enum RequirementTargetKind : byte
 {
     None,
@@ -89,6 +91,13 @@ internal sealed partial class TyCtxt
         return target;
     }
 
+    // SPEC 7.3, 8.11.4: what a closed requirement's function item runs: Witness of the requirement's call on the Item's Self through the
+    // Contract reference it records (its Components), which InstanceContract matches as a call's; null for another function's Item.
+    internal RequirementTarget? Witness(BoundType item)
+        => item is { Kind: BoundTypeKind.FunctionItem, Symbol: { } requirement, Components: [var self, var reference] } &&
+            CallPlan.KindOf(requirement) == CalleeKind.Requirement
+            ? this.Witness(requirement, reference.Symbol, this.Synthesized(requirement, self, reference)) : null;
+
     // SPEC 6.4.3: whether an original's slot exists for the declaring instance, the layer of the representative that declares the original
     // (Binding.VirtualApplicability under the public premises): Proven is true and Refuted false.
     internal bool? Applies(BindingSymbol original, BoundType declaring)
@@ -119,6 +128,10 @@ internal sealed partial class TyCtxt
 
         return node;
     }
+
+    // SPEC 22.10.1, 8.6.1: the one requirement a library Contract declares, which a compiler function runs on a user Type (BufferWriter's
+    // reserve for an erased writer's destination); null for a Contract that declares none.
+    internal BindingSymbol? OwnRequirement(KimiDeclarationId contract) => library.GetSymbol(contract)?.Contract?.OwnRequirement();
 
     private static RequirementTarget Body(BindingSymbol target, Subst subst) => new(RequirementTargetKind.Body, target, subst, default);
 
@@ -156,7 +169,7 @@ internal sealed partial class TyCtxt
         }
 
         var requirement = contract.Contract!.OwnRequirement()!; // Equatable's equals, Comparable's compare.
-        var subst = this.Synthesized(requirement, self);
+        var subst = this.Synthesized(requirement, self, contract.Type!);
         if (kind == ComparisonKind.Requirement)
         {
             return new(self, kind, requirement, subst, []);
