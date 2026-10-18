@@ -34,11 +34,45 @@ internal static partial class LlvmModuleWriter
         return first >= 0 && first <= last && last <= fixedLength;
     }
 
+    // The inline storage-boundary kernel a sequence operation names (SPEC 22.2), or null for another operation.
+    private static StorageKernelKind? StorageKernelOf(string? operation) => operation switch
+    {
+        "DictionaryLayout" => StorageKernelKind.DictionaryLayout,
+        "DictionaryEntryAddress" => StorageKernelKind.EntryAddress,
+        "FixedStorage" => StorageKernelKind.BorrowFixed,
+        "DictionaryBorrowStorage" => StorageKernelKind.BorrowDictionary,
+        "DictionaryOwnStorage" => StorageKernelKind.OwnDictionary,
+        _ => null,
+    };
+
+    // Decodes an inline storage kernel into its row's input: operand 0 is the address it reads, operand 1 its number (an entry
+    // stride, an array length or an entry offset) and the rest its result record's Field offsets; its result is the
+    // instruction's slot, or its value when it has none.
+    private static void WriteStorageKernel(TextWriter output, EmissionFunction function, EmissionInstruction instruction, StorageKernelKind kind)
+    {
+        var operands = function.GetOperands(instruction);
+        Span<int> fields = stackalloc int[operands.Length - 2];
+        for (var i = 0; i < fields.Length; i++)
+        {
+            fields[i] = (int)operands[i + 2].Value;
+        }
+
+        Span<char> source = stackalloc char[OperandLength];
+        Span<char> result = stackalloc char[OperandLength];
+        var input = new StorageKernelInput(
+            SpellStorageAddress(function, operands[0], source),
+            instruction.Place < 0 ? Spell(new(EmissionOperandKind.Value, instruction.Operation), result) : SpellSlot(function, instruction.Place, result),
+            (long)operands[1].Value,
+            fields,
+            instruction.Operation);
+        LegacyRuntimeHelpers.StorageRow(kind).Write(output, input);
+    }
+
     private static void WriteSequence(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction)
     {
-        if (instruction.ScalarOperator is "DictionaryBorrowStorage" or "DictionaryOwnStorage" or "DictionaryEntryAddress" or "DictionaryLayout" or "FixedStorage")
+        if (StorageKernelOf(instruction.ScalarOperator) is { } kernel)
         {
-            WriteDictionaryIteration(output, function, instruction);
+            WriteStorageKernel(output, function, instruction, kernel);
             return;
         }
 

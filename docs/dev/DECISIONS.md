@@ -2435,3 +2435,23 @@ structure is recorded here by the unit that first implements it.
     and no record; sel's absence of records over the library and the milestones covers only the edges collected.
   - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
     milestones analyzed under sel give no collector record (`InstanceCollectorTest`).
+- **R5-M45 Legacy storage kernel rows** (2026-10-18, planning session; plan P2a, PD2, S2-S4 X4, package C §3.4; refines R5-M16)
+  `StorageKernelRow(Kind, Write, Needs)` is one row per `StorageKernelKind`, the storage-boundary text a Body-disposition storage
+  operation writes inline in its caller's body (SPEC 22.2): DictionaryLayout (StorageDictionaryLayout), EntryAddress (StorageKeyAt,
+  StorageValueAt), BorrowFixed (StorageBorrowFixedShared and Exclusive), BorrowDictionary (StorageBorrowDictionary and Exclusive) and
+  OwnDictionary (StorageOwnDictionary), read by `LegacyRuntimeHelpers.StorageRow(kind)`, which fails closed. `Write` takes one
+  generator-neutral, stack-only input, `StorageKernelInput`: the spellings of the address the kernel reads and of its result (the
+  record it writes, or the address EntryAddress defines), its number (the entry stride, the array length or the entry offset), its
+  result record's Field offsets in the order its kind lists them, and the number naming its temporaries (role + number, as
+  `LlvmScalarText`'s). Every row's `Needs` is None and no row declares a callee, since the text is loads, stores and address
+  arithmetic, so the old lowering requests nothing for them; the column keeps the collector's read of a legacy row's needs uniform
+  across the families. The old writer decodes its Sequence instruction into the input (`LlvmModuleWriter.WriteStorageKernel`), so
+  `WriteDictionaryIteration`, a per-instruction serializer of about 112 statements, is deleted. Promoted with the kernels: the library
+  record Field addressing (offset 0 is the record's own address, any other offset `{name}{id}_{offset}`; `LegacyRuntimeHelpers.DefineField`
+  and `WriteField`), which the old writer's remaining record reads call with the record's spelling (`SpellSlot`, `SpellStorageAddress`,
+  through which `WriteSlot` and `WriteStorageAddress` now write), and the entry-address text the Place helper shares. The rows are keyed
+  by kernel kind; X39's map from a Body-disposition `CompilerFunctionKind` to its row joins them later. FixedStorage moves here rather
+  than in P2b: it was part of the serializer and is a Body-disposition kind; P2b keeps the intrinsic kernels (RawSlice, capacity), whose
+  rows are `IntrinsicRows`'. Rejected: plain kernel methods with per-kind parameters (unreadable by kind, one decoding arm per kind); a
+  row per `CompilerFunctionKind` (X39's map); an owning flag (the owning remainder is its own row, and both share the borrowed
+  remainder's text); a second copy of the Field addressing rule in the Backend.

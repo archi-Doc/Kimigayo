@@ -270,8 +270,8 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write("(ptr %handle, i64 ");
         WriteNumber(output, helper.Entry.Stride);
         output.Write(", ptr %location, i64 %location_length)\n");
-        WriteEntryAddress(output, "%new_key", helper.Entry.KeyOffset);
-        WriteEntryAddress(output, "%new_value", helper.Entry.ValueOffset);
+        WriteEntryAddress(output, "%new_key", "%new_slot", helper.Entry.KeyOffset);
+        WriteEntryAddress(output, "%new_value", "%new_slot", helper.Entry.ValueOffset);
         WriteStoredArgument(output, helper.Key, "%key", "%new_key", "%key_inserted");
         WriteStoredArgument(output, helper.Value, "%value", "%new_value", "%value_inserted");
         output.Write("  ret void\n");
@@ -288,15 +288,6 @@ internal sealed partial class LegacyRuntimeHelpers
         }
 
         output.Write("  call void @__kimi_array_free(ptr %handle, ptr %location, i64 %location_length)\n  ret void\n");
-    }
-
-    private static void WriteEntryAddress(TextWriter output, string name, long offset)
-    {
-        output.Write("  ");
-        output.Write(name);
-        output.Write(" = getelementptr i8, ptr %new_slot, i64 ");
-        WriteNumber(output, offset);
-        output.Write('\n');
     }
 
     // The empty-Dictionary initialization bridge; the ordered-link algorithms are compiled from DictionaryStorage.kimi, and the
