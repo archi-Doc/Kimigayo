@@ -177,26 +177,28 @@ public sealed class MirAnalysisTest
     // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
     // every view of a body, two for a pair-generic one, so a Loan conflict is a problem of the version, and none of a body whose A1 arena
     // exceeds the limit (N locals live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena
-    // would fit.
+    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it.
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
-        foreach (var (size, views, expected) in new[]
+        const string Scalars = "    var v{0} = {0}\n|    if flag => v{0} = 1\n|"; // Each part's line N times, with its index.
+        const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+        const string Limit = "Ownership.StorageLimit OwnershipStorageLimit_Kd func f(flag: bool) -> i32";
+        foreach (var (size, views, line, expected) in new[]
         {
-            (64, 1, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
-            (13_500, 0, "Ownership.StorageLimit OwnershipStorageLimit_Kd func f(flag: bool) -> i32"),
+            (64, 1, Scalars, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
+            (13_500, 0, Scalars, Limit),
+            (2_000, 1, References, Limit),
         })
         {
             var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
-                .Append("func f(flag: bool) -> i32\n    var x = 1\n    let r = x@ref\n");
-            for (var n = 0; n < size; n++)
+                .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
+            foreach (var part in line.Split('|'))
             {
-                text.Append("    var v").Append(n).Append(" = ").Append(n).Append('\n');
-            }
-
-            for (var n = 0; n < size; n++)
-            {
-                text.Append("    if flag => v").Append(n).Append(" = 1\n");
+                for (var n = 0; n < size; n++)
+                {
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
+                }
             }
 
             var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
