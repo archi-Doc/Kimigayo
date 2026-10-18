@@ -116,6 +116,17 @@ public class Utf8TryWriteTest
         Assert.Equal(2, warnings.Length);
     }
 
+    // DIAGNOSTICS §4.3: a warning whose check rests on a Binding failure records nothing, so a write whose interpolated argument failed
+    // has its failure and no owning write warning (HIR lint row 5).
+    [Fact]
+    public void AFailedWriteArgumentHasNoOwningWriteWarning()
+    {
+        var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(missing)\")");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.DoesNotContain(CompilationTestHelper.BindingWarnings(c), static x => x.Code == nameof(DiagnosticCode.OwningWriteArgument_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("Exit", "label work: do", "exit to work 7")]

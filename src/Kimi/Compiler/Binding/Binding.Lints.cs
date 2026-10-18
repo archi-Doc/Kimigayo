@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the HIR lints (ARCH target pipeline P2-P5s; DECISIONS PD31, R5-M24): Binding's checks that never fail a node, one row
+// Owns the HIR lints (ARCH target pipeline P2-P5s; DECISIONS PD31, R5-M31): Binding's checks that never fail a node, one row
 // per code in the lint table below, judged once per Final pass by one walk of the source modules' evaluated syntax, the last
 // step of Bind(Final); and GuessedCompletion, the one guess rule of completion checks.
 // Input: the Final pass's bound tree and facts: Types and adaptations, call plans, Copy proofs, InfersUnit, structural
@@ -78,6 +78,7 @@ public sealed partial class Binding
 
     /// <summary>Gets the number of the pass's lint records whose code is an Error, which the old analysis counts with its own errors
     /// until H10.</summary>
+    [Transitional("R6", Reason = "The old analysis's read of the lint Errors; H10 deletes it with the old analysis.")]
     internal int LintErrors
     {
         get
@@ -92,10 +93,14 @@ public sealed partial class Binding
         }
     }
 
-    /// <summary>Gets the pass's lint records whose code is an Error, in their record order, which tests list with the old path's
-    /// records (LegacyRecords) until H10.</summary>
+    /// <summary>Gets the pass's lint records whose code is an Error, in walk order until ReportDiagnostics sorts them, which tests list
+    /// with the old path's records (LegacyRecords) until H10.</summary>
+    [Transitional("R6", Reason = "LegacyRecords' read of the lint Errors; H10 deletes it with the old path.")]
     internal IEnumerable<(Koto Node, DiagnosticCode Code)> LintErrorRecords
         => this.lints.Where(static x => IsError(x.Row)).Select(static x => (x.Node, LintTable[(int)x.Row].Code));
+
+    /// <summary>Gets the node completions the latest lint walk composed, which a scaling check reads: each node once per walk.</summary>
+    internal long LintCompletionWork => this.lintWalk?.CompletionWork ?? 0;
 
     /// <summary>Gets the causes a completion check rests on when the syntax from a node up to a root completes normally only through
     /// nodes whose completion Binding did not establish: a body the parser supplied for a missing one (docs/dev/DIAGNOSTICS.md §4.4),
@@ -130,6 +135,7 @@ public sealed partial class Binding
     /// that body's end rests on it until H10.</summary>
     /// <param name="function">The function.</param>
     /// <returns>The key, or null when the body cannot fall through.</returns>
+    [Transitional("R6", Reason = "The old analysis's derived missing result; H10 deletes it with the old analysis.")]
     internal DiagnosticKey? FallthroughKey(FunctionKoto function)
     {
         foreach (var (node, row, _) in this.lints)
@@ -367,6 +373,7 @@ public sealed partial class Binding
     private void WalkLints()
     {
         var walk = this.lintWalk ??= new(this);
+        walk.Begin();
         foreach (var module in this.compilation.SourceModules)
         {
             walk.Visit(module.RootKoto);
@@ -540,12 +547,12 @@ public sealed partial class Binding
 
     // SPEC 17.5.2: a do or a selection whose Unit result Binding inferred, rather than a declaration, a construct rule or an expected
     // Type fixing it, records a non-Unit tail it discards, with the root of the descent.
-    private void LintTail(Koto node)
+    private void LintTail(Koto node, StructuralCompletion structural)
     {
         if (node is DoKoto or IfKoto or MatchKoto and not TryKoto && this.InfersUnit(node))
         {
             var root = node is DoKoto scoped ? scoped.Body : node;
-            this.LintUnitTail(root, root, this.ResultStructure());
+            this.LintUnitTail(root, root, structural);
         }
     }
 
@@ -602,13 +609,22 @@ public sealed partial class Binding
     // (a default, the base initializer or the body) holding a #switch that selected no arm (SPEC 19.3).
     private sealed class LintWalk(Binding binding) : KotoVisitor
     {
+        // Binding's structural completion with its Never evidence, cleared once per walk: the descents of discarded tails and the
+        // end arrivals compose each node's completion once.
+        private readonly StructuralCompletion completion = new(binding.ResultNeverEvidence);
+
         // Whether the function part being walked holds a #switch that selected no arm.
         private bool unselected;
+
+        // The completions the structural completion composed before this walk.
+        private long composedBefore;
 
         // SPEC 14.3: whether an operation in the innermost Unsafe Block being walked used its permission, and whether one whose need
         // is unknown, such as an unresolved operation, may have.
         private bool unsafeUsed;
         private bool unsafeUncertain;
+
+        internal long CompletionWork => this.completion.Composed - this.composedBefore;
 
         public override void Visit(Koto node)
         {
@@ -639,7 +655,13 @@ public sealed partial class Binding
             this.LintUnsafe(node);
             binding.LintNode(node);
             node.VisitChildren(this);
-            binding.LintTail(node);
+            binding.LintTail(node, this.completion);
+        }
+
+        internal void Begin()
+        {
+            this.completion.Clear();
+            this.composedBefore = this.completion.Composed;
         }
 
         // SPEC 5, 7.6, 14.3: an operation that needs an unsafe context outside one records row 7; inside one, it uses the innermost
@@ -696,7 +718,7 @@ public sealed partial class Binding
         {
             if (this.VisitPart(body))
             {
-                binding.EndArrival(owner);
+                binding.EndArrival(owner, this.completion);
             }
         }
 

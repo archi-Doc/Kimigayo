@@ -184,8 +184,7 @@ public sealed class ControlFlowAnalysis
 
     // The syntax Errors of the recoveries that guessed the normal completion a require fallthrough check reads, which Binding's one
     // guess rule judges (Binding.GuessedCompletion), or null when the check reads written syntax alone.
-    private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue)
-        => issue.Node.CodeContext.HasRecoveries ? this.binding.GuessedCompletion(issue.Node, issue.Node) : null;
+    private DiagnosticKey[]? GuessedBy(ControlFlowIssue issue) => this.binding.GuessedCompletion(issue.Node, issue.Node);
 
     private void Error(Koto node, DiagnosticCode code)
     {

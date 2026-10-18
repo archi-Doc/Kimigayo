@@ -200,6 +200,31 @@ public class CurrentControlFlowTest
         Assert.Equal(3, c.Binding.LintErrors);
     }
 
+    // SPEC 17.5.2: each nested `do` whose Unit Binding inferred is a descent root over its whole body. The walk shares one structural
+    // completion, so it composes each node's completion once and its work grows with the nesting, not with its square.
+    [Fact]
+    public void LintWalkComposesEachCompletionOnce()
+    {
+        var shallow = Work(16);
+        var deep = Work(64);
+        Assert.True(deep <= 5 * shallow, $"{shallow} -> {deep}");
+
+        static long Work(int depth)
+        {
+            var source = new System.Text.StringBuilder("func compute() -> i32 => 1\nfunc run()\n");
+            for (var i = 1; i <= depth; i++)
+            {
+                source.Append(' ', 4 * i).Append("let x").Append(i).Append(" = do\n");
+            }
+
+            source.Append(' ', 4 * (depth + 1)).Append("compute()\n");
+            var c = Parse(source.ToString());
+            Assert.True(c.Bind().IsComplete, Describe(c));
+            Assert.Single(CompilationTestHelper.BindingWarnings(c), static x => x.Code == "DiscardedTail_Kd");
+            return c.Binding.LintCompletionWork;
+        }
+    }
+
     private static Compilation Parse(string source)
     {
         var c = Compilation.CreateForTest();

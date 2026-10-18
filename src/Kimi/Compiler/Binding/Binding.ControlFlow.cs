@@ -555,12 +555,11 @@ public sealed partial class Binding
 
     // SPEC 7.1, 14.9.3 (DECISIONS PD32): the structural end of a function's or accessor's Block body supplies Unit, which a declared
     // result other than Unit cannot take, so a body that can complete there is HIR lint row 12 at the body. The Final walk asks once
-    // per function and accessor.
-    private void EndArrival(Koto owner)
+    // per function and accessor, with its structural completion.
+    private void EndArrival(Koto owner, StructuralCompletion structural)
     {
         var body = owner switch { FunctionKoto function => function.Body, PropertyAccessorKoto accessor => accessor.Body, _ => null };
-        if (body is CodeBlockKoto && DeclaredResult(owner) is { } result && !ReferenceEquals(result, BoundType.Unit) &&
-            this.ResultStructure().CanComplete(body))
+        if (body is CodeBlockKoto && DeclaredResult(owner) is { } result && !ReferenceEquals(result, BoundType.Unit) && structural.CanComplete(body))
         {
             this.lints.Add((body, LintRow.FunctionFallthrough, null));
         }
