@@ -104,6 +104,29 @@ public sealed class PipelineSwitchTest
         Assert.Equal(roots, records.Select(static x => x.Text).Order(StringComparer.Ordinal));
     }
 
+    // R5 K4b (DECISIONS R5-M41): under MIR code generation the checked set's records are analysis problems too, control-flow Errors at
+    // their located subjects that reject the program, while the mir pipeline alone does not collect.
+    [Fact]
+    public void MirCodegenPublishesTheCollectorRecords()
+    {
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        c.Codegen = CompilerCodegen.Legacy;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        var type = string.Concat(Enumerable.Repeat("Option<", 32)) + "ref/i32" + new string('>', 32);
+        c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", $"func pick<T>(value: T) -> T => value@move\nlet v: {type} = .None\nlet w = pick(v@move)\n"));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+
+        c.Codegen = CompilerCodegen.Mir;
+        Assert.False(Analyze(c, OutputKind.Application));
+        var problem = Assert.Single(c.Problems);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, "pick(v@move)"), (problem.Code, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
+        c.ReportAnalysis();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(("Unsupported_Kd", "pick(v@move)"), (record.Code, record.Text));
+    }
+
     // Under mir the MIR's records are the analysis's problems and control-flow Errors that reject the program and block generation;
     // switching back to legacy gives the old path's diagnostics and IR unchanged.
     [Fact]

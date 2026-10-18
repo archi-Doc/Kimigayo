@@ -14,9 +14,9 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | P1 | Syntax | Koto syntax tree with dense pre-order `SyntaxId`; no phase after parsing writes to it |
 | P2–P5s | Binding | Declaration tables, `HirTables` keyed by `SyntaxId`, four Plan kinds (Call, Pattern, Closure, Expansion), HIR lints and startup checks |
 | P6 | Mir | One MIR body per definition (desugaring happens here) |
-| P7–P9 | Mir | Validator, initialization/Move, drop elaboration, runtime lints, definition-stage capability check, effects, borrow checking per body and Semantics case |
-| P10 | — | Acceptance (SPEC §23.2.2) |
-| P11–P12 | Backend | Monomorphization, shims, instance-stage capability check, layout/ABI, LLVM text written directly from MIR |
+| P7–P9 | Mir | Validator, initialization/Move, drop elaboration, runtime lints, effects, borrow checking per body and Semantics case |
+| P10 | — | Acceptance (SPEC §23.2.2), which the records of P11's instance collection join |
+| P11–P12 | Backend | Instance collection before acceptance: the checked set, its definition- and instance-stage capability check, limits and layout obligations (DECISIONS R5-M41); then shims, layout/ABI and LLVM text written directly from MIR |
 | P13 | Build | Native tools, outside the compiler |
 
 ## Dependency rules

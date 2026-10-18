@@ -4,7 +4,8 @@
 // Input: a prepared compilation and its pipeline and code generator choice. Output: analysis, validated and analyzed MIR, under MIR code
 // generation its checked set, diagnostics and IR.
 // Until R6 the legacy path decides acceptance; MIR findings join through the same Problem publication. Under MIR code generation (sel,
-// R5 PD4) generation is refused until C0b1 (K package 5), never falling back to the old generator.
+// R5 PD4) the checked set's records join them (K4b) and generation is refused until C0b1 (K package 5), never falling back to the old
+// generator.
 // Observers of Analyzed (R4-M17) are read-only; no compiler code subscribes.
 // Must not expose a second analysis/generation path or re-decide phase-owned facts.
 
@@ -256,7 +257,8 @@ public partial class Compilation
     }
 
     // The MIR records the mir pipeline publishes, added to the list when one is given: construction records and validator findings, the
-    // library's as well as the source modules'.
+    // library's as well as the source modules', and under MIR code generation the checked set's records of the same version (R5 K4b,
+    // DECISIONS R5-M41), which join acceptance like the others.
     private int MirRecords(List<Problem>? into)
     {
         if (this.mir is not { } program)
@@ -264,6 +266,7 @@ public partial class Compilation
             return 0;
         }
 
+        var collected = this.Instances is { } set && set.Version == program.Version ? set.Records : null;
         if (into is not null)
         {
             into.AddRange(program.Records);
@@ -271,9 +274,14 @@ public partial class Compilation
             {
                 into.Add(new(DiagnosticCode.InternalInvariant_Kd, finding.Subject));
             }
+
+            if (collected is not null)
+            {
+                into.AddRange(collected);
+            }
         }
 
-        return program.Records.Count + program.Findings.Count;
+        return program.Records.Count + program.Findings.Count + (collected?.Count ?? 0);
     }
 }
 

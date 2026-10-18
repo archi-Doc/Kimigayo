@@ -174,6 +174,27 @@ public sealed class InstanceCollectorTest
                 $"struct S{i}\n    public var value: i32\n    public init(value: i32) => self.value = value\nlet s{i} = first(S{i}.init({i}))\n"));
     }
 
+    // K4b: every milestone analyzed under MIR code generation has a checked set without a record.
+    [Theory]
+    [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
+    public void TheMilestonesHaveNoCollectorRecordUnderMirCodegen(string name)
+    {
+        if (!name.StartsWith("milestone/", StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        c.Codegen = CompilerCodegen.Mir;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument("Main.kimi", File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "milestones", name["milestone/".Length..] + ".kimi"))));
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        c.Analyze();
+        Assert.True(c.Instances is { Items.Length: > 0, Records.Count: 0 }, string.Join(", ", c.Instances?.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}") ?? []));
+    }
+
     // A warm rebind rebuilds the MIR and collects it again with the same items and targets, instances included, and no allocation.
     [Trait("Purpose", "Allocation")]
     [Fact]

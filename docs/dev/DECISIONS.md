@@ -2282,3 +2282,22 @@ structure is recorded here by the unit that first implements it.
     give no record. Not reached by any test: the location rule's inlined and admission-chain branches (no library body of the corpus
     fails).
   - Rejected: the storage check by `Erase` (erasure never fails); limits per call site (X19 keys them by definition and chain).
+- **R5-M41 Collector records under MIR code generation (OD4)** (2026-10-18, planning session; plan K4b, the K package's second half of
+  K4, §4.4, §4.9, §5 and §10 D-A and D-B; under R5-M18; meets R5-M4's "under sel, collector records publish from K4" with K4b) Under
+  MIR code generation (sel), `Compilation.MirRecords` counts and lists the records of the checked set of the program version (R5-M40)
+  with the MIR's construction records and validator findings: analysis Errors in the ControlFlow partition (R5-M4, PD7), so they reject
+  at check, count in `Analysis` and block generation. On the default pipeline and under `mir` alone the collector does not run (PD4)
+  until G2.
+  - D-A: the collector runs in `Compilation.BuildMir`, after the MIR analyses and before acceptance, not as a Mir pass; ARCH's pipeline
+    table moves the definition-stage capability check from P7-P9 to it (A3b joins its body scan at K9a).
+  - D-B (P5): the bundled library is no root in user compilations. `KimiLibraryShapeTest.TheLibraryCollectsWithoutRecords` collects it
+    with every module a root module and asserts no record. Preconditions: no library declaration under a compile-time Condition (SPEC
+    19.2) and one target profile (windows-x64); a change to either reopens P5. Library instances user code requests are collected by
+    edges and located by R5-M40's rule (KD12).
+  - Cost (`Benchmark --analyze-cost`, new; `artifacts/benchmarks/r5-k4b-analyze-cost-*`; Generic shape 1/32/64/128 on a machine shared
+    with other builds, so only allocations are exact): a fresh check under sel allocates 0.15, 1.29, 2.31 and 4.61 MB more than under
+    `mir` for 16, 450, 898 and 1,794 collected items, linear in the items; a warm Analyze allocates the same under sel as under `mir` (the
+    collector's warm run is 0 B); the timings vary more between repeated sizes than the configurations differ and await G2's
+    quiet-machine measurement (R5-M4).
+  - Verified: under sel a storage-nesting gap rejects the program at check at its call (`PipelineSwitchTest`); the library and the 44
+    milestones analyzed under sel give no collector record (`InstanceCollectorTest`).
