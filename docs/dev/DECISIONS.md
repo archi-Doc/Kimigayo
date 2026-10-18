@@ -1652,6 +1652,22 @@ R5 on the owner's request of 2026-10-18.
   and now the pair does too. Rejected: no store row at all (the exclusive case may write the referent, and a concrete
   `uniq/T` input keeps its row: dropping it would be a second rule for self-stores); a retention per Semantics case (one
   view per instantiation, R4-M51). Not temporary.
+- **BU-4** (2026-10-18; the BU planning session; PLAN G129, whose later units extend this entry) G129 U1: Never's
+  capabilities per SPEC 3.1.3. Never is Copy and Owned, Proven by `TryLeafCapability`'s Primitive row (its Never row, which
+  answered Unknown, is deleted), so a Type storing Never is decided by its structure (`(i32, Never)`, `[2 of Never]` and
+  `Option<Never>` Copy and Owned, `Array<Never>` Owned and Non-Copy by SPEC 4.5); it stays not Sealed, ObjectPayload,
+  PrimitiveInteger or Callable, and every declared Contract is refuted for it (`ResolveConformance` drops Never's exemption
+  from a primitive's fixed environment). Transferable has no implementation (STATUS Async row). The old analysis's
+  `CopyProof` loses its Never parameter (its primitive classification now agrees with Binding); `Place` keeps `neverResult`
+  in its Unsupported guard, so every Place of a Type holding Never stays the old path's `Unsupported_Kd` until R6-check.
+  Why: Unknown for a closed Type was the old analysis's `InternalInvariant_Kd` (`var t = (1, stop())`, an `Option<Never>`
+  local or parameter) and Binding's Move for SPEC 3.1.3's own `let b = a; let c = a` (`TransferRequired_Kd`, A1
+  `MovedPlace_Kd`). The rest of G129 (Never fitting at the root, the late fit, R4-M59's removal) follows G130. Rejected:
+  design A's MIR Copy for every Never Place (it would hide `g(x@move, x)`; the MIR Never-Place acquisition moved to R5,
+  PLAN G139); keeping Never's Unknown leaf (SPEC 3.1.3). Open: generic uses with a Never-holding Type argument that now
+  pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
+  Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
+  Constraint already did, until R6. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -1919,8 +1935,9 @@ structure is recorded here by the unit that first implements it.
   gate remains. The package's "explicit Never guard" in the old pool is this existing gate: it gives Never no record, so the old
   pool keeps its null for Never (X31; STATUS), as `GetCore`'s comment and `LayoutTest` state. Rejected: re-pointing the gate's
   callers to `Layout.Of` (frozen lowering that relies on the gate's null for every other Type); a per-Type memo (no P7a row
-  depends on more than the Type's kind; placement brings it); `Loan<T>` as Unit's record (P7b's placement would then change the
-  old pool's `Loan<T>` record and argument slot); a separate Never test in the old pool beside the gate.
+  depends on more than the Type's kind; placement brings it — superseded by R5-M29, which stages the memo to P7c); `Loan<T>` as
+  Unit's record (P7b's placement would then change the old pool's `Loan<T>` record and argument slot); a separate Never test in the
+  old pool beside the gate.
 - **R5-M20 Runtime location text in Core** (2026-10-18, planning session; plan P5, package F §4.10 and §5, OQ4) A permanent
   Core component, `SourceLocationTable` (`Core/SourceLocationTable.cs`), one per compilation as `Compilation.Locations`:
   `Text(SourceRef)` resolves the site through `Compilation.SyntaxOf` and renders SPEC 22.5.1's `path:line:column` with IMPL
@@ -2096,6 +2113,40 @@ structure is recorded here by the unit that first implements it.
   (a temporary view in a held file); one symbol property per function (each consumer would map a row's callee to its property);
   a key beside `DictionaryCallee` (two names for one concept); reading the symbol from the declaration's HIR column (a forwarding
   property, removed at R6); keeping appendSlot and clearLinks (no legacy text calls them).
+- **R5-M29 `Layout.Of` placement and its result** (2026-10-18, planning session; plan P7b, package C §3.5, S2-S4 X1, X18, X31 and
+  X34, under R5-M18 and R5-M19) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
+  with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither, when
+  a size or offset exceeds 2^31 − 1. `Backend/Layout.Placement.cs` holds the old pool's `Place` and enum placement, promoted:
+  Kimigayo mode's alignment-descending groups in written order, C mode's written order (from `AdtDef.IsCLayout`; the attribute walk
+  and the open, derived and empty re-check are deleted, since Binding rejects those), the `i32` tag before the payload union,
+  zero-sized parts kept, and the complete base with its tail padding as the prefix (X1; a derived struct has no C layout, SPEC
+  6.7.1). The `Loan<T>` row is deleted: struct placement gives the identical record. Each representation has one record, shared by
+  every Type, compilation and thread (a concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch), so
+  a call that finds its records allocates nothing. The old pool keeps its own recursion (the Origin guard, Never's null through the
+  scalar gate, destruction, collection Fields, the count and depth bounds) and calls `Layout.Of` where it placed, after its shape
+  interning, mapping CLayout to its refusal and Limit to its resource failure.
+  - Declared behavior change (planning session): the old pool now visits every Field of a C-layout instance before `Layout.Of`
+    reports its zero-sized Field. For `#Layout("C") struct P<T>` with `var value: T`, then `var big: [2147483648 of u8]`, and an
+    inferred `f(())` writing `Option<P<T>>`, the parent reported `GenerationFailed_Kd` and P7b reports
+    `GenerationResourceLimit_Kd` (`InlineLayoutTest`): only which of two real failures an invalid program reports, and K10b's
+    `InvalidCLayout_Kd` supersedes both. The visit also runs the pool's side effects before the refusal: where a refusal is
+    tolerated, as for a Sealed object handle's payload (`SealedObjectHandle` falls back to dynamic cleanup), a later collection
+    Field's `CollectionDrop` registers its element drop helper. A probe (`#Layout("C") struct P<A, B>` with `var a: A` and
+    `var b: B`, `Option<obj/P<A, B>>` in an inferred `f((), values@move)` with `values: Array<i32>`) then emits the collection
+    Field's descriptor and the Array helpers it calls, unreferenced, and the later aggregate numbers shift by one; execution is
+    unchanged.
+  - Staged gap (new unit P7c): `Layout` keeps no Type memo, against package C §3.5's "memoization by interned Type" and R5-M19's
+    "placement brings it". Binding keeps interned Types across passes (`Binding.ResetPass`) and re-substitutes their stored Types
+    when `storageVersion` advances (`Binding.Storage.cs`); a nominal Type reaches its compilation (`AdtDef.Instance`) but a
+    structural one does not, so a static memo keyed by Type would go stale and retain every compilation's Types. The old pool
+    memoizes per body. P7c takes the full process before any MIR caller of `Layout.Of` (C2a, C3c) and owns the memo, the depth and
+    cycle guard, the count bound (`[2147483648 of ()]` gets OK today), a Limit that is not `default(Result)`, and the scope of the
+    process-wide record table (its lifetime in the LSP server).
+  - Rejected: a per-compilation `Layout` instance (R5-M19 fixes the static `Layout.Of`, and rows and placement would split);
+    `Layout.Place(fields)` fed by the old pool's records (a second entry beside `Of`); comparing records instead of the layout-mode
+    flag in the old pool's shape interning (a struct of a raw pointer and an `isize` would stop sharing the Slice handle's shape);
+    keeping the per-Field C-mode check in the old pool (a second owner of X18's rule); the C-mode refusal of an alignment above 16
+    (unreachable: no row is more aligned, and placement takes the maximum).
 - **R5-M30 Legacy formatting rows** (2026-10-18, planning session; plan P1d, PD2, S2-S4 X4, K package §4.5 row 2 and K6;
   refines R5-M16 and R5-M27) `FormattingHelperRow(Kind, Abi, Needs)` is one row per formatting compiler function, the 28
   `CompilerFunctionKind`s TextFixed through BuiltinFormat (the 26 Body-disposition kinds and the routines of the ErasedWriter

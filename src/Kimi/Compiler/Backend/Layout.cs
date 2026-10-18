@@ -1,18 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19): its size,
-// alignment, stride, Field offsets and LLVM representation, for every generator (PD2: the old pool calls it, never a copy).
-// Rows: IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function handles and Loan<T>, and the
-// sequence handles (Slice, Array, Dictionary words). Struct, Tuple, fixed-array, enum, Closure and Function Item placement, with
-// the Limit and CLayout results, come with P7b and P7c; Weak<S> comes with its operations (P41).
-// Input: a closed Type. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type.
-// Output: the Type's ValueLowering, one shared record per representation (P7b makes it the OK/Limit/CLayout result); a Type
-// without a row is an internal error.
-// Invariants: deterministic; no call allocates (every row is a static record); Never is zero-sized, laid out as Unit (IMPL
+// Owns the storage layout of a closed Type in the windows-x64-v1 profile (IMPL 21.1; plan P7a-P7c; DECISIONS R5-M19, R5-M29): its
+// size, alignment, stride, Field offsets and LLVM representation, for every generator (PD2: the old pool calls it, never a copy).
+// Rows: IMPL 21.1.3's scalars, Unit, string, Never, borrows and raw pointers, object and function handles, and the sequence handles
+// (Slice, Array, Dictionary words). Placement (Layout.Placement.cs): structs (Loan<T> among them), Tuples, fixed arrays, enums,
+// Closures and Function Items. P7c brings the Type memo, typed limits, the count bound and the depth and cycle guard (R5-M29), before
+// any MIR caller; Weak<S> comes with its operations (P41).
+// Input: a closed Type. A borrow, raw pointer, handle or sequence is laid out without reading its referent or element Type (X34).
+// Output: a Result (S2-S4 X18): OK with the Type's ValueLowering; CLayout with the C-layout instance, at any depth, that stores a
+// zero-sized Field; or Limit, when a size or offset exceeds 2^31 - 1. A Type without a row is an internal error.
+// Invariants: deterministic; one shared record per representation, so a call that finds its records allocates nothing; the
+// complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL
 // 21.1.3), while the old Emission keeps Never without a representation (WindowsLowering.GetValue's gate), so legacy .ll is
-// unchanged.
-// Must not read syntax, Origins, HIR, MIR or ownership state, decide destruction (the old pool keeps its callbacks until G8),
-// lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), or use LINQ.
+// unchanged. No Type memo until P7c: Binding keeps interned Types across passes and re-substitutes their stored Types, so the old
+// pool memoizes per body.
+// Must not read syntax (AdtDef.IsCLayout is the C-layout fact), Origins, HIR, MIR or ownership state, decide destruction (the old
+// pool keeps its callbacks until G8), lay out IMPL 21.1.3's nonnull Option before PLAN U8 (STATUS), or use LINQ.
 
 using System.Globalization;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -20,7 +23,7 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>The storage layout of closed Types (IMPL 21.1).</summary>
-internal static class Layout
+internal static partial class Layout
 {
     private const string Removal = "R8 declares the Slice, Array and Dictionary handles in the Kimigayo library, whose struct placement lays them out.";
 
@@ -40,15 +43,21 @@ internal static class Layout
 
     private static readonly ValueLowering FunctionHandle = new(new("[16 x i8]", 16, 8, 16, new[] { 0, 8 }), "[16 x i8]", "ptr");
 
-    // IMPL 21.1.3: Loan<T> stores nothing; it is the record of a struct without stored Fields.
-    private static readonly ValueLowering Empty = new(new("{ [0 x i8], [0 x i8] }", 0, 1, 0, ReadOnlyMemory<int>.Empty), "{ [0 x i8], [0 x i8] }", "ptr");
-
     private static readonly Dictionary<BoundType, ValueLowering> Primitives = CreatePrimitives();
 
     /// <summary>Gets the layout and representation of a closed Type.</summary>
     /// <param name="type">A Type of one of the laid-out rows.</param>
-    /// <returns>The shared representation record.</returns>
-    internal static ValueLowering Of(BoundType type) => type.Kind switch
+    /// <returns>The shared representation record, or the Limit or CLayout result of a placement.</returns>
+    internal static Result Of(BoundType type) => type.Kind switch
+    {
+        BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.FunctionItem => Place(type),
+        BoundTypeKind.FixedArray => PlaceArray(type),
+        _ when AdtDef.IsStruct(type) => Place(type),
+        _ when AdtDef.IsEnum(type) => PlaceEnum(type),
+        _ => new(Row(type), null),
+    };
+
+    private static ValueLowering Row(BoundType type) => type.Kind switch
     {
         BoundTypeKind.Primitive => Primitives.GetValueOrDefault(type) ?? throw Outside(type),
         BoundTypeKind.Semantics => type.Semantics switch
@@ -63,7 +72,6 @@ internal static class Layout
         BoundTypeKind.Slice => SliceHandle,
         BoundTypeKind.Array => ArrayHandle,
         BoundTypeKind.Dictionary => DictionaryHandle,
-        BoundTypeKind.Constructed when type.Symbol?.LibraryDeclaration == KimiDeclarationId.Loan => Empty,
         _ => throw Outside(type),
     };
 
@@ -123,4 +131,11 @@ internal static class Layout
         static TypeLayout Scalar(string llvm, int size)
             => new(llvm, size, size, size, ReadOnlyMemory<int>.Empty);
     }
+
+    /// <summary>A Type's layout (S2-S4 X18): OK with its <see cref="Value"/>; CLayout with the C-layout <see cref="CLayout"/>
+    /// instance, at any depth, that stores a zero-sized Field (SPEC 6.7.1, 8.15.3); or Limit, with neither, when a size or offset
+    /// exceeds the generation limit (IMPL 21.3.2).</summary>
+    /// <param name="Value">The shared representation record, when the Type is laid out.</param>
+    /// <param name="CLayout">The C-layout instance without a layout.</param>
+    internal readonly record struct Result(ValueLowering? Value, BoundType? CLayout);
 }

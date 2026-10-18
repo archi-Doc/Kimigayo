@@ -315,8 +315,9 @@ public sealed partial class Binding
         }
 
         // SPEC 8.3: a primitive's conformances are its intrinsic capabilities and the built-in comparison and formatting
-        // conformances above; no declaration can add another (SPEC 8.7.1), so its fixed environment refutes the rest.
-        if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive && !ReferenceEquals(type, BoundType.Never) &&
+        // conformances above; no declaration can add another (SPEC 8.7.1), so its fixed environment refutes the rest. Never
+        // has none of the built-in ones (SPEC 3.1.3).
+        if (this.contractHeadersReady && this.capabilityMode == BindingMode.Final && type.Kind == BoundTypeKind.Primitive &&
             contract.Intrinsic == IntrinsicKind.None)
         {
             return contract.Declaration.BindingState == BindingState.Invalid ? ConstraintProof.Error : ConstraintProof.Refuted;

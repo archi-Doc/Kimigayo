@@ -127,11 +127,6 @@ public sealed partial class Binding
             return true;
         }
 
-        if (ReferenceEquals(type, BoundType.Never))
-        {
-            return true;
-        }
-
         if (type.Kind == BoundTypeKind.FunctionItem && (kind == IntrinsicKind.Copy || type.Components.Count == 0))
         {
             // SPEC 7.7.4: an Item stores nothing, so it is Copy; it is Owned when its bound arguments are, which the
