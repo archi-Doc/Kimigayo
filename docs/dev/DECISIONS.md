@@ -3106,3 +3106,24 @@ structure is recorded here by the unit that first implements it.
     owner's own merge); a Diagnostics tie-break or a per-record condition for synthesized siblings (it would show identical records, and the
     order fault guards every reporter); moving synthesized sites in the location rule (no published fact names an expansion's source
     node).
+- **R5-M69 `ObjectRuntime`** (2026-10-19, P lane; plan P3b, PD2, package C §3.1 and §3.4, PLAN10 §5.8; promoted under R5-M14) A
+  permanent Backend component that owns the object runtime text every generator writes (IMPL 21.1.3, SHARED_OBJECT_RUNTIME), moved
+  from the old writer's `Objects` and `SharedObjects` partials after P3a's split: `WriteRuntime`, the payload-independent runtime once
+  per module that uses objects (the dynamic Type test through a descriptor's base map, the descriptor's free entry, finalization, and
+  the rc and arc clone and drop with their release transitions); `WriteObject`, an object's private constants (Runtime Type key,
+  metadata, descriptor, virtual table, base map), payload destructor and `__kimi_make_object<N>` factory from its row
+  `ObjectCreation`, which moved from `ObjectGenerationPlan` with it: its number, pooled key, payload `ValueLowering`, Copy, factory
+  `FunctionAbi` and Type token in the constructor, and the descriptor's optional entries (the payload destructor's symbol, the base
+  tokens, the virtual slots) init-only, so the constructor is within ARCH's parameter limit (as R5-M15's `FunctionAbi`);
+  `WriteSealedDrop`, a Sealed handle's direct release, from the handle's `ObjectCountingStep` (`BoundType.HandleMode`'s; it stays in
+  the held `BindingModel.cs`) and the symbol of the payload's drop routine as a span, empty for none, so the old aggregate destructor
+  names `__kimi_destroy_string` or formats `__kimi_drop_aggregate<N>` on the stack (`PayloadDrop`) and codegen passes its glue's
+  symbol. The parts' order is the component's; the old `WriteObjects` only decides from `EmissionModule` whether a module uses
+  objects. `LlvmModuleWriter.Name` joined `LlvmModuleText` (numbered names). The move is behavior-preserving; the Runtime Type key
+  constant, which nothing reads (PD17), moved unchanged, and its deletion with `ObjectCreation.TypeKey` and the pool parameter stays
+  a separate unit that changes the IR. C6a builds the codegen's rows (`B/Codegen/ObjectDescriptors.cs`, the factory ABI with them).
+  Rejected: `ObjectHandleMode` as input (payload authority is not the runtime's); the old aggregate ordinal as input (the old
+  writer's naming in a permanent component); a `string` symbol (a warm write would allocate a payload aggregate's drop name, and
+  `SealedObjectFinalizationTest` holds warm emission at 0 B); the caller writing the payload call between a release member and a
+  free member (the release order would leave the component); a copy of `Name` (a second copy); the row left in Emission (a Backend
+  dependency on the old Emission, which R6-gen deletes); the per-part members internal (each generator would repeat their order).
