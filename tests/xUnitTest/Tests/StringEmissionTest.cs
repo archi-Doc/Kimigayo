@@ -186,8 +186,7 @@ public class StringEmissionTest
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
         var ir = ScalarEmissionTest.EmitFixture("StringDivergentDefer", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Trait("Purpose", "Allocation")]

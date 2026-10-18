@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -9,11 +10,11 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The instance collector (R5 K1, K4a, K7; K package 4.3-4.6, DECISIONS R5-M35, R5-M40, R5-M60): the roots are the closed bodies
-/// of the root modules, a Fn, getter, setter, default-template or closure call is a target at its site with whether a runtime path reaches
-/// it, a generic callee an instance keyed by its erased substitution, a callee only the checks reach is in the checked set, a dropped value
-/// its Type's glue and a static access its initializer, the admission limits and Binding's storage bound are located records, the work
-/// grows linearly and collecting again allocates nothing.</summary>
+/// <summary>The instance collector (R5 K1, K4a, K6, K7; K package 4.3-4.6, DECISIONS R5-M35, R5-M40, R5-M60, R5-M67): the roots are the
+/// closed bodies of the root modules, a Fn, getter, setter, default-template or closure call is a target at its site with whether a runtime
+/// path reaches it, a generic callee an instance keyed by its erased substitution, a requirement call its witness in the instance, a callee
+/// only the checks reach is in the checked set, a dropped value its Type's glue and a static access its initializer, the admission limits
+/// and Binding's storage bound are located records, the work grows linearly and collecting again allocates nothing.</summary>
 public sealed class InstanceCollectorTest
 {
     // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
@@ -62,6 +63,17 @@ public sealed class InstanceCollectorTest
     // A C-layout struct over a Type parameter, which a zero-sized argument makes store a zero-sized Field.
     private const string CLayoutP = "#Layout(\"C\")\nstruct P<T>\n    public var n: i32\n    public var value: T\n" +
         "    public init(n: i32, value: T)\n        self.n = n\n        self.value = value@move\n";
+
+    // A Contract property a standard witness implements by a shared borrow and a set of a Field that needs a drop, and a generic function
+    // using both.
+    private const string HeldSource = "contract Held\n    property items: ref/Array<i32>\n        get() -> ref/Array<i32>\n" +
+        "        set(value: Array<i32>) -> ()\nstruct Bag\n    Self is Held\n    public var items: Array<i32>\n    public init() => self.items = []\n" +
+        "func refill<T>(x: uniq/T) -> i32\n    T is Held\n    x.items = [1, 2]\n    let view = x.items\n    return 1\n" +
+        "var bag = Bag.init()\nrequire refill(bag@uniq) == 1 else => $abort(\"held\")\n";
+
+    // A Type function requirement called on a generic function's Type parameter, which no local of its body stores.
+    private const string TagSource = "contract Tag\n    func tag() -> i32\nstruct Box<T>\n    Self is Tag\n    public var value: T\n" +
+        "    public init(value: T) => self.value = value@move\n    public func tag() -> i32 => 1\nfunc f<T>() -> i32\n    T is Tag\n    return T.tag()\n";
 
     // A generic function nested in a closed function, which has no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
@@ -218,6 +230,47 @@ public sealed class InstanceCollectorTest
         Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "pick(v@move)")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // DECISIONS BU-11 (PLAN G153 (2)): the storage bound is a property of each instance, whatever was prepared before it and in whatever
+    // order its parts are walked. `h` places its Type argument 3 levels down, so Box^61 (i32 at level 64) is an instance and Box^62 is the
+    // gap, alone and before or after the other; AB and BA store Box^57 in one Field and 4 levels deeper in the other, in either Field
+    // order (AB^56 is the twin within the bound); Tag stores no Field, so its Type argument alone refuses it, at each requesting call.
+    [Theory]
+    [InlineData("Box^61", "")]
+    [InlineData("Box^62", "Box^62")]
+    [InlineData("Box^61 Box^62", "Box^62")]
+    [InlineData("Box^62 Box^61", "Box^62")]
+    [InlineData("AB^56", "")]
+    [InlineData("AB^57", "AB^57")]
+    [InlineData("BA^57", "BA^57")]
+    [InlineData("Tag^61 Tag^61", "Tag^61 Tag^61")]
+    public void StorageNestingIsAPropertyOfTheInstance(string arguments, string refused)
+    {
+        var c = MirBuildTest.Compile(
+            "struct Box<T>\n    public let value: T\nstruct AB<A, B>\n    public let a: A\n    public let b: B\nstruct BA<A, B>\n    public let b: B\n" +
+            "    public let a: A\nstruct Tag<T>\nfunc h<T>(x: Option<raw/T>) => ()\npublic func main() -> ()\n" +
+            string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) + "    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(
+            refused.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (DiagnosticCode.Unsupported_Kd, $"h<{Text(x)}>(.None)")),
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+
+        static string Text(string argument)
+        {
+            var depth = int.Parse(argument[(argument.IndexOf('^') + 1)..], CultureInfo.InvariantCulture);
+            var box = Nest("Box", depth, "i32");
+            return argument[..argument.IndexOf('^')] switch
+            {
+                "Box" => box,
+                "Tag" => $"Tag<{Nest("Array", depth, "i32")}>",
+                var holder => $"{holder}<{box}, {Nest("Box", 4, box)}>",
+            };
+        }
+
+        static string Nest(string wrapper, int depth, string leaf) => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
+    }
+
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
     // one level into a generic function carries it, so each instance of the enclosing function has its own item; a call two levels in,
     // from a block, in a generic struct's method or in a specialization inside a generic struct does not, so the edge is the
@@ -286,8 +339,8 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
-    // K 4.5 rows 3-5 and 12: the Item of a function whose calls dispatch, a requirement's (K6) or a virtual slot's (K8), is no target where
-    // it is made or called.
+    // K 4.5 rows 4, 5 and 12: the Item of a function whose calls dispatch, a requirement's (K6b, DECISIONS R5-M67) or a virtual
+    // slot's (K8), is no target where it is made or called.
     [Fact]
     public void ADispatchingItemHasNoTarget()
     {
@@ -299,6 +352,88 @@ public sealed class InstanceCollectorTest
         Assert.Empty(set.Records);
         Assert.Equal(["Fn same [i32]"], Targets(program, set, "Fn top"));
         Assert.Empty(Targets(program, set, "Fn same [i32]"));
+    }
+
+    // K 4.5 row 3, F package 4.5 (DECISIONS R5-M61, R5-M67): a requirement call in an instance is the item of its witness there. A conformance
+    // witness, an inherited one, one of a generic Type's instance, one through a bound Contract reference, an accessor-call witness's
+    // accessors, a fixed array's entry member and the integer Position (its i32 specialization) are body items; a standard property
+    // witness's operations are property-witness items and a built-in comparison or arithmetic a Builtin item, each keyed by the erased Self.
+    [Fact]
+    public void ARequirementCallIsItsWitnessInTheInstance()
+    {
+        var c = MirBuildTest.Compile(TyCtxtTest.WitnessSource);
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn area"], Targets(program, set, "Fn measure [Square]"));
+        Assert.Equal(["Fn area"], Targets(program, set, "Fn measure [Leaf]"));
+        Assert.Equal(["Fn area [Held<i32>]"], Targets(program, set, "Fn measure [Held<i32>]"));
+        var inherited = set.Items[set.Targets(Item(program, set, "Fn measure [Leaf]"))[0].Item];
+        Assert.Equal("struct Base", $"{program.Bodies[inherited.BodyOrdinal].Key.Decl!.Scope.Owner}");
+        Assert.Equal(
+            ["PropertyWitness Tally StorageCopy", "PropertyWitness Tally StorageSet", "PropertyWitness Tally StorageCopy"],
+            Targets(program, set, "Fn bump [Tally]"));
+        Assert.Equal(["Getter count.Get", "Setter count.Set", "Getter count.Get"], Targets(program, set, "Fn bump [Gauge]"));
+        Assert.Equal(["Fn added"], Targets(program, set, "Fn add [Plain]"));
+        Assert.Equal(["Fn added [Wrap<i32>]"], Targets(program, set, "Fn add [Wrap<i32>]"));
+        Assert.Equal(["Builtin i32 BuiltinArithmetic"], Targets(program, set, "Fn add [i32]"));
+        Assert.Equal(["Builtin i32 BuiltinEquals"], Targets(program, set, "Fn same [i32]"));
+        Assert.Equal(
+            ["library Fn iterate in group FixedArray [i32, ]", "library Fn next in struct ArrayIterator [ArrayIterator<i32>]"],
+            Targets(program, set, "Fn count [[3 of i32]]"));
+        Assert.Equal(["library Fn tryResolve in group IntegerPosition"], Targets(program, set, "Fn at [i32]"));
+        var shims = set.Items.ToArray().Where(static x => x.Key.Kind is MonoKind.Builtin or MonoKind.PropertyWitness).ToArray();
+        Assert.Equal(4, shims.Length);
+        Assert.All(shims, x => Assert.Same(c.Types.Erase(x.RepresentativeType!), x.Key.Type));
+        Assert.All(shims, static x => Assert.Equal(-1, x.BodyOrdinal));
+    }
+
+    // K 4.5 row 3, S2-S4 X14: a standard property witness's operations are items keyed by the Field, the erased Self and the operation, whose
+    // requirement signatures agree with the key's; a set drops the Field's old value, so its item targets the Field Type's glue.
+    [Fact]
+    public void AStandardPropertyWitnessIsItsFieldsShim()
+    {
+        var c = MirBuildTest.Compile(HeldSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(["PropertyWitness Bag StorageSet", "DropGlue Array<i32>", "PropertyWitness Bag StorageBorrow"], Targets(program, set, "Fn refill [Bag]"));
+        Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
+        Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
+        Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
+    }
+
+    // PLAN G157 (4), PD30: a requirement call whose Self nests past Binding's storage bound in the instance (Box^65<i32>, storage depth 65;
+    // no local of the body stores it) is the storage-nesting gap at the call, while the twin one level below is its witness's instance.
+    [Theory]
+    [InlineData(64, true)]
+    [InlineData(65, false)]
+    public void ADeepSelfIsAGapAtTheRequirementCall(int depth, bool admitted)
+    {
+        var type = string.Concat(Enumerable.Repeat("Box<", depth)) + "i32" + new string('>', depth);
+        var c = MirBuildTest.Compile(TagSource + $"require f<{type}>() == 1 else => $abort(\"tag\")\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(admitted, set.Items.ToArray().Any(x => Label(program, x).StartsWith("Fn tag [", StringComparison.Ordinal)));
+        Assert.Equal(admitted ? [] : [(DiagnosticCode.Unsupported_Kd, "T.tag()")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // R5-M61: a requirement call of a closed Self has a witness; none is a broken contract, InternalInvariant_Kd at the call. Binding never
+    // gives one, so the test drops the Contract reference of measure's requirement call.
+    [Fact]
+    public void NoWitnessForAClosedSelfIsABrokenContract()
+    {
+        var c = MirBuildTest.Compile(TyCtxtTest.WitnessSource);
+        var program = c.BuildMir();
+        var measure = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "measure");
+        var block = Enumerable.Range(0, measure.Blocks.Length).Single(x => measure.Blocks[x].Terminator.Callee.Kind == MirCalleeKind.Requirement);
+        var call = measure.Blocks[block].Terminator;
+        measure.Terminate(block, call with { Callee = call.Callee with { Contract = null } });
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, "x.area()")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+        Assert.Empty(Targets(program, set, "Fn measure [Square]"));
     }
 
     // K 4.3: a type-driven item's representative is closed; an open one is a broken contract, InternalInvariant_Kd at its request. Binding
@@ -923,7 +1058,13 @@ public sealed class InstanceCollectorTest
     {
         if (item.BodyOrdinal < 0)
         {
-            return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}";
+            var variant = item.Key.Kind switch
+            {
+                MonoKind.Builtin => " " + (CompilerFunctionKind)item.Key.Variant,
+                MonoKind.PropertyWitness => " " + (PropertyWitnessKind)item.Key.Variant,
+                _ => string.Empty,
+            };
+            return $"{item.Key.Kind} {TyCtxt.Name(item.RepresentativeType!)}{variant}";
         }
 
         var body = program.Bodies[item.BodyOrdinal];

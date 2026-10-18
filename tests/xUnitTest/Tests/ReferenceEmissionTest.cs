@@ -258,8 +258,7 @@ public class ReferenceEmissionTest
             ? "func test(a: ref/string, flag: bool) -> bool => flag\nfunc forever() -> bool\n    loop => ()\nlet a = \"held\"\ntest(a, forever())"
             : "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = \"held\"\nforever(a)";
         var ir = ScalarEmissionTest.EmitFixture("ReferenceDivergent" + argument, source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]

@@ -12,50 +12,11 @@ namespace XunitTest;
 /// Type is the instantiation Binding makes for it, over the Kimi library and every milestone program.</summary>
 public sealed class TyCtxtTest
 {
-    // A generic function whose closure an instance closes, called with two lengths.
-    private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
-        "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
-
-    // A generic function with a closure, called with two borrows of different Origins, and a nongeneric function with Origins.
-    private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
-        "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
-
-    // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
-    // function over the struct's Type parameter.
-    private const string ComposeSource = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
-        "func count<length N>(values: ref/[N of i32]) -> isize => values.length\nfunc size<length N>(values: ref/[N of i32], k: isize = count(values)) -> isize => k\n" +
-        "func first<T>(values: ref/[2 of T] during a) -> ref/T during a => values[0]@ref/T\n" +
-        "func pick<T>(values: ref/[2 of T] during s, r: ref/T during s = first(values)) -> ref/T during s => r\n" +
-        "func same<T>(x: T, equal: bool = x == x) -> bool\n    T is Equatable\n    return equal\n" +
-        "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n    public func get(self: ref/Self) -> T => self.value\n" +
-        "    public func orElse(self: ref/Self, other: T = self.get()) -> T => other\n" +
-        "let fixed: [3 of i32] = [1, 2, 3]\nlet two: [2 of i32] = [4, 5]\nlet box = Box<i32>.init(6)\nlet p = pick(two@ref)\n" +
-        "require f(7) == 7 and f(true) and size(fixed@ref) == 3 and p@follow == 4 and same(8) and same(true) and box.orElse() == 6 else => $abort(\"compose\")\n";
-
-    // An Origin-generic function; a generic function with a closure and its specialization with one; a length-generic function with a
-    // default; named functions nested one and two levels in a generic function and one in a block of it; one nested in a nongeneric function;
-    // a generic struct whose method nests a function, with an accessor and a generic method whose specialization has a closure and a nested
-    // function (the F3 reproducer spec2.kimi); a nongeneric struct with an accessor; a group's static.
-    private const string InstanceSource = "func plain(value: ref/i32 during a) -> ref/i32 during a => value\n" +
-        "func pass<T>(value: T) -> T\n    T is Copy\n    let keep = func [] (inner: T) -> T => inner\n    return keep(value)\n" +
-        "specialize func pass<i32>(value: i32) -> i32\n    let keep = func [] (inner: i32) -> i32 => inner\n    return keep(value)\n" +
-        "func size<length N>(values: ref/[N of i32], k: isize = values.length) -> isize => k\n" +
-        "func outer<T>(x: T) -> T\n    T is Copy\n    func middle(y: T) -> T\n        func inner(z: T) -> T => z\n        return inner(y)\n" +
-        "    if true\n        func scoped() -> i32 => 1\n        _ = scoped()\n    return middle(x)\n" +
-        "func host() -> i32\n    func helper() -> i32 => 1\n    return helper()\n" +
-        "struct Box<T>\n    T is Copy\n    public var value: T\n    public computed current: T\n        get() -> T => self.value\n" +
-        "    public init(value: T) => self.value = value\n    public func get(self: ref/Self) -> T\n        func local() -> i32 => 1\n" +
-        "        _ = local()\n        return self.value\n" +
-        "    public func f<U>(self: ref/Self, x: U) -> T => self.value\n    specialize func f<i32>(self: ref/Self, x: i32) -> T\n" +
-        "        let g = func [] (y: T) -> T => y\n        func nested() -> i32 => 1\n        _ = nested()\n        return g(self.value)\n" +
-        "struct Fixed\n    public var value: i32\n    public computed current: i32\n        get() -> i32 => self.value\n    public init(value: i32) => self.value = value\n" +
-        "group Limits\n    public let limit: i32 = seed()\n    public func seed() -> i32 => 3\n";
-
     // Generic functions whose requirement calls, in the closed calls below, run each witness kind: a conformance witness, an inherited one, one
     // through a conditional conformance of a Type with an Origin slot, one through a bound Contract reference (also written in a generic Type's
     // own parameter), an accessor-call and a standard property witness (get and set), a fixed array's entry, the integer Position and built-in
     // comparison and arithmetic (the latter through a bound reference).
-    private const string WitnessSource = """
+    internal const string WitnessSource = """
         contract Shape
             func area(self: ref/Self) -> i32
         struct Square
@@ -136,6 +97,45 @@ public sealed class TyCtxtTest
         require same(8) and count(fixed) == 3 else => $abort("built in")
         _ = at(1, 3)
         """;
+
+    // A generic function whose closure an instance closes, called with two lengths.
+    private const string ClosureSource = "func identity<length N>(value: [N of i32]) -> [N of i32]\n    let action = func [] (inner: [N of i32]) -> [N of i32] => inner\n" +
+        "    return action(value)\n_ = identity([1, 2])\n_ = identity([5])\n";
+
+    // A generic function with a closure, called with two borrows of different Origins, and a nongeneric function with Origins.
+    private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
+        "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
+
+    // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
+    // function over the struct's Type parameter.
+    private const string ComposeSource = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
+        "func count<length N>(values: ref/[N of i32]) -> isize => values.length\nfunc size<length N>(values: ref/[N of i32], k: isize = count(values)) -> isize => k\n" +
+        "func first<T>(values: ref/[2 of T] during a) -> ref/T during a => values[0]@ref/T\n" +
+        "func pick<T>(values: ref/[2 of T] during s, r: ref/T during s = first(values)) -> ref/T during s => r\n" +
+        "func same<T>(x: T, equal: bool = x == x) -> bool\n    T is Equatable\n    return equal\n" +
+        "struct Box<T>\n    T is Copy\n    public var value: T\n    public init(value: T) => self.value = value\n    public func get(self: ref/Self) -> T => self.value\n" +
+        "    public func orElse(self: ref/Self, other: T = self.get()) -> T => other\n" +
+        "let fixed: [3 of i32] = [1, 2, 3]\nlet two: [2 of i32] = [4, 5]\nlet box = Box<i32>.init(6)\nlet p = pick(two@ref)\n" +
+        "require f(7) == 7 and f(true) and size(fixed@ref) == 3 and p@follow == 4 and same(8) and same(true) and box.orElse() == 6 else => $abort(\"compose\")\n";
+
+    // An Origin-generic function; a generic function with a closure and its specialization with one; a length-generic function with a
+    // default; named functions nested one and two levels in a generic function and one in a block of it; one nested in a nongeneric function;
+    // a generic struct whose method nests a function, with an accessor and a generic method whose specialization has a closure and a nested
+    // function (the F3 reproducer spec2.kimi); a nongeneric struct with an accessor; a group's static.
+    private const string InstanceSource = "func plain(value: ref/i32 during a) -> ref/i32 during a => value\n" +
+        "func pass<T>(value: T) -> T\n    T is Copy\n    let keep = func [] (inner: T) -> T => inner\n    return keep(value)\n" +
+        "specialize func pass<i32>(value: i32) -> i32\n    let keep = func [] (inner: i32) -> i32 => inner\n    return keep(value)\n" +
+        "func size<length N>(values: ref/[N of i32], k: isize = values.length) -> isize => k\n" +
+        "func outer<T>(x: T) -> T\n    T is Copy\n    func middle(y: T) -> T\n        func inner(z: T) -> T => z\n        return inner(y)\n" +
+        "    if true\n        func scoped() -> i32 => 1\n        _ = scoped()\n    return middle(x)\n" +
+        "func host() -> i32\n    func helper() -> i32 => 1\n    return helper()\n" +
+        "struct Box<T>\n    T is Copy\n    public var value: T\n    public computed current: T\n        get() -> T => self.value\n" +
+        "    public init(value: T) => self.value = value\n    public func get(self: ref/Self) -> T\n        func local() -> i32 => 1\n" +
+        "        _ = local()\n        return self.value\n" +
+        "    public func f<U>(self: ref/Self, x: U) -> T => self.value\n    specialize func f<i32>(self: ref/Self, x: i32) -> T\n" +
+        "        let g = func [] (y: T) -> T => y\n        func nested() -> i32 => 1\n        _ = nested()\n        return g(self.value)\n" +
+        "struct Fixed\n    public var value: i32\n    public computed current: i32\n        get() -> i32 => self.value\n    public init(value: i32) => self.value = value\n" +
+        "group Limits\n    public let limit: i32 = seed()\n    public func seed() -> i32 => 3\n";
 
     // C → B → A with a default and a nonvirtual member: C's base calls run B's override, B's runs the original.
     private const string BaseCallHierarchy = VirtualDispatchTest.Hierarchy +
@@ -455,8 +455,9 @@ public sealed class TyCtxtTest
         static string Counts(SortedDictionary<string, int> kinds) => string.Join(", ", kinds.Select(static x => $"{x.Key} {x.Value}"));
     }
 
-    // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception (a Self from
-    // Compose never does: Apply refuses it first).
+    // DECISIONS R5-M61: a conforming Self whose storage nests past Binding's depth bound has the Limit target, not an exception. A caller's
+    // instance that makes a requirement call's Self nest past it has no composed substitution, as it has no forwarded call (PLAN G157 (4)),
+    // so no substitution without its Self reaches Witness.
     [Fact]
     public void ADeepSelfHasTheLimitTarget()
     {
@@ -473,6 +474,20 @@ public sealed class TyCtxtTest
         call.Set(inner.Target, inner.ReturnType, null, [], [], conformingType: deep);
         Assert.Equal(RequirementTargetKind.Limit, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
+
+        // Option^40<i32> (storage depth 80): Wrap^80 counts as prepared in the pass once Witness prepared it, since its failing part is a
+        // Type argument that no Field stores.
+        var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
+        var nested = BoundType.I32;
+        for (var i = 0; i < 40; i++)
+        {
+            nested = c.Types.Intern(option.Kind, option.Symbol, option.Semantics, [nested]);
+        }
+
+        var instance = new CallPlan();
+        instance.Set(outer.Target, outer.ReturnType, null, [], [nested]);
+        Assert.Null(c.Types.Compose(c.Types.SubstOf(inner)!, c.Types.SubstOf(instance)!));
+        Assert.Null(c.Binding.InstantiateForwardedCall(inner, instance));
     }
 
     // A warm rebind keeps every call's substitution the same object and looking it up allocates nothing.

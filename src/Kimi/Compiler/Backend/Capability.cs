@@ -5,9 +5,10 @@
 // stage (A3b) and per instance.
 // Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
 // a nested function called without its enclosing instance (until PLAN G149), and of a static of a generic container's group, whose storage
-// key P42 brings (X33 (a), DECISIONS R5-M60); the operation rows of IMPL 21.3.3's 128-bit subset, division and remainder of i128 and u128
-// (a compound form builds as the same operation) and numeric conversions between them and f32 or f64 (a direct literal conversion is a
-// constant, Binding having fitted the literal, so it is no Cast). OCC-X's refusal (K6) joins them.
+// key P42 brings (X33 (a), DECISIONS R5-M60), and of a requirement call whose inherited witness cannot preserve its receiver (OCC-X,
+// DECISIONS R5-M67); the operation rows of IMPL 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds
+// as the same operation) and numeric conversions between them and f32 or f64 (a direct literal conversion is a constant, Binding having
+// fitted the literal, so it is no Cast).
 // Input: for an operation, its MIR rvalue and its first operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the
 // collector's location rule gives, once per subject.
 // Must not: be restated in a Supports* gate or another table, or decide acceptance.
@@ -31,6 +32,10 @@ internal enum CapabilityGap : byte
     // container's Type arguments (S2-S4 X6; the owner's choice X33 (a): generic storage keys belong to P42; DECISIONS R5-M60).
     GenericStaticKey,
 
+    // A requirement call whose witness is inherited and takes a receiver, which lends only its base prefix and so preserves no exclusive
+    // or owning requirement receiver (OCC-X, SPEC 12.7.1; Binding's refused witness, DECISIONS R5-M22, R5-M67).
+    ExclusiveInheritedWitness,
+
     WideDivision, // Division or remainder of i128 or u128 (IMPL 21.3.3).
     WideFloatConversion, // A numeric conversion between i128 or u128 and f32 or f64 (IMPL 21.3.3).
 }
@@ -46,6 +51,7 @@ internal static class Capability
         CapabilityGap.StorageNesting => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.EnclosingInstance => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.GenericStaticKey => DiagnosticCode.Unsupported_Kd,
+        CapabilityGap.ExclusiveInheritedWitness => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideDivision => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideFloatConversion => DiagnosticCode.Unsupported_Kd,
         _ => throw new InvalidOperationException($"The capability gap {gap} has no row."),

@@ -181,7 +181,7 @@ public class GuardEmissionTest
     {
         const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
         var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]

@@ -20,6 +20,16 @@ internal sealed partial class InstanceCollector
         Open,
     }
 
+    /// <summary>Gets the subject of a record caused at a site of an item's body (K 4.9), the one location rule of the collector's records and
+    /// code generation's (R5 C0b1): the site located in its body, if that lies in a root module; else the root-module site the item's
+    /// admission chain first reached, which each item keeps.</summary>
+    /// <param name="item">The item.</param>
+    /// <param name="body">Its body.</param>
+    /// <param name="source">The source of a statement, a terminator or a local of the body, or none for the body itself.</param>
+    /// <returns>The subject.</returns>
+    internal SourceRef Subject(int item, MirBody body, in SourceInfo source)
+        => this.Located(body, source) is var subject && subject.Module < this.rootModules ? subject : this.Set.Items[item].Site;
+
     // SPEC 6.1.3: whether a substitution carries the instance of the function enclosing its binder's definition, as its binder (a Closure's
     // context, R5-M36) or its declaring Type (Binding writes one level into a generic function).
     private static bool Carries(Subst subst, BindingSymbol enclosing)
@@ -79,11 +89,11 @@ internal sealed partial class InstanceCollector
         });
     }
 
-    // K 4.3, 4.8: the item of a type-driven key requested at a site, admitted once per erased Type whose layout verdict is Ok, a DropGlue's
-    // with its collection elements' (X34; a failure is the Type's record, or derived), and represented by the first unerased Type that
-    // requests it, which is closed (an open one is a broken contract, InternalInvariant_Kd); past the depth limit
-    // GenerationResourceLimit_Kd. -1 when refused.
-    private int AdmitType(int parent, SourceRef site, MonoKind kind, BoundType type)
+    // K 4.3, 4.8: the item of a type-driven key (its kind, a property witness's Field and a shim's variant) requested at a site, admitted
+    // once per erased Type whose layout verdict is Ok, a DropGlue's with its collection elements' (X34; a failure is the Type's record, or
+    // derived), and represented by the first unerased Type that requests it, which is closed (an open one is a broken contract,
+    // InternalInvariant_Kd); past the depth limit GenerationResourceLimit_Kd. -1 when refused.
+    private int AdmitType(int parent, SourceRef site, MonoKey key, BoundType type)
     {
         var set = this.Set;
         if (type.ContainsParameter)
@@ -92,13 +102,13 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        var key = new MonoKey(kind, default, this.types.Erase(type));
+        key = key with { Type = this.types.Erase(type) };
         if (set.Find(key) is >= 0 and var found)
         {
             return found;
         }
 
-        if (!this.LaysOut(site, type) || (kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
+        if (!this.LaysOut(site, type) || (key.Kind == MonoKind.DropGlue && !this.ElementsLayOut(site, type)))
         {
             return -1;
         }
@@ -177,11 +187,6 @@ internal sealed partial class InstanceCollector
 
         return (byte)BitOperations.TrailingZeroCount(views);
     }
-
-    // K 4.9: the subject of a record caused at a site of an item's body: the site located in its body, if that lies in a root module; else
-    // the root-module site the item's admission chain first reached, which each item keeps.
-    private SourceRef Subject(int item, MirBody body, in SourceInfo source)
-        => this.Located(body, source) is var subject && subject.Module < this.rootModules ? subject : this.Set.Items[item].Site;
 
     // K 4.9: a site of a body, moved out of the inline defaults of templates outside the root modules to the outermost omitting call; in a
     // root-module body, always a root-module site.

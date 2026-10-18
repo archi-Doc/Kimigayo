@@ -11,9 +11,9 @@ namespace XunitTest;
 /// <summary>The pipeline switch and the analysis entry points (plan 12.1, 13.2; R3–R5): <c>KIMI_PIPELINE</c> selects the default,
 /// only the mir pipeline publishes the MIR's records and marks the compiler identity, the legacy output does not depend on it, and every
 /// analysis notifies the difference ledger's observer. <c>KIMI_CODEGEN</c> (R5 PD4) selects MIR code generation under the mir pipeline
-/// only, which collects the checked set and refuses generation until C0b1. Every product generation request passes the generation entry's
-/// gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its generation records as <c>kimi build</c>
-/// does.</summary>
+/// only, which collects the checked set and writes a module only where its coverage rows cover it (R5 C0b1). Every product generation
+/// request passes the generation entry's gate (R5 C0a): an analysis with MIR records generates nothing, and <c>kimi test</c> publishes its
+/// generation records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
     // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
@@ -74,15 +74,15 @@ public sealed class PipelineSwitchTest
         Assert.Equal(legacy.Take(7).Concat(["pipeline", "mir", "codegen", "mir"]).Concat(legacy.Skip(7)), Manifest(CompilerPipeline.Mir, CompilerCodegen.Mir));
     }
 
-    // R5 K1: only MIR code generation collects the checked set, and until C0b1 it refuses to generate: one Unsupported_Kd in the Emission
-    // partition at each output root (an Application's startup, a test build's tests, a Library's closed bodies), never the old generator's
-    // module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does, and under MIR code generation
-    // nothing.
+    // R5 K1, C0b1 (DECISIONS R5-M65): only MIR code generation collects the checked set; it writes the module of an output form whose items
+    // its coverage rows cover, an Application's (with its entry) or a Library's, and otherwise writes nothing and records one Unsupported_Kd
+    // in the Emission partition at each subject of a row not written yet, here a call (C3a) and a test build's TestEntry at each test
+    // (C10a); never the old generator's module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does.
     [Theory]
-    [InlineData(OutputKind.Application, false, new[] { "" })]
+    [InlineData(OutputKind.Application, false, new[] { "first()" })]
     [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" })]
-    [InlineData(OutputKind.Library, false, new[] { "", "first() => ()", "second() => ()" })]
-    public void MirCodegenRefusesEachOutputRoot(OutputKind output, bool test, string[] roots)
+    [InlineData(OutputKind.Library, false, new string[0])]
+    public void MirCodegenWritesEachCoveredOutputForm(OutputKind output, bool test, string[] records)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
@@ -103,18 +103,20 @@ public sealed class PipelineSwitchTest
         c.Codegen = CompilerCodegen.Mir;
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(c.Instances);
+        var written = records.Length == 0;
         using (var writer = new StringWriter())
         {
-            Assert.False(c.Generate(writer));
-            Assert.Empty(writer.ToString());
+            Assert.Equal(written, c.Generate(writer));
+            Assert.Equal(written, writer.ToString().Length != 0);
+            Assert.Equal(written && output == OutputKind.Application, writer.ToString().Contains("define void @__kimi_start()", StringComparison.Ordinal));
         }
 
-        Assert.False(c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Contains("C0b1", failure);
-        Assert.False(c.Validate(out _));
-        var records = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
-        Assert.All(records, static x => Assert.Equal("Unsupported_Kd", x.Code));
-        Assert.Equal(roots, records.Select(static x => x.Text).Order(StringComparer.Ordinal));
+        Assert.Equal(written, c.WriteIr(TextWriter.Null, out var failure));
+        Assert.Equal(written, failure is null);
+        Assert.Equal(written, c.Validate(out _));
+        var errors = TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).ToArray();
+        Assert.All(errors, static x => Assert.Equal("Unsupported_Kd", x.Code));
+        Assert.Equal(records, errors.Select(static x => x.Text).Order(StringComparer.Ordinal));
     }
 
     // R5 C0a (PD12's gate, step 1; DECISIONS R5-M64): every generation request passes the entry's gate, artifact publication included,
