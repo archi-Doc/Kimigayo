@@ -30,9 +30,7 @@ internal sealed partial class MirBuilder
         _ => null,
     };
 
-    // SPEC 13.2, 13.3.1: a built-in operator on its operands, its check Proven where IMPL 21.3.3 omits it; or a sequence's metadata. The left
-    // operand is pending while the right one is evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3), and
-    // secured where the right one builds code (SPEC 12.2).
+    // SPEC 13.2, 13.3.1: a built-in operator on its operands (Operands, Binary); or a sequence's metadata.
     private void Primitive(MirPlace destination, Koto node, BoundType type)
     {
         switch (node)
@@ -41,12 +39,7 @@ internal sealed partial class MirBuilder
                 this.Metadata(destination, member);
                 break;
             case BinaryKoto binary when BinaryOp(binary.Akind) is { } op:
-                var start = this.arguments.Count;
-                var left = this.Operand(binary.Left, expected: null);
-                this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
-                this.arguments.Add(this.Operand(binary.Right, expected: null));
-                var proven = this.Proven(op, type, this.arguments[^1]);
-                this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
+                this.Binary(destination, binary, op, this.Operands(binary), type);
                 break;
             case UnaryKoto { Akind: KotoKind.PrefixPlus } plus:
                 this.Assign(destination, plus.Operand);
@@ -65,6 +58,25 @@ internal sealed partial class MirBuilder
                 this.Unsupported(node, destination);
                 break;
         }
+    }
+
+    // A built-in binary operator's operands, pushed in order; where the first is pushed. The left operand is pending while the right one is
+    // evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3), and secured where the right one builds code
+    // (SPEC 12.2).
+    private int Operands(BinaryKoto binary)
+    {
+        var start = this.arguments.Count;
+        var left = this.Operand(binary.Left, expected: null);
+        this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
+        this.arguments.Add(this.Operand(binary.Right, expected: null));
+        return start;
+    }
+
+    // SPEC 13.2, 13.3.1: a built-in binary operator on the operands pushed since start, its check Proven where IMPL 21.3.3 omits it.
+    private void Binary(MirPlace destination, BinaryKoto node, MirBinaryOp op, int start, BoundType type)
+    {
+        var proven = this.Proven(op, type, this.arguments[^1]);
+        this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
     }
 
     // SPEC 4.7, 4.6.2: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
