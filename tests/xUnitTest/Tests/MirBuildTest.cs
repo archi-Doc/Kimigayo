@@ -219,6 +219,24 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 22.5.1: an Abort reports where its `$abort` expression is, which HIR publishes as a Group of the invocation it builds: the Abort
+    // call's syntax is the macro, in a body, a require's failure body and a default's template.
+    [Theory]
+    [InlineData("func stop() -> Never => $abort(\"stopped\")\n")]
+    [InlineData("func check(n: i32) -> i32\n    require n >= 0 else => $abort(\"range\")\n    return n\n")]
+    [InlineData("func halt(n: i32, value: i32 = $abort(\"halt\")) -> i32 => value\nlet x = halt(1)\n")]
+    public void AnAbortIsLocatedAtItsMacro(string source)
+    {
+        var c = Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var aborts = program.Bodies.ToArray().SelectMany(static x => x.Blocks.ToArray()).Select(static x => x.Terminator)
+            .Where(static x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Abort } })
+            .Where(static x => x.Source.Syntax.Module == 0).ToArray();
+        Assert.NotEmpty(aborts);
+        Assert.All(aborts, x => Assert.IsType<MacroKoto>(c.SyntaxOf(x.Source.Syntax)));
+    }
+
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
     // their locals' case Types, allocates nothing, owning interpolations (Milestone30) and pair-generic bodies (Milestone28) included.
     [Trait("Purpose", "Allocation")]

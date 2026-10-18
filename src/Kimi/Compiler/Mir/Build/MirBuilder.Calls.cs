@@ -29,10 +29,11 @@ internal sealed partial class MirBuilder
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
     // intrinsic where the table gives one (IntrinsicDisposition), naming its library declaration (A3 E14), with the operands it takes beyond
-    // the written arguments (Extra), and a direct base call the implementation the virtual selection names. A call of a Never function or
-    // a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose operand does not complete
-    // enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code continues, its later operands,
-    // defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the Never value (DECISIONS R4-M62).
+    // the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
+    // names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call
+    // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
+    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
+    // Never value (DECISIONS R4-M62).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -147,7 +148,7 @@ internal sealed partial class MirBuilder
             destination,
             callee,
             start,
-            node,
+            disposition.Id == IntrinsicId.Abort ? node.Parent! : node, // SPEC 22.5.1: the $abort expression, the Group of its invocation.
             ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
