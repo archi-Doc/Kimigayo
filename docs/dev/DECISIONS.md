@@ -1819,29 +1819,40 @@ R5 on the owner's request of 2026-10-18.
   pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
   Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
   Constraint already did, until R6. Not temporary.
-- **BU-8** (2026-10-18; the BU planning session; PLAN G147 (2), design A approved by the planning session the same day) A user
-  index's choice between `index` and `indexUniq` (SPEC 4.7.1) is decided once, by the HIR publisher, from the capability of the
-  element Place's use. `ExclusiveUse` (`Binding.Hir.Adjust.cs`) holds exactly when the consumer borrows the node exclusively or
-  Reborrows the exclusive reference it stores (an argument, a bare acquisition, a Subject, a receiver; SPEC 10.2, 4.7.2, 7.3), the
-  node is an assignment's or update's target or an exclusive borrow's operand, or an exclusive use reaches it as the receiver of a
-  Field or an element, as a group's operand or as the reference, handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2;
-  not a raw `*p`, SPEC 5.2). The plan row's Mode records it; `ExpansionPlan` and the builder follow it. `Take`: Binding's in-place
-  read of a selection (`ElementAccess.IsSynthesizedAccess`, which `ReceiverElement` records when a member's qualifier is bound,
-  before its receiver mode is selected) no longer overrides a consumer that takes the child exclusively (an exclusive borrow, or a
-  bare acquisition that Reborrows): the Adjust states that operation, as the builder already built it from the expected Type. Why:
-  Binding binds both calls and selects neither (its capability checks only ask whether `indexUniq` is bound, also speculatively),
-  and the old path selects per consumer in OwnershipAnalysis; the publisher's shape list missed follows and Reborrows and the
-  recorded read hid exclusive receivers and setters, so MIR wrote or borrowed exclusively past `index`'s shared Deref and A5
-  accepted conflicts the old path rejects (`let view = entries@ref; change(entries[1]); inspect(view)`). The publisher owns the
-  decision until R7 writes the columns inline in Binding. Rejected: the two `ExclusiveUse` clauses alone (receivers keep the
-  cause); a receiver clause reading the grandparent call (one form, and the Adjust keeps misstating the acquisition); a Binding set
-  of exclusively used subscripts marked at each committed consumer (new state, about seven sites and a second path walk beside
-  `PathAuthority`, a cross-phase representation change ahead of R7). Open: a pair-layer element read bare (`ByCase`) needs a
-  selection per Semantics case (ref Copies, uniq Reborrows) while Mode is one per node; `Binding.EffectBounds.PlaceAccess` drops to
-  Ref past a follow, the same miss on the old effect checker that R6-check deletes (A4 reads the MIR); Binding accepts an exclusive
-  Reborrow through a `let`-owned subscript (`change(entries[1])`, which SPEC 4.7.1 denies), rejected only by the old path's
-  TransferRequired, and rejects an element receiver through two exclusive layers (`values[0].bump()` with `uniq/(uniq/Meter)`
-  elements, `NoApplicableOverload_Kd`, while a local `r.bump()` binds; SPEC 3.4.3 and 7.3 to be read). Not temporary.
+- **BU-8** (2026-10-18; the BU planning session; PLAN G147 (2), design A approved by the planning session the same day, its
+  predicate redone after its review) A user index's choice between `index` and `indexUniq` (SPEC 4.7.1) is decided once, by the HIR
+  publisher, from the capability of the element Place's use. `ExclusiveUse` (`Binding.Hir.Adjust.cs`) holds exactly when the
+  consumer's operation needs exclusive capability of the node, or the node is an assignment's or update's target or the operand of a
+  borrow whose Type needs it, or an exclusive use reaches it as the receiver of a Field or an element, as a group's operand or as the
+  reference, handle or pair layer a follow selects through (SPEC 13.5.5, 15.6.2), unless that use is of a raw Place, whose capability
+  its path does not decide (SPEC 5.2: `*p`, `p[n]`). An operation's need is its target's (`Exclusive`): an exclusive reference or
+  object view, or a pair layer admitting one, read from a call receiver's, argument's, Case payload's or writer's adapted or
+  parameter Type (SPEC 7.3, 10.2), whatever its adaptation (a PayloadProjection or BaseBorrow states no mode), and from an Adjust
+  that is an exclusive borrow, or a Reborrow or pair-case acquisition of a Type that needs it (SPEC 4.7.2, 8.14). The publisher keeps
+  these per consumed child (`claims`, by SyntaxId, cleared per module), written where Consume takes the child, the one place the
+  operation is known, and read when the child is visited. The plan row's Mode records the choice; `ExpansionPlan` and the builder
+  follow it. `Take`: Binding's in-place read of a selection (`ElementAccess.IsSynthesizedAccess`, which `ReceiverElement` records
+  when a member's qualifier is bound, before its receiver mode is selected) no longer overrides a consumer needing exclusive
+  capability; the Adjust states that operation, as the builder already built it from the expected Type. A Field's, element's or
+  follow's operand keeps the recorded read: such a consumer projects in place, neither acquiring it nor reading the read, and its
+  capability is the projection's own. Why: Binding binds both calls and selects neither (its capability checks only ask whether
+  `indexUniq` is bound, also speculatively), and the old path selects per consumer in OwnershipAnalysis; a list of adaptation kinds
+  missed follows, Reborrows, receivers over the recorded read and object payload receivers, so MIR wrote or borrowed exclusively
+  past `index`'s shared Deref and A5 accepted conflicts the old path rejects (`let view = entries@ref; change(entries[1]);
+  inspect(view)`). The publisher owns the decision until R7 writes the columns inline in Binding. Rejected: the `ExclusiveUse`
+  clauses alone (receivers keep the cause); a receiver clause reading the grandparent call (one form; the Adjust keeps misstating
+  the acquisition); re-deriving each child's operation at its visit (a second copy of Consume); a Binding set of exclusively used
+  subscripts marked at each committed consumer (about seven sites and a second path walk beside `PathAuthority`, a cross-phase
+  representation change ahead of R7). Open: a pair-layer element read bare selects `indexUniq` when its binder admits an exclusive
+  case, while SPEC 13.5.5 applies each case's rule (the ref case needs only `index`), since Mode is one per node;
+  `Binding.EffectBounds.PlaceAccess` drops to Ref past a follow, the same miss on the old effect checker that R6-check deletes (A4
+  reads the MIR); Binding accepts an exclusive Reborrow through a `let`-owned subscript (`change(entries[1])`, which SPEC 4.7.1
+  denies), rejected only by the old path's TransferRequired; Binding rejects an element receiver through two exclusive layers
+  (`values[0].bump()` with `uniq/(uniq/Meter)` elements, `NoApplicableOverload_Kd`, while a local `r.bump()` binds; SPEC 3.4.3 and
+  7.3 to be read) and an exclusive base receiver even on a local (`Unsupported_Kd`), so neither reaches the selection;
+  `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
+  receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
+  the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 

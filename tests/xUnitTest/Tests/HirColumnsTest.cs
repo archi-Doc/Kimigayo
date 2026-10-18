@@ -289,11 +289,12 @@ public sealed class HirColumnsTest
         Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
     }
 
-    // SPEC 4.7.1, 4.7.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive
+    // SPEC 4.7.1, 4.7.2, 5.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive
     // capability selects indexUniq: a write, an update or an exclusive borrow through a follow of the stored reference, an exclusive
-    // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, also below another
-    // element; a read, a shared borrow, a shared receiver, a getter and a raw pointer's pointee select index. An exclusive receiver over
-    // Binding's in-place read states its own borrow.
+    // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, by its parameter Type
+    // also through an object handle's payload, and below another element; a read, a shared borrow, a shared receiver (a base's
+    // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
+    // exclusive receiver over Binding's in-place read states its own borrow.
     [Fact]
     public void AnExclusiveUseOfTheElementSelectsIndexUniq()
     {
@@ -310,6 +311,14 @@ public sealed class HirColumnsTest
                     set(value: i32) -> () => self.raw = value / 2
                 public init() => ()
                 public func bump(self: uniq/Self) => self.raw += 1
+                public func level(self) -> i32 => self.raw
+            open struct Base
+                public var b: i32 = 0
+                public init() => ()
+                public func peek(self) -> i32 => self.b
+            struct Derived : Base
+                public var d: i32 = 0
+                public init() => ()
             struct Pair<T>
                 Self is UniqIndexable<isize>
                 associate Element is T
@@ -349,6 +358,15 @@ public sealed class HirColumnsTest
                 var outer = Pair<Array<Point>>.init([Point.init()], [Point.init()])
                 let i: isize = 0
                 outer[0][i].mutate()
+            func handles(value: objuniq/Meter during a)
+                var objs = Pair<obj/Meter>.init(Meter.init()@obj, Meter.init()@obj)
+                objs[0].bump()
+                var entries: Dictionary<i32, objuniq/Meter during a> = [1: value@move]
+                entries[1].bump()
+                var rcs = Pair<rc/Meter>.init(Meter.init()@rc, Meter.init()@rc)
+                require rcs[0].level() == 2 else => $abort("rc")
+                var ds = Pair<Derived>.init(Derived.init(), Derived.init())
+                require ds[1].peek() == 0 else => $abort("base")
             func reads(value: uniq/i32 during a)
                 var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
                 let r: i32 = entries[1]@follow
@@ -360,6 +378,7 @@ public sealed class HirColumnsTest
                 unsafe => Raw.initialize(p, 1)
                 var ptrs = Pair<raw/i32>.init(p, p)
                 unsafe => *ptrs[0] = 5
+                unsafe => ptrs[1][0] = 6
 
             """;
         var c = MinimalEmissionTest.Analyze(Source);
@@ -375,11 +394,17 @@ public sealed class HirColumnsTest
             "let c = entries[1] indexUniq", "match entries[1] indexUniq", "entries[1].bump() indexUniq", "pts[0].mutate() indexUniq",
             "require pts[1].look() == 0 else => $abort(\"look\") index", "meters[0].doubled = 8 indexUniq", "meters[1].doubled += 2 indexUniq",
             "let d = meters[1].doubled index", "grid[0][1].mutate() indexUniq", "grid[0][1].mutate() indexUniq", "outer[0][i].mutate() indexUniq",
-            "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index", "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index",
+            "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
+            "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
+            "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
         ];
         Assert.Equal(expected, selections);
         var receiver = Reachable(c.Kotonoha).Single(x => x is IndexKoto && Line(x.Span.Start) == "pts[0].mutate()");
         Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), HirTables.AdjustOf(receiver));
+        var shared = MinimalEmissionTest.Analyze(
+            Source.Replace("require rcs[0].level() == 2 else => $abort(\"rc\")", "rcs[0].bump()", StringComparison.Ordinal));
+        var issue = Assert.Single(shared.Binding.Issues);
+        Assert.Equal("rcs[0].bump() NoApplicableOverload_Kd", $"{issue.Node} {issue.Code}");
 
         static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
     }
