@@ -1741,6 +1741,18 @@ R5 on the owner's request of 2026-10-18.
     Literal or waiting control-flow part before selection, and a second source walk for control flow. Open: a construction's
     unbound slot reports `MissingType` while a call's reports `UnboundTypeArgument_Kd` (above); the survey's limit (PLAN
     G146), which G129's late fit removes.
+  - U7a, the final review's redo, restructuring (B1, B4, N6; behavior unchanged): `SlotSolution` holds one datum, its
+    `Binder`; `SlotOwner`, `Constructor` and `OriginCount` derive from it, and `CallSlotOwner`, `CallSlotCount`,
+    `CallMemberPattern` and `CallType` take any binder. Invariant: a construction supplies data, and no operation of the
+    shared walks (`Pattern`, `Type`, the evidence walk, the defaults, the waiting-binds-F rule) reads `Function` (B1 was
+    `Pattern` reading it). The waiting-binds-F rule (SPEC 10.5, 10.5.4) has one F test (`CallableSlotType`) and one walk
+    (`TakeWaiting`) over a part and its Tuple and array literal elements at their positions; its consumers (`IWaitingTaker`)
+    are `WaitingSlots`, which removes the slots the callables bind (`UnsolvedSlots`, `WaitingPartsBind`), and
+    `SlotSolution.Take`, which completes a callable with S. Replaced: `WaitingBindsSlot`, `WaitingAt`,
+    `CompleteWaitingElements`, `SlotSolution.CallableSlot(int)` and the F tests of `TryCandidateCore`, `CompleteWaitingPart`
+    and `ExpectedCallSignature`. `CompleteUnselected` keeps its own walk: it binds the parts of a call without a candidate,
+    with no position or F. Rejected: a skip-indexed search per waiting callable (quadratic in a literal's waiting
+    elements); recording F bindings during the evidence walk (state carried across its passes).
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one

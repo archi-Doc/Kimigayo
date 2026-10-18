@@ -16,7 +16,7 @@ public sealed partial class Binding
     {
         // The Type of a parameter as this candidate reads it: the declaring Type's slots substituted and Self replaced; null when it fails.
         internal readonly BoundType? Pattern(BoundType pattern)
-            => this.Binding.CallMemberPattern(pattern, this.Function, this.DeclaringType) is { } member
+            => this.Binding.CallMemberPattern(pattern, this.Binder, this.DeclaringType) is { } member
                 ? this.Binding.ContractType(member, this.Scope, this.Self) : null;
 
         // SPEC 10.8: one argument part's evidence for the slots of the pattern at its position (Pattern), in the early or the late pass.
@@ -90,7 +90,7 @@ public sealed partial class Binding
             for (var i = 0; i < arguments.Count; i++)
             {
                 var source = arguments[i];
-                if (this.CallableSlot(mapping[i]) is not { } callableSlot ||
+                if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot ||
                     KotoHelper.UnwrapParentheses(source) is FunctionKoto { IsAnonymous: true } || binding.WasWaitingPart(source) ||
                     source.BoundType is not { } actual ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
@@ -126,7 +126,7 @@ public sealed partial class Binding
                 return false;
             }
 
-            var count = CallSlotCount(this.Function);
+            var count = CallSlotCount(this.Binder);
             var trial = binding.typeScratch.Rent(count);
             try
             {
@@ -167,7 +167,7 @@ public sealed partial class Binding
         // slot no evidence binds take their defaults. Returns the first part its default does not fit, bound at it for its own record.
         internal readonly Koto? DefaultPayloads(ReadOnlySpan<Koto> payload, out bool applied)
         {
-            var count = this.SlotOwner.BoundSymbol!.Schema!.GenericSlots.Count;
+            var count = CallSlotCount(this.Binder);
             var unsolved = this.Binding.RentSlotSet(count);
             try
             {

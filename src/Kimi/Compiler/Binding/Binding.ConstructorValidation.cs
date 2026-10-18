@@ -137,15 +137,20 @@ public sealed partial class Binding
                     this.inferenceFixedChecks++;
                 }
 
-                var solution = this.Solution(call, function, scope);
-                solution.DeclaringType = construction;
-                solution.Types = arguments;
-                solution.Lengths = lengths;
-                solution.Origins = origins;
-                solution.Inputs = inputs;
-                solution.FixedConstruction = true;
                 var state = this.TryCandidate(
-                    solution,
+                    new SlotSolution
+                    {
+                        Binding = this,
+                        Call = call,
+                        Binder = function,
+                        Scope = scope,
+                        DeclaringType = construction,
+                        Types = arguments,
+                        Lengths = lengths,
+                        Origins = origins,
+                        Inputs = inputs,
+                        FixedConstruction = true,
+                    },
                     [],
                     mapping,
                     previous.ArgumentMap,

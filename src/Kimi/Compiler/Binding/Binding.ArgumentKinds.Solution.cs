@@ -8,29 +8,19 @@ public sealed partial class Binding
 {
     // A candidate's solution from its call's evaluation: the call's slot arrays, scope, Self and explicit Type arguments.
     private SlotSolution Solution(in CallEvaluation evaluation, FunctionKoto function, BoundType? declaringType)
-    {
-        var solution = this.Solution(evaluation.Call, function, evaluation.Scope);
-        solution.Generic = evaluation.Generic;
-        solution.Self = evaluation.Self;
-        solution.DeclaringType = declaringType;
-        solution.Types = evaluation.Scratch;
-        solution.Lengths = evaluation.LengthArguments;
-        solution.Origins = evaluation.Origins;
-        solution.Inputs = evaluation.Inputs;
-        return solution;
-    }
-
-    // A function's solution at its call: the function binds the Origins and owns its slots, or its structure owns them for a constructor.
-    private SlotSolution Solution(InvocationKoto call, FunctionKoto function, BindingScope scope)
         => new()
         {
             Binding = this,
-            Call = call,
+            Call = evaluation.Call,
             Binder = function,
-            SlotOwner = CallSlotOwner(function),
-            OriginCount = function.Origins.Count,
-            Constructor = function.IsConstructor,
-            Scope = scope,
+            Generic = evaluation.Generic,
+            Scope = evaluation.Scope,
+            Self = evaluation.Self,
+            DeclaringType = declaringType,
+            Types = evaluation.Scratch,
+            Lengths = evaluation.LengthArguments,
+            Origins = evaluation.Origins,
+            Inputs = evaluation.Inputs,
         };
 
     // SPEC 6.5.2, 10.8.1: a Case construction's solution: the enum owns its slots and binds its Origins; it has no Self, declaring Type,
@@ -48,8 +38,6 @@ public sealed partial class Binding
             Binding = this,
             Call = call!,
             Binder = declaration,
-            SlotOwner = declaration,
-            OriginCount = declaration.BoundSymbol!.Schema!.Origins.Count,
             Scope = scope,
             Types = slots,
             Lengths = lengths,
@@ -61,17 +49,14 @@ public sealed partial class Binding
     // The SPEC 10.8 solve state of one candidate or one Case construction (DECISIONS BU-2): its Type, length and Origin slots and its
     // input Origins, with what substitution reads (scope, Self, declaring Type), its explicit Type arguments, whether a construction's
     // inferred Type is checked fixed (ValidateFixedConstruction) and the Origin inference its evidence begins. The binder (a function or
-    // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Its evidence walk
-    // serves both; the operations of a candidate (its Function) add a call's evidence, substitute the solution into a pattern and judge
-    // the candidate's Constraints over it.
+    // an enum) binds the Origins; the slots belong to the SlotOwner: the binder, or the structure for a constructor. Invariant: a Case
+    // construction supplies data, and no operation of the shared walks (Pattern, Type, the evidence walk, the defaults, the
+    // waiting-binds-F rule) reads Function; only a candidate's operations (its Constraints, its call's arguments) do.
     private ref partial struct SlotSolution
     {
         internal Binding Binding;
         internal InvocationKoto Call;
         internal Koto Binder;
-        internal Koto SlotOwner;
-        internal int OriginCount;
-        internal bool Constructor;
         internal GenericsKoto? Generic;
         internal BindingScope Scope;
         internal BoundType? Self;
@@ -83,12 +68,19 @@ public sealed partial class Binding
         internal bool FixedConstruction;
         internal OriginInference? OriginInference;
 
+        // The slots' owner, whether it is a constructor's structure rather than the binder, and the binder's Origin count.
+        internal readonly Koto SlotOwner => CallSlotOwner(this.Binder);
+
+        internal readonly bool Constructor => !ReferenceEquals(this.SlotOwner, this.Binder);
+
+        internal readonly int OriginCount => CallOriginCount(this.Binder);
+
         // The candidate's function, for the operations of a call.
         internal readonly FunctionKoto Function => (FunctionKoto)this.Binder;
 
         // The pattern with the solution substituted, or null while it holds an unbound slot.
         internal readonly BoundType? Type(BoundType pattern)
-            => this.Binding.CallType(pattern, this.Function, this.Types, this.Scope, this.Self, this.Origins, this.Inputs, this.DeclaringType, this.Lengths);
+            => this.Binding.CallType(pattern, this.Binder, this.Types, this.Scope, this.Self, this.Origins, this.Inputs, this.DeclaringType, this.Lengths);
 
         // Whether every own slot is bound.
         internal readonly bool IsComplete()
@@ -260,15 +252,6 @@ public sealed partial class Binding
 
         private readonly Span<BoundOrigin> InputSpan() => this.Inputs.AsSpan(0, Math.Min(this.Inputs.Length, InputOriginCount(this.Binder)));
 
-        // The slot F of a parameter `F`, `ref/F` or `uniq/F`; null for any other parameter.
-        private readonly BoundType? CallableSlot(int parameter)
-        {
-            var pattern = this.Function.Parameters[parameter].Type.BoundType!;
-            var slot = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
-                ? pattern.Components[0] : pattern;
-            return slot.Kind == BoundTypeKind.Parameter && ContainerSlot(this.SlotOwner, slot.Symbol!) >= 0 ? slot : null;
-        }
-
         // A slot's own validity: a length is Unknown while unbound; a Type slot is checked when bound and Proven when it is unbound only
         // because it is unsolved.
         private readonly ConstraintProof SlotProof(ReadOnlySpan<BoundType?> slots, int slot, SlotSet unbound)
@@ -294,9 +277,9 @@ public sealed partial class Binding
             for (var i = 0; i < this.Call.ArgumentNodes.Count; i++)
             {
                 var source = this.Call.ArgumentNodes[i];
-                if (this.CallableSlot(mapping[i]) is not { } callableSlot || source.BoundType is null ||
+                if (this.CallableSlot(this.Function.Parameters[mapping[i]].Type.BoundType!) is not { } callableSlot || source.BoundType is null ||
                     !binding.TryCallable(callableSlot, binding.ConstraintScope(this.Function), out var requiredSignature, out _) ||
-                    binding.CallMemberPattern(requiredSignature, this.Function, this.DeclaringType) is not { } memberSignature ||
+                    binding.CallMemberPattern(requiredSignature, this.Binder, this.DeclaringType) is not { } memberSignature ||
                     this.Type(binding.ContractType(memberSignature, this.Scope, this.Self)) is not { } required ||
                     binding.PerCallStandIn(required, source, required, fixedOnly) is null)
                 {

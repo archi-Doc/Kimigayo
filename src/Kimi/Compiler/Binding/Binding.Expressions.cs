@@ -282,7 +282,7 @@ public sealed partial class Binding
     // operations of its concrete Type.
     // A shared literal argument constructs an owner temporary before acquiring its borrow.
     private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? parameter.Components[0] : parameter;
+        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
 
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&

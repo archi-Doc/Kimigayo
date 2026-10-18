@@ -21,11 +21,12 @@ namespace Kimi.Compiler;
 //   part's fit to the parameter Type at its position (FitArgument, Binding.ArgumentKinds.Fit.cs) for call arguments, elements, Case
 //   payloads and value calls, and its completion there (CompleteArgument, ErasePart); SolveSelected, the selected candidate of a call
 //   whose slot no evidence binds: a nested call waits, or the Literal parts' defaults apply to it alone and its checks run once more
-//   (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments and waiting elements at its F; SlotSolution
-//   (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of one candidate or one Case construction, whose evidence walk takes
-//   each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies the defaults
-//   (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the Constraints over
-//   it (Prove); CompleteUnselected, the parts of a call that completes none, bound on their own (SPEC 23.1.2).
+//   (SPEC 10.2.1); CompleteWaiting, the selected candidate's waiting arguments; the waiting-binds-F rule (TakeWaiting,
+//   Binding.ArgumentKinds.Waiting.cs), the one walk to the waiting callables at an F that the call's queries and the completions share;
+//   SlotSolution (Binding.ArgumentKinds.Solution.cs), the SPEC 10.8 solve state of one candidate or one Case construction, whose
+//   evidence walk takes each part's evidence for the slots by its kind (InferArgument, Binding.ArgumentKinds.Evidence.cs) and applies
+//   the defaults (DefaultArguments, DefaultPayloads), and whose candidate operations substitute the solution (Type) and judge the
+//   Constraints over it (Prove); CompleteUnselected, the parts of a call that completes none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
 //   part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal
 //   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
@@ -399,12 +400,12 @@ public sealed partial class Binding
                 {
                     completedWaiting[i] = true;
                     waitingContexts[i] = operations[i].ParameterType;
-                    if (this.CompleteWaitingPart(argument, pattern, selected, operations[i].ParameterType, evaluation.Scope) is null)
+                    if (this.CompleteWaitingPart(argument, pattern, solution.SlotOwner, operations[i].ParameterType, evaluation.Scope) is null)
                     {
                         return false;
                     }
                 }
-                else if (!this.CompleteWaitingElements(argument, pattern, solution))
+                else if (!TakeWaiting(argument, pattern, solution.SlotOwner, solution))
                 {
                     return false;
                 }
@@ -420,10 +421,9 @@ public sealed partial class Binding
 
     // SPEC 10.5: a waiting part at F, `ref/F` or `uniq/F`: an anonymous function with the fixed expected call signature S (`context`), a
     // reference selected by S, or without S a value only when it needs none (FailUnfixedReference otherwise); any other at its Type.
-    private BoundType? CompleteWaitingPart(Koto part, BoundType pattern, FunctionKoto selected, BoundType? context, BindingScope scope)
+    private BoundType? CompleteWaitingPart(Koto part, BoundType pattern, Koto owner, BoundType? context, BindingScope scope)
     {
-        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-        var concrete = slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(selected), slotType.Symbol!) >= 0;
+        var concrete = CallableSlotType(pattern, owner) is not null;
         var node = KotoHelper.UnwrapParentheses(part);
         if (concrete && node is FunctionKoto { IsAnonymous: true } closure)
         {
@@ -437,43 +437,6 @@ public sealed partial class Binding
 
         return context is { } signature
             ? this.BindFunctionReference(part, node.BoundSymbol!, signature, scope, erase: false) : this.BindFunctionItem(part, node.BoundSymbol!, scope);
-    }
-
-    // SPEC 10.5.1: the elements of a Tuple or array literal argument at their positions: a waiting callable at an F of the candidate is
-    // completed with that F's signature; the others are completed when the literal is bound at its Type.
-    private bool CompleteWaitingElements(Koto part, BoundType pattern, in SlotSolution solution)
-    {
-        var node = KotoHelper.UnwrapParentheses(part);
-        var elements = node switch
-        {
-            TupleLiteralKoto tuple when pattern.Kind == BoundTypeKind.Tuple && pattern.Components.Count == tuple.Elements.Count => tuple.Elements,
-            ArrayLiteralKoto array when pattern.Kind is BoundTypeKind.Array or BoundTypeKind.FixedArray => array.Elements,
-            _ => null,
-        };
-        for (var i = 0; elements is not null && i < elements.Count; i++)
-        {
-            var element = elements[i];
-            var component = pattern.Components[pattern.Kind == BoundTypeKind.Tuple ? i : 0];
-            var slotType = component is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq }
-                ? component.Components[0] : component;
-            if (!IsWaitingCallable(element) || slotType.Kind != BoundTypeKind.Parameter || ContainerSlot(solution.SlotOwner, slotType.Symbol!) < 0)
-            {
-                if (!this.CompleteWaitingElements(element, component, solution))
-                {
-                    return false;
-                }
-
-                continue;
-            }
-
-            var signature = this.TryCallable(slotType, this.ConstraintScope(solution.Function), out var required, out _) ? solution.Type(required) : null;
-            if (this.CompleteWaitingPart(element, component, solution.Function, signature, solution.Scope) is null)
-            {
-                return false;
-            }
-        }
-
-        return true;
     }
 
     // SPEC 10.2.1: the selected candidate's checks run once more with its Literal parts' defaults; a failure is its own record and

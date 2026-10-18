@@ -1238,9 +1238,8 @@ public sealed partial class Binding
                     if (type is null)
                     {
                         var pattern = function.Parameters[mapping[i]].Type.BoundType!;
-                        var slotType = pattern is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq } ? pattern.Components[0] : pattern;
-                        if (IsWaitingCallable(argument) &&
-                            slotType.Kind == BoundTypeKind.Parameter && ContainerSlot(CallSlotOwner(function), slotType.Symbol!) is var slot && slot >= 0 && arguments[slot] is null)
+                        if (IsWaitingCallable(argument) && solution.CallableSlot(pattern) is { } slotType &&
+                            arguments[ContainerSlot(solution.SlotOwner, slotType.Symbol!)] is null)
                         {
                             BoundType? signature = null;
                             if (this.TryCallable(slotType, this.ConstraintScope(function), out var required, out _))

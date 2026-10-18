@@ -52,6 +52,25 @@ public sealed partial class Binding
             this.count++;
         }
 
+        internal void Remove(int slot)
+        {
+            if (!this.Contains(slot))
+            {
+                return;
+            }
+
+            if (slot < 64)
+            {
+                this.head &= ~(1UL << slot);
+            }
+            else
+            {
+                tail[(slot >> 6) - 1] &= ~(1UL << (slot & 63));
+            }
+
+            this.count--;
+        }
+
         internal void Clear()
         {
             this.head = 0;

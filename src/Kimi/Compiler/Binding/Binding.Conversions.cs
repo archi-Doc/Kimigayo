@@ -389,11 +389,11 @@ public sealed partial class Binding
                 return Complete(conversion, reference);
             }
 
-            if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] })
             {
-                Complete(conversion.Right, reference.Components[0]);
+                Complete(conversion.Right, referent);
                 conversion.ConversionBinding = ConversionBinding.Follow;
-                return Complete(conversion, reference.Components[0]);
+                return Complete(conversion, referent);
             }
 
             if (IsObjectSemantics(reference.Semantics) && reference.Components.Count == 1 &&
@@ -571,7 +571,7 @@ public sealed partial class Binding
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
             var operandExpectation = semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) &&
                 this.KindOf(conversion.Left) == ArgumentKind.Literal &&
-                expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && expected.Semantics == semantics ? expected.Components[0] : null;
+                expected is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && expected.Semantics == semantics ? referent : null;
             var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
             if (operandType is null)
             {
