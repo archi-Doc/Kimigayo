@@ -1702,13 +1702,22 @@ R5 on the owner's request of 2026-10-18.
     that waits there makes the part wait (`if c => identity(1) else => identity(2)`). `KindOf` reads the recorded Literal or
     Waiting of an unbound part (`WasWaitingPart` replaces `WasWaitingNestedCall`). Arithmetic operands use the same
     predicate (`ResultSurvey.AllLiteral`), so a Never source no longer makes a right operand Literal: `x + (if c => 1 else
-    => stop())` with `x: i64` is now `TypeMismatch_Kd`, as the left-operand form already was. Limits (open): the survey binds
-    no source, so an unknown typed source beside literals makes the part wait rather than be typed (`keep(if c => foo.bar()
-    else => 2)` leaves `T` unbound, where SPEC 14.9.2 gives `foo.bar()`'s Type), the initializer survey's open issue; and a
-    Literal or waiting control-flow part is bound only once its call selects a candidate, as an anonymous function is, so a
-    problem inside it (`consume(if ready => 1 else => 0)` with `ready` unresolved) is not reported while the call selects
-    none. Binding it before selection was rejected: a node bound in a pass is not bound again, so its literal sources would
-    keep their defaults, and leaving them unbound under the probe broke `exit` operands and `match` arms.
+    => stop())` with `x: i64` is now `TypeMismatch_Kd`, as the left-operand form already was (accepted by the planning
+    session with owner decision (1): SPEC 12.3.3 lets only literal-only expressions, never control flow, fit a provider's
+    counterpart, 13.3.4, and 14.9.2 gives the `if` no candidate but its literal's default). Limit (open): the survey binds no
+    source, so an unknown typed source beside literals makes the part wait rather than be typed (`keep(if c => foo.bar()
+    else => 2)` leaves `T` unbound, where SPEC 14.9.2 gives `foo.bar()`'s Type); it goes with G129's late fit (BU decision
+    E13: a join propagates its decided Type into its literal sources, after which such a part can be bound and is Typed).
+  - U4b, the parts of a call that completes none (SPEC 23.1.2, 10.1; planning session): a Literal or waiting part is bound
+    only once its call selects a candidate. A call that ends unresolved, with no selected candidate or one that failed before
+    completing its arguments, binds each argument part still unbound on its own under the argument probe
+    (`CompleteUnselected`, from `BindCall`), so the part's own problems are reported beside the call's record, once, and none
+    that only the missing expectation causes: a Literal or waiting control-flow part's literal sources wait under the probe
+    (`WaitsUnderProbe`) and its source calls defer, and the parts of a Tuple or array literal, a contextual Case and a
+    waiting nested call are completed alike; a control-flow part already bound in the pass is not bound again. No candidate
+    is selected again; anonymous functions stay under PLAN R1e. Rejected: binding the part before selection (a node bound
+    in a pass is not bound again, so its literal sources would keep their defaults, and binding a `match` twice reports its
+    arms as covered).
 - **BU-3** (2026-10-18; the BU planning session; found by R4's E13 implementer at `157bc073`; amends R4-M51's Kind rule and
   narrows its Open note) A pair-layer input in call retention (SPEC 15.6.4 step 4, 8.1.2): a pair layer whose binder admits
   only borrows (ref, uniq, objref, objuniq) is a borrowed input in every admitted case, so `BorrowReferent`, the one

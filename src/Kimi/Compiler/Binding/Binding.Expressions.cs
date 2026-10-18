@@ -157,12 +157,9 @@ public sealed partial class Binding
                 case GenericsKoto generics when ReferenceEquals(generics.Identifier, target):
                     target = target.Parent!;
                     continue;
-                case MemberAccessKoto:
-                    root = target;
-                    return false;
                 default:
                     root = target;
-                    return true;
+                    return target.Parent is not MemberAccessKoto;
             }
         }
     }
@@ -371,6 +368,11 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
+        if (this.WaitsUnderProbe(node, expected))
+        {
+            return null; // SPEC 10.5.1: a literal source of a control-flow part under the argument probe waits for its expectation.
+        }
+
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
         var type = this.BindAndAdaptNode(node, scope, expected);

@@ -236,7 +236,7 @@ public sealed partial class Binding
         this.activeRequirementContract = null;
         try
         {
-            return this.BindCallCore(call, scope, expected);
+            return this.CompleteUnselected(call, scope, this.BindCallCore(call, scope, expected));
         }
         finally
         {
@@ -1116,10 +1116,10 @@ public sealed partial class Binding
             var waitingCallables = false;
             for (var i = 0; i < call.ArgumentNodes.Count; i++)
             {
-                var slot = mapping[i];
-                contextualInputs |= this.KindOf(call.ArgumentNodes[i]) == ArgumentKind.Composite;
-                contextualCallables |= KotoHelper.UnwrapParentheses(call.ArgumentNodes[i]) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(call.ArgumentNodes[i]);
-                var type = function.Parameters[slot].Type.BoundType;
+                var part = call.ArgumentNodes[i];
+                contextualInputs |= this.KindOf(part) == ArgumentKind.Composite;
+                contextualCallables |= KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(part);
+                var type = function.Parameters[mapping[i]].Type.BoundType;
                 if (type is null)
                 {
                     return CandidateApplicability.Pending;
@@ -1132,17 +1132,16 @@ public sealed partial class Binding
                 }
 
                 if (solution.Pattern(type) is { } evidencePattern
-                    ? !solution.InferArgument(evidencePattern, call.ArgumentNodes[i], late: false) : call.ArgumentNodes[i].BoundType is not null)
+                    ? !solution.InferArgument(evidencePattern, part, late: false) : part.BoundType is not null)
                 {
-                    if (call.ArgumentNodes[i].BoundType is { } actual)
+                    if (part.BoundType is { } actual)
                     {
                         independentRejection = function.IsConstructor && IndependentInputPattern(type) && !actual.CarriesOrigin;
                         // Retain this failed comparison in existing candidate scratch space. It is used only if no candidate
                         // applies; a successful overload selection publishes nothing from rejected alternatives.
                         if (DifferentRangeShapes(actual, type))
                         {
-                            operations[i] = new(
-                                call.ArgumentNodes[i], actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: slot);
+                            operations[i] = new(part, actual, type, ArgumentOperationKind.Value, ArgumentAdaptation.Exact, ParameterIndex: mapping[i]);
                         }
                     }
 

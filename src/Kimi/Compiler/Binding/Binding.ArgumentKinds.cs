@@ -23,7 +23,7 @@ namespace Kimi.Compiler;
 //   selected candidate's waiting arguments and waiting elements at its F; SlotSolution (Binding.ArgumentKinds.Solution.cs), one
 //   candidate's SPEC 10.8 solve state, whose evidence walk takes each part's evidence for the slots by its kind (InferArgument,
 //   Binding.ArgumentKinds.Evidence.cs), applies the defaults (DefaultArguments), substitutes the solution (Type) and judges the
-//   Constraints over it (Prove).
+//   Constraints over it (Prove); CompleteUnselected, the parts of a call that completes none, bound on their own (SPEC 23.1.2).
 // - Invariants: a recorded kind and a Literal's default are keyed by syntax identity (SourceRef) and live for one pass; a deferred
 //   part stays waiting after its completion, so its Type is never evidence for an outer slot (WasWaitingPart); a Literal
 //   is evidence only through the default recorded for the selected candidate; a Never-typed part is no evidence (SPEC 10.8).
@@ -102,6 +102,66 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 10.5.1, 14.9.2: whether a node bound without an expectation is a literal result source of a Literal or waiting control-flow
+    // part under the argument probe, which waits for its expectation as its part does instead of taking a default.
+    private bool WaitsUnderProbe(Koto node, BoundType? expected)
+    {
+        if (expected is not null || this.argumentProbe is not { } probe || !IsUnfittedLiteral(node))
+        {
+            return false;
+        }
+
+        return this.RecordedFact(probe).Kind is ArgumentKind.Literal or ArgumentKind.Waiting &&
+            ResultTarget(node) is { } target && this.UnderArgumentProbe(target);
+    }
+
+    // SPEC 23.1.2, 10.1: a call that ends unresolved, with no selected candidate or one that failed before completing its arguments,
+    // binds each argument part still unbound on its own under the argument probe, so that the part's own problems are reported once
+    // and none that only the missing expectation causes: a control-flow part's literal sources and its source calls that would wait
+    // stay unbound, and the parts of a Tuple or array literal, a contextual Case and a waiting nested call are completed alike. A
+    // control-flow part already bound in this pass is not bound again. Anonymous functions stay unbound (PLAN R1e); no candidate is selected
+    // again (SPEC 10.1); a deferred call is completed by its outer call.
+    private BoundType? CompleteUnselected(InvocationKoto call, BindingScope scope, BoundType? type)
+    {
+        for (var i = 0; type is null && !this.IsWaitingPart(call) && i < call.ArgumentNodes.Count; i++)
+        {
+            this.CompleteUnselectedPart(call.ArgumentNodes[i], scope);
+        }
+
+        return type;
+    }
+
+    private void CompleteUnselectedPart(Koto part, BindingScope scope)
+    {
+        var node = KotoHelper.UnwrapParentheses(part);
+        if (node.BoundType is not null)
+        {
+            return;
+        }
+
+        if (ControlFlowExpression(node) is { } flow)
+        {
+            if (!this.resultContexts.ContainsKey(flow))
+            {
+                this.BindIndependentArgument(node, scope); // Not yet bound in this pass: a Literal or waiting part.
+            }
+
+            return;
+        }
+
+        IReadOnlyList<Koto>? parts = node switch
+        {
+            TupleLiteralKoto tuple => tuple.Elements,
+            ArrayLiteralKoto array => array.Elements,
+            InvocationKoto nested when this.WasWaitingPart(nested) || NeedsEnumContext(nested) => nested.ArgumentNodes,
+            _ => null,
+        };
+        for (var i = 0; parts is not null && i < parts.Count; i++)
+        {
+            this.CompleteUnselectedPart(parts[i], scope);
+        }
     }
 
     // SPEC 10.5.1, 12.3, 14.9.2: the default of a Literal part; a control-flow one takes its first literal source's, which every other

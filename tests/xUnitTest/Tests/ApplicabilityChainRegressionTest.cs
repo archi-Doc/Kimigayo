@@ -156,6 +156,21 @@ public class ApplicabilityChainRegressionTest
         Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
     }
 
+    // SPEC 23.1.2, 10.1: a call that selects no candidate, or whose selected candidate fails, still binds its Literal and waiting
+    // control-flow parts on their own, so their own problems are reported beside the call's record, once; nothing is selected again.
+    [Theory]
+    [InlineData("choose(if ready => 1 else => 0)", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(if ready => 1 else => 0)")]
+    [InlineData("missingCall(if ready => 1 else => 0)", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missingCall")]
+    [InlineData("choose(identity(if ready => 1 else => 0))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "choose(identity(if ready => 1 else => 0))")]
+    [InlineData("pair((if ready => 1 else => 2, 3))", nameof(DiagnosticCode.AmbiguousBinding_Kd), "pair((if ready => 1 else => 2, 3))")]
+    [InlineData("keep(if ready => 1 else => stop())", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "keep(if ready => 1 else => stop())")]
+    public void AFailedCallStillReportsItsPartsOwnProblems(string use, string code, string at)
+    {
+        var source = ControlFlowDeclarations + "func pair(value: (i32, i32)) -> () => ()\nfunc pair(value: (i64, i64)) -> () => ()\n" + use + "\n";
+        var found = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, source.Substring(x.Span!.Value.Start, x.Span.Value.Length)));
+        Assert.Equal([(code, at), (nameof(DiagnosticCode.UnresolvedBinding_Kd), "ready")], found);
+    }
+
     [Fact]
     public void AResultOnlyOriginKeepsItsInvariantOccurrencesCorrelated()
     {
