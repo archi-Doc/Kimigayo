@@ -361,8 +361,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
     }
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
-    // body is built wherever its creation stands (failed, or inside a let Binding rejected), and a failed Index, Field or follow
-    // evaluates its operands before its Opaque value, which does not use a moved operand again.
+    // body is built wherever its creation stands (failed, inside a let Binding rejected, or a failed Index's kept operand), and a failed
+    // Index, Field, follow or `*p` evaluates its operands before its Opaque value, which does not use a moved operand again.
     [Fact]
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
@@ -375,6 +375,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    return n[once(s@move)]\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f()\n    let s = \"x\"\n    unsafe\n        _ = *take(s@move, s@move)\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32)\n    let s = \"x\"\n    _ = n[func (k: i32) -> i32 => take(s@move, s@move)]\n"));
     }
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.

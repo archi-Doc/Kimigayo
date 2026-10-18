@@ -97,15 +97,34 @@ internal sealed partial class MirBuilder
     // the roots of its Opaque site, but in the operands an Error node keeps, which are evaluated already.
     private sealed class Roots(MirBuilder builder) : KotoVisitor
     {
-        private Koto? top; // The Error node whose kept operands its site names by their evaluated roots.
+        private bool operands; // The nodes visited are an Error node's own children, whose kept ones its site names already.
 
         public override void Visit(Koto node)
         {
-            if (this.top is not null && ReferenceEquals(node.Parent, this.top) && Kept(node))
+            if (this.operands && Kept(node))
             {
                 return;
             }
 
+            var operands = this.operands;
+            this.operands = false;
+            this.Named(node);
+            node.VisitChildren(this);
+            this.operands = operands;
+        }
+
+        // The roots of a node's syntax, collected after its kept operands' (Opaque): an Error node's own children but those it keeps.
+        internal void Collect(Koto node)
+        {
+            this.Named(node);
+            this.operands = HirTables.Op(node) == HirOp.Error;
+            node.VisitChildren(this);
+            this.operands = false;
+        }
+
+        // The roots a node names: its Res's binding or static, and a Closure's capture sources.
+        private void Named(Koto node)
+        {
             var symbol = HirTables.Symbol(node);
             switch (HirTables.ResOf(node))
             {
@@ -122,15 +141,6 @@ internal sealed partial class MirBuilder
             {
                 this.Add(captures[i].Source);
             }
-
-            node.VisitChildren(this);
-        }
-
-        // The roots of a node's syntax, collected after its kept operands' (Opaque).
-        internal void Collect(Koto node)
-        {
-            this.top = HirTables.Op(node) == HirOp.Error ? node : null;
-            this.Visit(node);
         }
 
         private void Add(BindingSymbol? symbol)

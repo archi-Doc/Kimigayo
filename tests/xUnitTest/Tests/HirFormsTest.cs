@@ -401,33 +401,37 @@ public sealed class HirFormsTest
 
     // SPEC 23.1.2 (DECISIONS R5-M63): a closure whose definition Binding completed keeps its parts as a Closure wherever its creation
     // stands: failed (an Error: its inferred result names its parameter), inside a replaced parent (a let Binding rejected) or rejected
-    // with an expression body, whose result its own Consume takes; a closure whose capture list failed was never bound, so its body stays
-    // replaced.
+    // with an expression body, whose result its own Consume takes, or the kept operand of a failed Index, whose creation is evaluated there
+    // (a Closure, in place); a closure whose capture list failed was never bound, so its body stays replaced.
     [Fact]
     public void AClosureDefinitionIsPublishedWhereverItsCreationStands()
     {
-        const string Source = "func take(a: string, b: string) -> i32 => 1\nfunc f()\n" +
+        const string Source = "func take(a: string, b: string) -> i32 => 1\nfunc f(m: i32)\n" +
             "    _ = func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n" +
-            "    let g = func (k: i32)\n        return k@ref\n    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n";
+            "    let g = func (k: i32)\n        return k@ref\n    _ = func (s: string) => s@ref\n    let w = \"w\"\n    _ = func [w] () => 1\n" +
+            "    _ = m[func (k: i32) -> i32 => k]\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var closures = Reachable(c.Kotonoha).OfType<FunctionKoto>().Where(static x => x.IsAnonymous).ToArray();
         var rows = closures.Select(static x => (Koto?)x.Body ?? x.ExpressionBody!)
             .Select(static x => $"{HirTables.Op(x.Parent!)} {HirTables.Op(x)} {HirTables.AdjustOf(x).Acquire}");
-        Assert.Equal(["Error Block Unset", "Syntax Block Unset", "Error Borrow Temporary", "Error Syntax Unset"], rows);
+        Assert.Equal(["Error Block Unset", "Syntax Block Unset", "Error Borrow Temporary", "Error Syntax Unset", "Closure Name Copy"], rows);
+        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.None), HirTables.AdjustOf(closures[^1]));
         var statements = Reachable(c.Kotonoha).Where(x => x.Parent is CodeBlockKoto && IsWithin(x, closures[0])).Select(static x => HirTables.Op(x));
         Assert.Equal([HirOp.Let, HirOp.Discard, HirOp.Jump], statements);
     }
 
-    // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index or follow keeps the operands Binding resolved as a value or a Place at their
-    // positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding did
-    // not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records nothing.
+    // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index, follow or `*p` keeps the operands Binding resolved as a value or a Place at
+    // their positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding
+    // did not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records
+    // nothing. A group is never the failed node (its operand is), and a failed call's children stay replaced (PLAN G121).
     [Fact]
     public void AFailedPlaceKeepsTheOperandsBindingResolved()
     {
         const string Source = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n" +
             "func take(a: string, b: string) -> i32 => 1\nfunc f(n: i32)\n    let s = \"x\"\n    _ = n[take(s@move, s@move)]\n" +
-            "    _ = make(s@move, s@move).missing\n    _ = take(s@move, s@move)@follow\n    _ = missing.0\n    _ = P.missing\n";
+            "    _ = make(s@move, s@move).missing\n    _ = take(s@move, s@move)@follow\n    _ = missing.0\n    _ = P.missing\n" +
+            "    unsafe\n        _ = *take(s@move, s@move)\n    _ = (take(s@move, s@move, 1))\n";
         var c = MinimalEmissionTest.Analyze(Source);
         HirTables.Publish(c);
         var rows = Reachable(c.Kotonoha).Where(static x => x.Parent is { } parent && HirTables.Op(parent) == HirOp.Error)
@@ -437,9 +441,11 @@ public sealed class HirFormsTest
         [
             "n Name None/None", "take(s@move, s@move) Call None/None", "make(s@move, s@move) Call None/None", "missing Syntax Unset/None",
             "take(s@move, s@move) Call None/None", "follow Syntax Unset/None", "missing Syntax Unset/None", "0 Syntax Unset/None",
-            "P Syntax Unset/None", "missing Syntax Unset/None",
+            "P Syntax Unset/None", "missing Syntax Unset/None", "take(s@move, s@move) Call None/None", "take Syntax Unset/None",
+            "s@move Syntax Unset/None", "s@move Syntax Unset/None", "1 Syntax Unset/None",
         ];
         Assert.Equal(expected, rows);
+        Assert.Equal(HirOp.Group, HirTables.Op(Reachable(c.Kotonoha).OfType<ParenthesizedKoto>().Single()));
         Assert.Empty(c.BuildMir().Records);
         var ambiguous = MinimalEmissionTest.Analyze("group Config\n    public var count: i32 = 3\nstruct Settings\n    public var count: i32 = 0\n" +
             "func read(Config: ref/Settings) -> i32\n    return Config.count\n");
