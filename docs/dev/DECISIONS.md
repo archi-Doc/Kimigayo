@@ -1332,7 +1332,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     DIAGNOSTICS' escaped borrows (no guard-local code exists; A6's merge, unit 1c, finalizes it, also where γ reaches `_0`). Another
     `EndBorrow` (an abandoned comparison or reservation) checks nothing. E12: the stratum keeps no `partition` clause (1b-2).
   - A call whose retention is `CallRetention.Limit` (R4-M51: a contract Binding's storage instantiation does not complete) is a
-    located `Unsupported_Kd` at the call in a body view with a Loan, as A4's Limit; it retains nothing, with no fallback rule.
+    located `Unsupported_Kd` at the call in a body view with a Loan or a guard candidate (amended by unit 1c-3: such a view runs
+    its checks, since E7's γ needs no Loan), as A4's Limit; it retains nothing, with no fallback rule.
   Found: a value returned from a guard (A3's 108) is Binding's `UnsatisfiedOriginRelation_Kd`, so its MIR is Opaque and the
   stratum sees no escape (the Origin stratum's, unit 2a). Rejected: the Loan-based err(ended) (prototype round 10's `EndedByLoan`,
   unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate

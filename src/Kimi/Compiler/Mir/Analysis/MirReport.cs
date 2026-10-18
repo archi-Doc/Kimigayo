@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the problems the MIR analyses find in one program version (A6; DECISIONS R4-M3a, R5-M23).
+// Owns the problems the MIR analyses find in one program version (A6; DECISIONS R4-M3a, R5-M23); their records are MirProblem and
+// MirFact (MirProblem.cs).
 // Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), and its facts (related sites, added by
 // their first producer). Output: one problem per code and subject (the canonical Problem key; Reason joins it with U11's facts, R4-M3a)
 // with the views that have it merged, in insertion order (bodies in program order), and each problem's facts by its index. A merge keeps
@@ -9,36 +10,10 @@
 // problems (R4-M10); storage is pooled, so a warm version allocates nothing.
 // Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops.
 
-#pragma warning disable SA1402 // The problem and fact records belong to the report.
-
 using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
-
-/// <summary>A problem a MIR analysis finds (R4-M3a, R5-M23): its code, the requirement the recording rule judged (the Ownership
-/// partition's, or ControlFlow for A3, DIAGNOSTICS rule 1; never looked up from the code), its subject and the Semantics case views
-/// (<see cref="MirCases"/>) that have it, one bit per view. Related sites are facts, which their first producer adds.</summary>
-/// <param name="Code">The code.</param>
-/// <param name="Requirement">The requirement its recording rule names.</param>
-/// <param name="Subject">The syntax the problem is about.</param>
-/// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
-internal readonly record struct MirProblem(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceRef Subject, ulong Views);
-
-/// <summary>What a related site of a problem is (R4-M3a): a Loan's anchor, its witness holder's next use, the store whose value
-/// carries it, or the anchor of the reservation the problem's activation or destruction is of (design A3 6.4).</summary>
-internal enum MirFactKind : byte
-{
-    Anchor,
-    Use,
-    Store,
-    Reservation,
-}
-
-/// <summary>A related site of a problem (R4-M3a).</summary>
-/// <param name="Kind">What the site is.</param>
-/// <param name="Site">The syntax.</param>
-internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site);
 
 /// <summary>The problems of one program version (R4 shadow: unpublished until R6, compared by the difference ledger), one per code and
 /// subject: a problem added again ORs its views into the first, whose requirement it must name.</summary>

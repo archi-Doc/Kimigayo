@@ -1623,6 +1623,43 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     cursor.value = 1
                 """));
 
+    // SPEC 14.8.3 (A3 E7; 1c design review item 4): a guard candidate's guard-local Origin needs no Loan, so a view without one still checks
+    // its guards: a value that keeps the candidate in a holder used afterwards, or in the result, escapes at the candidate; a guard that only
+    // reads the candidate does not.
+    [Fact]
+    public void AGuardIsCheckedInAViewWithoutALoan()
+        => Assert.Equal(
+            ["localNoLoan: let d", "pickNoLoan: let d"],
+            Problems("""
+                func localNoLoan(packet: ref/Packet, fallback: ref/Data)
+                    var saved = fallback
+                    match packet@follow
+                        .Data(let d) if (label g: do
+                            saved = d
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(saved)
+                func pickNoLoan(packet: ref/Packet during p, fallback: ref/Data during p) -> ref/Data during p
+                    var saved = fallback
+                    match packet@follow
+                        .Data(let d) if (label g: do
+                            saved = d
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    return saved
+                func localValid(packet: ref/Packet, fallback: ref/Data)
+                    var saved = fallback
+                    match packet@follow
+                        .Data(let d) if (label g: do
+                            inspect(d)
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(saved)
+                """));
+
     // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,
     // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, from A5 run on the MIR here; VerifiedSpecExampleTest checks the
     // driver's records of the landed families (F1 and F3, unit 1b-5b-1).
