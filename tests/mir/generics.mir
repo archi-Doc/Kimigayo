@@ -25,6 +25,7 @@ fn largest @4
   _17: T temp @32 s4
   _18: isize temp @108 s1
   _19: T temp @37 s1
+  _20: T temp @4
   s1: lexical in s0 @18
   s2: lexical in s1 @22
   s3: lexical in s2 @25
@@ -47,7 +48,7 @@ fn largest @4
       StorageDead(_4) @22 s1
       StorageLive(_19) @37 s1
     * _19 = copy _3 @37 s1
-      goto bb25 check bb26 @36 s1
+      goto bb26 check bb27 @36 s1
   bb4:
       StorageLive(_18) @108 s1
       _18 = discriminant(_6) @108 s1
@@ -120,31 +121,34 @@ fn largest @4
   bb18:
       return @4
   bb19:
-      drop _2 -> bb20 [keep] @4
+      _0 = move _20 @36 s1
+      goto bb18 @36 s1
   bb20:
-      goto bb18 @4
+      drop _2 -> bb21 [keep] @4
   bb21:
-      drop _3 -> bb22 [keep] @19 s1
-  bb22:
-      StorageDead(_3) @19 s1
       goto bb19 @4
+  bb22:
+      drop _3 -> bb23 [keep] @19 s1
   bb23:
-      drop _19 -> bb24 [elide] @37 s1
-  bb24:
-      StorageDead(_19) @37 s1
-      goto bb21 @4
-  bb25:
-      _0 = move _19 @36 s1
-      goto bb23 @36 s1
-  bb26:
-      drop _19 -> bb27 @37 s1
-  bb27:
-      StorageDead(_19) @37 s1
-      drop _3 -> bb28 @19 s1
-  bb28:
       StorageDead(_3) @19 s1
-      drop _2 -> bb29 @4
+      goto bb20 @4
+  bb24:
+      drop _19 -> bb25 [elide] @37 s1
+  bb25:
+      StorageDead(_19) @37 s1
+      goto bb22 @4
+  bb26:
+      _20 = move _19 @36 s1
+      goto bb24 @36 s1
+  bb27:
+      drop _19 -> bb28 @37 s1
+  bb28:
+      StorageDead(_19) @37 s1
+      drop _3 -> bb29 @19 s1
   bb29:
+      StorageDead(_3) @19 s1
+      drop _2 -> bb30 @4
+  bb30:
       unreachable @18
 fn use @38
   _0: i64 return @38
@@ -176,6 +180,7 @@ fn unwrapTry @61
   _5: T var $try.value @78 s1
   _6: isize temp @113
   _7: Option<T> temp @115 s2
+  _8: Option<T> temp @61
   s1: lexical in s0 @74
   s2: lexical in s0 @113
   bb0:
@@ -188,7 +193,7 @@ fn unwrapTry @61
   bb1:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb19 [open ((_ as case 0) open (.0 elide))] @71
+      drop _3 -> bb20 [open ((_ as case 0) open (.0 elide))] @71
   bb2:
       StorageLive(_6) @113
       _6 = discriminant(_3) @113
@@ -206,44 +211,47 @@ fn unwrapTry @61
   bb6:
       StorageLive(_7) @115 s2
     * _7 = Adt case 1(): Option<T> @115 s2
-      goto bb16 check bb17 @89 s2
+      goto bb17 check bb18 @89 s2
   bb7:
       return @61
   bb8:
-      drop _1 -> bb9 [elide] @61
+      _0 = move _8 @89 s2
+      goto bb7 @89 s2
   bb9:
-      goto bb7 @61
+      drop _1 -> bb10 [elide] @61
   bb10:
-      drop _2 -> bb11 [elide] @70
-  bb11:
-      StorageDead(_2) @70
       goto bb8 @61
+  bb11:
+      drop _2 -> bb12 [elide] @70
   bb12:
+      StorageDead(_2) @70
+      goto bb9 @61
+  bb13:
       StorageDead(_6) @113
       StorageDead(_4) @74
-      drop _3 -> bb13 [keep] @71
-  bb13:
-      StorageDead(_3) @71
-      goto bb10 @61
+      drop _3 -> bb14 [keep] @71
   bb14:
-      drop _7 -> bb15 [elide] @115 s2
+      StorageDead(_3) @71
+      goto bb11 @61
   bb15:
-      StorageDead(_7) @115 s2
-      goto bb12 @61
+      drop _7 -> bb16 [elide] @115 s2
   bb16:
-      _0 = move _7 @89 s2
-      goto bb14 @89 s2
+      StorageDead(_7) @115 s2
+      goto bb13 @61
   bb17:
-      drop _7 -> bb18 @115 s2
+      _8 = move _7 @89 s2
+      goto bb15 @89 s2
   bb18:
+      drop _7 -> bb19 @115 s2
+  bb19:
       StorageDead(_7) @115 s2
       unreachable check bb1 @89
-  bb19:
+  bb20:
       StorageDead(_3) @71
       _0 = Adt case 0(move _2): Option<T> @67
-      drop _2 -> bb20 [elide] @70
-  bb20:
-      StorageDead(_2) @70
-      drop _1 -> bb21 [elide] @61
+      drop _2 -> bb21 [elide] @70
   bb21:
+      StorageDead(_2) @70
+      drop _1 -> bb22 [elide] @61
+  bb22:
       return @67

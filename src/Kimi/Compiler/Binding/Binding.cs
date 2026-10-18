@@ -184,13 +184,11 @@ public sealed partial class Binding
         }
 
         // The facts kept across unchanged passes are revoked by every edit, also after a pass that did not finish (a Bind that throws
-        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts, call retentions and which
-        // definitions are instantiated.
+        // leaves no result): associated Origin parameters of the edited trees, local regions, item contexts and the Type context's view memos.
         this.associatedOrigins.Clear();
         this.localRegions.Clear();
         this.ResetCallContexts();
-        this.types.ResetRetentions();
-        this.types.ResetInstances();
+        this.types.ResetViews();
     }
 
     private static bool InvalidDeclarationContext(Koto declaration)
@@ -470,11 +468,11 @@ public sealed partial class Binding
         this.PrepareBuiltinTargets();
         this.ValidateVirtualDeclarations();
         this.ValidateLayoutFragments();
-        this.ValidateLibraryImports();
         this.ValidateBaseDeclarations();
         this.PrepareStorage();
         this.ValidateInlineLayouts();
         this.ValidateCLayoutFields();
+        this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
         this.ComputeOriginRequirements();
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();

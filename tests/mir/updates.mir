@@ -42,6 +42,7 @@ fn counters @11
   _20: isize temp @43 s1
   _21: i32 temp @48 s1
   _22: uniq/i32 temp @48 s1
+  _23: i32 temp @11
   s1: lexical in s0 @20
   bb0:
       StorageLive(_4) @21 s1
@@ -104,22 +105,25 @@ fn counters @11
     * _22 = &uniq two-phase (*_1).0: uniq/i32 @48 s1
       _21 = copy (*_22) @48 s1
       (*_22) = Sub(copy (*_22), const 1_i32) @48 s1
-      goto bb4 check bb5 @47 s1
+      goto bb5 check bb6 @47 s1
   bb1:
       return @11
   bb2:
+      _0 = move _23 @47 s1
+      goto bb1 @47 s1
+  bb3:
       StorageDead(_7) @28 s1
       StorageDead(_5) @24 s1
       StorageDead(_4) @21 s1
-      goto bb1 @11
-  bb3:
-      StorageDead(_22) @48 s1
-      StorageDead(_21) @48 s1
       goto bb2 @11
   bb4:
-      _0 = move _21 @47 s1
-      goto bb3 @47 s1
+      StorageDead(_22) @48 s1
+      StorageDead(_21) @48 s1
+      goto bb3 @11
   bb5:
+      _23 = move _21 @47 s1
+      goto bb4 @47 s1
+  bb6:
       StorageDead(_22) @48 s1
       StorageDead(_21) @48 s1
       StorageDead(_7) @28 s1
@@ -131,14 +135,15 @@ fn divergentReplacement @52
   _1: [1 of string] var mut a @54 s1
   _2: () temp @61 s1
   _3: string temp @62 s1
-  _4: () temp @68 s2
-  _5: Never temp @70 s3
-  _6: () temp @71 s3
-  _7: () temp @72 s4
-  _8: () temp @68 s2
-  _9: Never temp @70 s5
-  _10: () temp @71 s5
-  _11: () temp @72 s6
+  _4: string temp @66 s1
+  _5: () temp @68 s2
+  _6: Never temp @70 s3
+  _7: () temp @71 s3
+  _8: () temp @72 s4
+  _9: () temp @68 s2
+  _10: Never temp @70 s5
+  _11: () temp @71 s5
+  _12: () temp @72 s6
   s1: lexical in s0 @53
   s2: lexical in s1 @67
   s3: deferred in s2 @69
@@ -150,62 +155,65 @@ fn divergentReplacement @52
     * _1 = FixedArray(const "old"): [1 of string] @59 s1
       StorageLive(_2) @61 s1
       StorageLive(_3) @62 s1
-    * goto bb7 check bb8 @73 s2
+    * goto bb8 check bb9 @73 s2
   bb1:
-      drop _1[0] -> bb13 @61 s1
+      drop _1[0] -> bb14 @61 s1
   bb2:
-      StorageLive(_4) @68 s2
-      StorageLive(_5) @70 s3
-    * goto bb4 @70 s3
+      _3 = move _4 @73 s2
+      goto bb1 @73 s2
   bb3:
-      goto bb1 @52
+      StorageLive(_5) @68 s2
+      StorageLive(_6) @70 s3
+    * goto bb5 @70 s3
   bb4:
-      goto bb5 check bb6 @70 s3
+      goto bb2 @52
   bb5:
-      StorageLive(_6) @71 s3
-      StorageLive(_7) @72 s4
-    * _7 = const () @72 s4
-      StorageDead(_7) @72 s4
-      _6 = const () @71 s4
-      StorageDead(_6) @71 s3
-      goto bb4 @71 s3
+      goto bb6 check bb7 @70 s3
   bb6:
-      StorageDead(_5) @70 s3
-      StorageDead(_4) @68 s2
-      unreachable check bb3 @69 s2
+      StorageLive(_7) @71 s3
+      StorageLive(_8) @72 s4
+    * _8 = const () @72 s4
+      StorageDead(_8) @72 s4
+      _7 = const () @71 s4
+      StorageDead(_7) @71 s3
+      goto bb5 @71 s3
   bb7:
-      _3 = const "new" @73 s2
-      goto bb2 @73 s2
+      StorageDead(_6) @70 s3
+      StorageDead(_5) @68 s2
+      unreachable check bb4 @69 s2
   bb8:
-      StorageLive(_8) @68 s2
-      StorageLive(_9) @70 s5
-    * goto bb10 @70 s5
+      _4 = const "new" @73 s2
+      goto bb3 @73 s2
   bb9:
-      unreachable check bb1 @67 s1
+      StorageLive(_9) @68 s2
+      StorageLive(_10) @70 s5
+    * goto bb11 @70 s5
   bb10:
-      goto bb11 check bb12 @70 s5
+      unreachable check bb1 @67 s1
   bb11:
-      StorageLive(_10) @71 s5
-      StorageLive(_11) @72 s6
-    * _11 = const () @72 s6
-      StorageDead(_11) @72 s6
-      _10 = const () @71 s6
-      StorageDead(_10) @71 s5
-      goto bb10 @71 s5
+      goto bb12 check bb13 @70 s5
   bb12:
-      StorageDead(_9) @70 s5
-      StorageDead(_8) @68 s2
-      unreachable check bb9 @69 s2
+      StorageLive(_11) @71 s5
+      StorageLive(_12) @72 s6
+    * _12 = const () @72 s6
+      StorageDead(_12) @72 s6
+      _11 = const () @71 s6
+      StorageDead(_11) @71 s5
+      goto bb11 @71 s5
   bb13:
+      StorageDead(_10) @70 s5
+      StorageDead(_9) @68 s2
+      unreachable check bb10 @69 s2
+  bb14:
       _1[0] = move _3 @61 s1
       _2 = const () @61 s1
-      drop _3 -> bb14 @62 s1
-  bb14:
+      drop _3 -> bb15 @62 s1
+  bb15:
       StorageDead(_3) @62 s1
       StorageDead(_2) @61 s1
       _0 = const () @53 s1
-      drop _1 -> bb15 @54 s1
-  bb15:
+      drop _1 -> bb16 @54 s1
+  bb16:
       StorageDead(_1) @54 s1
       return @53
 fn divergentReplacementIndex @75
@@ -215,15 +223,16 @@ fn divergentReplacementIndex @75
   _3: string temp @85 s1
   _4: ref/[1 of string] temp @85 s1
   _5: i32 temp @87 s1
-  _6: () temp @91 s2
-  _7: Never temp @93 s3
-  _8: () temp @94 s3
-  _9: () temp @95 s4
-  _10: () temp @91 s2
-  _11: Never temp @93 s5
-  _12: () temp @94 s5
-  _13: () temp @95 s6
-  _14: isize temp @85 s1
+  _6: i32 temp @89 s1
+  _7: () temp @91 s2
+  _8: Never temp @93 s3
+  _9: () temp @94 s3
+  _10: () temp @95 s4
+  _11: () temp @91 s2
+  _12: Never temp @93 s5
+  _13: () temp @94 s5
+  _14: () temp @95 s6
+  _15: isize temp @85 s1
   s1: lexical in s0 @76
   s2: lexical in s1 @90
   s3: deferred in s2 @92
@@ -239,68 +248,71 @@ fn divergentReplacementIndex @75
       StorageLive(_4) @85 s1
       _4 = &_1: ref/[1 of string] @85 s1
       StorageLive(_5) @87 s1
-    * goto bb7 check bb8 @96 s2
+    * goto bb8 check bb9 @96 s2
   bb1:
-      StorageLive(_14) @85 s1
-      _14 = move _5 as isize (Wrap) proven @87 s1
+      StorageLive(_15) @85 s1
+      _15 = move _5 as isize (Wrap) proven @87 s1
       EndBorrow(_4) @85 s1
-      drop _1[_14] -> bb13 @84 s1
+      drop _1[_15] -> bb14 @84 s1
   bb2:
-      StorageLive(_6) @91 s2
-      StorageLive(_7) @93 s3
-    * goto bb4 @93 s3
+      _5 = move _6 @96 s2
+      goto bb1 @96 s2
   bb3:
-      goto bb1 @75
+      StorageLive(_7) @91 s2
+      StorageLive(_8) @93 s3
+    * goto bb5 @93 s3
   bb4:
-      goto bb5 check bb6 @93 s3
+      goto bb2 @75
   bb5:
-      StorageLive(_8) @94 s3
-      StorageLive(_9) @95 s4
-    * _9 = const () @95 s4
-      StorageDead(_9) @95 s4
-      _8 = const () @94 s4
-      StorageDead(_8) @94 s3
-      goto bb4 @94 s3
+      goto bb6 check bb7 @93 s3
   bb6:
-      StorageDead(_7) @93 s3
-      StorageDead(_6) @91 s2
-      unreachable check bb3 @92 s2
+      StorageLive(_9) @94 s3
+      StorageLive(_10) @95 s4
+    * _10 = const () @95 s4
+      StorageDead(_10) @95 s4
+      _9 = const () @94 s4
+      StorageDead(_9) @94 s3
+      goto bb5 @94 s3
   bb7:
-      _5 = const 0_i32 @96 s2
-      goto bb2 @96 s2
+      StorageDead(_8) @93 s3
+      StorageDead(_7) @91 s2
+      unreachable check bb4 @92 s2
   bb8:
-      StorageLive(_10) @91 s2
-      StorageLive(_11) @93 s5
-    * goto bb10 @93 s5
+      _6 = const 0_i32 @96 s2
+      goto bb3 @96 s2
   bb9:
-      unreachable check bb1 @90 s1
+      StorageLive(_11) @91 s2
+      StorageLive(_12) @93 s5
+    * goto bb11 @93 s5
   bb10:
-      goto bb11 check bb12 @93 s5
+      unreachable check bb1 @90 s1
   bb11:
-      StorageLive(_12) @94 s5
-      StorageLive(_13) @95 s6
-    * _13 = const () @95 s6
-      StorageDead(_13) @95 s6
-      _12 = const () @94 s6
-      StorageDead(_12) @94 s5
-      goto bb10 @94 s5
+      goto bb12 check bb13 @93 s5
   bb12:
-      StorageDead(_11) @93 s5
-      StorageDead(_10) @91 s2
-      unreachable check bb9 @92 s2
+      StorageLive(_13) @94 s5
+      StorageLive(_14) @95 s6
+    * _14 = const () @95 s6
+      StorageDead(_14) @95 s6
+      _13 = const () @94 s6
+      StorageDead(_13) @94 s5
+      goto bb11 @94 s5
   bb13:
-      _1[_14] = move _3 @84 s1
+      StorageDead(_12) @93 s5
+      StorageDead(_11) @91 s2
+      unreachable check bb10 @92 s2
+  bb14:
+      _1[_15] = move _3 @84 s1
       _2 = const () @84 s1
-      StorageDead(_14) @85 s1
+      StorageDead(_15) @85 s1
       StorageDead(_5) @87 s1
       StorageDead(_4) @85 s1
-      drop _3 -> bb14 @85 s1
-  bb14:
+      drop _3 -> bb15 @85 s1
+  bb15:
       StorageDead(_3) @85 s1
       StorageDead(_2) @84 s1
       _0 = const () @76 s1
-      drop _1 -> bb15 @77 s1
-  bb15:
+      drop _1 -> bb16 @77 s1
+  bb16:
       StorageDead(_1) @77 s1
       return @76
 fn noncompletingWrite @99
@@ -310,6 +322,7 @@ fn noncompletingWrite @99
   _3: string var mut text @103 s2
   _4: () temp @106 s2
   _5: Never temp @108 s2
+  _6: () temp @101 s1
   s1: lexical in s0 @100
   s2: lexical in s1 @102
   bb0:
@@ -323,32 +336,35 @@ fn noncompletingWrite @99
     * _3 = const "old" @105 s2
       StorageLive(_4) @106 s2
       StorageLive(_5) @108 s2
-    * goto bb8 check bb9 @109 s2
+    * goto bb9 check bb10 @109 s2
   bb3:
       StorageDead(_1) @101 s1
       _0 = const () @100 s1
       return @100
   bb4:
-      StorageDead(_2) @102 s1
-      goto bb3 @99
+      _1 = move _6 @109 s2
+      goto bb3 @109 s2
   bb5:
-      drop _3 -> bb6 [keep] @103 s2
-  bb6:
-      StorageDead(_3) @103 s2
+      StorageDead(_2) @102 s1
       goto bb4 @99
+  bb6:
+      drop _3 -> bb7 [keep] @103 s2
   bb7:
-      StorageDead(_5) @108 s2
-      StorageDead(_4) @106 s2
+      StorageDead(_3) @103 s2
       goto bb5 @99
   bb8:
-      _1 = const () @109 s2
-      goto bb7 @109 s2
+      StorageDead(_5) @108 s2
+      StorageDead(_4) @106 s2
+      goto bb6 @99
   bb9:
+      _6 = const () @109 s2
+      goto bb8 @109 s2
+  bb10:
       _4 = const () @106 s2
       StorageDead(_5) @108 s2
       StorageDead(_4) @106 s2
-      drop _3 -> bb10 @103 s2
-  bb10:
+      drop _3 -> bb11 @103 s2
+  bb11:
       StorageDead(_3) @103 s2
       StorageDead(_2) @102 s1
       unreachable check bb1 @102 s1

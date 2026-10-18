@@ -29,10 +29,11 @@ internal sealed partial class MirBuilder
     // reference's receiver supplied after earlier parameters (SPEC 7.3.4), a setter's receiver after its value (SPEC 13.7.1), A3 E13 (2);
     // or in its pending slot), then its omitted defaults (Defaults), passed by parameter slot, the receiver first. A compiler function is its
     // intrinsic where the table gives one (IntrinsicDisposition), naming its library declaration (A3 E14), with the operands it takes beyond
-    // the written arguments (Extra), and a direct base call the implementation the virtual selection names. A call of a Never function or
-    // a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call whose operand does not complete
-    // enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code continues, its later operands,
-    // defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the Never value (DECISIONS R4-M62).
+    // the written arguments (Extra), $abort's at its macro (SPEC 22.5.1), and a direct base call the implementation the virtual selection
+    // names. A call of a Never function or a diverging intrinsic has no runtime successor and continues for the checks (SPEC 14.10); a call
+    // whose operand does not complete enters no callee at run time (SPEC 15.6.7), but for the checks it continues where that operand's code
+    // continues, its later operands, defaults and activation checked there (SPEC 14.10.3), each operand as built: a Never form's is the
+    // Never value (DECISIONS R4-M62).
     private void Call(MirPlace destination, CallPlan call, Koto node, Koto? first, Koto? given = null, in MirOperand value = default)
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
@@ -92,11 +93,9 @@ internal sealed partial class MirBuilder
                 direct!.ReceiverIndex,
                 out _);
             var slot = defaults ? this.Slot(parameter, receiver) : (MirPlace?)null;
-            var operand = this.Operand(
-                receiver,
-                ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter,
-                input: true,
-                slot);
+            var view = ReferenceEquals(direct, function) ? call.ReceiverOperation.AdaptedType ?? parameter : parameter;
+            var operand = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: false } ? this.Dispatched(receiver, view!, slot)
+                : this.Operand(receiver, view, input: true, slot);
             operand = slot is null && last > -2 ? this.Secure(operand, receiver) : operand;
             this.arguments[start] = slot is { } place ? this.Pending(place, operand, receiver) : operand;
         }
@@ -147,10 +146,30 @@ internal sealed partial class MirBuilder
             destination,
             callee,
             start,
-            node,
+            disposition.Id == IntrinsicId.Abort ? node.Parent! : node, // SPEC 22.5.1: the $abort expression, the Group of its invocation.
             ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
+    }
+
+    // SPEC 6.4.5: a virtual receiver's borrow covers the whole payload, so the receiver is borrowed as the view of its payload's own Type
+    // and that view upcast to the slot's (SPEC 13.6.1), the Loan on the payload rather than on its base subobject (DECISIONS R5-M49).
+    private MirOperand Dispatched(Koto receiver, BoundType view, MirPlace? slot)
+    {
+        var payload = TypeOf(receiver);
+        while (TyCtxt.Layer(payload, out var below, out _) != HirPlaceKind.Value && below is not null)
+        {
+            payload = below;
+        }
+
+        var whole = compilation.Types.Reference(view.Semantics, payload, view.Origin);
+        if (view.Components is not [var referent] || MirTypes.Agree(payload, referent))
+        {
+            return this.Operand(receiver, view, input: true, slot);
+        }
+
+        var borrowed = this.body.AddOperand(this.Operand(receiver, whole, input: true));
+        return this.Temporary(view, MirRvalue.Cast(MirCastKind.Upcast, borrowed, view) with { Proven = true }, receiver, slot);
     }
 
     // A Call terminator of a callee on the operands pushed since start, into the destination; one that diverges continues for the checks

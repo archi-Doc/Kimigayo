@@ -2,7 +2,9 @@
 
 using System.Text;
 using System.Text.RegularExpressions;
+using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -41,7 +43,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
             Lines(Resource + "func f(flag: bool, r: Resource)\n    if flag => consume(r@move)\n", "f"));
         const string Exits = Resource + "func log() => ()\nfunc f(flag: bool) -> i32\n    let r = make()\n    defer => log()\n    if flag\n" +
             "        consume(r@move)\n        return 1\n    return 2\n";
-        Assert.Contains("drop _2 -> bb11 [flag f0] [clear f0]", Lines(Exits, "f"));
+        Assert.Contains("drop _2 -> bb12 [flag f0] [clear f0]", Lines(Exits, "f"));
         Assert.Equal(
             ["drop _2 -> bb10 [keep]", "drop _6 -> bb6 [elide]", "drop _2 -> bb8 [elide]", "drop _8 -> bb9 [elide]"],
             Lines(Resource + "func f(flag: bool)\n    var r = make()\n    if flag\n        consume(r@move)\n        r = make()\n", "f"));
@@ -128,10 +130,10 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _1 -> bb1 [keep in v0; elide in v1]"], Lines("func hold<s/T>(value: s/T) -> ()\n    s is owner or ref\n    ()\n", "hold"));
         const string Select = "struct Payload\n    drop => ()\ngroup Helpers\n    public func select<s/T>(pair: (s/T, s/T)) -> s/T\n" +
             "        s is ref or obj\n        return pair.0@move\n";
-        Assert.Equal(["drop _1 -> bb3 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb5 [elide]"], Lines(Select, "select"));
+        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]"], Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
-        Assert.Equal(["drop _1 -> bb5 [keep]", "drop _4 -> bb7 [elide]", "drop _3 -> bb8 [elide]", "drop _2 -> bb9 [elide]"], Lines(Pick, "generic"));
+        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _4 -> bb8 [elide]", "drop _3 -> bb9 [elide]", "drop _2 -> bb10 [elide]"], Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
@@ -150,10 +152,36 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     public void OnlyRuntimeDropsHaveVerdicts()
     {
         Assert.Equal(
-            ["drop _1 -> bb4 [keep]", "drop _2 -> bb9", "drop _2 -> bb12", "drop _1 -> bb13"],
+            ["drop _1 -> bb5 [keep]", "drop _3 -> bb10", "drop _3 -> bb13", "drop _1 -> bb14"],
             Lines(Resource + "func f() -> i32\n    let r = make()\n    return 1\n    let s = make()\n    return 2\n", "f", all: true));
         Assert.Empty(Problems(Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n"));
         Assert.Equal(["drop _10 -> bb11 [keep]", "drop _2 -> bb12 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
+    }
+
+    // SPEC 16.2.2 (DECISIONS R5-M50): a transfer leaving a cleanup delivers its result through a temp (written and moved at its jumps) in
+    // its target's scope, not the jump's: an `exit` out of a defer body past a local with a cleanup (SPEC 16.1), through one in the scope
+    // that registered the defer, and a `yield` out of an `if` arm, through one in the scope the `if` opened in, both `t`'s; a `return`
+    // past `t`, through one in the function's own scope.
+    [Theory]
+    [InlineData("func f(c: bool)\n    let t = \"t\"\n    defer\n        let s = \"s\"\n        if c\n            exit\n        _ = s@ref\n    _ = t@ref\n", false)]
+    [InlineData("func f(c: bool)\n    let t = \"t\"\n    let v = if c\n        let s = \"s\"\n        yield 1\n    else\n        yield 2\n    _ = t@ref\n    _ = v\n", false)]
+    [InlineData("func f(c: bool) -> i32\n    let t = \"t\"\n    _ = t@ref\n    return 1\n", true)]
+    public void ADeliveredResultLiesInItsTargetsScope(string source, bool returns)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f" && x.Key.Kind == MirBodyKind.Fn);
+        var jumps = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<JumpKoto>().Select(static x => SourceRef.Of(x)).ToHashSet();
+        var (locals, operands) = (body.Locals.ToArray(), body.Operands.ToArray());
+        var atJumps = body.Statements.ToArray().Where(x => x.Kind == MirStatementKind.Assign && jumps.Contains(x.Source.Syntax)).ToArray();
+        var written = atJumps.Select(static x => x.Place.Root).ToHashSet();
+        var delivered = atJumps.Where(x => x.Rvalue.Kind == MirRvalueKind.Use && operands[x.Rvalue.Start] is { Kind: MirOperandKind.Move } moved &&
+            written.Contains(moved.Place.Root)).Select(x => locals[operands[x.Rvalue.Start].Place.Root]).ToArray();
+        var scope = returns ? 0 : locals.Single(static x => x.Name == "t").Source.Scope;
+        Assert.NotEmpty(delivered);
+        Assert.All(delivered, x => Assert.Equal(scope, x.Source.Scope));
     }
 
     // V16 (plan "New V-checks"): A2 is linear in the body: N 16/32/64 locals each initialized on one branch need N flags, and the cold analysis

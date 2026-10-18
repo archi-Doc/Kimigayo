@@ -15,7 +15,7 @@ internal sealed partial class MirBuilder
     private static bool Builds(Koto node)
     {
         var adjust = HirTables.AdjustOf(node);
-        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        if (InPlace(adjust))
         {
             return HirTables.Op(node) != HirOp.Literal;
         }
@@ -34,6 +34,9 @@ internal sealed partial class MirBuilder
     private static bool Reads(HirAdjust adjust) => adjust.Adaptation == HirAdaptation.ReferentRead
         ? adjust.Acquire is not (HirAcquire.Unset or HirAcquire.Temporary)
         : adjust is { Adaptation: HirAdaptation.None, Acquire: HirAcquire.Copy or HirAcquire.Move };
+
+    // Whether a consumer takes a node's value as the node builds it (its Adjust): a Temporary or a group's operand, not adapted (Assign).
+    private static bool InPlace(HirAdjust adjust) => adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None };
 
     // Whether a Type holds a Never element where a literal builds one: a Tuple's component or an array's element, through those kinds
     // only (Aggregate; DECISIONS R4-M59). A Never elsewhere, a Function's result or a Type argument, is a declared Type.
@@ -171,7 +174,7 @@ internal sealed partial class MirBuilder
     // as a call's input where the destination holds one (input).
     private void Assign(MirPlace destination, Koto node, bool input = false)
     {
-        if (HirTables.AdjustOf(node) is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        if (InPlace(HirTables.AdjustOf(node)))
         {
             this.Into(destination, node, input);
         }
@@ -194,7 +197,7 @@ internal sealed partial class MirBuilder
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
         reserves |= input;
-        if (adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None })
+        if (InPlace(adjust))
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
                 : MirOperand.Move(this.Value(node, into, reserves));
@@ -218,13 +221,30 @@ internal sealed partial class MirBuilder
     // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
     // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
+    // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38): any acquisition takes the Never value as it is, which fits any operand position; a
+    // named Place of Type Never that Binding acquires with no adaptation, a Copy or a Move, is acquired so into a fresh Never temp and gives
+    // that Never value, so whatever takes it places nothing; an adapted one (a borrow) is built as Binding publishes it and keeps its Loan.
     private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
     {
-        if (this.IsNever(place))
+        if (this.IsNeverValue(place))
         {
-            return MirOperand.Move(place); // SPEC 3.8: any acquisition takes the Never value as it is, which fits any operand position.
+            return MirOperand.Move(place);
         }
 
+        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None)
+        {
+            return this.Acquired(adjust, place, expected, input, node, into);
+        }
+
+        var value = this.Temp(BoundType.Never, node);
+        var acquired = this.body.AddOperand(this.Acquired(adjust, place, expected, input, node));
+        this.body.Push(this.current, MirStatement.Assign(value, MirRvalue.Use(acquired), this.Info(node)));
+        return MirOperand.Move(value);
+    }
+
+    // A Place other than the Never value as an acquisition and an adaptation take it (Acquire).
+    private MirOperand Acquired(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
+    {
         var adaptation = adjust.Adaptation;
         var type = this.body.TypeOf(place) ?? BoundType.Unit;
         var target = expected?.Components is [var referent] ? referent : null;
@@ -500,20 +520,24 @@ internal sealed partial class MirBuilder
     // to the Never value, since a node of Type Never makes none (but its Opaque value, which stands for its syntax, of its Type).
     private void Set(MirPlace destination, in MirRvalue rvalue, Koto node)
     {
-        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNever(rvalue.Place) : rvalue.Count > 0;
+        var never = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Len or MirRvalueKind.Discriminant ? this.IsNeverValue(rvalue.Place) : rvalue.Count > 0;
         for (var i = 0; never && i < rvalue.Count; i++)
         {
-            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNever(operand.Place);
+            never = this.body.Operands[rvalue.Start + i] is { Kind: not MirOperandKind.Const } operand && this.IsNeverValue(operand.Place);
         }
 
-        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNever(destination)))
+        if (!never && (rvalue.Kind == MirRvalueKind.Opaque || !this.IsNeverValue(destination)))
         {
             this.body.Push(this.current, MirStatement.Assign(destination, rvalue, this.Info(node)));
         }
     }
 
-    // SPEC 3.1.3, 3.8: whether a Place is the Never value, the temp of a node of Type Never, which is never written, carries no Loan and
-    // fits any operand position.
+    // SPEC 3.1.3, 3.8: whether a Place is the Never value, a temp of Type Never, which carries no Loan and fits any operand position; only
+    // an unadapted Copy or Move of a Never Place (Acquire), an Opaque value of Type Never and a diverging Call write it (DECISIONS R4-M62,
+    // R5-M38, R5-M33; MirValidator).
+    private bool IsNeverValue(MirPlace place) => this.IsTemp(place) && this.IsNever(place);
+
+    // Whether a Place is of Type Never: the Never value or a named Place, neither of which has a referent to borrow or view.
     private bool IsNever(MirPlace place) => ReferenceEquals(this.body.TypeOf(place), BoundType.Never);
 
     // The destination takes an operand, unless the operand is the destination's own value moved (an acquisition formed it there).

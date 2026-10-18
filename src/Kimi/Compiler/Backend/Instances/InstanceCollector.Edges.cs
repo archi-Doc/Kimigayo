@@ -1,0 +1,129 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler.Mir;
+
+namespace Kimi.Compiler.Backend;
+
+// The edge rows (K package 4.5) of a site of an item's body and the targets of a type-driven item.
+internal sealed partial class InstanceCollector
+{
+    // What a Value callee calls: its operand's Type below a reference, a Closure being called through a borrow in its call's mode (SPEC
+    // 7.7.3).
+    private static BoundType? Callable(MirBody body, in MirOperand operand)
+    {
+        _ = TyCtxt.Layer(OperandType(body, operand), out var callable, out _);
+        return callable;
+    }
+
+    private static BoundType OperandType(MirBody body, in MirOperand operand)
+        => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
+
+    // K 4.5 rows 1 and 5: a Fn callee's body under the site's substitution composed with the item's representative (TyCtxt.Compose, whose
+    // declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit checks; a default template's,
+    // the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), and the body a Value callee's Closure or
+    // function item runs; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a callee
+    // without a body, a refused edge or a later row (K6-K8).
+    private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
+    {
+        var callee = call.Callee;
+        var subject = this.Subject(item, body, call.Source);
+        if (callee.Kind == MirCalleeKind.Value)
+        {
+            return Callable(body, call.Operand) is { } callable && this.In(item, subject, callable) is { } closed
+                ? this.Callee(program, item, subject, closed) : -1;
+        }
+
+        if (callee.Kind == MirCalleeKind.Intrinsic && IntrinsicRows.Of((IntrinsicId)callee.Arg).LaysOutType &&
+            this.In(item, subject, callee.Subst!.Types[0]!) is { } argument)
+        {
+            _ = this.LaysOut(subject, argument);
+        }
+
+        if (callee.Kind != MirCalleeKind.Fn)
+        {
+            return -1; // Requirement callees and the intrinsics' targets: K6-K8.
+        }
+
+        var representative = this.Set.Items[item].Representative;
+        var subst = callee.Subst is { } inner && representative is not null ? this.types.Compose(inner, representative) : callee.Subst;
+        if (subst is null && callee.Subst is not null)
+        {
+            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
+            return -1;
+        }
+
+        var function = callee.Arg == 0 ? this.types.Implementation(callee.Symbol!, subst, 0) : callee.Symbol;
+        var found = ReferenceEquals(function, callee.Symbol) ? program.Callee(callee) : program.Callee(new(MirCalleeKind.Fn, function));
+        return found is null ? -1 : this.Admit(item, subject, found, subst);
+    }
+
+    // K 4.5 rows 11-13, K 4.7 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body;
+    // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type;
+    // an operation whose Types depend on slots checked against the capability table (no target).
+    private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
+    {
+        var rvalue = statement.Rvalue;
+        var subject = this.Subject(item, body, statement.Source);
+        if (rvalue.Kind == MirRvalueKind.BinaryOp || rvalue is { Kind: MirRvalueKind.Cast, Op: not (byte)MirCastKind.Erasure })
+        {
+            this.CheckOperation(item, subject, body, rvalue);
+            return -1;
+        }
+
+        var aggregate = rvalue.Kind == MirRvalueKind.Aggregate;
+        if (this.In(item, subject, aggregate ? rvalue.Type! : OperandType(body, body.Operands[rvalue.Start])) is not { } closed)
+        {
+            return -1;
+        }
+
+        if (aggregate)
+        {
+            _ = this.LaysOut(subject, closed);
+            return (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure ? this.Callee(program, item, subject, closed) : -1;
+        }
+
+        return rvalue.Kind != MirRvalueKind.Cast ? this.Callee(program, item, subject, closed)
+            : this.AdmitType(item, subject, closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter, closed);
+    }
+
+    // K 4.3: a ClosureErasure or ItemAdapter item's target, the body its Closure or function item runs (K7 adds the environment's glue).
+    private int Expand(MirProgram program, int item)
+        => this.Callee(program, item, this.Set.Items[item].Site, this.Set.Items[item].RepresentativeType!);
+
+    // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
+    // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem), as the
+    // implementation that selects (SPEC 8.13.3). -1 for the Item of a function whose calls dispatch (a requirement, K6; a virtual slot, K8),
+    // a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
+    private int Callee(MirProgram program, int item, SourceRef subject, BoundType callable)
+    {
+        if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
+        {
+            return program[new(closure, MirBodyKind.Closure)] is { } body ? this.Admit(item, subject, body, this.types.SubstOfClosure(callable)) : -1;
+        }
+
+        if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol } || this.types.Dispatches(symbol))
+        {
+            return -1;
+        }
+
+        var subst = this.types.SubstOfItem(callable);
+        return program.Callee(new(MirCalleeKind.Fn, this.types.Implementation(symbol, subst, 0))) is { } target ? this.Admit(item, subject, target, subst) : -1;
+    }
+
+    // A Type of an item's body in the item's instance; null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
+    private BoundType? In(int item, SourceRef subject, BoundType type)
+    {
+        if (this.Set.Items[item].Representative is not { } representative)
+        {
+            return type;
+        }
+
+        var closed = this.types.Apply(type, representative);
+        if (closed is null)
+        {
+            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
+        }
+
+        return closed;
+    }
+}

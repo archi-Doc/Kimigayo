@@ -65,6 +65,9 @@ internal sealed class AggregateLayoutPool
     /// <param name="layout">The compilation's <see cref="Layout"/>, which places every record this pool interns.</param>
     internal AggregateLayoutPool(Layout layout) => this.layout = layout;
 
+    /// <summary>Gets the compilation's <see cref="Backend.Layout"/>, which the old callers pass to <see cref="Abi"/>.</summary>
+    internal Layout Layout => this.layout;
+
     /// <summary>Gets or sets the source of the element-specific drop helper that stored collection destruction calls; it
     /// registers the helper for the current body and returns its name, or null for an unsupported element.</summary>
     internal Func<BoundType, string?>? CollectionDrop { get; set; }
@@ -180,13 +183,14 @@ internal sealed class AggregateLayoutPool
 
     // Layout's record of a Type whose parts this pool accepted; null after mapping a size, count or depth limit to the resource limit
     // and CLayout (a C-layout instance storing a zero-sized Field) to a refusal. Generation follows a complete Binding, so Rejected
-    // storage is a broken contract.
+    // storage is a broken contract, and so is Oversized: this pool accepted every part (at most 2^31 - 1 bytes, fewer than 2^31 of them)
+    // and checks counts itself, so no Type it asks about exceeds 2^63 - 1 bytes (DECISIONS R5-M52).
     private ValueLowering? Represent(BoundType type)
     {
         var layout = this.layout.Of(type);
-        if (layout.Outcome == Layout.Outcome.Rejected)
+        if (layout.Outcome is Layout.Outcome.Rejected or Layout.Outcome.Oversized)
         {
-            throw new InvalidOperationException("Generation reached " + type.Name + ", whose storage Binding rejected.");
+            throw new InvalidOperationException($"Generation reached {type.Name}, whose layout is {layout.Outcome}.");
         }
 
         if (layout.Outcome == Layout.Outcome.CLayout)

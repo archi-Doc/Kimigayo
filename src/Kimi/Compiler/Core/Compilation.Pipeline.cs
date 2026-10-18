@@ -206,7 +206,7 @@ public partial class Compilation
         var program = (this.mirAnalysis ??= new(this.Types)).Run((this.mirBuilder ??= new(this)).Build());
         if (this.codegen == CompilerCodegen.Mir)
         {
-            (this.instances ??= new(this.Types)).Run(program, this.SourceModules.Length);
+            (this.instances ??= new(this.Types, this.Layout)).Run(program, this.SourceModules.Length);
         }
 
         return program;
@@ -251,7 +251,7 @@ public partial class Compilation
     private bool Generates(out string? failure)
     {
         var records = this.MirRecords(null);
-        failure = records > 0 ? $"Generation requires an analysis without errors; the MIR has {records} Unsupported, Resource or invariant records."
+        failure = records > 0 ? $"Generation requires an analysis without errors; the MIR has {records} error records."
             : this.RefusesCodegen() ? CodegenRefusal : null;
         return failure is null;
     }

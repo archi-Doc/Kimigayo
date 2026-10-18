@@ -160,7 +160,7 @@ public sealed class HirColumnsTest
 
     // SPEC 14.5.2, 14.7: the jump binding writes a transfer's target row only when the transfer may go there; with no target (none
     // in scope, behind a defer or a default) or an unlabeled yield whose selection discards its result the row is null, and Binding
-    // records row 9 or 10 at the jump.
+    // records row 9 or 10 at the jump, from which the MIR's jump is derived, with no record of its own (DECISIONS R5-M42).
     [Theory]
     [InlineData("loop\n    yield 1", "InvalidJumpTarget_Kd")]
     [InlineData("func f()\n    defer => return", "InvalidJumpTarget_Kd")]
@@ -175,6 +175,7 @@ public sealed class HirColumnsTest
         Assert.Null(HirTables.PlanOf(jump).Plan);
         Assert.True(HoldsItsTarget(jump));
         Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code && x.Span == jump.Span);
+        Assert.DoesNotContain(c.BuildMir().Records, x => x.Subject == SourceRef.Of(jump));
     }
 
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
@@ -287,6 +288,126 @@ public sealed class HirColumnsTest
         var loop = Reachable(c.Kotonoha).OfType<ForKoto>().Single();
         Assert.Null(BoundMatch.Of(loop));
         Assert.Equal(new HirAdjust(HirAcquire.Copy, HirAdaptation.None), HirTables.AdjustOf(loop.Bindings[0]));
+    }
+
+    // SPEC 4.7.1, 4.7.2, 5.2, 7.3, 10.2, 13.5.5, 15.6.2 (DECISIONS BU-8): a user index whose element Place's use needs write or exclusive
+    // capability selects indexUniq: a write, an update or an exclusive borrow through a follow of the stored reference, an exclusive
+    // Reborrow of it (an argument, a bare acquisition, a Subject) and an exclusive receiver of a method or a setter, by its parameter Type
+    // also through an object handle's payload, and below another element; a read, a shared borrow, a shared receiver (a base's
+    // included), a getter and a raw pointer's pointee or element select index, and an rc payload offers no exclusive receiver. An
+    // exclusive receiver over Binding's in-place read states its own borrow.
+    [Fact]
+    public void AnExclusiveUseOfTheElementSelectsIndexUniq()
+    {
+        const string Source = """
+            struct Point
+                public var x: i32 = 0
+                public init() => ()
+                public func mutate(self: uniq/Self) => self.x = 7
+                public func look(self) -> i32 => self.x
+            struct Meter
+                public var raw: i32 = 2
+                public computed doubled: i32
+                    get() -> i32 => self.raw * 2
+                    set(value: i32) -> () => self.raw = value / 2
+                public init() => ()
+                public func bump(self: uniq/Self) => self.raw += 1
+                public func level(self) -> i32 => self.raw
+            open struct Base
+                public var b: i32 = 0
+                public init() => ()
+                public func peek(self) -> i32 => self.b
+            struct Derived : Base
+                public var d: i32 = 0
+                public init() => ()
+            struct Pair<T>
+                Self is UniqIndexable<isize>
+                associate Element is T
+                var first: T
+                var second: T
+                public init(first: T, second: T)
+                    self.first = first@move
+                    self.second = second@move
+                public func index(self, key: ref/isize) -> ref/T during self => self.first@ref
+                public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/T during self => self.first@uniq
+            func change(value: uniq/i32) => value@follow = 99
+            func write(value: uniq/i32 during a)
+                var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
+                entries[1]@follow = 99
+                entries[1]@follow += 1
+                let child = entries[1]@follow@uniq
+                child@follow = 3
+            func reborrow(value: uniq/i32 during a)
+                var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
+                change(entries[1])
+                let c = entries[1]
+                c@follow = 4
+                match entries[1]
+                    let r => r@follow = 5
+            func receivers(value: uniq/Meter during a)
+                var entries: Dictionary<i32, uniq/Meter during a> = [1: value@move]
+                entries[1].bump()
+                var pts = Pair<Point>.init(Point.init(), Point.init())
+                pts[0].mutate()
+                require pts[1].look() == 0 else => $abort("look")
+                var meters = Pair<Meter>.init(Meter.init(), Meter.init())
+                meters[0].doubled = 8
+                meters[1].doubled += 2
+                let d = meters[1].doubled
+                var grid = Pair<Pair<Point>>.init(Pair<Point>.init(Point.init(), Point.init()), Pair<Point>.init(Point.init(), Point.init()))
+                grid[0][1].mutate()
+                var outer = Pair<Array<Point>>.init([Point.init()], [Point.init()])
+                let i: isize = 0
+                outer[0][i].mutate()
+            func handles(value: objuniq/Meter during a)
+                var objs = Pair<obj/Meter>.init(Meter.init()@obj, Meter.init()@obj)
+                objs[0].bump()
+                var entries: Dictionary<i32, objuniq/Meter during a> = [1: value@move]
+                entries[1].bump()
+                var rcs = Pair<rc/Meter>.init(Meter.init()@rc, Meter.init()@rc)
+                require rcs[0].level() == 2 else => $abort("rc")
+                var ds = Pair<Derived>.init(Derived.init(), Derived.init())
+                require ds[1].peek() == 0 else => $abort("base")
+            func reads(value: uniq/i32 during a)
+                var entries: Dictionary<i32, uniq/i32 during a> = [1: value@move]
+                let r: i32 = entries[1]@follow
+                let s = entries[1]@follow@ref
+                let slot = entries[1]@uniq
+                slot@follow@follow = 6
+            func pointers()
+                let p: raw/i32 = Raw.allocate(1)
+                unsafe => Raw.initialize(p, 1)
+                var ptrs = Pair<raw/i32>.init(p, p)
+                unsafe => *ptrs[0] = 5
+                unsafe => ptrs[1][0] = 6
+
+            """;
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var start = Source.IndexOf("func write", StringComparison.Ordinal);
+        var selections = Reachable(c.Kotonoha).Where(x => x is IndexKoto && x.Span.Start >= start && ExpansionPlan.Of(x)?.Second is not null)
+            .Select(x => $"{Line(x.Span.Start)} {ExpansionPlan.Of(x)!.Value.Second!.Target.Name}");
+        string[] expected =
+        [
+            "entries[1]@follow = 99 indexUniq", "entries[1]@follow += 1 indexUniq", "let child = entries[1]@follow@uniq indexUniq", "change(entries[1]) indexUniq",
+            "let c = entries[1] indexUniq", "match entries[1] indexUniq", "entries[1].bump() indexUniq", "pts[0].mutate() indexUniq",
+            "require pts[1].look() == 0 else => $abort(\"look\") index", "meters[0].doubled = 8 indexUniq", "meters[1].doubled += 2 indexUniq",
+            "let d = meters[1].doubled index", "grid[0][1].mutate() indexUniq", "grid[0][1].mutate() indexUniq", "outer[0][i].mutate() indexUniq",
+            "objs[0].bump() indexUniq", "entries[1].bump() indexUniq", "require rcs[0].level() == 2 else => $abort(\"rc\") index",
+            "require ds[1].peek() == 0 else => $abort(\"base\") index", "let r: i32 = entries[1]@follow index", "let s = entries[1]@follow@ref index",
+            "let slot = entries[1]@uniq indexUniq", "unsafe => *ptrs[0] = 5 index", "unsafe => ptrs[1][0] = 6 index",
+        ];
+        Assert.Equal(expected, selections);
+        var receiver = Reachable(c.Kotonoha).Single(x => x is IndexKoto && Line(x.Span.Start) == "pts[0].mutate()");
+        Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), HirTables.AdjustOf(receiver));
+        var shared = MinimalEmissionTest.Analyze(
+            Source.Replace("require rcs[0].level() == 2 else => $abort(\"rc\")", "rcs[0].bump()", StringComparison.Ordinal));
+        var issue = Assert.Single(shared.Binding.Issues);
+        Assert.Equal("rcs[0].bump() NoApplicableOverload_Kd", $"{issue.Node} {issue.Code}");
+
+        static string Line(int offset) => Source[(Source.LastIndexOf('\n', offset) + 1)..Source.IndexOf('\n', offset)].Trim();
     }
 
     // SPEC 4.7, 4.9.5, 6.3.6, 11.3: an accessor's executing function takes its receiver and its input (a static setter only its input),

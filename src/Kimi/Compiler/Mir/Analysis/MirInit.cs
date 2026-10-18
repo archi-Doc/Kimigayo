@@ -17,6 +17,8 @@
 // root. A body no view decides is analyzed once, for every view.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 /// <summary>Initialization and moves (A1, SPEC 15.1): <see cref="Run"/> analyzes a body under the selected view.</summary>
@@ -58,7 +60,8 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         var state = flow.Prepare(0, Lanes * ((moves.FlowCount + 63) >> 6), Lanes * ((moves.Paths.Length + 63) >> 6));
         if (state is null)
         {
-            report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, body.Source, all)); // R4-M15a: the driver stops the body's views.
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
+            report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, all)); // R4-M15a: the driver stops the body's views.
             return false;
         }
 
@@ -167,7 +170,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 this.Check(path, this.Selection(place));
                 if (this.Checks && how == MirMoveData.NoPath && (access & MirAccess.Moves) != 0)
                 {
-                    this.Add(DiagnosticCode.StaticMovePathRequired_Kd);
+                    this.Add(DiagnosticCode.StaticMovePathRequired_Kd, OwnershipRequirement.StaticMovePathRequired);
                 }
             }
             else if ((access & MirAccess.Defines) != 0)
@@ -233,14 +236,14 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             {
                 if (MirDataflow.Any(state, Lanes, Uninit, above, above + 1))
                 {
-                    this.Add(MirDataflow.Any(state, Lanes, Moved, above, above + 1) ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd);
+                    this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, above, above + 1), this.subject);
                     break;
                 }
             }
 
             if (checks && paths[path].Once && MirDataflow.Any(state, Lanes, Ever, path, paths[path].End))
             {
-                this.Add(DiagnosticCode.ReassignedLet_Kd);
+                this.Add(DiagnosticCode.ReassignedLet_Kd, OwnershipRequirement.ReassignedLet);
             }
 
             MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial));
@@ -275,14 +278,19 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             var end = moves.Paths[path].End;
             if (this.Checks && this.Reported(path) && MirDataflow.Any(state, Lanes, Uninit, path, end))
             {
-                var code = MirDataflow.Any(state, Lanes, Moved, path, end) ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd;
-                this.Report.Add(new(code, subject, this.Views));
+                this.Uninitialized(MirDataflow.Any(state, Lanes, Moved, path, end), subject);
             }
         }
 
         // Whether the state rules report on a path: its root is a Place of the program, not a compiler temporary.
         private readonly bool Reported(int path) => body.Locals[moves.Paths[path].Local].Kind is MirLocalKind.Var or MirLocalKind.Arg or MirLocalKind.Return;
 
-        private readonly void Add(DiagnosticCode code) => this.Report.Add(new(code, this.subject, this.Views));
+        private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement)
+            => this.Report.Add(new(code, DiagnosticRequirement.Ownership(requirement), this.subject, this.Views));
+
+        // A use of a Place some incoming path leaves uninitialized: MovedPlace_Kd where it may have been moved, else UninitializedPlace_Kd.
+        private readonly void Uninitialized(bool moved, SourceRef subject) => this.Report.Add(moved
+            ? new(DiagnosticCode.MovedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse), subject, this.Views)
+            : new(DiagnosticCode.UninitializedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse), subject, this.Views));
     }
 }

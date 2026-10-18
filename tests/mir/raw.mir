@@ -45,6 +45,7 @@ fn addresses @25
   _7: raw/Point temp @49 s2
   _8: raw/i32 var field @53 s2
   _9: i32 temp @63 s2
+  _10: i32 temp @25
   s1: lexical in s0 @29
   s2: unsafe in s1 @38
   bb0:
@@ -67,26 +68,29 @@ fn addresses @25
     * _8 = &raw (*_2).1: raw/i32 @55 s2
       StorageLive(_9) @63 s2
     * _9 = Add(copy (*_8), copy _6) @63 s2
-      goto bb6 check bb7 @62 s2
+      goto bb7 check bb8 @62 s2
   bb1:
       return @25
   bb2:
-      StorageDead(_2) @30 s1
-      goto bb1 @25
+      _0 = move _10 @62 s2
+      goto bb1 @62 s2
   bb3:
-      StorageDead(_3) @37 s1
+      StorageDead(_2) @30 s1
       goto bb2 @25
   bb4:
-      StorageDead(_8) @53 s2
-      StorageDead(_6) @46 s2
+      StorageDead(_3) @37 s1
       goto bb3 @25
   bb5:
-      StorageDead(_9) @63 s2
+      StorageDead(_8) @53 s2
+      StorageDead(_6) @46 s2
       goto bb4 @25
   bb6:
-      _0 = move _9 @62 s2
-      goto bb5 @62 s2
+      StorageDead(_9) @63 s2
+      goto bb5 @25
   bb7:
+      _10 = move _9 @62 s2
+      goto bb6 @62 s2
+  bb8:
       StorageDead(_9) @63 s2
       StorageDead(_8) @53 s2
       StorageDead(_6) @46 s2

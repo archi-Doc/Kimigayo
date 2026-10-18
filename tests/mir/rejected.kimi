@@ -10,3 +10,12 @@ func fill(a: i32) -> i32
 func kind() -> i32
     let c = '\q'
     return 0
+func discarded(a: i32)
+    if a > 0
+        yield 1
+    else
+        yield 2
+func targetless(a: i32)
+    loop
+        yield helper(a)
+func helper(a: i32) -> i32 => a

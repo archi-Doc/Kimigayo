@@ -19,6 +19,10 @@ public sealed partial class Binding
         }
     }
 
+    // The slot of the witness's integer Type parameter `I` (the materializer and TyCtxt.Witness); -1 when it has none.
+    internal int IntegerPositionSlot(BindingSymbol witness)
+        => this.scopes.TryGetValue(witness.Declaration, out var scope) && scope.Types.TryGetValue("I", out var parameter) ? parameter.Slot : -1;
+
     private static bool IsIntegerPosition(BoundType? type, BindingSymbol contract)
         => type is { IsInteger: true, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration == KimiDeclarationId.Position;
 
@@ -58,16 +62,16 @@ public sealed partial class Binding
     // SPEC 21.3.1: a generic `tryResolve` requirement call on an integer instantiates the witness at that integer Type.
     private CallPlan? InstantiateIntegerPosition(CallPlan call, BoundType self, BindingSymbol target, CallPlan? destination)
     {
-        if (!this.scopes.TryGetValue(target.Declaration, out var scope) || !scope.Types.TryGetValue("I", out var parameter) || parameter.Slot < 0)
+        if (this.IntegerPositionSlot(target) is not (>= 0 and var slot))
         {
             return null;
         }
 
-        var count = parameter.Slot + 1;
+        var count = slot + 1;
         var types = this.RentTypes(count);
         try
         {
-            types[parameter.Slot] = self;
+            types[slot] = self;
             var resolved = destination ?? new CallPlan();
             resolved.Set(
                 target,

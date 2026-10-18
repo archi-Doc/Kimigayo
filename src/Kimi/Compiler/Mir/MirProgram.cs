@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns MIR bodies by definition key, the records of construction and validation, and the problems and drop table the analyses find.
-// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey and numbered in order, and a callee's body.
+// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body a callee
+// runs (Callee) and the initializer a staticEnsure names (StaticInit).
 // One key identifies one body; warm rebuilding reuses body storage.
 // Must not re-bind definitions or maintain a second body map in a consumer.
 
@@ -57,6 +58,15 @@ internal sealed class MirProgram
     /// <returns>The body, or null for a function without one.</returns>
     internal MirBody? Callee(in MirCallee callee) => callee.Arg > 0 ? this[new(callee.Symbol, MirBodyKind.DefaultTemplate, callee.Arg - 1)]
         : this[new(callee.Symbol, MirBodyKind.Fn)] ?? this[new(callee.Symbol, MirBodyKind.Getter)] ?? this[new(callee.Symbol, MirBodyKind.Setter)];
+
+    /// <summary>Gets the initializer a <c>staticEnsure</c> names (plan 5.6.6): the StaticInit body of the static whose index in the calling
+    /// body's statics the call's operand holds as a constant. The builder ensures only statics whose initializer it builds, so a consumer
+    /// treats null as a broken contract (<c>InternalInvariant_Kd</c>).</summary>
+    /// <param name="body">The calling body.</param>
+    /// <param name="operand">The staticEnsure call's operand.</param>
+    /// <returns>The body, null only when the contract is broken.</returns>
+    internal MirBody? StaticInit(MirBody body, in MirOperand operand)
+        => this[new(body.Statics[(int)body.Consts[operand.Arg].Bits].Symbol, MirBodyKind.StaticInit)];
 
     internal void Clear()
     {

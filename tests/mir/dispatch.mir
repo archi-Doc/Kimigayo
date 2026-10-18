@@ -81,6 +81,7 @@ fn make @50
   _10: obj/Shape var moved @86 s1
   _11: obj/Square temp @91 s1
   _12: i32 temp @97 s1
+  _13: i32 temp @50
   s1: lexical in s0 @52
   bb0:
       StorageLive(_1) @53 s1
@@ -120,33 +121,36 @@ fn make @50
       StorageDead(_11) @91 s1
       StorageLive(_12) @97 s1
     * _12 = Add(copy _5, copy (*_10).0) @97 s1
-      goto bb11 check bb12 @96 s1
+      goto bb12 check bb13 @96 s1
   bb6:
       return @50
   bb7:
-      drop _10 -> bb8 [keep] @86 s1
+      _0 = move _13 @96 s1
+      goto bb6 @96 s1
   bb8:
+      drop _10 -> bb9 [keep] @86 s1
+  bb9:
       StorageDead(_10) @86 s1
       StorageDead(_5) @74 s1
       StorageDead(_3) @68 s1
-      drop _1 -> bb9 [elide] @53 s1
-  bb9:
-      StorageDead(_1) @53 s1
-      goto bb6 @50
+      drop _1 -> bb10 [elide] @53 s1
   bb10:
-      StorageDead(_12) @97 s1
+      StorageDead(_1) @53 s1
       goto bb7 @50
   bb11:
-      _0 = move _12 @96 s1
-      goto bb10 @96 s1
-  bb12:
       StorageDead(_12) @97 s1
-      drop _10 -> bb13 @86 s1
+      goto bb8 @50
+  bb12:
+      _13 = move _12 @96 s1
+      goto bb11 @96 s1
   bb13:
+      StorageDead(_12) @97 s1
+      drop _10 -> bb14 @86 s1
+  bb14:
       StorageDead(_10) @86 s1
       StorageDead(_5) @74 s1
       StorageDead(_3) @68 s1
-      drop _1 -> bb14 @53 s1
-  bb14:
+      drop _1 -> bb15 @53 s1
+  bb15:
       StorageDead(_1) @53 s1
       unreachable @52

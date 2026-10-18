@@ -234,6 +234,33 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """));
 
+    // SPEC 15.1.6, 15.6 (DECISIONS R5-M38): a pattern binding of a Never payload borrows the subject in place and keeps that Loan, so a
+    // write to the subject while the binding lives conflicts, in an arm that never runs too.
+    [Fact]
+    public void ANeverPayloadBindingKeepsItsLoan()
+        => Assert.Equal(
+            ["written: s = NeverErr.Ok(1)"],
+            Problems("""
+                enum NeverErr
+                    Ok(i32)
+                    Err(Never)
+                func written(r: NeverErr) -> i32
+                    var s = r@move
+                    return match s
+                        .Ok(let v) => v
+                        .Err(let e)
+                            s = NeverErr.Ok(1)
+                            _ = e
+                            yield 0
+                func unwritten(r: NeverErr) -> i32
+                    var s = r@move
+                    return match s
+                        .Ok(let v) => v
+                        .Err(let e)
+                            _ = e
+                            yield 0
+                """));
+
     // SPEC 14.9, 14.10.3 (F10): Loans flow forward over every path, joined at heads, around loops into the next iteration, and into code
     // only the checks reach; a holder reassigned before its next use carries nothing across.
     [Fact]
@@ -1594,6 +1621,43 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                             exit to w 0
                         )
                     cursor.value = 1
+                """));
+
+    // SPEC 14.8.3 (A3 E7; 1c design review item 4): a guard candidate's guard-local Origin needs no Loan, so a view without one still checks
+    // its guards: a value that keeps the candidate in a holder used afterwards, or in the result, escapes at the candidate; a guard that only
+    // reads the candidate does not.
+    [Fact]
+    public void AGuardIsCheckedInAViewWithoutALoan()
+        => Assert.Equal(
+            ["localNoLoan: let d", "pickNoLoan: let d"],
+            Problems("""
+                func localNoLoan(packet: ref/Packet, fallback: ref/Data)
+                    var saved = fallback
+                    match packet@follow
+                        .Data(let d) if (label g: do
+                            saved = d
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(saved)
+                func pickNoLoan(packet: ref/Packet during p, fallback: ref/Data during p) -> ref/Data during p
+                    var saved = fallback
+                    match packet@follow
+                        .Data(let d) if (label g: do
+                            saved = d
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    return saved
+                func localValid(packet: ref/Packet, fallback: ref/Data)
+                    var saved = fallback
+                    match packet@follow
+                        .Data(let d) if (label g: do
+                            inspect(d)
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(saved)
                 """));
 
     // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,

@@ -1,18 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 #pragma warning disable SA1402 // The obligation row belongs to the facts that list it.
 
 namespace Kimi.Compiler;
 
-// An obligation of `confined` that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject: a conformance's
-// witness (SPEC 8.11.4, at the `Self is C` clause), a virtual function under its slot's bound (virtual-dispatch 6) or a selected Callable
-// binding (SPEC 8.11.6, at the argument or Type argument). Definition: the definition whose body owes, or whose premises judge the
-// Callable (null at a module's top-level statements); without a Callable, null where the premises already decide a failure. A Callable
-// binding is its subject Type called with Receiver; Owner: its owner acquisition also destroys the Closure's remaining environment.
+// An obligation of `confined` that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject under Requirement
+// (DECISIONS R5-M23): a conformance's witness (SPEC 8.11.4, at the `Self is C` clause; EffectBound), a virtual function under its slot's
+// bound (virtual-dispatch 6; VirtualEffectBound) or a selected Callable binding (SPEC 8.11.6, at the argument or Type argument;
+// CallableEffectBound). Definition: the definition whose body owes, or whose premises judge the Callable (null at a module's top-level
+// statements); without a Callable, null where the premises already decide a failure. A Callable binding is its subject Type called with
+// Receiver; Owner: its owner acquisition also destroys the Closure's remaining environment.
 internal readonly record struct EffectObligation(
-    SourceRef Subject, DiagnosticCode Code, BindingSymbol? Definition, BoundType? Callable, SemanticsKind Receiver, bool Owner);
+    SourceRef Subject, DiagnosticCode Code, DiagnosticRequirement Requirement, BindingSymbol? Definition, BoundType? Callable, SemanticsKind Receiver,
+    bool Owner);
 
 public sealed partial class Binding
 {
@@ -46,7 +49,9 @@ public sealed partial class Binding
                 if (!dispatched || !this.AvailableEffectBounds(slot!, null, path.Scope).Confined)
                 {
                     var target = dispatched ? null : witness.Implementation;
-                    rows.Add(new(SourceRef.Of(path.Use), DiagnosticCode.IncompatibleContractImplementation_Kd, target, null, default, Owner: false));
+                    var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.EffectBound);
+                    var code = DiagnosticCode.IncompatibleContractImplementation_Kd;
+                    rows.Add(new(SourceRef.Of(path.Use), code, requirement, target, null, default, Owner: false));
                 }
             }
         }
@@ -60,7 +65,8 @@ public sealed partial class Binding
             if (bounded && function.BoundSymbol is { } symbol &&
                 (function.BindingFailure == BindingFailure.None || this.virtualEffectViolations?.ContainsKey(function) == true))
             {
-                rows.Add(new(SourceRef.Of(function), DiagnosticCode.UnsatisfiedEffectBound_Kd, symbol, null, default, Owner: false));
+                var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.VirtualEffectBound);
+                rows.Add(new(SourceRef.Of(function), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, symbol, null, default, Owner: false));
             }
         }
 
@@ -126,14 +132,15 @@ public sealed partial class Binding
     {
         var type = CallableCore(use.Subject)!;
         var definition = this.ConstraintScope(use.Use).Function?.BoundSymbol;
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.CallableEffectBound);
         if (!type.IsAbstract)
         {
             var owner = use.Receiver == SemanticsKind.Owner && type.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner };
-            rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, definition, type, use.Receiver, owner));
+            rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, definition, type, use.Receiver, owner));
         }
         else if (!this.AvailableCallableEffects(type, use.Signature, use.Receiver, this.EffectPremises(definition)).Confined)
         {
-            rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, null, null, default, Owner: false));
+            rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, null, null, default, Owner: false));
         }
     }
 }

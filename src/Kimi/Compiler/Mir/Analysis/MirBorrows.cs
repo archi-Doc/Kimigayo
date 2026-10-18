@@ -26,6 +26,8 @@
 // every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A5's Loan stratum (design A3, R4 shadow: the old path still decides): <see cref="Run"/> checks a body under the selected
@@ -78,9 +80,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.guardBase = 1 + body.OpaqueSites.Length;
         (this.loanBase, this.escapedSet) = (this.guardBase + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
-        if (this.loanCount == 0)
+        if (this.loanCount == 0 && !this.guarded)
         {
-            return; // A view without a Loan has no conflict (A3 6.1).
+            return; // A view without a Loan or a guard candidate has no problem (A3 6.1; E7's γ needs no Loan).
         }
 
         this.Holders();
@@ -90,7 +92,8 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount));
         if (state is null)
         {
-            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, body.Source, all)); // R4-M15a.
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
+            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, all)); // R4-M15a.
             return;
         }
 

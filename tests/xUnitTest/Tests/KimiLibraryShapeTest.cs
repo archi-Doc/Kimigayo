@@ -157,7 +157,7 @@ public class KimiLibraryShapeTest
     {
         var c = Compilation.CreateForTest();
         Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
-        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types).Run(c.BuildMir(), c.SourceModules.Length + 1);
+        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), c.SourceModules.Length + 1);
         Assert.Empty(set.Records);
         Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
     }

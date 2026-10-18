@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39; R5 package F 4.11, K 4.1, X8, X26, X40): whether a definition's body is
-// checked once and generated per closed substitution (Instantiates), the null rule of instance keys, and the Origin-erased form of a Type
+// Owns instance identity (DECISIONS R5-M21, R5-M34, R5-M39, R5-M40, R5-M43; R5 package F 4.11, K 4.1, X8, X26, X40): whether a definition's
+// body is checked once and generated per closed substitution (Instantiates), the null rule of instance keys, the instance a nested
+// definition's instance holds (EnclosingFunction), whether a function's calls dispatch (Dispatches), and the Origin-erased form of a Type
 // and a substitution (Erase), the one identity of instance keys, descriptors, glue and layouts (SPEC 3.3.1, 8.13.3).
 // Input: a definition's BindingSymbol (a named or anonymous function, an accessor's executing function, a property) once the pass has bound
 // its schemas; for Erase, an interned Type or substitution. Output: a class per definition (Closed, Generic, GenericThroughSpecialization),
@@ -64,9 +65,24 @@ internal sealed partial class TyCtxt
         return erased;
     }
 
-    // The function whose body declares a definition, a named function nested in a body; null for a member or a top-level declaration. An
-    // instance of a nested function holds that function's instance (SPEC 6.1.3), which the instance collector requires its call to carry.
-    internal BindingSymbol? EnclosingFunction(BindingSymbol definition) => definition.Scope.Function?.BoundSymbol;
+    // The named function whose body declares a definition (through anonymous functions, as SubstOfClosure's binder): a function or Closure
+    // nested in a body; null for a member or a top-level declaration. An instance of a nested definition holds that function's instance
+    // (SPEC 6.1.3), which the instance collector requires its substitution to carry.
+    internal BindingSymbol? EnclosingFunction(BindingSymbol definition)
+    {
+        var function = definition.Scope.Function;
+        while (function is { IsAnonymous: true })
+        {
+            function = function.BoundSymbol?.Scope.Function;
+        }
+
+        return function?.BoundSymbol;
+    }
+
+    // SPEC 6.4.6, 8.4: whether a call of a function dispatches (CallPlan.KindOf), a requirement to the witness of its conforming Type and a
+    // virtual slot to the override its receiver's Type selects, so that no one body is the target of the function's Item (K6 and K8 resolve
+    // them).
+    internal bool Dispatches(BindingSymbol function) => CallPlan.KindOf(function) != CalleeKind.Function;
 
     // K package KD1, KD2: the erased substitution of a binder that instantiates; null for one that does not, whose bodies are keyed without
     // a substitution.

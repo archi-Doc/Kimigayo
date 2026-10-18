@@ -1,7 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Text;
+using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -186,6 +189,86 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc assigned() -> i32\n    var y: i32\n    y = stop()\n    return y\n" +
                 "func take(box: Box, n: i32) => ()\nfunc continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
     }
+
+    // SPEC 17.6.3 (PD22): a verification's records read the temps its comparison's operands were read into once, initialized and not yet
+    // moved: made Places of the program (A1 reports a Var's state, never a temp's), they have no problem, where a record reading an
+    // operand after the comparison's Move would be MovedPlace.
+    [Fact]
+    public void RecordsReadOperandsTheComparisonHasNotMoved()
+    {
+        var c = MirBuildTest.Compile(
+            "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    $expect(helper(1) == a)\n    $expect((a < 4))\n",
+            test: true);
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
+        var read = MirBuildTest.Records(body).Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).ToArray();
+        Assert.Equal(3, read.Length);
+        foreach (var operand in read)
+        {
+            ref readonly var local = ref body.Locals[operand.Place.Root];
+            Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
+        }
+
+        new MirAnalysis(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 3.1.3 (DECISIONS R5-M38): a named Place of Type Never takes the acquisition Binding publishes, Copy for a bare read (Never is
+    // Copy, BU-4), into its node's Never temp, so a Never parameter read twice is no MovedPlace.
+    [Fact]
+    public void ANeverPlaceIsAcquiredAsBindingPublishes()
+    {
+        const string Source = "func g(a: Never, b: Never) => ()\nfunc absurd(x: Never) => g(x, x)\n";
+        var c = MirBuildTest.Compile(Source);
+        Assert.Empty(c.BuildMir().Findings);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "x" && x.Parent is InvocationKoto);
+        Assert.Equal([HirAcquire.Copy, HirAcquire.Copy], reads.Select(static x => HirTables.AdjustOf(x).Acquire));
+        Assert.Empty(Problems(Source));
+    }
+
+    // SPEC 12.2 (DECISIONS R5-M38): a named Never Place read before a later operand builds code is acquired into its node's Never temp,
+    // which secures it and the call then moves: made a Place of the program, the temp has no problem, where an unwritten one is
+    // uninitialized.
+    [Fact]
+    public void ASecuredNeverPlaceIsWritten()
+    {
+        var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc g2(a: Never, b: i32) => ()\nfunc absurd(x: Never) => g2(x, k())\n");
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x.Callee.Symbol?.Name == "g2");
+        var secured = body.Operands[call.Start];
+        Assert.Equal((MirOperandKind.Move, MirLocalKind.Temp), (secured.Kind, body.Locals[secured.Place.Root].Kind));
+        ref readonly var local = ref body.Locals[secured.Place.Root];
+        Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
+        new MirAnalysis(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 3.8, 15.6.2 (DECISIONS R5-M38, the owner's choice): a pattern binding of a Never payload borrows the subject in place as Binding
+    // publishes it, a `ref/Never` that keeps its Loan, so the program is valid (no finding, no problem).
+    [Theory]
+    [InlineData("enum R\n    Ok(i32)\n    Err(Never)\nfunc f(r: R) -> i32 => match r\n    .Ok(let v) => v\n    .Err(let e) => 0\n")]
+    [InlineData("func f(o: Option<Never>) -> i32 => match o\n    .Some(let n) => 1\n    .None => 0\n")]
+    public void ANeverPayloadBindingIsABorrow(string source)
+    {
+        Assert.Empty(Problems(source));
+        var body = MirBuildTest.Compile(source).BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        Assert.Contains(
+            body.Statements.ToArray(),
+            static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Type.Components: [var referent] } && ReferenceEquals(referent, BoundType.Never));
+    }
+
+    // SPEC 14.10.3, 3.8 (DECISIONS R4-M62, R5-M38; BU-6): a read of a named Never Place supplies no normal completion, so its assumed
+    // completion initializes nothing it is placed into: the Place a let, an assignment or a Never var takes from it stays uninitialized,
+    // each later read of it an UninitializedPlace.
+    [Theory]
+    [InlineData("func absurd(x: Never) -> i32\n    let y: i32 = x\n    return y\n", "UninitializedPlace_Kd y 1")]
+    [InlineData("func absurd(x: Never) -> i32\n    let y: i32\n    y = x\n    return y\n", "UninitializedPlace_Kd y 1")]
+    [InlineData(
+        "func g(a: Never) => ()\nfunc absurd(x: Never)\n    var y: Never = x\n    g(y)\n    g(y)\n",
+        "UninitializedPlace_Kd y 1 | UninitializedPlace_Kd y 1")]
+    public void ANeverReadPlacesNothing(string source, string expected)
+        => Assert.Equal(expected.Split(" | "), Problems(source));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
