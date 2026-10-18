@@ -81,10 +81,9 @@ public sealed partial class Binding
     }
 
     // SPEC 21.3.1: a generic entry call on a fixed array instantiates the Kimi member at the array's element Type and length.
-    private CallPlan? InstantiateFixedArrayEntry(CallPlan call, BoundType self, BindingSymbol contract, CallPlan? destination)
+    private CallPlan? InstantiateFixedArrayEntry(CallPlan call, BoundType self, BindingSymbol target, CallPlan? destination)
     {
-        if (this.FixedArrayWitness(contract) is not { Declaration: FunctionKoto witness } target ||
-            !this.RentFixedArrayArguments(witness, self, out var types, out var lengths, out var count))
+        if (!this.RentFixedArrayArguments((FunctionKoto)target.Declaration, self, out var types, out var lengths, out var count))
         {
             return null;
         }

@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
@@ -170,7 +172,7 @@ internal sealed partial class BodyLowering
         return constant == 0 || (constant == -1 && check == ArithmeticCheckKind.Division) ? check : ArithmeticCheckKind.None;
     }
 
-    private bool LowerConversion(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerConversion(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var plan = this.conversions[this.conversionIndices[id]];
@@ -181,7 +183,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        if (check != ArithmeticCheckKind.None && !this.TryGetLocation(body.Operations[id].Source, directory, constants, out location))
+        if (check != ArithmeticCheckKind.None && !this.TryGetLocation(body.Operations[id].Source, constants, out location))
         {
             return Fail("Numeric conversion check has no source location.", out failure);
         }

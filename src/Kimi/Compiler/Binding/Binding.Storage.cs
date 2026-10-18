@@ -15,7 +15,6 @@ public sealed partial class Binding
     private readonly List<bool> inlineLayoutOwnDeclaration = new();
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
     private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
-    private readonly List<StructKoto> cLayouts = [];
     private readonly List<(GenericsKoto Syntax, BoundType Type)> cLayoutInstances = [];
     private readonly List<BoundType> enumPayloadTypes = new();
     private bool storagePrepared;

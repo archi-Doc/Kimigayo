@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -95,7 +96,7 @@ public class StringComparisonEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
         var comparison = function.Instructions.FindIndex(x => x.Opcode == EmissionOpcode.StringEquals);
-        var destroy = function.Instructions.FindIndex(comparison + 1, x => x.Callee == WindowsLowering.DestroyString);
+        var destroy = function.Instructions.FindIndex(comparison + 1, x => x.Callee == RuntimeAbi.DestroyString);
         var branch = function.Instructions.FindIndex(comparison + 1, x => x.Opcode == EmissionOpcode.ConditionalBranch);
         Assert.True(comparison >= 0 && comparison < destroy && destroy < branch);
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonConditionOrder", Source, "after\n");
@@ -149,11 +150,11 @@ public class StringComparisonEmissionTest
         const string Source = "if \"a\" != \"b\" => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonHelperSource", Source, "ok\n");
         const string Entry = "define void @__kimi_start() noreturn #0 {\nentry:\n";
-        Assert.Contains(Entry, ir);
         // A separate helper fixture, not a claim that source syntax constructs Heap strings.
         // External linkage also keeps unknown-input helper bodies observable after O2.
-        ir = ir.Replace("define internal i32 @__kimi_string_", "define i32 @__kimi_string_", StringComparison.Ordinal)
-            .Replace(Entry, Entry + "  call void @__test_string_comparisons()\n", StringComparison.Ordinal);
+        ir = NativeAllocationAudit.Instrument(ir, "define internal i32 @__kimi_string_equal(", "define i32 @__kimi_string_equal(");
+        ir = NativeAllocationAudit.Instrument(ir, "define internal i32 @__kimi_string_compare(", "define i32 @__kimi_string_compare(");
+        ir = NativeAllocationAudit.Instrument(ir, Entry, Entry + "  call void @__test_string_comparisons()\n");
         ir += """
 
             @test_a = private constant [3 x i8] c"a\00b"

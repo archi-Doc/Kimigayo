@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -8,7 +9,8 @@ internal sealed partial class BodyLowering
 {
     private static readonly FunctionAbi TestObserve = new("__kimi_test_observe", "i64", [new("i1", "condition", AbiParameterKind.Value), new("i32", "site", AbiParameterKind.Value)]);
     private static readonly FunctionAbi TestMessage = new("__kimi_test_message", "void", [new("i64", "issue", AbiParameterKind.Value), new("ptr", "text", AbiParameterKind.OwnedSlot)]);
-    private static readonly FunctionAbi TestAbort = new("__kimi_test_require_abort", "void", [new("i64", "issue", AbiParameterKind.Value), new("i32", "site", AbiParameterKind.Value)], noReturn: true);
+    private static readonly FunctionAbi TestAbort =
+        new("__kimi_test_require_abort", "void", [new("i64", "issue", AbiParameterKind.Value), new("i32", "site", AbiParameterKind.Value)]) { NoReturn = true };
 
     private bool LowerVerification(OwnershipBody body, EmissionFunction function, int id, out string? failure)
     {

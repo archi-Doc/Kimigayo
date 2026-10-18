@@ -75,10 +75,9 @@ public class SharedObjectRuntimeTest
         var c = MinimalEmissionTest.Analyze(Source);
         var ir = CompilationTestHelper.WriteIr(c);
         const string InitialControl = "store i64 %controlValue, ptr %control, align 8";
-        Assert.Contains(InitialControl, ir, StringComparison.Ordinal);
         // Exercise the real generated transition at otherwise impractically large counts. Only the unpublished
         // initial control is injected; the checked clone, call location and failure runtime remain unchanged.
-        ir = ir.Replace(InitialControl, "store i64 " + (maximum ? "-2" : "-4") + ", ptr %control, align 8", StringComparison.Ordinal);
+        ir = NativeAllocationAudit.Instrument(ir, InitialControl, "store i64 " + (maximum ? "-2" : "-4") + ", ptr %control, align 8");
         var stderr = maximum ? "Hello.kimi:2:14: abort KIMI_E_REF_COUNT: Reference count limit exceeded\n" : string.Empty;
         ScalarEmissionTest.WriteFixture("SharedRcCount" + (maximum ? "Maximum" : "BelowMaximum"), ir, maximum ? string.Empty : "retained\n", maximum ? 1 : 0, stderr);
     }

@@ -8,6 +8,9 @@ public sealed partial class Binding
 {
     private readonly BindingSymbol?[] builtinArithmetic = new BindingSymbol[6];
 
+    // The slot of a Contract ArithmeticContracts.Supports admits in builtinArithmetic: the right-hand Contracts, then Negatable.
+    private static int ArithmeticSlot(KimiDeclarationId id) => id == KimiDeclarationId.Negatable ? 5 : id - KimiDeclarationId.Addable;
+
     private bool BuiltinArithmeticConformance(BoundType self, BindingSymbol contract, BindingScope scope)
     {
         if (ArithmeticContracts.Identity(contract) is not { } id || ArithmeticContracts.IsLeft(id) ||
@@ -35,17 +38,5 @@ public sealed partial class Binding
         }
 
         return this.BuiltinArithmeticConformance(self, this.BoundContractReference(reference), scope) ? self : null;
-    }
-
-    private BindingSymbol NumericRequirementTarget(BindingSymbol selected, KimiDeclarationId id)
-    {
-        var index = id == KimiDeclarationId.Negatable ? 5 : id - KimiDeclarationId.Addable;
-        var target = this.builtinArithmetic[index] ??= new(selected.Name, selected.Kind, selected.Declaration, selected.Scope)
-        {
-            CompilerFunction = CompilerFunctionKind.BuiltinArithmetic,
-        };
-        target.Type = selected.Type;
-        target.ReceiverIndex = selected.ReceiverIndex;
-        return target;
     }
 }

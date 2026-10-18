@@ -2,6 +2,7 @@
 
 using System.Text;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -15,7 +16,7 @@ public class EmissionPlanTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         Assert.Equal(2, module.FunctionCount);
         var entry = module.GetFunction(0);
-        Assert.Same(WindowsLowering.Entry, entry.Abi);
+        Assert.Same(RuntimeAbi.Entry, entry.Abi);
         Assert.False(entry.Exported);
         var slot = Assert.Single(entry.Slots);
         Assert.Equal(new[] { 0, 8, 16 }, slot.Value.Layout.FieldOffsets.ToArray());
@@ -23,13 +24,13 @@ public class EmissionPlanTest
         // SPEC 22.1: writeLine borrows the literal; the caller destroys the temporary after the call.
         Assert.Equal([EmissionOpcode.Branch, EmissionOpcode.Label, EmissionOpcode.StoreStaticString, EmissionOpcode.Call, EmissionOpcode.Call, EmissionOpcode.ReturnVoid], entry.Instructions.Select(x => x.Opcode));
         Assert.True(entry.Instructions[2].Operation < entry.Instructions[3].Operation);
-        Assert.Same(WindowsLowering.WriteLine, entry.Instructions[3].Callee);
+        Assert.Same(RuntimeAbi.WriteLine, entry.Instructions[3].Callee);
         Assert.Equal(slot.Place, entry.GetOperands(entry.Instructions[3])[0].Value);
-        Assert.Same(WindowsLowering.DestroyString, entry.Instructions[4].Callee);
+        Assert.Same(RuntimeAbi.DestroyString, entry.Instructions[4].Callee);
         Assert.Equal(slot.Place, entry.GetOperands(entry.Instructions[4])[0].Value);
         var start = module.GetFunction(1);
         Assert.True(start.Exported);
-        Assert.Same(WindowsLowering.Start, start.Abi);
+        Assert.Same(RuntimeAbi.Start, start.Abi);
         Assert.Equal([EmissionOpcode.Call, EmissionOpcode.Call, EmissionOpcode.Unreachable], start.Instructions.Select(x => x.Opcode));
 
         using var output = new StringWriter();
@@ -124,33 +125,16 @@ public class EmissionPlanTest
     {
         var c = MinimalEmissionTest.Analyze("Console.writeLine(\"a\")");
         var ir = CompilationTestHelper.WriteIr(c);
-        foreach (var abi in new[] { WindowsLowering.Entry, WindowsLowering.Exit, WindowsLowering.WriteLine, WindowsLowering.DestroyString })
+        foreach (var abi in new[] { RuntimeAbi.Entry, RuntimeAbi.Exit, RuntimeAbi.WriteLine, RuntimeAbi.DestroyString })
         {
             Assert.Equal(2, ir.Split(abi.GetDefinition(exported: false)).Length); // Exactly one definition, no same-name declare.
         }
 
-        Assert.Contains(WindowsLowering.Start.GetDefinition(exported: true), ir);
+        Assert.Contains(RuntimeAbi.Start.GetDefinition(exported: true), ir);
 
-        Assert.Null(WindowsLowering.Unit.ArgumentType);
+        Assert.Null(RuntimeAbi.Unit.ArgumentType);
         Assert.DoesNotContain("{{", ir);
-        Assert.Throws<InvalidOperationException>(() => new EmissionFunction().AddCall(-1, WindowsLowering.WriteLine, []));
-    }
-
-    [Theory]
-    [InlineData("bool", "i8", "i1", 1)]
-    [InlineData("char", "i32", "i32", 4)]
-    [InlineData("u16", "i16", "i16", 2)]
-    [InlineData("isize", "i64", "i64", 8)]
-    [InlineData("u128", "i128", "i128", 16)]
-    [InlineData("f32", "float", "float", 4)]
-    [InlineData("f64", "double", "double", 8)]
-    public void ScalarRepresentationsFollowTheInitialProfile(string type, string storage, string computation, int size)
-    {
-        // SPEC 21.1.3: size, alignment and stride are equal; arguments pass the direct computation Type.
-        var value = WindowsLowering.GetValue(BoundType.Primitives[type])!;
-        Assert.Equal((storage, computation, computation), (value.Layout.StorageType, value.ComputationType, value.ArgumentType));
-        Assert.Equal((size, size, size), (value.Layout.Size, value.Layout.Alignment, value.Layout.Stride));
-        Assert.Null(WindowsLowering.GetValue(BoundType.Never));
+        Assert.Throws<InvalidOperationException>(() => new EmissionFunction().AddCall(-1, RuntimeAbi.WriteLine, []));
     }
 
     [Fact]
@@ -178,8 +162,8 @@ public class EmissionPlanTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var entry = module.GetFunction(0);
         Assert.Equal(3, entry.Slots.Count);
-        Assert.Equal(3, entry.Instructions.Count(x => x.Callee == WindowsLowering.WriteLine));
-        Assert.Equal(3, entry.Instructions.Count(x => x.Callee == WindowsLowering.DestroyString)); // Each borrowed literal is destroyed by the caller.
+        Assert.Equal(3, entry.Instructions.Count(x => x.Callee == RuntimeAbi.WriteLine));
+        Assert.Equal(3, entry.Instructions.Count(x => x.Callee == RuntimeAbi.DestroyString)); // Each borrowed literal is destroyed by the caller.
         using var output = new StringWriter();
         module.WriteIr(output);
         var ir = output.ToString();

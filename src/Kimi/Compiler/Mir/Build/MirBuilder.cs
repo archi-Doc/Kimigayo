@@ -27,6 +27,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
     private readonly MirValidator validator = new(compilation.Types);
     private readonly Dictionary<BindingSymbol, int> locals = new(); // The local of each parameter and local symbol of the body.
     private readonly List<MirOperand> arguments = []; // The evaluated arguments of the calls being built, innermost last.
+    private readonly List<int> leastAfter = []; // By argument of the calls being built: the least position of those evaluated after it.
     private readonly List<int> roots = [];
     private readonly HashSet<BoundType> walked = new(ReferenceEqualityComparer.Instance); // A Type walk's scratch (MayNeedDrop, HoldsRaw).
     private Roots? collector;

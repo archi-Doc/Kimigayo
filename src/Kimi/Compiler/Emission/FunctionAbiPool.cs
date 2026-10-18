@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -56,7 +57,10 @@ internal sealed class FunctionAbiPool
             physical.Add(new("i64", "location_length", AbiParameterKind.LocationLength));
         }
 
-        return new FunctionAbi(name, FunctionAbi.ResultType(result, layouts)!, physical.ToArray(), ReferenceEquals(result, BoundType.Never), resultSlot, callerLocation);
+        return new FunctionAbi(name, ResultType(result, layouts)!, physical.ToArray())
+        {
+            NoReturn = ReferenceEquals(result, BoundType.Never), ResultSlot = resultSlot, CallerLocation = callerLocation,
+        };
     }
 
     /// <summary>Whether an ABI made by <see cref="Build"/> still describes the signature under the current layouts.</summary>
@@ -70,7 +74,7 @@ internal sealed class FunctionAbiPool
     /// <returns>Whether <see cref="Build"/> would produce the same physical signature.</returns>
     internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false, bool closure = false)
     {
-        if (abi.CallerLocation != callerLocation || abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != FunctionAbi.ResultType(result, layouts))
+        if (abi.CallerLocation != callerLocation || abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != ResultType(result, layouts))
         {
             return false;
         }
@@ -100,6 +104,18 @@ internal sealed class FunctionAbiPool
         return physical + (callerLocation ? 2 : 0) + (closure ? 1 : 0) == abi.Parameters.Length;
     }
 
+    // Passing mode and attributes are fixed by the implemented representation in this profile.
+    // The pool caches physical shapes; current call plans separately validate complete Types and Origins.
+    internal static bool Supports(BoundType? type, AggregateLayoutPool? layouts = null) => type is not null && GetValue(type, layouts) is not null;
+
+    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice || AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.HandleMode is not null
+        ? layouts?.Get(type)?.Value : WindowsLowering.GetValue(type);
+
+    internal static bool HasResultSlot(BoundType type, AggregateLayoutPool? layouts) => SlotTypes.IsResult(type) && GetValue(type, layouts)?.Layout.Size > 0;
+
+    internal static string? ResultType(BoundType type, AggregateLayoutPool? layouts = null) => ReferenceEquals(type, BoundType.Never)
+        ? "void" : GetValue(type, layouts) is { } value ? SlotTypes.IsResult(type) ? "void" : value.ComputationType : null;
+
     internal FunctionAbi Get(int ordinal, FunctionKoto function, AggregateLayoutPool? layouts = null)
     {
         var result = function.BoundSymbol!.Type!;
@@ -109,7 +125,7 @@ internal sealed class FunctionAbiPool
         }
 
         var logical = new ParameterShape[function.Parameters.Count];
-        var resultSlot = FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor;
+        var resultSlot = HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor;
         var callerLocation = KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol);
         var count = (resultSlot ? 1 : 0) + (function.IsAnonymous ? 2 : 0) + (callerLocation ? 2 : 0);
         for (var i = 0; i < logical.Length; i++)
@@ -153,8 +169,11 @@ internal sealed class FunctionAbiPool
             parameters[physical++] = new("i64", "location_length", AbiParameterKind.LocationLength);
         }
 
-        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result, layouts)!, parameters, never, resultSlot, callerLocation);
-        var signature = new Signature(FunctionAbi.ResultType(result, layouts)!, resultSlot, never, function.IsAnonymous, function.BoundClosure?.EnvironmentType is not null, logical, abi);
+        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), ResultType(result, layouts)!, parameters)
+        {
+            NoReturn = never, ResultSlot = resultSlot, CallerLocation = callerLocation,
+        };
+        var signature = new Signature(ResultType(result, layouts)!, resultSlot, never, function.IsAnonymous, function.BoundClosure?.EnvironmentType is not null, logical, abi);
         if (ordinal == this.signatures.Count)
         {
             this.signatures.Add(signature);
@@ -170,7 +189,7 @@ internal sealed class FunctionAbiPool
     // Only physical facts survive reparse. Complete Types and Origins remain in the current call plans.
     private static ParameterShape Shape(BoundType type, AggregateLayoutPool? layouts)
     {
-        var value = FunctionAbi.GetValue(type, layouts)!;
+        var value = GetValue(type, layouts)!;
         var kind = ReferenceTypes.IsString(type) ? AbiParameterKind.SharedReference : SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
         return new(value.Layout.Size == 0 ? null : value.ArgumentType, kind);
     }
@@ -181,7 +200,7 @@ internal sealed class FunctionAbiPool
     {
         internal bool Matches(FunctionKoto function, BoundType result, AggregateLayoutPool? layouts)
         {
-            if (this.Closure != function.IsAnonymous || this.Concrete != (function.BoundClosure?.EnvironmentType is not null) || this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != (FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
+            if (this.Closure != function.IsAnonymous || this.Concrete != (function.BoundClosure?.EnvironmentType is not null) || this.Result != ResultType(result, layouts) || this.ResultSlot != (HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
                 this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count ||
                 this.Abi.CallerLocation != KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol))
             {

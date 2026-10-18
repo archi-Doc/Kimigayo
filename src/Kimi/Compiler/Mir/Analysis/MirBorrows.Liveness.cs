@@ -3,8 +3,7 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's holder liveness (A3 5, Liveness): the holders each location uses and kills, solved backward over the dataflow's chains, and in its
-// replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders, and
-// an activation those live into its location.
+// replay each location's live-after bit of the holders it touches, from which the checks replay rebuilds every location's live holders.
 internal sealed partial class MirBorrows
 {
     private const byte Uses = 1;
@@ -14,7 +13,6 @@ internal sealed partial class MirBorrows
     private Touch[] touches = [];
     private bool[] liveAfter = []; // By touch: whether its holder is live after its location.
     private ulong[] live = []; // The checks replay's live holders.
-    private ulong[] liveIn = []; // The holders live into an activation's location.
     private int touchCount;
 
     // Each location's touches of holders (A3 5): a use of a holder its Places read, Move, borrow, write through a reference or destroy
@@ -40,7 +38,6 @@ internal sealed partial class MirBorrows
 
         MirDataflow.Grow(ref this.liveAfter, this.touchCount);
         MirDataflow.Grow(ref this.live, (this.holderCount + 63) >> 6);
-        MirDataflow.Grow(ref this.liveIn, (this.holderCount + 63) >> 6);
         this.Work += statements.Length + this.body.Blocks.Length + this.touchCount;
     }
 
@@ -69,26 +66,6 @@ internal sealed partial class MirBorrows
             var slot = this.touches[t].Slot;
             this.live[slot >> 6] = this.liveAfter[t] ? this.live[slot >> 6] | (1UL << slot) : this.live[slot >> 6] & ~(1UL << slot);
         }
-    }
-
-    // The holders live into a location, from those live after it: live_in = (live_out \ kill) ∪ use.
-    private void LiveInto(int location)
-    {
-        var (start, count) = this.touched[location];
-        this.live.AsSpan(0, (this.holderCount + 63) >> 6).CopyTo(this.liveIn);
-        for (var t = start; t < start + count; t++)
-        {
-            var slot = this.touches[t].Slot;
-            this.liveIn[slot >> 6] &= (this.touches[t].Flags & Kills) != 0 ? ~(1UL << slot) : ulong.MaxValue;
-        }
-
-        for (var t = start; t < start + count; t++)
-        {
-            var slot = this.touches[t].Slot;
-            this.liveIn[slot >> 6] |= (this.touches[t].Flags & Uses) != 0 ? 1UL << slot : 0;
-        }
-
-        this.Work += ((this.holderCount + 63) >> 6) + count;
     }
 
     /// <summary>A touch of a holder at a location: its slot and whether it uses and kills it.</summary>

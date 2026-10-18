@@ -34,7 +34,9 @@ internal enum MirViolation : byte
     Len, // A Len of a Place that is not a sequence.
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
     Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to.
-    Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit.
+    Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
+    // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), or a
+    // marked Use of another operand.
 }
 
 /// <summary>A validator finding: its rule and the syntax of its statement, terminator or local, else the body's. The build reports it
@@ -162,6 +164,7 @@ internal sealed partial class MirValidator(TyCtxt types)
     {
         private SourceInfo at;
         private int opaqueValues;
+        private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
 
         public void Operand(in MirOperand operand)
         {
@@ -172,6 +175,10 @@ internal sealed partial class MirValidator(TyCtxt types)
             else if (operand.Kind == MirOperandKind.Const && (uint)operand.Arg >= (uint)body.Consts.Length)
             {
                 this.Report(MirViolation.Const);
+            }
+            else if (operand.Kind == MirOperandKind.PairAcquire && !this.acquires)
+            {
+                this.Report(MirViolation.Operation); // A3 E13 (4): always the whole rvalue of an Assign to a local, marked.
             }
             else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(
                 operand.Arg,
@@ -396,14 +403,20 @@ internal sealed partial class MirValidator(TyCtxt types)
                     return;
             }
 
+            this.acquires = statement is
+            {
+                Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 },
+                Rvalue: { Kind: MirRvalueKind.Use, Op: (byte)MirRefKind.Uniq or (byte)MirRefKind.TwoPhaseUniq },
+            };
             MirUses.ForEach(body, location, ref this);
+            this.acquires = false;
         }
 
         // False when the operands or the Opaque site are out of range, which MirUses then does not walk.
         private bool Rvalue(in MirRvalue rvalue, BoundType? destination)
         {
             if (!MirDescriptors.Of(rvalue.Kind).Defined || (rvalue.Kind == MirRvalueKind.Ref && rvalue.Op > (byte)MirRefKind.Raw) ||
-                (rvalue.Kind == MirRvalueKind.Adapt && rvalue.Op > 1))
+                (rvalue.Kind == MirRvalueKind.Adapt && rvalue.Op > (MirRvalue.AdaptShorthand | MirRvalue.AdaptInput)))
             {
                 this.Report(MirViolation.UnknownKind);
                 return false;
@@ -413,6 +426,11 @@ internal sealed partial class MirValidator(TyCtxt types)
             {
                 this.Report(MirViolation.OperandRange);
                 return false;
+            }
+
+            if (rvalue is { Kind: MirRvalueKind.Use, Op: not 0, Count: 1 } && body.Operands[rvalue.Start].Kind != MirOperandKind.PairAcquire)
+            {
+                this.Report(MirViolation.Operation); // Only a PairAcquire's Use is marked (A3 E13 (4)).
             }
 
             if (rvalue.Kind == MirRvalueKind.Opaque && (uint)rvalue.Arg >= (uint)body.OpaqueSites.Length)

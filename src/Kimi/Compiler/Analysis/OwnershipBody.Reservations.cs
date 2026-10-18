@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -42,12 +43,12 @@ public sealed partial class OwnershipBody
             for (var j = 0; write >= 0 && j < this.IssueStorage.Count && !stated; j++)
             {
                 var other = this.IssueStorage[j];
-                stated = other is { Failure: OwnershipFailure.ComparisonLoanConflict, Activation: false, Reservation: >= 0 } && ReferenceEquals(other.Source, this.Operations[write].Source);
+                stated = other is { Failure: OwnershipRequirement.ComparisonLoanConflict, Activation: false, Reservation: >= 0 } && ReferenceEquals(other.Source, this.Operations[write].Source);
             }
 
             if (!stated)
             {
-                this.ReportIssue(completed ? new(issue.Source, OwnershipFailure.Unsupported) : issue);
+                this.ReportIssue(completed ? new(issue.Source, OwnershipRequirement.Unsupported) : issue);
             }
         }
 
@@ -90,7 +91,7 @@ public sealed partial class OwnershipBody
                 var own = this.Operations[op].Reservation;
                 if ((reserved >= 0 || own >= 0) && this.ConflictsWithLoan(op, loan))
                 {
-                    var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipFailure.ComparisonLoanConflict, Reservation: reserved >= 0 ? reserved : own);
+                    var issue = new OwnershipIssue(this.Operations[op].Source, OwnershipRequirement.ComparisonLoanConflict, Reservation: reserved >= 0 ? reserved : own);
                     if (reserved >= 0)
                     {
                         this.ReportReservationConflict(issue, own, reserved);
@@ -108,7 +109,7 @@ public sealed partial class OwnershipBody
                         var reservation = this.CallReservations[r];
                         if (reservation.Activation == op && reservation.Loan != loan && this.ConflictsWithLoan(reservation.Borrow, loan, op))
                         {
-                            var issue = new OwnershipIssue(reservation.Call, OwnershipFailure.ComparisonLoanConflict, Reservation: r, Activation: true, Input: this.Lending(r));
+                            var issue = new OwnershipIssue(reservation.Call, OwnershipRequirement.ComparisonLoanConflict, Reservation: r, Activation: true, Input: this.Lending(r));
                             if (reserved >= 0)
                             {
                                 this.HoldOverlapActivation(r, reserved, issue);

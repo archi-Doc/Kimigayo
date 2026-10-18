@@ -12,7 +12,7 @@ namespace Kimi.Compiler;
 public sealed partial class KimiLibrary
 {
     private readonly BindingSymbol?[] symbols; // By catalog index.
-    private readonly BindingSymbol[] registeredSymbols;
+    private readonly List<BindingSymbol> registeredSymbols;
     private readonly Dictionary<KimiLibraryContainer, BindingScope> formattingScopes = new();
 
     internal KimiLibrary(Compilation compilation)
@@ -37,15 +37,8 @@ public sealed partial class KimiLibrary
         this.DictionaryUnlink = (FunctionKoto)FindDeclaration((DeclarationContainerKoto)FindDeclaration(this.Kotonoha.RootKoto, "DictionaryStorage", false)!, "unlink", true)!;
         var dictionaryStorage = (DeclarationContainerKoto)this.DictionaryUnlink.Parent!;
         this.DictionaryAppendSlot = (FunctionKoto)FindDeclaration(dictionaryStorage, "appendSlot", true)!;
-        this.DictionaryInitialize = (FunctionKoto)FindDeclaration(dictionaryStorage, "initialize", true)!;
         this.DictionaryClearLinks = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearLinks", true)!;
-        this.DictionaryFind = (FunctionKoto)FindDeclaration(dictionaryStorage, "findEntry", true)!;
-        this.DictionaryRequireAbsent = (FunctionKoto)FindDeclaration(dictionaryStorage, "requireAbsent", true)!;
-        this.DictionaryClear = (FunctionKoto)FindDeclaration(dictionaryStorage, "clearEntries", true)!;
         this.DictionaryCompact = (FunctionKoto)FindDeclaration(dictionaryStorage, "compact", true)!;
-        this.DictionaryShrink = (FunctionKoto)FindDeclaration(dictionaryStorage, "shrinkToFit", true)!;
-        this.DictionaryReserveStorage = (FunctionKoto)FindDeclaration(dictionaryStorage, "reserve", true)!;
-        this.DictionaryAppend = (FunctionKoto)FindDeclaration(dictionaryStorage, "append", true)!;
         this.formattingScopes.Add(KimiLibraryContainer.Text, this.TextScope);
         foreach (var kind in new[] { KimiLibraryContainer.FixedBuffer, KimiLibraryContainer.HeapBuffer, KimiLibraryContainer.WriteWindow, KimiLibraryContainer.Utf8Writer })
         {
@@ -66,7 +59,11 @@ public sealed partial class KimiLibrary
         this.PositionSyntax = FindDeclaration(this.Kotonoha.RootKoto, "PositionSyntax", false) as DeclarationContainerKoto;
         var entries = KimiLibraryCatalog.Entries;
         this.symbols = new BindingSymbol?[entries.Length];
-        var symbolCount = 4;
+        // The four containers, the catalog's symbols in catalog order, then the symbols the DictionaryStorage view creates.
+        this.registeredSymbols = new(4 + entries.Length + DictionaryCalleeNames.Length)
+        {
+            this.ConsoleSymbol, this.IntrinsicsSymbol, this.TestSymbol, this.TextSymbol,
+        };
         var fixedArrayScope = this.FixedArrayMembers is { } fixedArray ? new BindingScope(fixedArray) { Parent = storageScope } : storageScope;
         var sourceScopes = new Dictionary<string, BindingScope>(StringComparer.Ordinal);
         for (var i = 0; i < entries.Length; i++)
@@ -117,9 +114,10 @@ public sealed partial class KimiLibrary
             declaration.BoundSymbol = symbol;
             declaration.BindingState = BindingState.Resolved;
             this.symbols[i] = symbol;
-            symbolCount++;
+            this.registeredSymbols.Add(symbol);
         }
 
+        this.dictionaryCallees = this.CreateDictionaryCallees(sourceScopes["DictionaryStorage"]);
         this.Copy = this.GetSymbol(KimiDeclarationId.Copy)!;
         this.Owned = this.GetSymbol(KimiDeclarationId.Owned)!;
         this.Callable = this.GetSymbol(KimiDeclarationId.Callable)!;
@@ -151,20 +149,6 @@ public sealed partial class KimiLibrary
         this.ResolvedRange = this.GetSymbol(KimiDeclarationId.ResolvedRange)!;
         this.WriteLine = this.GetSymbol(KimiDeclarationId.WriteLine)!;
         this.MakeObj = this.GetSymbol(KimiDeclarationId.MakeObj)!;
-        this.registeredSymbols = new BindingSymbol[symbolCount];
-        this.registeredSymbols[0] = this.ConsoleSymbol;
-        this.registeredSymbols[1] = this.IntrinsicsSymbol;
-        this.registeredSymbols[2] = this.TestSymbol;
-        this.registeredSymbols[3] = this.TextSymbol;
-        var symbolIndex = 4;
-        foreach (var symbol in this.symbols)
-        {
-            if (symbol is not null)
-            {
-                this.registeredSymbols[symbolIndex++] = symbol;
-            }
-        }
-
         this.Abort = this.CreateAbort();
         this.Restore();
     }
@@ -277,23 +261,9 @@ public sealed partial class KimiLibrary
 
     internal FunctionKoto DictionaryAppendSlot { get; }
 
-    internal FunctionKoto DictionaryInitialize { get; }
-
     internal FunctionKoto DictionaryClearLinks { get; }
 
-    internal FunctionKoto DictionaryFind { get; }
-
-    internal FunctionKoto DictionaryRequireAbsent { get; }
-
-    internal FunctionKoto DictionaryClear { get; }
-
     internal FunctionKoto DictionaryCompact { get; }
-
-    internal FunctionKoto DictionaryShrink { get; }
-
-    internal FunctionKoto DictionaryReserveStorage { get; }
-
-    internal FunctionKoto DictionaryAppend { get; }
 
     internal GroupKoto Console { get; }
 
@@ -322,7 +292,7 @@ public sealed partial class KimiLibrary
     // A compiler-only call identity, never entered into Kimi or source name lookup.
     internal BindingSymbol Abort { get; }
 
-    internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => this.registeredSymbols;
+    internal ReadOnlySpan<BindingSymbol> RegisteredSymbols => CollectionsMarshal.AsSpan(this.registeredSymbols);
 
     public BindingSymbol? GetSymbol(KimiDeclarationId id)
         => KimiLibraryCatalog.Index(id) is var index && index >= 0 ? this.symbols[index] : null;

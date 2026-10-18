@@ -24,6 +24,11 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         "func consume(a: string, b: ()) => ()\nfunc touch(p: uniq/Slice<i32>) -> isize => 0\nfunc jump(p: uniq/raw/i32) -> isize => 0\n" +
         "func f(view: Slice<i32>, raw: raw/i32)\n    var x: i32 = 1\n";
 
+    // The callees of the evaluation order tests and the start of their function f, whose first parameter is x (SPEC 10.1.1, 7.3.4, 13.7.1).
+    private const string Order = "func give2(a: i32, b: i32) => ()\nstruct Box\n    public var v: i32 = 0\n    public init() => ()\n" +
+        "    public func put(a: i32, self: ref/Self) => ()\nstruct Gauge\n    public var level: i32 = 0\n        set(value: i32) -> ()\n" +
+        "            storage = value\n    public init() => ()\nfunc f(x: i32, box: ref/Box)\n    var y: i32 = 0\n    var gauge = Gauge.init()\n";
+
     // V9: builds every body of the corpus and counts the bodies, those with an Opaque value, the records per HirOp and the bodies per number
     // of Semantics case views; with KIMI_MIR_CENSUS naming a file, writes the census there as TSV. Every built body is valid and within the
     // case bound (plan 5.6.1), and every static a body reaches through staticEnsure, every Closure it creates and every default template it
@@ -708,6 +713,25 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 body.Operands[x.Rvalue.Start] is { Kind: MirOperandKind.Copy, Place.Projection: 0 } copy && read.Contains(copy.Place.Root));
     }
 
+    // SPEC 12.2, 10.1.1, 7.3.4, 13.7.1, 7.7.1 (A3 E13 (2)): operands are read in their evaluation order, so a Place operand that an operand
+    // evaluated after it precedes in the operation's operand order is secured where it is evaluated, as one before a later operand that
+    // builds code is (R4-M55): a named argument, an argument before an unbound reference's receiver supplied after it, a setter's value and
+    // a capture before one whose acquisition builds code; an operand in order is read by its operation (tests/mir/order shows each form).
+    [Theory]
+    [InlineData("    give2(b: x, a: y)\n", true)]
+    [InlineData("    give2(a: x, b: y)\n", false)]
+    [InlineData("    Box.put(x, box)\n", true)]
+    [InlineData("    box.put(x)\n", false)]
+    [InlineData("    gauge.level = x\n", true)]
+    [InlineData("    let c = func [x, y@uniq] () => ()\n", true)]
+    [InlineData("    let c = func [y@uniq, x] () => ()\n", false)]
+    public void AnOperandIsReadInItsEvaluationOrder(string statement, bool secured)
+    {
+        var body = Body(Order + statement, "f");
+        Assert.Equal(secured, body.Statements.ToArray().Any(x => x is { Kind: MirStatementKind.Assign, Place.Projection: 0, Rvalue.Kind: MirRvalueKind.Use } &&
+            body.Locals[x.Place.Root].Kind == MirLocalKind.Temp && body.Operands[x.Rvalue.Start] is { Kind: MirOperandKind.Copy, Place: { Root: 1, Projection: 0 } }));
+    }
+
     // SPEC 12.2 (R4-M37's Open): a pair-layer argument is acquired by case where it is evaluated, before a later argument's code, not at its
     // Call.
     [Fact]
@@ -723,6 +747,29 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         bool Acquires(MirLocation at) => at.Index < body.Blocks[at.Block].Count &&
             body.Statements[body.Blocks[at.Block].Start + at.Index] is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } statement &&
             body.Operands[statement.Rvalue.Start].Kind == MirOperandKind.PairAcquire;
+    }
+
+    // A3 E13 (4): a pair-layer acquisition is always the whole rvalue of its own Assign to a local, marked with the Reborrow its exclusive
+    // case makes: TwoPhaseUniq where it produces an invocation's input, else Uniq (a local's initializer, a tuple's element, a capture);
+    // an Adapt that produces an input has its input bit, so its exclusive case is a two-phase borrow there (MirCases.Adapt).
+    [Fact]
+    public void APairLayerAcquisitionIsMarkedWithItsBorrow()
+    {
+        var c = Compile("func inner<s/T>(a: s/T, b: i32) -> ()\n    s is ref or uniq\n    return\nfunc pairs<s/T>(p: s/T, item: T)\n    s is ref or uniq\n" +
+            "    var v = p\n    inner(v, 1)\n    let t = (v, 1)\n    let c = func [v] () => ()\n    var x = item@move\n    inner(x@(s/T), 2)\n    let a = x@(s/T)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "pairs" });
+        var assigns = body.Statements.ToArray().Where(static x => x.Kind == MirStatementKind.Assign).ToArray();
+        Assert.Equal(
+            [MirRefKind.Uniq, MirRefKind.TwoPhaseUniq, MirRefKind.Uniq, MirRefKind.Uniq],
+            assigns.Where(x => x.Rvalue.Kind == MirRvalueKind.Use && body.Operands[x.Rvalue.Start].Kind == MirOperandKind.PairAcquire).Select(static x => (MirRefKind)x.Rvalue.Op));
+        var adapts = assigns.Where(static x => x.Rvalue.Kind == MirRvalueKind.Adapt).Select(static x => x.Rvalue).ToArray();
+        Assert.Equal(new[] { (int)MirRvalue.AdaptInput, 0 }, adapts.Select(static x => x.Op & MirRvalue.AdaptInput));
+        var cases = new MirCases(c.Types);
+        var uniq = Enumerable.Range(0, (int)MirCases.Count(body)).Single(x => cases.Select(body, x)[0].Semantics == SemanticsKind.Uniq);
+        cases.Select(body, uniq);
+        Assert.Equal([MirRefKind.TwoPhaseUniq, MirRefKind.Uniq], adapts.Select(x => (MirRefKind)cases.Adapt(x, out _).Op));
     }
 
     // SPEC 15.6.7, 14.10.3: a call whose argument does not complete is still built where that argument's code continues for the checks,

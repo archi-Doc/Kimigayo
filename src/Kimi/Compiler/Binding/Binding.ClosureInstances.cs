@@ -35,7 +35,8 @@ public sealed partial class Binding
             }
 
             CallPlan? context = null;
-            if (type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { RequiresInstantiation: true, BoundClosure: { } closure } function)
+            if (type.Kind == BoundTypeKind.Closure && type.Symbol is { Declaration: FunctionKoto { BoundClosure: { } closure } function } symbol &&
+                this.types.Instantiates(symbol))
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;
                 while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, target.Declaration))

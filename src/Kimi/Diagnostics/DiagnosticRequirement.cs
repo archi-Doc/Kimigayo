@@ -8,6 +8,46 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Diagnostics;
 
+/// <summary>The requirement kinds of the Ownership partition: the Kind of a requirement named <c>Ownership.&lt;Kind&gt;</c>, each with
+/// its row in the requirement table. Invariant: the one kind enumeration of its partition, which the ownership analysis records
+/// as its failure kind. Prohibitions: no copy or mapping in an analysis; a member is removed with its last producer, and none
+/// is added (PD21).</summary>
+public enum OwnershipRequirement : byte
+{
+    UninitializedUse,
+    PossiblyMovedUse,
+    ReassignedLet,
+    Unsupported,
+    ExpansionLimit,
+    ComparisonLoanConflict,
+    DefaultArgumentMove,
+    DefaultArgumentAccess,
+    DefaultArgumentBorrow,
+    Internal,
+
+    // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
+    TransferRequired,
+
+    // SPEC 15.4.4: an Origin obligation that neither Binding nor the ownership analysis proves, such as an Origin nothing
+    // constrains.
+    UnprovenOrigin,
+
+    // SPEC 8.6, 22.2.3: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
+    // published effect bound of its Contract.
+    EffectBound,
+    CallableEffectBound,
+    VirtualEffectBound,
+
+    // SPEC 4.7, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
+    // owned fixed array.
+    StaticMovePathRequired,
+
+    // SPEC 8.11.4, 8.11.1: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
+    CallEffectConflict,
+
+    StorageLimit,
+}
+
 /// <summary>
 /// The requirement a fact concerns (docs/dev/DIAGNOSTICS.md §4.1): the partition of the phase that judges it and the
 /// analysis-specific kind. Its stable name, such as <c>Binding.MissingName</c>, is public vocabulary like a code name.
@@ -39,7 +79,7 @@ public readonly record struct DiagnosticRequirement(DiagnosticPartition Partitio
     /// <summary>Gets the requirement of an ownership failure.</summary>
     /// <param name="failure">The failure.</param>
     /// <returns>The requirement.</returns>
-    public static DiagnosticRequirement Ownership(OwnershipFailure failure) => new(DiagnosticPartition.Ownership, (ushort)failure);
+    public static DiagnosticRequirement Ownership(OwnershipRequirement failure) => new(DiagnosticPartition.Ownership, (ushort)failure);
 
     /// <summary>Gets the stable name.</summary>
     public string Name => DiagnosticRequirements.NameOf(this);
@@ -52,7 +92,7 @@ public readonly record struct DiagnosticRequirement(DiagnosticPartition Partitio
     internal static DiagnosticRequirement Binding(BindingFailure failure) => new(DiagnosticPartition.Binding, (ushort)failure);
 }
 
-/// <summary>The requirement vocabulary: stable names from each phase's failure enumeration with their descriptions, and for
+/// <summary>The requirement vocabulary: stable names from each partition's kind enumeration with their descriptions, and for
 /// syntax forms the phrase their diagnostics display, validated when loaded.</summary>
 public static class DiagnosticRequirements
 {
@@ -92,7 +132,7 @@ public static class DiagnosticRequirements
 
             yield return DiagnosticRequirement.Startup;
             yield return DiagnosticRequirement.ControlFlow;
-            foreach (var failure in Enum.GetValues<OwnershipFailure>())
+            foreach (var failure in Enum.GetValues<OwnershipRequirement>())
             {
                 yield return DiagnosticRequirement.Ownership(failure);
             }
@@ -114,7 +154,7 @@ public static class DiagnosticRequirements
         DiagnosticPartition.Binding => requirement.Kind == 0 ? "Binding" : "Binding." + (BindingFailure)requirement.Kind,
         DiagnosticPartition.Startup => "Startup",
         DiagnosticPartition.ControlFlow => "ControlFlow",
-        DiagnosticPartition.Ownership => "Ownership." + (OwnershipFailure)requirement.Kind,
+        DiagnosticPartition.Ownership => "Ownership." + (OwnershipRequirement)requirement.Kind,
         _ => "Emission",
     };
 

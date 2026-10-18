@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -23,6 +24,7 @@ internal sealed partial class BodyLowering
 
     internal void RegisterAggregates(EmissionModule module)
     {
+        var helpers = module.RuntimeHelpers;
         foreach (var layout in this.aggregateLayouts.Used)
         {
             if (layout is not null)
@@ -39,29 +41,22 @@ internal sealed partial class BodyLowering
         // Bodies register separately; a helper used by several bodies is defined once per module.
         foreach (var helper in this.arrayHelpers.Values)
         {
-            module.NeedsArrayRuntime |= helper.Kind != ArrayHelperKind.BorrowStorage;
-            if (!module.ArrayHelpers.Contains(helper))
-            {
-                module.ArrayHelpers.Add(helper);
-            }
+            helpers.Request(helper);
         }
 
-        module.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed;
+        helpers.NeedsArrayRuntime |= this.arrayRuntimeUsed || this.dictionaryRuntimeUsed;
         this.arrayRuntimeUsed = false;
         foreach (var helper in this.dictionaryHelpers.Values)
         {
-            if (!module.DictionaryHelpers.Contains(helper))
-            {
-                module.DictionaryHelpers.Add(helper);
-            }
+            helpers.Request(helper);
         }
 
-        module.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
+        helpers.NeedsDictionaryRuntime |= this.dictionaryRuntimeUsed;
         this.dictionaryRuntimeUsed = false;
-        module.NeedsStorageBytes |= this.storageBytesUsed;
+        helpers.NeedsStorageBytes |= this.storageBytesUsed;
         this.storageBytesUsed = false;
         this.dictionaryHelpers.Clear();
-        module.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
+        helpers.NeedsFormattingRuntime |= this.formattingRuntimeUsed;
         this.formattingRuntimeUsed = false;
         this.arrayHelpers.Clear();
         this.aggregateLayouts.Clear(); // No bound Types survive into the physical module.
@@ -335,11 +330,11 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerAggregate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerAggregate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
         if (body.Values[id].Kind == OwnershipValueKind.ClosureErasure)
         {
-            return this.LowerClosureErasure(body, function, constants, directory, id, out failure);
+            return this.LowerClosureErasure(body, function, constants, id, out failure);
         }
 
         failure = null;
@@ -442,14 +437,14 @@ internal sealed partial class BodyLowering
                 {
                     // SPEC 4.3, 4.9.5: the handle is zeroed (the empty literal allocates nothing); an element literal reserves its count
                     // once and moves each acquired payload into the buffer in source order.
-                    if (!this.TryGetLocation(operation.Source, directory, constants, out var initLocation))
+                    if (!this.TryGetLocation(operation.Source, constants, out var initLocation))
                     {
                         return Fail("Array construction has no diagnostic source location.", out failure);
                     }
 
                     var dictionary = place.Type.Kind == BoundTypeKind.Dictionary;
                     this.dictionaryRuntimeUsed |= dictionary;
-                    function.AddCall(id, dictionary ? WindowsLowering.DictionaryInit : WindowsLowering.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                    function.AddCall(id, dictionary ? RuntimeAbi.DictionaryInit : RuntimeAbi.ArrayInit, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                     if (plan.PayloadCount != 0)
                     {
                         if (!this.TryGetArrayElement(place.Type.Components[0], out var element))
@@ -458,7 +453,7 @@ internal sealed partial class BodyLowering
                         }
 
                         this.arrayRuntimeUsed = true;
-                        function.AddCall(id, WindowsLowering.ArrayGrow, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.Integer, element.Stride), new(EmissionOperandKind.Integer, plan.PayloadCount), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
+                        function.AddCall(id, RuntimeAbi.ArrayGrow, [new(EmissionOperandKind.SlotAddress, place.Id), new(EmissionOperandKind.Integer, element.Stride), new(EmissionOperandKind.Integer, plan.PayloadCount), new(EmissionOperandKind.ConstantAddress, initLocation), new(EmissionOperandKind.ConstantLength, initLocation)]);
                         var placeElement = this.GetArrayHelper(ArrayHelperKind.Place, element).Abi;
                         for (var i = 0; i < plan.PayloadCount; i++)
                         {
@@ -522,7 +517,7 @@ internal sealed partial class BodyLowering
                     return Fail("Return storage must be uninitialized before securing its result.", out failure);
                 }
 
-                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
+                if (operation.Kind == OwnershipOperationKind.Write && place.Kind == OwnershipPlaceKind.Local && !this.LowerStringDestruction(body, function, constants, id, marks, out failure, layout))
                 {
                     return false;
                 }
@@ -558,8 +553,8 @@ internal sealed partial class BodyLowering
                 break;
             case OwnershipOperationKind.Cleanup:
                 if (place.Type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary
-                    ? !this.LowerArrayDestruction(body, function, constants, directory, id, marks, out failure)
-                    : !this.LowerStringDestruction(body, function, constants, directory, id, marks, out failure, layout))
+                    ? !this.LowerArrayDestruction(body, function, constants, id, marks, out failure)
+                    : !this.LowerStringDestruction(body, function, constants, id, marks, out failure, layout))
                 {
                     return false;
                 }
@@ -574,7 +569,7 @@ internal sealed partial class BodyLowering
     }
 
     // SPEC 4.9.7: destroying an Array releases its buffer; elements are destroyed first once element storage exists.
-    private bool LowerArrayDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, ReadOnlySpan<byte> marks, out string? failure)
+    private bool LowerArrayDestruction(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, ReadOnlySpan<byte> marks, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -595,7 +590,7 @@ internal sealed partial class BodyLowering
             return true;
         }
 
-        if (step.Action is not (CleanupAction.Destroy or CleanupAction.Conditional) || !this.TryGetLocation(operation.Source, directory, constants, out var location))
+        if (step.Action is not (CleanupAction.Destroy or CleanupAction.Conditional) || !this.TryGetLocation(operation.Source, constants, out var location))
         {
             return Fail("Array cleanup has an unknown action.", out failure);
         }
@@ -628,11 +623,10 @@ internal sealed partial class BodyLowering
             }
 
             callee = this.GetDictionaryHelper(DictionaryHelperKind.Drop, key, item).Abi;
-            this.dictionaryRuntimeUsed = true;
         }
         else
         {
-            callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : WindowsLowering.ArrayFree;
+            callee = element.NeedsDestruction ? this.GetArrayHelper(ArrayHelperKind.Drop, element).Abi : RuntimeAbi.ArrayFree;
         }
 
         if (conditional)

@@ -1,9 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    // The longest operand spelling: %element and an Int128.
+    private const int OperandLength = 48;
+
+    // A check's names: its success label and its two location operands.
+    private const int CheckLength = 3 * OperandLength;
+
     private static void Name(TextWriter output, string prefix, int id)
     {
         output.Write(prefix);
@@ -11,52 +21,39 @@ internal static partial class LlvmModuleWriter
     }
 
     private static void WriteOperand(TextWriter output, EmissionOperand operand)
-    {
-        if (operand.Kind is EmissionOperandKind.CallerLocation or EmissionOperandKind.CallerLocationLength)
-        {
-            output.Write(operand.Kind == EmissionOperandKind.CallerLocation ? "%location" : "%location_length");
-            return;
-        }
+        => output.Write(Spell(operand, stackalloc char[OperandLength]));
 
+    // An operand's LLVM spelling, formatted into text, which holds OperandLength characters.
+    private static ReadOnlySpan<char> Spell(EmissionOperand operand, Span<char> text)
+    {
+        var prefix = operand.Kind switch
+        {
+            EmissionOperandKind.CallerLocation => "%location",
+            EmissionOperandKind.CallerLocationLength => "%location_length",
+            EmissionOperandKind.NullAddress => "null",
+            EmissionOperandKind.Float32 or EmissionOperandKind.Float64 => "0x",
+            EmissionOperandKind.ElementAddress => "%element",
+            EmissionOperandKind.Argument => "%a",
+            EmissionOperandKind.Value => "%v",
+            EmissionOperandKind.Block => "%b",
+            _ => string.Empty,
+        };
+        prefix.CopyTo(text);
+        var digits = text[prefix.Length..];
+        var length = 0;
         if (operand.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64)
         {
             // LLVM's hexadecimal float spelling uses the exactly extended double bits.
             var bits = operand.Kind == EmissionOperandKind.Float32
                 ? BitConverter.DoubleToUInt64Bits(BitConverter.UInt32BitsToSingle((uint)operand.Value)) : unchecked((ulong)operand.Value);
-            Span<char> digits = stackalloc char[16];
-            bits.TryFormat(digits, out var length, "X16", System.Globalization.CultureInfo.InvariantCulture);
-            output.Write("0x");
-            output.Write(digits[..length]);
-            return;
+            bits.TryFormat(digits, out length, "X16", CultureInfo.InvariantCulture);
         }
-
-        if (operand.Kind == EmissionOperandKind.NullAddress)
+        else if (operand.Kind is not (EmissionOperandKind.CallerLocation or EmissionOperandKind.CallerLocationLength or EmissionOperandKind.NullAddress))
         {
-            output.Write("null");
-            return;
+            operand.Value.TryFormat(digits, out length, default, CultureInfo.InvariantCulture);
         }
 
-        if (operand.Kind == EmissionOperandKind.ElementAddress)
-        {
-            output.Write("%element");
-        }
-
-        if (operand.Kind == EmissionOperandKind.Argument)
-        {
-            output.Write("%a");
-        }
-
-        if (operand.Kind == EmissionOperandKind.Value)
-        {
-            output.Write("%v");
-        }
-
-        if (operand.Kind == EmissionOperandKind.Block)
-        {
-            output.Write("%b");
-        }
-
-        WriteNumber(output, operand.Value);
+        return text[..(prefix.Length + length)];
     }
 
     private static void WriteScalar(TextWriter output, LlvmConstantPool constants, EmissionFunction function, EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
@@ -178,7 +175,8 @@ internal static partial class LlvmModuleWriter
                 output.Write('\n');
                 return;
             case EmissionOpcode.Scalar:
-                break;
+                WriteArithmetic(output, constants, function, instruction, operands);
+                return;
             case EmissionOpcode.PointerOffset:
                 // SPEC 5.3: count * signed stride bytes; out-of-allocation results are the program's undefined
                 // behavior, so no inbounds, nsw or other attribute is claimed.
@@ -200,213 +198,53 @@ internal static partial class LlvmModuleWriter
             default:
                 throw new InvalidOperationException("Unknown physical opcode.");
         }
-
-        var op = instruction.ScalarOperator!;
-        if (instruction.Check == ArithmeticCheckKind.Overflow)
-        {
-            Name(output, "  %checked", id);
-            output.Write(" = call { ");
-            output.Write(type);
-            output.Write(", i1 } @llvm.");
-            output.Write(op);
-            output.Write(".with.overflow.");
-            output.Write(type);
-            output.Write('(');
-            output.Write(type);
-            output.Write(' ');
-            WriteOperand(output, operands[0]);
-            output.Write(", ");
-            output.Write(type);
-            output.Write(' ');
-            WriteOperand(output, operands[1]);
-            output.Write(")\n");
-            Name(output, "  %v", id);
-            WriteCheckedValue(output, type!, id);
-            output.Write(", 0\n");
-            Name(output, "  %overflow", id);
-            WriteCheckedValue(output, type!, id);
-            output.Write(", 1\n");
-            WriteArithmeticFailure(output, constants, instruction, "%overflow", function.Abi.CallerLocation);
-            return;
-        }
-
-        if (instruction.Check == ArithmeticCheckKind.Division && IsLiteralMinusOne(operands[1]))
-        {
-            // IMPL 21.3.3: a literal -1 keeps only the minimum check; the quotient below is the negation.
-            WriteEquality(output, "%minimum", id, type!, operands[0], long.MinValue >> (64 - (instruction.Representation!.Layout.Size * 8)));
-            WriteArithmeticFailure(output, constants, instruction, "%minimum", function.Abi.CallerLocation);
-        }
-        else if (instruction.Check == ArithmeticCheckKind.Division)
-        {
-            WriteEquality(output, "%zero", id, type!, operands[1], 0);
-            WriteEquality(output, "%minimum", id, type!, operands[0], long.MinValue >> (64 - (instruction.Representation!.Layout.Size * 8)));
-            WriteEquality(output, "%minusone", id, type!, operands[1], -1);
-            Name(output, "  %overflow", id);
-            Name(output, " = and i1 %minimum", id);
-            Name(output, ", %minusone", id);
-            output.Write('\n');
-            Name(output, "  %invalid", id);
-            Name(output, " = or i1 %zero", id);
-            Name(output, ", %overflow", id);
-            output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction, "%invalid", function.Abi.CallerLocation);
-        }
-        else if (instruction.Check == ArithmeticCheckKind.DivisionZero)
-        {
-            WriteEquality(output, "%zero", id, type!, operands[1], 0);
-            WriteArithmeticFailure(output, constants, instruction, "%zero", function.Abi.CallerLocation);
-            if (SubstitutesRemainderDivisor(instruction, operands))
-            {
-                // SPEC 13.3.1: a % -1 is 0 for every a, and srem must never see the minimum / -1 pair, so a divisor of -1
-                // becomes 1. A literal -1 is written as 1 directly below.
-                WriteEquality(output, "%minusone", id, type!, operands[1], -1);
-                Name(output, "  %safe", id);
-                Name(output, " = select i1 %minusone", id);
-                output.Write(", ");
-                output.Write(type);
-                output.Write(" 1, ");
-                output.Write(type);
-                output.Write(' ');
-                WriteOperand(output, operands[1]);
-                output.Write('\n');
-            }
-        }
-        else if (instruction.Check == ArithmeticCheckKind.WrappingDivision)
-        {
-            WriteEquality(output, "%zero", id, type!, operands[1], 0);
-            WriteArithmeticFailure(output, constants, instruction, "%zero", function.Abi.CallerLocation);
-            WriteWrappingQuotient(output, instruction, operands, type!);
-            return;
-        }
-        else if (instruction.Check == ArithmeticCheckKind.Shift)
-        {
-            Name(output, "  %invalid", id);
-            output.Write(" = icmp uge ");
-            output.Write(instruction.CountRepresentation!.ComputationType);
-            output.Write(' ');
-            WriteOperand(output, operands[1]);
-            output.Write(", ");
-            WriteNumber(output, instruction.Representation!.Layout.Size * 8);
-            output.Write('\n');
-            WriteArithmeticFailure(output, constants, instruction, "%invalid", function.Abi.CallerLocation);
-            if (instruction.CountRepresentation.Layout.Size != instruction.Representation.Layout.Size)
-            {
-                // Only successful, nonnegative counts are converted to the left operand's width.
-                Name(output, "  %shift", id);
-                output.Write(instruction.CountRepresentation.Layout.Size < instruction.Representation.Layout.Size ? " = zext " : " = trunc ");
-                output.Write(instruction.CountRepresentation.ComputationType);
-                output.Write(' ');
-                WriteOperand(output, operands[1]);
-                output.Write(" to ");
-                output.Write(type);
-                output.Write('\n');
-            }
-        }
-        else if (instruction.Check != ArithmeticCheckKind.None)
-        {
-            throw new InvalidOperationException("Unknown arithmetic check.");
-        }
-
-        // SPEC 13.3.1, IMPL 21.3.3: a signed quotient by a literal -1 is the negation, plain for a wrapping Type and after the
-        // minimum check above for an integer Type, so sdiv never sees the minimum / -1 pair.
-        var negated = op == "sdiv" && IsLiteralMinusOne(operands[1]);
-        Name(output, "  %v", id);
-        output.Write(" = ");
-        if (instruction.IsComparison)
-        {
-            output.Write(type is "float" or "double" ? "fcmp " : "icmp ");
-        }
-
-        output.Write(negated ? "sub" : op);
-        output.Write(' ');
-        output.Write(type);
-        output.Write(' ');
-        if (negated)
-        {
-            output.Write('0');
-        }
-        else
-        {
-            WriteOperand(output, operands[0]);
-        }
-
-        if (op == "fneg")
-        {
-            output.Write('\n');
-            return;
-        }
-
-        output.Write(", ");
-        if (negated)
-        {
-            WriteOperand(output, operands[0]);
-        }
-        else if (instruction.Check == ArithmeticCheckKind.Shift && instruction.CountRepresentation!.Layout.Size != instruction.Representation!.Layout.Size)
-        {
-            Name(output, "%shift", id);
-        }
-        else if (SubstitutesRemainderDivisor(instruction, operands))
-        {
-            Name(output, "%safe", id);
-        }
-        else if (IsLiteralMinusOneRemainder(instruction, operands))
-        {
-            output.Write('1');
-        }
-        else
-        {
-            WriteOperand(output, operands[1]);
-        }
-
-        output.Write('\n');
     }
 
-    // SPEC 13.3.1: the minimum / -1 of a wrapping integer Type is the minimum, which sdiv cannot compute, so a dynamic divisor of
-    // -1 divides as 1 and the quotient is negated; a literal -1 carries no check and is the negation alone (IMPL 21.3.3).
-    private static void WriteWrappingQuotient(TextWriter output, in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands, string type)
+    // Decodes a Scalar instruction for LlvmScalarText: its operation, and the check its kind selects.
+    private static void WriteArithmetic(
+        TextWriter output, LlvmConstantPool constants, EmissionFunction function, in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
     {
-        var id = instruction.Operation;
-        WriteEquality(output, "%minusone", id, type, operands[1], -1);
-        Name(output, "  %safe", id);
-        Name(output, " = select i1 %minusone", id);
-        output.Write(", ");
-        output.Write(type);
-        output.Write(" 1, ");
-        output.Write(type);
-        output.Write(' ');
-        WriteOperand(output, operands[1]);
-        output.Write('\n');
-        Name(output, "  %q", id);
-        output.Write(" = sdiv ");
-        output.Write(type);
-        output.Write(' ');
-        WriteOperand(output, operands[0]);
-        Name(output, ", %safe", id);
-        output.Write('\n');
-        Name(output, "  %neg", id);
-        output.Write(" = sub ");
-        output.Write(type);
-        Name(output, " 0, %q", id);
-        output.Write('\n');
-        Name(output, "  %v", id);
-        Name(output, " = select i1 %minusone", id);
-        output.Write(", ");
-        output.Write(type);
-        Name(output, " %neg", id);
-        output.Write(", ");
-        output.Write(type);
-        Name(output, " %q", id);
-        output.Write('\n');
+        Span<char> left = stackalloc char[OperandLength];
+        Span<char> right = stackalloc char[OperandLength];
+        Span<char> result = stackalloc char[OperandLength];
+        var operation = new ScalarOperation(
+            instruction.ScalarOperator!,
+            instruction.ScalarType!,
+            Spell(operands[0], left),
+            operands.Length > 1 ? Spell(operands[1], right) : default,
+            Spell(new(EmissionOperandKind.Value, instruction.Operation), result),
+            instruction.IsComparison);
+        if (instruction.Check == ArithmeticCheckKind.None)
+        {
+            LlvmScalarText.WriteOperation(output, operation);
+            return;
+        }
+
+        Span<char> names = stackalloc char[CheckLength];
+        var check = CheckOf(constants, instruction, function.Abi.CallerLocation, names);
+        switch (instruction.Check)
+        {
+            case ArithmeticCheckKind.Overflow:
+                LlvmScalarText.WriteOverflowChecked(output, operation, check);
+                return;
+            case ArithmeticCheckKind.Division:
+                // The synthetic success-label ID is outside the ownership value ID range, so its %v name can hold the reason.
+                Span<char> reason = stackalloc char[OperandLength];
+                LlvmScalarText.WriteSignedQuotient(output, operation, check, Spell(new(EmissionOperandKind.Value, instruction.Place), reason));
+                return;
+            case ArithmeticCheckKind.DivisionZero:
+                LlvmScalarText.WriteZeroChecked(output, operation, check);
+                return;
+            case ArithmeticCheckKind.WrappingDivision:
+                LlvmScalarText.WriteWrappingQuotient(output, operation, check);
+                return;
+            case ArithmeticCheckKind.Shift:
+                LlvmScalarText.WriteShift(output, operation, check, instruction.CountRepresentation!.ComputationType);
+                return;
+            default:
+                throw new InvalidOperationException("Unknown arithmetic check.");
+        }
     }
-
-    // A signed remainder by a dynamic divisor substitutes 1 for -1 (SPEC 13.3.1); a literal -1 needs no select.
-    private static bool SubstitutesRemainderDivisor(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
-        => instruction.Check == ArithmeticCheckKind.DivisionZero && instruction.ScalarOperator == "srem" && operands[1].Kind != EmissionOperandKind.Integer;
-
-    private static bool IsLiteralMinusOneRemainder(in EmissionInstruction instruction, ReadOnlySpan<EmissionOperand> operands)
-        => instruction.ScalarOperator == "srem" && IsLiteralMinusOne(operands[1]);
-
-    private static bool IsLiteralMinusOne(in EmissionOperand operand) => operand.Kind == EmissionOperandKind.Integer && operand.Value == -1;
 
     private static void WriteAlignment(TextWriter output, int alignment)
     {
@@ -415,77 +253,39 @@ internal static partial class LlvmModuleWriter
         output.Write('\n');
     }
 
-    private static void WriteCheckedValue(TextWriter output, string type, int id)
-    {
-        output.Write(" = extractvalue { ");
-        output.Write(type);
-        Name(output, ", i1 } %checked", id);
-    }
-
-    private static void WriteEquality(TextWriter output, string name, int id, string type, EmissionOperand operand, long constant)
-    {
-        output.Write("  ");
-        Name(output, name, id);
-        output.Write(" = icmp eq ");
-        output.Write(type);
-        output.Write(' ');
-        WriteOperand(output, operand);
-        output.Write(", ");
-        WriteNumber(output, constant);
-        output.Write('\n');
-    }
-
-    // The condition of a check that the compiler proved: the failure block stays unreachable.
-    private const string ProvenValid = "false";
-
+    // Decodes the failure block of a bounds or argument check for LlvmScalarText.
     private static void WriteArithmeticFailure(TextWriter output, LlvmConstantPool constants, EmissionInstruction instruction, string condition, bool callerLocation = false)
     {
-        var id = instruction.Operation;
-        output.Write("  br i1 ");
-        if (ReferenceEquals(condition, ProvenValid))
+        var reason = instruction.Check switch
         {
-            output.Write(ProvenValid);
-        }
-        else
-        {
-            Name(output, condition, id);
-        }
-
-        Name(output, ", label %abort", id);
-        Name(output, ", label %b", instruction.Place);
-        output.Write('\n');
-        Name(output, "abort", id);
-        output.Write(":\n");
-        var reasonId = instruction.Check switch
-        {
-            ArithmeticCheckKind.Overflow or ArithmeticCheckKind.Division => WindowsLowering.IntegerOverflowReason,
-            ArithmeticCheckKind.DivisionZero or ArithmeticCheckKind.WrappingDivision => WindowsLowering.IntegerDivisionZeroReason,
-            ArithmeticCheckKind.Shift => WindowsLowering.IntegerShiftCountReason,
-            ArithmeticCheckKind.Conversion => WindowsLowering.IntegerConversionReason,
-            ArithmeticCheckKind.FloatingConversion => WindowsLowering.FloatingConversionReason,
-            ArithmeticCheckKind.Bounds => WindowsLowering.IndexBoundsReason,
-            ArithmeticCheckKind.Argument => WindowsLowering.ArgumentRangeReason,
+            ArithmeticCheckKind.Bounds => AbortReasons.IndexBounds,
+            ArithmeticCheckKind.Argument => AbortReasons.ArgumentRange,
             _ => throw new InvalidOperationException("Unknown arithmetic failure reason."),
         };
-        var reason = new EmissionOperand(EmissionOperandKind.Integer, reasonId);
-        if (instruction.Check == ArithmeticCheckKind.Division && condition != "%minimum")
+        Span<char> names = stackalloc char[CheckLength];
+        LlvmScalarText.WriteFailure(output, condition, reason, CheckOf(constants, instruction, callerLocation, names));
+    }
+
+    // A check's names, formatted into names (CheckLength characters): its operation ID, the success label at the instruction's
+    // Place and its location operands, the pooled location constant's address and byte length or the forwarded caller's.
+    private static ScalarCheck CheckOf(LlvmConstantPool constants, in EmissionInstruction instruction, bool callerLocation, Span<char> names)
+    {
+        var success = Spell(new(EmissionOperandKind.Block, instruction.Place), names[..OperandLength]);
+        var location = names.Slice(OperandLength, OperandLength);
+        var length = names[(2 * OperandLength)..];
+        if (callerLocation)
         {
-            // A dynamic divisor selects the reason by its zero test; a literal -1 fails only on the minimum dividend (IMPL 21.3.3).
-            // The synthetic success-label ID is outside the ownership value ID range.
-            // Labels use %b, so its %v name can hold this failure-only ABI argument.
-            Name(output, "  %v", instruction.Place);
-            Name(output, " = select i1 %zero", id);
-            output.Write(", i32 ");
-            WriteNumber(output, WindowsLowering.IntegerDivisionZeroReason);
-            output.Write(", i32 ");
-            WriteNumber(output, WindowsLowering.IntegerOverflowReason);
-            output.Write('\n');
-            reason = new(EmissionOperandKind.Value, instruction.Place);
+            return new(
+                instruction.Operation,
+                success,
+                Spell(new(EmissionOperandKind.CallerLocation, 0), location),
+                Spell(new(EmissionOperandKind.CallerLocationLength, 0), length));
         }
 
-        WriteCall(output, constants, WindowsLowering.Abort, [reason, new(callerLocation ? EmissionOperandKind.CallerLocation : EmissionOperandKind.ConstantAddress, instruction.Constant), new(callerLocation ? EmissionOperandKind.CallerLocationLength : EmissionOperandKind.ConstantLength, instruction.Constant), new(EmissionOperandKind.Integer, -2)]);
-        output.Write("  unreachable\n");
-        Name(output, "b", instruction.Place);
-        output.Write(":\n");
+        var constant = constants[instruction.Constant];
+        location[0] = '@';
+        constant.Name.CopyTo(location[1..]);
+        constant.ByteLength.TryFormat(length, out var digits, default, CultureInfo.InvariantCulture);
+        return new(instruction.Operation, success, location[..(constant.Name.Length + 1)], length[..digits]);
     }
 }

@@ -105,6 +105,75 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
+    // The callees and Types of the rows on the values an access takes (A3 E13): by-value and named-argument callees, pair-layer callees,
+    // a Copy struct with a by-value receiver, a setter, an unbound reference's receiver declared after a parameter, and holders that
+    // refer to their own parts.
+    private const string Order = """
+        func give2(a: i32, b: i32) => ()
+        func give2T<T>(a: T, b: i32) => ()
+        func giveR(a: ref/i32, b: i32) => ()
+        func giveS(a: uniq/i32, b: ref/i32) => ()
+        func peek<T>(x: ref/T) -> i32 => 1
+        func runF<F>(f: F, n: i32) => ()
+        func inner11<s/T>(a: s/T, b: i32) -> ()
+            s is ref or uniq
+            return
+        func inner2<s/T>(a: ref/(s/T), b: s/T) -> ()
+            s is ref or uniq
+            return
+        func inner3<s/T>(a: s/T, b: ref/(s/T)) -> ()
+            s is ref or uniq
+            return
+        func inner9<s/T>(a: s/T, b: s/T) -> ()
+            s is ref or uniq
+            return
+        func innerR<s/T>(a: s/T, b: ref/T) -> ()
+            s is ref or uniq
+            return
+        struct SU {a}
+            public var r: uniq/i32 during a
+            public var n: i32 = 0
+            public init(r: uniq/i32 during a) => self.r = r
+        struct Q2 {a}
+            public var r: uniq/i32 during a
+            public var n: i32 = 0
+            public init(r: uniq/i32 during a) => self.r = r
+            drop
+                self.r@follow = 0
+        struct S7 {a}
+            public var r: uniq/i32 during a
+            public var q: ref/i32 during a
+            public init(r: uniq/i32 during a, q: ref/i32 during a)
+                self.r = r
+                self.q = q
+        struct S5 {a}
+            public var r: ref/i32 during a
+            public init(r: ref/i32 during a) => self.r = r
+        struct W5 {a}
+            public var p: uniq/S5{b} during a
+                origin b.a == a
+            public var q: uniq/(ref/i32 during a) during a
+            public init(p: uniq/S5{b} during a, q: uniq/(ref/i32 during a) during a)
+                origin b.a == a
+                self.p = p
+                self.q = q
+        struct Gauge
+            public var level: i32 = 0
+                set(value: i32) -> ()
+                    storage = value
+            public init() => ()
+        struct Box
+            public var v: i32 = 0
+            public init() => ()
+            public func f(a: ref/Box, self: ref/Self) => ()
+        struct Num
+            Self is Copy
+            public var v: i32 = 0
+            public init() => ()
+            public func plus(self: Self, o: Num) -> i32 => 1
+
+        """;
+
     /// <summary>Gets the variants of the SPEC examples these rules decide: family F3's, SPEC 14.8.3's, 15.6.6's and 15.6.7's.</summary>
     public static TheoryData<string> SpecVariants => [.. DiagnosticCorpus.SpecCases
         .Where(static x => x.Family == "F3" || x.Section is "14.8.3" or "15.6.6" or "15.6.7")
@@ -319,6 +388,34 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     put(slot@uniq, x@ref)
                     x = 3
                     inspect(slot)
+                """));
+
+    // SPEC 15.6.4 (DECISIONS BU-1): a value stored into writable storage brings its whole Type, so Array<rc/S>.append stores the borrow
+    // its element's payload holds into the Array, below the rc layer: a write of the borrowed Place while the Array is used later errs; a
+    // read, or a write before the append, does not.
+    [Fact]
+    public void ACallStoresBelowAnRcLayer()
+        => Assert.Equal(
+            ["appended: x = 2"],
+            Problems("""
+                func appended()
+                    var x = 1
+                    var e: Array<rc/S> = []
+                    e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
+                    x = 2
+                    inspect(e@ref)
+                func appendedRead()
+                    var x = 1
+                    var e: Array<rc/S> = []
+                    e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
+                    inspect(x@ref)
+                    inspect(e@ref)
+                func writtenBefore()
+                    var x = 1
+                    var e: Array<rc/S> = []
+                    x = 2
+                    e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
+                    inspect(e@ref)
                 """));
 
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
@@ -879,11 +976,12 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
 
     // SPEC 15.6.6 (A3 obs; 24a, 24b, 27, 29b's store through a reference): a destruction that may observe a Loan, the old value's at `=`
     // or a holder's at its scope end, is an exclusive use of its Place and of what it reaches through exclusive references, checked before
-    // the ending; one whose Type observes nothing, or that a shared reference leads past, is shallow.
+    // the ending, with the value it destroys (A3 E13 (1d), SPEC 15.6: so s's own end in 29b, whose new value carries p's Loan on s as its
+    // reborrow's parent, SPEC 15.6.3); one whose Type observes nothing, or that a shared reference leads past, is shallow.
     [Fact]
     public void AnObservingDestructionIsAnExclusiveDeepUse()
         => Assert.Equal(
-            ["o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)"],
+            ["o1566: s = D.init(r: y@uniq)", "o24a: s = D.init(r: s.r@follow@uniq)", "o29b: p@follow = D.init(r: p.r@follow@uniq)", "o29b: var s = D.init(r: x@uniq)"],
             Problems("""
                 func o1566()
                     var x = 1
@@ -915,6 +1013,350 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                     var s = D.init(r: x@uniq)
                     let p = s@uniq
                     p@follow = D.init(r: p.r@follow@uniq)
+                """));
+
+    // SPEC 12.2, 15.6 (A3 E13 (1a), (2); prototype round 13's 136-137, n1-n2, s1-s2, fr-rs1, 131 and 130g): an operation evaluates its
+    // operands in order and uses each one's value after its access, so operand i's access is checked with the values of the operands up to
+    // it and the holders of the later ones: a Place read before a later operand reads through an exclusive reference to it errs, read
+    // after it is valid, whether the operands are a call's (named ones, an unbound reference's receiver supplied after a parameter, a
+    // setter's value before its receiver, a Value callee before its arguments), a by-value receiver's, an aggregate's or an operator's.
+    [Fact]
+    public void AnOperandIsCheckedWithTheValuesEvaluatedAroundIt()
+        => Assert.Equal(
+            [
+                "o136b: give2(x, r@follow)", "o136d: (x, r@follow)", "o136f: x + r@follow", "o136g: x.plus(r@follow)", "o137b: (x@uniq, x)",
+                "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "s2: g.level = r@follow.level CallActivationConflict_Kd", "rs1: x",
+                "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o130g: bump(value)",
+            ],
+            Problems(Order + """
+                func o136a()
+                    var x = 1
+                    let r = x@uniq
+                    give2(r@follow, x)
+                func o136b()
+                    var x = 1
+                    let r = x@uniq
+                    give2(x, r@follow)
+                func o136c()
+                    var x = 1
+                    let r = x@uniq
+                    let t = (r@follow, x)
+                    inspect(t)
+                func o136d()
+                    var x = 1
+                    let r = x@uniq
+                    let t = (x, r@follow)
+                    inspect(t)
+                func o136e()
+                    var x = 1
+                    let r = x@uniq
+                    let s = r@follow + x
+                func o136f()
+                    var x = 1
+                    let r = x@uniq
+                    let s = x + r@follow
+                func o136g()
+                    var x = Num.init()
+                    let r = x@uniq
+                    _ = x.plus(r@follow)
+                func o136h()
+                    var x = Num.init()
+                    let r = x@uniq
+                    _ = r@follow.plus(x)
+                func o137a()
+                    var x = 1
+                    _ = (x, x@uniq)
+                func o137b()
+                    var x = 1
+                    let t = (x@uniq, x)
+                    inspect(t)
+                func o137c()
+                    var x = 1
+                    let r = x@uniq
+                    _ = (r, x)
+                func o137d()
+                    var x = 1
+                    let r = x@ref
+                    _ = (r, x)
+                func o137e()
+                    var x = 1
+                    let r = x@uniq
+                    _ = (x, r)
+                func n1()
+                    var x = 1
+                    let r = x@uniq
+                    give2(b: r@follow, a: x)
+                func n2()
+                    var x = 1
+                    let r = x@uniq
+                    give2(b: x, a: r@follow)
+                func s1()
+                    var g = Gauge.init()
+                    let r = g@uniq
+                    g.level = r@follow.level
+                func s2()
+                    var g = Gauge.init()
+                    let r = g@uniq
+                    g.level = r@follow.level
+                    inspect(r)
+                func rs1()
+                    var b = Box.init()
+                    var x = b@ref
+                    let r = x@uniq
+                    Box.f(x, r@follow)
+                func o131a()
+                    var x = 1
+                    let r = x@uniq
+                    give(r, x)
+                func o131b()
+                    var x = 1
+                    let r = x@uniq
+                    giveR(r, x)
+                func o131c()
+                    var x = 1
+                    let r = x@uniq
+                    giveS(r, x)
+                func o131d()
+                    var x = 1
+                    give(x@uniq, x)
+                func o131e()
+                    var x = 1
+                    let r = x@uniq
+                    give(r, r@follow)
+                func o131f()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    setN(s@uniq, s.n)
+                func o130g()
+                    var value: i32 = 1
+                    let r = value@uniq
+                    var bump = func [r] (n: i32) => r@follow += n
+                    bump(value)
+                """));
+
+    // SPEC 15.6 (A3 E13 (1a); prototype 140, u1-u2, c1): an operand's own value is used by its operation after its access, an rvalue's
+    // single one's too, so moving or reading a holder that carries a Loan on its own part errs where it is evaluated, whether the value is
+    // used later or not; a holder whose Loan is on another root does not.
+    [Fact]
+    public void AnOperandIsCheckedWithItsOwnValue()
+        => Assert.Equal(
+            ["o140a: s", "o140b: s", "o140c: s", "o140e: s", "o140f: s", "u1: give2(s.n, 1)", "u2: s.n", ": func [s@move]() => ()"],
+            Problems(Order + """
+                func o140a()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    give2T(s@move, 1)
+                func o140b()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    _ = (s@move, 1)
+                func o140c()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    let t = (s@move, 1)
+                    inspect(t)
+                func o140d()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    give2(s.n, s.n)
+                func o140e()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    let t = s@move
+                func o140f()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    let t = s@move
+                    inspect(t)
+                func o140g()
+                    var z = 0
+                    var y = 0
+                    var s = S.init(r: z@ref)
+                    let r2 = y@ref
+                    s.r = r2
+                    let t = s@move
+                func u1()
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    give2(s.n, 1)
+                func u2()
+                    var z = 0
+                    var s = SU.init(r: z@uniq)
+                    s.r = s.n@uniq
+                    let t = s.n
+                func c1()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    let c = func [s@move] () => ()
+                """));
+
+    // SPEC 15.6, 15.6.3, 15.6.7 (A3 E13 (1b), (1c), (1d); prototype a1-a2, rf1-rf2, b1-b2, 41o, d1-d3): an activation takes the other
+    // operands' values, not the holders live into its call, so a reference read before the call and not used after it does not conflict;
+    // a borrow takes its R2 parents within E3's bound, whatever its destination's liveness, and E5's seed; an observing destruction takes
+    // the value it destroys, so a holder that carries a Loan on its own part errs where it is destroyed.
+    [Fact]
+    public void AnActivationABorrowAndADestructionTakeTheirValues()
+        => Assert.Equal(
+            [
+                "a2: give(y@uniq, r@follow) CallActivationConflict_Kd", "rf1: s.r@follow@uniq", "rf2: s.r@follow@uniq", "b2: w.p@follow.r@follow@ref",
+                "o41o: s@uniq", "d1: var q = Q2.init(r: z@uniq)", "d3: q = Q2.init(r: z2@uniq)",
+            ],
+            Problems(Order + """
+                func a1()
+                    var y = 1
+                    let r = y@ref
+                    give(y@uniq, r@follow)
+                func a2()
+                    var y = 1
+                    let r = y@ref
+                    give(y@uniq, r@follow)
+                    inspect(r)
+                func rf1()
+                    var z = 0
+                    var w = 0
+                    var s = S7.init(r: z@uniq, q: w@ref)
+                    s.q = s.r@follow@ref
+                    let t = s.r@follow@uniq
+                func rf2()
+                    var z = 0
+                    var w = 0
+                    var s = S7.init(r: z@uniq, q: w@ref)
+                    s.q = s.r@follow@ref
+                    let t = s.r@follow@uniq
+                    inspect(t)
+                func b1()
+                    var y = 0
+                    var o = y@ref
+                    var s = S5.init(r: y@ref)
+                    var w = W5.init(p: s@uniq, q: o@uniq)
+                    w.q = w.p@follow.r@uniq
+                    let t = w.p@follow.r@follow@ref
+                    inspect(t)
+                func b2()
+                    var y = 0
+                    var o = y@ref
+                    var s = S5.init(r: y@ref)
+                    var w = W5.init(p: s@uniq, q: o@uniq)
+                    w.q = w.p@follow.r@uniq
+                    let t = w.p@follow.r@follow@ref
+                    inspect(t)
+                    inspect(w.q)
+                func o41o()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    s.r = s.n@ref
+                    let p = s@uniq
+                    p.n = 5
+                    inspect(p.r@follow)
+                func d1()
+                    var z = 0
+                    var q = Q2.init(r: z@uniq)
+                    q.r = q.n@uniq
+                func d2()
+                    var z = 0
+                    var y = 0
+                    var q = Q2.init(r: z@uniq)
+                    q.r = y@uniq
+                func d3()
+                    var z = 0
+                    var z2 = 0
+                    var q = Q2.init(r: z@uniq)
+                    q.r = q.n@uniq
+                    q = Q2.init(r: z2@uniq)
+                """));
+
+    // SPEC 8.14, 15.6.7 (A3 E13 (3), (4), review N3; prototype 132, 134, 138, 139): a pair-layer acquisition is its own Assign's borrow in its
+    // marker's mode: an invocation's input reserves in its exclusive case, activated at its Call, so a shared borrow of its Place before
+    // the Call is valid; elsewhere (a local, a tuple's element, a capture) it is a live exclusive borrow; and in a view where the pair
+    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view.
+    [Fact]
+    public void APairLayerAcquisitionBorrowsAsItsMarkerSays()
+        => Assert.Equal(
+            [
+                "p132a: inner2(v@ref, v) CallActivationConflict_Kd", "p132c: inner3(v, v@ref) CallActivationConflict_Kd",
+                "p132h: inner9(v, v) CallReservationConflict_Kd", "p132m: innerR(v, u) CallActivationConflict_Kd", "p134a: v",
+                "p134c: v@follow@ref", "p134e: v@follow@ref", ": func [v, u]() => ()", ": func [u, v]() => ()", "p138d: v@follow@ref",
+                "p139d: x@ref", "pN3: v@follow@ref",
+            ],
+            Problems(Order + """
+                func p132a<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    inner2(v@ref, v)
+                func p132c<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    inner3(v, v@ref)
+                func p132h<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    inner9(v, v)
+                func p132m<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    let u = v@follow@ref
+                    innerR(v, u)
+                func p134a<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    let u = v@follow@ref
+                    _ = (v, u)
+                func p134c<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    inner11(do => v, peek(v@follow@ref))
+                func p134e<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    let t = (v, peek(v@follow@ref))
+                func p138a<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    let u = v@follow@ref
+                    let c = func [v, u] () => ()
+                func p138c<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    let u = v@follow@ref
+                    let c = func [u, v] () => ()
+                func p138d<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    runF(func [v] () => (), peek(v@follow@ref))
+                func p139a<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    inner11(v, peek(v@follow@ref))
+                func p139c<s/T>(p: s/T, item: T) -> ()
+                    s is ref or uniq
+                    T is Copy
+                    var x = item
+                    inner11(x@(s/T), peek(x@ref))
+                func p139d<s/T>(p: s/T, item: T) -> ()
+                    s is ref or uniq
+                    T is Copy
+                    var x = item
+                    let a = x@(s/T)
+                    let k = peek(x@ref)
+                    inner11(a, k)
+                func pN3<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    let a = v
+                    let k = peek(v@follow@ref)
+                    inner11(a, k)
+                func pIn<s/T>(p: s/T) -> ()
+                    s is ref or uniq
+                    var v = p
+                    inner11(v, 1)
                 """));
 
     // A3 E5, CS_call (100d, 101, 110, 111): an activation is checked with the states of the holders its reservation's own Loans name, so
@@ -1098,7 +1540,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 """));
 
     // The SPEC examples of the guard, reservation and destruction sections (tests/diagnostics/spec-cases.json: family F3, SPEC 14.8.3,
-    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, on the MIR (not Landed until the driver runs A5, unit 1b-5).
+    // 15.6.6 and 15.6.7) get exactly the Loan problems their records give, from A5 run on the MIR here; the family joins
+    // VerifiedSpecExampleTest.Landed, which reads the driver's records, once the driver runs A5 (unit 1b-5).
     [Theory]
     [MemberData(nameof(SpecVariants))]
     public void TheSpecExamplesGetTheirLoanCodes(string name)
@@ -1162,7 +1605,8 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     // temporary included ((ended points) × holders), and N references used at the end make each borrow scan the live holders (accesses ×
     // live nodes). N loops that each write a root, borrow it again into one reference and read it (review V1) leave k Loans in the
     // reference in loop k, an output quadratic in N: the worklist settles each loop before the next (R4-M65), so the passes stay constant
-    // and the work and the Loan-set bytes (ν) are dense, not cubic.
+    // and the work and the Loan-set bytes (ν) are dense, not cubic. One operation with N operands, each carrying a Loan and each an
+    // access of a borrowed root, gathers its check sets once (A3 E13 (5)), so it stays linear.
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -1180,9 +1624,10 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
         "",
         true)]
     [InlineData("    var x = 0\n    var r = x@ref\n", "    while flag\n        x = {0}\n        r = x@ref\n        inspect(r)\n", "", true)]
-    public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense)
+    [InlineData("    var x = 1\n    let r = x@ref\n    let rr = r@ref\n", "", "", false, "r")]
+    public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
     {
-        var (work, bytes) = this.Scaled(head, each, after);
+        var (work, bytes) = this.Scaled(head, each, after, operand);
         Assert.True(Grows(work, dense ? 5 : 2), $"work {string.Join(", ", work)}");
         Assert.True(Grows(bytes, dense ? 5 : 2), $"bytes {string.Join(", ", bytes)}");
     }
@@ -1265,8 +1710,9 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
     // Whether a measure grows from N = 64 to 128 at most a factor times as much as from 32 to 64, with a constant's slack.
     private static bool Grows(long[] measure, int factor) => measure[2] - measure[1] <= (factor * (measure[1] - measure[0])) + 64;
 
-    // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines and N after lines, with no Loan problem.
-    private (long[] Work, long[] Bytes) Scaled(string head, string each, string after)
+    // A5's work and Loan-set bytes on a shape's body at N = 32, 64 and 128: its head, then N each lines, a Tuple of N operands where one is
+    // given, and N after lines, with no Loan problem.
+    private (long[] Work, long[] Bytes) Scaled(string head, string each, string after, string operand = "")
     {
         var (sizes, work, bytes) = (new[] { 32, 64, 128 }, new long[3], new long[3]);
         for (var i = 0; i < sizes.Length; i++)
@@ -1277,6 +1723,11 @@ public sealed class MirBorrowsTest(ITestOutputHelper output)
                 for (var n = 0; n < sizes[i]; n++)
                 {
                     text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, pass == 0 ? each : after, n);
+                }
+
+                if (pass == 0 && operand.Length > 0)
+                {
+                    text.Append("    _ = (").AppendJoin(", ", Enumerable.Repeat(operand, sizes[i])).Append(")\n");
                 }
             }
 

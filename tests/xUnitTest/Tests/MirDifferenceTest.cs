@@ -118,9 +118,9 @@ public sealed class MirDifferenceTest
 
     // R4-M4: the compared set names its owning analysis; pass-through records have none.
     [Theory]
-    [InlineData("Ownership", (int)OwnershipFailure.PossiblyMovedUse, DiagnosticCode.MovedPlace_Kd, "A1")]
-    [InlineData("Ownership", (int)OwnershipFailure.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
-    [InlineData("Ownership", (int)OwnershipFailure.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]
+    [InlineData("Ownership", (int)OwnershipRequirement.PossiblyMovedUse, DiagnosticCode.MovedPlace_Kd, "A1")]
+    [InlineData("Ownership", (int)OwnershipRequirement.TransferRequired, DiagnosticCode.TransferRequired_Kd, null)]
+    [InlineData("Ownership", (int)OwnershipRequirement.Unsupported, DiagnosticCode.Unsupported_Kd, "U")]
     [InlineData("ControlFlow", 0, DiagnosticCode.RequireFallthrough_Kd, "A3")]
     [InlineData("ControlFlow", 0, DiagnosticCode.FunctionFallthrough_Kd, null)]
     [InlineData("Binding", (int)BindingFailure.OriginRelation, DiagnosticCode.UnsatisfiedOriginRelation_Kd, "A5")]
@@ -136,7 +136,7 @@ public sealed class MirDifferenceTest
     {
         foreach (var (failure, code) in PipelineSwitchTest.OwnershipCodes())
         {
-            var passes = failure is OwnershipFailure.TransferRequired or OwnershipFailure.Internal;
+            var passes = failure is OwnershipRequirement.TransferRequired or OwnershipRequirement.Internal;
             Assert.True(passes == (MirDifferenceLedger.AnalysisOf(DiagnosticRequirement.Ownership(failure), code) is null), $"{failure} {code}");
         }
 

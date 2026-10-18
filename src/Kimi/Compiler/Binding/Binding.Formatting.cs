@@ -123,34 +123,48 @@ public sealed partial class Binding
     {
         if (self is not null && ArithmeticContracts.Identity(selected.Scope.Owner.BoundSymbol) is { } arithmetic && ArithmeticContracts.Supports(self, arithmetic))
         {
-            return this.NumericRequirementTarget(selected, arithmetic);
+            return this.builtinArithmetic[ArithmeticSlot(arithmetic)]!;
         }
 
         if (self is not null && selected.Scope.Owner.BoundSymbol is { LibraryDeclaration: KimiDeclarationId.Equatable or KimiDeclarationId.Comparable } contract &&
             (ComparisonTypes.IsBuiltin(self, contract.LibraryDeclaration) || ComparisonTypes.IsComposite(self)))
         {
-            ref var cached = ref (contract.LibraryDeclaration == KimiDeclarationId.Equatable ? ref this.builtinEquals : ref this.builtinCompare);
-            cached ??= new(selected.Name, selected.Kind, selected.Declaration, selected.Scope)
+            return contract.LibraryDeclaration == KimiDeclarationId.Equatable ? this.builtinEquals! : this.builtinCompare!;
+        }
+
+        return self is not null && FormattingTypes.IsBuiltin(self) && selected.Scope.Owner.BoundSymbol?.LibraryDeclaration == KimiDeclarationId.Utf8Format
+            ? this.builtinFormat! : selected;
+    }
+
+    // F fact 11a: a built-in target is its Contract's one own requirement executed by the compiler, with that requirement's name,
+    // declaration, result Type and receiver slot, taken once per pass after headers, so resolving a requirement writes nothing.
+    private void PrepareBuiltinTargets()
+    {
+        Prepare(ref this.builtinEquals, KimiDeclarationId.Equatable, CompilerFunctionKind.BuiltinEquals);
+        Prepare(ref this.builtinCompare, KimiDeclarationId.Comparable, CompilerFunctionKind.BuiltinCompare);
+        Prepare(ref this.builtinFormat, KimiDeclarationId.Utf8Format, CompilerFunctionKind.BuiltinFormat);
+        for (var id = KimiDeclarationId.Addable; id <= KimiDeclarationId.Negatable; id++)
+        {
+            if (!ArithmeticContracts.IsLeft(id))
             {
-                CompilerFunction = contract.LibraryDeclaration == KimiDeclarationId.Equatable ? CompilerFunctionKind.BuiltinEquals : CompilerFunctionKind.BuiltinCompare,
-            };
-            cached.Type = selected.Type;
-            cached.ReceiverIndex = selected.ReceiverIndex;
-            return cached;
+                Prepare(ref this.builtinArithmetic[ArithmeticSlot(id)], id, CompilerFunctionKind.BuiltinArithmetic);
+            }
         }
 
-        if (self is null || !FormattingTypes.IsBuiltin(self) ||
-            selected.Scope.Owner.BoundSymbol?.LibraryDeclaration != KimiDeclarationId.Utf8Format)
+        void Prepare(ref BindingSymbol? target, KimiDeclarationId id, CompilerFunctionKind kind)
         {
-            return selected;
+            var contract = this.Library.GetSymbol(id)!;
+            var requirements = contract.Contract!.RequirementStorage;
+            for (var i = 0; i < requirements.Count; i++)
+            {
+                if (ReferenceEquals(requirements[i].Contract, contract))
+                {
+                    var requirement = requirements[i].Symbol;
+                    target ??= new(requirement.Name, requirement.Kind, requirement.Declaration, requirement.Scope) { CompilerFunction = kind };
+                    target.Type = requirement.Type;
+                    target.ReceiverIndex = requirement.ReceiverIndex;
+                }
+            }
         }
-
-        this.builtinFormat ??= new(selected.Name, selected.Kind, selected.Declaration, selected.Scope)
-        {
-            CompilerFunction = CompilerFunctionKind.BuiltinFormat,
-        };
-        this.builtinFormat.Type = selected.Type;
-        this.builtinFormat.ReceiverIndex = selected.ReceiverIndex;
-        return this.builtinFormat;
     }
 }

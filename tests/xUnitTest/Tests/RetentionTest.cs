@@ -16,6 +16,8 @@ public sealed class RetentionTest
 {
     private const string Cell = "struct Cell<T> {s}\n    var item: uniq/T during s\n";
 
+    private const string Box = "struct B<T>\n    public var item: T\n    public init(item: T) => self.item = item@move\n";
+
     private const string View = "struct View<T> {source}\n    let data: ref/T during source\n    public init(data: ref/T during source) => self.data = data\n" +
         "    public func read(self: ref/Self) -> ref/T during self.source => self.data\n    public func whole(self: ref/Self) -> ref/Self during self => self\n";
 
@@ -83,8 +85,10 @@ public sealed class RetentionTest
 
     // SPEC 15.6, 15.6.4, 15.3.5: an input written through an exclusive or raw layer, also one an owned aggregate holds (an invariant slot),
     // is an output; another input whose Origin outlives the written positions is stored there, the target's own content too. An exclusive
-    // input with no Origin below its layer stores nothing, nor one past a shared layer (SPEC 15.6.2), unless a raw pointer is followed
-    // again (raw access within its authority, SPEC 5.2.1).
+    // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read
+    // (SPEC 15.6.2: a shared input, an rc payload held by value) unless a raw pointer is followed again (raw access within its authority,
+    // SPEC 5.2.1); a value stored into a writable slot brings its whole Type, so an Origin below an rc or arc layer there, or below a
+    // pair layer admitting only them, is stored (DECISIONS BU-1).
     [Theory]
     [InlineData("func f(dst: uniq/(ref/i32 during q), v: ref/i32 during q) => dst@follow = v", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f(dst: uniq/i32, v: ref/i32) => dst@follow = v@follow", "")]
@@ -94,8 +98,26 @@ public sealed class RetentionTest
     [InlineData("func f(storage: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
     [InlineData(Cell + "func f(dst: Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
     [InlineData(Cell + "func f(dst: ref/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
+    [InlineData(Box + "func f(dst: uniq/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => dst@follow = v@move", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Box + "func f(dst: uniq/(arc/B<ref/i32 during q>), v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Cell + Box + "func f(dst: Cell<rc/B<ref/i32 during q>>, v: rc/B<ref/i32 during q>) => ()", "0 Value store 0, 1 Value store 0")]
+    [InlineData(Box + "func f<s/T>(dst: uniq/Option<s/B<ref/i32 during q>>, v: ref/i32 during q)\n    s is rc or arc\n    return", "0 Content store 0, 1 Value store 0")]
+    [InlineData(Cell + "func f(dst: rc/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
+    [InlineData(Box + "func f(dst: ref/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => ()", "")]
     public void ExclusiveInputsAreStores(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 15.6.4, 5.2.1 (DECISIONS BU-1): an element appended to an Array brings its whole Type into the receiver's writable storage, so
+    // an Origin below an rc or arc element's layer is stored there as one in an owned or obj element is.
+    [Fact]
+    public void HandleElementsAreStores()
+    {
+        var c = Bind("struct S {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\nvar x = 1\n" +
+            "var e: Array<S> = []\ne.append(S.init(r: x@ref))\nvar o: Array<obj/S> = []\no.append(Kimi.Intrinsics.makeObj(S.init(r: x@ref)))\n" +
+            "var p: Array<rc/S> = []\np.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))\n" +
+            "var q: Array<arc/S> = []\nq.append(Kimi.Intrinsics.makeArc(S.init(r: x@ref)))\n");
+        Assert.Equal(Enumerable.Repeat("0 Content store 0, 1 Value store 0", 4), Calls(c, "append"));
+    }
 
     // SPEC 15.6.4: a method writing through `uniq/Self` stores an input into the receiver's referent; one reading through it is
     // Content into its result.
@@ -136,6 +158,38 @@ public sealed class RetentionTest
         Assert.Equal("0 Content result, 1 Value result", Declared(c, "keep"));
         Assert.Equal("0 Content store 0, 1 Value store 0", Declared(c, "put"));
         Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
+    }
+
+    // SPEC 15.6.4 step 4, 8.1.2 (DECISIONS BU-3): a pair layer whose binder admits only borrows is a borrowed input in every admitted
+    // case, its slot Value and its target Content, which an admitted exclusive borrow lets the call write, as for a concrete `uniq/T`;
+    // the original `s/T` and an application alike; the pair's slot still reaches storage that holds the pair by value. A pair admitting
+    // `owner`, raw or an object owner is no borrow in that case, so its target stays Value.
+    [Theory]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objref or objuniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref\n    return", "")]
+    [InlineData("func f<s/T>(a: s/Option<T>, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is ref or uniq\n    return a", "0 Value result, 0 Content store 0")]
+    [InlineData(
+        "func f<s/T>(a: s/T, b: uniq/Array<s/T>)\n    s is ref or uniq\n    return",
+        "0 Content store 0, 1 Content store 0, 0 Value store 1, 1 Content store 1")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "0 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "0 Value store 0")]
+    public void BorrowPairLayersAreBorrowedInputs(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same for a generic caller passing its own `s/T` (A5's case 139c, a non-Copy T): the call's Subst keeps the caller's pair, whose
+    // binder admits only borrows, so the call stores only the argument's referent into it; and for an erased callable over such a pair.
+    [Fact]
+    public void CallsOverBorrowPairLayersAreBorrowedInputs()
+    {
+        var c = Bind("func inner<s/T>(a: s/T, b: i32) -> ()\n    s is ref or uniq\n    return\nfunc peek<T>(x: ref/T) -> i32 => 1\n" +
+            "func use<s/T>(p: s/T, item: T) -> ()\n    s is ref or uniq\n    var x = item\n    inner(x@(s/T), peek(x@ref))\n" +
+            "func apply<s/T>(g: (s/Option<T>) -> (), x: s/Option<T>) -> ()\n    s is ref or uniq\n    g(x)\n");
+        Assert.Equal(["0 Content store 0"], Calls(c, "inner"));
+        Assert.Equal(["0 Content store 0"], ValueCalls(c));
     }
 
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a

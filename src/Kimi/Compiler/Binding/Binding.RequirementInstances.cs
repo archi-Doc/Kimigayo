@@ -6,31 +6,26 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.4: what a requirement runs on a Self that is not abstract, as a call's instantiation resolves it under a definition's
+    // SPEC 8.11.4: what a requirement runs on a Self that is not abstract, as the witness core resolves it under a definition's
     // premises, each target with its declaring instance: a built-in comparison's plan leaves, another built-in target itself (no
     // instance), else the conformance's witness, an inherited one included; false where none resolves. The requirement takes `ref/Self`
     // (SPEC 4.9.6's rows and the comparisons), which no virtual function implements (virtual-dispatch 1, 6.3).
     internal bool Witnesses(BindingSymbol requirement, BoundType self, BindingSymbol? definition, List<(BindingSymbol Target, BoundType? Declaring)> into)
     {
-        var target = this.CompilerRequirementTarget(requirement, self);
         var contract = requirement.Scope.Owner.BoundSymbol!;
-        if (target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
+        var witness = this.ResolveRequirementWitness(requirement, self, contract, this.EffectPremises(definition));
+        if (witness is { Kind: RequirementWitnessKind.Builtin, Target: { } target } &&
+            target.CompilerFunction is CompilerFunctionKind.BuiltinEquals or CompilerFunctionKind.BuiltinCompare)
         {
             return this.ComparisonPlan(target, self, contract.LibraryDeclaration!.Value, operators: false) is { } plan && Leaves(plan, into);
         }
 
-        if (target.CompilerFunction != CompilerFunctionKind.None)
-        {
-            into.Add((target, null));
-            return true;
-        }
-
-        if (this.ConformanceWitness(requirement, self, contract, this.EffectPremises(definition), out var witness) is not { } declaring)
+        if (witness.Kind is not (RequirementWitnessKind.Builtin or RequirementWitnessKind.Conformance))
         {
             return false;
         }
 
-        into.Add((witness.Implementation, declaring));
+        into.Add((witness.Target!, witness.Declaring));
         return true;
 
         static bool Leaves(BoundComparison plan, List<(BindingSymbol Target, BoundType? Declaring)> into)
@@ -52,49 +47,46 @@ public sealed partial class Binding
     // Use the verified declaration mapping, never repeat member lookup at a concrete call.
     private CallPlan? InstantiateRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination = null)
     {
-        var requirement = (FunctionKoto)call.Target.Declaration;
         if (call.ConformingType is { } open && open.HasAbstractPart)
         {
             // SPEC 8.15: substituted into a generic caller, such as a default's replica, a requirement call on a still abstract Type
             // stays that Type's requirement call, as in the caller's own body; only a closed Type selects its witness. The
             // intermediate call is reused per inner call, so the result is copied into its own storage.
-            var forwarded = destination ?? new CallPlan();
-            forwarded.Set(call.Target, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
-            forwarded.TupleOperator = call.TupleOperator;
+            var forwarded = Copy(call.Target);
             forwarded.RequirementContract = call.RequirementContract;
             return forwarded;
         }
 
-        if (requirement.Accessor is not null)
-        {
-            return this.InstantiatePropertyRequirementCall(call, outer, destination);
-        }
-
-        var builtin = this.CompilerRequirementTarget(call.Target, call.ConformingType);
-        if (builtin.CompilerFunction != CompilerFunctionKind.None)
-        {
-            var intrinsic = destination ?? new CallPlan();
-            intrinsic.Set(builtin, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
-            intrinsic.TupleOperator = call.TupleOperator;
-            return intrinsic;
-        }
-
-        if (call.ConformingType is { } fixedSelf && call.RequirementContract is { } fixedContract && IsFixedArrayEntry(fixedSelf, fixedContract))
-        {
-            return this.InstantiateFixedArrayEntry(call, fixedSelf, fixedContract, destination); // PLAN G32.
-        }
-
-        if (call.ConformingType is { } integer && call.RequirementContract is { } positionContract && IsIntegerPosition(integer, positionContract))
-        {
-            return this.InstantiateIntegerPosition(call, integer, destination); // SPEC 4.6.1.
-        }
-
-        if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
-            this.ConformanceWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration), out var witness) is not { } declaring)
+        if (call.ConformingType is not { } self)
         {
             return null;
         }
 
+        var contract = this.InstanceReference(call, self, outer);
+        var witness = this.ResolveRequirementWitness(call.Target, self, contract, this.ConstraintScope(outer.Target.Declaration));
+        return witness.Kind switch
+        {
+            RequirementWitnessKind.Builtin => Copy(witness.Target!),
+            RequirementWitnessKind.Conformance => this.InstantiateConformanceCall(call, witness, destination),
+            RequirementWitnessKind.Property => this.InstantiatePropertyRequirementCall(call, self, witness, destination),
+            RequirementWitnessKind.FixedArrayEntry => this.InstantiateFixedArrayEntry(call, self, witness.Target!, destination),
+            RequirementWitnessKind.IntegerPosition => this.InstantiateIntegerPosition(call, self, witness.Target!, destination),
+            _ => null, // None, or Refused: exclusive receiver preservation remains OCC-X.
+        };
+
+        CallPlan Copy(BindingSymbol target)
+        {
+            var copy = destination ?? new CallPlan();
+            copy.Set(target, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, call.ConformingType, call.DeclaringType, call.Origins, call.InputOrigins, call.ArgumentOperations, call.ReceiverOperation, call.BasePath, call.DefaultArguments, call.LengthArguments);
+            copy.TupleOperator = call.TupleOperator;
+            return copy;
+        }
+    }
+
+    // SPEC 21.3.1: a conformance witness's call at the requirement call's arguments, its Origins in the call's terms.
+    private CallPlan InstantiateConformanceCall(CallPlan call, RequirementWitness witness, CallPlan? destination)
+    {
+        var requirement = (FunctionKoto)call.Target.Declaration;
         var function = witness.Function!;
         var origins = this.originScratch.Rent(function.Origins.Length);
         var inputs = this.originScratch.Rent(function.InputOrigins.Length);
@@ -103,8 +95,9 @@ public sealed partial class Binding
             Translate(function.Origins, origins);
             Translate(function.InputOrigins, inputs);
             var resolved = destination ?? new CallPlan();
-            resolved.Set(witness.Implementation, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: declaring, origins: origins.AsSpan(0, function.Origins.Length), inputOrigins: inputs.AsSpan(0, function.InputOrigins.Length), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
-            return this.ProjectWitnessCall(resolved, function.BasePath, declaring) ? resolved : null;
+            resolved.Set(witness.Target!, call.ReturnType, call.Receiver, call.ArgumentToParameter, call.TypeArguments, declaringType: witness.Declaring, origins: origins.AsSpan(0, function.Origins.Length), inputOrigins: inputs.AsSpan(0, function.InputOrigins.Length), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation, lengthArguments: call.LengthArguments, defaults: call.DefaultArguments);
+            this.ProjectWitnessCall(resolved, function.BasePath, witness.Declaring!);
+            return resolved;
         }
         finally
         {
@@ -122,23 +115,14 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.11.4: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
-    // that declares it (a base's for an inherited witness); null where none resolves.
-    private BoundType? ConformanceWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope, out BoundWitness witness)
-    {
-        witness = default;
-        return this.ResolveConformance(self, contract, scope, out var path) == ConstraintProof.Proven && path is { IsVerified: true } &&
-            path.WitnessMap.TryGetValue(new(requirement, contract), out witness) && witness.Function is { ObjectCompatibility: ConstraintProof.Proven } function
-            ? this.StoredType(function.DeclaringType, self) : null;
-    }
-
-    // The requirement already acquired and verified its receiver. Its Proven witness lends only the base prefix;
-    // retain that acquisition's Origin and source, and change the physical receiver Type for the selected implementation.
-    private bool ProjectWitnessCall(CallPlan call, BoundMemberPath? path, BoundType declaring)
+    // The requirement already acquired and verified its receiver, `ref` for a base-path witness (ResolveRequirementWitness). Its Proven
+    // witness lends only the base prefix; retain that acquisition's Origin and source, and change the physical receiver Type for the
+    // selected implementation.
+    private void ProjectWitnessCall(CallPlan call, BoundMemberPath? path, BoundType declaring)
     {
         if (path is null || call.Target.ReceiverIndex < 0)
         {
-            return true;
+            return;
         }
 
         var operation = call.ReceiverOperation;
@@ -154,14 +138,8 @@ public sealed partial class Binding
             }
         }
 
-        if (operation.ParameterType is not { Semantics: SemanticsKind.Ref } receiver)
-        {
-            return false; // Exclusive receiver preservation remains OCC-X.
-        }
-
-        var projected = this.types.Reference(SemanticsKind.Ref, declaring, receiver.Origin);
+        var projected = this.types.Reference(SemanticsKind.Ref, declaring, operation.ParameterType!.Origin);
         call.SetReceiverProjection(operation with { ParameterType = projected, AdaptedType = projected, Kind = ArgumentOperationKind.BaseBorrow, BasePath = path, ObjectCompatibility = ConstraintProof.Proven }, path);
-        return true;
     }
 
     // SPEC 8.6.1: the Contract reference the call selected, as the instance's Type conforms to it: a Contract without Type

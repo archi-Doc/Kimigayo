@@ -28,7 +28,7 @@ public sealed partial class LlvmEmitter
             this.lowering.SetInstance(c.Binding, entry.Call, entry.Context);
             try
             {
-                if (!this.lowering.Lower(c.Library, body, function, module.Constants, c.Project.Directory, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
+                if (!this.lowering.Lower(c.Library, body, function, module.Constants, this.functions, c.Ownership.ControlFlow!, c.PointerWidth, out failure))
                 {
                     return false;
                 }
@@ -39,7 +39,7 @@ public sealed partial class LlvmEmitter
                 this.defaults.Parent = null;
             }
 
-            module.NeedsStringComparison |= function.NeedsStringComparison;
+            module.RuntimeHelpers.NeedsStringComparison |= function.NeedsStringComparison;
             this.lowering.RegisterAggregates(module);
         }
 

@@ -115,24 +115,24 @@ public sealed class PipelineSwitchTest
     [Fact]
     public void TheMultiCodeHelpersAreTheOwnershipMapping()
     {
-        var images = new Dictionary<OwnershipFailure, HashSet<DiagnosticCode>>();
+        var images = new Dictionary<OwnershipRequirement, HashSet<DiagnosticCode>>();
         foreach (var (failure, code) in OwnershipCodes())
         {
-            Assert.Equal(failure == OwnershipFailure.ComparisonLoanConflict, code.IsLoanConflict());
-            Assert.Equal(failure == OwnershipFailure.UnprovenOrigin, code.IsUnprovenOrigin());
+            Assert.Equal(failure == OwnershipRequirement.ComparisonLoanConflict, code.IsLoanConflict());
+            Assert.Equal(failure == OwnershipRequirement.UnprovenOrigin, code.IsUnprovenOrigin());
             images.TryAdd(failure, []);
             images[failure].Add(code);
         }
 
-        Assert.Equal(4, images[OwnershipFailure.ComparisonLoanConflict].Count);
-        Assert.Equal(3, images[OwnershipFailure.UnprovenOrigin].Count);
+        Assert.Equal(4, images[OwnershipRequirement.ComparisonLoanConflict].Count);
+        Assert.Equal(3, images[OwnershipRequirement.UnprovenOrigin].Count);
     }
 
     /// <summary>Lists the code <see cref="OwnershipIssue.Code"/> gives each failure under every combination of the issue's other facts:
     /// a call or another source, an Origin obligation refuted or not, another obligation or none, a reservation or not, an activation or
     /// not.</summary>
     /// <returns>Each failure with each of its codes, repeated.</returns>
-    internal static IEnumerable<(OwnershipFailure Failure, DiagnosticCode Code)> OwnershipCodes()
+    internal static IEnumerable<(OwnershipRequirement Failure, DiagnosticCode Code)> OwnershipCodes()
     {
         var c = CompilationTestHelper.Parse("f(1)");
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().First();
@@ -142,7 +142,7 @@ public sealed class PipelineSwitchTest
             new(BindingObligationKind.OriginOutlives, call, default, Longer: BoundOrigin.Static, Shorter: BoundOrigin.Static),
             new(BindingObligationKind.TypeRole, call, default),
         ];
-        foreach (var failure in Enum.GetValues<OwnershipFailure>())
+        foreach (var failure in Enum.GetValues<OwnershipRequirement>())
         {
             foreach (var source in new Koto[] { call, c.Kotonoha.RootKoto })
             {

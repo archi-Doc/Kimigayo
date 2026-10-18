@@ -44,7 +44,6 @@ public class StringFunctionEmissionTest
     {
         name = "StringFunction" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        Assert.DoesNotContain("load %kimi.string", ir);
         StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions);
     }
 

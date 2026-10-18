@@ -28,9 +28,12 @@ the repository's `Directory.Build.props` does not apply, and run it there:
 dotnet run proto.cs              # result table + variant table; exit code = number of cases S1′ fails
 dotnet run proto.cs -- -v        # also every error fact (Loan, point, access) per rule set
 dotnet run proto.cs -- -dump 9n  # per-point carries, liveness and Loan places for one case
+dotnet run proto.cs -- -cases Round11 NoOwnValue  # one tab-separated row per case and named variant (round 12)
+dotnet run proto.cs -- -cases None+PK NoDestroyValue+PK  # +PK runs a variant on the design (round 13)
+dotnet run proto.cs -- -r13      # only round 13's tables
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 3,101 lines after round 10.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 4,223 lines after round 13.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -831,3 +834,554 @@ cases skipped); 42a–42d (Slice); 43a (SPEC 14.8.3's example); 44a–44c (`EndB
 **Findings recorded elsewhere:** 109 (`s.r = s.n@ref; s.n += 1` with s dead after) is an error by SPEC 15.6's sentence, as
 in rustc (E0506); the builder never forms a guard candidate through a user holder (93; `MirBuilder.Match`).
 The prototype models no Types, views or statics; writeback and effect paths are argued, not run.
+
+## Round 11 (A3 E13 and E14; the core lane's review B1, B2, B4)
+
+**Inputs.** The core lane's group review of units 1b-1 to 1b-4
+(`artifacts/handoff/r4-a5-step1/reviews/core-1b1-1b4/review.md`, B1, B2, B4) and the planning session's rules E13 and E14.
+The review found these outside round 10's model: it had no Value callee operand, no operand access at a Call, no
+PairAcquire and no intrinsic store. Round 10's 246 cases are unchanged.
+
+**Rules added in design A mode:**
+
+- **E13 (1), inputs at the Call (B2).** A Call's inputs are its argument operands and a Value callee's operand. The
+  accesses they make at the Call ℓ are checked on `CS_call(ℓ, −)` = closure(⋃{σ_in(H) | H ∈ live_in(ℓ)} ∪ σ_in(E)), not
+  on `CS(ℓ)`. Two kinds of access count:
+  - `Node.Input`: the read or Move of a direct Place operand that the MIR leaves at the Call;
+  - `Node.AcquireAt`: a PairAcquire's exclusive Reborrow left at the Call.
+
+  No holder is excluded and no seed is added. A reservation in its own holder stays `ref`. The Call's destination write
+  and its stores keep `CS(ℓ)`.
+- **E13 (2), the Value callee (B1).** The callee's reservation activates at the Call, as an argument's does
+  (`Node.Callee`).
+- **E13 (3), PairAcquire (B2).** A Reborrowing PairAcquire that the MIR secures into a temp is a TwoPhaseUniq reservation
+  in that temp (`Node.Acquire`) and is activated at the Call. One left at the Call is (1)'s exclusive access.
+- **E14, raw stores (B4).** A call that writes an input into storage reached through a raw pointer stores
+  `ret(i, Value)` into E (`Node.RawStore`), as `Raw.initialize(storage, value)` does.
+
+**Variants.** Each one restores one behavior of the reviewed branch (`claude/a5-1b-core` at `8961f577`), or applies this
+round's fix:
+
+- `CalleeNotActivated` (B1);
+- `InputsOnCS` (B2, the implementation's `CS(ℓ)`);
+- `PairAcquireLive` (a PairAcquire as a live Uniq Loan wherever it is formed);
+- `NoRawStore` (B4, A3 §4's intrinsic row);
+- `Implemented1b` (all four);
+- `SecureAcquire` (the finding below; the case carries its secured encoding as `Case.Secured`).
+
+**Cases: 278.** Round 10's 246 plus 32 new ones:
+
+- 130a–130g: B1. `bump = func [r] (k: i32) => r@follow += k` with `r = value@uniq` makes an Exclusive call; `peek` makes a
+  Shared one.
+- 131a–131g: B2, non-generic. `give(a: uniq/i32, b: i32)`, `giveR(a: ref/i32, b: i32)` and
+  `giveS(a: uniq/i32, b: ref/i32)`.
+- 132a–132n: B2 with pair layers. Each case is one Semantics view, in a generic caller `outer<s/T>(p: s/T)` where
+  `s is ref or uniq`.
+- 133a–133d: B4.
+
+Where an operand sits (at the Call or secured) follows G123 as the MIR lane builds it (R4-M55; `MirBuilder.Builds` and
+`Call` on `claude/a5-1b-mir`). An operand is secured into a temp when a later operand of the operation builds code, and
+every operand builds code except a constant and a Place read as it is (Copied or Moved). So a PairAcquire
+(`HirAcquire.ByCase`) builds code and secures every operand before it, while a Copy or Move of a Place builds none.
+
+| Case | Program | SPEC | Design A | Reviewed branch (`Implemented1b`) |
+| --- | --- | --- | --- | --- |
+| 130a | `let v = bump@ref; bump(); inspect(v)` (review B1) | error at the call | error at the call | **valid: UNSOUND** |
+| 130b | `let u = bump@uniq; let v = u@ref; u(); inspect(v)` | error at the call | error at the call | **UNSOUND** |
+| 130c | Shared call: `let v = peek@ref; peek(); inspect(v)` | valid | valid | valid |
+| 130d | `bump(do { let v = bump@ref; inspect(v); 1 })` | valid | valid | valid |
+| 130e | `let v = bump@ref; bump(n); inspect(v)` | error at the call | error at the call | **UNSOUND** |
+| 130f | `let u = bump@uniq; u(do { keep = u@ref; 1 }); inspect(keep)` | error at the call | error at the call | **UNSOUND** |
+| 130g | `bump(value)`: `value` read at the Call while the callee's temp carries r's Loan as a parent | error at the call | error at the call | **UNSOUND** (`InputsOnCS`) |
+| 131a | `let r = x@uniq; give(r, x)` (`$4 = &uniq two-phase (*r)`; `give(move $4, copy x)`) | error at the call | error at the call | **UNSOUND** |
+| 131b | `let r = x@uniq; giveR(r, x)` (`$4 = &(*r)`; `giveR(move $4, copy x)`) | error at the call | error at the call | **UNSOUND** |
+| 131c | `let r = x@uniq; giveS(r, x)` (`$5 = &x` before the Call) | error at `$5 = &x` | same | same |
+| 131d | `give(x@uniq, x)` | valid | valid | valid |
+| 131e | `let r = x@uniq; give(r, r@follow)` | valid | valid | valid |
+| 131f | `s.set(s.n)` | valid | valid | valid |
+| 131g | `replace(x@uniq, with: x)`, the read left at the Call | valid | valid | valid |
+| 132a | uniq view: `var v = p; inner2(v@ref, v)` (`inner2(move $4, acquire v)`) | error at the call | error at the call | **UNSOUND** |
+| 132b | 132a, ref view | valid | valid | valid |
+| 132c | uniq view: `inner3(v, v@ref)` (`$3 = acquire v` secured) | error at the call | error at the call | error at `$4 = v@ref` |
+| 132d | 132c, ref view | valid | valid | valid |
+| 132e | uniq view: `inner7(p, p.n + 1)` (`$3 = acquire p` secured) | valid | valid | **error at `$4 = p.n + 1`** (`PairAcquireLive`) |
+| 132f | uniq view: `inner7(p, bumpS(p))` | error at `bumpS` | same | same |
+| 132g | uniq view: `inner8(p.n + 1, p)` (the PairAcquire left at the Call, last) | valid | valid | valid |
+| 132h | uniq view: `var v = p; inner9(v, v)` (`$3 = acquire v` secured; `inner9(move $3, acquire v)`) | error at the call | error at the call | **UNSOUND** |
+| 132i | 132h, ref view | valid | valid | valid |
+| 132j | uniq view: `inner11(p, p.n)` (`inner11(acquire p, copy (*p).n)`) | valid | valid | valid |
+| 132k | uniq view: `var w = W(a: p); innerW(w.a, w)` (`innerW(acquire w.a, move w)`) | error at the call | **valid: UNSOUND** | **UNSOUND** |
+| 132l | 132k, ref view | valid | valid | valid |
+| 132m | uniq view: `var v = p; let u = v@follow@ref; innerR(v, u)` (`innerR(acquire v, copy u)`) | error at the call | error at the call | **UNSOUND** |
+| 132n | 132m, ref view | valid | valid | valid |
+| 133a | `Raw.initialize(p, x@ref); x = 2; let q = p[0]; inspect(q)` (review B4) | error at `x = 2` | same | **UNSOUND** |
+| 133b | 133a with `x = 2` before the initialize | valid | valid | valid |
+| 133c | 133a without the write; `inspect(x)` at the end | valid | valid | valid |
+| 133d | `Raw.initialize(p, x@uniq); inspect(x)` | error at the read | same | **UNSOUND** |
+
+`PrefixKill` gives the same verdict and error location as design A on every new case.
+
+| Mode (278 cases) | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Design A (last base) | 230 | 24 | 23 | 0 | 1 (132k) |
+| Design A with `PrefixKill` | 249 | 21 | 7 | 0 | 1 (132k) |
+| Design A with `SecureAcquire` | 231 | 24 | 23 | 0 | 0 |
+| Design A with `PrefixKill` and `SecureAcquire` | 250 | 21 | 7 | 0 | 0 |
+| The reviewed branch (`Implemented1b`) | 216 | 25 | 23 | 1 (132e) | 13 |
+
+Round 10's 246 cases keep their classification, case by case.
+
+| Variant | Effect |
+| --- | --- |
+| `CalleeNotActivated` (B1) | UNSOUND 130a, 130b, 130e, 130f |
+| `InputsOnCS` (B2) | UNSOUND 130g, 131a, 131b, 132a, 132h, 132m |
+| `PairAcquireLive` | 132c's error moves to `$4 = v@ref`; 132e over-strict at `$4 = p.n + 1` |
+| `NoRawStore` (B4) | UNSOUND 133a, 133d |
+| `SecureAcquire` | 132k errs at the call; no other case changes |
+
+**Findings.**
+
+1. **E13 misses a Move left at the Call after a Reborrowing PairAcquire left there (132k).**
+   - **Facts (`-v`, `-dump`).** At `Call innerW(w.a, w)`, live_in = {w} and σ_in(w) = {Lw on `p.*`, Lp}, where Lp is the
+     parameter's entry Loan and never conflicts. The at-Call Reborrow of `w.a.*` forms a Loan that no holder carries, so
+     the Move of w, checked on `CS_call(ℓ, −)`, meets no Loan. The Reborrow itself meets only Lw, whose root is p.
+   - **SPEC 15.6.7 rejects it.** The first input is a reservation of `*(w.a)`, and the Move of w moves the route's owner
+     during it. The ref view (132l) is valid, so the generic body is rejected.
+   - **Scope.**
+     - G123 leaves both operands at the Call, because a Move of a Place read as it is builds no code. A PairAcquire
+       does build code, so in `inner9(v, v)` the first PairAcquire is secured and 132h errs as SPEC requires.
+     - Only a PairAcquire forms a Loan at ℓ. A Copy or Move operand's Loans are its source holder's, and that holder is
+       live into ℓ, so a Copy after an at-Call PairAcquire is sound: 132m errs through `Lu` in u, and 132j is valid as
+       SPEC requires.
+     - The gap is a Move operand after an at-Call PairAcquire (a receiver or a Value callee too) that moves a prefix of
+       the Reborrow's Place.
+   - **Fix (M), MIR (amends R4-M55).** A PairAcquire operand is also secured where it is evaluated when any later
+     operand of the operation is not a constant. A PairAcquire then stays at its Call only as the last operand read there,
+     and E13 is unchanged. `SecureAcquire` runs this on 132j, 132k and 132m. 132k errs with
+     `L3 live at Call innerW(w.a, w) vs Move w`, 132j stays valid, 132m keeps its error, and no other case changes.
+   - **Fix (A), A5.** A later operand's access at the Call is also checked against an earlier at-Call PairAcquire's
+     Loan, which counts as a reservation (`ref`). This needs operand order in A5's Call facts.
+   - The planning session decides between (M) and (A).
+2. **E13 (1) needs every input's holder, the callee's included.** 130g errs only through the parent Loan that the
+   callee's temp carries. `CalleeNotActivated` alone keeps 130g's error, and `InputsOnCS` loses it.
+3. **E13 (3) is what keeps 132e valid.** A live Uniq Loan rejects the shared read `p.n` that SPEC 15.6.7 allows during
+   the reservation. A write-class acquisition during it (132f) is still rejected.
+4. **E14 changes no round-10 case.** E is always checked, so after a raw store of a Loan every later conflicting access
+   errs (SPEC 15.6: "a value stored there may be used after every point").
+5. **Open for A6.** A3 §5's code table has no row for a failure of an access an input makes at the Call (131a, 132a):
+   should it be `CallActivationConflict_Kd` or `ComparisonLoanConflict_Kd` ("Otherwise")?
+
+**Not modeled.**
+
+- Where the MIR leaves an operand is hand-encoded from `MirBuilder.Builds` and `Call` on `claude/a5-1b-mir`. The
+  prototype does not run them.
+- Each pair case is hand-encoded for one view. The view's choice of Copy or Reborrow (`MirCases.Reborrows`) is not
+  computed.
+- An at-Call PairAcquire issues no Loan, so a callee that retains it (`id<s/T>(a: s/T) -> s/T`) is not modeled.
+- A Value callee that is itself a PairAcquire is not modeled.
+- Closures are modeled only as a Move of the capture into the closure holder and a hand-chosen call kind. `TyCtxt.Closure`
+  receiver modes and retention rows are not modeled.
+- E14 covers only `Raw.initialize`'s store row. Other raw-writing catalog rows are not enumerated, and the raw referent
+  `p.*` gets no access, because its fresh anchor compares with nothing here.
+- Diagnostic codes, A4 effects, statics, the inputs' Drops and callee cleanup are not modeled.
+
+## Round 12 (A3 E13: operand evaluation order, the owner's option R1)
+
+**Inputs.**
+
+- The planning session's E13, after the owner chose on 2026-10-18 that A5 handles operand evaluation order (option R1).
+- The E13 design review. Its extension (variant `AlwaysSecure` = M′, cases 134a–134g and 135a–135c, a `-cases` dump) is
+  merged first, exactly its additions to round 11.
+- The planning session's decisions on this round's first run: findings 1 and 2 below became design A's rule.
+- Old-path verdicts come from `Kimi.dll check` (legacy pipeline) of a `claude/a5-1b-core` build (`f6b365bb`) on probe
+  programs: the review's o1–o4 and its rprobe set, plus this round's.
+
+**Rules added in design A mode:**
+
+- **E13 (1), evaluation order (SPEC 12.2).** An operation's operands are evaluated in order before it; a Call's receiver
+  or Value callee operand comes first. Operand i's access at ℓ is checked on
+  `CS_i(ℓ) = closure(⋃{σ_in(H) | H live after ℓ, ℓ does not overwrite H} ∪ ⋃_{j≤i} val_in(o_j) ∪ ⋃_{j>i} σ_in(root(o_j)) ∪ σ_in(E))`.
+  - An operand's value, its own included, is used by its operation after the access (finding 1; SPEC 15.6; rustc E0505).
+  - The set is scanned by holder: an operand's value is attributed to its root's holder, so a reservation in its own
+    holder stays `ref`.
+  - It holds at every operation with operands: Call, Aggregate, Closure, BinaryOp.
+  - The destination write and the stores keep `CS(ℓ)`. `CS_i` has no transit and no seed.
+  - In the cases, `Node.Input` now marks every operand left at ℓ, in evaluation order, including a Move of a secured temp
+    (round 11's cases list their temps so). `Node.Operation` marks an operation other than a Call.
+- **Single-operand rvalues (finding 2).** A Use of a Copy or Move, a Cast or a UnaryOp uses its operand's value at ℓ, so
+  that operand's access is also checked against `val_in(o)` on `CS(ℓ)`. A Ref is not included: its Place access is a
+  Borrow, checked as before.
+  - Rounds 1–11 mark no operands. The prototype therefore applies the term to a node's Read or Move whose Place is the
+    source of one of the node's flows, that is, the value ℓ stores.
+  - `OwnValueEverywhere` applies it to every node Read or Move instead. Because the term only adds Loans, it bounds every
+    finer reading from above.
+- **E13 (2)** is unchanged from round 11.
+- **E13 (3), M′ and the marker.** Design A runs each case's M′ form: `Case.Always`, else `Case.Secured`, else the case
+  itself.
+  - `Node.Acquire` is a marked PairAcquire or explicit case adaptation: a reservation in its temp, activated at its Call.
+  - A Uniq `Borrow` is an unmarked one: a `let`, a control-flow result, an aggregate operand or a capture.
+  - A pair layer and a borrow Deref are both `*`, so N3 holds by construction.
+- **Classification.** A case 130+ analysed in another MIR form must err at that form's node for the same operation.
+  This affects 132a, 132f and 132h, whose M′ nodes have their own labels.
+
+**Variants.** Every variant restores an earlier rule or MIR form, or changes one clause:
+
+- `NoOwnValue`: E13 as first stated. `CS_i` takes `val_in(o_j)` for `j < i` only, and single-operand rvalues get no own
+  value.
+- `OwnValueEverywhere`: the own-value term on every node Read or Move, the upper bound described above.
+- `Round11`: round 11's E13 on round 11's MIR (G123). A Call's inputs are checked on `CS_call(ℓ, −)` and another
+  operation's operands on `CS(ℓ)`.
+- `AcquireAtOperation`: `CS_i` on G123's MIR, where a PairAcquire stays at its operation as an operand; there is no M′.
+- `ShapeReservation`: A5 derives the reservation from the MIR shape (134d's `Case.Shape`).
+- `IntrinsicAllOperands`: A3 §4's intrinsic row, which E14 replaced (135b's `Case.IntrinsicRow`).
+- `NoEarlierValues` and `NoLaterRoots`: `CS_i` without its earlier-value or later-root term.
+- `EarlierRoots`: earlier operands by `σ_in(root)` instead of their values.
+
+Round 11's variants change as follows:
+
+- The first four (`CalleeNotActivated`, `InputsOnCS`, `PairAcquireLive`, `NoRawStore`) now apply on top of round 12's
+  design A.
+- `Implemented1b` keeps the reviewed branch's MIR, with no own value.
+- `SecureAcquire` and `AlwaysSecure` are round 11's rule on round 11's M and on M′ (the review's run), also without the
+  own-value term.
+
+**Cases: 316.**
+
+- Round 11's 278 cases are kept. 132k and 132l are respelled `innerW(w.a, w@move)`: round 11's `innerW(w.a, w)` is a
+  `TransferRequired_Kd`. The MIR is the same, and so are the SPEC verdicts (error, valid).
+- The review's 10 cases are added. Where the review's encoding is a form round 12 rejects, design A runs this round's
+  form and the review's form becomes a variant:
+
+  | Case | Design A runs | Variant that runs the review's form |
+  | --- | --- | --- |
+  | 134a, 134e | 134b's and 134f's M′ | `AcquireAtOperation` (G123's MIR) |
+  | 134d | the marker (134c) | `ShapeReservation` |
+  | 135b | E14's Content row (135a) | `IntrinsicAllOperands` |
+
+- 28 new cases. The callees are `give2(a: i32, b: i32)`, `give2T<T>(a: T, b: i32)` and `inner11<s/T>(a: s/T, b: i32)`.
+  The pair cases are uniq-view bodies of `outer<s/T>(p: s/T)` unless marked ref. In 140, the setup is
+  `var z = 0; var s = S3(r: z@ref, n: 1)`.
+
+In the old-path column, **old path wrong** marks an old-path verdict that differs from SPEC: a ledger fact, not an E13
+issue.
+
+| Case | Program | SPEC | Design A | `Round11` | Old path |
+| --- | --- | --- | --- | --- | --- |
+| 136a | o1: `let r = x@uniq; give2(r@follow, x)` | valid | valid | **over-strict** | valid |
+| 136b | o2: `give2(x, r@follow)` | error | error at the call | same | error at `x` |
+| 136c | o3: `let t = (r@follow, x); inspect(t)` | valid | valid | valid | valid |
+| 136d | `let t = (x, r@follow); inspect(t)` | error | error at the Aggregate | **UNSOUND** | error at `x` |
+| 136e | o4: `let s = r@follow + x` | valid | valid | valid | valid |
+| 136f | `let s = x + r@follow` | error | error at the Add | **UNSOUND** | error at `x` |
+| 136g | `x.plus(r@follow)`, a Copy receiver (`T is Plus`) | error | error at the call | same | error at the receiver |
+| 136h | `r@follow.plus(x)` | valid | valid | **over-strict** | valid |
+| 137a | w1's counterpart: `_ = (x, x@uniq)` (`$1 = copy x` secured) | valid | valid | valid | valid |
+| 137b | `let t = (x@uniq, x); inspect(t)` | error | error at the Aggregate | same | error at `x` |
+| 137c | w3: `let r = x@uniq; _ = (r, x)` (`$1 = &uniq (*r)`) | error | error at the Aggregate | **UNSOUND** | error at `x` |
+| 137d | `let r = x@ref; _ = (r, x)`, a dead aggregate that reads only | valid | valid | valid | valid |
+| 137e | `let r = x@uniq; _ = (x, r)` | error | error at `$1 = copy x` | same | error at `x` |
+| 138a | z3: `let u = v@follow@ref; let c = func [v, u] () => ()` | error | error at `$1 = acquire v` | same | error |
+| 138b | 138a, ref view | valid | valid | valid | (one generic body) |
+| 138c | `func [u, v] () => ()` | error | error at `$2 = acquire v` | same | **old path wrong: valid** |
+| 138d | `run(func [v] () => (), peek(v@follow@ref))` | error | error at `$b = &(*v)` | same | error at `v@follow@ref` |
+| 139a | x1: `inner11(v, peek(v@follow@ref))` | valid | valid | valid | **old path wrong: error at `v@follow@ref`** |
+| 139b | 139a, ref view | valid | valid | valid | (one generic body) |
+| 139c | `inner11(x@(s/T), peek(x@ref))` | valid | valid | valid | valid |
+| 139d | `let a = x@(s/T); let k = peek(x@ref); inner11(a, k)` | error | error at `$b = &x` | same | **old path wrong: valid** |
+| 140a | `s.r = s.n@ref; give2T(s@move, 1)` | error | error at the call | same | error at `s@move` |
+| 140b | `s.r = s.n@ref; _ = (s@move, 1)` | error | error at the Aggregate | **UNSOUND** | error at `s@move` |
+| 140c | `s.r = s.n@ref; let t = (s@move, 1); inspect(t)` | error | error at the Aggregate | same | error at `s@move` |
+| 140d | `s.r = s.n@ref; give2(s.n, s.n)` | valid | valid | valid | valid |
+| 140e | `s.r = s.n@ref; let t = s@move`, t dead | error | error at `let t = s@move` | **UNSOUND** | error at `s@move` |
+| 140f | 140e with `inspect(t)` | error | error at `let t = s@move` | same | error at `s@move` |
+| 140g | `let r2 = y@ref; s.r = r2; let t = s@move` | valid | valid | valid | valid |
+
+- **The old path wrong rows.**
+  - 139a (x1): the old path is over-strict.
+  - 138c (`func [u, v]`): the old path accepts it, also with the closure used after (`c@ref`), although SPEC 7.7 executes
+    the entries left to right and the old path itself rejects `func [v, u]` (138a).
+  - 139d (a `let`-stored `x@(s/T)`): the old path accepts it, against SPEC 15.6.7, although it rejects the non-generic
+    `let a = x@uniq` form.
+- **rustc on 140e** (by SPEC-equivalent Rust reasoning, not run): E0505. The Move uses s, whose type holds the borrow's
+  region, so the Loan on `s.n` is live at the Move.
+- **The review's cases under design A.**
+  - 134a and 134b (z1) err at `$1 = acquire v`. The old path reports `PlacementActivationConflict_Kd`.
+  - 134c and 134d (x2) err at `$b = &(*v)`.
+  - 134e, 134f (v1) and 134g (w1) err at the Aggregate.
+  - 135a and 135b are valid; 135c errs at `x = 5`.
+- `PrefixKill` gives design A's verdict and error location on every case 130+.
+
+| Mode (316 cases) | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| Design A (last base) | 269 | 24 | 23 | 0 | 0 |
+| Design A with `PrefixKill` | 288 | 21 | 7 | 0 | 0 |
+| `NoOwnValue` (E13 as first stated) | 265 | 24 | 23 | 0 | 4 (140a, 140b, 140c, 140e) |
+| `PrefixKill` and `NoOwnValue` | 284 | 21 | 7 | 0 | 4 (140a, 140b, 140c, 140e) |
+| `OwnValueEverywhere` | 268 | 25 (adds 127) | 23 | 0 | 0 |
+| `Round11` (round 11's design A) | 258 | 24 | 23 | 2 (136a, 136h) | 9 (132k, 134a, 134e, 134g, 136d, 136f, 137c, 140b, 140e) |
+| `SecureAcquire` (round 11's rule, M) | 259 | 24 | 23 | 2 (136a, 136h) | 8 (134a, 134e, 134g, 136d, 136f, 137c, 140b, 140e) |
+| `AlwaysSecure` (round 11's rule, M′) | 261 | 24 | 23 | 2 (136a, 136h) | 6 (134g, 136d, 136f, 137c, 140b, 140e) |
+| `CalleeNotActivated` | 265 | 24 | 23 | 0 | 4 (130a, 130b, 130e, 130f) |
+| `InputsOnCS` | 257 | 24 | 23 | 0 | 12 (130g, 131a, 131b, 132k, 134g, 136b, 136d, 136f, 136g, 137c, 140a, 140b) |
+| `PairAcquireLive` | 260 | 29 | 23 | 4 (132e, 132j, 139a, 139c) | 0 |
+| `NoRawStore` | 267 | 24 | 23 | 0 | 2 (133a, 133d) |
+| `Implemented1b` (the reviewed branch) | 241 | 25 | 23 | 3 (132e, 139a, 139c) | 24 |
+| `AcquireAtOperation` | 267 | 24 | 23 | 0 | 2 (132k, 134e) |
+| `ShapeReservation` | 268 | 24 | 23 | 0 | 1 (134d) |
+| `IntrinsicAllOperands` | 268 | 24 | 23 | 1 (135b) | 0 |
+| `NoEarlierValues` | 260 | 24 | 23 | 0 | 9 (130g, 131a, 131b, 132k, 134e, 134f, 134g, 137b, 137c) |
+| `NoLaterRoots` | 265 | 24 | 23 | 0 | 4 (136b, 136d, 136f, 136g) |
+| `EarlierRoots` | 265 | 24 | 23 | 4 (136a, 136c, 136e, 136h) | 0 |
+
+**Round 11's 278 cases, row by row.**
+
+- 275 rows are identical: verdict, error node, class and every `-v` error fact of PROV, S1, S1′, A and A with
+  `FirstDerefBase`.
+- 132a, 132f and 132h err at the same Call, now in M′'s nodes; 132h adds L4's fact.
+- 132k now errs, as SPEC requires.
+- `Round11` reproduces round 11's design A on all 278 rows.
+- **The single-operand own-value term (finding 2) changes no round 1–11 row.** Design A's flow-source reading changes
+  nothing.
+- Under the upper bound `OwnValueEverywhere`, only 127 changes, and its verdict stays error. 127 gains
+  `Lr live at inspect(s.r@follow) vs Read s.r.*`, beside its error at `s.n = 5`.
+  - **Facts (`-dump 127`).** After `r = s2@uniq` ends the child Lc, s keeps its parent Lr, a uniq Loan on s, because
+    s.r holds the stored `$t`. So `σ_in(s) = {Lz, Lr}`.
+  - The read of `s.r.*` is `inspect`'s operand, and its value, `content(σ_in(s))`, carries Lr.
+  - SPEC agrees: the read value carries Lr and is used by the Call, so the read meets a live uniq Loan on its prefix s.
+    127 marks no Call operand, so design A does not reach this second report;
+    under E13 (1) a marked `inspect` operand would.
+
+**Findings.**
+
+1. **E13 (1) as first stated missed the operand's own value (140a–140c UNSOUND).** Decided by the planning session:
+   `j ≤ i` is design A's rule, and `NoOwnValue` keeps the first statement.
+   - **Facts (`-dump 140a`).** At `give2T(move s, const 1)`, `σ_in(s) = {Lz, Ln}` with Ln on `s.n`, `live_out(ℓ) = ∅`,
+     and there is no later operand. So without the term `CS_1 = ∅`.
+   - **Rejected alternatives.**
+     - Transit catches only 140c. `InputsOnCS` (operands on `CS(ℓ)`, transit included) errs on 140c alone.
+     - Round 11's `CS_call(ℓ, −)` caught 140a and 140c, but it rejects o1 (136a) and 136h.
+2. **Single-operand rvalues (140e).** Decided by the planning session: the same reading holds for a Use, a Cast and a
+   UnaryOp.
+   - Without the term, `let t = s@move` with t dead is accepted (`NoOwnValue`, `Round11`): A3's transit sees no live
+     holder there.
+   - 140f is rejected either way, through transit, and 140g stays valid: s's Loan is on another root.
+3. **Each clause of `CS_i` is load-bearing.**
+   - `NoEarlierValues` accepts nine error cases, w1 among them. `NoLaterRoots` accepts o2 and its kin.
+   - `EarlierRoots` reproduces round 11's over-strict o1, and also rejects o3 and o4.
+   - M′ is load-bearing at every operation. `AcquireAtOperation` accepts 132k and 134e, because a Loan formed at ℓ is in
+     no entry set. 134a (z1) errs by order alone: its acquire is checked against the later operand u's holder.
+   - The marker is load-bearing. `PairAcquireLive` rejects 139a (x1), 139c, 132e and 132j; `ShapeReservation` accepts
+     134d (x2).
+4. **Round 11's E13 on the new cases.** `Round11` is over-strict on 136a (o1) and 136h, and accepts 134a, 134e, 134g,
+   136d, 136f, 137c, 140b and 140e. Evaluation order is needed at Aggregates and BinaryOps as well as Calls.
+
+**Not modeled.**
+
+- Operand order is hand-encoded per case.
+  - The 1–127b cases encode their Calls and aggregates without operand order, so `CS_i` runs only on cases 130+.
+  - For their single-operand rvalues, the flow-source reading and the `OwnValueEverywhere` bound stand in for marked
+    operands.
+  - Where the MIR leaves an operand (G123, M′) and which PairAcquire the builder marks are hand-encoded too. The builder
+    is not run.
+- These orders are not modeled:
+  - defaults after explicit arguments (SPEC 7.2.3);
+  - index targets before indices;
+  - dictionary entries and interpolation.
+- Casts and UnaryOps have no case of their own; they take the same term as a Use.
+- A Value callee that is itself a PairAcquire is still not modeled.
+- Closure receiver modes are not modeled, nor the views' computed choice of Copy or Reborrow.
+- Diagnostic codes are not modeled. Like round 11's finding 5, A6 has no row for an operand-order conflict.
+
+## Round 13 (A3 E13 rewritten: one rule for every access)
+
+**Inputs.**
+
+- A3 §12 E13 as rewritten after its second design review. On 2026-10-18 the owner chose the representation, "one rule for
+  every access".
+- The second design review's patched prototype, merged first with exactly its additions: the flags DOV, ROP and AV, its
+  alternatives ROS and RPT, its `-r13` run (reproduced exactly), and its 13 cases. The flags are now the design's terms,
+  and each one has a named variant.
+- The planning session's update of E13 after this round's first run (finding 1). The borrow row keeps E5's seed and takes
+  E3's bound. The Drop row states that MIR never destroys and stores at one location.
+- The review's MIR dumps of today's builder (probes p1–p8) and its old-path probes. Old-path verdicts come from the review:
+  its case titles, and its ledger record for d3.
+
+**The design is design A with E8's ending (`PrefixKill`):** `Analysis(c, Mode.A, x, prefixKill: true)`. `Design A (last
+base)` keeps A3 §3's base kill, as "design A" did in rounds 1–12. A `-cases` name ending in `+PK` runs on the design.
+
+**Rules (E13 (1)).** Each access at ℓ is checked on closure(σ_in of the holders live after ℓ that ℓ does not overwrite,
+σ_in(E), T). T depends on the access:
+
+| Access | T | Variant restoring the superseded clause |
+| --- | --- | --- |
+| Operand i (`Node.Input`) | `⋃_{j≤i} val(o_j) ∪ ⋃_{j>i} σ_in(root(o_j))` (round 12) | `NoOwnValue`, `NoEarlierValues`, `NoLaterRoots`, `EarlierRoots` |
+| Activation of a reservation in t; a destroying call's destroy | `⋃_{o_j≠t} val(o_j)`, seeded by σ_in(t); t is left out of the live holders | `ActivationLiveIn` (CS_call's live_in(ℓ)) |
+| A Ref's or Reborrowing PairAcquire's borrow of X | `⋃_{m≤j<k} content^j(σ_in(root(X)))`, where m is the index of the last shared Deref (`SharedAt − 1`), else 0; whatever its destination's liveness; E5's seed; no transit | `BorrowSeedOnly` (R4-M57), `ParentsAsTransit` (the review's RPT with ROS), `BorrowWithoutSeed` (the first run), `ParentsEveryLayer` (⋃_{j<k}) |
+| Observing destruction of X: a Drop, and a destroying call's destroy | val(X); a Drop takes no transit and no E5 seed | `NoDestroyValue` |
+| Destination write, stores | transit and E5's seed, as before | — |
+
+- `KeepCSTerms` is the review's additive run. The borrow and Drop rows keep round 12's CS(ℓ), transit and seed included,
+  and also take their own terms.
+- `CurrentBuilder` runs today's builder MIR (`Case.Built`).
+- `OnePointDrop` runs rounds 5–12's one-point encodings of 24c, 29b and 91 (`Case.OnePoint`).
+- In the code, `Acc.From` marks a borrow access by its Issue.
+- Rounds 1–10 mark no operands. On their nodes, an activation keeps live_in(ℓ), whose closure bounds the operands' values
+  from above. Their Reads and Moves keep CS(ℓ) and round 12's flow-source own value.
+
+**MIR forms (E13 (2), (4)) and corrected encodings.** These come from the review's dumps of today's builder:
+
+- An explicit `@move` builds code.
+  - 132k is now `$4 = acquire w.a; $5 = move w; innerW(move $4, move $5)`, and 132l is its ref view. Round 11's `Secured`
+    form and M′ are now this same form.
+  - 140a–140c are now `$7 = move s` followed by the operation. 140c is not named by the review, but the same rule builds
+    it. The review's m140a and m140b are these forms, so they are not kept twice.
+- **A Drop is a terminator, and the store follows it** (`MirTerminatorKind.Drop`; the review's fD2 dump: `drop _2 -> bb3;
+  _2 = move _7`). 24c, 29b and 91 are now `drop X (old value)` followed by the store. Their one-point form is
+  `Case.OnePoint`.
+- Today's builder builds captures without G123 or M′ (`Closure(acquire b0 v, copy u)`). Case 138 keeps E13 (2)/(4)'s
+  form (`$1 = acquire v` and the securing of u). Today's shape is `Case.Built`, with the PairAcquire left at the Closure.
+  In the uniq view it is a live Uniq formed there.
+- Named arguments: E13 (2) secures a Place operand that is evaluated before an operand that precedes it in operand order.
+  n1 is `$1 = copy (*r); give2(copy x, move $1)`, and n2 is `$1 = copy x; give2(copy (*r), move $1)`. Today's
+  builder passes the arguments by slot (`Case.Built`).
+- A setter's value is evaluated before its receiver (SPEC 13.7.1): `$1 = copy (*r).level; $5 = &uniq two-phase g;
+  level.Set(move $5, move $1)`. Today's builder for a Place value is not probed, so s1 and s2 have no `Built` form.
+- A single capture is never secured, so `func [s@move]` is `Closure(move s)` both today and under E13 (c1).
+
+**Cases: 332.**
+
+- Round 12's 316, with eight re-encoded: 24c, 29b, 91, 132k, 132l and 140a–140c.
+- The review's 11 (its 13 without m140a and m140b).
+- This round's d3, s1, s2, b1 and b2.
+
+In the old-path column, **wrong** marks an old-path verdict that differs from SPEC, and — means not probed.
+
+| Case | Program | SPEC | The design | Old path |
+| --- | --- | --- | --- | --- |
+| 24c | `s = S(r: s.r@follow@uniq)` with a writing drop (re-encoded) | error | error at `drop s (old value)` (was at the store) | — |
+| 29b | `p@follow = S(r: p.r@follow@uniq)` (re-encoded) | error | error at `drop (*p) (old value)` | — |
+| 91 | `t = T(r: slot2@uniq, c: t.r@follow@follow@uniq)` (re-encoded) | error | error at `drop t (old value)` | — |
+| 132k | `innerW(w.a, w@move)`, uniq view (re-encoded) | error | error at `$5 = move w` (was at the Call) | — |
+| 132l | 132k, ref view (re-encoded) | valid | valid | — |
+| 140a | `s.r = s.n@ref; give2T(s@move, 1)` (re-encoded) | error | error at `$7 = move s` (was at the Call) | error at `s@move` |
+| 140b | `_ = (s@move, 1)` (re-encoded) | error | error at `$7 = move s` (was at the Aggregate) | error at `s@move` |
+| 140c | `let t = (s@move, 1); inspect(t)` (re-encoded) | error | error at `$7 = move s` (was at the Aggregate) | error at `s@move` |
+| r13a1 | `let r = y@ref; give(y@uniq, r@follow)` | valid | valid | valid |
+| r13a2 | r13a1 with `inspect(r)` | error | error at the call | — |
+| r13b1 | `var s = S5(r: y@ref); var w = W5(p: s@uniq, q: o@uniq); w.q = w.p@follow.r@uniq; let t = w.p@follow.r@follow@ref; inspect(t)`, w dead after t | valid | valid | — |
+| r13b2 | b1 with `inspect(w.q)` | error | error at `let t = …` | — |
+| r13c1 | `s.r = s.n@ref; let c = func [s@move] () => ()` (j = i at a Closure) | error | error at `c = Closure(move s)` | error |
+| r13d1 | `var q = Q2(r: z@uniq); q.r = q.n@uniq`, scope end | error | error at `drop q` | error |
+| r13d2 | d1 with `q.r = y@uniq` | valid | valid | — |
+| r13d3 | d1, then `q = Q2(r: z2@uniq)` (`drop q; q = move $7`) | error | error at `drop q (old value)` | **wrong: valid** |
+| r13rf1 | `var s = S7(r: z@uniq, q: w@ref); s.q = s.r@follow@ref; let t = s.r@follow@uniq`, t dead | error | error at `let t = …` | **wrong: valid** |
+| r13rf2 | rf1 with `inspect(t)` | error | error at `let t = …` | **wrong: valid** |
+| r13u1 | `s.r = s.n@uniq; give2(s.n, 1)` (j = i at a Call) | error | error at the call | **wrong: valid** |
+| r13u2 | `s.r = s.n@uniq; let t = s.n`, t dead | error | error at `let t = s.n` | **wrong: valid** |
+| r13n1 | `let r = x@uniq; give2(b: r@follow, a: x)` | valid | valid | valid |
+| r13n2 | `let r = x@uniq; give2(b: x, a: r@follow)` | error | error at `$1 = copy x` | error |
+| r13s1 | `var g = G(); let r = g@uniq; g.level = r@follow.level` | valid | valid | — |
+| r13s2 | s1 with `inspect(r)` | error | error at `$5 = &uniq two-phase g` and at the Set | — |
+
+The error facts under the design (`-v`, `-dump`):
+
+- **24c, 29b, 91:** at the drop, the stored value's holder `$v` is live after ℓ, so L2 meets both the deep destroy and
+  the drop's write. These are the same two facts the one-point form had in round 12.
+- **a2:** Lr, through r live after the call, meets the activation (uborrow y). a1 is valid because the activation takes
+  val(r.*) = content(σ_in(r)) = σ_in(y) = ∅.
+- **b2:** Lq, a uniq borrow of s.r held in w.q, is in σ_in(w), and w is live after ℓ. Lq meets the shared borrow of
+  `w.p.*.r.*`. In b1, w is dead after ℓ, and E3's bound (m = 1) takes only content(σ_in(w)), which is σ(s) ∪ σ(o). So Lq
+  is not in the check set.
+- **d1, d3:** val(q) = {Lz, Ln}, where Ln is the Uniq Loan on q.n, meets the deep destroy of q.
+- **rf1, rf2:** the parents σ_in(s) = {Lz, Lw, Lq}, where Lq is the Shared Loan on s.r.*, meet the uborrow of s.r.*.
+- **u1, u2, c1:** the operand's own value {Lz, Ln} meets the read of s.n, or the Move of s.
+- **n2:** at `$1 = copy x`, r is live after (it is read at the Call), and σ_in(r) = {Lr}.
+
+**Totals (332 cases).** The design and design A (last base), then each round-12 and round-13 variant run on the design.
+
+| Mode | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| **The design** (design A with `PrefixKill`) | 304 | 21 | 7 | 0 | 0 |
+| Design A (last base) | 284 | 24 | 23 | 1 (30b) | 0 |
+| `BorrowWithoutSeed` (this round's first run) | 303 | 21 | 7 | 0 | 1 (41o) |
+| `ParentsEveryLayer` | 303 | 21 | 7 | 1 (r13b1) | 0 |
+| `BorrowSeedOnly` (R4-M57) | 302 | 21 | 7 | 0 | 2 (r13rf1, r13rf2) |
+| `ParentsAsTransit` | 304 | 21 | 7 | 0 | 0 |
+| `KeepCSTerms` (the review's additive run) | 304 | 21 | 7 | 0 | 0 |
+| `OnePointDrop` | 304 | 21 | 7 | 0 | 0 |
+| `NoDestroyValue` | 302 | 21 | 7 | 0 | 2 (r13d1, r13d3) |
+| `ActivationLiveIn` | 303 | 21 | 7 | 1 (r13a1) | 0 |
+| `CurrentBuilder` | 302 | 21 | 7 | 1 (r13n1) | 1 (r13n2) |
+| `NoOwnValue` | 300 | 21 | 7 | 0 | 4 (140e, r13u1, r13u2, r13c1) |
+| `NoEarlierValues` | 296 | 21 | 7 | 0 | 8 (130g, 131a, 131b, 134e, 134f, 134g, 137b, 137c) |
+| `NoLaterRoots` | 300 | 21 | 7 | 0 | 4 (136b, 136d, 136f, 136g) |
+| `EarlierRoots` | 300 | 21 | 7 | 4 (136a, 136c, 136e, 136h) | 0 |
+| `AcquireAtOperation` | 303 | 21 | 7 | 0 | 1 (134e) |
+| `ShapeReservation` | 303 | 21 | 7 | 0 | 1 (134d) |
+| `IntrinsicAllOperands` | 303 | 21 | 7 | 1 (135b) | 0 |
+| `OwnValueEverywhere` | 303 | 22 | 7 | 0 | 0 |
+| `RefParentsInTransit` | 304 | 21 | 7 | 0 | 0 |
+| `CalleeNotActivated` | 300 | 21 | 7 | 0 | 4 (130a, 130b, 130e, 130f) |
+| `InputsOnCS` | 293 | 21 | 7 | 0 | 11 (130g, 131a, 131b, 134g, 136b, 136d, 136f, 136g, 137c, r13u1, r13c1) |
+| `PairAcquireLive` | 295 | 26 | 7 | 4 (132e, 132j, 139a, 139c) | 0 |
+| `NoRawStore` | 302 | 21 | 7 | 0 | 2 (133a, 133d) |
+| `Round11` (round 11's rules) | 288 | 21 | 7 | 3 (136a, 136h, r13a1) | 13 (134a, 134e, 134g, 136d, 136f, 137c, 140e, r13d1, r13d3, r13rf1, r13rf2, r13u2, r13c1) |
+| `Implemented1b` (the reviewed branch) | 271 | 22 | 7 | 4 (132e, 139a, 139c, r13a1) | 28 |
+
+- Under `CurrentBuilder`, captures keep their verdicts. 138a and 138c err at the Closure itself, by operand order alone,
+  as 134a does.
+- Under `OnePointDrop`, 24c, 29b and 91 keep their verdicts but lose their `Destroy` fact.
+
+**Round 12's 316 cases, row by row.** Compared are `-cases None PrefixKill FirstDerefBase`: verdict, error nodes, class
+and every error fact, against round 12's file.
+
+- 307 cases are identical in all three modes.
+- The corrected encodings change 132k and 140a–140c: the same verdict, with the error at the new Move node.
+- 24c, 29b and 91 keep their verdict and both error facts, now at the drop node.
+- **30b and 30d, last base only:** the borrow row rejects 30b (an unlisted loss) and adds an error node to 30d's listed
+  loss. This is R4-M57's reason, which E13 says E8's ending removes. The design keeps both as in round 12.
+- `KeepCSTerms` changes the same rows as the design and nothing else.
+- In the full output, `NoTransit`'s witnesses are now 25a, 25c and 29c: destination writes and stores. They were 24c,
+  29b and 91 in their one-point form. Round 4's `AText` row for 24c is gone too. That form keeps both histories, as
+  `Case.OnePoint`.
+
+**Findings.**
+
+1. **The first run's borrow row had no E5 seed, and it accepted 41o (UNSOUND).** That row is `BorrowWithoutSeed` now. The
+   program is `s.r = s.n@ref; let p = s@uniq; p.n = 5; inspect(p.r@follow)`.
+   - At `let p = s@uniq`, σ_in(s) = {Lz, Ln}, with Ln on s.n. live_out(ℓ) = {p}, which ℓ overwrites.
+   - The borrow has k = 0, so its parents are ∅. The write of p hits no Loan on p.
+   - The planning session gave the row E5's seed back, and the design now errs at `let p = s@uniq`.
+2. **E3's bound separates from ⋃_{j<k} only on b1, which this round adds.** No earlier case does.
+   - b1 follows SPEC 15.6.3: "A Borrow past a shared dereference … derives only from the reference of its last shared
+     dereference and the references it dereferences after that one". It is checked against the values used after ℓ
+     (15.6), and w is not one of them.
+   - The every-layer reading also takes w's Lq, a uniq Loan on s.r that w.q holds, and rejects b1. b2, where w is used
+     later, errs under both readings.
+   - b1 is sound: w.q's Loan is dead together with w, and t reaches y only through s.r's value.
+   - The Rust analogue would be rejected (E0502, by reasoning, not run), because NLL counts the read of `w.p` at the
+     borrow as a use of w. This is a SPEC fact, not an E13 problem.
+3. **The one-point encoding was the only reason 24c, 29b and 91 lost a fact.** As MIR builds them, the stored value's holder
+   is live after the drop, so both facts return. `OnePointDrop` shows the loss again.
+4. **Each term is load-bearing.**
+   - val(X): `NoDestroyValue` accepts d1 and d3.
+   - The parents: `BorrowSeedOnly` accepts rf1 and rf2.
+   - The seed: `BorrowWithoutSeed` accepts 41o.
+   - E3's bound: `ParentsEveryLayer` rejects b1.
+   - The activation's operand values: `ActivationLiveIn` rejects a1.
+   - j = i: `NoOwnValue` accepts 140e, u1, u2 and c1.
+   - E13 (2): `CurrentBuilder` rejects n1 and accepts n2.
+   - Transit at the destination write and stores: `NoTransit` accepts 25a, 25c and 29c.
+   - Round 12's terms and E13 (3)/(4) remain load-bearing, as the variant rows show.
+5. **val(X) at a destroying call** changes no case: `NoDestroyValue` changes only Drops.
+
+No rule problem is left: under the design, every case is "same" or "same verdict, error moves".
+
+**Not modeled.**
+
+- Today's builder is not run. MIR forms are hand-encoded from the review's dumps, and `Case.Built` exists only for n1,
+  n2 and 138a–138d.
+- Rounds 1–10 mark no operands: their activations keep live_in(ℓ), an upper bound, and their reads keep CS(ℓ).
+- A call's effects (`err(effect)`: statics), E13 (5)'s cost and E13 (6)'s codes.
+- Labelled payloads (E13 (2)) have no case. They take the named-argument rule at an Aggregate.
+- Today's builder for a setter's Place value is not probed, and the old path is not probed for s1, s2, b1 and b2.
