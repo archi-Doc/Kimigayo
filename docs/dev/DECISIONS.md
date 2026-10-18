@@ -1966,7 +1966,7 @@ structure is recorded here by the unit that first implements it.
   corpus such programs stay refused, with a different `GenerationFailed_Kd` Note visible on build or run only; accepted ones whose
   nested function ignores the slots get per-instance entries with the same behavior; a two-level nested call that selects a
   specialization stays wrong in legacy, which forwards one level. F3 is therefore not a D5 miscompile fix.
-  - Departure (temporary): a specialization stops the walk, so it and everything nested in it count as closed, although SPEC
+  - Departure (temporary; superseded by R5-M34): a specialization stops the walk, so it and everything nested in it count as closed, although SPEC
     8.13.1 closes only its arguments and SPEC 6.1.3 makes a specialization in a generic container generic in the container's
     slots. Reason: it is the only behavior-preserving rule for the re-pointed legacy readers. Both SPEC-literal variants (the walk
     passing an enclosing specialization; no specialization rule) make legacy refuse a closure in a specialization of a generic
@@ -2171,3 +2171,24 @@ structure is recorded here by the unit that first implements it.
   `FormattingWitness` row bit (a third statement of the published `Formats` rows, beside `IntrinsicDisposition.Effect`'s
   `Formatting` class, naming neither the requirement nor the parameter; and no formatting routine's text calls a witness, unlike
   an `ElementGlue` helper's); wrappers written only under the runtime flag (G133).
+- **R5-M34 `Instantiates` follows SPEC 6.1.3; the old generator keeps its view** (2026-10-18, planning session; plan K1's
+  prerequisite, S2-S4 X40, package K §4.1, PLAN SP; under R5-M18; supersedes R5-M21's departure clause) `TyCtxt.Instantiates`
+  is true when the definition or a declaration on its scope chain has a Type, Semantics or length slot. A specialization declares
+  none (SPEC 8.13.1) and no longer stops the walk, so a specialization in a generic container and every declaration nested in it
+  are generic in the container's slots, their instance key holding the container's arguments (SPEC 8.13.3); a top-level
+  specialization stays closed. One walk classifies a definition as Closed, Generic or GenericThroughSpecialization (a slot reached
+  past a specialization), memoized as before.
+  - Temporary structure, removed by G7 with its reader: `[Transitional("R6-gen")] TyCtxt.InstantiatesInLegacy`, true for Generic
+    only (R5-M21's rule), read by the old generator's `GenericStoragePlan.IsGeneric` alone, the one rule under which it
+    generates a closure in a specialization of a generic struct's Type function, as it does today.
+  - Binding's closure contexts (`CloseClosureTypes`, which `TyCtxt.Apply` delegates to) read `Instantiates`: a context is made only
+    for a substitution whose target is the closure's nearest named enclosing function, and the old generator forms none whose
+    target its view counts closed, so its output is unchanged, while MIR's `Apply` gives a closure in such a specialization the
+    container's context, which the collector's closure edges key by (K5).
+  - Evidence: no definition among the 456 snapshot cases (library, milestones, corpus) changes class (temporary probe); the 17
+    F3 reproducers and three new probes give the parent's old-generator output; the program R5-M21 named still builds
+    (`GenericClosureDispatchTest`). Legacy-only sites keeping the old treatment: `OwnershipModel.IsConcrete` (R6-check) and
+    `LlvmEmitter`'s body filter (G7).
+  - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
+    rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
+    collector would key a generic closure as closed).
