@@ -64,6 +64,22 @@ public sealed class BoundContract
     internal byte State { get; set; }
 
     internal bool HasUnresolvedParents { get; set; }
+
+    /// <summary>Gets the first requirement this Contract declares itself, the one its built-in target executes (Equatable's equals);
+    /// null for a Contract that declares none.</summary>
+    /// <returns>The requirement's declaration identity.</returns>
+    internal BindingSymbol? OwnRequirement()
+    {
+        for (var i = 0; i < this.RequirementStorage.Count; i++)
+        {
+            if (ReferenceEquals(this.RequirementStorage[i].Contract, this.Symbol))
+            {
+                return this.RequirementStorage[i].Symbol;
+            }
+        }
+
+        return null;
+    }
 }
 
 /// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.11.1).</summary>
