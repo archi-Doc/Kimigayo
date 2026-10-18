@@ -115,6 +115,13 @@ public sealed class MirDifferenceLedger : IDisposable
         Aggregate(this.directory!);
     }
 
+    /// <summary>Gets whether a compilation is Binding-complete (R4-M47): Binding accepted its program, a complete result and no lint
+    /// Error, which leaves it complete (R5-M31).</summary>
+    /// <param name="compilation">The bound compilation.</param>
+    /// <returns>Whether it is Binding-complete.</returns>
+    internal static bool BindingComplete(Compilation compilation)
+        => compilation.Binding.Result.IsComplete && compilation.Binding.LintErrors == 0;
+
     /// <summary>Gets the analysis that owns an old record of the compared set (R4-M4), or null for a record that passes through.</summary>
     /// <param name="requirement">The record's requirement.</param>
     /// <param name="code">The record's code.</param>
@@ -352,8 +359,7 @@ public sealed class MirDifferenceLedger : IDisposable
     {
         var source = Source(compilation);
         var sha = Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(source)))[..12];
-        // Binding accepted the program (R4-M47): a complete result and no lint Error, which leaves it complete (R5-M31).
-        var section = compilation.Binding.Result.IsComplete && compilation.Binding.LintErrors == 0 ? "complete" : "incomplete";
+        var section = BindingComplete(compilation) ? "complete" : "incomplete";
         var comparison = $"{Environment.ProcessId}.{Interlocked.Increment(ref this.events)}";
         var rows = new StringBuilder();
         foreach (var (side, (code, requirement, analysis, node)) in matched)

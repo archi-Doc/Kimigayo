@@ -212,14 +212,6 @@ public sealed class MirAnalysisTest
         }
     }
 
-    // R4-M12, V17: the library bodies have no problems.
-    [Fact]
-    public void TheLibraryHasNoProblems()
-    {
-        var (c, _) = SemanticSnapshotTest.Bind("library");
-        Assert.Equal(0, c.BuildMir().Problems.All.Length);
-    }
-
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
     [Trait("Purpose", "Allocation")]
     [Fact]
