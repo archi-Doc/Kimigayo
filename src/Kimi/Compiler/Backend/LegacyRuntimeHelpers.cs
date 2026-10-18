@@ -16,13 +16,15 @@
 // collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
 // writer and HelperNeeds (the Array runtime for every kind but BorrowStorage, the element's drop glue for Clear and Drop), and no
 // Array row declares a library callee, since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI
-// shape, writer, HelperNeeds (the Array runtime for every kind, the element's drop glue for Drop) and its callees as
-// DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for CheckKey, clearEntries for
-// Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place). DictionaryCallee names each function by
-// the KimiLibrary declaration the old emitter resolves it from until F2c supplies their symbol view; the Dictionary runtime
-// (the duplicate-key adapter and the initialization bridge, which calls initialize) has no row. The formatting rows follow in
-// P1d, the storage kernels in P2a-P2b.
-// Invariants: a new helper kind adds a row; a kind without a row fails; each requested helper is written once, in request order;
+// shape, writer, HelperNeeds (the Array runtime for every kind, the Dictionary runtime for CheckKey, the element's drop glue for
+// Drop) and its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
+// CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
+// DictionaryCallee names each function by the KimiLibrary declaration the old emitter resolves it from until F2c supplies their
+// symbol view; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
+// row, and the old lowering also requests it for a Dictionary's construction. The formatting rows follow in P1d, the storage
+// kernels in P2a-P2b.
+// Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
+// requested helper is written once, in request order, after the runtimes its row declares;
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
 // Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
 // by StoredValue.TravelsAsScalar.
@@ -47,6 +49,10 @@ internal enum HelperNeeds : byte
     /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it
     /// then calls only when an entry needs destruction (SPEC 4.9.7, 16.3.2).</summary>
     ElementGlue = 2,
+
+    /// <summary>The Dictionary runtime: the duplicate-key adapter a literal's key check reports through and the empty-Dictionary
+    /// initialization bridge (SPEC 4.3, 4.9.6).</summary>
+    DictionaryRuntime = 4,
 }
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
@@ -212,5 +218,12 @@ internal sealed partial class LegacyRuntimeHelpers
         this.FormattingWrites.Clear();
         this.FormattingConversions.Clear();
         this.NeedsStringComparison = false;
+    }
+
+    // A requested helper's runtime needs are its kind row's (X4); they join the module's.
+    private void JoinNeeds(HelperNeeds needs)
+    {
+        this.NeedsArrayRuntime |= (needs & HelperNeeds.ArrayRuntime) != 0;
+        this.NeedsDictionaryRuntime |= (needs & HelperNeeds.DictionaryRuntime) != 0;
     }
 }

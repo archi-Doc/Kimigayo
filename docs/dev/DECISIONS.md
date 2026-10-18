@@ -1606,7 +1606,8 @@ structure is recorded here by the unit that first implements it.
   fails closed; `ArrayHelper.Create` names and shapes a helper from its row. Rejected: requests left in `EmissionModule` with
   the Backend reading it (a non-neutral input); `AggregateLayout` in the records (the old pool as a Backend input); a scalar
   flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form); a needs flag on the built helper (the
-  collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit).
+  collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit). The
+  Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27.
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -1817,15 +1818,43 @@ structure is recorded here by the unit that first implements it.
   The Implicit body has no symbol, so not every reader can derive the Koto from `Symbol`: by the Rule's otherwise clause
   `StartupResult.Function` stays and goes with its last syntax reader, `LlvmEmitter`, at G7; tests read `Symbol` and `Kind`.
   F2b and F2c apply the rule to library imports and the legacy Dictionary rows' callees. Rejected: a module ordinal column (plan
-  row F2a; always 0); replacing `Function` by `Symbol` now (the Implicit body would lose its only name).
+  row F2a; always 0); replacing `Function` by `Symbol` now (for the Implicit body a reader would derive the Koto from `Kind`,
+  not from the symbol).
 - **R5-M26 `AdtDef.IsCLayout`** (2026-10-18, planning session; plan F1, package F §4.9 and §9, S2-S4 X18 and X26, under R5-M18)
   Binding's published fact that a struct's C layout validated (SPEC 21.1). Producer: `ValidateLayoutFragments`
   (`Binding/Binding.Attributes.cs`), true exactly for a struct whose selected mode is `#Layout("C")` with valid fragments and that
   is neither open, derived nor empty. It is written true or false for every struct in every pass; on a first pass the shape is
   created there (`Adt ??= new()`) and `PrepareStorage` reuses it, and no reader in between distinguishes an empty shape from a
   missing one. Reader: `ValidateCLayoutFields`, which filters the storage declarations by it; the pass-local `cLayouts` list, a
-  second representation, is deleted. Readers that still use the attributes: `HasCLayout` for header and Type binding, which run
-  before the fact; `CExchangeable` in `ValidateLibraryImports`, which runs before `PrepareStorage` (an open issue in PLAN); and
-  the deferred `CheckCLayoutInstance`, which goes at G2b. First consumer outside Binding: P7b's `Layout.Of`, the one owner of the
-  zero-sized C-layout rule (X18), which deletes the old Emission's attribute walk and `Open` re-check. Rejected: a C-layout
-  instance view in `TyCtxt.Instances` (X26); keeping `cLayouts` beside the fact.
+  second representation, is deleted. Readers that still use the attributes: `Binding.Types`, which queues
+  `CheckCLayoutInstance` by the attributes (`HasCLayout`) whenever it binds a written generic C-layout instance, in headers and
+  bodies alike, until G2b; `CExchangeable` in `ValidateLibraryImports`, which runs before `PrepareStorage` (PLAN G132). First
+  consumer outside Binding: P7b's `Layout.Of`, the one owner of the zero-sized C-layout rule (X18), which deletes the old
+  Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
+  `cLayouts` beside the fact.
+- **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
+  refines R5-M16) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
+  `LegacyRuntimeHelpers.DictionaryRow(kind)`, which fails closed: `Kind`; `Shape`, the ABI over the generator's name suffix and
+  the key and value descriptors, with the kind's name prefix inside it; `Write`, the body's writer over the helper and the ABIs
+  of its two callees; `Entries`, the `DictionaryStorage` function generic over the entry Types, which a helper reaches through
+  its `Related` index (findEntry for CheckKey, clearEntries for Drop); `Storage`, the function the module resolves once
+  (requireAbsent for CheckKey, append for Place); `Needs`. `DictionaryCallee` names the `DictionaryStorage` functions by the
+  `KimiLibrary` declaration the old emitter resolves each from, until F2c's symbol view; the emitter maps a row's `Entries`
+  callee to its generic function exhaustively and fails closed on any other. `CallsEntries(destroysEntries)` is the one decision
+  whether a helper calls its `Entries` function (always, or under `ElementGlue` only when an entry needs destruction), read by
+  BodyLowering's `Related`, `HasUnresolvedReference` and the writer. `HelperNeeds` is shared by the Array and Dictionary rows:
+  `ArrayRuntime` (every Dictionary kind), `DictionaryRuntime` (P1c2; CheckKey, whose duplicate callback reports through the
+  runtime's adapter) and `ElementGlue` (Drop). A request's runtime flags come from its row (`Request`, through one `JoinNeeds`
+  for both families), and every requested helper is written after the runtimes its row declares: before P1c2 a Drop helper
+  requested only by a Field's drop glue set no flag and was never written (PLAN G133). The row callees are exactly the functions
+  the helper text calls: requireAbsent and append, and findEntry and clearEntries through `Related`. The Dictionary runtime (the
+  duplicate-key adapter and the initialization bridge, which calls `initialize`) has no row yet: the old lowering also requests
+  it for a Dictionary's construction, and the Backend component declares its need and callee by C8e at the latest, never as a
+  collector-side rule (X4). Count: legacy text calls five `DictionaryStorage` functions (the four row callees and `initialize`),
+  which corrects plan row P1c's "seven library ABIs" (R5-M16's "seven `DictionaryStorage` ABIs", the seven the module resolves)
+  and F2c's "nine callees" (every `DictionaryCallee` but None): `appendSlot` and `clearLinks` are called only by compiled
+  sources, and the initialization bridge checks that they compiled; `reserve` is resolved only for two tests' compiled-name
+  reads, and `shrinkToFit` is resolved but read by nothing. Rejected: callees as delegates (unreadable by kind); the name prefix
+  as its own field (a seventh parameter, over ARCH's six); declaring `reserve`, `shrinkToFit`, `appendSlot` or `clearLinks` as
+  row callees (no helper calls them); the Dictionary runtime for every Dictionary request (Place and Drop use neither the
+  adapter nor the bridge); helpers written only under the runtime flag, or flags set by their requesters (G133).

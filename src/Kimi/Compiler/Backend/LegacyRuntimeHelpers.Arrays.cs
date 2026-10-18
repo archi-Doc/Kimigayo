@@ -48,10 +48,6 @@ internal sealed record ArrayHelperRow(
 [Transitional("R8", Reason = LegacyRuntimeHelpers.Removal)]
 internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, StoredValue Element, int? OptionPayload = null, RemainderFields Fields = default)
 {
-    /// <summary>Gets a value indicating whether the helper's module needs the Array capacity routines and memory declarations, as
-    /// its kind's row declares.</summary>
-    internal bool NeedsArrayRuntime => (LegacyRuntimeHelpers.ArrayRow(this.Kind).Needs & HelperNeeds.ArrayRuntime) != 0;
-
     /// <summary>Creates the helper of a kind for an element, named by the kind's row prefix and shaped by its row.</summary>
     /// <param name="kind">The helper kind.</param>
     /// <param name="element">The element descriptor.</param>
@@ -328,11 +324,11 @@ internal sealed partial class LegacyRuntimeHelpers
             : throw new InvalidOperationException("An Array helper kind has no row.");
 
     /// <summary>Registers an Array helper a lowered body uses: each helper is written once per module, in first-request order,
-    /// and the row's need of the capacity routines joins the module's.</summary>
+    /// and the runtimes its kind's row declares join the module's.</summary>
     /// <param name="helper">The requested helper.</param>
     internal void Request(ArrayHelper helper)
     {
-        this.NeedsArrayRuntime |= helper.NeedsArrayRuntime;
+        this.JoinNeeds(ArrayRow(helper.Kind).Needs);
         if (!this.arrayHelpers.Contains(helper))
         {
             this.arrayHelpers.Add(helper);

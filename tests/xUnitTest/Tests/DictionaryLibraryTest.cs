@@ -53,6 +53,25 @@ public class DictionaryLibraryTest
         Assert.False(module.RuntimeHelpers.NeedsDictionaryRuntime);
     }
 
+    // SPEC 4.5, 16.3.2: a Dictionary Field's drop helper requested only by its owner's drop glue brings the runtimes its row
+    // declares, so the module defines every Dictionary helper it calls (PLAN G133).
+    [Theory]
+    [InlineData("Scalar", "i32")]
+    [InlineData("String", "string")]
+    public void FieldDropHelperRequestedByDropGlueIsDefined(string name, string valueType)
+    {
+        var c = MinimalEmissionTest.Analyze("struct Box\n    public let entries: Dictionary<i32, " + valueType + ">\nlet value: Option<Box> = .None");
+        var ir = CompilationTestHelper.WriteIr(c);
+        var calls = System.Text.RegularExpressions.Regex.Matches(ir, @"call void @(__kimi_dictionary_\w+)\(");
+        Assert.NotEmpty(calls);
+        foreach (System.Text.RegularExpressions.Match call in calls)
+        {
+            Assert.Contains("define internal void @" + call.Groups[1].Value + "(", ir, StringComparison.Ordinal);
+        }
+
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryFieldDrop" + name, ir, string.Empty);
+    }
+
     // SPEC 4.9.6: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
     // keep its result across another call; `K` here may be a borrow, whose Loans the ordinary dependencies track.
     [Theory]
