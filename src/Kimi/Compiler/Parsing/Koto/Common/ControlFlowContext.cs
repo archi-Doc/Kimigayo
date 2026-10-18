@@ -58,6 +58,14 @@ public static partial class KotoHelper
         return null;
     }
 
+    /// <summary>Determines whether a transfer may go to the target <see cref="ResolveTransferTarget"/> resolved for it (SPEC 14.5.2): it
+    /// has one, and an unlabeled yield's selection uses its result (SPEC 14.7).</summary>
+    /// <param name="jump">The attached transfer expression.</param>
+    /// <param name="target">Its resolved target, or null.</param>
+    /// <returns>Whether the transfer is valid.</returns>
+    public static bool IsValidTransfer(JumpKoto jump, Koto? target)
+        => target is not null && !(jump is YieldKoto { Label: null } && target is IfKoto or MatchKoto && !IsValueContext(target));
+
     /// <summary>Tests lexical unsafe permission without inheriting it across function bodies.</summary>
     /// <param name="node">The operation to inspect.</param>
     /// <returns>Whether an enclosing Unsafe Block grants permission.</returns>

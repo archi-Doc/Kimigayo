@@ -97,8 +97,8 @@ public sealed partial class OwnershipAnalysis
             return this.Result = new(false, 0, this.issues.Count);
         }
 
-        // Control flow or an Origin relation already rejected the program, so its unreachable uses add no Unsupported.
-        this.earlierRejected = this.flow.Issues.Count != 0 || this.issues.Count != 0;
+        // Control flow, a HIR lint or an Origin relation already rejected the program, so its unreachable uses add no Unsupported.
+        this.earlierRejected = this.flow.Issues.Count != 0 || binding.LintErrors != 0 || this.issues.Count != 0;
         this.collector.DefaultsOnly = true;
         foreach (var module in this.compilation.SourceModules)
         {
@@ -113,7 +113,7 @@ public sealed partial class OwnershipAnalysis
 
         this.AnalyzeLibraryBodies(0);
         this.ValidateEffectBounds();
-        var verified = this.flow.Issues.Count == 0 && this.flow.PendingBinding.Count == 0 && this.issues.Count == 0;
+        var verified = this.flow.Issues.Count == 0 && binding.LintErrors == 0 && this.flow.PendingBinding.Count == 0 && this.issues.Count == 0;
         if (!verified)
         {
             // A caller cannot certify a program containing an unchecked callee or flow contract.
@@ -259,10 +259,10 @@ public sealed partial class OwnershipAnalysis
 
             // The delivery at the normal end is the only use at the function itself apart from a constructor's field checks, whose
             // discarded body never falls through; a return delivers at its jump.
-            if (issue.Failure == OwnershipRequirement.UninitializedUse && issue.Source is FunctionKoto { Body: { } body } &&
-                this.flow?.Reported(body, DiagnosticCode.FunctionFallthrough_Kd) == true)
+            if (issue.Failure == OwnershipRequirement.UninitializedUse && issue.Source is FunctionKoto function &&
+                this.compilation.Binding.FallthroughKey(function) is { } fallthrough)
             {
-                issue.Source.ReportDerived(requirement, [body.KeyOf(DiagnosticRequirement.ControlFlow)]);
+                issue.Source.ReportDerived(requirement, [fallthrough]);
                 continue;
             }
 

@@ -714,7 +714,7 @@ public sealed partial class Binding
                 this.BindNode(loop.Body, scope);
                 return this.FinishResult(loop, loopResult);
             case JumpKoto jump:
-                var target = KotoHelper.ResolveTransferTarget(jump);
+                var target = BindTransferTarget(jump);
                 this.resultContexts.TryGetValue(target ?? jump, out var targetResult);
                 var resultType = targetResult?.Expected;
                 if (target is FunctionKoto f)

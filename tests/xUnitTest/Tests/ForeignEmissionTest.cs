@@ -306,7 +306,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nvar v: i32 = 0\nv = *p");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
     }
 
@@ -613,7 +613,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
@@ -628,7 +628,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
