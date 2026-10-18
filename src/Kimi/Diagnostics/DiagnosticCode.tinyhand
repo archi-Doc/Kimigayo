@@ -533,7 +533,7 @@
 
   + Name="InvalidImportSignature_Kd"
     Category="Language"
-    Message="LibraryImport parameters and results must be i8-i64, u8-u64, f32, f64 or raw/T, and Unit only as the result"
+    Message="LibraryImport parameter and result Types need a C counterpart; string, dynamic collections, object handles, function and Closure values, and borrows of them have none"
 
   + Name="ConflictingImportSignature_Kd"
     Category="Language"

@@ -44,6 +44,14 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 22.6: string, dynamic collections (SPEC 4.9), object handles, function and Closure values, and borrows of them have no C
+    // counterpart.
+    private static bool HasNoCCounterpart(BoundType type)
+        => ReferenceEquals(type, BoundType.String) ||
+            type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem ||
+            (type is { Kind: BoundTypeKind.Semantics, Components: [var referent] } &&
+                (IsObjectSemantics(type.Semantics) || (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && HasNoCCounterpart(referent))));
+
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
         attribute.BindingFailure = BindingFailure.None;
@@ -241,11 +249,9 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 22.6: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
-    // pointers, with Unit only as a result. The signature is one physical code per result and
-    // parameter (i8/u8 share i8, every raw/T is ptr); it is null when a Type failed to bind,
-    // since that Type already has its own diagnostic. A nonnull Option of a borrow is permitted
-    // but its representation is not laid out, so it is unsupported.
+    // SPEC 22.6: the signature is one physical code per result and parameter (PhysicalCode), Unit only as the result; it is null
+    // when a Type failed to bind, since that Type already has its own diagnostic. A Type without a C counterpart makes the import
+    // an error; otherwise a Type outside the table makes it Unsupported, a valid form.
     private BindingFailure ImportAbi(FunctionKoto function, int ordinal, out string? signature)
     {
         signature = null;
@@ -257,30 +263,26 @@ public sealed partial class Binding
         var count = function.Parameters.Count + 1;
         Span<char> codes = count <= 64 ? stackalloc char[count] : new char[count];
         var complete = true;
-        var result = function.BoundSymbol!.Type;
-        if (result is null)
+        var unsupported = false;
+        for (var p = 0; p < count; p++)
         {
-            complete = false;
-        }
-        else if (ReferenceEquals(result, BoundType.Unit))
-        {
-            codes[0] = 'v';
-        }
-        else if ((codes[0] = this.PhysicalCode(result)) is '\0' or '?')
-        {
-            return codes[0] == '?' ? BindingFailure.Unsupported : BindingFailure.InvalidImportSignature;
-        }
-
-        for (var p = 1; p < count; p++)
-        {
-            if (this.symbols[function.Parameters[p - 1]].Type is not { } type)
+            if ((p == 0 ? function.BoundSymbol!.Type : this.symbols[function.Parameters[p - 1]].Type) is not { } type)
             {
                 complete = false;
             }
-            else if ((codes[p] = this.PhysicalCode(type)) is '\0' or '?')
+            else if ((codes[p] = p == 0 && ReferenceEquals(type, BoundType.Unit) ? 'v' : this.PhysicalCode(type)) == '\0')
             {
-                return codes[p] == '?' ? BindingFailure.Unsupported : BindingFailure.InvalidImportSignature;
+                return BindingFailure.InvalidImportSignature;
             }
+            else
+            {
+                unsupported |= codes[p] == '?';
+            }
+        }
+
+        if (unsupported)
+        {
+            return BindingFailure.Unsupported;
         }
 
         if (complete)
@@ -293,12 +295,14 @@ public sealed partial class Binding
         return BindingFailure.None;
     }
 
-    // SPEC 22.6: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width. A nonnull
-    // Option of such a borrow is '?', unsupported.
+    // SPEC 22.6: one decision per parameter or result Type. A Type of the table is its physical code: scalars by width (i8/u8 share
+    // '1'), and a raw pointer or a ref/uniq borrow of a C-exchangeable referent is 'p'. A Type without a C counterpart is '\0', an
+    // error. Any other Type is '?', Unsupported: bool, char, isize/usize, i128/u128, Never, Unit as a parameter, Tuples, enums (the
+    // nonnull Option of a borrow is not laid out yet), structs and fixed arrays by value, and borrows of other referents.
     private char PhysicalCode(BoundType type)
         => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } || this.IsImportBorrow(type) ? 'p' :
-            ReferenceEquals(type.Symbol, this.Library.Option) && type.Components is [var inner] && this.IsImportBorrow(inner) ? '?' :
-            type.Kind != BoundTypeKind.Primitive ? '\0' :
+            HasNoCCounterpart(type) ? '\0' :
+            type.Kind != BoundTypeKind.Primitive ? '?' :
             type.Underlying.Name switch
             {
                 "i8" or "u8" => '1',
@@ -307,7 +311,7 @@ public sealed partial class Binding
                 "i64" or "u64" => '8',
                 "f32" => 'f',
                 "f64" => 'd',
-                _ => '\0',
+                _ => '?',
             };
 
     private bool IsImportBorrow(BoundType type)
