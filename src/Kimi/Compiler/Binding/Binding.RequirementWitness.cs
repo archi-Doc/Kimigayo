@@ -77,12 +77,14 @@ public sealed partial class Binding
             return default;
         }
 
-        // OCC-X: an inherited witness lends only its receiver's base prefix, which preserves no exclusive or owning receiver.
         var function = witness.Function!;
-        var refused = function.BasePath is not null && witness.Implementation.ReceiverIndex >= 0 &&
-            function.RequirementReceiver is not { Semantics: SemanticsKind.Ref };
-        return refused ? new(RequirementWitnessKind.Refused, null) : new(RequirementWitnessKind.Conformance, witness.Implementation, declaring, function);
+        return Refused(function.BasePath, witness.Implementation.ReceiverIndex >= 0, function.RequirementReceiver)
+            ? new(RequirementWitnessKind.Refused, null) : new(RequirementWitnessKind.Conformance, witness.Implementation, declaring, function);
     }
+
+    // OCC-X: an inherited witness with a receiver lends only its base prefix, which preserves no exclusive or owning requirement receiver.
+    private static bool Refused(BoundMemberPath? basePath, bool receives, BoundType? requirementReceiver)
+        => basePath is not null && receives && requirementReceiver is not { Semantics: SemanticsKind.Ref };
 
     // SPEC 8.11.4: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
     // that declares it (a base's for an inherited witness); null where none resolves.
@@ -109,8 +111,7 @@ public sealed partial class Binding
             return default;
         }
 
-        var refused = witness.Kind == PropertyWitnessKind.AccessorCall && witness.BasePath is not null && witness.Implementation.Receiver is not null &&
-            witness.ReceiverType.Semantics != SemanticsKind.Ref;
-        return refused ? new(RequirementWitnessKind.Refused, null) : new(RequirementWitnessKind.Property, null) { Path = path, Property = witness };
+        return witness.Kind == PropertyWitnessKind.AccessorCall && Refused(witness.BasePath, witness.Implementation.Receiver is not null, witness.ReceiverType)
+            ? new(RequirementWitnessKind.Refused, null) : new(RequirementWitnessKind.Property, null) { Path = path, Property = witness };
     }
 }

@@ -2157,8 +2157,9 @@ structure is recorded here by the unit that first implements it.
   false. The built-in target symbols (comparison, formatting and the six arithmetic ones) take their requirement's name,
   declaration, result Type and receiver slot once per pass after headers (`PrepareBuiltinTargets`; F fact 11a) instead of on
   every call, so the core writes nothing beyond interning, proof caches and instance storage preparation. F5b's `TyCtxt.Witness`
-  will call the core. Refused is unreachable today: conformance verification rejects an inherited witness with an exclusive or
-  object receiver first (`ProjectedReceiverProof`; R1g), and no test exercises it. Rejected: built-in targets created lazily by
+  will call the core. Refused is unreachable today: conformance verification rejects an inherited witness with an exclusive
+  receiver first (`ProjectedReceiverProof`), the receiver match excludes an object receiver (`ProjectRequirementReceiver` projects
+  only a `ref` or `uniq` receiver of Self to the base), and no test exercises it. Rejected: built-in targets created lazily by
   the core (a view would create symbols); the arithmetic built-ins left with per-call writes (the same cause); the refusal left in
   the materializer (F5b resolves without a CallPlan); extracting `InstanceReference`'s matching half before F5b, its second caller.
 - **R5-M23 The R6-check prerequisite package Q8** (owner, 2026-10-18: 「Q8を承認」, answering the request to approve the package

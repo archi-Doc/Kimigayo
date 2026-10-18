@@ -138,7 +138,8 @@ public sealed partial class Binding
             }
         }
 
-        var projected = this.types.Reference(SemanticsKind.Ref, declaring, operation.ParameterType!.Origin);
+        var receiver = operation.ParameterType ?? throw new InvalidOperationException("A base-path witness call has no acquired receiver.");
+        var projected = this.types.Reference(SemanticsKind.Ref, declaring, receiver.Origin);
         call.SetReceiverProjection(operation with { ParameterType = projected, AdaptedType = projected, Kind = ArgumentOperationKind.BaseBorrow, BasePath = path, ObjectCompatibility = ConstraintProof.Proven }, path);
     }
 
