@@ -9,11 +9,12 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The instance collector (R5 K1, K4a, K6, K7; K package 4.3-4.6, DECISIONS R5-M35, R5-M40, R5-M60, R5-M67): the roots are the
-/// closed bodies of the root modules, a Fn, getter, setter, default-template or closure call is a target at its site with whether a runtime
-/// path reaches it, a generic callee an instance keyed by its erased substitution, a requirement call its witness in the instance, a callee
-/// only the checks reach is in the checked set, a dropped value its Type's glue and a static access its initializer, the admission limits
-/// and Binding's storage bound are located records, the work grows linearly and collecting again allocates nothing.</summary>
+/// <summary>The instance collector (R5 K1, K4a, K6, K6b, K7; K package 4.3-4.6, DECISIONS R5-M35, R5-M40, R5-M60, R5-M67, R5-M70): the roots
+/// are the closed bodies of the root modules, a Fn, getter, setter, default-template or closure call is a target at its site with whether a
+/// runtime path reaches it, a generic callee an instance keyed by its erased substitution, a requirement call, a formatting call and an
+/// erased writer the witness they run in the instance, a comparison shim its leaf witnesses, a callee only the checks reach is in the checked
+/// set, a dropped value its Type's glue and a static access its initializer, the admission limits and Binding's storage bound are located
+/// records, the work grows linearly and collecting again allocates nothing.</summary>
 public sealed class InstanceCollectorTest
 {
     // A generic function over a Copy T, and a generic struct over one, whose bodies the cases complete.
@@ -73,6 +74,69 @@ public sealed class InstanceCollectorTest
     // A Type function requirement called on a generic function's Type parameter, which no local of its body stores.
     private const string TagSource = "contract Tag\n    func tag() -> i32\nstruct Box<T>\n    Self is Tag\n    public var value: T\n" +
         "    public init(value: T) => self.value = value@move\n    public func tag() -> i32 => 1\nfunc f<T>() -> i32\n    T is Tag\n    return T.tag()\n";
+
+    // A struct that formats itself, a user BufferWriter, and generic functions formatting their Type parameter through Text.toString,
+    // Utf8Writer.write and Text.tryFormat, with the struct and with i32, through erased writers over the user's sink and over a fixed buffer.
+    private const string FormatSource = """
+        struct Box
+            Self is Utf8Format
+            public var v: i32
+            public init(v: i32) => self.v = v
+            public func format(self: ref/Self, writer: uniq/Utf8Writer) -> Result<(), BufferFull> => writer.write(self.v)
+        struct Sink
+            Self is BufferWriter
+            public init() => ()
+            public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull> => .Err(BufferFull.init())
+        func show<T>(x: ref/T) -> string
+            T is Utf8Format
+            return Text.toString(x)
+        func emit<T>(writer: uniq/Utf8Writer, x: ref/T) -> Result<(), BufferFull>
+            T is Utf8Format
+            return writer.write(x)
+        func fill<T>(x: ref/T) -> i32
+            T is Utf8Format
+            var bytes = [8 of 0@u8]
+            _ = Text.tryFormat(x, bytes@uniq)
+            return 1
+        func toSink() -> i32
+            var sink = Sink.init()
+            var writer = Text.writer(sink@uniq)
+            _ = emit(writer@uniq, Box.init(5))
+            return 1
+        func toFixed() -> i32
+            var bytes = [8 of 0@u8]
+            var buffer = Text.fixed(bytes@uniq)
+            var writer = Text.writer(buffer@uniq)
+            _ = emit(writer@uniq, 6)
+            return 1
+        let one = show(Box.init(1))
+        let two = show(2)
+        require fill(Box.init(3)) + toSink() + toFixed() == 3 else => $abort("format")
+
+        """;
+
+    // An Equatable and a Comparable struct compared in tuples of borrows, nested and in a generic function's instance.
+    private const string CompareSource = """
+        struct Box
+            Self is Equatable
+            public var v: i32
+            public init(v: i32) => self.v = v
+            public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v
+        struct Rank
+            Self is Comparable
+            public var v: i32
+            public init(v: i32) => self.v = v
+            public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v
+            public func compare(self: ref/Self, other: ref/Self) -> i32 => self.v - other.v
+        func same<T>(a: ref/T, b: ref/T) -> bool
+            T is Equatable
+            return (a, 1) == (b, 1)
+        let x = Box.init(1)
+        let r = Rank.init(2)
+        require (x@ref, 1) == (x@ref, 1) and ((x@ref, 2), x@ref) == ((x@ref, 2), x@ref) else => $abort("equal")
+        require (r@ref, 3) < (r@ref, 4) and same(x@ref, x@ref) else => $abort("order")
+
+        """;
 
     // A generic function nested in a closed function, which has no instance to carry.
     private const string InClosed = "func host() -> i32\n    func pick<U>(x: U) -> U => x@move\n    return pick(1)\n" + Outer + "    _ = host()\n    return x\n";
@@ -297,8 +361,8 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
-    // K 4.5 rows 4, 5 and 12: the Item of a function whose calls dispatch, a requirement's (K6b, DECISIONS R5-M67) or a virtual
-    // slot's (K8), is no target where it is made or called.
+    // K 4.5 rows 4, 5 and 12: the Item of a function whose calls dispatch, a requirement's (until TyCtxt matches an Item's Contract
+    // reference, DECISIONS R5-M70) or a virtual slot's (K8), is no target where it is made or called.
     [Fact]
     public void ADispatchingItemHasNoTarget()
     {
@@ -360,6 +424,56 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["DropGlue Array<i32>"], Targets(program, set, "PropertyWitness Bag StorageSet"));
         Assert.Empty(Targets(program, set, "PropertyWitness Bag StorageBorrow"));
         Assert.All(set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.PropertyWitness), static x => Assert.Equal("items", x.Key.Symbol!.Name));
+    }
+
+    // K 4.5 row 2, DECISIONS R5-M30, R5-M70: a call of a function without a body whose published row formats a value (Text.toString,
+    // Text.tryFormat, Utf8Writer.write) is the item of its Type's Utf8Format witness in the instance: a user Type's format body, a built-in
+    // Type's BuiltinFormat shim, keyed by its compiler function and the erased Type, which calls no witness.
+    [Fact]
+    public void AFormattingCallIsItsValuesFormatWitness()
+    {
+        var (program, set) = Collect(FormatSource);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn format"], Calls(program, set, "Fn show [Box]"));
+        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn show [i32]"));
+        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn format"));
+        Assert.Equal(["Fn format"], Calls(program, set, "Fn fill [Box]"));
+        Assert.Equal(["Fn format"], Calls(program, set, "Fn emit [Box]"));
+        Assert.Equal(["Builtin i32 BuiltinFormat"], Calls(program, set, "Fn emit [i32]"));
+        Assert.Empty(Targets(program, set, "Builtin i32 BuiltinFormat"));
+    }
+
+    // K 4.5 row 6, SPEC 22.10.1: an erased writer over a user BufferWriter is the item of its destination's reserve witness; a fixed
+    // buffer's reserve, a compiler function without a body, has none (its legacy row's, C8*).
+    [Fact]
+    public void AnErasedWriterIsItsDestinationsReserveWitness()
+    {
+        var (program, set) = Collect(FormatSource);
+        Assert.Equal(["Fn init", "Fn reserve", "Fn init", "Fn emit [Box]"], Calls(program, set, "Fn toSink"));
+        var reserve = set.Items[set.Targets(Item(program, set, "Fn toSink"))[1].Item];
+        Assert.Equal("struct Sink", $"{program.Bodies[reserve.BodyOrdinal].Key.Decl!.Scope.Owner}");
+        Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
+    }
+
+    // K 4.3, F package 4.6: a built-in comparison of a composite Self is its Builtin shim, keyed by its compiler function and the erased
+    // Self, whose targets are its leaves' witnesses under the Contract's mapping (TyCtxt.Comparison), depth first: each user leaf's equals or
+    // compare body, none for a built-in leaf; a generic instance's comparison over its Type parameter shares the shim of its erased Self.
+    [Fact]
+    public void AComparisonShimsTargetsAreItsLeafWitnesses()
+    {
+        var (program, set) = Collect(CompareSource);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn equals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
+        Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
+        Assert.Equal(["Fn compare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
+        Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(
+            ["struct Box", "struct Box", "struct Box", "struct Rank"],
+            new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }
+                .SelectMany(x => set.Targets(Item(program, set, x)).ToArray())
+                .Select(x => $"{program.Bodies[set.Items[x.Item].BodyOrdinal].Key.Decl!.Scope.Owner}"));
+        var shims = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.Builtin).ToArray();
+        Assert.All(shims, static x => Assert.Equal((CompilerFunctionKind)x.Key.Variant, x.Key.Symbol!.CompilerFunction));
     }
 
     // PLAN G157 (4), PD30: a requirement call whose Self nests past Binding's storage bound in the instance (Box^65<i32>, storage depth 65;
@@ -1009,6 +1123,10 @@ public sealed class InstanceCollectorTest
 
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
+
+    // An item's targets but the glue of the values its body drops.
+    private static string[] Calls(MirProgram program, CheckedSet set, string label)
+        => Targets(program, set, label).Where(static x => !x.StartsWith("DropGlue ", StringComparison.Ordinal)).ToArray();
 
     // A body's kind and definition, a closure by the named function enclosing it, a module's top-level statements as top, a library body with
     // the declaration it is in, an instance with its representative's declaring Type and Type arguments; a type-driven item's kind and Type.

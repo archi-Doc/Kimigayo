@@ -18,13 +18,14 @@ internal sealed partial class InstanceCollector
     private static BoundType OperandType(MirBody body, in MirOperand operand)
         => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
 
-    // K 4.5 rows 1, 3, 5, 7, 9 and 10: a Fn callee's body under the site's substitution composed with the item's representative
+    // K 4.5 rows 1-3, 5-7, 9 and 10: a Fn callee's body under the site's substitution composed with the item's representative
     // (TyCtxt.Compose, whose declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit
-    // checks; a default template's, the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), a
-    // Requirement callee's witness under the composed substitution (InstanceCollector.Witnesses.cs), the body a Value callee's Closure or
-    // function item runs, an intrinsic's target where its row names one (a staticEnsure's StaticInit, a DestroyValues' glue) and a dropped
-    // value's glue; an intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a callee
-    // without a body, a refused edge or a row not collected yet (row 2's shims and row 6's writer witness, K6b; the descriptors, K8).
+    // checks; a default template's, the original's, SPEC 8.13.2; else the implementation the composed key selects, SPEC 8.13.3), or for a
+    // callee without a body the witness its published row runs; a Requirement callee's witness under the composed substitution
+    // (InstanceCollector.Witnesses.cs); the body a Value callee's Closure or function item runs; an intrinsic's target where its row names
+    // one (an erased writer's reserve witness, a staticEnsure's StaticInit, a DestroyValues' glue) and a dropped value's glue; an
+    // intrinsic's Type argument a by-value use (K 4.8) where its row says so. The admitted item, or -1 for a callee without a body or row,
+    // a refused edge or a row not collected yet (the descriptors, K8).
     private int Edge(MirProgram program, int item, MirBody body, in MirTerminator call)
     {
         var callee = call.Callee;
@@ -50,9 +51,12 @@ internal sealed partial class InstanceCollector
 
             return row.Target switch
             {
+                // SPEC 22.10.1: an erased writer reserves through its destination's BufferWriter witness.
+                IntrinsicTarget.Witness => this.Runs(
+                    program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, this.TypeOf(item, callee.Subst!.Types[0]!)),
                 IntrinsicTarget.StaticInit => this.Static(program, item, body, subject, call),
                 IntrinsicTarget.Glue => this.Glue(item, subject, callee.Subst!.Types[0]!),
-                IntrinsicTarget.None or IntrinsicTarget.Witness or IntrinsicTarget.Descriptor => -1, // The writer's witness: K6b; the descriptors: K8.
+                IntrinsicTarget.None or IntrinsicTarget.Descriptor => -1, // The descriptors: K8.
                 _ => throw new InvalidOperationException($"The intrinsic target {row.Target} has no edge row."),
             };
         }
@@ -67,12 +71,12 @@ internal sealed partial class InstanceCollector
 
         if (callee.Kind == MirCalleeKind.Requirement)
         {
-            return this.Requirement(program, item, subject, callee, subst!);
+            return this.Requirement(program, item, subject, callee.Symbol!, callee.Contract, subst!);
         }
 
         var function = callee.Arg == 0 ? this.types.Implementation(callee.Symbol!, subst, 0) : callee.Symbol;
         var found = ReferenceEquals(function, callee.Symbol) ? program.Callee(callee) : program.Callee(new(MirCalleeKind.Fn, function));
-        return found is null ? -1 : this.Admit(item, subject, found, subst);
+        return found is not null ? this.Admit(item, subject, found, subst) : this.Bodyless(program, item, subject, function!, subst);
     }
 
     // K 4.5 rows 11-13, K 4.7 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body;
@@ -105,9 +109,9 @@ internal sealed partial class InstanceCollector
     }
 
     // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
-    // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem), as the
-    // implementation that selects (SPEC 8.13.3). -1 for the Item of a function whose calls dispatch (a requirement, K6b; a virtual slot, K8),
-    // a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
+    // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem). -1 for
+    // the Item of a function whose calls dispatch (a requirement's, whose Contract reference TyCtxt cannot match yet, DECISIONS R5-M70; a
+    // virtual slot's, K8), a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
     private int Callee(MirProgram program, int item, SourceRef subject, BoundType callable)
     {
         if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
@@ -115,13 +119,26 @@ internal sealed partial class InstanceCollector
             return program[new(closure, MirBodyKind.Closure)] is { } body ? this.Admit(item, subject, body, this.types.SubstOfClosure(callable)) : -1;
         }
 
-        if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol } || this.types.Dispatches(symbol))
+        return callable is { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol } && !this.types.Dispatches(symbol)
+            ? this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable)) : -1;
+    }
+
+    // SPEC 8.13.3: the body of the implementation a function's substitution selects, admitted for a site of an item's body; -1 without one.
+    private int Implementation(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
+        => program.Callee(new(MirCalleeKind.Fn, this.types.Implementation(function, subst, 0))) is { } body ? this.Admit(item, subject, body, subst) : -1;
+
+    // K 4.5 row 2 (DECISIONS R5-M30): a callee without a MIR body whose published row runs a requirement on the Type below a parameter
+    // (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on that Type under the
+    // composed substitution; -1 for another (a legacy row's callees and needs, C8*; a foreign function).
+    private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
+    {
+        if (this.types.Published(function) is not { Runs: { } requirement, On: var on })
         {
             return -1;
         }
 
-        var subst = this.types.SubstOfItem(callable);
-        return program.Callee(new(MirCalleeKind.Fn, this.types.Implementation(symbol, subst, 0))) is { } target ? this.Admit(item, subject, target, subst) : -1;
+        _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, on, out _), out var below, out _);
+        return this.Runs(program, item, subject, requirement, below);
     }
 
     // A Type of an item's body in the item's instance (TypeOf); null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
