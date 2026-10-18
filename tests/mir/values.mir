@@ -436,7 +436,7 @@ fn cut @215
       StorageLive(_5) @225
       _5 = Sub(copy _3, copy _4) proven @228
       StorageLive(_6) @230
-      _6 = intrinsic Abort(const "stop") -> ! check bb1 @231
+      _6 = intrinsic Abort(const "stop") -> ! check bb1 @230
   bb1:
       StorageLive(_7) @225
       StorageLive(_8) @225

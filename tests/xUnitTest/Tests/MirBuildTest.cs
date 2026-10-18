@@ -5,6 +5,7 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -173,6 +174,67 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Empty(program.Findings);
         string[] records = literal is null ? [] : [literal];
         Assert.Equal(records, program.Records.Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()));
+    }
+
+    // SPEC 17.6.3 (PD22): a verification records each Scalar operand of its built-in comparison, side 0 the left and 1 the right: a
+    // constant as itself, another value by Copy of the temp it was read into once, before any record, which the comparison then moves;
+    // under parentheses too. A string or Contract comparison and another condition record nothing.
+    [Theory]
+    [InlineData("$expect(helper(1) == a)", "0 Copy i32, 1 Copy i32")]
+    [InlineData("$expect((a < 4))", "0 Copy i32, 1 Const i32")]
+    [InlineData("$require(1.5 >= f, message: \"m\")", "0 Const f64, 1 Copy f64")]
+    [InlineData("$expect(true != flag)", "0 Const bool, 1 Copy bool")]
+    [InlineData("$expect(s == \"y\")", "")]
+    [InlineData("$expect(k != k)", "")]
+    [InlineData("$expect(flag)", "")]
+    public void VerificationsRecordTheirComparisonsScalars(string verification, string expected)
+    {
+        var c = Compile(
+            "struct Key\n    Self is Equatable\n    public var n: i32 = 0\n    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+            "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    let f = 1.5\n    let flag = true\n    let s = \"x\"\n" +
+            "    let k = Key.init()\n    " + verification + "\n",
+            test: true);
+        Assert.False(c.Diagnostics.HasErrorsIn(DiagnosticPartition.Binding));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
+        var records = Records(body);
+        string Record(MirTerminator call)
+        {
+            var (side, value) = (body.Operands[call.Start], body.Operands[call.Start + 1]);
+            var type = value.Kind == MirOperandKind.Const ? body.Consts[value.Arg].Type : body.TypeOf(value.Place);
+            return $"{body.Consts[side.Arg].Bits} {value.Kind} {type!.Name}";
+        }
+
+        Assert.Equal(expected, string.Join(", ", records.Select(Record)));
+        var copied = records.Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).Select(static x => x.Place).ToArray();
+        Assert.All(copied, x => Assert.Equal(MirLocalKind.Temp, body.Locals[x.Root].Kind));
+        foreach (var last in records.TakeLast(1))
+        {
+            var next = body.Blocks[last.Target];
+            var comparison = body.Statements[next.Start].Rvalue;
+            Assert.Equal(MirRvalueKind.BinaryOp, comparison.Kind);
+            Assert.All(copied, x => Assert.Contains(MirOperand.Move(x), body.Operands.Slice(comparison.Start, comparison.Count).ToArray()));
+            Assert.Equal((int)IntrinsicId.TestObserve, next.Terminator.Callee.Arg);
+        }
+    }
+
+    // SPEC 22.5.1: an Abort reports where its `$abort` expression is, which HIR publishes as a Group of the invocation it builds: the Abort
+    // call's syntax is the macro, in a body, a require's failure body and a default's template.
+    [Theory]
+    [InlineData("func stop() -> Never => $abort(\"stopped\")\n")]
+    [InlineData("func check(n: i32) -> i32\n    require n >= 0 else => $abort(\"range\")\n    return n\n")]
+    [InlineData("func halt(n: i32, value: i32 = $abort(\"halt\")) -> i32 => value\nlet x = halt(1)\n")]
+    public void AnAbortIsLocatedAtItsMacro(string source)
+    {
+        var c = Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var aborts = program.Bodies.ToArray().SelectMany(static x => x.Blocks.ToArray()).Select(static x => x.Terminator)
+            .Where(static x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Abort } })
+            .Where(static x => x.Source.Syntax.Module == 0).ToArray();
+        Assert.NotEmpty(aborts);
+        Assert.All(aborts, x => Assert.IsType<MacroKoto>(c.SyntaxOf(x.Source.Syntax)));
     }
 
     // V11: publishing, building and validating an unchanged compilation again, and selecting every Semantics case view of its bodies with
@@ -1051,6 +1113,10 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
         Assert.True(deaths >= 2 && ends == deaths, $"{ends} EndBorrows, {deaths} StorageDeads");
     }
+
+    // A body's TestRecordValue calls, in block order.
+    internal static MirTerminator[] Records(MirBody body) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
+        .Where(static x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.TestRecordValue } })];
 
     internal static Compilation Compile(string source, bool test = false)
     {

@@ -5,3 +5,5 @@ func sample()
     $expect(helper(1) == 2)
     $expect(helper(2) == 3, message: text)
     $require(helper(3) > 0, message: "fail")
+    let limit = 9
+    $expect(helper(4) < limit)

@@ -263,7 +263,7 @@ fn read @171
 fn stop @180
   _0: Never return @180
   bb0:
-    * _0 = intrinsic Abort(const "stopped") -> ! check bb1 @183
+    * _0 = intrinsic Abort(const "stopped") -> ! check bb1 @182
   bb1:
       unreachable @182
 fn indexed @186

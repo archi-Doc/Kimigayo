@@ -35,7 +35,7 @@ setter level.Set @23
   bb1:
       StorageDead(_3) @28 s1
       StorageLive(_4) @31 s1
-    * _4 = intrinsic Abort(const "range") -> ! check bb3 @32 s1
+    * _4 = intrinsic Abort(const "range") -> ! check bb3 @31 s1
   bb2:
       StorageDead(_3) @28 s1
       StorageLive(_5) @35 s1

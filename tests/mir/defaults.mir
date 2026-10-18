@@ -64,7 +64,7 @@ defaulttemplate halt#1 @124
   _0: i32 return @121
   _1: ref/i32 arg n (PreparedInput) @121
   bb0:
-    * _0 = intrinsic Abort(const "halt") -> ! check bb1 @125
+    * _0 = intrinsic Abort(const "halt") -> ! check bb1 @124
   bb1:
       unreachable check bb2 @124
   bb2:
@@ -438,7 +438,7 @@ fn stopped @130
       StorageLive(_1) @134
     * _1 = const 1_i32 @134
       StorageLive(_2) @132
-    * _2 = intrinsic Abort(const "halt") -> ! check bb2 @125 s1
+    * _2 = intrinsic Abort(const "halt") -> ! check bb2 @124 s1
   bb1:
       _0 = halt(move _1, move _2) -> bb4 @132
   bb2:
