@@ -20,7 +20,7 @@ internal enum MonoKind : byte
     ClosureErasure, // The Function Type value of a Closure Type (SPEC 10.2): its erased Closure Type.
     ItemAdapter, // The Function Type value of a function item Type (SPEC 10.2): its erased Item Type.
     DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type.
-    Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.4): the erased Self and the CompilerFunctionKind.
+    Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.4): the function (its kind its CompilerFunction), the erased Self.
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
 }
 
@@ -28,8 +28,8 @@ internal enum MonoKind : byte
 /// <param name="Kind">The kind.</param>
 /// <param name="Body">A body item's instance.</param>
 /// <param name="Type">A type-driven item's erased Type (<see cref="TyCtxt.Erase(BoundType)"/>).</param>
-/// <param name="Symbol">A property witness's Field.</param>
-/// <param name="Variant">A Builtin's compiler function or a property witness's operation.</param>
+/// <param name="Symbol">A Builtin's compiler function or a property witness's Field.</param>
+/// <param name="Variant">A property witness's operation.</param>
 internal readonly record struct MonoKey(MonoKind Kind, Instantiation Body, BoundType? Type = null, BindingSymbol? Symbol = null, byte Variant = 0);
 
 /// <summary>A mono item of the checked set (K package 4.3, KD3): its key; a body item's representative, the first unerased closed

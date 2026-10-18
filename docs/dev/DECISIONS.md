@@ -1348,7 +1348,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   unsound on 43a, 92g, 102 and 108: past the Subject's shared Deref the candidate forms no Loan, E3); a γ id table per candidate
   (the local index is the key).
 - **R4-M61** (2026-10-17; PLAN G96, two independent designs compared and the chosen one reviewed independently, implemented on the
-  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`) A published Op guarantees the Binding
+  planning session's instruction of the same day; supersedes R4-M42's `MirBuilder.Broken`; its "which the builder replaces whole" and
+  "its children are not published as evaluated and a closure inside it is not built" are superseded by R5-M63 for the children
+  Binding resolved) A published Op guarantees the Binding
   facts the MIR builder reads for it, which `Binding.HasFacts` (`Binding/Binding.Hir.Facts.cs`, whose header is the contract) lists:
   every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
   symbol), and per Op the call it builds (an index's selected call), the Evaluated argument of a key resolution and of an update's
@@ -2666,7 +2668,7 @@ structure is recorded here by the unit that first implements it.
   読み出しだけに使います。参照による束縛では、Binding が公開した借用を `ref/Never` 型のまま作ります。こうすると、その束縛が r
   に対する Loan を持つので、SPEC の文言どおり競合を検出できます。あわせて MirValidator に「Never 用の一時変数へ書けるもの」の
   許可一覧（変換なしの Never Place 読み出し・Never 型の Opaque・発散する呼び出しの戻り先）を加え、この系統を閉じます。R5 側で
-  実装と再レビューが必要です。」) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
+  実装と再レビューが必要です。」; amended by F17: any acquisition without adaptation) Rule (`MirBuilder.Values.cs`, `MirValidator`): the Never value is a temp of Type Never
   (`IsNeverValue`); every acquisition takes it as it is and `Set` places nothing of it, as R4-M62 has it. A named Place of Type
   Never (a parameter, a binding, a payload) is not the Never value: any acquisition of it without adaptation (the Copy of a
   bare read, since Never is Copy, BU-4, a Move, or the in-place path's ByCase, which a Copy Type takes by Copy) goes into a
@@ -2876,7 +2878,8 @@ structure is recorded here by the unit that first implements it.
   the borrow `Lent` forms (a base view's subobject). Rejected: widening the base subobject's Loan in A5 (an analysis rule for a
   builder fact); borrowing the payload under the slot's view Type (the validator's Ref Type agreement).
 - **R5-M50 A transfer delivers its result after the Scope Exit** (2026-10-18, planning session; plan F15, PLAN G147 (5) from R4's
-  1b-5 ledger; SPEC 16.2.2) Rule (`MirBuilder.Transfer`): a valued transfer that leaves a scope with a cleanup secures its result
+  1b-5 ledger; SPEC 16.2.2; amended by F17: the result temp lies in the target's scope) Rule (`MirBuilder.Transfer`): a valued
+  transfer that leaves a scope with a cleanup secures its result
   and places it into its target's result temp (no storage of its own) before the Scope Exit, and the target's delivery block,
   after the drop tree, moves it into the target's destination: the target's Destination and Break become that temp and that block
   at its first such transfer (`Target.Delivers`), so every later transfer to it takes them as it shares its drop tree. A transfer
@@ -3176,7 +3179,8 @@ structure is recorded here by the unit that first implements it.
   Composite (a Tuple or a safe `ref` layer) over its parts; Builtin; Witness, a closed leaf: the Body `TyCtxt.Witness` gives for the
   Contract's own requirement on the leaf, under its declaring instance (`TyCtxt.Synthesized(witness, declaring, [])`, its Origins the
   analyses'); Requirement, a leaf with an abstract part: that requirement on the leaf in every instance, under the Self-bearing factory
-  `TyCtxt.Synthesized(requirement, self)`, beside `Synthesized` in `TyCtxt.cs`, which K's rows 2 and 6 also use; None: no answer, a
+  `TyCtxt.Synthesized(requirement, self)` (amended by R5-M70: `Synthesized(requirement, self, reference)`), beside `Synthesized` in
+  `TyCtxt.cs`, which K's rows 2 and 6 also use; None: no answer, a
   broken contract for a closed accepted Self that its reader records as `InternalInvariant_Kd`; null for a Limit (Witness's: the leaf's
   storage does not complete). One rule decides the kinds, `Binding.ComparisonKindOf(self, contract, operators)`
   (`Binding.ComparisonPlans.cs`), which the legacy plan and `CompilerRequirementTarget` (a comparison's built-in target: Composite or
@@ -3209,7 +3213,8 @@ structure is recorded here by the unit that first implements it.
   body is, under the call's substitution composed with the item's representative, the target `TyCtxt.Witness(requirement,
   MirCallee.Contract, composed)` gives: Body, the item of the implementation its substitution selects (`TyCtxt.Implementation`,
   `MirProgram.Callee`; none without a body), admitted as a Fn callee's; Builtin, a shim item keyed by the erased Self and the compiler
-  function (new `MonoKind.Builtin`, `MonoKey.Variant`); Storage, a shim item keyed by the Field, the erased Self and the
+  function (new `MonoKind.Builtin`, `MonoKey.Variant`; superseded by R5-M70: the compiler function in `MonoKey.Symbol`); Storage, a
+  shim item keyed by the Field, the erased Self and the
   `PropertyWitnessKind` (new `MonoKind.PropertyWitness`, `MonoKey.Symbol`, X14), admitted only when the requirement's signature in
   the instance (`TyCtxt.Signature`) is the key's up to Origins (a `ref/Self` or `uniq/Self` receiver, a result `F`, `ref/F` or Unit,
   a set input `F`, `F` the Field's Type in Self by `AdtDef.FindField`), else `InternalInvariant_Kd`, and a set's item targets the
@@ -3217,14 +3222,109 @@ structure is recorded here by the unit that first implements it.
   storage-nesting row; None, a broken contract (`InternalInvariant_Kd` at the call). Both shims are type-driven items: the Self's
   layout verdict joins their admission (R5-M44). A composed substitution whose Self does not instantiate is null (`TyCtxt.Compose`,
   PLAN G157 (4)), the storage-nesting gap at the call as for the other parts. Locations: R5-M40's rule.
-  - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets): requirement Items (rows 5 and 12), whose
-    substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until K6": they now wait for K6b); row 6's
-    writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim disposition's Builtin item, which need
-    F6's Self-bearing `Synthesized` factory (package F §4.5's input); a Builtin item's leaves, from F6's `TyCtxt.Comparison`
-    (BuiltinFormat's too, R5-M30). Until K6b these sites carry no target and no record; C3b, C8f and C9b depend on K6b, which keeps
-    that safe (under sel `build` is still refused by C0b1's frame). Refused has no reproducer: Binding rejects every inherited
-    exclusive witness at its conformance (`Unsupported_Kd` at `Self is C`, ObjectCompatibility Unknown), so the row is reached once
-    OCC-X proves one.
+  - Staged to unit K6b (after F6; before C3b, C8f and C9b, which read these targets; K6b landed them, R5-M70):
+    requirement Items (rows 5 and 12), whose substitution needs a witness form of `TyCtxt.SubstOfItem` (this supersedes R5-M43's "until
+    K6": they now wait for K6b); row 6's writer witness and row 2's formatting witnesses (`TyCtxt.Published`, R5-M30) with its Shim
+    disposition's Builtin item, which need F6's Self-bearing `Synthesized` factory (package F §4.5's input); a Builtin item's leaves,
+    from F6's `TyCtxt.Comparison` (BuiltinFormat's too, R5-M30). Until K6b these sites carry no target and no record; C3b, C8f and C9b
+    depend on K6b, which keeps that safe (under sel `build` is still refused by C0b1's frame). Refused has no reproducer: Binding
+    rejects every inherited exclusive witness at its conformance (`Unsupported_Kd` at `Self is C`, ObjectCompatibility Unknown), so the
+    row is reached once OCC-X proves one.
   - Rejected: Self's layout skipped for the shims (a shim reads Self's storage); the signature agreement left to C3c (the F package
     places the check at K6, where the key is made); a requirement edge resolved from the forwarded CallPlan (the collector reads no
     plans).
+- **R5-M63 A failed node keeps the children Binding resolved** (2026-10-19, planning session; plan Q21, PLAN G121, package Q8 §3.8
+  and Q8-7 under R5-M23 (DEC Q6 form 1), design `r5/w1-q21-design.md` accepted on review with the two amendments below, ask A-14
+  with R4's reviewer's sign-off; supersedes, for the children below, R4-M61's "which the builder replaces whole" and its "so its
+  children are not published as evaluated and a closure inside it is not built") SPEC 23.1.2: a node's failure hides no independent
+  error in the children Binding resolved; the Error node's own value stays a derived Opaque with no record. R4-M61's reason concerned
+  only the Error node's own value, whose facts are missing; each kept child is published with its own facts (`Binding.HasFacts`) and
+  checked like any node (`HirTables.Broken`), so the reason does not reach it.
+  (1) A closure definition: `BoundClosure.Of` is the definition of the closure's latest binding once it bound the inputs, the result
+  and the environment (`Signature` set; `Binding.BindClosure` clears it first), whatever its creation's outcome. An anonymous function
+  Binding bound in the pass (Resolved or failed), at an evaluated or a replaced position, with its definition keeps its parts as a
+  Closure (`HirPublisher.Parts`): its own `Consume` (an expression body's result) and its body's positions. This reaches beyond Q8-7's
+  "a closure whose creation failed" to a closure inside a parent Binding rejected (`let g = <closure>` without a Type, a failed call's
+  argument), because Q8 §3.8's required meaning is that the children Binding resolved stay published, and AGENTS accepts no narrow
+  subset of a form one rule covers; a closure that is a failed Place's kept operand is evaluated there (its creation built in a temp)
+  and its body built, where the design had predicted it replaced. Only the creation follows its position: built, a failed creation's
+  Opaque site naming the captures' sources, or part of a replaced parent's Opaque. The MIR builder builds each definition whose value
+  node the HIR publishes (`MirBuilder.Published`, equal to the Body and Closure Ops before this entry: 0 differences over 740 table
+  definitions of the goldens and the library and 863 of the milestones and the library). Amendment (review): the definition must also
+  be one the publisher reached (an Op written), since a synthesized executing function shares its accessor's body.
+  (2) A failed compound Place (a Field, an Index, a Deref, `*p` or `p@follow`, the latter recognized by Binding's target rule
+  `TypeSemanticsKoto.Names`, or a group, such as a list item the parser recovered (a parameter default, a call's last argument), that
+  Binding rejected or did not resolve, not a broken contract) keeps each operand Binding resolved at its position, written in place
+  `(None, None)`, which under an Error node marks a kept operand (`HirPublisher.Keeps`). Amendment (review): an operand is kept only
+  when its own Op is published with its facts, so a Type or group name (Syntax) and a name both of whose paths resolve (an Error)
+  stay replaced. The builder evaluates an Error node's kept operands in syntax order as their Places (a value in a temp) before its
+  Opaque value, never acquiring them; the site names their roots and the roots of the rest of the node's syntax, which root
+  collection skips (it walks the Error node's own children; no parent is read), so a moved operand is not used again at the site (A1
+  checks each root at the site's subject). Any other child stays replaced.
+  Finding A: a kept body keeps what Binding refuted. A closure rejected because its inferred result borrows the call's own storage
+  (`CallLocalOrigin`, SPEC 15.8.2) builds the refuted borrow, so A5 adds `ComparisonLoanConflict_Kd` where the borrowed parameter or
+  local ends: on the failed closure (`FunctionKoto`) or on a `let` inside its body (`FieldKoto`), not on the failed node. All seven
+  such rows of the Q21 ledger are derived: the only Loan on the ending storage is the one issued at the refuted borrow. They are
+  classified (b) open (`classification.tsv` row a5-kept-closure; not (d), which at signature level would absorb an independent
+  conflict of the same form) until R4's A5-F7 unit 2c-6 judges closure results on the MIR, one report per refuted relation, and
+  R6-check's H11 deletes `CallLocalOrigin`; R4's condition: H11 lands before the MIR becomes the default pipeline, or 2c-6 reports
+  each refuted relation once while `CallLocalOrigin` exists.
+  Residuals (PLAN G121): an assignment or update whose target Binding rejected (`MirBuilder.Values.cs:143`) is one Opaque value, so
+  its target's kept operands are published but never evaluated; the operands of other failed forms (calls, statements, conversions
+  other than `@follow`) stay replaced; a failed Place's operand that Binding did not resolve stays replaced (a nested failed Place is
+  not published Error until R4's 2x-E2 decides unresolved compound Places). Rejected: in-place writes for a closure (Q8-7: an
+  expression body's result and a by-case Copy of a capture); a `Kept` member of `HirAcquire` or `HirPosition` (a vocabulary entry;
+  `HirAcquire.None` already means used in place, and under an Error only this rule writes it); building closure bodies from Binding
+  state in the builder (it reads the HIR only); a walk clause naming an Error closure (one form). Lasting. R4's 2g-2a adds each
+  Opaque root's access kind at `MirBuilder.Root`, which the kept operands and the root collection use, and the completion-undecided
+  flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
+  and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
+  next change.
+- **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
+  package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
+  DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a
+  compiler function, a requirement's function item or a shim runs on a user Type is `TyCtxt.Witness` of the requirement there, acted on
+  by R5-M67's kind table, one function (`InstanceCollector.Requirement`, given the requirement and its `RequirementTarget`, whose Builtin
+  and Storage substitution is the call's) for rows 2, 3, 5, 6, 12 and 13. The call on a Self is F6's factory, now
+  `TyCtxt.Synthesized(requirement, self, reference)`: a bound Contract reference is its declaring Type (F fact 5, as `SubstOf` holds a
+  call's), a Contract's own Type binds nothing.
+  - Rows 5, 12, 13: a requirement Item records its Contract reference as a Type (its Components: Self, reference), so
+    `Binding.InstanceContract`, the one matching half, reads a recorded Contract declaration with a reference of it in the instance as
+    that reference; `TyCtxt.Witness(item)` (new) is Witness of the requirement's call on the Item's Self through that declaration, null
+    for another function's Item. A requirement Item's constant, its call and its ItemAdapter target that witness's item. `SubstOfItem` is
+    unchanged (Binding's Item context: the witness's call for a closed Self, which A4's `MirEffects` enters), and the witness's Body
+    substitution equals it; the materializer passes no reference for an unbound recorded Contract, so its matching is unchanged.
+  - Row 2: a Fn callee without a MIR body whose published row runs a requirement (`TyCtxt.Published`: TextToString, TextTryFormat and
+    WriterWrite run Utf8Format's `format` on the Type below parameter On, under the composed substitution) targets that witness, a
+    built-in formattable Type's being the BuiltinFormat shim, a `Builtin` item. A Fn callee of a Shim compiler function does not occur: a
+    built-in target's declaration is its requirement (`CallPlan.KindOf`), so MIR builds a Requirement callee (row 3).
+  - Row 6: an `ErasedWriter` call targets its Type argument's BufferWriter `reserve` witness (SPEC 22.10.1;
+    `TyCtxt.OwnRequirement(KimiDeclarationId)`, new, a library Contract's own requirement), none for a `reserve` without a MIR body
+    (FixedBuffer's, HeapBuffer's: their legacy rows, C8*).
+  - Builtin leaves: a BuiltinEquals or BuiltinCompare item's targets, at its default site, are the Witness leaves of
+    `TyCtxt.Comparison(its Contract, Self, operators: false)` depth first, each the leaf witness's Body under the leaf's substitution;
+    Composite recurses and Builtin has none; a Requirement or None leaf is `InternalInvariant_Kd` and no tree (Limit) the storage-nesting
+    gap, at the item's site; BuiltinFormat and BuiltinArithmetic, over scalars, call no witness.
+  - Departure (for the owner's departures list at R5's group review): the K package's §4.3 Builtin row and R5-M67 key a Builtin item by
+    the erased Self and its `CompilerFunctionKind` (`MonoKey.Variant`). Two designs compared: (A) that key with a kind-to-Contract table
+    in the collector, a second copy of `PrepareBuiltinTargets`' rule, leaving every arithmetic requirement on a Self in one item for C8f;
+    (B) the shim's compiler function in `MonoKey.Symbol`, the existing field, which supplies F §4.6's input (the comparison's Contract is
+    the scope owner of the shim's compiler function) and gives one arithmetic item per operation Contract. The independent review's
+    comparison found B more general and not hold-driven, and the planning session adopted B on 2026-10-19. The kind is the function's
+    `CompilerFunction`, so a Builtin key has no `Variant` (one source); Equals, Compare and Format have one function per kind, so their
+    items do not change.
+  - Rejected: a call-form `SubstOfItem` (A4 reads a closed requirement Item's as the witness it runs, and it drops the Item context's
+    input Origins); the template's `ItemContract` for rows 5 and 12 (null for a closed Item, and an ItemAdapter has no template); a bound
+    symbol from Binding's `BoundContractReference` (private, creates and rebuilds bound symbols); the comparison's Contract mapped from
+    the `CompilerFunctionKind` in the collector (a second copy of `PrepareBuiltinTargets`' table); a column naming BufferWriter on the
+    intrinsic rows (one Witness row, whose value already means the writer's witness); a published row for `Text.writer` (A4 would read
+    creating the adapter as running `reserve`).
+  - Verified (`InstanceCollectorTest`, each new row failing before): `T.equals` Items in instances over a struct (its `equals`) and `i32`
+    (the BuiltinEquals item) where made and called; a `T.tag` Item through `T is Tag<bool>` on a Type conforming to `Tag<i32>` and
+    `Tag<bool>`, made, erased (its ItemAdapter) and called, each the `tag(x: bool)` body, whose substitution is `SubstOfItem`'s; a virtual
+    slot's Item none; the format witnesses of generic `toString`, `tryFormat` and `write` calls and of `format` itself, a user Type's body
+    and `i32`'s BuiltinFormat item without targets; an erased writer over a user sink its `reserve` body and over a fixed buffer none;
+    tuple comparisons' Builtin items targeting their leaves' `equals` and `compare` bodies, a nested tuple twice, and a generic instance
+    sharing its erased Self's item; i32's addition and subtraction two Builtin items, one per Contract; the library (as roots) and the
+    44 milestones under sel give no record; the witness twins
+    (`TyCtxtTest`, `ComparisonCompositionTest`) unchanged.

@@ -360,6 +360,29 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
     }
 
+    // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
+    // body is built wherever its creation stands (failed, inside a let Binding rejected, or a failed Index's kept operand), and a failed
+    // Index, Field, follow or `*p` evaluates its operands before its Opaque value, which does not use a moved operand again.
+    [Fact]
+    public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
+    {
+        const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
+        const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
+        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    let g = " + Body));
+        const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    return n[once(s@move)]\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f()\n    let s = \"x\"\n    unsafe\n        _ = *take(s@move, s@move)\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32)\n    let s = \"x\"\n    _ = n[func (k: i32) -> i32 => take(s@move, s@move)]\n"));
+        // A recovered group (the default's list item) gives the problems of the default written correctly: each Move of the prepared slot.
+        string[] slot = ["StaticMovePathRequired_Kd s 1", "StaticMovePathRequired_Kd s 1"];
+        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
+        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
+    }
+
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)
         => (body.Blocks.ToArray().Select((_, b) => flow.Head(b)).Max() + 1) * (long)MirInit.Lanes * ((moves.FlowCount + 63) / 64);

@@ -2,3 +2,12 @@ func sum<length N>(a: i32, b: i32) -> i32
     let c: [N of i32] = [N of (a + b)]
     return b
 func fail() -> i32 => missing
+func take(a: string, b: string) -> i32 => 1
+func kept(n: i32, s: string) -> i32
+    _ = n[take(s@move, s@move)]
+    return take(s@move, s@move)@follow
+func definition()
+    _ = func (n: i32)
+        let t = "x"
+        _ = take(t@move, t@move)
+        return n@ref
