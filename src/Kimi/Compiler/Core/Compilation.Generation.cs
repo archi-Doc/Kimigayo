@@ -3,9 +3,11 @@
 // Owns the one generation entry of a compilation and its gate (R5 plan C0a, C0b1, package C 3.8, S2-S4 X17; DECISIONS R5-M64, R5-M65).
 // Input: the latest analysis; callers generate an accepted program version (Project and the test command, after check).
 // Output: the module text, written to the caller's writer only when generation succeeds, never in part; otherwise the generation
-// records in the Emission partition: under MIR code generation (sel) ModuleCodegen's, one Unsupported_Kd per subject of a code
-// generation coverage row not written yet (PD11, until the R5 plan's unit X2) and InternalInvariant_Kd at a broken input contract, and
-// under the old generator its own record (its instance's located records, GenerationResourceLimit_Kd or, until G9b, GenerationFailed_Kd).
+// records in the Emission partition: under MIR code generation (sel) ModuleCodegen's, Unsupported_Kd at each location of a code generation
+// coverage row not written yet (PD11, until the R5 plan's unit X2) and InternalInvariant_Kd at a broken input contract, each keyed by its
+// location (a record carries no fact; DECISIONS R5-M65), and, for a module neither written nor explained, InternalInvariant_Kd at the
+// project; under the old generator its own record (its instance's located records, GenerationResourceLimit_Kd or, until G9b,
+// GenerationFailed_Kd).
 // Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and, under sel, the checked set's
 // records). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none. MIR code generation then
 // needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2, which Project's check reads too); the old generator checks its own
@@ -24,7 +26,6 @@ namespace Kimi.Compiler;
 
 public partial class Compilation
 {
-    private readonly HashSet<(DiagnosticCode Code, SourceDocument? Document, SourceSpan Span)> generationLocations = new();
     private Backend.ModuleCodegen? moduleCodegen; // MIR code generation's pooled storage (R5 C0b1).
 
     /// <summary>Gets a value indicating whether the latest check accepted the program (SPEC 23.2.2): final Binding, the startup selection
@@ -91,13 +92,21 @@ public partial class Compilation
         return false;
     }
 
-    // MIR code generation (R5 C0b1, DECISIONS R5-M65) of an accepted program: ModuleCodegen over its checked set, whose records it
-    // publishes at their located subjects. A program check did not accept adds no record: check reported why.
+    // MIR code generation (R5 C0b1, DECISIONS R5-M65) of an accepted program: ModuleCodegen over its checked set. A program check did not
+    // accept adds no record (check reported why); an accepted one without its MIR or checked set, or a module neither written nor
+    // explained by a record, is a broken contract. A record carries no fact, so its location is its subject (DIAGNOSTICS rule 3): the
+    // records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are one problem.
     private bool GenerateMir(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission);
-        if (!this.Accepts || this.mir is not { } program || this.instances is not { } collector)
+        if (!this.Accepts)
         {
+            return false;
+        }
+
+        if (this.mir is not { } program || this.instances is not { } collector)
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
             return false;
         }
 
@@ -107,16 +116,15 @@ public partial class Compilation
             return true;
         }
 
-        // PD11's records are once per location, the document span a diagnostic shows: the nodes an expansion synthesizes share its span, so
-        // the records of its sites are one there (the diagnostics could not order them, SPEC 23.1.1).
-        this.generationLocations.Clear();
+        if (generator.Records.Count == 0)
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+        }
+
         foreach (var record in generator.Records)
         {
             var node = this.SyntaxOf(record.Subject);
-            if (this.generationLocations.Add((record.Code, node.CodeContext.SourceDocument, node.Span)))
-            {
-                node.Report(DiagnosticRequirement.Emission, record.Code);
-            }
+            node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.Emission, node.Span, record.Code, node.CodeContext.SourceDocument);
         }
 
         return false;
@@ -136,8 +144,7 @@ public partial class Compilation
             return refusal;
         }
 
-        var records = this.moduleCodegen?.Records.Count ?? 0;
-        return this.Accepts ? $"MIR code generation does not cover the program: {records} records in the Emission partition."
+        return this.Accepts ? "MIR code generation wrote no module: its records are in the Emission partition."
             : "MIR code generation needs an accepted analysis: final Binding, startup and analysis without errors.";
     }
 }

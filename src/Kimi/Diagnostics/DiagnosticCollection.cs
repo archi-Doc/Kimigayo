@@ -200,6 +200,21 @@ public sealed class DiagnosticCollection
         return true;
     }
 
+    /// <summary>Records a problem whose location is its subject (docs/dev/DIAGNOSTICS.md §2 rule 3, §4.1): a code without facts at a span,
+    /// such as a later phase's location-only <c>Unsupported_Kd</c>, so the reports of two nodes at one location, such as the siblings a
+    /// transformation synthesizes with its span, are one problem.</summary>
+    /// <param name="requirement">The requirement.</param>
+    /// <param name="range">The location.</param>
+    /// <param name="code">The code, which takes no message argument.</param>
+    /// <param name="document">The location's document; the target's document by default.</param>
+    /// <returns><see langword="true"/> when the report is an Error.</returns>
+    internal bool ReportLocation(DiagnosticRequirement requirement, SourceSpan range, DiagnosticCode code, SourceDocument? document)
+    {
+        document ??= this.Document;
+        var key = new DiagnosticKey(null, this.SourceOf(document), range.Start, document is null ? -1 : range.Length, requirement);
+        return this.Report(requirement.Partition, key, range, code, null, null, null, null, document);
+    }
+
     /// <summary>Gets the key of a check whose subject is a syntax node.</summary>
     /// <param name="node">The subject.</param>
     /// <param name="span">The subject's span.</param>

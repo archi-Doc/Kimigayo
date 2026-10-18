@@ -13,10 +13,10 @@
 // each use; I7 every Type is Layout.Of(TypeOf(item, t)); I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow
 // (nothing is generated); an Assign of a Use to a local without projection, from a Copy or Move of such a local or a Bool, Integer or
 // Unit constant (a zero-sized value writes nothing, a scalar is loaded and stored in its storage representation); Goto, SwitchInt, Return
-// and Unreachable. Rows not written yet: Closure (C5a) and DefaultTemplate (C3a) bodies; projections (C2a) and statics (C7b); BinaryOp
-// and UnaryOp (C1a), Cast (C1b), Ref, Aggregate, Discriminant, Len and Adapt, PairAcquire and copies of slot Types (C2b); Float (C1b),
-// String (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a) and raw-pointer constants (C8a); Call (C3a) and Drop (C4a). A warm
-// write allocates nothing.
+// and Unreachable. Rows not written yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and
+// statics (C7b); BinaryOp and UnaryOp (C1a), Cast (C1b), Ref, Aggregate, Discriminant, Len and Adapt, PairAcquire and copies of slot
+// Types (C2b); Float (C1b), String (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a) and raw-pointer constants (C8a); Call (C3a) and
+// Drop (C4a). A warm write allocates nothing.
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact, compose a Subst or a
 // Type (TypeOf does), resolve a callee, select a Semantics view before a covered form depends on it (C2a), or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -62,10 +62,17 @@ internal sealed class FunctionCodegen
     internal void Write(InstanceCollector collector, int item, MirBody body, TextWriter output)
     {
         (this.collector, this.item, this.body, this.output, this.next) = (collector, item, body, output, 0);
-        if (body.Key.Kind is MirBodyKind.Closure or MirBodyKind.DefaultTemplate)
+        switch (body.Key.Kind)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, default); // C5a writes a Closure's environment, C3a a template's prepared inputs.
-            return;
+            case MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test:
+                break; // A function of its own signature.
+            case MirBodyKind.Closure or MirBodyKind.DefaultTemplate or MirBodyKind.StaticInit:
+                // Rows not written yet, at the body: C5a writes a Closure's environment, C3a a template's prepared inputs, and C7b a static's
+                // initializer, which a constant one folds into its slot and is never a function (package C 3.3).
+                this.Report(DiagnosticCode.Unsupported_Kd, default);
+                return;
+            default:
+                throw new InvalidOperationException($"The MIR body kind {body.Key.Kind} has no code generation row.");
         }
 
         if (this.LayOut() is not { } abi)

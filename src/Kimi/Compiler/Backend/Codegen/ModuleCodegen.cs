@@ -9,7 +9,9 @@
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, TypeOf and
 // location rule (K package 4.9); the compilation's Layout; the startup selection.
 // Output: the complete module written to the caller's writer, or nothing and the Records of why: one Unsupported_Kd per subject of a
-// row not written yet (until the R5 plan's unit X2), InternalInvariant_Kd at a broken input contract.
+// row not written yet (until the R5 plan's unit X2), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
+// without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
+// keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's call writer once C3a writes calls.
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
 // record was made; deterministic (admission order, item-indexed names); each item's signature is reused while Abi.Matches holds and every
 // buffer is kept, so a warm module allocates nothing.
@@ -61,8 +63,7 @@ internal sealed class ModuleCodegen
             this.Item(program, collector, item);
         }
 
-        var start = this.Start(program, collector, startup);
-        if (this.Records.Count != 0)
+        if (!this.Start(program, collector, startup, out var start) || this.Records.Count != 0)
         {
             return false;
         }
@@ -145,35 +146,33 @@ internal sealed class ModuleCodegen
     }
 
     // The output form (IMPL 21.4.2): an Application's entry calls its startup item, a root of the checked set; a Library has none; a test
-    // build's TestEntry is a row not written yet (C10a), at each test it calls.
-    private FunctionAbi? Start(MirProgram program, InstanceCollector collector, in StartupResult startup)
+    // build's TestEntry is a row not written yet (C10a), at each test it calls. False for an Application whose startup has no item or no
+    // signature while nothing explains it: a broken contract without a subject.
+    private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, out FunctionAbi? entry)
     {
+        entry = null;
         var set = collector.Set;
         if (startup.Kind == StartupKind.Test)
         {
-            foreach (var root in set.Items[..set.RootCount])
+            for (var root = 0; root < set.RootCount; root++)
             {
-                if (program.Bodies[root.BodyOrdinal] is { Key.Kind: MirBodyKind.Test } test)
+                if (program.Bodies[set.Items[root].BodyOrdinal] is { Key.Kind: MirBodyKind.Test } test)
                 {
-                    this.Report(DiagnosticCode.Unsupported_Kd, collector.Subject(set.Find(root.Key), test, default));
+                    this.Report(DiagnosticCode.Unsupported_Kd, collector.Subject(root, test, default));
                 }
             }
 
-            return null;
+            return true;
         }
 
         if (startup.OutputKind == OutputKind.Library)
         {
-            return null;
+            return true;
         }
 
         var body = new MirDefKey(startup.Kind == StartupKind.Explicit ? startup.Symbol : null, MirBodyKind.Fn);
         var item = set.Find(new(MonoKind.Body, new(body, null)));
-        if (item < 0)
-        {
-            throw new InvalidOperationException("The startup body of an accepted Application is not a root of its checked set.");
-        }
-
-        return item < this.signatures.Length ? this.signatures[item] : null;
+        entry = item >= 0 && item < this.signatures.Length ? this.signatures[item] : null;
+        return entry is not null || this.Records.Count != 0;
     }
 }

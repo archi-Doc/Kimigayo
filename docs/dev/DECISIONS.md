@@ -3057,21 +3057,28 @@ structure is recorded here by the unit that first implements it.
   pointer-passed arguments and the result slot in place; exactly the blocks `MirReach.Walk(body, 0, checks: false)` reaches; the
   no-op statements, a `Use` into an unprojected local from an unprojected Copy or Move or a Bool, Integer or Unit constant (zero-sized
   writes nothing, a slot Type's copy is C2b's), Goto, SwitchInt, Return and Unreachable. PD11's coverage rows are the two components'
-  dispatch arms (MIR vocabularies; body kinds Closure (C5a) and DefaultTemplate (C3a); `MonoKind`s DropGlue (C4a), ClosureErasure and
-  ItemAdapter (C5b); a test build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the
-  collector's one rule (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation
-  runs over every item and then discards the text; `Generate` publishes the records in the Emission partition once per document span,
-  since the nodes an expansion synthesizes share its span and the diagnostics cannot order two records there. Types come from
+  dispatch arms (MIR vocabularies; body kinds Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b: a constant initializer folds
+  into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b); a test
+  build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the collector's one rule
+  (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation runs over every item and
+  then discards the text. A record carries no fact, so `Generate` publishes it in the Emission partition keyed by its location
+  (DIAGNOSTICS §2 rule 3: `Unsupported_Kd` is location-only), through the Diagnostics owner's `DiagnosticCollection.ReportLocation`,
+  whose key's subject is the location: the records of two nodes at one location, such as a `for` statement and the siblings its
+  expansion synthesizes with its span (`$for.iterator`, `$for.some`, `$for.none`, which the order of node keys cannot tell apart), are one
+  problem by the owner's merge of equal keys. An accepted program without its MIR or checked set, or a module neither written nor
+  explained by a record (an Application's startup without a generated item), is `InternalInvariant_Kd` at the project. Types come from
   `InstanceCollector.TypeOf`, the collector's own instance rule (`Apply` under the representative), which its edges now read too.
   R5-M35's and R5-M64's sel refusal is deleted.
   - Moved here from C0b2: module assembly, the Application entry and the Library form (a frame fixture needs a linkable module).
     Staged to their first readers: the intrinsic rows' writer column (C3a or C8a, PLAN G151), the zero-sized address symbol (C2b),
     view selection (C2a), Float constants (C1b, which promotes the old writer's hex spelling). R5-M58's staged nameless memo is replaced
-    by the per-item reuse (a nameless memo would still allocate each name).
+    by the per-item reuse (a nameless memo would still allocate each name). The entry's call is written by `ModuleCodegen` until C3a,
+    whose call writer it then goes through (one ABI and attribute writer, package C §3.2).
   - P8's review: ARCH's Backend row lists the root Type predicates `SlotTypes` and `ReferenceTypes`; `Abi` throws for flags or a
     parameter without an argument value under C; `VirtualGenerationPlan` names its entry with `FunctionAbi.Named`.
   - Rejected: a coverage table or predicate beside the dispatch (a second copy); streaming functions to the caller (a partial module on
     a gap); a destructor fact in Binding for the old result-slot flag (the MIR signature needs none); records at library sites (the
-    collector's rule is the one location rule); a Diagnostics tie-break or a per-record condition for synthesized siblings (it would
-    show identical records, and the order fault guards every reporter); moving synthesized sites in the location rule (no published fact
-    names an expansion's source node).
+    collector's rule is the one location rule); a consumer-side table of published spans (records dropped after the fact, beside the
+    owner's own merge); a Diagnostics tie-break or a per-record condition for synthesized siblings (it would show identical records, and the
+    order fault guards every reporter); moving synthesized sites in the location rule (no published fact names an expansion's source
+    node).

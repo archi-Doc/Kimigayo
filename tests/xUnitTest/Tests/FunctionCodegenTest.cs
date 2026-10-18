@@ -22,6 +22,9 @@ public sealed class FunctionCodegenTest
         "    if first\n        if second => return 'a'\n        return 'b'\n    return 'c'\nlet flag = false\nlet other = true\n" +
         "let x: i32 = if flag => 1 else => 2\nlet y: char = if flag => 'x' else if other => 'y' else => 'z'\n";
 
+    private const string ForLoop =
+        "func f(values: ref/Array<i32>) -> i32\n    var total: i32 = 0\n    for value in values\n        total = 1\n    return total\n()";
+
     // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels, an explicit startup and unused functions
     // with scalar, string-borrow, zero-sized and Never signatures.
     public static TheoryData<string, string> Frames => new()
@@ -100,22 +103,30 @@ public sealed class FunctionCodegenTest
         Assert.Equal(expected, Regex.Matches(Definition(ir, "(i1 %a0) #0 {"), @"^(b\d+):$", RegexOptions.Multiline).Select(static x => x.Groups[1].Value));
     }
 
-    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its site, the gap of a library or instance
-    // body at the root-module site that required it (K 4.9), and no module is written; its valid counterpart is.
+    // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
+    // its valid counterpart is. The gaps of the library body of Console.writeLine land at the root-module call that required it (K 4.9),
+    // where the call's own record is; the records of a for loop's statement and of the siblings its expansion synthesizes with its span
+    // ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the diagnostics could not order when each was
+    // keyed by its node. A static's initializer is C7b's row, at the static.
     [Theory]
-    [InlineData("func twice(a: i32) -> i32 => a + a\n()", "a + a")]
-    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", "twice(1)")]
-    [InlineData("func twice(a: i32) -> i32 => a\n()", null)]
-    public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, string? site)
+    [InlineData("func twice(a: i32) -> i32 => a + a\n()", new[] { "a + a" })]
+    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", new[] { "twice(1)" })]
+    [InlineData("Console.writeLine(\"\")\n", new[] { "Console.writeLine(\"\")", "\"\"" })]
+    [InlineData(ForLoop, new[] { "for value in values\n        total = 1", "value" })]
+    [InlineData("group Registry\n    public let limit: i32 = 4\n()", new[] { "let limit: i32 = 4" })]
+    [InlineData("func twice(a: i32) -> i32 => a\n()", new string[0])]
+    public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, string[] sites)
     {
         var c = Analyze(source);
         using var writer = new StringWriter();
-        Assert.Equal(site is null, c.Generate(writer));
-        Assert.Equal(site is null, writer.ToString().Length != 0);
-        Assert.Equal(site is null ? [] : [("Unsupported_Kd", site)], Records(c));
-        Assert.Equal(site is not null, c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
-        Assert.Equal(site is null, c.WriteIr(TextWriter.Null, out var failure));
-        Assert.Equal(site is null, failure is null);
+        var written = sites.Length == 0;
+        Assert.Equal(written, c.Generate(writer));
+        Assert.Equal(written, writer.ToString().Length != 0);
+        Assert.Equal(sites.Select(static x => ("Unsupported_Kd", (string?)x)), Records(c));
+        Assert.All(TestDiagnostics.Of(c), static x => Assert.Equal("Hello.kimi", x.Path));
+        Assert.Equal(!written, c.Diagnostics.HasErrorsIn(DiagnosticPartition.Emission));
+        Assert.Equal(written, c.WriteIr(TextWriter.Null, out var failure));
+        Assert.Equal(written, failure is null);
     }
 
     // I1: the same program gives the same text, in one compilation and in two.
