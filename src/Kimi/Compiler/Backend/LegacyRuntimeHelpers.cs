@@ -18,10 +18,11 @@
 // Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
 // collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
-// writer and HelperNeeds (the Array runtime for every kind but BorrowStorage, the element's drop glue for Clear and Drop), and no
-// Array row declares a library callee, since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI
-// shape, writer, HelperNeeds (the Array runtime for every kind, the Dictionary runtime for CheckKey, the element's drop glue for
-// Drop) and its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
+// writer and HelperNeeds (the Array runtime for the kinds that grow a buffer or copy or move elements, every kind but Clear,
+// Drop, BorrowStorage and OwnStorage; the element's drop glue for Clear and Drop), and no Array row declares a library callee,
+// since none calls one; each Dictionary kind's row (DictionaryRow; P1c) holds its ABI shape, writer, HelperNeeds (the Array
+// runtime for Place, which copies its key and value; the Dictionary runtime for CheckKey; the element's drop glue for Drop) and
+// its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
 // CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
 // DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
 // for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
@@ -53,7 +54,8 @@ internal enum HelperNeeds : byte
 {
     None = 0,
 
-    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5).</summary>
+    /// <summary>The Array capacity routines and the memory declarations (SPEC 4.9.5): a helper that grows a buffer or copies or
+    /// moves elements needs them.</summary>
     ArrayRuntime = 1,
 
     /// <summary>The element's drop glue: the helper destroys elements, a Dictionary helper through its Entries function, which it

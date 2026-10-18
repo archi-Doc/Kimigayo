@@ -172,12 +172,13 @@ internal sealed partial class BodyLowering
 
         this.callOperands.Clear();
         this.callOperands.Add(handle);
-        this.arrayRuntimeUsed = true;
         FunctionAbi callee;
         switch (kind)
         {
             case CompilerFunctionKind.ArrayReserve:
             case CompilerFunctionKind.ArrayShrinkToFit:
+                // The capacity routines have no helper row (X39); every helper kind joins its row's needs.
+                this.arrayRuntimeUsed = true;
                 callee = kind == CompilerFunctionKind.ArrayReserve ? RuntimeAbi.ArrayReserve : RuntimeAbi.ArrayShrink;
                 this.callOperands.Add(new(EmissionOperandKind.Integer, element.Stride));
                 if (kind == CompilerFunctionKind.ArrayReserve)

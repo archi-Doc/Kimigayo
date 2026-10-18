@@ -1838,7 +1838,7 @@ structure is recorded here by the unit that first implements it.
   flag beside `ValueLowering` (a second statement of SPEC 21.3.1's argument form); a needs flag on the built helper (the
   collector reads rows by kind before any `ValueLowering` exists); two bool needs (ARCH's one-bool parameter limit). The
   Dictionary rows (P1c) and the count of the `DictionaryStorage` functions are refined by R5-M27, the formatting rows (P1d) by
-  R5-M30.
+  R5-M30, the inline storage kernel rows (P2a) by R5-M45 and the rows' Array runtime needs by R5-M46.
 - **R5-M17 `LlvmScalarText`** (2026-10-18, planning session; plan P4a, P4b, package §3.4, S2-S4 X36, promoted under R5-M14) A
   permanent Backend component owning the LLVM text of scalar arithmetic, numeric conversions and their checks: the instruction
   (`WriteOperation`), the overflow intrinsic (`WriteOverflowChecked`), the signed quotient with its zero and minimum / −1 checks
@@ -2066,8 +2066,8 @@ structure is recorded here by the unit that first implements it.
   Emission's attribute walk and `Open` re-check. Rejected: a C-layout instance view in `TyCtxt.Instances` (X26); keeping
   `cLayouts` beside the fact.
 - **R5-M27 Legacy Dictionary helper rows** (2026-10-18, planning session; plan P1c and its follow-up P1c2, PD2, S2-S4 X4;
-  refines R5-M16; refined by R5-M28 and by R5-M30, which adds the formatting rows and the `HelperNeeds` member
-  `FormattingRuntime`) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
+  refines R5-M16; refined by R5-M28, by R5-M30, which adds the formatting rows and the `HelperNeeds` member
+  `FormattingRuntime`, and by R5-M46, which narrows the rows' Array runtime needs) `DictionaryHelperRow` is one static row per `DictionaryHelperKind` (CheckKey, Place, Drop), read by
   `LegacyRuntimeHelpers.DictionaryRow(kind)`, which fails closed: `Kind`; `Shape`, the ABI over the generator's name suffix and
   the key and value descriptors, with the kind's name prefix inside it; `Write`, the body's writer over the helper and the ABIs
   of its two callees; `Entries`, the `DictionaryStorage` function generic over the entry Types, which a helper reaches through
@@ -2455,3 +2455,18 @@ structure is recorded here by the unit that first implements it.
   rows are `IntrinsicRows`'. Rejected: plain kernel methods with per-kind parameters (unreadable by kind, one decoding arm per kind); a
   row per `CompilerFunctionKind` (X39's map); an owning flag (the owning remainder is its own row, and both share the borrowed
   remainder's text); a second copy of the Field addressing rule in the Backend.
+- **R5-M46 Legacy rows declare the Array runtime only for growth and copies** (2026-10-18, planning session; PLAN G134, S2-S4
+  X4; refines R5-M16 and R5-M27) `HelperNeeds.ArrayRuntime`, the Array capacity routines with the memory declarations, is declared
+  by a row whose text grows a buffer or copies or moves elements: the Array rows Append, Insert, Pop, Remove, Place, Swap and
+  OwnFixedStorage and the Dictionary row Place. The Array rows Clear and Drop declare only `ElementGlue`, OwnStorage nothing, the
+  Dictionary row CheckKey only `DictionaryRuntime` and Drop only `ElementGlue`: they destroy elements, release through the main
+  runtime (`__kimi_array_free`), or load and store the handle's words. The old lowering's Array operation dispatch
+  (`LowerArrayOperation`, `CompilerArrayEntry`) sets the Array runtime flag by hand only for the direct capacity calls,
+  ArrayReserve and ArrayShrinkToFit, which have no row until X39; every helper kind joins its row's needs (R5-M27), so a call of
+  `clear` no longer brings the capacity routines either. A module whose only collection helpers are these holds no grow, reserve
+  or shrink text (about 120 lines). A literal keeps its own request (its direct `ArrayGrow` call; a Dictionary construction
+  requests the Array runtime with the Dictionary runtime until C8e), so CheckKey's narrowing changes no output today. Open: the
+  rows that copy but never grow (Pop, Remove, Place, Swap, OwnFixedStorage and the Dictionary row Place) still bring the
+  capacity routines, because one member names them with the memory declarations; splitting it adds a vocabulary entry. Rejected:
+  that split here (beyond G134's rows); keeping the hand-set flag for every Array operation (G133's cause, a flag set by its
+  requester instead of its row).
