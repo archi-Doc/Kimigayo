@@ -7,37 +7,6 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Retained closure conversion and capture vocabulary.
 
-public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment)
-{
-    // How the entry initializes its environment binding (SPEC 7.7.2), as the HIR Adjust column states acquisitions.
-    internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
-}
-
-/// <summary>A retained capture environment, signature and minimum call receiver.</summary>
-public sealed class BoundClosure
-{
-    public IReadOnlyList<BoundCapture> Captures => this.Storage;
-
-    public BoundType Signature { get; internal set; } = null!;
-
-    public BoundType? EnvironmentType { get; internal set; }
-
-    public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
-
-    // The first capture use that made the call Exclusive, and whether it Reborrows a captured exclusive reference (SPEC 7.7.3).
-    internal Koto? ExclusiveUse { get; set; }
-
-    internal bool ExclusiveReborrow { get; set; }
-
-    internal List<BoundCapture> Storage { get; } = new();
-
-    internal List<BindingSymbol> SymbolPool { get; } = new();
-
-    // The closure definition (ClosureDef, plan 5.3) of an anonymous function Binding resolved; its substitution is TyCtxt.SubstOfClosure of
-    // its Type.
-    internal static BoundClosure? Of(FunctionKoto function) => function.BoundClosure;
-}
-
 // A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.7.2).
 internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earlier, string Name, bool Parameter);
 

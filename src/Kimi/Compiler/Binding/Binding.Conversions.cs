@@ -373,7 +373,7 @@ public sealed partial class Binding
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
-        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.FollowOperation, HasOrigin: false })
+        if (syntax is TypeSemanticsKoto follow && follow.Names(Constants.FollowOperation))
         {
             // SPEC 13.5.5: E@follow selects the referent Place of a ref/uniq value, or the complete payload of a
             // proven Sealed object handle. It reads only the reference and acquires nothing.
@@ -421,7 +421,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
-        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.RawKeyword, HasOrigin: false })
+        if (syntax is TypeSemanticsKoto raw && raw.Names(Constants.RawKeyword))
         {
             // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and
             // converts the borrowed address; the pointer carries no Origin, so it keeps no Loan. The operation's borrow is
