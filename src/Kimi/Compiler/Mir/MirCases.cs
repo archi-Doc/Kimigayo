@@ -135,7 +135,8 @@ internal sealed class MirCases(TyCtxt types)
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's
     /// ordinary rvalue: an Identity or an object creation its operand (a creation also allocates), a pointer conversion or an upcast
     /// keeping a non-exclusive Semantics a Proven Cast of it, any other a borrow of the payload for an object reference, else of the
-    /// operand's Place (a value borrow, an address).</summary>
+    /// operand's Place (a value borrow, an address), two-phase where it is exclusive and produces an invocation's input (its input bit,
+    /// SPEC 15.6.7).</summary>
     /// <param name="adapt">An Adapt of the selected body.</param>
     /// <param name="operation">The operation; None where the case selects none.</param>
     /// <returns>The rvalue, a Cast or a Ref of the case's target Type; the Adapt itself where the case selects none.</returns>
@@ -144,7 +145,7 @@ internal sealed class MirCases(TyCtxt types)
         var operands = this.Body.Operands;
         var source = this.Type(this.Body.Consts[operands[adapt.Start + 1].Arg].Type);
         var target = this.Type(adapt.Type!);
-        operation = TyCtxt.Adaptation(source, target, adapt.Op != 0);
+        operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
         return operation switch
         {
             ConversionBinding.None => adapt,
@@ -152,7 +153,10 @@ internal sealed class MirCases(TyCtxt types)
             ConversionBinding.Pointer => MirRvalue.Cast(MirTypes.PointerCast(source), adapt.Start, target) with { Proven = true },
             ConversionBinding.ObjectUpcast when source.Semantics == target.Semantics && !MirTypes.IsExclusive(target) =>
                 MirRvalue.Cast(MirCastKind.Upcast, adapt.Start, target) with { Proven = true },
-            _ => MirRvalue.Ref(MirTypes.RefKind(target, input: false), target.IsObjectBorrow ? adapt.Place : operands[adapt.Start].Place, target),
+            _ => MirRvalue.Ref(
+                MirTypes.RefKind(target, (adapt.Op & MirRvalue.AdaptInput) != 0),
+                target.IsObjectBorrow ? adapt.Place : operands[adapt.Start].Place,
+                target),
         };
     }
 }

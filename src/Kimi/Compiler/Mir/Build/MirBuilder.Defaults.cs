@@ -201,6 +201,20 @@ internal sealed partial class MirBuilder
             foreach (ref readonly var statement in template.Statements.Slice(block.Start, block.Count))
             {
                 var copy = statement with { Place = FoldPlace(statement.Place), Source = FoldInfo(statement.Source) };
+                if (statement is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Use, Op: not 0 } acquire })
+                {
+                    // A PairAcquire, acquired into its local as the instance's case decides it, by the borrow its marker names.
+                    var acquired = this.Acquire(
+                        new(HirAcquire.ByCase, HirAdaptation.None),
+                        FoldPlace(template.Operands[acquire.Start].Place),
+                        null,
+                        acquire.Op == (byte)MirRefKind.TwoPhaseUniq,
+                        node,
+                        copy.Place);
+                    this.Use(copy.Place, acquired, node);
+                    continue;
+                }
+
                 this.body.Push(this.current, statement.Kind == MirStatementKind.Assign ? copy with { Rvalue = FoldRvalue(statement.Rvalue) } : copy);
             }
 
@@ -292,12 +306,9 @@ internal sealed partial class MirBuilder
             };
         }
 
-        MirOperand FoldOperand(in MirOperand operand) => operand.Kind switch
-        {
-            MirOperandKind.Const => MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = FoldType(template.Consts[operand.Arg].Type) })),
-            MirOperandKind.PairAcquire => this.Acquire(new(HirAcquire.ByCase, HirAdaptation.None), FoldPlace(operand.Place), null, input: false, node),
-            _ => operand with { Place = FoldPlace(operand.Place) },
-        };
+        MirOperand FoldOperand(in MirOperand operand) => operand.Kind == MirOperandKind.Const
+            ? MirOperand.Const(this.body.Const(template.Consts[operand.Arg] with { Type = FoldType(template.Consts[operand.Arg].Type) }))
+            : operand with { Place = FoldPlace(operand.Place) };
 
         // A template that did not fail has no Opaque value.
         MirRvalue FoldRvalue(in MirRvalue rvalue)

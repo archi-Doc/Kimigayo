@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using System.Runtime.InteropServices;
-using System.Text;
 using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
@@ -96,8 +94,6 @@ internal sealed class AggregateLayoutPool
     internal AggregateLayout? GetStored(BoundType type)
         => type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary ? this.CollectionField(type, 0) : this.Get(type, 0);
 
-    private static long Align(long size, int alignment) => (size + alignment - 1) & -(long)alignment;
-
     // IMPL 21.1.3: Sealed identifies the complete payload, but a direct call also needs its concrete cleanup.
     // Recursive handle edges retain dynamic cleanup; they do not expand an inline layout indefinitely.
     private AggregateLayout? SealedObjectHandle(BoundType type, ObjectHandleMode mode, int depth)
@@ -139,7 +135,7 @@ internal sealed class AggregateLayoutPool
 
         if (!this.sealedObjectHandles.TryGetValue((mode, drop), out var handle))
         {
-            handle = new(this.pool.Count, Layout.Of(type), [], [], 0, false, true, ObjectHandle: mode, ObjectPayloadDrop: drop);
+            handle = new(this.pool.Count, Layout.Of(type).Value!, [], [], 0, false, true, ObjectHandle: mode, ObjectPayloadDrop: drop);
             this.pool.Add(handle);
             this.sealedObjectHandles.Add((mode, drop), handle);
         }
@@ -177,6 +173,23 @@ internal sealed class AggregateLayoutPool
         return this.resolved[type] = null;
     }
 
+    // Layout's record of a Type whose parts this pool accepted; null after mapping a Limit to the resource limit and CLayout (a C-layout
+    // instance storing a zero-sized Field) to a refusal.
+    private ValueLowering? Represent(BoundType type)
+    {
+        var layout = Layout.Of(type);
+        if (layout.CLayout is not null)
+        {
+            this.resolved[type] = null;
+        }
+        else if (layout.Value is null)
+        {
+            this.ExceedLimit(type);
+        }
+
+        return layout.Value;
+    }
+
     private AggregateLayout? Get(BoundType type, int depth)
     {
         if (this.resolved.TryGetValue(type, out var existing))
@@ -210,7 +223,7 @@ internal sealed class AggregateLayoutPool
         {
             if (this.functionHandle is null)
             {
-                this.functionHandle = new(this.pool.Count, Layout.Of(type), [], [], 0, false, true, FunctionHandle: true);
+                this.functionHandle = new(this.pool.Count, Layout.Of(type).Value!, [], [], 0, false, true, FunctionHandle: true);
                 this.pool.Add(this.functionHandle);
             }
 
@@ -233,7 +246,7 @@ internal sealed class AggregateLayoutPool
             };
             if (handle is null)
             {
-                handle = new(this.pool.Count, Layout.Of(type), [], [], 0, false, true, ObjectHandle: mode);
+                handle = new(this.pool.Count, Layout.Of(type).Value!, [], [], 0, false, true, ObjectHandle: mode);
                 this.pool.Add(handle);
                 switch (mode.Counting)
                 {
@@ -255,18 +268,6 @@ internal sealed class AggregateLayoutPool
         }
 
         var structure = AdtDef.IsStruct(type);
-        var cLayout = false;
-        if (structure)
-        {
-            for (var attribute = AdtDef.Declaration(type)!.AttributeChain; attribute is not null; attribute = attribute.AttributeChain)
-            {
-                if (attribute.LayoutMode == "C")
-                {
-                    cLayout = true;
-                }
-            }
-        }
-
         if (depth == DepthLimit)
         {
             return this.ExceedLimit(type, depth: true);
@@ -296,16 +297,13 @@ internal sealed class AggregateLayoutPool
         var start = this.fields.Count;
         var array = type.Kind == BoundTypeKind.FixedArray;
         // A sequence handle's words are Layout's (IMPL 21.1.3); this pool adds their destruction facts.
-        var representation = sequence ? Layout.Of(type) : null;
+        var representation = sequence ? Layout.Of(type).Value : null;
         // A Function Item's Components are its bound generic arguments, not stored fields.
         var fieldCount = representation?.Layout.FieldOffsets.Length ??
             (structure ? AdtDef.Count(type) : type.Kind == BoundTypeKind.FunctionItem ? 0 : type.Components.Count);
         var count = array ? (int)type.Length : fieldCount;
-        if (cLayout && (fieldCount == 0 || AdtDef.Declaration(type) is not { Bases.Count: 0 } declaration || (declaration.Modifier & ModifierKind.Open) != 0))
-        {
-            return this.resolved[type] = null;
-        }
-
+        // Shapes stay apart by layout mode (Binding's AdtDef.IsCLayout); Layout places both.
+        var cLayout = structure && type.Symbol!.Adt is { IsCLayout: true };
         var body = AdtDef.Destructor(type);
         var destructor = body is not null ? this.destructors.GetValueOrDefault(body, -1) : -1;
         var genericDestructor = body is not null && GenericStoragePlan.IsGeneric(body) ? this.InstantiateDestructor?.Invoke(type) : null;
@@ -338,7 +336,7 @@ internal sealed class AggregateLayoutPool
 
                 // The scalar-value gate gives Never no record, so a Never Field keeps this pool's null (STATUS) though Layout lays it out.
                 var value = sequence && i == 0 ? RuntimeAbi.StringReference : child?.Value ?? WindowsLowering.GetValue(component);
-                if (value is null || (cLayout && (value.Layout.Size == 0 || value.Layout.Alignment > 16)))
+                if (value is null)
                 {
                     this.resolved[type] = null;
                     return null;
@@ -376,10 +374,10 @@ internal sealed class AggregateLayoutPool
                 }
             }
 
-            representation ??= this.Place(type, start, cLayout, baseLayout);
+            representation ??= this.Represent(type);
             if (representation is null)
             {
-                return this.ExceedLimit(type);
+                return null;
             }
 
             var result = new AggregateLayout(this.pool.Count, representation, CollectionsMarshal.AsSpan(this.fields).Slice(start, fieldCount).ToArray(), CollectionsMarshal.AsSpan(this.children).Slice(start, fieldCount).ToArray(), count, array, destroy, destructor, CLayout: cLayout, Base: baseLayout, GenericDestructor: genericDestructor);
@@ -392,105 +390,6 @@ internal sealed class AggregateLayoutPool
             this.fields.RemoveRange(start, this.fields.Count - start);
             this.children.RemoveRange(start, this.children.Count - start);
         }
-    }
-
-    // Places the Fields collected from start in a struct, Tuple, fixed array, Closure or Function Item; null when a size or offset
-    // exceeds the generation limit.
-    private ValueLowering? Place(BoundType type, int start, bool cLayout, AggregateLayout? baseLayout)
-    {
-        var fieldCount = this.fields.Count - start;
-        var array = type.Kind == BoundTypeKind.FixedArray;
-        var count = array ? (int)type.Length : fieldCount;
-        var alignment = baseLayout?.Value.Layout.Alignment ?? 1;
-        for (var i = 0; i < fieldCount; i++)
-        {
-            alignment = Math.Max(alignment, this.fields[start + i].Layout.Alignment);
-        }
-
-        // The existing physical plan uses signed 32-bit byte offsets. Reject its
-        // limit explicitly before any LLVM parser can truncate a size or offset.
-        // The complete base occupies a prefix, including its tail padding. Own fields
-        // can still use the ordinary alignment grouping after that prefix.
-        long size = baseLayout?.Value.Layout.Size ?? 0;
-        var offsets = array ? Array.Empty<int>() : new int[fieldCount];
-        if (array)
-        {
-            size = (long)count * this.fields[start].Layout.Stride;
-        }
-        else if (cLayout)
-        {
-            // Windows x64 /Zp16: natural alignment (at most 16), written field order.
-            for (var i = 0; i < fieldCount; i++)
-            {
-                var layout = this.fields[start + i].Layout;
-                size = Align(size, layout.Alignment);
-                if (size > int.MaxValue)
-                {
-                    return null;
-                }
-
-                offsets[i] = (int)size;
-                size += layout.Size;
-            }
-
-            size = Align(size, alignment);
-        }
-        else
-        {
-            for (var a = alignment; a != 0; a >>= 1)
-            {
-                for (var i = 0; i < fieldCount; i++)
-                {
-                    var layout = this.fields[start + i].Layout;
-                    if (layout.Alignment != a)
-                    {
-                        continue;
-                    }
-
-                    size = Align(size, a);
-                    if (size > int.MaxValue)
-                    {
-                        return null;
-                    }
-
-                    offsets[i] = (int)size;
-                    size += layout.Size;
-                }
-            }
-
-            size = Align(size, alignment);
-        }
-
-        if (size > int.MaxValue)
-        {
-            return null;
-        }
-
-        // A zero-length integer carrier preserves natural alignment without
-        // making padding into a typed source-language value.
-        string storage;
-        if (cLayout)
-        {
-            // Ordinary LLVM structs derive the same ABI padding; never use packed structs.
-            var builder = new StringBuilder("{ ");
-            for (var i = 0; i < fieldCount; i++)
-            {
-                if (i != 0)
-                {
-                    builder.Append(", ");
-                }
-
-                builder.Append(this.fields[start + i].Layout.StorageType);
-            }
-
-            storage = builder.Append(" }").ToString();
-        }
-        else
-        {
-            storage = "{ [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + size.ToString(CultureInfo.InvariantCulture) + " x i8] }";
-        }
-
-        return new ValueLowering(new(storage, (int)size, alignment, (int)size, offsets), storage, "ptr");
     }
 
     private AggregateLayout? GetEnum(BoundType type, int depth)
@@ -510,8 +409,6 @@ internal sealed class AggregateLayoutPool
         var start = this.enumCases.Count;
         try
         {
-            var alignment = 1;
-            long payloadSize = 0;
             var destroy = false;
             for (var i = 0; i < types.Length; i++)
             {
@@ -521,8 +418,6 @@ internal sealed class AggregateLayoutPool
                 }
 
                 this.enumCases.Add(payload);
-                alignment = Math.Max(alignment, payload.Value.Layout.Alignment);
-                payloadSize = Math.Max(payloadSize, payload.Value.Layout.Size);
                 destroy |= payload.NeedsDestruction;
             }
 
@@ -536,16 +431,14 @@ internal sealed class AggregateLayoutPool
                 }
             }
 
-            var offset = (int)Align(4, alignment);
-            var size = Align(offset + Align(payloadSize, alignment), Math.Max(4, alignment));
-            if (size > int.MaxValue)
+            if (this.Represent(type) is not { } value)
             {
-                return this.ExceedLimit(type);
+                return null;
             }
 
-            var storage = "{ i32, { [0 x i" + (alignment * 8).ToString(CultureInfo.InvariantCulture) + "], [" + Align(payloadSize, alignment).ToString(CultureInfo.InvariantCulture) + " x i8] } }";
-            var value = new ValueLowering(new(storage, (int)size, Math.Max(4, alignment), (int)size, new[] { 0, offset }), storage, "ptr");
-            var result = new AggregateLayout(this.pool.Count, value, [], [], 0, false, destroy, Cases: cases.ToArray(), PayloadOffset: offset);
+            // Layout places the tag at offset 0 and the payload union at the second offset.
+            var payloadOffset = value.Layout.FieldOffsets.Span[1];
+            var result = new AggregateLayout(this.pool.Count, value, [], [], 0, false, destroy, Cases: cases.ToArray(), PayloadOffset: payloadOffset);
             this.pool.Add(result);
             this.resolved[type] = result;
             return result;

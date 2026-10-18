@@ -86,9 +86,15 @@ public sealed partial class Binding
             return false;
         }
 
-        return TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } &&
-            (this.AdmittedSemantics(whole, scope) & invariant) != 0;
+        return (this.LayerAdmitted(type) & invariant) != 0;
     }
+
+    /// <summary>Gets the admitted set of a pair layer's binder (SPEC 8.3), from its declaring scope, which every occurrence of the layer
+    /// shares; None for another Type.</summary>
+    /// <param name="type">A Type.</param>
+    /// <returns>The admitted Semantics.</returns>
+    internal SemanticsMask LayerAdmitted(BoundType type)
+        => TryPairLayer(type, out var whole, out _) && whole.Symbol is { Scope: { } scope } ? this.AdmittedSemantics(whole, scope) : SemanticsMask.None;
 
     /// <summary>Gets the outer Origin <c>o</c> of a pair's whole Type (SPEC 8.1.1): one fixed Origin per pair binder, shared by every
     /// occurrence of the original <c>s/T</c>, present only in the admitted borrow cases and never written in source. The whole Type

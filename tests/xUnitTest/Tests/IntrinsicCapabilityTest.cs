@@ -23,6 +23,12 @@ public class IntrinsicCapabilityTest
     [InlineData("[0 of string]", false, true)]
     [InlineData("[16 of i32]", true, true)]
     [InlineData("(i32) -> i32", false, true)]
+    [InlineData("Never", true, true)]
+    [InlineData("(i32, Never)", true, true)]
+    [InlineData("(string, Never)", false, true)]
+    [InlineData("[2 of Never]", true, true)]
+    [InlineData("Option<Never>", true, true)]
+    [InlineData("Array<Never>", false, true)]
     public void ConcreteCapabilitiesFollowTheTypeRules(string type, bool copy, bool owned)
     {
         var c = CompilationTestHelper.ParseSuccess($"func inspect(x: {type}) => ()");
@@ -31,6 +37,21 @@ public class IntrinsicCapabilityTest
         var bound = function.Parameters[0].Type.TypeOf()!;
         Assert.Equal(copy ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveCopy(bound, function));
         Assert.Equal(owned ? ConstraintProof.Proven : ConstraintProof.Refuted, c.Binding.ProveOwned(bound, function));
+    }
+
+    // SPEC 3.1.3: Never is Copy and is not Sealed, ObjectPayload, PrimitiveInteger or Callable, so a call whose only candidate requires
+    // `T is not Copy` or one of those has no applicable overload.
+    [Theory]
+    [InlineData("Sealed")]
+    [InlineData("ObjectPayload")]
+    [InlineData("PrimitiveInteger")]
+    [InlineData("Callable<() -> ()>")]
+    [InlineData("not Copy")]
+    public void NeverRefutesTheOtherIntrinsicCapabilities(string capability)
+    {
+        var c = CompilationTestHelper.ParseSuccess($"func need<T>(x: T)\n    T is {capability}\n    ()\nfunc use(n: Never) => need<Never>(n)");
+        Assert.False(c.Bind().IsComplete);
+        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.NoApplicableOverload_Kd);
     }
 
     [Theory]

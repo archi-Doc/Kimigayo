@@ -129,8 +129,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.5.4, 13.6.1, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
     // nothing; a folded direct literal is its constant and evaluates nothing, a fitted literal is its operand, and a Never operand only
-    // diverges. A case adaptation (SPEC 8.14) is an Adapt, whose operation each Semantics case selects.
-    private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type)
+    // diverges. A case adaptation (SPEC 8.14) is an Adapt, whose operation each Semantics case selects, as a call's input where it produces
+    // one (input).
+    private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type, bool input)
     {
         ref readonly var row = ref HirTables.PlanOf(conversion);
         var binding = (ConversionBinding)row.Mode;
@@ -152,7 +153,7 @@ internal sealed partial class MirBuilder
         }
         else if (binding == ConversionBinding.CaseAdaptation)
         {
-            this.Adapt(destination, conversion, (ExplicitAdaptationPlan)row.Plan!);
+            this.Adapt(destination, conversion, (ExplicitAdaptationPlan)row.Plan!, input);
         }
         else
         {
@@ -189,14 +190,15 @@ internal sealed partial class MirBuilder
 
     // SPEC 8.14, 13.5.3: a case adaptation of its plan (MirCases.Adapt resolves it per Semantics case): the operand acquired by value, a
     // Place Copied (Binding proved Copy where a case acquires it by value) or a temporary moved, beside the token of Binding's source Type;
-    // the payload is the Place one implicit layer below the operand's, which an object borrow borrows.
-    private void Adapt(MirPlace destination, BinaryKoto conversion, ExplicitAdaptationPlan plan)
+    // the payload is the Place one implicit layer below the operand's, which an object borrow borrows. As an invocation's input, its
+    // exclusive borrow is two-phase (A3 E13 (4)).
+    private void Adapt(MirPlace destination, BinaryKoto conversion, ExplicitAdaptationPlan plan, bool input)
     {
         var temporary = HirTables.AdjustOf(conversion.Left).Acquire == HirAcquire.Temporary;
         var operand = temporary ? this.Value(conversion.Left) : this.Place(conversion.Left);
         var start = this.body.AddOperand(temporary ? MirOperand.Move(operand) : MirOperand.Copy(operand));
         this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, plan.Source))));
-        this.Set(destination, MirRvalue.Adapt(start, this.Follow(operand, 1), plan.Target, plan.IsShorthand), conversion);
+        this.Set(destination, MirRvalue.Adapt(start, this.Follow(operand, 1), plan.Target, plan.IsShorthand, input), conversion);
     }
 
     // IMPL 21.3.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,

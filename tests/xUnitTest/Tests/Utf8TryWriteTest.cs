@@ -111,9 +111,20 @@ public class Utf8TryWriteTest
     public void DirectWriteWarningIsIndependentOfDiscardWarning()
     {
         var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(42)\")");
-        var warnings = c.AnalyzeControlFlow().Warnings;
-        Assert.Contains(warnings, x => x.Code == DiagnosticCode.OwningWriteArgument_Kd);
-        Assert.Equal(2, warnings.Count);
+        var warnings = CompilationTestHelper.BindingWarnings(c);
+        Assert.Contains(warnings, x => x.Code == nameof(DiagnosticCode.OwningWriteArgument_Kd));
+        Assert.Equal(2, warnings.Length);
+    }
+
+    // DIAGNOSTICS §4.3: a warning whose check rests on a Binding failure records nothing, so a write whose interpolated argument failed
+    // has its failure and no owning write warning (HIR lint row 5).
+    [Fact]
+    public void AFailedWriteArgumentHasNoOwningWriteWarning()
+    {
+        var c = MinimalEmissionTest.Analyze(Setup + "(writer@uniq).write(\"\\(missing)\")");
+        Assert.False(c.Binding.Result.IsComplete);
+        Assert.DoesNotContain(CompilationTestHelper.BindingWarnings(c), static x => x.Code == nameof(DiagnosticCode.OwningWriteArgument_Kd));
+        Assert.Contains(TestDiagnostics.Of(c), static x => x.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error);
     }
 
     [Trait("Purpose", "Allocation")]

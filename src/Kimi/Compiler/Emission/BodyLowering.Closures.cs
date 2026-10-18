@@ -82,7 +82,8 @@ internal sealed partial class BodyLowering
             return definition.IsVirtual && address ? this.Virtuals?.Address(definition, entry) : entry;
         }
 
-        var body = type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+        var body = definition.CodeContext.Compilation.Binding.ClosureCall(type) is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi
+            : this.functions?.GetValueOrDefault(definition);
         return definition.IsVirtual && address ? this.Virtuals?.Address(definition, body) : body;
     }
 

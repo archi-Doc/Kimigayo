@@ -66,7 +66,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => function.BoundSymbol is { } symbol && function.CodeContext.Compilation.Types.Instantiates(symbol);
+        => function.BoundSymbol is { } symbol && function.CodeContext.Compilation.Types.InstantiatesInLegacy(symbol);
 
     internal void Clear()
     {
@@ -234,7 +234,7 @@ internal sealed partial class GenericStoragePlan
                     "void",
                     [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)]) { ResultSlot = true };
                 this.formattingWrites.Add(abi, wrapper);
-                module.RuntimeHelpers.FormattingWrites.Add(new(wrapper, abi));
+                module.RuntimeHelpers.RequestFormattingWrite(wrapper, abi);
             }
 
             abi = wrapper;
@@ -313,7 +313,7 @@ internal sealed partial class GenericStoragePlan
 
             var declared = body.SubstituteDefaults(environment, body.ContextAt(i));
             var type = declared is null || call is null ? declared : compilation.Binding.InstantiateStorageType(declared, call);
-            if (type?.ClosureContext is not { } context || !this.templates.TryGetValue(closure, out var template) ||
+            if (type is null || compilation.Binding.ClosureCall(type) is not { } context || !this.templates.TryGetValue(closure, out var template) ||
                 !this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
             {
                 return Fail(failure ?? "Generic closure requires its enclosing concrete substitution.", out failure);
@@ -569,7 +569,7 @@ internal sealed partial class GenericStoragePlan
         AbiParameter[] parameters = fixedBuffer ? [ret, value, new("ptr", "destination", LogicalIndex: 1), new("i64", "capacity", AbiParameterKind.Context), location, length] : [ret, value, location, length];
         result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters) { ResultSlot = true };
         this.formattingConversions.Add((write, kind), result);
-        module.RuntimeHelpers.FormattingConversions.Add((result, write, fixedBuffer));
+        module.RuntimeHelpers.RequestFormattingConversion(kind, result, write);
         return result;
     }
 

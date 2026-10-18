@@ -513,8 +513,9 @@ public sealed record BoundType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
-    // A generic closure keeps the enclosing substitution even when none of its slots occupy capture storage.
-    internal CallPlan? ClosureContext { get; init; }
+    // A closure an instance closed keeps that instance's substitution (SPEC 8.2; DECISIONS R5-M36), interned and shared by the instance's
+    // closures, even when none of its slots occupy capture storage.
+    internal Subst? ClosureContext { get; init; }
 
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];

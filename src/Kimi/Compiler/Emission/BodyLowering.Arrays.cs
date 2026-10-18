@@ -423,7 +423,6 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
         }
 
-        this.arrayRuntimeUsed |= owning;
         var helper = this.GetArrayHelper(owning ? ArrayHelperKind.OwnStorage : ArrayHelperKind.BorrowStorage, element, remainder: result, fields: GetRemainderFields(result, returnType, owning));
         this.callOperands.Clear();
         this.callOperands.Add(pointer);

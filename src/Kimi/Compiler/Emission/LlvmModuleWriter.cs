@@ -13,8 +13,6 @@ namespace Kimi.Compiler;
 /// </summary>
 internal static partial class LlvmModuleWriter
 {
-    private static readonly string FormattingRuntime = ReadFormattingRuntime();
-
     internal static void Write(EmissionModule module, TextWriter output)
     {
         var constants = module.Constants;
@@ -36,13 +34,7 @@ internal static partial class LlvmModuleWriter
         }
 
         helpers.WriteArrays(output);
-
-        if (helpers.NeedsFormattingRuntime)
-        {
-            output.Write(FormattingRuntime);
-            WriteFormattingWrappers(helpers, output);
-        }
-
+        helpers.WriteFormatting(output);
         helpers.WriteDictionaries(output);
 
         if (helpers.NeedsStringComparison)
@@ -58,34 +50,6 @@ internal static partial class LlvmModuleWriter
         WriteObjects(module, output);
 
         output.Write(LlvmModuleText.Footer);
-    }
-
-    private static string ReadFormattingRuntime()
-    {
-        using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8BufferRuntime.ll.in")!;
-        using var reader = new StreamReader(stream);
-        var text = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        using var formatting = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8FormatRuntime.ll.in")!;
-        using var formatReader = new StreamReader(formatting);
-        text += "\n" + formatReader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        foreach (var name in new[] { "Utf8FloatRuntime.ll.in", "Utf8FloatRyu.ll.in" })
-        {
-            using var resource = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name)!;
-            using var source = new StreamReader(resource);
-            text += "\n" + source.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        }
-
-        for (var kind = CompilerFunctionKind.TextFixed; kind <= CompilerFunctionKind.BuiltinFormat; kind++)
-        {
-            if (WindowsLowering.GetFormattingFunction(kind) is { } function)
-            {
-                text = text.Replace("{{" + function.Name + "}}\n", function.GetDefinition(false), StringComparison.Ordinal);
-            }
-        }
-
-        return text.Replace("{{reason_argument_range}}", Number(AbortReasons.ArgumentRange), StringComparison.Ordinal)
-            .Replace("{{reason_format}}", Number(AbortReasons.Format), StringComparison.Ordinal)
-            .Replace("{{reason_size}}", Number(AbortReasons.AllocationSize), StringComparison.Ordinal);
     }
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)

@@ -111,6 +111,10 @@ public class DiagnosticPrecisionTest
     [InlineData("func f(a: i32) -> i32\n    let s: string\n    Console.writeLine(s)\n    if a == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UninitializedPlace_Kd")]
     [InlineData("public func main()\n    let g = func (a: i32) -> i32\n        if a == 1 => return 1\n    _ = g", "FunctionFallthrough_Kd")]
     [InlineData("struct S\n    public var v: i32 = 0\n    public computed w: i32\n        get(self: ref/Self) -> i32\n            if self.v == 1 => return 1\npublic func main() => ()", "FunctionFallthrough_Kd")]
+    // A fallthrough that written syntax reaches beside an unresolved condition is direct; one only past an unresolved expression is
+    // derived from it (Binding.GuessedCompletion), so the failure alone is published.
+    [InlineData("func f(flag: bool) -> i32\n    if flag\n        if missing => return 1\npublic func main() => ()", "FunctionFallthrough_Kd,UnresolvedBinding_Kd")]
+    [InlineData("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\npublic func main() => ()", "UnresolvedBinding_Kd")]
     // A rejected acquisition states its overlap once; a later use of the rejected Loan meets the same holder again, while an
     // independent access to the root during that holder's Loan is still its own problem.
     [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")", "ComparisonLoanConflict_Kd")]
@@ -268,6 +272,16 @@ public class DiagnosticPrecisionTest
     }
 
     // Publishes every front-end phase as a check does and returns its Errors.
+    // DECISIONS R5-M32: the pending gate of the old check is gone; Binding's guess rule counts an expression it left unresolved as a
+    // guess, so a body that falls through only past one records its fallthrough derived from that failure, not nothing.
+    [Fact]
+    public void AFallthroughPastAnUnresolvedExpressionIsRecordedDerived()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(flag: bool) -> i32\n    if flag => return 1\n    missing()\npublic func main() => ()");
+        Assert.Contains(c.Binding.LintErrorRecords, static x => x.Code == Kimi.DiagnosticCode.FunctionFallthrough_Kd);
+        Assert.Equal(["UnresolvedBinding_Kd"], PublishedErrors(c).Select(static x => x.Code));
+    }
+
     private static TestDiagnostic[] PublishedErrors(Compilation c)
     {
         c.Binding.ReportDiagnostics();

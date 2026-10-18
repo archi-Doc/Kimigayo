@@ -140,7 +140,7 @@ public class DictionaryLiteralEmissionTest
     {
         const string source = "let entries = [(1, 2): \"ok\"]\nConsole.writeLine(entries[(1, 2)])";
         var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryRequireAbsent));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.RequireAbsent).Declaration));
         var original = CompilationTestHelper.WriteIr(c);
         var loaded = CompilationTestHelper.Reload(c);
         Assert.True(loaded.Bind().IsComplete);

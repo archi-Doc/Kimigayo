@@ -25,6 +25,10 @@ public sealed class RetentionTest
         "    public func put(self: uniq/Self, value: ref/T during source) => self.data = value\n" +
         "    public func item(self: uniq/Self) -> ref/T during self.source => self.data\n";
 
+    // An object payload that holds a Loan, and a local to lend it.
+    private const string Lent = "struct Lent {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n" +
+        "var x = 1\n";
+
     // A function whose body relies on its enclosing function's premise c outlives o (y's well-formedness), called while *q is written.
     private const string Enclosing = "func outer(y: ref/(ref/i32 during c) during o, q: uniq/i32 during c) -> i32\n";
 
@@ -156,6 +160,38 @@ public sealed class RetentionTest
         Assert.Equal("0 Content result, 0 Content store 0", Declared(c, "first"));
     }
 
+    // SPEC 15.6.4 step 4, 8.1.2 (DECISIONS BU-3): a pair layer whose binder admits only borrows is a borrowed input in every admitted
+    // case, its slot Value and its target Content, which an admitted exclusive borrow lets the call write, as for a concrete `uniq/T`;
+    // the original `s/T` and an application alike; the pair's slot still reaches storage that holds the pair by value. A pair admitting
+    // `owner`, raw or an object owner is no borrow in that case, so its target stays Value.
+    [Theory]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objref or objuniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is ref\n    return", "")]
+    [InlineData("func f<s/T>(a: s/Option<T>, b: ref/i32)\n    s is ref or uniq\n    return", "0 Content store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32) -> s/T\n    s is ref or uniq\n    return a", "0 Value result, 0 Content store 0")]
+    [InlineData(
+        "func f<s/T>(a: s/T, b: uniq/Array<s/T>)\n    s is ref or uniq\n    return",
+        "0 Content store 0, 1 Content store 0, 0 Value store 1, 1 Content store 1")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is owner or uniq\n    return", "0 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is uniq or raw\n    return", "0 Value store 0")]
+    [InlineData("func f<s/T>(a: s/T, b: ref/i32)\n    s is objuniq or obj\n    return", "0 Value store 0")]
+    public void BorrowPairLayersAreBorrowedInputs(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // The same for a generic caller passing its own `s/T` (A5's case 139c, a non-Copy T): the call's Subst keeps the caller's pair, whose
+    // binder admits only borrows, so the call stores only the argument's referent into it; and for an erased callable over such a pair.
+    [Fact]
+    public void CallsOverBorrowPairLayersAreBorrowedInputs()
+    {
+        var c = Bind("func inner<s/T>(a: s/T, b: i32) -> ()\n    s is ref or uniq\n    return\nfunc peek<T>(x: ref/T) -> i32 => 1\n" +
+            "func use<s/T>(p: s/T, item: T) -> ()\n    s is ref or uniq\n    var x = item\n    inner(x@(s/T), peek(x@ref))\n" +
+            "func apply<s/T>(g: (s/Option<T>) -> (), x: s/Option<T>) -> ()\n    s is ref or uniq\n    g(x)\n");
+        Assert.Equal(["0 Content store 0"], Calls(c, "inner"));
+        Assert.Equal(["0 Content store 0"], ValueCalls(c));
+    }
+
     // SPEC 15.6.4 step 1, 15.3.5 (DECISIONS R4-M36): an abstract carrier may hold borrows its Origins do not show, so an input naming a
     // Type parameter the result names is retained, as is one whose carrier lies below a layer whose Origin the result's outlives; a call
     // instantiating the parameter retains by the instance, nothing for an Origin-free one.
@@ -270,9 +306,25 @@ public sealed class RetentionTest
         Assert.Equal("0 Value result, 0 Content store 0", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null)));
     }
 
-    // Every call of the Kimi library and the milestone programs that MIR does not serve by an intrinsic (A5's) has a retention under its
-    // substitution, for the callee MIR names (a direct base call's implementation), or over its declared Callable signature, whose rows
-    // name its inputs: each call's Subst instantiates the contract.
+    // SPEC 15.6.4 (A3 E14): an intrinsic's call retains as its library declaration says, as any call does: an object creation its value,
+    // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, Text.writer its destination; Raw.slice's
+    // and Raw.allocate's results are untied (a fresh anchor), and a row into a raw pointer's own storage carries nothing (it holds no Loan).
+    [Theory]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "0 Value result")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "0 Value result")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeArc(Lent.init(r: x@ref))\n", "makeArc", "0 Value result")]
+    [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\nlet c = Kimi.Intrinsics.clone(h@ref)\n", "clone", "0 Content result")]
+    [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Value store 0, 1 Value store 0")]
+    [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "untied")]
+    [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "0 Value store 0")]
+    public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
+        => Assert.Equal([expected], Calls(Bind(source), name));
+
+    // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
+    // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,
+    // whose rows name its inputs: each call's Subst instantiates the contract.
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void EveryCorpusCallHasARetention(string name)
@@ -285,9 +337,9 @@ public sealed class RetentionTest
             {
                 var value = call.Kind == CalleeKind.Value;
                 var callee = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? call.VirtualImplementation?.SymbolOf() : call.Target;
-                if (callee is null || (!value && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
+                if (callee is null || (callee.LibraryDeclaration is null && IntrinsicDisposition.Of(callee.CompilerFunction).Kind == DispositionKind.Intrinsic))
                 {
-                    continue;
+                    continue; // The compiler-only $abort has no declaration MIR names (SPEC 17.4).
                 }
 
                 var retention = value ? c.Types.Retains(call.CalleeType, call.DeclaredSignature, Definition(node))

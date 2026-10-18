@@ -5,12 +5,13 @@
 // helper records, the runtime flags, the source functions the compiler requested, the DictionaryStorage functions and the
 // formatting wrappers), the element descriptor of a stored collection value, the stored-value text kernels the helpers write
 // through, the Array capacity routines and helpers (LegacyRuntimeHelpers.Arrays.cs), the Dictionary runtime, the storage byte
-// primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs) and the string-comparison routines. Each
-// generator's module holds one instance, and both write the helpers through this component (promoted, never copied); the old
-// writer's formatting writers join it in P1d.
+// primitives and the Dictionary helpers (LegacyRuntimeHelpers.Dictionaries.cs), the formatting runtime with its routines' ABIs
+// and the wrappers over user formatting witnesses (LegacyRuntimeHelpers.Formatting.cs) and the string-comparison routines. Each
+// generator's module holds one instance, and both write the helpers through this component (promoted, never copied).
 // Input: helper records built from FunctionAbi, ValueLowering, StoredValue (drop routine name, text flag), the Option payload
 // offset and remainder Field offsets; the compiled ABIs of the DictionaryStorage functions the Dictionary helpers call, keyed
-// by DictionaryCallee; a writer, LLVM SSA names and sizes.
+// by DictionaryCallee; the formatting wrappers' ABIs and the compiled functions they call; the runtime templates (.ll.in); a
+// writer, LLVM SSA names and sizes.
 // Output: the module's request state, in request order, and LLVM text written to the writer; per helper kind one row, readable
 // by kind before any representation exists, which declares the kind's library callees and type-driven needs for the instance
 // collector (X4). The rows land in P1b-P2b: each Array kind's row (ArrayRow; P1b) holds its name prefix, ABI shape, prologue,
@@ -19,12 +20,15 @@
 // shape, writer, HelperNeeds (the Array runtime for every kind, the Dictionary runtime for CheckKey, the element's drop glue for
 // Drop) and its callees as DictionaryCallee values: the generic function its helpers call over the entry Types (findEntry for
 // CheckKey, clearEntries for Drop) and the one the module resolves (requireAbsent for CheckKey, append for Place).
-// DictionaryCallee names each function by the KimiLibrary declaration the old emitter resolves it from until F2c supplies their
-// symbol view; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
-// row, and the old lowering also requests it for a Dictionary's construction. The formatting rows follow in P1d, the storage
-// kernels in P2a-P2b.
+// DictionaryCallee, the key of KimiLibrary's DictionaryStorage view (F2c), names each function by the symbol Binding declares
+// for it; the Dictionary runtime (the duplicate-key adapter and the initialization bridge, which calls initialize) has no
+// row, and the old lowering also requests it for a Dictionary's construction. Each formatting compiler function's row
+// (FormattingRow; P1d) holds its routine's ABI and HelperNeeds (the formatting runtime) and declares no library callee, since the
+// formatting runtime calls none; the formatting witness WriterWrite, TextToString and TextTryFormat run is the need their
+// published library rows state (Formats, SPEC 4.9.6), which the collector reads there. The storage kernels follow in P2a-P2b.
 // Invariants: a new helper kind adds a row; a kind without a row fails; a request's runtime flags come from its row; each
-// requested helper is written once, in request order, after the runtimes its row declares;
+// requested helper is written once (the planner requests each formatting wrapper once), in request order, after the runtimes its
+// row declares;
 // the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; a Dictionary helper's
 // Related index and the callees its row declares resolve before writing; whether a value travels as a scalar is decided once,
 // by StoredValue.TravelsAsScalar.
@@ -53,6 +57,10 @@ internal enum HelperNeeds : byte
     /// <summary>The Dictionary runtime: the duplicate-key adapter a literal's key check reports through and the empty-Dictionary
     /// initialization bridge (SPEC 4.3, 4.9.6).</summary>
     DictionaryRuntime = 4,
+
+    /// <summary>The formatting runtime: the UTF-8 buffer, writer, formatting and floating-point routines and the memory
+    /// declarations (SPEC 22.7, 22.9, 22.10).</summary>
+    FormattingRuntime = 8,
 }
 
 /// <summary>The element descriptor of a stored collection value (SPEC 4.5, 16.3.2, 21.3.1): its representation, the name of the
@@ -130,12 +138,6 @@ internal sealed partial class LegacyRuntimeHelpers
 
     /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.9.5).</summary>
     internal bool NeedsArrayRuntime { get; set; }
-
-    internal bool NeedsFormattingRuntime { get; set; }
-
-    internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
-
-    internal List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> FormattingConversions { get; } = new();
 
     internal bool NeedsStringComparison { get; set; }
 
@@ -215,8 +217,8 @@ internal sealed partial class LegacyRuntimeHelpers
         this.NeedsStorageBytes = false;
         Array.Clear(this.dictionaryCallees);
         this.NeedsFormattingRuntime = false;
-        this.FormattingWrites.Clear();
-        this.FormattingConversions.Clear();
+        this.formattingWrites.Clear();
+        this.formattingConversions.Clear();
         this.NeedsStringComparison = false;
     }
 
@@ -225,5 +227,6 @@ internal sealed partial class LegacyRuntimeHelpers
     {
         this.NeedsArrayRuntime |= (needs & HelperNeeds.ArrayRuntime) != 0;
         this.NeedsDictionaryRuntime |= (needs & HelperNeeds.DictionaryRuntime) != 0;
+        this.NeedsFormattingRuntime |= (needs & HelperNeeds.FormattingRuntime) != 0;
     }
 }

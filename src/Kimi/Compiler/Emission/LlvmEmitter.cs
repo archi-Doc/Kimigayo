@@ -33,16 +33,9 @@ public sealed partial class LlvmEmitter
     {
         this.compilation = compilation;
         this.lowering = new(compilation.Locations);
-        // A Dictionary helper row's Entries callee is one of the two functions generic over the entry Types.
-        this.lowering.RequireDictionaryOperation = (callee, key, value) => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(
-            callee switch
-            {
-                DictionaryCallee.FindEntry => true,
-                DictionaryCallee.ClearEntries => false,
-                _ => throw new InvalidOperationException("A Dictionary helper row's Entries callee is not generic over the entry Types."),
-            },
-            key,
-            value));
+        // A Dictionary helper row's Entries callee is generic over the entry Types (Binding.DictionaryStorageCall fails closed on others).
+        this.lowering.RequireDictionaryOperation = (callee, key, value)
+            => this.generics.RequireSourceCall(this.compilation.Binding.DictionaryStorageCall(callee, key, value));
         this.lowering.AggregateLayouts.InstantiateDestructor = type => this.generics.RequireDestructor(this.compilation.Binding, type);
         this.lowering.AggregateLayouts.IsSealedObjectTarget = type => this.compilation.Binding.ProveSealed(type, this.compilation.Kotonoha.RootKoto) == ConstraintProof.Proven;
     }
@@ -198,14 +191,13 @@ public sealed partial class LlvmEmitter
             this.lowering.Virtuals = this.virtuals;
             this.objects.Virtuals = this.virtuals;
 
+            // The module resolves each function of the DictionaryStorage view (F2c); findEntry and clearEntries, generic over the
+            // entry Types, have no one compiled function and stay unresolved: a helper reaches its instance through Related.
             var helpers = module.RuntimeHelpers;
-            helpers.Resolve(DictionaryCallee.AppendSlot, this.functions.GetValueOrDefault(c.Library.DictionaryAppendSlot));
-            helpers.Resolve(DictionaryCallee.Initialize, this.functions.GetValueOrDefault(c.Library.DictionaryInitialize));
-            helpers.Resolve(DictionaryCallee.ClearLinks, this.functions.GetValueOrDefault(c.Library.DictionaryClearLinks));
-            helpers.Resolve(DictionaryCallee.RequireAbsent, this.functions.GetValueOrDefault(c.Library.DictionaryRequireAbsent));
-            helpers.Resolve(DictionaryCallee.ReserveStorage, this.functions.GetValueOrDefault(c.Library.DictionaryReserveStorage));
-            helpers.Resolve(DictionaryCallee.Append, this.functions.GetValueOrDefault(c.Library.DictionaryAppend));
-            helpers.Resolve(DictionaryCallee.Shrink, this.functions.GetValueOrDefault(c.Library.DictionaryShrink));
+            for (var callee = DictionaryCallee.FindEntry; callee <= DictionaryCallee.Reserve; callee++)
+            {
+                helpers.Resolve(callee, this.functions.GetValueOrDefault((FunctionKoto)c.Library.DictionaryStorage(callee).Declaration));
+            }
 
             if (!this.generics.Prepare(c, module, this.lowering.AggregateLayouts, this.functions, out failure))
             {

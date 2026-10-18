@@ -130,9 +130,8 @@ public class PatternBindingTest
         var c = Parse("func f(x: bool) => match x\n    true if true => ()\n    false if yield () => ()");
         Assert.False(c.Bind().IsComplete);
         Assert.Equal(MatchCoverageState.NonExhaustive, Plan(c).Coverage.State);
-        var flow = c.AnalyzeControlFlow();
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        Assert.Contains(flow.Issues, x => x.Message.Contains("target", StringComparison.Ordinal));
+        Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Message.Contains("target", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -311,7 +310,8 @@ public class PatternBindingTest
         var unsafeGuard = Parse("func f(x: bool, p: raw/bool) => match x\n    _ if *p => ()");
         unsafeGuard.Bind();
         Assert.Contains(unsafeGuard.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
-        Assert.Contains(unsafeGuard.AnalyzeControlFlow().Issues, i => i.Message.Contains("unsafe", StringComparison.OrdinalIgnoreCase));
+        unsafeGuard.Binding.ReportDiagnostics();
+        Assert.Contains(TestDiagnostics.Of(unsafeGuard), x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd) && x.Text == "*p");
     }
 
     [Fact]
