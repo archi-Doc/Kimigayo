@@ -2176,3 +2176,31 @@ structure is recorded here by the unit that first implements it.
   - Rejected: both readers on the SPEC rule (the old generator refuses that program, `GenerationFailed_Kd`); a copy of the old
     rule in Emission (two rules for one fact); a mode parameter on `Instantiates`; the old view in `CloseClosureTypes` (the
     collector would key a generic closure as closed).
+- **R5-M35 `InstanceCollector`, `CheckedSet` and the code generator selector** (2026-10-18, planning session; plan K1, package K
+  §4.3-4.5, §5 and §9, S2-S4 X7, X15, X27, PD4, PD5; under R5-M18) A permanent Backend component, `InstanceCollector`
+  (`Backend/Instances/InstanceCollector.cs`, contract entry), owns the checked set of a program version (SPEC 8.15.3, IMPL 21.3.1) and
+  the one resolution of each call site's callee that code generation reads. It publishes `CheckedSet` (`Backend/Instances/CheckedSet.cs`):
+  items in admission order, the roots first in `MirProgram.Bodies` order, then a FIFO worklist, one item per `MonoKey`; each item's
+  targets `MonoTarget(Item, At, Runtime)` in its body's location order, a range of one array; `Find(MonoKey)`. The body-instance key is
+  `Instantiation(MirDefKey, Subst? Erased)`, null exactly when the definition does not instantiate (PD5, KD1). Roots: each body of a
+  root module (`Source.Module < rootModules`, an input range, not a mode) whose definition does not instantiate. Templates: once per
+  body and version, the Call sites that may carry a target (Fn, Requirement and Value callees and the intrinsics whose `Target` is not
+  None; a Virtual call none, X5), each with its runtime bit from the collector's own `MirReach` walk without CheckTarget edges. K1's
+  replay admits closed callees: a Fn callee's body by `TyCtxt.Implementation(..., 0)` and `MirProgram.Callee` (a default template's,
+  the function's, getter's or setter's) and a Closure of a closed definition, which is called through a borrow (`TyCtxt.Layer`).
+  `Compilation.BuildMir()` runs it after `MirAnalysis.Run`, whatever that found, under MIR code generation only until G2; it records
+  nothing until K4b and decides no acceptance; a warm run allocates nothing.
+  - `IntrinsicRows` (`Backend/IntrinsicRows.cs`), the Backend's row per `IntrinsicId`, with the `Target` column (X15): ErasedWriter
+    Witness, StaticEnsure StaticInit, MakeObj, MakeRc, MakeArc, Clone and TypeTest Descriptor, DestroyValues Glue, every other None; an
+    id without a row, None included, throws. The template builder is its first reader; C0b1 adds the writer column.
+  - Staged as rows of the same representation: `MonoKind` has only `Body`; the other kinds, `MonoKey`'s Symbol, Type and Variant, and
+    `MonoItem`'s representative, view, parent, depth and site come with the units that produce them (K4a-K8).
+  - Temporary structures: the `KIMI_CODEGEN` selector (`CompilerCodegen`, `Compilation.DefaultCodegen`, `CodegenOf` and the
+    per-compilation `Codegen`), read once per process, `mir` valid only with `KIMI_PIPELINE=mir` (any other value or combination is a
+    configuration error), a compilation's code generator following its pipeline, marked in `CompilerIdentity` (` [mir, codegen mir]`)
+    and the test artifact manifest; G4 removes it. The sel generation refusal (`Compilation.RefusesCodegen`), read by `WriteIr`,
+    `Validate` and `EmissionArtifacts.Publish`: one `Unsupported_Kd` in the Emission partition at the body of each output root (an
+    Application's startup, a test build's tests, a Library's roots), never the old generator, which `Project.Emit` leaves in place; C0a
+    moves it into the generation entry and C0b1 deletes it.
+  - Rejected: a process-wide selector only (no compilation could select MIR code generation in a test); sharing the driver's `MirReach`
+    (an edit of the driver); the refusal in the old generator's `TryPrepare` or `ReportFailure` (it is not that generator's failure).

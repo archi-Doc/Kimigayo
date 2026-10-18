@@ -545,8 +545,13 @@ public partial class Project
     {
         if (!EmissionArtifacts.Publish(compilation, paths, out var pathIr, out var failure))
         {
-            // SPEC 21.3.2: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error.
-            compilation.Emission.ReportFailure(failure);
+            // SPEC 21.3.2: an exceeded mandatory generation limit is a resource diagnostic, not a semantic error. Under MIR code generation
+            // the refusal has reported its records (R5 K1 to C0b1).
+            if (compilation.Codegen != CompilerCodegen.Mir)
+            {
+                compilation.Emission.ReportFailure(failure);
+            }
+
             this.Publish(compilation.Diagnostics, DiagnosticPartition.Emission, DiagnosticPartition.Emission, context);
             return false;
         }
