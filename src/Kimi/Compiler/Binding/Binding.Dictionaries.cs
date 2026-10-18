@@ -44,8 +44,8 @@ public sealed partial class Binding
         for (var i = 0; i < literal.Entries.Count; i++)
         {
             var entry = literal.Entries[i];
-            var actualKey = this.RequireType(entry.Key, scope, expected.Components[0]);
-            var actualValue = this.RequireType(entry.Value, scope, expected.Components[1]);
+            var actualKey = this.RequireAtPosition(entry.Key, scope, expected.Components[0]);
+            var actualValue = this.RequireAtPosition(entry.Value, scope, expected.Components[1]);
             if (actualKey is null || actualValue is null || entry.Key.BindingState == BindingState.Invalid || entry.Value.BindingState == BindingState.Invalid)
             {
                 complete = false;

@@ -450,7 +450,7 @@ public sealed partial class Binding
         for (var i = 0; i < call.ArgumentNodes.Count; i++)
         {
             var argument = call.ArgumentNodes[i];
-            if (argument.BoundType is null)
+            if (this.PropagateBound(argument, operations[i].ParameterType) is null)
             {
                 // The argument is an expression of the caller's context, not of the selected requirement.
                 var selectedContract = this.activeRequirementContract;

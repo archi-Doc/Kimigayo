@@ -11,6 +11,29 @@ public class NeverContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
 
+    private const string Joins = "struct P\n    public var x: i64 = 5\nfunc g(t: (i64, i64)) => ()\nfunc id<T>(value: T) -> T => value@move\n" +
+        "func f(c: bool, d: bool, a: i64, p: P) -> i64\n    ";
+
+    // The program of JoinedLiteralsRunAtTheirJoinsType.
+    private const string JoinedLiterals =
+        "struct P\n    public var x: i64 = 5\n" +
+        "func tuple(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, (return 7))\n    return t.0 + t.1\n" +
+        "func nested(c: bool, d: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (if d => (a, (return 8)) else => (a, (return 9)))\n    return t.1\n" +
+        "func array(c: bool, a: i64) -> i64\n    let x = if c => [(a, a)] else => [(a, a), (a, (return 6))]\n    return x[0].0\n" +
+        "func dictionary(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, a), \"j\": (a, (return 4))]\n    return x[\"k\"].1\n" +
+        "func moved(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, (return 5))@move\n    return t.1\n" +
+        "func literal(c: bool, p: P) -> i64\n    let t = if c => p.x else => 4000000000\n    return t\n" +
+        "func leaf(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, 3000000000)\n    return t.1\n" +
+        "func elements(c: bool, p: P) -> i64\n    let x = if c => [p.x] else => [1, 4000000000]\n    return x[1]\n" +
+        "func deep(c: bool, d: bool, p: P) -> i64\n    let t = if c => p.x else => (if d => 4000000000 else => 3 * 1000000000)\n    return t\n" +
+        "require tuple(true, 2) == 4 and tuple(false, 2) == 7 else => $abort(\"tuple\")\n" +
+        "require nested(true, true, 3) == 3 and nested(false, true, 3) == 8 and nested(false, false, 3) == 9 else => $abort(\"nested\")\n" +
+        "require array(true, 2) == 2 and array(false, 2) == 6 and dictionary(true, 2) == 2 and dictionary(false, 2) == 4 else => $abort(\"array\")\n" +
+        "require moved(true, 2) == 2 and moved(false, 2) == 5 else => $abort(\"moved\")\n" +
+        "require literal(true, P.init()) == 5 and literal(false, P.init()) == 4000000000 and leaf(false, 2) == 3000000000 else => $abort(\"literal\")\n" +
+        "require elements(false, P.init()) == 4000000000 and deep(false, true, P.init()) == 4000000000 and deep(false, false, P.init()) == 3000000000 else => $abort(\"deep\")\n" +
+        "Console.writeLine(\"ok\")";
+
     [Theory]
     [InlineData("Nested", "var n: i32 = do => do => loop => continue\nConsole.writeLine(\"after\")")]
     [InlineData("Default", "func f(y: i32 = (do => loop => continue)) -> i32 => y\nvar n: i32 = f()\nConsole.writeLine(\"after\")")]
@@ -41,6 +64,46 @@ public class NeverContinuationTest
         var c = MirBuildTest.Compile(source);
         Assert.Empty(c.Binding.Issues);
         Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
+    }
+
+    // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
+    // none, and it takes the Target Result Type once the join selects it, nested, through @move, as an array element, a dictionary value
+    // and a call argument too, which its published Type shows.
+    [Theory]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
+    [InlineData("let t = match c\n        true => (a, a)\n        false => (a, (return 1))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, (return 2)))", "(a, (return 2))")]
+    [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit (a, a)", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))@move", "(a, (return 1))")]
+    [InlineData("let t = if c => (p.x, p.x) else => (p.x, (return 1))", "(p.x, (return 1))")]
+    [InlineData("let x = [(a, a), (a, (return 1))]", "(a, (return 1))")]
+    [InlineData("let x = [\"k\": (a, a), \"j\": (a, (return 1))]", "(a, (return 1))")]
+    [InlineData("g(if c => (a, (return 1)) else => (a, (return 2)))", "(a, (return 2))")]
+    [InlineData("let r: (i64, i64) = id(if c => (a, (return 1)) else => (a, (return 2)))", "(a, (return 1))")]
+    public void ANeverElementLiteralTakesItsJoinsType(string statement, string literal)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
+        Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+    }
+
+    // SPEC 14.9.2 step 3: the literals a join types late run at its Type: a Never element diverges where it is evaluated, and a literal
+    // source or leaf, nested or an array element, holds a value only its join's Type has.
+    [Fact]
+    public void JoinedLiteralsRunAtTheirJoinsType()
+        => ScalarEmissionTest.EmitFixture("NeverContinuation" + Configuration + "Joins", JoinedLiterals, "ok\n");
+
+    // The counterparts: such a literal takes the Target Result Type only when its parts fit it, an array literal's elements included
+    // (SPEC 4.3); otherwise the join is a Type mismatch.
+    [Theory]
+    [InlineData("let t = if c => (d, d) else => (a, (return 1))")]
+    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1)), (a, true)]")]
+    public void ANeverElementLiteralThatDoesNotFitItsJoinIsAMismatch(string statement)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Node is IfKoto && x.Failure == BindingFailure.TypeMismatch);
     }
 
     // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such

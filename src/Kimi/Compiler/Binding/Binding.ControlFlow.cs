@@ -208,11 +208,12 @@ public sealed partial class Binding
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
             // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
-            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
+            context.Add(body, this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
         }
         else if (structural.CanComplete(body))
         {
-            context.Sources.Add(BoundType.Unit);
+            // DIAGNOSTICS §4.4: the completion of a body the parser supplied is a guess, which decides no inferred Target Result Type.
+            context.Add(null, context.Expected is null && IsRecovery(body, out _) ? null : BoundType.Unit);
         }
     }
 
@@ -279,9 +280,10 @@ public sealed partial class Binding
             (node is WhileKoto loop && structural.CanComplete(loop.Condition)) ||
             (node is ForKoto iteration && structural.CanComplete(iteration.Iterable)))
         {
-            context.Sources.Add(BoundType.Unit);
+            context.Add(null, BoundType.Unit);
         }
 
+        context.Collecting = false;
         return this.DecideResult(node, context);
     }
 
@@ -290,16 +292,10 @@ public sealed partial class Binding
     {
         var types = this.resultTypes;
         types.Clear();
-        foreach (var source in context.Sources)
+        var awaiting = this.ResultCandidates(context, types);
+        if (context.Expected is null && types.Count == 0 && awaiting && this.AwaitsWithoutCandidate(node, context, types))
         {
-            if (source is null)
-            {
-                context.Pending = true;
-            }
-            else if (!ReferenceEquals(source, BoundType.Never))
-            {
-                types.Add(source);
-            }
+            return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
         }
 
         var suppliedValue = types.Count > 0;
@@ -313,7 +309,8 @@ public sealed partial class Binding
         if (common is null)
         {
             common = this.SelectCommonType(types, this.ConstraintScope(node), out var conflict);
-            context.Invalid |= conflict;
+            failed = awaiting && common is not null ? this.PropagateSources(node, context, common) : null;
+            context.Invalid |= conflict || failed is not null;
         }
         else
         {
@@ -361,9 +358,18 @@ public sealed partial class Binding
 
         internal List<BoundType?> Sources { get; } = new();
 
+        // Each source's node beside its Type: the body or transfer operand that supplies it, or null for a structural Unit.
+        internal List<Koto?> SourceNodes { get; } = new();
+
         internal List<BoundType> Evidence { get; } = new();
 
         internal bool Pending { get; set; }
+
+        // Whether the target collects its sources after its survey, so that a literal source waits for its Type (SPEC 14.9.2 step 3).
+        internal bool Collecting { get; set; }
+
+        // Whether the target waits for its position's Type, which decides it when the position binds it (SPEC 14.9.2).
+        internal bool Waiting { get; set; }
 
         internal bool Invalid { get; set; }
 
@@ -386,12 +392,19 @@ public sealed partial class Binding
             this.LiteralFit = this.LiteralDefault = null;
             this.Expected = expected;
             this.Inferred = expected is null;
-            this.Invalid = this.Pending = false;
+            this.Invalid = this.Pending = this.Collecting = this.Waiting = false;
             this.Sources.Clear();
+            this.SourceNodes.Clear();
             this.Evidence.Clear();
             this.ArrayShape = null;
             this.ArrayElement = this.ArrayDefault = null;
             this.ArrayFailure = null;
+        }
+
+        internal void Add(Koto? node, BoundType? type)
+        {
+            this.Sources.Add(type);
+            this.SourceNodes.Add(node);
         }
     }
 }

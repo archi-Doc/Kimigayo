@@ -353,9 +353,9 @@ public sealed partial class Binding
 
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsUnderProbe(node, expected))
+        if (this.WaitsUnderProbe(node, expected) || this.WaitsForJoin(node, expected))
         {
-            return null; // SPEC 10.5.1: a literal source of a control-flow part under the argument probe waits for its expectation.
+            return null; // SPEC 10.5.1, 14.9.2: a literal source waits for its expectation or its join's Type.
         }
 
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
@@ -389,7 +389,8 @@ public sealed partial class Binding
             expected = this.SubstituteIdentityPremises(expected, scope);
         }
 
-        var actual = this.BindNodeCore(node, scope, expected);
+        // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies.
+        var actual = this.WaitingResult(node) is { } waiting ? this.DecideWaiting(node, waiting, expected) : this.BindNodeCore(node, scope, expected);
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);
@@ -732,7 +733,7 @@ public sealed partial class Binding
                 {
                     if (jump.Parent is not TryKoto)
                     {
-                        targetResult?.Sources.Add(actual);
+                        targetResult?.Add(jump.Expression, actual);
                     }
 
                     if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))

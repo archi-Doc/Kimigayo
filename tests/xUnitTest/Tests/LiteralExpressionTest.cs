@@ -1,6 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -64,7 +66,50 @@ public class LiteralExpressionTest
         Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
     }
 
+    // SPEC 14.9.2 step 3, 12.3: a literal source of a join, or a literal leaf of a Tuple or array literal source, is not fixed before the
+    // join: it takes the Type the other sources supply, which no survey typed before binding them, nested too, and generates in it.
     [Theory]
+    [InlineData("let t = if c => p.x else => 1", "1", "i64")]
+    [InlineData("let t = if c => p.x + n else => 1", "1", "i64")]
+    [InlineData("let t = if c => p.x else => 2 * 3", "2 * 3", "i64")]
+    [InlineData("let t = if c => p.x else => (if d => 1 else => 2)", "2", "i64")]
+    [InlineData("let t = if c => (n, n) else => (1, 2)", "(1, 2)", "(i64, i64)")]
+    [InlineData("let t = if c => (n, n) else => (n, 1)", "(n, 1)", "(i64, i64)")]
+    [InlineData("let x = [(n, 1), (n, n)]", "(n, 1)", "(i64, i64)")]
+    [InlineData("let x = if c => [1, 2] else => [p.x]", "[1, 2]", "Array<i64>")]
+    [InlineData("let t = match n\n        1 => p.x\n        _ => 4000000000", "4000000000", "i64")]
+    [InlineData("let t = loop\n        if c => exit 4000000000\n        exit p.x", "4000000000", "i64")]
+    [InlineData("let g = func [] (e: bool, q: P)\n        if e => return q.x\n        return 4000000000", "4000000000", "i64")]
+    [InlineData("let t = if c => (p.x, p.x) else => (p.x, if d => 4000000000 else => 2)", "2", "i64")]
+    [InlineData("let t = if c => p.x else => (if d => (if c => 4000000000 else => 1) else => -2)", "-2", "i64")]
+    [InlineData("let g = func [] (e: bool)\n        return func [] ()\n            return 7", "7", "i32")]
+    public void ALiteralSourceTakesItsJoinsType(string statement, string literal, string type)
+    {
+        var c = MinimalEmissionTest.Analyze("struct P\n    public var x: i64 = 5\nfunc f(c: bool, d: bool, n: i64, p: P) -> i64\n    " + statement + "\n    return 0\n" +
+            "let r = f(true, false, 1, P.init())");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == literal).ToArray();
+        Assert.NotEmpty(nodes);
+        Assert.All(nodes, x => Assert.Equal(type, TyCtxt.Name(x.TypeOf()!)));
+        Assert.True(c.WriteIr(TextWriter.Null, out _), MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 14.9.2 step 4, 12.3: a literal source is checked once, at its join's Type, so one that does not fit that Type is the literal's
+    // own problem, on which the join rests.
+    [Theory]
+    [InlineData("let t = if c => p.y else => 300", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
+    [InlineData("let t = if c => p.b else => 1", nameof(DiagnosticCode.TypeMismatch_Kd), "1")]
+    [InlineData("let t = if c => (p.y, p.y) else => (p.y, 300)", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
+    [InlineData("let t = if c => [p.y] else => [300]", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "300")]
+    public void ALiteralSourceThatDoesNotFitItsJoinsTypeIsItsOwnProblem(string statement, string code, string at)
+    {
+        var source = "struct P\n    public var y: i8 = 1\n    public var b: bool = true\nfunc f(c: bool, p: P)\n    " + statement + "\n    _ = t\npublic func main() => ()\n";
+        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((code, at), (diagnostic.Code, source.Substring(diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length)));
+    }
+
+    [Theory]
+    [InlineData("struct P\n    public var y: i8 = 1\nfunc f(c: bool, p: P) -> i8\n    let t = if c => p.y else => 300\n    return t")]
     [InlineData("func choose(value: i32) -> () => ()\nfunc choose(value: i64) -> () => ()\nchoose(2 * 5)")]
     [InlineData("let a: u8 = -(1)")]
     [InlineData("let a: u8 = 256 + 0")]

@@ -1827,6 +1827,32 @@ R5 on the owner's request of 2026-10-18.
     and its walks) moves from `Binding.ControlFlow`, which keeps the join, to `Binding.ResultSurvey`, and SPEC 13.5.4's explicit
     numeric conversions from `Binding.Conversions` to `Binding.NumericConversions`, so the late fit and E5's survey rule fit
     the structure limits. Deleted: the unused `Join`.
+  - U3, the late fit (E3 with S2 and S5; E13, decided at the pause: a literal result is not fixed before outer constraints, SPEC
+    14.9.2 step 3). `Binding.ResultPropagation` owns the Type an expression takes at its position once that is decided. An
+    expression awaits its position (`AwaitsPosition`) when it is a numeric literal-only expression, a Tuple or array literal holding
+    a part of Type Never or one that awaits, or a result target every value source of which awaits or is Never, through
+    parentheses, labels, expression bodies and an Identity or Transfer `@move`/`@copy`. Such a source is no candidate of a 14.9.2
+    join (`ResultCandidates`; when none supplies one, the sources' own Types compete), no element evidence of an array or
+    Dictionary literal beside an element that is (alone, the awaiting elements' common Type), and at a call evidence only as a
+    Literal's default is (late pass, for slots no other evidence binds); it takes the decided Type by its late Type (`LateTypeOf`:
+    a literal leaf the Type it fits, an array literal its target's element Type only when every element fits it, S2, every other
+    part its own Type), written only when that fits (`TryPropagate`), at the join's decision (`DecideResult`, `PropagateSources`),
+    `BindTuple`, the array and Dictionary literals, a call's `CompleteArguments` (S5) and `CompletePayloads`. While a join collects
+    its sources after its survey without a Target Result Type (`ResultContext.Collecting`), a numeric literal-only source, directly
+    or as a part of a Tuple or array literal source, is not bound (`WaitsForJoin`), nor is an array literal source no element of
+    which establishes a Type; a selection, `do` or `loop` all of whose sources await, one of them unbound, waits when it is itself
+    such a source (`ResultContext.Waiting`; a function's value is itself, not its result) and is decided when its position binds
+    it (`DecideWaiting`); otherwise the join binds each waiting source once, at its decided Type, so a misfit is the literal's own
+    record (`if c => p.y else => 300` with `p.y: i8`: `InvalidNumericLiteral_Kd` at `300`), or, without a candidate, at its default.
+    The completion of a body the parser supplied decides no inferred Target Result Type (a guess, DIAGNOSTICS §4.4).
+    `ResultContext.SourceNodes` records each source's node. Effect: R4-M59's joins (`if`, `match`, `loop`, nested, `@move`-wrapped,
+    array elements, Dictionary values, S5's call argument) publish their decided Type, and `if c => p.x else => 4000000000`,
+    `if c => (a, a) else => (a, 3000000000)` and `let x = if c => identity(a) else => 2` are valid. Rejected: re-typing a literal
+    bound at its default (a literal only the join's Type fits is rejected first, and a literal-only operation keeps its default's
+    operation); a survey that binds its sources (step 2 compares the independently typable ones). Open: a Dictionary literal source
+    of a join takes no late Type (`if c => ["k": (a, a)] else => ["k": (a, (return 4))]`: mir `InternalInvariant_Kd`, as on dev); a
+    join under `@move` or a label does not wait for an outer join, so its literals take their defaults first; a control-flow
+    argument whose literals sit beside an unknown typed source still waits (PLAN G152).
 - **BU-6** (2026-10-18; owner decision, 「推奨の通りでお願いします」, on the BU planning session's question from R5's F12 finding;
   an explicitly authorized SPEC revision of 14.9.3 and 14.10.3, not of SPECJ, GUIDE or history) Every expression of Type
   Never, a read or an explicit acquisition of a Place of Type Never included, supplies no normal completion (SPEC 14.9.3),

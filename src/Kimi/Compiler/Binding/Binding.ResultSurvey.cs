@@ -96,6 +96,7 @@ public sealed partial class Binding
                 }
             }
 
+            context.Collecting = true;
             return;
         }
 
@@ -134,6 +135,7 @@ public sealed partial class Binding
 
         context.Invalid |= conflict;
         context.Evidence.Clear();
+        context.Collecting = true; // The survey binds what it reads at once; the sources bound after it collect.
     }
 
     private BoundType? ResultEvidence(Koto source, BindingScope scope, bool readConversions = false)

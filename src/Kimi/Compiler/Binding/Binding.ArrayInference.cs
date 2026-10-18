@@ -93,6 +93,7 @@ public sealed partial class Binding
         var complete = true;
         for (var i = 0; i < literal.Elements.Count; i++)
         {
+            this.PropagateBound(literal.Elements[i], expected.Components[0]);
             var actual = this.BindNode(literal.Elements[i], scope, expected.Components[0]);
             if (actual is null)
             {
@@ -252,9 +253,14 @@ public sealed partial class Binding
             return this.Fail(literal, BindingFailure.MissingType, true);
         }
 
+        if (established is null && this.DefersToJoin(literal))
+        {
+            return Complete(literal, null); // SPEC 14.9.2 step 3: no element establishes a Type, so the literal waits for its join's.
+        }
+
         for (var i = 0; i < literal.Elements.Count; i++)
         {
-            this.RequireType(literal.Elements[i], scope, element);
+            this.RequireAtPosition(literal.Elements[i], scope, element);
         }
 
         return Complete(literal, this.types.Intern(BoundTypeKind.Array, this.Library.DynamicArray, SemanticsKind.Owner, [element]));
@@ -279,6 +285,13 @@ public sealed partial class Binding
 
         if (ReferenceEquals(actual, BoundType.Never))
         {
+            return true;
+        }
+
+        if (this.AwaitsPosition(source))
+        {
+            // SPEC 14.9.2 step 3, 4.3: it takes the established element Type; without one, the awaiting elements' own common Type.
+            literalDefault = literalDefault is null ? actual : this.CommonOriginType(literalDefault, actual) ?? literalDefault;
             return true;
         }
 

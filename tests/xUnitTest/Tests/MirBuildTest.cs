@@ -149,18 +149,19 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 3.8, 14.9.2, DECISIONS R4-M59: a literal whose Type holds a Never element (a Tuple's component or an array's element, through
-    // those kinds), since Binding typed it before its position's Type was decided (an if branch), is an Opaque value at its one record, and
-    // no validator finding follows; so is one holding a Never Place. A literal fitted to its expected Type, a Case payload completed at its
-    // payload Type (G130, DECISIONS BU-2) and one whose Type has a Never elsewhere (a Function's result, a Type argument) are built.
+    // those kinds), typed by its own Type where no position decides one (a fresh local), is an Opaque value at its one record, and
+    // no validator finding follows. A literal fitted to its expected Type or to a join's Target Result Type (DECISIONS BU-4), a Case
+    // payload completed at its payload Type (BU-2) and one whose Type has a Never elsewhere (a Function's result, a Type argument) are built.
     [Theory]
-    [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
-    [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
-    [InlineData("let t = if c => ((a, a), a) else => ((a, (return 1)), a)", "((a, (return 1)), a)")]
-    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1))]", "[(a, (return 1))]")]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))", null)]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, a)", null)]
+    [InlineData("let t = if c => ((a, a), a) else => ((a, (return 1)), a)", null)]
+    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1))]", null)]
+    [InlineData("let t = (a, (return 1))", "(a, (return 1))")]
     [InlineData("let x = P.Pair(1, (a, (return 1)))", null)]
     [InlineData("let x = P.Pair(1, ((return 1), a))", null)]
     [InlineData("let x = P2.Pair((a, (return 1)), a)", null)]
-    [InlineData("let t = if c => (a, a) else => (a, x)", "(a, x)", ", x: Never")]
+    [InlineData("let t = if c => (a, a) else => (a, x)", null, ", x: Never")]
     [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))", null)]
     [InlineData("let x: P<i64> = P.Pair(1, (a, (return 1)))", null)]
     [InlineData("let t = (a, h@move)", null)]
