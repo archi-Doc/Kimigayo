@@ -15,7 +15,7 @@ internal static partial class WindowsLowering
     /// <param name="type">The complete Type.</param>
     /// <returns>The value lowering.</returns>
     internal static ValueLowering? GetValue(BoundType type)
-        => ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ? Layout.Of(type) : null;
+        => ReferenceTypes.IsValue(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) ? Layout.Of(type).Value : null;
 
     /// <summary>Gets the physical implementation of a compiler-provided Kimi function.</summary>
     /// <param name="kind">The compiler function identity.</param>

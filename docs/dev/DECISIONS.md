@@ -1829,3 +1829,27 @@ structure is recorded here by the unit that first implements it.
   the deferred `CheckCLayoutInstance`, which goes at G2b. First consumer outside Binding: P7b's `Layout.Of`, the one owner of the
   zero-sized C-layout rule (X18), which deletes the old Emission's attribute walk and `Open` re-check. Rejected: a C-layout
   instance view in `TyCtxt.Instances` (X26); keeping `cLayouts` beside the fact.
+- **R5-M27 `Layout.Of` placement and its result** (2026-10-18, planning session; plan P7b, package C §3.5, S2-S4 X1, X18, X31 and
+  X34, under R5-M18 and R5-M19) `Layout.Of` returns `Layout.Result(Value, CLayout)`: OK with the shared `ValueLowering`; CLayout
+  with the C-layout instance, at any depth, that stores a zero-sized Field (a stored Never counts, IMPL 21.1.3); Limit, neither, when
+  a size or offset exceeds 2^31 − 1 (P7c adds the limit kinds and the count and depth bounds, which the old pool keeps until then).
+  `Backend/Layout.Placement.cs` holds the old pool's `Place` and enum placement, promoted: Kimigayo mode's alignment-descending
+  groups in written order, C mode's written order (from `AdtDef.IsCLayout`; the attribute walk and the open, derived and empty
+  re-check are deleted, since Binding rejects those), the `i32` tag before the payload union, zero-sized parts kept, and the complete
+  base with its tail padding as the prefix (X1; a derived struct has no C layout, SPEC 6.7.1). The `Loan<T>` row is deleted: struct
+  placement gives the identical record. Each representation has one record, shared by every Type, compilation and thread (a
+  concurrent table keyed by storage text, size, alignment and offsets; per-thread scratch), so a call that finds its records
+  allocates nothing; it retains one record per distinct representation in the process. The old pool keeps its own recursion (the
+  Origin guard, Never's null through the scalar gate, destruction, collection Fields, the count and depth bounds) and calls
+  `Layout.Of` where it placed, after its shape interning, mapping CLayout to its refusal and Limit to its resource failure; a
+  C-layout instance's zero-sized Field is therefore found after its other Fields are visited, which is observable only when a later
+  Field exceeds a limit too (the resource failure is then reported), and only an inferred instance reaches the old pool so.
+  - Departure from package C §3.5's "memoization by interned Type" (and R5-M19's "placement brings" a per-Type memo): `Layout`
+    keeps no Type memo. Interned Types outlive a Binding pass, which refills their stored Types (`Binding.Instance`, `AdtDef`), and a
+    Type does not reach its compilation, so a Type-keyed memo would be stale after an edit; the caller that knows the pass memoizes
+    (the old pool per body; FunctionCodegen and K10a choose theirs).
+  - Rejected: a static Type memo (stale across passes, retains every compilation's Types); a per-compilation `Layout` instance (R5-M19
+    fixes the static `Layout.Of`, and rows and placement would split); `Layout.Place(fields)` fed by the old pool's records (a second
+    entry beside `Of`); comparing records instead of the layout-mode flag in the old pool's shape interning (a struct of a raw pointer
+    and an `isize` would stop sharing the Slice handle's shape); keeping the per-Field C-mode check in the old pool (a second owner of
+    X18's rule); the C-mode refusal of an alignment above 16 (unreachable: no row is more aligned, and placement takes the maximum).
