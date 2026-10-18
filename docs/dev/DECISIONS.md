@@ -2480,3 +2480,13 @@ structure is recorded here by the unit that first implements it.
   conflicts with the call's result. A receiver whose payload is the slot's own Type, a direct base call and a nonvirtual call keep
   the borrow `Lent` forms (a base view's subobject). Rejected: widening the base subobject's Loan in A5 (an analysis rule for a
   builder fact); borrowing the payload under the slot's view Type (the validator's Ref Type agreement).
+- **R5-M50 A transfer delivers its result after the Scope Exit** (2026-10-18, planning session; plan F15, PLAN G147 (5) from R4's
+  1b-5 ledger; SPEC 16.2.2) Rule (`MirBuilder.Transfer`): a valued transfer that leaves a scope with a cleanup secures its result
+  and places it into its target's result temp (no storage of its own) before the Scope Exit, and the target's delivery block,
+  after the drop tree, moves it into the target's destination: the target's Destination and Break become that temp and that block
+  at its first such transfer (`Target.Delivers`), so every later transfer to it takes them as it shares its drop tree. A transfer
+  leaving no cleanup places its result directly, as before. So a block value borrowing a departing local conflicts with that
+  local's storage end even when nothing reads the value later; a return's `_0` gains the delivery too (unobservable there, since
+  the return reads `_0`). Rejected: delivering per transfer after a drop tree of its own (one drop tree per target); a result temp
+  for every construct (MIR on every path, not only where a scope is left); the delivery block and temp as new Target
+  parameters (the record already has seven; its Destination and Break take them).

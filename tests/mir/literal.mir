@@ -53,6 +53,7 @@ fn floats @20
   _20: f64 var d9 @103 s1
   _21: f64 var d10 @107 s1
   _22: f64 temp @112 s1
+  _23: f64 temp @20 s1
   s1: lexical in s0 @22
   bb0:
       StorageLive(_1) @23 s1
@@ -99,10 +100,13 @@ fn floats @20
     * _21 = const 0x7fefffffffffffff_f64 @110 s1
       StorageLive(_22) @112 s1
     * _22 = copy _21 @112 s1
-      goto bb4 check bb5 @111 s1
+      goto bb5 check bb6 @111 s1
   bb1:
       return @20
   bb2:
+      _0 = move _23 @111 s1
+      goto bb1 @111 s1
+  bb3:
       StorageDead(_21) @107 s1
       StorageDead(_20) @103 s1
       StorageDead(_19) @99 s1
@@ -124,14 +128,14 @@ fn floats @20
       StorageDead(_3) @31 s1
       StorageDead(_2) @27 s1
       StorageDead(_1) @23 s1
-      goto bb1 @20
-  bb3:
-      StorageDead(_22) @112 s1
       goto bb2 @20
   bb4:
-      _0 = move _22 @111 s1
-      goto bb3 @111 s1
+      StorageDead(_22) @112 s1
+      goto bb3 @20
   bb5:
+      _23 = move _22 @111 s1
+      goto bb4 @111 s1
+  bb6:
       StorageDead(_22) @112 s1
       StorageDead(_21) @107 s1
       StorageDead(_20) @103 s1
