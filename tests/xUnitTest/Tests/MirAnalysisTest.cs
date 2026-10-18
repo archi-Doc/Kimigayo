@@ -149,13 +149,13 @@ public sealed class MirAnalysisTest
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
     }
 
-    // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, so a Loan conflict is a problem of the
-    // version, and a body whose A1 arena exceeds the limit (N locals live across N branches, MirInitTest) records only
-    // OwnershipStorageLimit_Kd, though A5's own arena would fit.
+    // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
+    // every view of a body, so a Loan conflict is a problem of the version, and none of a body whose A1 arena exceeds the limit (N locals
+    // live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena would fit.
     [Fact]
     public void A5ChecksTheViewsA1Completed()
     {
-        foreach (var (size, expected) in new[] { (64, "ComparisonLoanConflict_Kd x = 2"), (13_500, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32") })
+        foreach (var (size, views, expected) in new[] { (64, 1, "ComparisonLoanConflict_Kd x = 2"), (13_500, 0, "OwnershipStorageLimit_Kd func f(flag: bool) -> i32") })
         {
             var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc f(flag: bool) -> i32\n    var x = 1\n    let r = x@ref\n");
             for (var n = 0; n < size; n++)
@@ -169,8 +169,13 @@ public sealed class MirAnalysisTest
             }
 
             var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
-            Assert.Equal([expected], c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+            var program = c.BuildMir();
+            Assert.Equal([expected], program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+            Assert.Equal(
+                [("f", (long)views), ("inspect", 1L)],
+                program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect").Select(x => (x.Key.Decl!.Name, program.Drops.ViewsOf(x.Ordinal)))
+                    .Order());
         }
     }
 
