@@ -63,13 +63,11 @@ public class AllocationMeasurementTest
     }
 
     // A pooled allocation that the operation makes once after the warm-up, of a length that no trim drops, is measured like
-    // any other allocation: it is late growth, not the effect of a pool's trim. A first measurement compiles the pool's and
-    // the listener's code for it, so that the measured window compiles nothing.
+    // any other allocation: it is late growth, not the effect of a pool's trim.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void MeasuresAPooledAllocationThatNoTrimExplains()
     {
-        AllocationMeasurement.Measure(static () => ArrayPool<PoolItem>.Shared.Return(ArrayPool<PoolItem>.Shared.Rent(16)));
         var calls = 0;
         var bytes = AllocationMeasurement.Measure(() =>
         {
@@ -140,21 +138,21 @@ public class AllocationMeasurementTest
         }
     }
 
-    // The first run of a method in the first measured operation compiles it on the measuring thread and allocates there, as
-    // the first tier-0 run of a comparison does when it creates the comparer: that window is invalid, and the next measures
-    // the operation, (4 + 12) + (4 + 28) operations in all. An allocation that recurs is still measured there.
+    // Creating a value Type's default comparer in the first measured operation, as the first tier-0 run of a comparison does,
+    // compiles its class constructor on the measuring thread: that window is invalid, and the next measures the operation,
+    // (4 + 12) + (4 + 28) operations in all. An allocation that recurs is still measured there.
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void DiscardsTheWindowThatAllocatedWhileCompiling(bool recurring)
+    public void DiscardsTheWindowThatCreatedADefaultComparer(bool recurring)
     {
         var calls = 0;
         var bytes = AllocationMeasurement.Measure(() =>
         {
             if (++calls == AllocationMeasurement.WarmupOperations + 1)
             {
-                _ = recurring ? FirstRun<RecurringMarker>() : FirstRun<OnceMarker>();
+                _ = recurring ? CreateComparer<RecurringMarker>() : CreateComparer<OnceMarker>();
             }
 
             if (recurring)
@@ -173,20 +171,39 @@ public class AllocationMeasurementTest
         }
     }
 
-    // An operation that compiles and allocates every time disturbs every window: the measurement fails instead of passing.
+    // Storage that first grows after the warm-up is measured even when its operation compiles other code there.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void FailsWhenCompilationDisturbsEveryWindow()
+    public void MeasuresALateAllocationThatCompilesOtherCode()
+    {
+        var calls = 0;
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            if (++calls == AllocationMeasurement.WarmupOperations + 1)
+            {
+                Grow<LateMarker>();
+            }
+        });
+        Assert.Equal(AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, calls);
+        Assert.True(bytes >= 64, $"{bytes} bytes");
+    }
+
+    // An operation that creates a default comparer and allocates every time disturbs every window: the measurement fails,
+    // naming the cause, instead of passing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void FailsWhenComparerCreationDisturbsEveryWindow()
     {
         Type[] types = [typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint), typeof(long), typeof(ulong), typeof(char), typeof(bool), typeof(float), typeof(double), typeof(decimal), typeof(nint), typeof(nuint)];
-        var method = typeof(AllocationMeasurementTest).GetMethod(nameof(FirstRunOfPair), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var method = typeof(AllocationMeasurementTest).GetMethod(nameof(CreateComparer), BindingFlags.NonPublic | BindingFlags.Static)!;
         var calls = 0;
         var failure = Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() =>
         {
-            method.MakeGenericMethod(types[calls % types.Length], types[calls / types.Length]).Invoke(null, null);
+            var type = typeof(ValueTuple<,,>).MakeGenericType(typeof(EveryMarker), types[calls % types.Length], types[calls / types.Length]);
+            method.MakeGenericMethod(type).Invoke(null, null);
             calls++;
         }));
-        Assert.Contains("compiled", failure.Message, StringComparison.Ordinal);
+        Assert.Contains("window 3: a default comparer created on the measuring thread", failure.Message, StringComparison.Ordinal);
         Assert.Equal(112, calls);
     }
 
@@ -198,21 +215,25 @@ public class AllocationMeasurementTest
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() => throw failure)));
     }
 
-    // Compiled at its first run for each value Type, which also creates the Type's default comparer.
+    // Compiled at its first call for each value Type, which creates the Type's default comparer there.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool FirstRun<T>()
+    private static bool CreateComparer<T>()
         where T : struct
-        => EqualityComparer<T>.Default.Equals((new T[1])[0], default);
+        => EqualityComparer<T>.Default.Equals(default, default);
 
+    // Compiled at its first call for each value Type, allocating storage without creating a comparer.
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void FirstRunOfPair<T1, T2>()
-        where T1 : struct
-        where T2 : struct
-        => GC.KeepAlive(new (T1, T2)[1]);
+    private static void Grow<T>()
+        where T : struct
+        => GC.KeepAlive(new T[64]);
 
     private readonly struct PoolItem;
 
     private readonly struct OnceMarker;
 
     private readonly struct RecurringMarker;
+
+    private readonly struct LateMarker;
+
+    private readonly struct EveryMarker;
 }
