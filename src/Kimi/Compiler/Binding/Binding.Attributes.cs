@@ -474,6 +474,9 @@ public sealed partial class Binding
                 this.cLayouts.Add(container);
             }
 
+            // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
+            (container.BoundSymbol!.Adt ??= new()).IsCLayout = mode == "C" && valid;
+
             if (!valid)
             {
                 this.Fail(container, BindingFailure.InvalidTypeFormation);

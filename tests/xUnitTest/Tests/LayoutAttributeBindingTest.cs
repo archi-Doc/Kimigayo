@@ -170,6 +170,39 @@ public class LayoutAttributeBindingTest
         Assert.True(c.Binding.CheckBound().IsComplete);
     }
 
+    // AdtDef.IsCLayout: true exactly for a struct whose C layout validated, written for every struct in every pass.
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32", true)]
+    [InlineData("#Layout(\"Kimigayo\")\nstruct S\n    var a: i32", false)]
+    [InlineData("struct S\n    var a: i32", false)]
+    [InlineData("#Layout(\"C\")\nopen struct S\n    var a: i32", false)]
+    [InlineData("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct S", false)]
+    public void CLayoutFactMarksValidatedCLayoutStructs(string source, bool expected)
+    {
+        var c = MinimalEmissionTest.Analyze(source + "\nstruct Other\n    var b: i32");
+        Assert.Equal([expected, false], c.Kotonoha.RootKoto.NestedContainers.Select(IsCLayout));
+    }
+
+    [Fact]
+    public void CLayoutFactFollowsEditedAttributes()
+    {
+        var c = MinimalEmissionTest.Analyze("#Layout(\"C\")\nstruct S\n    var a: i32\n#Layout(\"Kimigayo\")\nstruct S");
+        var container = Assert.Single(c.Kotonoha.RootKoto.NestedContainers);
+        Assert.False(IsCLayout(container));
+        foreach (var mode in (string[])["Kimigayo", "C"])
+        {
+            var attribute = container.AttributeChain;
+            while (attribute!.LayoutMode != mode)
+            {
+                attribute = attribute.AttributeChain;
+            }
+
+            Assert.True(container.RemoveAttribute(attribute));
+            Assert.True(c.Bind().IsComplete);
+            Assert.Equal(mode == "Kimigayo", IsCLayout(container));
+        }
+    }
+
     [Theory]
     [InlineData("C")]
     [InlineData("Kimigayo")]
@@ -194,4 +227,6 @@ public class LayoutAttributeBindingTest
             }
         }));
     }
+
+    private static bool IsCLayout(DeclarationContainerKoto container) => container.SymbolOf()!.Adt!.IsCLayout;
 }
