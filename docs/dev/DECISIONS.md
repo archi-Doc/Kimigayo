@@ -2765,13 +2765,15 @@ structure is recorded here by the unit that first implements it.
   or for the decisions the old path reports under `Binding.*` (VirtualEffectBound, IncompatibleImplementation, the effect limit's
   Unsupported, OriginRelation) their Ownership requirement (DIAGNOSTICS rule 1, renamed publicly at H5); none for the expansion
   limit. These MIR pairs are PLAN10 §7's consistency set, each an image of `OwnershipIssue.Code` for its failure or ControlFlow's
-  require fallthrough (tested, with a program per recording rule); a MIR problem takes its pair's analysis. The ledger merges MIR
-  problems per code and subject node over bodies itself, reading only their named members (R4's 1c-8 will key them per body): a
-  merged row whose bodies name different requirements (written `a|b`), MirReport's disagreement record (`Ownership.Internal`) and
+  require fallthrough (tested with R4's program of one problem per recording rule); a MIR problem takes its pair's analysis. Each MIR
+  problem is one ledger row: `MirReport.Add` owns the merge per code and subject (R4-M67), so the ledger merges nothing; R4's 1c-8,
+  which changes that key under G125, adapts the ledger (agreed with R4). MirReport's disagreement record (`Ownership.Internal`) and
   any pair outside the set are contract-break rows (B), never an exception. A matched pair whose requirements differ is a
-  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees. The classification table stays R4's;
-  with R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names, the A4 requirement
-  difference is (d) (`a4-requirement`) and the dead `a1-result` row goes.
+  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees. The classification table stays
+  R4's; with R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names, the A4
+  requirement difference is (d) (`a4-requirement`), the dead `a1-result` row goes, and `a4-x2` (d) and `a4-preserves` (b), one
+  signature once the MIR side names its requirement, are one (b) row `a4-preserves` whose note names both causes (F6's rows and
+  X2's).
   - Rejected: a code-to-requirement lookup on the MIR side (R5-M23 D7); throwing on a pair outside the set (the ledger would lose the
     run); comparing requirements in `location` pairs (their subject is the difference); keeping `-` on the MIR side (the comparison
-    the package asks for).
+    the package asks for); the ledger merging problems over bodies itself (a second copy of `MirReport.Add`'s rule, review round 1).

@@ -13,9 +13,6 @@ namespace XunitTest;
 /// <see cref="RequestedLedger"/> aggregates a directory's raw rows. Without the variables both do nothing.</summary>
 public sealed class MirDifferenceTest
 {
-    private const string Resource = "struct Resource\n    var name: string\nfunc make() -> Resource => Resource.init(name: \"r\")\n" +
-        "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
-
     // R4-M17: the sides match as multisets on code and subject node: a node's second old record of one code stays old, and another code
     // at a matched node is new. R4-M67: a matched MIR problem that names another requirement writes the pair's as old>mir; a MIR record
     // that names none (-) agrees.
@@ -25,70 +22,65 @@ public sealed class MirDifferenceTest
         var c = CompilationTestHelper.Parse("func f(a: i32) -> i32 => a\n");
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var (a, b) = (nodes[^1], nodes[^2]);
-        MirDifferenceLedger.Entry[] old = [new(DiagnosticCode.MovedPlace_Kd, "Ownership.PossiblyMovedUse", "A1", a), new(DiagnosticCode.MovedPlace_Kd, "Ownership.PossiblyMovedUse", "A1", a),
-            new(DiagnosticCode.UninitializedPlace_Kd, "Ownership.UninitializedUse", "A1", b), new(DiagnosticCode.UnsatisfiedEffectBound_Kd, "Binding.VirtualEffectBound", "A4", b),
-            new(DiagnosticCode.Unsupported_Kd, "Ownership.Unsupported", "U", b)];
-        MirDifferenceLedger.Entry[] mir = [new(DiagnosticCode.MovedPlace_Kd, "Ownership.PossiblyMovedUse", "A1", a), new(DiagnosticCode.UninitializedPlace_Kd, "Ownership.UninitializedUse", "A1", a),
-            new(DiagnosticCode.UnsatisfiedEffectBound_Kd, "Ownership.VirtualEffectBound", "A4", b), new(DiagnosticCode.Unsupported_Kd, "-", "B", b)];
+        var (moved, uninitialized, bound) = (DiagnosticCode.MovedPlace_Kd, DiagnosticCode.UninitializedPlace_Kd, DiagnosticCode.UnsatisfiedEffectBound_Kd);
+        MirDifferenceLedger.Entry[] old =
+        [
+            new(moved, "Ownership.PossiblyMovedUse", "A1", a), new(moved, "Ownership.PossiblyMovedUse", "A1", a),
+            new(uninitialized, "Ownership.UninitializedUse", "A1", b), new(bound, "Binding.VirtualEffectBound", "A4", b),
+            new(DiagnosticCode.Unsupported_Kd, "Ownership.Unsupported", "U", b),
+        ];
+        MirDifferenceLedger.Entry[] mir =
+        [
+            new(moved, "Ownership.PossiblyMovedUse", "A1", a), new(uninitialized, "Ownership.UninitializedUse", "A1", a),
+            new(bound, "Ownership.VirtualEffectBound", "A4", b), new(DiagnosticCode.Unsupported_Kd, "-", "B", b),
+        ];
         var rows = MirDifferenceLedger.Match([.. old], [.. mir]);
-        Assert.Equal([("both", old[0]), ("old", old[1]), ("old", old[2]), ("both", old[3] with { Requirement = "Binding.VirtualEffectBound>Ownership.VirtualEffectBound" }), ("both", old[4]), ("new", mir[1])], rows);
+        var renamed = old[3] with { Requirement = "Binding.VirtualEffectBound>Ownership.VirtualEffectBound" };
+        Assert.Equal([("both", old[0]), ("old", old[1]), ("old", old[2]), ("both", renamed), ("both", old[4]), ("new", mir[1])], rows);
     }
 
-    // R4-M67 (R4's unit 1c-8 merges problems per body): the ledger keeps one MIR entry per code and subject over the bodies that report it,
-    // with its pair's analysis; bodies that name different requirements for one entry, MirReport's disagreement record and any pair outside
-    // the compared set are contract-break rows (B), never a throw.
+    // R4-M67: a MIR problem is one entry, as MirReport.Add keeps one per code and subject, with its own requirement and its pair's
+    // analysis in the compared set; MirReport's disagreement record and a pair outside the set are contract-break rows (B), never a throw.
     [Fact]
-    public void MirProblemsMergeByCodeAndSubjectAndADefectIsARow()
+    public void MirProblemsTakeTheirPairsAnalysisAndADefectIsARow()
     {
-        var c = CompilationTestHelper.Parse("func f(a: i32) -> i32 => a\n");
-        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
-        var (a, b) = (nodes[^1], nodes[^2]);
-        var (moved, uninitialized) = (DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse), DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse));
-        var entries = MirDifferenceLedger.MirEntries(
+        var c = MirBuildTest.Compile("func f(a: i32) -> i32 => a\n");
+        var program = c.BuildMir();
+        var subject = program.Bodies[^1].Source;
+        var moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, moved, subject, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse), subject, 2));
+        program.Problems.Add(new(DiagnosticCode.UninitializedPlace_Kd, moved, subject, 1));
+        var node = c.SyntaxOf(subject);
+        MirDifferenceLedger.Entry[] expected =
         [
-            (DiagnosticCode.MovedPlace_Kd, moved, a), (DiagnosticCode.MovedPlace_Kd, moved, a), (DiagnosticCode.MovedPlace_Kd, uninitialized, b), (DiagnosticCode.MovedPlace_Kd, moved, b),
-            (DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), a),
-        ]);
-        MirDifferenceLedger.Entry[] expected = [new(DiagnosticCode.MovedPlace_Kd, "Ownership.PossiblyMovedUse", "A1", a),
-            new(DiagnosticCode.MovedPlace_Kd, "Ownership.UninitializedUse|Ownership.PossiblyMovedUse", "B", b), new(DiagnosticCode.InternalInvariant_Kd, "Ownership.Internal", "B", a)];
-        Assert.Equal(expected, entries);
+            new(DiagnosticCode.MovedPlace_Kd, "Ownership.PossiblyMovedUse", "A1", node),
+            new(DiagnosticCode.InternalInvariant_Kd, "Ownership.Internal", "B", node),
+            new(DiagnosticCode.UninitializedPlace_Kd, "Ownership.PossiblyMovedUse", "B", node),
+        ];
+        Assert.Equal(expected, MirDifferenceLedger.Sides(c, program).Mir.TakeLast(3));
     }
 
     // PLAN10 §7, R4-M67: the requirement each MIR recording rule names lies in the compared set's MIR column, so its problems take their
-    // analysis there: A1 and A2 (moved, uninitialized, reassigned let, move path), A3 (a falling failure body), A4 (a conformance's and a
-    // Callable's bound) and A5 (Loan conflicts).
-    [Theory]
-    [InlineData(Resource + "func f()\n    var x = make()\n    consume(x@move)\n    inspect(x)\n")]
-    [InlineData("func use(n: i32) => ()\nfunc f(condition: bool)\n    var number: i32\n    if condition\n        number = 1\n    use(number)\n")]
-    [InlineData(Resource + "func f()\n    let resource: Resource\n    resource = make()\n    consume(resource@move)\n    resource = make()\n")]
-    [InlineData("func take(s: string) => ()\nfunc f(values: Array<string>, i: isize)\n    take(values[i]@move)\n")]
-    [InlineData(Resource + "struct Box\n    public var value: Resource\n    public init(value: Resource) => self.value = value@move\n    drop => ()\n" +
-        "func f()\n    var box = Box.init(make())\n    consume(box.value@move)\n")]
-    [InlineData("func f()\n    require true else => ()\n    ()\n")]
-    [InlineData("contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\ngroup G\n    public var count: i32 = 0\n" +
-        "struct S\n    Self is Sink\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        _ = G.count\n        return .Ok(())\n")]
-    [InlineData("func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n" +
-        "func noisy() -> i32\n    Console.writeLine(\"noisy\")\n    return 0\nfunc entry() -> i32 => apply(noisy)\n")]
-    [InlineData("public func main()\n    var value = 1\n    let inner = value@ref\n    let other = value@uniq\n    other@follow = 2\n    require inner == 1 else => $abort(\"x\")\n")]
-    [InlineData("func pack<T>(x: T, n: i32) -> (T, i32) => (x@move, n)\npublic func main()\n    var a = 1\n    let p = pack(a@uniq, 2)\n    let q = pack(a@uniq, 3)\n" +
-        "    p.0@follow = 5\n    q.0@follow = 6\n")]
-    public void MirProblemsNameRequirementsOfTheComparedSet(string source)
+    // analysis there (MirAnalysisTest's program, one problem of each rule).
+    [Fact]
+    public void MirProblemsNameRequirementsOfTheComparedSet()
     {
-        var c = MirBuildTest.Compile(source);
-        var problems = c.BuildMir().Problems.All.ToArray();
+        var problems = MirBuildTest.Compile(MirAnalysisTest.Requirements).BuildMir().Problems.All.ToArray();
         Assert.NotEmpty(problems);
-        Assert.All(problems, x => Assert.True(MirDifferenceLedger.MirAnalysisOf(x.Requirement, x.Code) is not null, $"{x.Code} {x.Requirement.Name}"));
+        Assert.All(problems, static x => Assert.True(MirDifferenceLedger.MirAnalysisOf(x.Requirement, x.Code) is not null, $"{x.Code} {x.Requirement}"));
     }
 
     // R4-M17: per comparison and body, an unmatched old and new row of one code pair into one location difference with the old row's
     // facts, and the rest are missing or new; a comparison with A-owned records on one side only adds an acceptance difference, and
-    // matched rows are no difference unless their requirements differ (R4-M67: a requirement difference). R4-M47: in a Binding-complete compilation a missing row is unsound unless its body keeps an unpaired
-    // MIR record (a code choice); a matched record does not exempt it, and no other difference is unsound.
+    // matched rows are no difference unless their requirements differ (R4-M67: a requirement difference). R4-M47: in a Binding-complete
+    // compilation a missing row is unsound unless its body keeps an unpaired MIR record (a code choice); a matched record does not exempt
+    // it, and no other difference is unsound.
     [Fact]
     public void DifferencesPairByBodyAndCode()
     {
-        static string[] Row(string comparison, string side, string code, string body, string form = "IdentifierNameKoto", string section = "complete", string? requirement = null)
-            => [comparison, section, side, side == "new" ? "-" : "A1", code, requirement ?? (side == "new" ? "-" : "Ownership.UninitializedUse"), "Program.kimi:1+1", form, body, "sha"];
+        static string[] Row(string comparison, string side, string code, string body, string form = "IdentifierNameKoto", string section = "complete")
+            => [comparison, section, side, side == "new" ? "-" : "A1", code, side == "new" ? "-" : "Ownership.UninitializedUse", "Program.kimi:1+1", form, body, "sha"];
         var differences = MirDifferenceLedger.Differences(
         [
             Row("1", "both", "MovedPlace_Kd", "f"),
@@ -103,7 +95,8 @@ public sealed class MirDifferenceTest
             Row("5", "new", "UninitializedPlace_Kd", "f"),
             Row("6", "both", "MovedPlace_Kd", "f"),
             Row("6", "old", "UninitializedPlace_Kd", "f"),
-            Row("7", "both", "MovedPlace_Kd", "f", requirement: "Binding.VirtualEffectBound>Ownership.VirtualEffectBound"),
+            ["7", "complete", "both", "A1", "MovedPlace_Kd", "Binding.VirtualEffectBound>Ownership.VirtualEffectBound", "Program.kimi:1+1",
+                "IdentifierNameKoto", "f", "sha"],
         ]).Select(static x => (x.Signature, x.Unsound)).ToArray();
         (string, bool)[] expected =
         [
@@ -207,13 +200,14 @@ public sealed class MirDifferenceTest
             }
         }
 
-        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired), DiagnosticCode.TransferRequired_Kd));
-        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), DiagnosticCode.InternalInvariant_Kd));
+        var (transfer, defect) = (OwnershipRequirement.TransferRequired, OwnershipRequirement.Internal);
+        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(transfer), DiagnosticCode.TransferRequired_Kd));
+        Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(defect), DiagnosticCode.InternalInvariant_Kd));
     }
 
-    // R4-M16, R4-M46: every classification row has a unique id, known fields or * (a requirement difference's old>mir, a merged MIR row's
-    // a|b), a valid form pattern, a category a–e, a clause of SPEC
-    // sections or -, and a reference; an (a), (c) or (d) row, which plan §8 lets the R4 exit pass, names its clause.
+    // R4-M16, R4-M46: every classification row has a unique id, known fields or * (a requirement difference's old>mir), a valid form
+    // pattern, a category a–e, a clause of SPEC sections or -, and a reference; an (a), (c) or (d) row, which plan §8 lets the R4 exit
+    // pass, names its clause.
     [Fact]
     public void TheClassificationTableIsWellFormed()
     {
@@ -228,7 +222,7 @@ public sealed class MirDifferenceTest
             Assert.Contains(row[2], (string[])["*", "missing", "new", "location", "acceptance", "requirement"]);
             Assert.Contains(row[3], (string[])["*", "A1", "A3", "A4", "A5", "U", "B", "-"]);
             Assert.True(row[4] == "*" || Enum.GetNames<DiagnosticCode>().Contains(row[4]), row[0]);
-            Assert.True(row[5] == "*" || row[5].Split('>', '|').All(requirements.Contains), row[0]);
+            Assert.True(row[5] == "*" || row[5].Split('>').All(requirements.Contains), row[0]);
             Assert.True(row[6] == "*" || Record.Exception(() => new Regex($"^(?:{row[6]})$")) is null, row[0]);
             Assert.Contains(row[7], (string[])["a", "b", "c", "d", "e"]);
             Assert.True(row[8] == "-" ? row[7] is "b" or "e" : row[8].Split(' ').All(DiagnosticCorpus.SpecSections.Contains), row[0]);
