@@ -1832,19 +1832,26 @@ R5 on the owner's request of 2026-10-18.
   Never, a read or an explicit acquisition of a Place of Type Never included, supplies no normal completion (SPEC 14.9.3),
   and on an assumed path it continues after it is evaluated with its explicit acquisition taking effect (SPEC 14.10.3:
   `x@move` Moves `x`, so `pass(x@move, x)` with `x: Never` is an error; the new example lines). Binding: StructuralCompletion
-  already reads completion from the node's Type, so the HIR Completion of `x@move` is Diverges; the conversion keeps its
-  operation instead of Abrupt, Transfer for `@move` (`CompleteTransfer`) and Identity for `@copy` (Never is Copy, BU-4;
-  `CompleteIdentity`'s unreachable Never case goes too), so the HIR publishes the inner Place acquired by Move (`@copy`:
-  Copy) and a bare read stays Copy. The old analysis reports `MovedPlace_Kd` at the read where it analyzes the body; MIR's A1 does not
-  track a Never Place until PLAN G139 (R5's F12), recorded as the 14.10.3 example's MIR difference. Why: Never has no
-  values, so no expression of that Type completes at run time; one rule read from the expression's Type replaces a list of
-  forms, and explicit acquisitions stay checked where code cannot run. Principles: one canonical form (one completion rule
-  for every Never expression), local reasoning (completion follows from the expression's own Type), explicit semantics
-  (`@move` keeps its meaning on assumed paths). Rejected: SPEC as written (option 1: a read or explicit acquisition of a
-  Never Place completes structurally, 14.9.3 listing only divergence, Never calls and Abort), which would need a second,
-  form-based completion rule beside the Type's and would leave the read after `x@move` reachable only by that list. A
-  conversion of a Never operand (`@follow`, `x@T` including `x@Never`, an object conversion, `@wrap`, `@bits`) stays Abrupt:
-  it converts nothing, and its operand is acquired by the bare rule (a Never Place: Copy). Not temporary.
+  already reads completion from the node's Type, so the HIR Completion of `x@move` is Diverges. One rule (`IsNeverValue`,
+  Binding.Conversions): a conversion is Abrupt for a Never value, an operand of Type Never that is no Place, and for a
+  conversion that converts the value (`@follow`, `x@i32`, an object creation, `@wrap`, `@bits`); an explicit acquisition of
+  a Place of Type Never keeps its operation and its effect: `@move` a Transfer, `@copy` and `x@Never` an Identity (Never is
+  Copy, BU-4), `x@ref`, `x@uniq`, `x@(ref/Never)`, `x@(uniq/Never)` and `x@raw` a Borrow or Address of the slot, which
+  `@ref`, `@uniq` and `@raw` take whatever it stores, Never included (`BorrowsWrittenSlot`); `AdaptInput`'s shortcut, a
+  noncompleting argument forms no borrow, is for implicit adaptations only. So the HIR publishes the inner Place of `x@move`
+  acquired by Move and a later bare read as a Copy, and `pass(x@(ref/Never), x@move)` is a Loan conflict on the assumed path.
+  The old analysis reports `MovedPlace_Kd` and the Loan conflict where it analyzes the body; MIR's A1 does not track a Never
+  Place until PLAN G139 (R5's F12), recorded as the 14.10.3 example's MIR difference. Why: Never has no values, so no
+  expression of that Type completes at run time; one rule read from the expression's Type replaces a list of forms, and
+  explicit acquisitions stay checked where code cannot run. Principles: one canonical form (one completion rule for every
+  Never expression, one acquisition rule for every Place), local reasoning (completion follows from the expression's own
+  Type), explicit semantics (`@move` and the borrows keep their meaning on assumed paths). Rejected: SPEC as written (option
+  1: a read or explicit acquisition of a Never Place completes structurally, 14.9.3 listing only divergence, Never calls and
+  Abort), which would need a second, form-based completion rule beside the Type's and would leave the read after `x@move`
+  reachable only by that list. Open: the old analysis has no route for an exclusive reference argument whose referent is
+  Never (`ReferenceTypes.IsStorage` excludes Never), so `pass(y@(uniq/Never))` on a `var y` gives its `InternalInvariant_Kd`
+  beside its `Unsupported_Kd`, as a `uniq/Never` parameter passed on already did (`h(p: uniq/Never) => g(p)`), on both
+  pipelines until R6-check (frozen path; STATUS). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 

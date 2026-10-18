@@ -63,10 +63,11 @@ public class NeverContinuationTest
     }
 
     // SPEC 14.9.3, 14.10.3, 13.5.3: an explicit acquisition of a Place of Type Never supplies no normal completion and keeps its effect:
-    // `x@move` Moves x, and the later bare read is a Copy checked on the assumed path; `x@copy` stays an Identity.
+    // `x@move` Moves x, and the later bare read is a Copy checked on the assumed path; `x@copy` and `x@Never` stay an Identity.
     [Theory]
     [InlineData("x@move", true)]
     [InlineData("x@copy", false)]
+    [InlineData("x@Never", false)]
     public void AnExplicitAcquisitionOfANeverPlaceKeepsItsOperation(string acquisition, bool moves)
     {
         var operand = moves ? HirAcquire.Move : HirAcquire.Copy;
@@ -79,6 +80,35 @@ public class NeverContinuationTest
         Assert.Equal(operand, HirTables.AdjustOf(conversion.Left).Acquire);
         var read = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto), x => x.ToString() == "x" && !ReferenceEquals(x, conversion.Left) && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset);
         Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(read).Acquire);
+    }
+
+    // SPEC 14.9.3, 14.10.3, 13.5.6: an explicit borrow of a Place of Type Never forms its Loan like any explicit borrow and supplies no
+    // normal completion, so a later Move of the Place is a Loan conflict on the assumed path.
+    [Theory]
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@(ref/Never), x@move)\n", "x@(ref/Never)", true)]
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@ref, x@move)\n", "x@ref", true)]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@(uniq/Never))\n", "y@(uniq/Never)", false)]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@uniq)\n", "y@uniq", false)]
+    public void AnExplicitBorrowOfANeverPlaceFormsItsLoan(string source, string borrow, bool conflict)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(conflict, LegacyRecords.Of(c).Any(static x => x.Code.IsLoanConflict()));
+        HirTables.Publish(c);
+        var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(x => x.ToString() == borrow);
+        Assert.Equal((HirOp.Borrow, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
+        var type = conversion.TypeOf()!;
+        Assert.Equal((borrow.Contains("uniq", StringComparison.Ordinal) ? SemanticsKind.Uniq : SemanticsKind.Ref, BoundType.Never), (type.Semantics, type.Components[0]));
+    }
+
+    // SPEC 14.9.3: a borrow of a Never value, which is no Place, only diverges.
+    [Fact]
+    public void ABorrowOfANeverValueOnlyDiverges()
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + "func pass(a: ref/Never) => ()\nfunc f() => pass(stop()@ref)\nfunc g() => pass(stop()@(ref/Never))\n");
+        Assert.Empty(c.Binding.Issues);
+        HirTables.Publish(c);
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => Assert.Equal(HirOp.Convert, HirTables.Op(x)));
     }
 
     // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move

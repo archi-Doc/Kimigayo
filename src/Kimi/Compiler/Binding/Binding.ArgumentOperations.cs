@@ -880,9 +880,9 @@ public sealed partial class Binding
         adapted = actual;
         quality = ArgumentAdaptation.Exact;
         kind = ArgumentOperationKind.Value;
-        if (ReferenceEquals(actual, BoundType.Never))
+        if (ReferenceEquals(actual, BoundType.Never) && !explicitBorrow)
         {
-            return true; // A noncompleting argument forms no borrow or reference value.
+            return true; // A noncompleting argument forms no borrow or reference value; an explicit borrow names a Place (IsNeverValue).
         }
 
         if (!receiver && IsTransfer(source) && actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq } &&

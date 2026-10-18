@@ -68,10 +68,15 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
+    // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores, Never too.
     private static bool BorrowsWrittenSlot(BoundType type)
         => AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
-            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
+            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceEquals(type, BoundType.Never) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
+
+    // SPEC 14.9.3, 14.10.3 (DECISIONS BU-6): an operand of Type Never that is no Place is a Never value, which a conversion only passes
+    // on (Abrupt); an explicit acquisition of a Place of Type Never (a move, a copy, a borrow) keeps its operation and its effect.
+    private static bool IsNeverValue(Koto operand, BoundType type)
+        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand) && !ElementAccess.IsRawPlace(operand);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
@@ -92,7 +97,7 @@ public sealed partial class Binding
         return Complete(conversion, type);
     }
 
-    // SPEC 13.5.3: @move keeps its operation for an operand of Type Never too (SPEC 14.10.3: x@move Moves x on an assumed path),
+    // SPEC 13.5.3: @move of a Place of Type Never keeps its Move (IsNeverValue; SPEC 14.10.3: x@move Moves x on an assumed path),
     // whose Type alone makes it supply no normal completion (SPEC 14.9.3).
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
@@ -132,7 +137,7 @@ public sealed partial class Binding
             source = KotoHelper.UnwrapParentheses(projection.Left);
         }
 
-        conversion.ConversionBinding = ConversionBinding.Transfer;
+        conversion.ConversionBinding = IsNeverValue(conversion.Left, type) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
         return Complete(conversion, type);
     }
 
@@ -253,7 +258,7 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
-            if (ReferenceEquals(stored, BoundType.Never))
+            if (IsNeverValue(conversion.Left, stored))
             {
                 conversion.ConversionBinding = ConversionBinding.Abrupt;
                 return Complete(conversion, stored);
@@ -285,7 +290,7 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
-            if (ReferenceEquals(actual, BoundType.Never))
+            if (IsNeverValue(conversion.Left, actual))
             {
                 conversion.ConversionBinding = ConversionBinding.Abrupt;
                 return Complete(conversion, actual);
@@ -363,8 +368,7 @@ public sealed partial class Binding
 
         if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation, OriginName: null, OriginExpression: null, OriginArguments: null })
         {
-            // SPEC 13.5.3: @copy Copies a proven-Copy value and never transfers or borrows; a Temporary Value is used as is. Like
-            // @move, it keeps its operation for an operand of Type Never (SPEC 14.10.3; CompleteTransfer).
+            // SPEC 13.5.3: @copy Copies a proven-Copy value and never transfers or borrows; a Temporary Value is used as is.
             var copied = this.BindNode(conversion.Left, scope);
             if (copied is null)
             {
@@ -377,7 +381,7 @@ public sealed partial class Binding
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
 
-            conversion.ConversionBinding = ConversionBinding.Identity;
+            conversion.ConversionBinding = IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
             return Complete(conversion, copied);
         }
 
@@ -394,15 +398,17 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
+            // SPEC 14.9.3: an object creation of a Never operand and a borrow of a Never value only pass it on (IsNeverValue).
+            if ((semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && ReferenceEquals(operandType, BoundType.Never)) ||
+                (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && IsNeverValue(conversion.Left, operandType)))
+            {
+                Complete(conversion.Right, operandType);
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, operandType);
+            }
+
             if (semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
             {
-                if (ReferenceEquals(operandType, BoundType.Never))
-                {
-                    Complete(conversion.Right, operandType);
-                    conversion.ConversionBinding = ConversionBinding.Abrupt;
-                    return Complete(conversion, operandType);
-                }
-
                 var payload = IsObjectSemantics(operandType.Semantics) ? operandType.Components[0] : operandType;
                 var objectTarget = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [payload]);
                 return this.BindObjectAdaptation(conversion, scope, operandType, objectTarget);
@@ -455,7 +461,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.5.6: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.
-            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !ReferenceEquals(operandType, BoundType.Never))
+            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !IsNeverValue(conversion.Left, operandType))
             {
                 Complete(conversion.Right, operandType);
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
@@ -518,7 +524,8 @@ public sealed partial class Binding
             return Complete(conversion, null);
         }
 
-        if (ReferenceEquals(source, BoundType.Never))
+        // A conversion of a Never operand passes it on (Abrupt); its same-Type acquisition of a Place is an Identity (IsNeverValue).
+        if (ReferenceEquals(source, BoundType.Never) && (!ReferenceEquals(target, source) || IsNeverValue(conversion.Left, source)))
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, BoundType.Never);
