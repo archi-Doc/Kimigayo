@@ -5,9 +5,9 @@ using Kimi.Compiler.Backend;
 namespace Kimi.Compiler;
 
 /// <summary>The old Emission's scalar-value gate and implementations of compiler-provided functions in windows-x64-v1. Types
-/// outside the gate have no fallback representation. The records, layouts and runtime ABI it returns are Backend's (DECISIONS
-/// R5-M15, R5-M19).</summary>
-internal static partial class WindowsLowering
+/// outside the gate have no fallback representation. The records, layouts and the runtime and formatting routine ABIs it
+/// returns are Backend's (DECISIONS R5-M15, R5-M16, R5-M19).</summary>
+internal static class WindowsLowering
 {
     /// <summary>Gets the representation of a Type the old generator passes as a scalar value (a primitive other than Never, a
     /// borrow it implements or a raw pointer), or null for any other Type. Layout decides the representation (DECISIONS R5-M19); Never stays
@@ -25,6 +25,6 @@ internal static partial class WindowsLowering
         CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
         CompilerFunctionKind.Abort => RuntimeAbi.AbortMessage,
         CompilerFunctionKind.TestTempDirectory => RuntimeAbi.TestTempDirectory,
-        _ => GetFormattingFunction(kind),
+        _ => LegacyRuntimeHelpers.FormattingRow(kind)?.Abi,
     };
 }
