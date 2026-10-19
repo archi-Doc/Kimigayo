@@ -44,7 +44,7 @@ public class StringFunctionEmissionTest
     {
         name = "StringFunction" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions);
     }
 
     [Theory]
@@ -56,8 +56,8 @@ public class StringFunctionEmissionTest
         var name = transfer ? "StringFunctionCallerOrder" : "StringFunctionCalleeOrder";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
         int[] order = transfer ? [0, 1] : [1, 0];
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, "first=1;second=1", order: order);
-        StringEmissionTest.WriteAuditedFixture(name + "WrongOrder", source, ir, string.Empty, "first=1;second=1", 122, string.Empty, order: order.Reverse().ToArray());
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, "first=1;second=1", order: order);
+        StringEmissionTest.WriteAuditedFixture(name + "WrongOrder", ir, string.Empty, "first=1;second=1", 122, string.Empty, order: order.Reverse().ToArray());
     }
 
     [Theory]
@@ -69,7 +69,7 @@ public class StringFunctionEmissionTest
         name = "StringFunction" + name;
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, destructions, 1, stderr);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, destructions, 1, stderr);
     }
 
     [Fact]
@@ -197,7 +197,7 @@ public class StringFunctionEmissionTest
         var function = module.GetFunction(c.Ownership.Bodies.ToList().IndexOf(body));
         Assert.DoesNotContain(function.Instructions, x => x.Callee?.ResultSlot == true);
         var ir = ScalarEmissionTest.EmitFixture("StringFunctionNeverArgument", Source, "done\n");
-        StringEmissionTest.WriteAuditedFixture("StringFunctionNeverArgument", Source, ir, "done\n", "done=1");
+        StringEmissionTest.WriteAuditedFixture("StringFunctionNeverArgument", ir, "done\n", "done=1");
     }
 
     [Fact]

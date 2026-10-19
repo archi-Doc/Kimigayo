@@ -5,7 +5,9 @@
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), the output form around the output roots (IMPL
 // 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry) and the module frame through LlvmModuleText
 // in the old generator's order (header with the pooled constants, runtime, overflow declarations, functions, entry, footer); the coverage
-// rows (PD11) of the item kinds and output forms: DropGlue (C4a), ClosureErasure and ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
+// rows (PD11) of the item kinds and output forms: DropGlue (__kimi_drop<item>, written by FunctionCodegen for a Type DropGlue has a row for,
+// the string's, R5-M78; C4a the others), ClosureErasure and
+// ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
 // property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
@@ -16,7 +18,7 @@
 // keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's call writer once C3a writes calls.
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
 // record was made; deterministic (admission order, item-indexed names); each item's signature is reused while Abi.Matches holds and every
-// buffer is kept, so a warm module allocates nothing; a request for an item outside Generated (its Signature, the one request naming an
+// buffer is kept, so a warm module allocates nothing; a request for an item outside Generated (its Signature or Glue, the requests naming an
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
@@ -124,6 +126,30 @@ internal sealed class ModuleCodegen
         return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, parameters).Named(name);
     }
 
+    /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is
+    /// a glue signature (its parameters <see cref="DropGlue.Parameters"/>).</summary>
+    /// <param name="item">The item.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Glue(int item)
+    {
+        if (!this.set.IsGenerated(item))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
+        }
+
+        if (item >= this.signatures.Length)
+        {
+            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
+        }
+
+        if (this.signatures[item] is { } previous && ReferenceEquals(previous.Parameters, DropGlue.Parameters))
+        {
+            return previous;
+        }
+
+        return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
+    }
+
     /// <summary>Records a coverage row not written yet or a broken input contract at its subject, once per code and subject.</summary>
     /// <param name="code">Unsupported_Kd or InternalInvariant_Kd.</param>
     /// <param name="subject">The located subject.</param>
@@ -156,10 +182,13 @@ internal sealed class ModuleCodegen
         switch (entry.Key.Kind)
         {
             case MonoKind.Body:
-                this.bodies.Write(collector, item, program.Bodies[entry.BodyOrdinal], this.functions);
+                this.bodies.Write(program, collector, item, this.functions);
                 return;
-            case MonoKind.DropGlue or MonoKind.ClosureErasure or MonoKind.ItemAdapter:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C4a writes drop glue; C5b the erasure and item adapters.
+            case MonoKind.DropGlue:
+                this.bodies.WriteGlue(collector, item, this.functions);
+                return;
+            case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C5b writes the erasure and item adapters.
                 return;
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).

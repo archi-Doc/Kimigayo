@@ -48,7 +48,7 @@ public class ElementMoveEmissionTest
         Assert.False(analysis.Diagnostics.HasErrors, string.Join("\n", TestDiagnostics.Of(analysis).Select(x => x.ToString())));
         var fixture = "ElementMove" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture(fixture, source, ir, "ok\n", destructions);
+        StringEmissionTest.WriteAuditedFixture(fixture, ir, "ok\n", destructions);
     }
 
     [Theory]
@@ -79,7 +79,7 @@ public class ElementMoveEmissionTest
     {
         const string Source = "let a = (\"sibling\", (\"first\", \"last\"))\nlet taken = a.1.0@move\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveOrder", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementMoveOrder", Source, ir, "ok\n", "sibling=1;first=1;last=1;ok=1", order: [3, 1, 2, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementMoveOrder", ir, "ok\n", "sibling=1;first=1;last=1;ok=1", order: [3, 1, 2, 0]);
     }
 
     [Fact]
@@ -87,7 +87,7 @@ public class ElementMoveEmissionTest
     {
         const string Source = "let a: [5 of string] = [\"a\", \"b\", \"c\", \"d\", \"e\"]\nlet taken = a[2]@move\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveArrayOrder", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementMoveArrayOrder", Source, ir, "ok\n", "a=1;b=1;c=1;d=1;e=1;ok=1", order: [5, 2, 4, 3, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementMoveArrayOrder", ir, "ok\n", "a=1;b=1;c=1;d=1;e=1;ok=1", order: [5, 2, 4, 3, 1, 0]);
     }
 
     [Theory]
@@ -210,7 +210,7 @@ public class ElementMoveEmissionTest
         const string Source = "var a: (string, [1 of i32]) = (\"first\", [0])\nlet taken = a.0@move\na.1[1] = 42";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveBounds", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementMoveBounds", Source, ir, string.Empty, "first=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementMoveBounds", ir, string.Empty, "first=0", 1, Error);
     }
 
     [Fact]
@@ -218,7 +218,7 @@ public class ElementMoveEmissionTest
     {
         const string Source = "func f() -> i32\n    var a: (string, [1 of i32]) = (\"first\", [0])\n    let taken = a.0@move\n    a.1[(return 42)] = 0\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementMoveIndexTransfer", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementMoveIndexTransfer", Source, ir, "ok\n", "first=1;ok=1", order: [0, 1]);
+        StringEmissionTest.WriteAuditedFixture("ElementMoveIndexTransfer", ir, "ok\n", "first=1;ok=1", order: [0, 1]);
     }
 
     [Fact]

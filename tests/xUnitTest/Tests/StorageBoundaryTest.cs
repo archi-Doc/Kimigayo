@@ -26,7 +26,7 @@ public class StorageBoundaryTest
             Console.writeLine(taken)
             """;
         var ir = ScalarEmissionTest.EmitFixture("StorageBoundaryStrings", source, "first\n");
-        StringEmissionTest.WriteAuditedFixture("StorageBoundaryStrings", source, ir, "first\n", "first=1;second=1;third=1", order: [2, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("StorageBoundaryStrings", ir, "first\n", "first=1;second=1;third=1", order: [2, 1, 0]);
     }
 
     [Fact]

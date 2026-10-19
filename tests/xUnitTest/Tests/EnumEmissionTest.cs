@@ -29,7 +29,7 @@ public class EnumEmissionTest
     {
         name = "EnumCleanup" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, audit, order: name == "EnumCleanupActive" ? [1, 0] : null);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, audit, order: name == "EnumCleanupActive" ? [1, 0] : null);
     }
 
     [Theory]
