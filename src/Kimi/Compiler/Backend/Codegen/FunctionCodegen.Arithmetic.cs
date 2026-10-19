@@ -57,8 +57,15 @@ internal sealed partial class FunctionCodegen
 
     // The entry an operand Type takes (SPEC 3.1, 3.1.1, 13.4): an integer's or a wrapping integer's by its signedness, bool's and char's
     // the unsigned integer's; -1 for a Type whose operators have no row yet: floating point (C1b), raw pointers (C8a), string borrows (C8c).
-    private static int Column(BoundType type) => type.HasIntegerArithmetic ? (type.IsWrappingInteger ? 2 : 0) + (type.Underlying.IsUnsignedInteger ? 1 : 0)
-        : ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) ? 1 : -1;
+    private static int Column(BoundType type)
+    {
+        if (type.HasIntegerArithmetic)
+        {
+            return (type.IsWrappingInteger ? 2 : 0) + (type.Underlying.IsUnsignedInteger ? 1 : 0);
+        }
+
+        return ReferenceEquals(type, BoundType.Boolean) || ReferenceEquals(type, BoundType.Char) ? 1 : -1;
+    }
 
     // A value's spelling (LlvmScalarText's operand precondition): a prefixed name such as %t<n>, or an integer's signed decimal.
     private static ReadOnlySpan<char> Spell(Value value, Span<char> text)
@@ -103,7 +110,12 @@ internal sealed partial class FunctionCodegen
         }
 
         var column = Column(left.Type);
-        var entry = column < 0 ? default : row.Entries[rvalue.Proven ? 2 | (column & 1) : column];
+        if (column >= 0 && rvalue.Proven)
+        {
+            column = 2 | (column & 1); // The wrapping entry, written without its check.
+        }
+
+        var entry = column < 0 ? default : row.Entries[column];
         var check = rvalue.Proven ? Check.None : entry.Check;
         if (entry.Operator is null || (check == Check.Overflow && left.Lowering.Layout.Size > 8))
         {
