@@ -35,9 +35,10 @@ dotnet run proto.cs -- -r15      # only round 15's tables (PLAN G148's store rul
 dotnet run proto.cs -- -r16      # only round 16 (route taint, superseded); exit code = its failures
 dotnet run proto.cs -- -r17      # only round 17 (body hold); exit code = its failures
 dotnet run proto.cs -- -r18      # only round 18 (ER-effects, A5-F5); exit code = its failures; -v adds every fact
+dotnet run proto.cs -- -r19      # only round 19 (ER-defaults, A5-F9); exit code = its failures; -v adds every fact
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 6,353 lines after round 18.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 7,092 lines after round 19.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1627,3 +1628,162 @@ Transferable (SPEC 8.11.2; Unknown is unproven). `R18G.Transferable` follows SPE
 - G136's "names no holder" half is argued, not run. Static storage holds only Owned values, and the Origin stratum refutes storing a
   body-bounded Loan there (15.6.5), so no Loan of the body reaches a static.
 - V16's cost: 2b-3's +V16 shape.
+
+## Round 19 (ER-defaults: A5-F9's defaults; unit 2x-P9)
+
+**Input.** The step-2 plan's 2x-P9 row, PD15 and the 2e rows (2e-D, 2e-1–2e-4); the A5-F9 audit's §4 rules and §6 cases (`F9/audit.md` of the
+step-2 audits, main checkout `artifacts/handoff/2026-10-18-pause/r4-scratch/step2-audit/`); group 1c's cases p04–p16 and its review's r06 (j1);
+DECISIONS R4-M68–R4-M70, R4-M72 and R4-M73; G148's open issue 1 (designer a's §6) and PLAN G160; SPEC 5.2.1, 7.2.3, 15.6, 15.6.3, 15.6.4 and
+15.6.7; DIAGNOSTICS' Defaults paragraph.
+
+**Model.** The round runs on R18: rule G, the body hold and the effect rules.
+
+- **Template bodies (`dt-`).** A template body is one default's body. Its PreparedInputs `p_i: ref/P_i` (`Case.Prepared`) carry their
+  parameters' Φ_E. Each body is encoded twice:
+  - E15's form: a PreparedInput's Deref is the slot itself, the inline segment `@`. So `p_x.@` is x's slot, and a Loan on it is rooted at
+    `p_x`.
+  - Today's form (`Case.PreparedShared`, run by `R19SharedStep`): a shared Deref `*`, past which a Borrow forms no Loan (SPEC 15.6.3).
+- **Callers (`dc-`).** A caller holds an omitting call, as `MirBuilder.Defaults` builds it:
+  - explicit arguments in pending slots, or a reservation in its own temp (`Case.ReservedTemps`);
+  - the prologue's shared borrows of the slots a default reads, which are the call's inspection Loans;
+  - a copy (`Node.Inlined`: its scope) or a template call. The template call has P9's Content rows as flows, today's unknown-callee Value rows
+    (`Node.UnknownRow`) and 2e-D's raw-pointer row (`Node.RawRow`);
+  - the node that places the value into its pending slot, labelled by the omitting call. R4-M70's taint sits there: `DefaultTaint` for a
+    copy, `TemplateTaint` for a template call;
+  - R-a's ending node (`Node.EndInspections`), then the call with its own rows.
+- R4-M69's Inlined drop is modelled: a Loan problem found at a copy's node is dropped.
+- **A model correction.** An activation's closure, and a destroying call's destroy's, now leaves the reservation holder t out (E13 (1)(b), as
+  `MirBorrows.Candidates`' `Takes` does). Without it, p15's prologue Loan on the slot re-entered σ(t), and the activation met its own
+  reservation: a Language error that `MirBorrowsTest.ADefaultsTaintMakesItsConflictsUnsupported` shows the compiler does not give. Every earlier
+  output is byte-equal with the correction (checked).
+- With the correction, today's column agrees with that test on p06 (Unsupported_Kd at `f(3, k@ref)`), on p15 (`fc(n@uniq)`) and on the
+  template's own call (`f(n - 1, x)`), and with its `joined` and `copied` outcomes (dc-joined, dc-copied: Unsupported_Kd at the omitting call).
+
+**Rules (`R19`).**
+
+- **E15, the PreparedInput step.** A template's PreparedInput Deref has step class Inline.
+- **R26-borrow.** At each Return, a Loan rooted at a PreparedInput in closure(σ_in(_0) ∪ σ_in(E)) is `DefaultArgumentBorrow_Kd` at its site.
+  The related parameter is its root (PD15 (v)).
+- **R26-access.** The following are `DefaultArgumentAccess_Kd`:
+  - a write rooted at a PreparedInput past its slot, through no raw pointer (`Case.RawAt`);
+  - an exclusive Loan formed on a PreparedInput that R26-borrow did not report. This keeps one code per failure.
+  Moves stay A1's (R4-M69). Both rules report through the hold (R4-M73).
+- **P9 rows.** A template call's rows are Content → result per input, untied, with no store rows. Where an input's slot holds a raw pointer
+  whose pointee may hold a Loan, 2e-D's raw-pointer row also puts every input's Content into E.
+- **R-a.** At the omitting call, before its checks, the inspection Loans its defaults formed end. This covers those on PendingSlot roots and
+  those on a reserved explicit argument's temp. R4-M70's taint is deleted: for template calls by 2e-1, for copies by 2e-3.
+
+**Cases.** The round has 47 cases: 25 template bodies and 22 callers. SPEC is the verdict on the body's own code. A caller whose program fails only
+in a template is SPEC-valid in its own body; a record at its call is a second one (DIAGNOSTICS: the calls that omit an invalid default add no
+other record). Borrow and Access are the two DefaultArgument codes; U is the located `Unsupported_Kd`; today is R18, which has no F9 rule.
+
+| Case | Program | SPEC | R19 | today (R18) |
+| --- | --- | --- | --- | --- |
+| dt-label | SPEC 7.2.3 `label(x: string, y: string = Text.toString(x))` | valid | valid | valid |
+| dt-bad | SPEC 7.2.3 `bad(x: string, y: string = x)` | error (A1) | valid: A1's DefaultArgumentMove_Kd | the same |
+| dt-fa | DefaultAccessTest :25 `fa(x: uniq/i32, y: i32 = increment(x))` | error | Access at the reservation of x's referent | accepted |
+| dt-fb | :26 `fb`: `x@follow = 9` in the default | error | Access at the write | accepted |
+| dt-fc | :27 `fc(x: uniq/i32 during a, y: ref/i32 during a = x)` | error | Borrow at the Reborrow | accepted |
+| dt-fd | :28 `fd(x: ref/i32 during a, y: … = x@follow@ref)` | valid (PD15 (i); old path: Borrow) | valid | valid |
+| dt-let, dt-tuple, dt-shared, dt-choose | :29–:32: the Reborrow kept through a local, a Tuple, `shared(x)`'s result, `choose(true, x, z)`'s result | error | Borrow at the Reborrow | accepted |
+| dt-read, dt-copyref, dt-share | :16–:18 and :44: a read through the reserved input, a copy of its stored reference, a shared Reborrow ending inside | valid | valid | valid |
+| dt-local | :19's form: a template local's exclusive Loan | valid | valid | valid |
+| dt-sem-u | SemanticsDefaultTest ExclusiveCase, s = uniq: `y: s/T = x` | error | Borrow only (one code) | accepted |
+| dt-sem-or | the same, s = owner and s = ref (audit-calls row 26 g) | valid | valid | valid |
+| dt-sem-local | SemanticsDefaultTest: the template's own Loan conflict | error | error at the second write | the same |
+| dt-cap-ref, dt-cap-uniq | a closure called inside the default, `[x@ref]` and `[x@uniq]` | valid, error | valid, Access at the entry | valid, accepted |
+| dt-raw-copy | `put(p: raw/(ref/i32 during a), x: ref/i32 during a, y: i32 = unsafe { p[0] = x; 0 })` | valid | valid | valid |
+| dt-raw-borrow | `keep(x: i32, p: raw/…, y: i32 = unsafe { p[0] = x@ref; 0 })` | error | Borrow at `x@ref` (σ(E)) | accepted (the Origin stratum refutes it) |
+| dt-twice | `x@follow = z@ref` (x: uniq/(ref/i32 during a)) | error (two failures) | Borrow at `z@ref`, Access at the write | accepted |
+| dt-nested, dt-nested-bad | a copy inside a template: NestedOrigins; `outer`'s `y = inner(x)` keeping x's Reborrow | valid, error | valid, Borrow | valid, accepted |
+| dt-recur | 1c p06's template: `value: T = if n == 0 => x else => f(n - 1, x)` | valid | valid | U at the inner template call |
+| dc-p15 | 1c p15 `fc(n@uniq)` (dt-fc's copy) | valid (dt-fc's error) | valid | U at the omitting call |
+| dc-fe, dc-p13, dc-fa | 1c p15's `fe`; p13's `fb(n@uniq)`; `fa(n@uniq)`, checked once | valid | valid | valid |
+| dc-p14 | 1c p14: a valid default beside a Move of s while `r = s@uniq` lives | error | error at the Move | the same |
+| dc-p06 | 1c p06 `let r = f(3, k@ref); k = 4`, r dead | valid | valid | U at the template call |
+| dc-ref-live | RecursiveReferenceResultKeepsTheCallersLoan: the same with `_ = r@follow` | error | error at `k = 4` | U at the template call |
+| dc-reserved-rec | a recursive default with a reserved input and a Loan-capable Type: `rr(v@uniq, w@ref, 3)` | valid (H) | valid | U at the template call |
+| dc-reserved-inspect | ReceiverDefaultTest ReservedMethod: `f(m@uniq)`, `value = m.read()` | valid | valid | valid |
+| dc-reserved-bad | dt-fc's form, the argument reserved in its own temp | valid (dt-fc's error) | valid | U at the omitting call |
+| dc-j1 | j1-shaped: `let r = x@ref; var h = r; if c => h = pick(o@ref); x = 2; inspect(h)` | error | error at `x = 2` | U at the omitting call |
+| dc-j1-clean | the same with the copy's value in g | error | error at `x = 2` | the same |
+| dc-joined | MirBorrowsTest's `joined`: `let r = same(k@ref); k = 2; inspect(r)` | error | error at `k = 2` | U at the omitting call |
+| dc-copied | `copied`'s form, r retaining only the copy of x | error | error at `k = 2` | U at the omitting call |
+| dc-gen2-bad-u, -bad-r | a two-view generic caller of dt-sem-u's default | valid (the template's error) | valid | U at the omitting call (s = uniq); valid |
+| dc-gen2-ok-u, -ok-r | the same of `probe<s/T>(a: s/T, n: i32 = size(a))` | valid | valid | valid |
+| dc-raw-copy | `put1(rp, n@ref); n = 5; inspect(rp[0])`, a copy writing through rp | error | error at `n = 5` | the same |
+| dc-raw-rec | the same through a template call, rp a raw local | error | error at `v = 5` | the same, and U at the template call |
+| dc-raw-hid | the template call with the raw pointer in `RawBox`, a holder that holds a Loan | error | error at `v = 5` | U at the template call (for its inspection Loans) |
+| dc-raw-hid-x | the same with y supplied | error | accepted: **UNSOUND**, PLAN G160 (a) | the same |
+
+**Run.** `-r19` reports 0 failures:
+
+- (i) The 459 earlier cases (425 plus round 18's 34) report the same (Loan, access) multiset under R19 as under R18, and none changes its
+  outcome. R4-M70's every-set rule made no earlier conflict `Unsupported_Kd`: each earlier default encoding also keeps the Loan in a clean
+  holder.
+- (ii) Every round-19 case meets R19's expected outcome. None is unsound or over-strict against SPEC there, except dc-raw-hid-x, which G160
+  lists.
+
+The full output and the `-v`, `-r13`, `-r15`, `-r16`, `-r17`, `-r18` and `-cases` outputs are byte-equal to round 18's.
+
+| Variant | Cases it changes |
+| --- | --- |
+| today (`R18`) | 12 template errors accepted (no F9 rule; the default pipeline's old path reports them; dt-raw-borrow is also the Origin stratum's); U at the omitting call in dt-recur, dc-p15, dc-p06, dc-ref-live, dc-reserved-rec, dc-reserved-bad, dc-j1, dc-joined, dc-copied, dc-gen2-bad-u, dc-raw-rec and dc-raw-hid |
+| `R19Taint` (copies keep R4-M70's taint instead of R-a) | U at the omitting call: dc-j1, dc-joined, dc-copied (SPEC Language errors), dc-p15, dc-reserved-bad, dc-gen2-bad-u (records beside the template's) |
+| `R19InlinedDrop` (the audit's option (a)) | dc-j1, dc-joined, dc-copied accepted: **UNSOUND** |
+| `R19NoEnding` (neither) | a second record at the call: dc-p15, dc-reserved-bad, dc-gen2-bad-u |
+| `R19SlotsOnly` (R-a on PendingSlot roots only) | a second record at the call: dc-reserved-bad |
+| `R19ValueRows` (today's Value rows, with R-a) | no change |
+| `R19NoRawRow` | dc-raw-hid accepted: **UNSOUND** |
+| `R19SharedStep` (today's step class) | dt-fa, dt-fc, dt-let, dt-tuple, dt-shared, dt-choose, dt-sem-u, dt-cap-uniq, dt-nested-bad accepted (**UNSOUND** in the Loan stratum); dt-raw-borrow accepted; dt-twice loses its Borrow |
+| `R19ReturnOnly` (R26-borrow on σ(_0) alone) | dt-raw-borrow accepted (the Origin stratum's relation remains, with another code); dt-twice loses its Borrow |
+| `R19AccessAll` | dt-sem-u: Borrow and Access for one failure |
+| `R19RawAccess` | dt-raw-copy: Access (over-strict); dt-raw-borrow: an extra Access |
+
+**Findings for 2e-D.**
+
+1. **R-a is the only copy disposition tried that is sound and leaves one record.**
+   - The audit's Inlined drop accepts dc-j1, dc-joined and dc-copied (**UNSOUND**). dc-copied needs no join: a valid default's copy of an
+     existing shared borrow carries the caller's Loan by SPEC 7.2.3. So a conflict found only through the copy's marker is not the
+     template's error.
+   - The taint is sound but gives U where SPEC gives a Language error (dc-j1, dc-joined, dc-copied). It also adds a record at the calls of
+     invalid copies (dc-p15, dc-reserved-bad, dc-gen2-bad-u), which DIAGNOSTICS' Defaults paragraph excludes.
+   - Neither leaves a second Language record at those calls.
+   - So PD15 (ii)'s recommendation holds, judged on the j1-shaped case as PD15 asks.
+2. **R-a must end the inspection Loans on a reserved explicit argument's temp too.** With PendingSlot roots alone, dc-reserved-bad keeps a
+   second record.
+3. **With R-a, P9's Content rows change no verdict against today's Value rows.** The only Loans Value adds are the inputs' own shared
+   borrows, which R-a ends. Without R-a (`R19NoEnding`), the Content rows alone give every template-call case its verdict. So 2e-1 can land
+   before 2e-3 with copies still tainted. Its gains are the deleted unknown-callee branch and its quadratic rows, not a verdict.
+4. **E15 is load-bearing.** Under today's step class, every Borrow and every exclusive-Loan Access forms no Loan: 9 template errors are
+   accepted, dt-raw-borrow is left to the Origin stratum, and only writes are found.
+5. **R26-borrow needs σ(E).** Without it, dt-raw-borrow, a slot borrow stored into raw storage (PD15 (iv)), is not this family's error, and
+   dt-twice loses its Borrow beside the Access.
+6. **R26-access needs two limits.** It must leave out the Loans R26-borrow reported, or dt-sem-u gets two codes for one failure. It must
+   stop at a raw pointer read from a slot, or dt-raw-copy is over-strict.
+7. **A raw-pointer input (G148's open issue 1, SPEC 5.2.1; PLAN G160).** A default may Copy a raw pointer from a preceding slot and write
+   through it by raw authority (dt-raw-copy: valid). What A5 does today, by shape:
+   - An inline copy's write reaches E like any raw write, so dc-raw-copy errs.
+   - Through a template call with a raw local passed by value, the callee's own row reaches E by rule G's raw clause (dc-raw-rec errs). The
+     raw-pointer row is redundant there.
+   - With the raw pointer inside a holder that holds a Loan, the callee's own row stores x into that holder only (G160 (a)). Only 2e-D's
+     raw-pointer row puts x into E (dc-raw-hid). Today A5 rejects it with a U that its Value rows' inspection Loans cause, not the store. The
+     raw-pointer row gives SPEC's verdict, and without it the program is accepted.
+   - The explicit call (dc-raw-hid-x) stays unsound by G160 (a) whatever F9 does.
+   - Recommendation: 2e-D states the raw-pointer row's condition with MirTypes' Raw fact on the slot Types, the same walk as rule G's raw
+     clause. G160's representation would subsume the row where the callee's contract covers every raw pointee the default can write (H).
+8. **A SPEC reading (H) for 2e-D: dc-reserved-rec.** A recursive default's value carries x's reservation itself (P9). x's activation does
+   not meet it, by R4-M68 and by SPEC 15.6's "a Borrow is not checked against the Loan it forms". No SPEC sentence states it for an
+   activation.
+
+**Not modelled.**
+
+- A1's Moves (`DefaultArgumentMove_Kd`, R4-M69) and the Origin stratum with PD11's merge (dt-raw-borrow's other report).
+- Forms Binding rejects:
+  - a closure kept by a default's result, whose storable Function Type needs an Owned environment;
+  - SPEC 7.2.3's `run`, a Type error.
+- Defaults' effects (8.11; F5, F6) and V16's cost (2e-1's and 2e-2's shapes).
+- Views are separate cases. R4-M71's merge across bodies is not run.
+- The raw-pointer row's condition is given per case, not derived.
+- The copy lemma (a copy carries an inspection Loan into its slot only if its template's Return carries one in some view) is argued, not
+  run: every invalid copy here has an invalid template, and R-a makes the lemma unnecessary.
