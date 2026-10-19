@@ -747,3 +747,23 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
     `ResultOnlyOriginTest` pass unchanged on both pipelines) and the one 2a0-3b implements on the MIR.
   - Principles. Local Reasoning: a candidate is found by a finite walk over the body's own bounds. Explicit Semantics: the
     case with no fixed, finite or `static` bound is named, and its outcome is the existing local-region rule.
+  - P1, completed (S1-a, R4-M76 (a); the wording and cases of `Sketches/A5 Step 2/spec-readings.md` §2, option (a)) → the
+    last sentence of the §15.6 Holders bullet, P1's home: storage the body does not own follows the holder as Loans do, and
+    a value derives from a reference that reaches it when the value is a Copy or Reborrow of one, a value a call may retain
+    from one (a read of a borrowed argument included, §15.6.4) or a value read from a part of a holder that holds one,
+    directly or through a reference to that holder. The write-through bullet's "derives from such a reference" points to
+    it ("(above)"). This writes down A3's P1, which carries `Φ_E` per holder like a Loan, and the 2026-10-17 intake's
+    decision that storage the body does not own "is decided as A3's `Φ_E` is". The letter read narrower: §15.6 separates
+    "references derived from" a borrow from "aggregates … that hold one", so it accepted g5 and r3.
+  - R4-M76 kept A5's Language code for g5 until this sentence was integrated, an exception to PD30 and to R4-M35's interim
+    (a violation of an approved loss is a located `Unsupported_Kd`). The exception ends with this intake (R4-M76's S1-a
+    bullet records it): the code now states this rule.
+  - Test: `MirBorrowsTest.StorageTheBodyDoesNotOwnFollowsItsHolder`, the cases of spec-readings §2: g5, r3, r1 and g6 are
+    errors at `v@follow = 9`, g4 and r4 are valid. A5 already gives these verdicts (A5 is unchanged), so the test pins the
+    rule. The default pipeline accepts g5, r1 and r3 (spec-readings probes) and keeps its rules until R6-check (OD5).
+    Census: library 0 and milestones 0 (the 1b-5 census); no test row has the form, by reading (H).
+  - Rationale and rejected options (R4-M76): one carrying unit, the holder, for Loans and for storage the body does not own.
+    `Φ_E` per part (b) would give a second carrying unit and two verdicts for one data shape (r2, a struct built by `init`,
+    stays an error while its tuple twin r3 would become valid); a hold (c) leaves A5 with a rejection no SPEC clause
+    states. Principles: One Concept, One Canonical Form (one carrying rule); Local Reasoning (a holder's parts, as written
+    in the body, decide); Explicit Semantics (the derivation that "derives" left undefined is listed).

@@ -432,6 +432,75 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     x = 3
                 """));
 
+    // SPEC 15.6 (Holders, DECISIONS R4-M76 (a)): storage the body does not own follows its holder as Loans do. A value read from a part of
+    // a holder that holds a parameter reference derives from it, whichever part holds it, so what a store through that part writes may be
+    // used after every point (tupleLocal, tupleOwned; tupleParameter stores through the parameter reference itself). A write through a part
+    // reaches every holder that the holder's Loans name (tupleSibling). A Reborrow of a local holder writes into that holder (direct), and
+    // a holder whose parts are all body-owned keeps the store exact (tupleOwnedOnly).
+    [Fact]
+    public void StorageTheBodyDoesNotOwnFollowsItsHolder()
+        => Assert.Equal(
+            ["tupleLocal: v@follow = 9", "tupleParameter: v@follow = 9", "tupleSibling: v@follow = 9", "tupleOwned: v@follow = 9"],
+            Problems("""
+                func direct<s/T>(value: s/T, other: s/T, x: T)
+                    s is owner or uniq
+                    T is Copy
+                    var v = value@move
+                    var slot = other@move
+                    var link = slot@uniq
+                    let child = v
+                    link@follow = child@move
+                    _ = slot@follow
+                    v@follow = x
+                func tupleLocal(value: uniq/i32 during q, w: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p)
+                    var v = value@move
+                    var local = w@move
+                    var t = (local@uniq, w2@move)
+                    let child = v
+                    t.0@follow = child@move
+                    _ = local@follow
+                    v@follow = 9
+                func tupleParameter(value: uniq/i32 during q, w: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p)
+                    var v = value@move
+                    var local = w@move
+                    var t = (local@uniq, w2@move)
+                    let child = v
+                    t.1@follow = child@move
+                    _ = local@follow
+                    v@follow = 9
+                func tupleSibling(value: uniq/i32 during q, w: uniq/i32 during q)
+                    var v = value@move
+                    var local = w@move
+                    var other: i32 = 3
+                    var loc2 = other@uniq
+                    var t = (local@uniq, loc2@uniq)
+                    let child = v
+                    t.0@follow = child@move
+                    _ = local@follow
+                    v@follow = 9
+                    _ = loc2@follow
+                func tupleOwned(value: uniq/i32 during q, w2: uniq/(uniq/i32 during q) during p)
+                    var v = value@move
+                    var n2: i32 = 0
+                    var local = n2@uniq
+                    var t = (local@uniq, w2@move)
+                    let child = v
+                    t.0@follow = child@move
+                    _ = local@follow
+                    v@follow = 9
+                func tupleOwnedOnly(value: uniq/i32 during q)
+                    var v = value@move
+                    var n2: i32 = 0
+                    var n3: i32 = 0
+                    var local = n2@uniq
+                    var local3 = n3@uniq
+                    var t = (local@uniq, local3@uniq)
+                    let child = v
+                    t.0@follow = child@move
+                    _ = local@follow
+                    v@follow = 9
+                """));
+
     // SPEC 15.6.4: a call's result and the storage it writes carry the Loans of the inputs its contract lets them retain (TyCtxt.Retains),
     // and nothing else.
     [Fact]

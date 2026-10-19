@@ -1865,7 +1865,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - S1-a (2x-S1, the `g5` form): (a). A3's approved P1 is completed in SPEC: storage the body does not own that a part carries
     follows its holder, as Loans do. A5 is unchanged. Until the sentence is integrated in OQ12's SPEC session, A5's Language code
     for the form stands, an exception to PD30 and to R4-M35's interim (a violation of an approved loss is a located
-    `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c).
+    `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c). (Integrated 2026-10-19, INTEGRATED; the exception has ended.)
   - G1 (2f-S1): (ii′). A conformance's earlier result is taken from its body (SPEC 8.11.3's "its results"), and an unclassifiable
     destruction, one in a concrete callee's summary included, conflicts with every Loan the earlier result keeps. Eight test rows
     rejected today become valid; every other rejection stays.
