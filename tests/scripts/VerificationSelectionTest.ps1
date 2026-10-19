@@ -51,7 +51,8 @@ Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.TwoTes
 $cases++
 Reject { Assert-KimiTestSelections (Join-KimiCommonTestSelections @('XunitTest.TypoTest')) @() $methods } 'TypoTest'
 Reject { Assert-KimiTestSelections @() (Join-KimiCommonTestSelections @('XunitTest.OneTest.Typo') -Method) $methods } 'OneTest.Typo'
-# Tests reported as Not Run (Explicit tests not requested) were not executed; a run without a result file executed none.
+# Tests reported as Not Run (Explicit tests not requested) were recorded but not executed; a run without a result file
+# recorded none.
 $result = [IO.Path]::GetTempFileName()
 try {
     Set-Content -LiteralPath $result -Value ('<assemblies><assembly><collection>' +
@@ -59,10 +60,13 @@ try {
         '<test type="XunitTest.OneTest+AllocationTests" method="Storage" result="Fail" />' +
         '<test type="XunitTest.TwoTest" method="Explicit" result="NotRun" /></collection></assembly></assemblies>')
     $executed = @(Get-KimiExecutedTests $result)
+    $recorded = @(Get-KimiRecordedCases $result | ForEach-Object { "$($_.type).$($_.method)" })
 }
 finally { Remove-Item -LiteralPath $result }
 Equal $executed @('XunitTest.OneTest.Run', 'XunitTest.OneTest+AllocationTests.Storage')
+Equal $recorded @('XunitTest.OneTest.Run', 'XunitTest.OneTest+AllocationTests.Storage', 'XunitTest.TwoTest.Explicit')
 Equal @(Get-KimiExecutedTests $result) @()
+Equal @(Get-KimiRecordedCases $result) @()
 # Each requested selector executes a test of its own: one that matches only a test left Not Run fails, also beside a
 # selector that executes.
 Assert-KimiTestSelections @('XunitTest.OneTest') @('XunitTest.OneTest.Storage') $executed 'among the executed tests'

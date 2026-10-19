@@ -1,12 +1,16 @@
-# The R5 pending ledger report (R5 plan E10, PD10; DECISIONS R5-M66; removed with the selector at G4), dot-sourced by verify.ps1
-# after verification-selection.ps1, whose Get-KimiExecutedCases decides which cases ran. The ledger is the union of
-# tests/xUnitTest/TestData/codegen-pending/<group>.tsv, one file per review group, with the rows
+# The R5 pending ledger, its report and gate (R5 plan E10, E11, PD10; DECISIONS R5-M66, R5-M73; removed with the selector at
+# G4), dot-sourced by verify.ps1 after verification-selection.ps1, whose Get-KimiExecutedCases decides which cases ran. The
+# ledger is the union of tests/xUnitTest/TestData/codegen-pending/<group>.tsv, one file per review group, with the rows
 #   test<TAB><type>.<method><TAB><full display name>    fixture<TAB><stem>.ll<TAB>1
 # where a test row names one case: under sel, verify.ps1 has xUnit print theory arguments in full, so each name is distinct.
-# The report compares the failing set of a MIR code generation run with it and writes codegen-pending.json into the evidence.
+# The report compares the failing set of a MIR code generation run with it and writes codegen-pending.json into the evidence;
+# the run passes when no entry differs, and verify.ps1 -UpdatePending writes the ledger from the report.
 
-# The ledger's groups by row id (kind, key and name, tab-separated). A malformed row (a test row's name is its type.method,
-# optionally with an argument list), a file other than .tsv or an id listed twice throws; no directory is an empty ledger.
+# A ledger row: a test row's name is its type.method, optionally with an argument list.
+$KimiCodegenRow = '^(test\t(\S+\.[^\s.]+)\t\2(\([^\t]*\))?|fixture\t\S+\.ll\t1)$'
+
+# The ledger's groups by row id (kind, key and name, tab-separated). A malformed row, a file other than .tsv or an id listed
+# twice throws; no directory is an empty ledger.
 function Read-KimiCodegenLedger([string] $Directory) {
     $rows = [Collections.Generic.Dictionary[string, string]]::new([StringComparer]::Ordinal)
     $groups = [Collections.Generic.List[string]]::new()
@@ -17,7 +21,7 @@ function Read-KimiCodegenLedger([string] $Directory) {
             $number = 0
             foreach ($line in [IO.File]::ReadAllLines($file.FullName)) {
                 $number++
-                if ($line -cnotmatch '^(test\t(\S+\.[^\s.]+)\t\2(\([^\t]*\))?|fixture\t\S+\.ll\t1)$') {
+                if ($line -cnotmatch $KimiCodegenRow) {
                     throw "$($file.Name):$number is not a pending row (test<TAB>Type.Method<TAB>its case name or fixture<TAB>name.ll<TAB>1)."
                 }
                 $id = if ($line.StartsWith("fixture`t")) { $line.Substring(0, $line.Length - 2) } else { $line }
@@ -29,13 +33,51 @@ function Read-KimiCodegenLedger([string] $Directory) {
     [pscustomobject]@{ rows = $rows; groups = $groups }
 }
 
-# The run's executed and failing ids: a case failed when it ran and did not pass, and a name executed twice throws (a row names
-# one case); a fixture failed when a native run of it did not pass at both O0 and O2 (test-scalars.ps1's rule).
+# DECISIONS R5-M73's filing rule: a row goes to the review group of the first unit, in plan order, whose verification column
+# (K13a-K13c: its Change column) names the class exactly, else of the first whose X* family prefixes its simple name, else
+# C-frame. A nested class is filed by its outermost class and a fixture by its stem. Rows: unit, group, classes, families.
+$KimiCodegenUnits = @(
+    @('C0a', 'C-frame', 'PipelineSwitchTest', ''), @('C0b1', 'C-frame', 'MinimalEmissionTest', ''),
+    @('C1a', 'C-scalar', '', 'Scalar Overflow Wrapping Bitwise Char'), @('C1b', 'C-scalar', '', 'Float'),
+    @('C2a', 'C-aggregate', '', 'Element Borrowed Fixed'), @('C2b', 'C-aggregate', '', 'Aggregate Struct Composite'),
+    @('C3a', 'call', '', 'Function Result Never Generic'),
+    @('C3b', 'call', 'AbortEmissionTest LibraryAbortContextTest', 'Requirement Associated'),
+    @('C4a', 'C-drop', 'MirDropTest GenericDestructorEmissionTest', ''), @('C4c', 'C-drop', '', 'Owned Ownership'),
+    @('C5a', 'closure', 'ContextualClosureTest', 'Closure Callable Concrete'), @('C5b', 'closure', '', 'Callback'),
+    @('C6a', 'object', 'SharedObjectRuntimeTest SharedArcRuntimeTest GenericObjectFactoryTest PipelineObjectTest', 'Object Shared Dynamic'),
+    @('C6b', 'object', 'SealedObjectFinalizationTest SharedObjectCleanupTest', ''),
+    @('C6c', 'object', 'VirtualDispatchTest VirtualConditionalDispatchTest VirtualGenericDispatchTest VirtualEntryErasureTest', 'Virtual'),
+    @('C7b', 'C7b', 'StaticInitializationTest', 'Static'), @('C8a', 'library-1', '', 'Raw Abort'),
+    @('C8c', 'library-1', 'StringComparisonEmissionTest', 'String'), @('C8d', 'library-2', 'DynamicArrayCostTest', 'Array'),
+    @('C8e', 'library-2', 'DictionaryLibraryTest DictionaryCostTest', 'Dictionary'),
+    @('C8f', 'library-2', 'ComparisonContractTest ComparisonCompositionTest BuiltinComparisonTest ElementComparisonTest ComparisonOperatorTest', ''),
+    @('C9a', 'format', '', 'Utf'), @('C9c', 'format', 'Utf8ConsoleTest', ''), @('C10a', 'test', 'TestProtocolTest', ''),
+    @('K13a', 'K-edges', 'GenericGenerationDiagnosticTest', ''),
+    @('K13b', 'K-edges', 'GenericStorageEmissionTest GenericDestructorEmissionTest InlineLayoutTest RecursiveDefaultTest GenericPointerEmissionTest', ''),
+    @('K13c', 'object', 'VirtualGenericDispatchTest GenericObjectFactoryTest', '')
+)
+
+# The group of a row id or row by the filing rule.
+function Get-KimiCodegenGroup([string] $Row) {
+    $kind, $key, $null = $Row -split "`t", 3
+    $name = if ($kind -ceq 'fixture') { $key } else { ($key.Substring(0, $key.LastIndexOf('.')) -split '\.')[-1].Split('+')[0] }
+    foreach ($unit in $KimiCodegenUnits) { if ($unit[2] -and ($unit[2] -csplit ' ') -ccontains $name) { return $unit[1] } }
+    foreach ($unit in $KimiCodegenUnits) {
+        foreach ($family in @($unit[3] -csplit ' ' | Where-Object { $_ })) { if ($name.StartsWith($family, [StringComparison]::Ordinal)) { return $unit[1] } }
+    }
+    'C-frame'
+}
+
+# The run's executed and failing ids and the methods its results record: a case failed when it ran and did not pass, and a
+# name executed twice throws (a row names one case); a fixture failed when a native run of it did not pass at both O0 and O2
+# (test-scalars.ps1's rule).
 function Get-KimiCodegenRun([string] $Evidence) {
     $executed = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $failing = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
     $results = @(Get-ChildItem -LiteralPath $Evidence -Filter 'tests-*.xml' -File)
     if ($results.Count -eq 0) { throw "$Evidence records no test results." }
+    $recorded = [Collections.Generic.HashSet[string]]::new([string[]]@($results | ForEach-Object { Get-KimiRecordedCases $_.FullName } |
+        ForEach-Object { "$($_.type).$($_.method)" }), [StringComparer]::Ordinal)
     foreach ($case in @($results | ForEach-Object { Get-KimiExecutedCases $_.FullName })) {
         $id = "test`t$($case.type).$($case.method)`t$($case.name)"
         if (-not $executed.Add($id)) { throw "The run executed $($case.name) twice; a pending row names one case." }
@@ -49,7 +91,7 @@ function Get-KimiCodegenRun([string] $Evidence) {
         $null = $executed.Add($id)
         if (-not $record.ok -or ($record.levels -join ',') -cne 'O0,O2') { $null = $failing.Add($id) }
     }
-    [pscustomobject]@{ executed = $executed; failing = $failing; native = $native.Count -gt 0 }
+    [pscustomobject]@{ executed = $executed; failing = $failing; recorded = $recorded; native = $native.Count -gt 0 }
 }
 
 # The entries of the ledger, the failing set and each state other than pending, as test cases and as fixtures.
@@ -66,20 +108,20 @@ function Get-KimiCodegenTotals($Entries) {
 }
 
 # Writes <Evidence>/codegen-pending.json and returns the summary.json field. A failing id is pending with a row, else added; a
-# row that ran and passed passes now; a row that did not run is no longer executed when the run covers it (a Session every
-# test, a Unit run its selected methods and any method its fresh assembly lacks, a run whose native steps wrote results every
-# fixture matching a -Fixtures pattern), else out of scope.
+# row that ran and passed passes now; a row that did not run is no longer executed when the run covers it (its selected
+# methods, which a Session discovers as all, and any method its fresh assembly lacks; once its native steps wrote results,
+# every fixture matching a -Fixtures pattern), else out of scope. A selected method the results record no case of (a partial
+# run) throws. differences counts the entries other than pending and out of scope: the run passes when it is 0.
 function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $Configuration, [string[]] $Fixtures, [string] $Ledger) {
     $ledgerRows = Read-KimiCodegenLedger $Ledger
     $run = Get-KimiCodegenRun $Evidence
-    $selected = $discovered = $null
-    if ($Mode -cne 'Session') {
-        $selected, $discovered = foreach ($name in @('selected-methods.json', 'discovered-methods.json')) {
-            $path = Join-Path $Evidence $name
-            if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$Evidence has no $name." }
-            , [Collections.Generic.HashSet[string]]::new([string[]]@(Get-Content -LiteralPath $path -Raw | ConvertFrom-Json), [StringComparer]::Ordinal)
-        }
+    $selected, $discovered = foreach ($name in @('selected-methods.json', 'discovered-methods.json')) {
+        $path = Join-Path $Evidence $name
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw "$Evidence has no $name." }
+        , [Collections.Generic.HashSet[string]]::new([string[]]@(Get-Content -LiteralPath $path -Raw | ConvertFrom-Json), [StringComparer]::Ordinal)
     }
+    $unrecorded = @($selected | Where-Object { -not $run.recorded.Contains($_) } | Sort-Object)
+    if ($unrecorded.Count -gt 0) { throw "The results record no case of $($unrecorded.Count) selected methods (a partial run): $($unrecorded -join ', ')" }
     $ids = [Collections.Generic.SortedSet[string]]::new([string[]]@($ledgerRows.rows.Keys), [StringComparer]::Ordinal)
     $ids.UnionWith($run.failing)
     $entries = @(foreach ($id in $ids) {
@@ -90,7 +132,7 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
         elseif ($kind -ceq 'fixture') {
             if ($run.native -and @($Fixtures | Where-Object { $key -like $_ }).Count -gt 0) { 'noLongerExecuted' } else { 'outOfScope' }
         }
-        elseif ($Mode -ceq 'Session' -or $selected.Contains($key) -or -not $discovered.Contains($key)) { 'noLongerExecuted' }
+        elseif ($selected.Contains($key) -or -not $discovered.Contains($key)) { 'noLongerExecuted' }
         else { 'outOfScope' }
         [ordered]@{ kind = $kind; key = $key; name = $name; group = $group; state = $state }
     })
@@ -99,11 +141,41 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
     $groups = [ordered]@{}
     foreach ($group in $ledgerRows.groups) { $groups[$group] = Get-KimiCodegenTotals @($entries | Where-Object { $_.group -ceq $group }) }
     $totals = Get-KimiCodegenTotals $entries
+    $differences = 0
+    foreach ($state in @('passesNow', 'noLongerExecuted', 'added')) { $differences += $totals[$state].tests + $totals[$state].fixtures }
     $report = Join-Path $Evidence 'codegen-pending.json'
     [ordered]@{
         run = [ordered]@{ directory = $Evidence; mode = $Mode; configuration = $Configuration; fixtures = @($Fixtures) }
         ledger = [ordered]@{ directory = $Ledger; groups = @($ledgerRows.groups) }
         executed = $executed; totals = $totals; groups = $groups; entries = $entries
     } | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath $report
-    [ordered]@{ report = $report; executed = $executed; totals = $totals }
+    [ordered]@{ report = $report; executed = $executed; totals = $totals; differences = $differences }
+}
+
+# Writes the ledger a report implies and returns the files it changed: pending and out-of-scope rows stay in their files,
+# rows that pass now or are no longer executed leave, and an added row goes to its group by the filing rule. Each file keeps
+# the report's ordinal order with LF line ends; a file whose rows did not change is not written, and one left without rows
+# is removed.
+function Update-KimiCodegenLedger([string] $Ledger, [string] $Report) {
+    $files = [Collections.Generic.SortedDictionary[string, Collections.Generic.List[string]]]::new([StringComparer]::Ordinal)
+    foreach ($group in (Read-KimiCodegenLedger $Ledger).groups) { $files[$group] = [Collections.Generic.List[string]]::new() }
+    foreach ($entry in (Get-Content -LiteralPath $Report -Raw | ConvertFrom-Json).entries) {
+        if ($entry.state -cne 'pending' -and $entry.state -cne 'outOfScope' -and $entry.state -cne 'added') { continue }
+        $row = if ($entry.kind -ceq 'test') { "test`t$($entry.key)`t$($entry.name)" } else { "fixture`t$($entry.key)`t1" }
+        if ($row -cnotmatch $KimiCodegenRow) { throw "$($row.Replace("`t", ' ')) cannot be a pending row." }
+        $group = if ($entry.state -ceq 'added') { Get-KimiCodegenGroup $row } else { $entry.group }
+        if (-not $files.ContainsKey($group)) { $files[$group] = [Collections.Generic.List[string]]::new() }
+        $files[$group].Add($row)
+    }
+    $utf8 = [Text.UTF8Encoding]::new($false)
+    foreach ($group in $files.Keys) {
+        $path = Join-Path $Ledger "$group.tsv"
+        $text = -join @($files[$group] | ForEach-Object { "$_`n" })
+        if ($files[$group].Count -eq 0) { Remove-Item -LiteralPath $path; "$group.tsv removed" }
+        elseif (-not (Test-Path -LiteralPath $path) -or [IO.File]::ReadAllText($path, $utf8) -cne $text) {
+            $null = [IO.Directory]::CreateDirectory($Ledger)
+            [IO.File]::WriteAllText($path, $text, $utf8)
+            "$group.tsv ($($files[$group].Count) rows)"
+        }
+    }
 }
