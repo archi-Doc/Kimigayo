@@ -682,3 +682,106 @@ ending) and **P12**.
   clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3); S5's
   proposal (2x-S5) and, after its review, its SPEC integration (OQ13); each family's approved losses as SPEC clauses (OQ8).
   Adoption implies no implementation support.
+
+## 2026-10-19 — Effect atoms widen, Origin inference bounds, P1's completion and the zero-length fill
+
+The owner's request of 2026-10-19, 「SPEC の改訂、Copy の証明の問題の登録、推奨の作業を行ってください。」, includes the SPEC
+session the R4 planning session recommended: four items already decided, integrated together. S5 (the owner's OQ13 answer
+made precise as form (c), DECISIONS R4-M74 and R4-M76), S3 (OQ12 (a) of the A5 step 2 plan, R4-M74), S1-a (R4-M76 (a)) and
+the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the planning session's question Q2, 「持つ (推奨)」).
+
+- `Changes/2026-10-19 Effect Atoms Widen.md`: 取り込み済み (text of `dd6feebf`). Mapping of its §2.5 and §10:
+  - §8.3.3 line 162 → §8.3.3's Recursion paragraph as written: a Contract is recursive when `T is C` supplies, directly
+    or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with
+    any Type arguments, or to a Contract that refines it (form (c)'s proof-rule definition, R4-M76). It replaces "When a
+    Contract's associated-Type Constraint leads back to the same Contract"; the `Tree`/`Node` example stays.
+  - §15.6.4 line 596 → §15.6.4's Effect summaries paragraph, after the fixed-point sentence, as written: a summary's
+    parameter-dependent effects, and unknown environment effects in place of one on a projection one of whose bases the
+    premises of the summary's declaration prove to conform to a recursive Contract.
+  - §15.6.4 after line 622 → a new §15.6.4 block, `visitCopies` as written, after one introducing sentence. Spec case
+    `15.6.4-widened-effects` (family F5): `ComparisonLoanConflict_Kd` at `Trees.walk(node, 2)`; the old path records
+    Binding's `InvalidAssignment_Kd` for the static Borrow, class (b) (PLAN G100, P42), as `15.6.4-static-anchors` does.
+  - §16.3.3 line 196 and §4.9.6 line 568 → ", unless §15.6.4 widens it", as written. Appendix E → the rows
+    Parameter-dependent effect and Recursive Contract, with links in place of the bare section numbers.
+  - §10's gap (1) → §8.3.2's Contract refinement row: `T is C` supplies `C`'s own and inherited Constraints, an
+    associated-Type declaration's requirement included (`associate X is R` in `C` supplies `T.(C).X is R`), the supply the
+    definition and every generic body under `T is C` rely on.
+  - §10's gap (2) → a clarification in §8.5.3's first paragraph, before its Loan-independence sentence: a Contract may
+    constrain a deeper projection of `Self` (`Self.(A).X.(B).Y is A`), each step needing §8.5.2's evidence, and as a
+    condition on the conforming Self it is an implementation requirement (§6.1.4) that `T is A` supplies; the example notes
+    that it makes `A` recursive (§8.3.3). No new rule: Appendix F's `ConstraintSubject` admits the form, §8.5.2 lets a
+    projection's base be another projection and §6.1.4 gives the role. Binding accepts it at this
+    session's base: rv-G's `f` proves `g`'s premise `U.(B).Y is A` from it (without the clause the call is
+    `UnprovenConstraint_Kd`), and a conformance checks it (`Root: A` with `Root.X.Y` bound to `i32` is
+    `UnsatisfiedConstraint_Kd`). No verdict changes.
+  - §1–§7 and §9–§11 → the rationale, losses, census, rejected options and evidence below, unchanged.
+  - §8 → transferred: A4's widening, Binding's recursive-Contract view and their tests go to the S5 implementation unit that
+    the planning session places after this session (OQ9's S5 item in PLAN); the `MirBorrowsTest.Effects` row for a growing
+    call against a live static Loan goes to 2b-3. Until that unit the MIR keeps today's verdicts: a growing atom reaches
+    G128's Limit, a located `Unsupported_Kd` (PD30; the unit switches it to the Language code), and the non-growing forms
+    of the proposal's §4 item 2, which the SPEC now rejects, stay accepted, only in code no concrete Type can instantiate.
+    §10's side finding → PLAN G170.
+  - Every item is incorporated, rejected with a reason or transferred. The file moved to `Changes` with only its status
+    sentence replaced; its links to the plans that stay in `Proposals` are not rewritten. The two `Sketches/A5 Step 2`
+    files that name it (`S5EffectWidening.cs`, `S5Probe.cs`) name the new path.
+  - Rationale. A summary is a least fixed point (§15.6.4), and under polymorphic recursion through an associated Type its
+    parameter-dependent effects grow without bound (`walk`, cleanup cycles included); P5 removed the open-key cut for
+    static keys and nothing replaced it. The rule needs no notion of recursion or of summary dependencies: it reads one
+    Type and the declaration's premises, and the remaining effects have bounded projection depth (proposal §2.3, argued
+    and model-checked on 50,000 random programs). Its losses (§4) are all in declarations whose premises name a recursive
+    Contract, which no concrete Type can instantiate. Rejected (§6, R4-M76): form (a), which keeps "grows" but needs a
+    SPEC definition of summary dependencies, their cycles and a self-map rule; a depth limit whose excess is a Resource
+    failure; the open-key form, which widens instantiable programs; exact summaries, a second effect representation; a
+    list of Constraint kinds (two blocking review rounds); a hold.
+  - Principles. One Concept, One Canonical Form: the widened effect is the existing unknown environment effects, and
+    "recursive" reuses the proof rule. Local Reasoning: the test reads one Type and the premises of one declaration and
+    makes the fixed point finite without a work budget. Explicit Semantics: the widening and its losses are SPEC text,
+    and gap (1) names the supply generic checking relies on. Compiler Server Protocol: the conflict is reported at the
+    call with existing codes and facts.
+  - Usage: library, milestones, SPEC examples and xUnit 0 (proposal §4 and §5, H: a grep-level scan). The default
+    pipeline keeps its verdicts (OD5); no implementation is claimed. Not refreshed: SPECJ (its §15.6.4 still has the
+    pre-P5 open key) and GUIDE.
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+  frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
+  - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a
+    variable's bounds are followed through other variables to fixed or finite Origins and `static`, and a variable that
+    reaches none has no candidate, so it is a local region in an executable body and needs an annotation elsewhere.
+  - Rationale: without the sentence, a variable whose only bounds are other variables, such as a covariant variable bounded
+    by a contravariant one, had no defined candidate (plan §5.2). No verdict changes: it states the reading the solver
+    already follows (`LocalRegionInferenceTest`, `CallOriginRelationTest`, `OriginPremiseClosureTest` and
+    `ResultOnlyOriginTest` pass unchanged on both pipelines) and the one 2a0-3b implements on the MIR.
+  - Principles. Local Reasoning: a candidate is found by a finite walk over the body's own bounds. Explicit Semantics: the
+    case with no fixed, finite or `static` bound is named, and its outcome is the existing local-region rule.
+  - P1, completed (S1-a, R4-M76 (a); the wording and cases of `Sketches/A5 Step 2/spec-readings.md` §2, option (a)) → the
+    last sentence of the §15.6 Holders bullet, P1's home: storage the body does not own follows the holder as Loans do, and
+    a value derives from a reference that reaches such storage when the value is a Copy or Reborrow of one, a value a call
+    may retain from one (a read of a borrowed argument included, §15.6.4) or a value read from a part of a holder that holds
+    one, directly or through a reference to that holder. The write-through bullet's "derives from such a reference" points to
+    it ("(above)"). This writes down A3's P1, which carries `Φ_E` per holder like a Loan, and the 2026-10-17 intake's
+    decision that storage the body does not own "is decided as A3's `Φ_E` is". The letter read narrower: §15.6 separates
+    "references derived from" a borrow from "aggregates … that hold one", so it accepted g5 and r3.
+  - R4-M76 kept A5's Language code for g5 until this sentence was integrated, an exception to PD30 and to R4-M35's interim
+    (a violation of an approved loss is a located `Unsupported_Kd`). The exception ends with this intake (R4-M76's S1-a
+    bullet records it): the code now states this rule.
+  - Test: `MirBorrowsTest.StorageTheBodyDoesNotOwnFollowsItsHolder`, the cases of spec-readings §2: g5, r3, r1 and g6 are
+    errors at `v@follow = 9`, g4 and r4 are valid. A5 already gives these verdicts (A5 is unchanged), so the test pins the
+    rule. The default pipeline accepts g5, r1 and r3 (spec-readings probes) and keeps its rules until R6-check (OD5).
+    Census: library 0 and milestones 0 (the 1b-5 census); no test row has the form, by reading (H).
+  - Rationale and rejected options (R4-M76): one carrying unit, the holder, for Loans and for storage the body does not own.
+    `Φ_E` per part (b) would give a second carrying unit and two verdicts for one data shape (r2, a struct built by `init`,
+    stays an error while its tuple twin r3 would become valid); a hold (c) leaves A5 with a rejection no SPEC clause
+    states. Principles: One Concept, One Canonical Form (one carrying rule); Local Reasoning (a holder's parts, as written
+    in the body, decide); Explicit Semantics (the derivation that "derives" left undefined is listed).
+- The Loans of a zero-length fill (no proposal; the owner's answer Q2 of 2026-10-19, 「持つ (推奨)」, to a question of the
+  planning session from unit 2x-E1's design) → one sentence in §4.3.3: the array carries `value`'s Loans at every length,
+  so `[0 of v]` keeps them too; and three lines in its block (`let none = [0 of x@ref]`, the commented error `x = 2`,
+  `inspect(none)`).
+  - Rationale: §4.3.3 already acquires `value` exactly once even for length zero, and a generic `[N of v]` must carry the
+    Loans whatever `N` is (§4.4.2); §15.6's "every aggregate … that holds one" alone left the constant zero length open.
+    The old path keeps the Loans; the MIR's fill of constant length zero drops its operand. One rule for every length.
+  - Spec case `4.3.3-fill-loans` (F1): the block is valid; uncommenting `x = 2` is `ComparisonLoanConflict_Kd` there. The
+    old path agrees. The MIR records nothing today, a class (b) `Mir` difference that names 2x-E1's fill form, which keeps
+    the operand (the MIR side is 2x-E1's, in flight; when it lands, the difference goes).
+  - Principles. One Concept, One Canonical Form: one Loan rule for fills of every length, constant or generic. Local
+    Reasoning: the acquisition, not the length, decides. Explicit Semantics: the edge case is stated.
+  - Usage: library 0, milestones 0 (a grep finds no fill of literal length zero, H); no default-pipeline verdict changes.
