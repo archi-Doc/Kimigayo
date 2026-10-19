@@ -703,19 +703,24 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
     Binding's `InvalidAssignment_Kd` for the static Borrow, class (b) (PLAN G100, P42), as `15.6.4-static-anchors` does.
   - §16.3.3 line 196 and §4.9.6 line 568 → ", unless §15.6.4 widens it", as written. Appendix E → the rows
     Parameter-dependent effect and Recursive Contract, with links in place of the bare section numbers.
-  - §10's gap (1) → §8.3.2's Contract refinement row: `T is C` supplies `C`'s own and inherited Constraints, the supply
-    the definition and every generic body under `T is C` rely on.
+  - §10's gap (1) → §8.3.2's Contract refinement row: `T is C` supplies `C`'s own and inherited Constraints, an
+    associated-Type declaration's requirement included (`associate X is R` in `C` supplies `T.(C).X is R`), the supply the
+    definition and every generic body under `T is C` rely on.
   - §10's gap (2) → a clarification in §8.5.3's first paragraph, before its Loan-independence sentence: a Contract may
     constrain a deeper projection of `Self` (`Self.(A).X.(B).Y is A`), each step needing §8.5.2's evidence, and as a
-    condition on the conforming Self it is an implementation requirement (§6.1.4) that `T is A` supplies. No new rule: Appendix F's `ConstraintSubject` admits
-    the form, §8.5.2 lets a projection's base be another projection and §6.1.4 gives the role. Binding accepts it at this
+    condition on the conforming Self it is an implementation requirement (§6.1.4) that `T is A` supplies; the example notes
+    that it makes `A` recursive (§8.3.3). No new rule: Appendix F's `ConstraintSubject` admits the form, §8.5.2 lets a
+    projection's base be another projection and §6.1.4 gives the role. Binding accepts it at this
     session's base: rv-G's `f` proves `g`'s premise `U.(B).Y is A` from it (without the clause the call is
     `UnprovenConstraint_Kd`), and a conformance checks it (`Root: A` with `Root.X.Y` bound to `i32` is
     `UnsatisfiedConstraint_Kd`). No verdict changes.
   - §1–§7 and §9–§11 → the rationale, losses, census, rejected options and evidence below, unchanged.
   - §8 → transferred: A4's widening, Binding's recursive-Contract view and their tests go to the S5 implementation unit that
-    the planning session places after this session (OQ9's S5 item in PLAN); §8's interim lasts until that unit. §10's side
-    finding → PLAN G170.
+    the planning session places after this session (OQ9's S5 item in PLAN); the `MirBorrowsTest.Effects` row for a growing
+    call against a live static Loan goes to 2b-3. Until that unit the MIR keeps today's verdicts: a growing atom reaches
+    G128's Limit, a located `Unsupported_Kd` (PD30; the unit switches it to the Language code), and the non-growing forms
+    of the proposal's §4 item 2, which the SPEC now rejects, stay accepted, only in code no concrete Type can instantiate.
+    §10's side finding → PLAN G170.
   - Every item is incorporated, rejected with a reason or transferred. The file moved to `Changes` with only its status
     sentence replaced; its links to the plans that stay in `Proposals` are not rewritten. The two `Sketches/A5 Step 2`
     files that name it (`S5EffectWidening.cs`, `S5Probe.cs`) name the new path.
@@ -749,9 +754,9 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
     case with no fixed, finite or `static` bound is named, and its outcome is the existing local-region rule.
   - P1, completed (S1-a, R4-M76 (a); the wording and cases of `Sketches/A5 Step 2/spec-readings.md` §2, option (a)) → the
     last sentence of the §15.6 Holders bullet, P1's home: storage the body does not own follows the holder as Loans do, and
-    a value derives from a reference that reaches it when the value is a Copy or Reborrow of one, a value a call may retain
-    from one (a read of a borrowed argument included, §15.6.4) or a value read from a part of a holder that holds one,
-    directly or through a reference to that holder. The write-through bullet's "derives from such a reference" points to
+    a value derives from a reference that reaches such storage when the value is a Copy or Reborrow of one, a value a call
+    may retain from one (a read of a borrowed argument included, §15.6.4) or a value read from a part of a holder that holds
+    one, directly or through a reference to that holder. The write-through bullet's "derives from such a reference" points to
     it ("(above)"). This writes down A3's P1, which carries `Φ_E` per holder like a Loan, and the 2026-10-17 intake's
     decision that storage the body does not own "is decided as A3's `Φ_E` is". The letter read narrower: §15.6 separates
     "references derived from" a borrow from "aggregates … that hold one", so it accepted g5 and r3.

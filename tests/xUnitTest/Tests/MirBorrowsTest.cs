@@ -435,7 +435,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 15.6 (Holders, DECISIONS R4-M76 (a)): storage the body does not own follows its holder as Loans do. A value read from a part of
     // a holder that holds a parameter reference derives from it, whichever part holds it, so what a store through that part writes may be
     // used after every point (tupleLocal, tupleOwned; tupleParameter stores through the parameter reference itself). A write through a part
-    // reaches every holder that the holder's Loans name (tupleSibling). A Reborrow of a local holder writes into that holder (direct), and
+    // reaches every holder that the holder's Loans name (tupleSibling). A Borrow of a local holder writes into that holder (direct), and
     // a holder whose parts are all body-owned keeps the store exact (tupleOwnedOnly).
     [Fact]
     public void StorageTheBodyDoesNotOwnFollowsItsHolder()
