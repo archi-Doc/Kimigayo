@@ -12,20 +12,27 @@
 // records). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none. MIR code generation then
 // needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2, which Project's check reads too); the old generator checks its own
 // inputs (LlvmEmitter's CheckInputs).
+// Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
+// closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
+// catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
+// override whose slot Applies refutes (InstanceCollector.Generates, checked only, R4-M28); a root without an item or with an undecided slot
+// is a broken contract.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
 // LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
 // and src/Benchmark (four stage measurements of the old generator) run the old generator without the gate, under sel too. One
 // ModuleCodegen per compilation keeps MIR code generation's storage.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
-// generator under sel. C4a adds gate step 2 and K11 the Generated mark here.
+// generator under sel. C4a adds gate step 2 here.
 
+using System.Runtime.InteropServices;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public partial class Compilation
 {
+    private readonly List<int> outputRoots = []; // The output roots of the latest MIR code generation (R5 K11).
     private Backend.ModuleCodegen? moduleCodegen; // MIR code generation's pooled storage (R5 C0b1).
 
     /// <summary>Gets a value indicating whether the latest check accepted the program (SPEC 23.2.2): final Binding, the startup selection
@@ -92,11 +99,11 @@ public partial class Compilation
         return false;
     }
 
-    // MIR code generation (R5 C0b1, DECISIONS R5-M65) of an accepted program: ModuleCodegen over its checked set. A program check did not
-    // accept adds no record (check reported why); an accepted one without its MIR or checked set, or a module neither written nor
-    // explained by a record, is a broken contract. A record is a code without facts (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, or
-    // InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS 4.1): the records of two nodes at one location, such as the
-    // siblings an expansion synthesizes with its span, are one problem.
+    // MIR code generation (R5 C0b1, K11; DECISIONS R5-M65, R5-M77) of an accepted program: ModuleCodegen over the Generated items of its
+    // checked set. A program check did not accept adds no record (check reported why); an accepted one without its MIR, its checked set or
+    // its output roots, or a module neither written nor explained by a record, is a broken contract. A record is a code without
+    // facts (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, or InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS
+    // 4.1): the records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are one problem.
     private bool GenerateMir(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission);
@@ -111,8 +118,15 @@ public partial class Compilation
             return false;
         }
 
+        if (!this.OutputRoots(collector))
+        {
+            return false;
+        }
+
+        var roots = CollectionsMarshal.AsSpan(this.outputRoots);
+        collector.Set.Mark(roots);
         var generator = this.moduleCodegen ??= new(this.Layout, this.Locations);
-        if (generator.Write(program, collector, this.Binding.Startup, writer))
+        if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
             return true;
         }
@@ -124,11 +138,63 @@ public partial class Compilation
 
         foreach (var record in generator.Records)
         {
-            var node = this.SyntaxOf(record.Subject);
-            node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.Emission, node.Span, record.Code, node.CodeContext.SourceDocument);
+            this.ReportLocation(record.Code, record.Subject);
         }
 
         return false;
+    }
+
+    // A code generation record keyed by its location (DECISIONS R5-M65).
+    private void ReportLocation(DiagnosticCode code, SourceRef subject)
+    {
+        var node = this.SyntaxOf(subject);
+        node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.Emission, node.Span, code, node.CodeContext.SourceDocument);
+    }
+
+    // K package 4.10: the items of the output roots, an Application's startup body, a test build's discovered tests or a Library's every
+    // root the collector generates; false, recorded, when one has no item (at the project) or its slot is undecided (at the root's site, as
+    // the collector records it at a VTable's).
+    private bool OutputRoots(Backend.InstanceCollector collector)
+    {
+        var (roots, set) = (this.outputRoots, collector.Set);
+        roots.Clear();
+        var startup = this.Binding.Startup;
+        if (startup.Kind == StartupKind.Test)
+        {
+            foreach (var test in this.Tests.Cases)
+            {
+                roots.Add(set.Find(new(Backend.MonoKind.Body, new(new(test.Symbol, Mir.MirBodyKind.Test), null))));
+            }
+        }
+        else if (startup.OutputKind == OutputKind.Library)
+        {
+            for (var root = 0; root < set.RootCount; root++)
+            {
+                if (collector.Generates(root) is not { } generates)
+                {
+                    this.ReportLocation(DiagnosticCode.InternalInvariant_Kd, set.Items[root].Site);
+                    return false;
+                }
+
+                if (generates)
+                {
+                    roots.Add(root);
+                }
+            }
+        }
+        else
+        {
+            var body = new Mir.MirDefKey(startup.Kind == StartupKind.Explicit ? startup.Symbol : null, Mir.MirBodyKind.Fn);
+            roots.Add(set.Find(new(Backend.MonoKind.Body, new(body, null))));
+        }
+
+        if (roots.Contains(-1))
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+            return false;
+        }
+
+        return true;
     }
 
     // The out-string adapters' text of the gate's step 1.

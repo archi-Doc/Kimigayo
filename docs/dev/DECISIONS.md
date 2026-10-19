@@ -3799,3 +3799,30 @@ structure is recorded here by the unit that first implements it.
     code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
     writing the wide declarations from `FunctionCodegen` (module-level text, duplicated per function); a raw-pointer column now
     (not verifiable before C1b, C2b or C8a produce a pointer value).
+- **R5-M77 The Generated mark at emit** (2026-10-19, K lane; plan K11, the K package's §4.4 and §4.10, package C §3.3 and §3.8, design 2
+  §2.9; under R5-M18, R5-M35, R5-M64 and R5-M65; DEC Q6 form 1) MIR code generation writes exactly the items of the checked set the
+  output requires (IMPL 21.3.1), the closure of its output roots over runtime targets. The generation entry
+  (`Compilation.Generation.cs`), after gate step 1 and acceptance, names the roots: an Application's startup body (`Binding.Startup`,
+  `main`'s Fn body, else the root module's top-level statements), a test build's tests (the Test body of each `Tests.Cases` entry's
+  `TestCase.Symbol`: the catalog `Project` discovers after acceptance, which the entry reads and never discovers again) and a Library's
+  every root but the checked-only ones (a `public` declaration is no export, the plan's "public roots" being the package's "every root");
+  a root without an item is `InternalInvariant_Kd` at the project. `CheckedSet.Mark(roots)` sets the set's Generated column, one bool per item: the roots and,
+  transitively, every item a runtime target of a Generated item names, so an item only the checks reach is checked and never generated
+  through that target; a mark replaces the previous one, a new collection has none (`IsGenerated` reads it), and a warm mark allocates
+  nothing (a pooled worklist). `ModuleCodegen` writes the Generated items in admission order (names stay item-indexed) and the output
+  form around the roots it is given (an Application's entry calls its startup root; a test build's TestEntry row is at each test root);
+  `Signature`, the one request that names an item, records `InternalInvariant_Kd` at the item's site for an item outside Generated.
+  - Checked-only roots (K §4.4, §4.10, R4-M28): `InstanceCollector.Generates(root)` leaves out the body of a closed virtual or override
+    whose slot `TyCtxt.Applies` refutes at its struct's layer owning the original, its struct being its receiver's Self; it reads the one
+    slot rule K8's VTable targets read (`Applies(type, table, slot)`), and an undecided slot is a broken contract, `InternalInvariant_Kd`
+    at the root's site (as K8 records it at a VTable's). Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
+    `T is Marker`); the old generator skips it too (`IsInapplicableVirtualBody`). An Application or a test build reaches none: a refuted
+    slot has no target and a call of it is a Binding error.
+  - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked
+    items; discovering tests in the entry, as the old generator's `TryPrepare` does (a second discovery per generation; `Project` owns
+    it after acceptance); TestEntry roots from the root module's Test bodies (a second copy of discovery's selection); the mark in
+    `ModuleCodegen`, which decides no generation (package C §3.3).
+  - Verified: an Application generates its startup closure only (an unused function is neither written nor recorded; its Library
+    twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
+    but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
+    next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.
