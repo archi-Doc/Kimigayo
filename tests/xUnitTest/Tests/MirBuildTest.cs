@@ -989,9 +989,9 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
     // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
-    // iterator symbol, a write of an interpolation) is published Error and recorded as InternalInvariant_Kd at it, with an Opaque value
-    // in its place, which the validator accepts, never a fault. A node Binding rejected that lacks the same fact is an Error derived from
-    // its error, without a record.
+    // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75) is published Error and recorded as
+    // InternalInvariant_Kd at it, with an Opaque value in its place, which the validator accepts, never a fault. A node Binding rejected
+    // that lacks the same fact is an Error derived from its error, without a record.
     [Fact]
     public void AResolvedNodeWithoutItsFactsIsABrokenContract()
     {
@@ -1005,7 +1005,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\n" +
             "func discard<s/T>(value: i32) -> ()\n    s is owner or ref or object\n    _ = value@s\n" +
             "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
-            "func text(x: i32) -> string => \"a\\(x)\"\n");
+            "func text(x: i32) -> string => \"a\\(x)\"\nfunc order(a: (i32, f64), b: (i32, f64)) -> bool => a < b\n");
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.ToString() == "one()").ToArray();
         var call = calls[0];
@@ -1026,8 +1026,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         HirTables.PlanFor(adaptation, written: false).Plan = null;
         HirTables.Of(loop.Iteration!.Receiver).Symbols[loop.Iteration.Receiver.SyntaxId] = null;
         HirTables.PlanFor(text.Formatting!.Writes[1], written: false).Plan = null;
+        var order = nodes.OfType<BinaryKoto>().Single(static x => x.ToString() == "a < b");
+        var tuple = CallPlan.Of(order)!;
+        Assert.True(tuple.TupleOperator);
+        var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
+        tuple.Set(tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
+        tuple.TupleOperator = true; // Its conforming Type is gone.
         var program = c.BuildMir();
-        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text];
+        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order];
         Assert.Empty(program.Findings);
         Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(
