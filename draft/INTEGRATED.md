@@ -767,3 +767,16 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
     stays an error while its tuple twin r3 would become valid); a hold (c) leaves A5 with a rejection no SPEC clause
     states. Principles: One Concept, One Canonical Form (one carrying rule); Local Reasoning (a holder's parts, as written
     in the body, decide); Explicit Semantics (the derivation that "derives" left undefined is listed).
+- The Loans of a zero-length fill (no proposal; the owner's answer Q2 of 2026-10-19, 「持つ (推奨)」, to a question of the
+  planning session from unit 2x-E1's design) → one sentence in §4.3.3: the array carries `value`'s Loans at every length,
+  so `[0 of v]` keeps them too; and three lines in its block (`let none = [0 of x@ref]`, the commented error `x = 2`,
+  `inspect(none)`).
+  - Rationale: §4.3.3 already acquires `value` exactly once even for length zero, and a generic `[N of v]` must carry the
+    Loans whatever `N` is (§4.4.2); §15.6's "every aggregate … that holds one" alone left the constant zero length open.
+    The old path keeps the Loans; the MIR's fill of constant length zero drops its operand. One rule for every length.
+  - Spec case `4.3.3-fill-loans` (F1): the block is valid; uncommenting `x = 2` is `ComparisonLoanConflict_Kd` there. The
+    old path agrees. The MIR records nothing today, a class (b) `Mir` difference that names 2x-E1's fill form, which keeps
+    the operand (the MIR side is 2x-E1's, in flight; when it lands, the difference goes).
+  - Principles. One Concept, One Canonical Form: one Loan rule for fills of every length, constant or generic. Local
+    Reasoning: the acquisition, not the length, decides. Explicit Semantics: the edge case is stated.
+  - Usage: library 0, milestones 0 (a grep finds no fill of literal length zero, H); no default-pipeline verdict changes.

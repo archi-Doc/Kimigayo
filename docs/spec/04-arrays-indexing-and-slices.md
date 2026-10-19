@@ -75,11 +75,15 @@ pending = [1, 2]
 
 ### 4.3.3. Fill construction
 
-`[Length of value]` constructs a fixed array; an `Array<T>` expectation is a mismatch. `Length` follows [§4.2](#42-length-expressions), and the element Type must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and copied into every element.
+`[Length of value]` constructs a fixed array; an `Array<T>` expectation is a mismatch. `Length` follows [§4.2](#42-length-expressions), and the element Type must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and copied into every element. The array carries `value`'s Loans ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)) at every length, so `[0 of v]` keeps them too.
 
 ```kimi
 let zeros: [64 of u8] = [64 of 0]
 let flags = [8 of false] // [8 of bool]
+var x = 1
+let none = [0 of x@ref]  // [0 of ref/i32] carries x's Loan.
+// x = 2                 // Error: none is used below.
+inspect(none)
 ```
 
 ### 4.3.4. `noinit`
