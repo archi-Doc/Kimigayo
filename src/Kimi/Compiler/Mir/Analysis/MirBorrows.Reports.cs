@@ -4,20 +4,17 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23): a conflict's code (a Loan found in its reservation holder is a reservation
-// conflict) and each problem recorded through MirReport under its requirement with its facts: the Loan's or candidate's anchor, its witness
-// (a holder's next use in its chain, the location for a value an access takes, a transit value's or E's store), an activation's
-// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, at the
-// source of the pending slot whose default taint every set holding a conflict's Loan carries (R4-M70, until A5-F9), and in a held view at
-// every Loan problem's access (P13's interim, R4-M73, until the guard reads each part). Every Loan-problem producer reports through
-// Report(code, anchor, via, at, reservation), so the hold is one rule there.
+// A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23): each problem recorded through MirReport under its requirement with its
+// code and facts, whose codes and sites MirBorrows.Witnesses gives: the Loan's or candidate's anchor, its witness (a holder's next use in
+// its chain, the location for a value an access takes, a transit value's or E's store), an activation's reservation and, inside an inline
+// default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, at the source of the pending slot whose
+// default taint every set holding a conflict's Loan carries (R4-M70, until A5-F9), and in a held view at every Loan problem's access
+// (P13's interim, R4-M73, until the guard reads each part). Every Loan-problem producer reports through Report(code, anchor, via, at,
+// reservation), so the hold is one rule there.
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
     private readonly MirFact[] facts = new MirFact[4];
-
-    // A conflict's code (A3 5's A6 table): a Loan found in its reservation holder is a reservation conflict, else the check's code.
-    private DiagnosticCode Code(in Candidate candidate, DiagnosticCode code) => this.Reserved(candidate) ? DiagnosticCode.CallReservationConflict_Kd : code;
 
     // A conflicting candidate's problem: where only sets with a default taint hold it in the check set, A5's located Unsupported_Kd at the
     // source of the first taint's pending slot, the omitting call (R4-M70, never a Language problem until A5-F9 checks defaults); else its
@@ -83,47 +80,5 @@ internal sealed partial class MirBorrows
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
         this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.body.Ordinal, this.views));
-    }
-
-    // A location's subject: its statement's or terminator's.
-    private SourceRef Subject(MirLocation at) => this.body.Subject(this.Source(at));
-
-    // A location's source: its statement's or terminator's.
-    private SourceInfo Source(MirLocation at)
-    {
-        ref readonly var data = ref this.body.Blocks[at.Block];
-        return at.Index < data.Count ? this.body.Statements[data.Start + at.Index].Source : data.Terminator.Source;
-    }
-
-    // The witness holder's first use at or after a location in its chain (A3 6.4), or null where it is used only in a later chain.
-    private SourceRef? NextUse(int slot, MirLocation from)
-    {
-        var (block, first) = (from.Block, from.Index);
-        for (var visited = 0; visited < this.body.Blocks.Length; visited++)
-        {
-            ref readonly var data = ref this.body.Blocks[block];
-            for (var i = first; i <= data.Count; i++)
-            {
-                var (start, count) = this.touched[this.Location(block, i)];
-                for (var t = start; t < start + count; t++)
-                {
-                    if (this.touches[t].Slot == slot && (this.touches[t].Flags & Uses) != 0)
-                    {
-                        return this.Subject(new(block, i));
-                    }
-                }
-            }
-
-            var terminator = data.Terminator;
-            var next = MirUses.Successors(terminator) == 1 && terminator.CheckTarget < 0 ? MirUses.Successor(this.body, terminator, 0) : -1;
-            if (next < 0 || next == this.chainFirst || flow.Head(next) != flow.Head(block))
-            {
-                return null;
-            }
-
-            (block, first) = (next, 0);
-        }
-
-        return null;
     }
 }
