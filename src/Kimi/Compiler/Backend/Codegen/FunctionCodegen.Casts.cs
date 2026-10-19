@@ -146,7 +146,7 @@ internal sealed partial class FunctionCodegen
     // Aborts at the statement's location and names its temporaries by the cast's number; the result stored into the local's storage. Each
     // check is one rule here, its tests and its LlvmScalarText writer: a Range without a side writes the cast alone, and a Narrowing's
     // ordered tests let NaN and the infinities convert.
-    private void Cast(in MirStatement statement, FunctionAbi abi)
+    private void Cast(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
         var local = statement.Place.Root;
@@ -195,7 +195,7 @@ internal sealed partial class FunctionCodegen
                     break;
                 }
 
-                if (!this.FailureAt(id, statement.Source, abi, failures, out var outside))
+                if (!this.FailureAt(id, statement.Source, failures, out var outside))
                 {
                     return; // Recorded.
                 }
@@ -203,7 +203,7 @@ internal sealed partial class FunctionCodegen
                 LlvmScalarText.WriteCheckedConversion(this.output, Tested(conversion, range), outside);
                 break;
             case Bound.Truncation:
-                if (!this.FailureAt(id, statement.Source, abi, failures, out var truncated))
+                if (!this.FailureAt(id, statement.Source, failures, out var truncated))
                 {
                     return; // Recorded.
                 }
@@ -211,7 +211,7 @@ internal sealed partial class FunctionCodegen
                 LlvmScalarText.WriteCheckedConversion(this.output, Tested(conversion, Truncation(source, to, target, bounds)), truncated);
                 break;
             case Bound.Narrowing:
-                if (!this.FailureAt(id, statement.Source, abi, failures, out var overflow))
+                if (!this.FailureAt(id, statement.Source, failures, out var overflow))
                 {
                     return; // Recorded.
                 }
@@ -227,9 +227,9 @@ internal sealed partial class FunctionCodegen
     }
 
     // The failure of the check named by id, Aborting at a site's location (C1a's Location rule), spelled into text; false after a record.
-    private bool FailureAt(int id, in SourceInfo source, FunctionAbi abi, Span<char> text, out ScalarCheck failure)
+    private bool FailureAt(int id, in SourceInfo source, Span<char> text, out ScalarCheck failure)
     {
-        var location = this.Location(source, abi);
+        var location = this.Location(source);
         failure = location < 0 ? default : this.Failure(id, location, text);
         return location >= 0;
     }

@@ -118,7 +118,7 @@ internal sealed partial class FunctionCodegen
 
     // An operator into an unprojected local: its operands in their computation representation, its row's entry for the left operand's
     // Type, the operation with its check unless Proven, and the result stored in the local's storage representation (bool widened).
-    private void Operator(in MirStatement statement, FunctionAbi abi)
+    private void Operator(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
         var row = Rows[(rvalue.Kind == MirRvalueKind.UnaryOp ? UnaryRows : 0) + rvalue.Op];
@@ -158,7 +158,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var location = check == Check.None ? -1 : this.Location(statement.Source, abi);
+        var location = check == Check.None ? -1 : this.Location(statement.Source);
         if (check != Check.None && location < 0)
         {
             return; // Recorded.
