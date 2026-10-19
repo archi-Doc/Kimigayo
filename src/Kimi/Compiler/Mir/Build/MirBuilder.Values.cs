@@ -38,8 +38,8 @@ internal sealed partial class MirBuilder
     // Whether a consumer takes a node's value as the node builds it (its Adjust): a Temporary or a group's operand, not adapted (Assign).
     private static bool InPlace(HirAdjust adjust) => adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None };
 
-    // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
-    // parentheses, is two-phase (SPEC 15.6.7).
+    // The value a node's own form produces, into the destination; as a call's input that reserves (input), a written exclusive borrow,
+    // also inside parentheses, is two-phase (SPEC 15.6.7), and a selection's or a do's bodies give their values as Result places them.
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
     private void Into(MirPlace destination, Koto node, bool input = false)
     {
@@ -61,10 +61,10 @@ internal sealed partial class MirBuilder
                 this.Call(destination, node);
                 break;
             case HirOp.If:
-                this.If(destination, (IfKoto)node);
+                this.If(destination, (IfKoto)node, input);
                 break;
             case HirOp.Match or HirOp.Try:
-                this.Match(destination, (MatchKoto)node);
+                this.Match(destination, (MatchKoto)node, input);
                 break;
             case HirOp.RuntimeTypeTest:
                 this.TypeTest(destination, (IsKoto)node);
@@ -79,7 +79,7 @@ internal sealed partial class MirBuilder
                 this.While(destination, (WhileKoto)node);
                 break;
             case HirOp.Do:
-                this.Do(destination, (DoKoto)node);
+                this.Do(destination, (DoKoto)node, input);
                 break;
             case HirOp.Require:
                 this.Require((RequireKoto)node);
@@ -169,11 +169,12 @@ internal sealed partial class MirBuilder
     // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
     // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
     // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is. An input the call
-    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves) and has no preparation path (A3 E13 (4)).
+    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves, MirCases.Reserves) and has no preparation
+    // path (A3 E13 (4)).
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
     {
         var adjust = HirTables.AdjustOf(node);
-        var reserves = input && this.Binder(expected ?? TypeOf(node)) >= 0;
+        var reserves = input && MirCases.Reserves(this.body, expected ?? TypeOf(node));
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
         reserves |= input;
@@ -233,7 +234,7 @@ internal sealed partial class MirBuilder
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
-                    HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => this.Temporary(
+                    HirAcquire.ByCase when MirCases.Binder(this.body, type) is var binder and >= 0 => this.Temporary(
                         type,
                         MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq),
                         node,

@@ -3563,3 +3563,25 @@ structure is recorded here by the unit that first implements it.
   `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
   Move Paths, Binding-rejected Moves, default templates' prepared `ref` inputs). Rejected: the `Arity` row (a count rule); a Type
   requirement on the constant (`StaticInit` reads only its value).
+- **R5-M72 An input that reserves has one write where a Ref writes it** (2026-10-19, R4 and R5 planning sessions; G136's `lent`
+  validation, R4's step-2 ask AR-8, option (a); redone after its first review's B1) Rule (`MirValidator.Inputs.cs`,
+  `MirViolation.Lent`): A5 reads the Place a Ref lends into a local flow-insensitively (`MirBorrows.lent`) where a Call takes the local
+  as an input, at an in-place target and its destroying reservations, so a Temp a Call takes as a whole as an input (an argument, a
+  Value callee's operand) that reserves and that a Ref or an Adapt writes has no other write; a finding is `InternalInvariant_Kd` at the
+  Temp. "Reserves" is one predicate, `MirCases.Reserves`: an exclusive reference or a pair layer of the body's binders (SPEC 15.6.7, A3
+  E13 (4)), which `MirBuilder.Operand` decides an input's `reserves` by and the rule checks the input temp's Type by. The builder owns
+  the shape: as such an input, each body of an `if`, a `match` or `try` and a `do` gives its value through a temp of its own, moved
+  into the input temp where its container completes (`MirBuilder.Result`), as an exit's secured value already is; before, the bodies'
+  Refs wrote the input temp itself, so `replace(if c => a@uniq else => b@uniq, with: 3)` gave `lent = b` on both paths. A Block reaches
+  `Into` only as a body (a block expression is no argument; Unsafe and Deferred Blocks are statements, `BlockStatementInExpression_Kd`)
+  and gives Unit or nothing (SPEC 14.2.2), so `Into`'s Block and Unsafe rows take no input. A5 keeps its flow-insensitive `lent`. Not
+  checked: an input that does not reserve (a shared reference's two Refs; an `obj/Base` conditional's two Adapts, which the first
+  version counted, B1), whose `lent` no consumer reads, and an Opaque site's roots (a rejected default's prepared slots), whose writes
+  are derived. R4 confirmed (sign-off, 2026-10-19) that the rule covers every read A5 makes today: `MirBorrows.Loans` records `lent`
+  for each non-raw Ref, and A5 reads it only for the in-place-destroying argument through its two-phase reservations. Scope condition
+  (R4): if a later A5 unit reads `lent` for a shared Ref, the rule widens first, and that unit's design names it; candidates are A5-F6's
+  receiver-place relation (2f) and A5-F7's capture stores (2c). The library, the corpus and the mir sweep break the rule nowhere.
+  Rejected: (b) a flow-sensitive `lent` in A5 (the producer owns the shape); counting an Adapt by its case views alone (a second
+  predicate beside the builder's); the construct's own result temp moved into the input (its Refs stay a stale `lent`); a temp per
+  body for every construct value (MIR changes beyond inputs); a decision at the Call by the argument's HirOp (a consumer deciding by
+  syntax); a second flag carrying non-reserving inputs to the bodies (a mode steering them, for no reader).

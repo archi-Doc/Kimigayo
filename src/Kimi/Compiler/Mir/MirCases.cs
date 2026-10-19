@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Semantics-case views of a MIR body.
-// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition and adaptation views.
+// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition and adaptation views; a pair layer's binder and
+// whether a call's input of a Type is reserved.
 // Case order is stable; views share the body and reuse their storage.
 // Must not copy the body per case or re-bind source syntax.
 
@@ -33,6 +34,29 @@ internal sealed class MirCases(TyCtxt types)
     /// <param name="body">The body.</param>
     /// <returns>The number of views, saturated at the largest count.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
+
+    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="type">The Type.</param>
+    /// <returns>The binder's index; -1 for another Type.</returns>
+    internal static int Binder(MirBody body, BoundType? type)
+    {
+        _ = TyCtxt.Layer(type, out _, out var target);
+        var binder = body.Binders.Count - 1;
+        while (binder >= 0 && !ReferenceEquals(body.Binders[binder].Target, target))
+        {
+            binder--;
+        }
+
+        return binder;
+    }
+
+    /// <summary>Gets whether a call's input of a Type is reserved where it is acquired (SPEC 15.6.7): an exclusive reference, or a pair
+    /// layer of one of the body's binders, exclusive only by its case (A3 E13 (4)).</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="type">The input's Type.</param>
+    /// <returns>Whether the input is reserved.</returns>
+    internal static bool Reserves(MirBody body, BoundType? type) => MirTypes.IsExclusive(type) || Binder(body, type) >= 0;
 
     /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
     /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and

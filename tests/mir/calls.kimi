@@ -33,3 +33,46 @@ func indexed(pair: uniq/Pair) -> i32
     pair[0]
     pair[0] += 1
     return pair[0]
+func take(target: uniq/i32, by: i32) => ()
+func see(target: ref/i32, by: i32) -> i32 => by
+func chosen(flag: bool, n: i32) -> i32
+    var a: i32 = 1
+    var b: i32 = 2
+    take(if flag => a@uniq else => b@uniq, n)
+    take((match flag
+        true => a@uniq
+        false => b@uniq
+    ), n)
+    _ = Kimi.Intrinsics.replace(if flag => a@uniq else => b@uniq, with: n)
+    return a + b
+func exited(flag: bool, n: i32) -> i32
+    var a: i32 = 1
+    var b: i32 = 2
+    take((label s: do
+        if flag => exit to s a@uniq
+        exit to s b@uniq
+    ), n)
+    take(do => if flag => a@uniq else => b@uniq, n)
+    take((label l: if flag
+        yield to l a@uniq
+    else => b@uniq
+    ), n)
+    return a + b
+func half(value: uniq/i32) -> Option<uniq/i32 during value> => .Some(value@move)
+func tried(n: i32) -> Option<i32>
+    var a: i32 = 1
+    take(try half(a@uniq), n)
+    return .Some(a)
+func received(flag: bool) -> i32
+    var c = Counter.init()
+    var d = Counter.init()
+    (if flag => c@uniq else => d@uniq).bump(1)
+    return c.read() + d.read()
+func called(flag: bool) -> i32
+    var n: i32 = 1
+    var f = func [var n] () -> i32 => n
+    return (if flag => f@uniq else => f@uniq)()
+func shared(flag: bool, n: i32) -> i32
+    let a: i32 = 1
+    let b: i32 = 2
+    return see(if flag => a@ref else => b@ref, n)
