@@ -2170,10 +2170,10 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   (one form; `PathAuthority` stays Owner, so Take and writes through `ref/` stay accepted); B, no read for a layered element (drops
   the selection's dependency: `return entries[1].inner@uniq` through `uniq/Dictionary<i32, uniq/Point during a>` accepted `during
   a`, unsound); C, Binding's predicates no longer reading a recorded read (rewrites ten `ElementAccess` readers that the old path
-  shares; the direction for R6-check and R7); D, a separate published element-Place fact (R7). Open: `let`-owned subscripts (BU-8); a
+  shares; the direction for R6-check and R7); D, a separate published element-Place fact (R7). Open: `let`-owned subscripts (BU-8; fixed by BU-13); a
   direct receiver through a built-in element's stored `uniq/` (`vals[0].bump()`) passes checking and fails generation, pre-existing
   and not a recorded read; a receiver through two stored layers stays `NoApplicableOverload_Kd` (BU-8); PLAN G147 (2) lists an `rc/`
-  handle's PathAuthority and a false `InvalidAssignment_Kd` below `Array<Dictionary<i32, Point>>`. Temporary: the guard (R6-check).
+  handle's PathAuthority and a false `InvalidAssignment_Kd` below `Array<Dictionary<i32, Point>>` (both fixed by BU-13). Temporary: the guard (R6-check).
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
   refuses an instance whose stored Types nest more than 64 levels, R4-M51's located `Unsupported_Kd`, the capability row
@@ -2228,6 +2228,31 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   longest simple path); a declaration-level expansive-cycle check (it cannot see growth through associated projections);
   inline-only preparation (B: changes G128 and breaks R4-M58, whose growing composed atom `Apply` still refuses). Deleted:
   `InstanceStorage.Prepared` and `Height`. Not temporary (G128's limits go at R7).
+- **BU-13** (2026-10-19; the BU planning session; PLAN G147 (2)'s Open; option A of the BU7 diagnosis, chosen by the planning
+  session, with R4's regression rows) A selection that reaches its element through `indexUniq` (a user index or an exclusive view;
+  an owned `Array` element, SPEC 4.7.1) needs its receiver exclusively acquired, which storage rooted in a `let` binding or an owned
+  parameter, or reached through a shared layer, cannot be (SPEC 15.1.5, 15.6.2). One predicate decides it, `ExclusivelyAcquirable`
+  (`Binding.PlaceAuthority.cs`): the receiver's path continued through its own layers is not shared (`ReferentAuthority`) and its
+  binding permits it (`AcquirableByBinding`: an exclusive reference, also held in a `let`; a writable Place; an inline part of a
+  writable root, `ElementAccess.WritableRoot`; a Temporary Value). The `indexUniq` binding (`Binding.Indexers.cs`) and the exclusive
+  view (`Binding.Views.cs`, whose copy goes) select by it; `PathAuthority`'s user-index and owned-`Array`-element arms apply its
+  binding half and let the rest of their walk decide the path, so a denied selection shares the element (Ref). `PathAuthority`'s
+  member arm reads every member's receiver through all layers of the receiver's own Type (`LayerAuthority`: rc, arc and objref
+  views shared, a pair layer by its weakest admitted case, SPEC 13.5.5), replacing `BorrowedPathRoot`, whose miss of `ref/(rc/T)`
+  and similar receivers fell to Owner; `IsBarePlace` finds a member's declaring Type below every layer (a handle's View Target), so
+  `p.inner@move` through `ref/(rc/Point)` is a Place without Take. The walk returns the authority its layers grant and, apart,
+  whether a binding denies a selection's receiver: `PathAuthority` bounds the path to Ref then, while a Take, which acquires
+  nothing exclusively, reads the layers alone (`OffersTake`), so its diagnostic is unchanged (`ExclusivePathTake_Kd` below a user
+  index, `StaticMovePathRequired_Kd` for an `Array` element). `AccessFailure` names a binding's denial `InvalidAssignment_Kd` (as
+  `let pair; pair[0] = 3` and `let slot = entries[1]@uniq` were) and a shared layer `SharedPathAccess_Kd`; a receiver or Reborrow
+  fails overload resolution (`NoApplicableOverload_Kd`). Why: Binding accepted writes, exclusive borrows,
+  receivers and Reborrows through `let`-owned or owned-parameter subscripts and owned `Array` elements (the MIR wrote past
+  `index`, the old path reported `TransferRequired_Kd` or `Unsupported_Kd`), and writes and Takes below an rc, arc or obj view
+  behind a reference or an element; `t.0[1].n = 5` and `vals[0][1].n = 5` below a `var` root selected `index` (wrong code on the
+  MIR, a false `InvalidAssignment_Kd` for an owned element). BU-10's guard still excludes those `var` forms; the old Emission
+  generates them correctly once they select `indexUniq` (O0, both pipelines). Rejected: B, a fourth `PathAuthority` outcome for a
+  binding's denial, read by about 25 consumers, with a handle view recorded by `ReceiverThroughLayers` (shared structure for one
+  diagnostic distinction). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
