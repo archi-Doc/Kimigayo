@@ -348,6 +348,35 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [(MirViolation.Operation, subject)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // F10 (plan 5.6.6, DECISIONS R5-M71): a staticEnsure names its static by an Integer constant indexing the calling body's statics, the
+    // form MirProgram.StaticInit decodes; the built body is valid, and a slot past the statics, a Bool constant or a local's Copy as the
+    // operand is a StaticSlot finding at the access.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("range")]
+    [InlineData("kind")]
+    [InlineData("place")]
+    public void AStaticEnsureNamesItsStaticsSlot(string? broken)
+    {
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => Registry.total\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var block = Enumerable.Range(0, body.Blocks.Length).Single(b => body.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
+        var ensure = body.Blocks[block].Terminator;
+        Assert.NotNull(program.StaticInit(body, body.Operands[ensure.Start]));
+        var operand = broken switch
+        {
+            "range" => MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, body.Statics.Length))),
+            "kind" => MirOperand.Const(body.Const(new(MirConstKind.Bool, BoundType.Boolean, 0))),
+            "place" => MirOperand.Copy(ensure.Place),
+            _ => body.Operands[ensure.Start],
+        };
+        body.Terminate(block, ensure with { Start = body.AddOperand(operand) });
+        Assert.Equal(broken is null ? [] : [(MirViolation.StaticSlot, body.Subject(ensure.Source))], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
@@ -605,7 +634,10 @@ public sealed class MirValidatorTest
             : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, stopped, -1, At) with { CheckTarget = call };
         body.Terminate(abort, abortCall);
         var signature = new MirCallee(MirCalleeKind.Value, Arg: body.Const(new(MirConstKind.TypeToken, body.TypeOf(function)!)));
-        body.Terminate(call, MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) });
+        var called = broken == MirViolation.StaticSlot // F10: a staticEnsure of a slot past the body's one static.
+            ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(Const(MirConstKind.Integer, BoundType.ISize, 1)), 1, result, drop, Broken)
+            : MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) };
+        body.Terminate(call, called);
         body.Terminate(drop, broken == MirViolation.CheckTarget ? new(MirTerminatorKind.Drop, Broken, exit, check, Place: point) : MirTerminator.Drop(point, exit, At));
         body.Push(exit, MirStatement.Of(MirStatementKind.StorageDead, point, At));
         if (broken == MirViolation.Diverged)
