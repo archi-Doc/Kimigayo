@@ -1001,7 +1001,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
-    R5-M9.
+    R5-M9. OD4's parallel run was suspended by R4-M77 and restored by R4-M78 (both 2026-10-19).
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -1773,6 +1773,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - G2 (2f-S1): (a). Values of one abstract Type share its Origin atoms for rule 1 (SPEC 8.11.4, 8.11.5's `Merge`), and c24's
     answer also sets the conformance carrier granularity, one rule for callers and conformances. `EffectBoundCallerTest`'s rows
     `zip` and `both`, valid today, become errors; their unit cites this answer. c24's own verdict stays open (the sketch's §9).
+- **R4-M77 R5 and the Binding units paused; R4 continues alone** (owner, 2026-10-19, choosing option A of the R4 planning
+  session's comparison, verbatim 「A案. 両方止める に決定します。推奨の「きりの良いところ」で、BUとR5を止め、引き継ぎ文書を作成し、再開プロンプトを書いてください。R4はそのまま継続してください。」; and,
+  asked of R5 directly as a question that R5 took as the owner's direction, refining R5's stopping point, verbatim
+  「「新しい単位は開始せず、現在の作業を継続。完了したら、push/マージまで行って終了」というのはいかがか？」,
+  in place of the recommended point (C0c and K11 pushed, unmerged); superseded by R4-M78 the same day) BU stops after G147 (2b)'s
+  merge. R5 starts no new unit; its units in flight (F18, F7 with R4's sign-off, K11, C1a, C0c, E13) finish their reviews and
+  merge into dev, and a unit whose review blocks a second time or whose fix needs a new design stops on its pushed branch,
+  unmerged, its handoff carrying AGENTS's two-round choice to the owner at the resume (R5's bound). Each then writes its handoff
+  and resume prompt in `artifacts/handoff/2026-10-19-pause/` (main checkout), releases its PLAN §3 holds and stops its agents; R4
+  continues alone. R5-M1's parallel run (OD4) is suspended until the owner resumes it. The comparison's terms for option A: gains,
+  waits and machine load nearly vanish, R4 may use the builder files W1 held, and measurements get a quiet machine; losses, R5's
+  work stops, R6 is delayed, and R4 takes over builder work such as F18's (under the refinement F18 itself merges first).
+  Consequences (planning session): R4 may edit the files R5 and BU held, under COMPILER_ARCHITECTURE's ownership rules, and lists
+  each such change for their resume; it re-plans, as their units come due, the step-2 units the plan gives to BU (PD6: 0c, 2b-6,
+  2x-E4a, 2x-E6, 2x-E7) and its asks of R5 AR-1, AR-2 and AR-8 (G147 (2)'s validator half), with reviewers that wrote neither
+  design nor code in place of AB-5's BU reviewers and AR-2's R5 reviewers. AR-7's acceptance stays R5's (the owner's condition,
+  R4-M74 OQ6) and waits for its resume or goes to the owner; AR-6 is met (R5-M63).
+- **R4-M78 R5 and the Binding units resumed** (owner, 2026-10-19, verbatim 「すみません。まだトークンに余裕があったため、BUとR5を再開させてください。」; supersedes
+  R4-M77) The pause of R4-M77 is lifted the same day: R5 and BU resume their work, R5-M1's parallel run (OD4) is restored, and the
+  PLAN §3 hold protocol applies as before, and BU's step-2 units (PD6) and the asks of BU and R5 (AB-1–AB-6, AR-1–AR-8) stand as
+  before R4-M77. The owner's reason: token budget remains. During the pause R4 changed no file R5 or BU held; BU's handoff in
+  `artifacts/handoff/2026-10-19-pause/` stays as the record of its stop.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -1818,7 +1840,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4 and
-R5 on the owner's request of 2026-10-18.
+R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 (both 2026-10-19).
 
 - **BU-1** (2026-10-18; the BU planning session; correction of R4-M51's Stores clause, found by R4's E14 implementer at
   `f6b365bb`; R4-M51's contract stands) Stores of call retention (SPEC 15.6.4): an Origin occurrence is writable storage of
@@ -2152,7 +2174,7 @@ R5 on the owner's request of 2026-10-18.
   7.3 to be read) and an exclusive base receiver even on a local (`Unsupported_Kd`), so neither reaches the selection;
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
-  the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
+  the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409), fixed by BU-10. Not temporary.
 - **BU-9** (2026-10-19; the BU planning session; PLAN G129 design E7, unit U5; supersedes R4-M59, whose removal condition holds)
   MIR builds a literal whose Type holds a Never element at the Type Binding publishes, with no record (`MirBuilder.Aggregate`;
   `HoldsNeverElement`, its branch and its header clause are deleted). Binding publishes that Type through G129's three components:
@@ -2190,6 +2212,47 @@ R5 on the owner's request of 2026-10-18.
   `BindWaiting` binds the source alone. So `if c => (a, a) else => (a, (return 1))@move` is `TypeMismatch_Kd`, with or without
   an expected `(i64, i64)`, and `if c => p.x else => (4000000000)@copy` is `InvalidNumericLiteral_Kd`; written in parentheses
   both take the join's Type. This supersedes the @move and @copy clauses of BU-4's U3 and U4 entries.
+- **BU-10** (2026-10-19; the BU planning session; PLAN G147 (2b): designs 1 (B) and 2 (E) compared, an independent design review
+  chose E with corrections (E′), adopted by the planning session; the owner's D5 exception and guard the same day; the final review's
+  corrections, the owner's whitelist after its second round and its extension after the third) `r[k]` designates the referent of
+  its selection reference (SPEC 4.7.1, 4.7.2); a member below it continues through the
+  element's own safe value-reference layers (3.4.3), as below a local of Type `sel/E`: its Origin is 10.2's one shared reference, its
+  authority the meet of the selection and each layer (15.6.2), never a Take (15.1.5). A recorded in-place read of an element is one
+  shared reference to the Type declaring the selected member: for an element storing safe layers, the selection's reference continued
+  through them (`ElementRead`), which every writer of an element's in-place read applies: `ReceiverElement` for a user index,
+  `CompareInPlace` for a compared user-index element and `SharedElement` before its one-layer collapse (all in
+  `Binding.PlaceAuthority.cs`, split from `Binding.ArgumentOperations.cs` with behavior unchanged). The read is a representation,
+  never a layer: `ElementAccess.IsSynthesizedAccess` recognizes a SharedBorrow of the node's own Type or of the terminal its layers
+  reach (both shapes: one comparison against `ComparisonReferent` alone would also reclassify the `ref/E` read of an element whose
+  terminal is no struct or Tuple, such as `uniq/Array<i32>`); `PathAuthority`'s member arm reads the root Place's own Type
+  (`LayerAuthority`), its `IsUserIndex`, `IsSynthesizedAccess` and `AccessType` reads deleted; `AccessType`'s exclusive upgrade is
+  refused when the Place's own Type has a shared layer and taken when the path continued through the Place's own layers is Uniq
+  (`ReferentAuthority`; the design review's correction: an owned `Array<uniq/S>` element, `var` or `let`, is Uniq through its stored
+  reference). Why: `ReceiverElement` recorded `ref/E`, the selection, for any E, and every reader peeled one layer from it, so with
+  E `uniq/Point` `entries[1].inner` was no Place (the MIR copied `inner` before its `&uniq`: a lost mutation), `PathAuthority`
+  answered Owner (Binding accepted `keep(entries[1].inner@move)` and a write through a `ref/Point` element), `entries[1].0` was
+  `Unsupported_Kd` and the old path faulted; `CompareInPlace` wrote the selection again for a compared part (`entries[1].name ==
+  "a"`: the MIR copied the string out and dropped it); `SharedElement`'s collapse was read as a shared layer (`vals[0].n = 5` on
+  `Array<uniq/Point>` rejected). D5 exception (owner, 2026-10-19, "Exception + old-analysis guard"): the old paths accept the forms
+  the correction makes valid where the old Emission generates them (checked natively at O0 on both pipelines: parts below one stored
+  layer of a user index's element as receivers, writes, updates, Tuple elements and returned borrows, and shared reads and compared
+  strings below an element); the guard in `OwnershipAnalysis.Receiver` reports the located `Unsupported_Kd` at the element for a
+  recorded read through more than one stored layer, or through one outside the owner's whitelist (2026-10-19, after the final
+  review's second round; extended to shared reads by the planning session after its third; `LowersElementRead`, an evidence-based
+  list). Below a user index's element: an exclusive read when the receiver path is a local, parameter or capture, a stored Field of
+  such a path, a Tuple element reached through a reference (the referent of a `uniq/` parameter) or another user index's element
+  on such a path; a shared read whatever the receiver path (shown on those paths, a local's Tuple element and a built-in element).
+  Below a built-in element: only a shared read whose sequence is a local, parameter or capture. A Field or Tuple element read in
+  place for a comparison (`h.ptr.name == "a"`) is no element: as before G147 (2b), only its layers count. Outside it, for example:
+  `vals[0].n = 5`, `vals[0][1].n = 5`, `t.0[1].n = 5`, and the reads `t.0[0].n`, `h.vals[0].n`, `vals[0][0].n`. The guard goes
+  with the old analysis at R6-check. Rejected: A, `IsBarePlace` reading the node's Type for a synthesized read
+  (one form; `PathAuthority` stays Owner, so Take and writes through `ref/` stay accepted); B, no read for a layered element (drops
+  the selection's dependency: `return entries[1].inner@uniq` through `uniq/Dictionary<i32, uniq/Point during a>` accepted `during
+  a`, unsound); C, Binding's predicates no longer reading a recorded read (rewrites ten `ElementAccess` readers that the old path
+  shares; the direction for R6-check and R7); D, a separate published element-Place fact (R7). Open: `let`-owned subscripts (BU-8); a
+  direct receiver through a built-in element's stored `uniq/` (`vals[0].bump()`) passes checking and fails generation, pre-existing
+  and not a recorded read; a receiver through two stored layers stays `NoApplicableOverload_Kd` (BU-8); PLAN G147 (2) lists an `rc/`
+  handle's PathAuthority and a false `InvalidAssignment_Kd` below `Array<Dictionary<i32, Point>>`. Temporary: the guard (R6-check).
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
   refuses an instance whose stored Types nest more than 64 levels, R4-M51's located `Unsupported_Kd`, the capability row
@@ -2253,14 +2316,14 @@ unit and decision names (S1, E2, PD12) are used as there. Each planning-session 
 structure is recorded here by the unit that first implements it.
 
 - **R5-M1 Adoption** (owner, 2026-10-18; OQ1, OQ4, OQ10, OQ11 and the start) The plan is the formal plan for R5 (MIR code
-  generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three
-  exit gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5
-  runs now, in parallel with R4 (OD4 stands), in its own planning session. The design
-  packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
-  then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and
-  groups it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11
-  (temporary codegen coverage rows reporting `Unsupported_Kd` under sel, outside the three reporters ARCH "Closed
-  vocabularies" names, until X2), which depart from owner-approved texts. Rejected: approving the packages before their review.
+  generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three exit
+  gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5 runs now, in
+  parallel with R4 (OD4 stands; suspended by R4-M77 and restored by R4-M78, both 2026-10-19), in its own planning session. The
+  design packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
+  then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and groups
+  it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11 (temporary codegen
+  coverage rows reporting `Unsupported_Kd` under sel, outside the three reporters ARCH "Closed vocabularies" names, until X2),
+  which depart from owner-approved texts. Rejected: approving the packages before their review.
 - **R5-M2 R5 start conditions** (owner, 2026-10-18; OQ2, as recommended; supersedes the owner gate of
   [Pre-R5 Work Items](../../draft/Proposals/2026-10-12%20Pre-R5%20Work%20Items.md) §2, which assumed that R5 starts at R4's
   exit) The A5 plan §9.1 timing baselines (ARCH R0 row: the O2 corpus and the compiler pipeline series at `49cb2b5d`) with

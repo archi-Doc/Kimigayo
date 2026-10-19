@@ -195,10 +195,9 @@ internal sealed partial class MirBuilder
         return this.Acquire(adjust, place, expected, reserves, node, into);
     }
 
-    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (SPEC 8.14: a PairAcquire, the
-    // whole rvalue of an Assign to the local given or a temp, marked with the Reborrow its exclusive case makes, A3 E13 (4); where its Type
-    // decides the case, as in a default's copy, Copied or Reborrowed as that Type is) or, a stored exclusive reference, Reborrowed in its
-    // own mode (SPEC 15.1.5). SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
+    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (ByCase; a PairAcquire is the
+    // whole rvalue of an Assign to the local given or a temp) or, a stored exclusive reference, Reborrowed in its own mode (SPEC 15.1.5).
+    // SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
     // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
     // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
     // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
@@ -231,16 +230,19 @@ internal sealed partial class MirBuilder
         var target = expected?.Components is [var referent] ? referent : null;
         switch (adaptation)
         {
+            case HirAdaptation.None when adjust.Acquire == HirAcquire.ByCase:
+                if (this.ByCase(place, type, input) is not { } formed)
+                {
+                    return MirOperand.Copy(place);
+                }
+
+                // A PairAcquire, a marked Use, goes only into the whole Place of a local; a Reborrow into any place of its Type.
+                var destination = formed.Kind == MirRvalueKind.Use && into is not { Projection: 0, Root: >= 0 } ? null : into;
+                return this.Temporary(type, formed, node, destination);
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
-                    HirAcquire.ByCase when MirCases.Binder(this.body, type) is var binder and >= 0 => this.Temporary(
-                        type,
-                        MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq),
-                        node,
-                        into is { Projection: 0, Root: >= 0 } ? into : null),
-                    HirAcquire.ByCase when !MirTypes.IsExclusive(type) => MirOperand.Copy(place),
-                    HirAcquire.Reborrow or HirAcquire.ByCase => this.Temporary(type, this.Ref(place, type, input), node, into),
+                    HirAcquire.Reborrow => this.Temporary(type, this.Ref(place, type, input), node, into),
                     HirAcquire.Copy => MirOperand.Copy(place),
                     _ => MirOperand.Move(place),
                 };
@@ -265,6 +267,19 @@ internal sealed partial class MirBuilder
             adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref,
             this.body.TypeOf(place) ?? BoundType.Unit);
         return this.Temporary(reference, this.Ref(place, reference, input), node, into);
+    }
+
+    // SPEC 8.14, 15.1.5: the rvalue a Place's acquisition by its pair layer's case forms where its Type decides the case: a PairAcquire
+    // marked with the Reborrow its exclusive case makes (A3 E13 (4)) where the Type keeps a binder of the body, else a Reborrow of a Type
+    // that is exclusive; none where the acquisition Copies the Place. Acquire and a default's copy (Inline) take it.
+    private MirRvalue? ByCase(MirPlace place, BoundType type, bool input)
+    {
+        if (MirCases.Binder(this.body, type) is var binder and >= 0)
+        {
+            return MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq);
+        }
+
+        return MirTypes.IsExclusive(type) ? this.Ref(place, type, input) : null;
     }
 
     // SPEC 13.5.6, 5.4: a reference of a Type to a Place, the one rule of every borrow: of the Place it lends (Lent), in its Type's mode

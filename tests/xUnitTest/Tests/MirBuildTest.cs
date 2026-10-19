@@ -336,6 +336,58 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
+    // Plan 5.6.2, SPEC 7.2.3: each statement and terminator of a copy is its template's, folded: at its template's location, in the
+    // copy's scopes under the one Inlined at the omitting call; a PairAcquire too, which the instance's case acquires again (R4-M66):
+    // Copied (concrete), Reborrowed (exclusive, a default the analysis rejects: DefaultArgumentBorrow_Kd in its uniq case), by the
+    // caller's binder (generic) and as the input of a call in the template (called). A template's own copy (outer's of pick) is copied
+    // into its nested Inlined scope (nested, nestedGeneric). Only the slots and the prologue's borrows are the caller's.
+    [Theory]
+    [InlineData("concrete", "pick")]
+    [InlineData("exclusive", "grab")]
+    [InlineData("generic", "pick")]
+    [InlineData("called", "via")]
+    [InlineData("nested", "outer pick")]
+    [InlineData("nestedGeneric", "outer pick")]
+    public void ACopyLiesInItsInlinedScopeAtItsTemplatesLocations(string caller, string templates)
+    {
+        var program = Compile("func pick<s/T>(a: s/T, b: s/T = a) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\nfunc id<s/T>(x: s/T) -> s/T\n    s is owner or ref\n" +
+            "    T is Copy\n    return x\nfunc via<s/T>(a: s/T, b: s/T = id(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func outer<s/T>(a: s/T, c: i32 = pick(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return c\n" +
+            "func concrete(r: ref/i32) -> i32 => pick(r)\nfunc generic<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return pick(x)\n" +
+            "func exclusive(u: uniq/i32) -> i32 => grab(u)\nfunc called(r: ref/i32) -> i32 => via(r)\nfunc nested(r: ref/i32) -> i32 => outer(r)\n" +
+            "func nestedGeneric<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return outer(x)\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var bodies = program.Bodies.ToArray();
+        var body = bodies.Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == caller);
+        foreach (var callee in templates.Split(' '))
+        {
+            // The body's first copy, of the template given, then the template's own copy of the next.
+            var template = bodies.Single(x => x.Key.Kind == MirBodyKind.DefaultTemplate && x.Key.Decl?.Name == callee);
+            var inlined = Enumerable.Range(0, body.Scopes.Length).First(x => body.Scopes[x].Kind == MirScopeKind.Inlined);
+            Assert.Equal(Sources(template, 0), Sources(body, inlined));
+            body = template;
+        }
+
+        // The statements' kinds and the statements' and terminators' syntax and statement starts under a root scope, each after the kinds
+        // of the scopes from the root to its own.
+        static string[] Sources(MirBody body, int root) => body.Statements.ToArray().Select(static x => (x.Source, Kind: x.Kind.ToString()))
+            .Concat(body.Blocks.ToArray().Select(static x => (x.Terminator.Source, Kind: "end")))
+            .Select(x => (Path: Path(body, x.Source.Scope, root), x.Source, x.Kind)).Where(static x => x.Path is not null)
+            .Select(static x => $"{x.Path}{x.Kind} {x.Source.Syntax} {x.Source.StatementStart}").Order(StringComparer.Ordinal).ToArray();
+
+        static string? Path(MirBody body, int scope, int root)
+        {
+            var path = string.Empty;
+            for (; scope > root; scope = body.Scopes[scope].Outer)
+            {
+                path = $"{body.Scopes[scope].Kind}/{path}";
+            }
+
+            return scope == root ? path : null;
+        }
+    }
+
     // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record.
@@ -1043,6 +1095,30 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             MirDump.Write(program, 0, dump);
             return dump.ToString();
         }
+    }
+
+    // SPEC 3.4.3, 4.7.1, 7.3, 13.4 (PLAN G147 (2b)): a receiver or a compared operand below an element storing an exclusive reference
+    // is borrowed in place, through the selected call's reference and the stored one, never through a copy, so a call's write reaches
+    // the element's referent and a compared string is neither copied out nor dropped.
+    [Theory]
+    [InlineData("Point", "entries[1].inner.mutate()", @"= &uniq two-phase \(\*\(\*_\d+\)\)\.0: uniq/Inner")]
+    [InlineData("Point", "_ = entries[1].name == \"a\"", @"= &\(\*\(\*_\d+\)\)\.1: ref/string")]
+    [InlineData("Point", "_ = entries[1].inner.name == \"a\"", @"= &\(\*\(\*_\d+\)\)\.0\.1: ref/string")]
+    [InlineData("(string, i32)", "_ = entries[1].0 == \"a\"", @"= &\(\*\(\*_\d+\)\)\.0: ref/string")]
+    public void APartBelowAStoredReferenceIsBorrowedInPlace(string element, string statement, string borrow)
+    {
+        var program = Compile("struct Inner\n    public var x: i32 = 0\n    public var name: string = \"\"\n    public init() => ()\n" +
+            "    public func mutate(self: uniq/Self) => self.x = 7\nstruct Point\n    public var inner: Inner = Inner.init()\n" +
+            "    public var name: string = \"\"\n    public init() => ()\n" + $"func f(value: uniq/{element} during a)\n" +
+            $"    var entries: Dictionary<i32, uniq/{element} during a> = [1: value@move]\n    " + statement + "\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var body = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
+        Assert.Matches(borrow, body);
+        Assert.DoesNotContain("copy (*(*", body, StringComparison.Ordinal);
+        Assert.DoesNotContain("move (*(*", body, StringComparison.Ordinal);
     }
 
     // SPEC 3.4, 13.7: Binding designates a Property target through its parentheses, so an update or assignment of a parenthesized
