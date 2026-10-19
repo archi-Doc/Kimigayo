@@ -4,8 +4,8 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
 
-// Values: a node's own value into a destination (Into), as its consumer takes it (Assign, Operand, Acquire), each by the node's Op, Adjust
-// and PlaceShape.
+// Values: a node's own value into a destination (Into), as its consumer takes it (Assign, Operand; its acquisition in
+// MirBuilder.Acquisitions.cs), each by the node's Op, Adjust and PlaceShape.
 internal sealed partial class MirBuilder
 {
     // SPEC 12.2: whether a node's operand builds code where it is evaluated, before which a Place operand evaluated earlier in its
@@ -193,131 +193,6 @@ internal sealed partial class MirBuilder
 
         var place = adjust.Acquire == HirAcquire.Temporary ? this.Value(node, input: input) : this.Place(node, input);
         return this.Acquire(adjust, place, expected, reserves, node, into);
-    }
-
-    // A Place as an acquisition and an adaptation take it: Copied, moved, acquired by its pair layer's case (ByCase; a PairAcquire is the
-    // whole rvalue of an Assign to the local given or a temp) or, a stored exclusive reference, Reborrowed in its own mode (SPEC 15.1.5).
-    // SPEC 10.2: adapted, the Scalar its reference layers end in, Copied; a Closure or
-    // function item erased to its Function Type; else a reference, of the expected Type or the one its mode forms, to the Place itself (a
-    // shared or exclusive borrow), to the referent its layers reach (ReferenceRead), to an object handle's payload or to the base the
-    // expected Type names. An implicit exclusive borrow of a call's input is two-phase: reserved here, activated at the Call (SPEC 15.6.7).
-    // SPEC 3.8, 14.10.3 (DECISIONS R4-M62, R5-M38): any acquisition takes the Never value as it is, which fits any operand position; a
-    // named Place of Type Never that Binding acquires with no adaptation, a Copy or a Move, is acquired so into a fresh Never temp and gives
-    // that Never value, so whatever takes it places nothing; an adapted one (a borrow) is built as Binding publishes it and keeps its Loan.
-    private MirOperand Acquire(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
-    {
-        if (this.IsNeverValue(place))
-        {
-            return MirOperand.Move(place);
-        }
-
-        if (!this.IsNever(place) || adjust.Adaptation != HirAdaptation.None)
-        {
-            return this.Acquired(adjust, place, expected, input, node, into);
-        }
-
-        var value = this.Temp(BoundType.Never, node);
-        var acquired = this.body.AddOperand(this.Acquired(adjust, place, expected, input, node));
-        this.body.Push(this.current, MirStatement.Assign(value, MirRvalue.Use(acquired), this.Info(node)));
-        return MirOperand.Move(value);
-    }
-
-    // A Place other than the Never value as an acquisition and an adaptation take it (Acquire).
-    private MirOperand Acquired(HirAdjust adjust, MirPlace place, BoundType? expected, bool input, Koto node, MirPlace? into = null)
-    {
-        var adaptation = adjust.Adaptation;
-        var type = this.body.TypeOf(place) ?? BoundType.Unit;
-        var target = expected?.Components is [var referent] ? referent : null;
-        switch (adaptation)
-        {
-            case HirAdaptation.None when adjust.Acquire == HirAcquire.ByCase:
-                if (this.ByCase(place, type, input) is not { } formed)
-                {
-                    return MirOperand.Copy(place);
-                }
-
-                // A PairAcquire, a marked Use, goes only into the whole Place of a local; a Reborrow into any place of its Type.
-                var destination = formed.Kind == MirRvalueKind.Use && into is not { Projection: 0, Root: >= 0 } ? null : into;
-                return this.Temporary(type, formed, node, destination);
-            case HirAdaptation.None:
-                return adjust.Acquire switch
-                {
-                    HirAcquire.Reborrow => this.Temporary(type, this.Ref(place, type, input), node, into),
-                    HirAcquire.Copy => MirOperand.Copy(place),
-                    _ => MirOperand.Move(place),
-                };
-            case HirAdaptation.ReferentRead:
-                return MirOperand.Copy(this.Follow(place, 16, expected));
-            case HirAdaptation.Erasure: // SPEC 7.7.4: of the value its ordinary acquisition gives.
-                var source = this.Acquire(adjust with { Adaptation = HirAdaptation.None }, place, null, input, node);
-                return this.Temporary(
-                    expected!,
-                    MirRvalue.Cast(MirCastKind.Erasure, this.body.AddOperand(source), expected!) with { Proven = true },
-                    node,
-                    into);
-            case HirAdaptation.ReferenceRead:
-                place = this.Follow(place, 16, target);
-                break;
-            case HirAdaptation.PayloadProjection:
-                place = this.body.Project(place, MirProjectionKind.Deref, 0);
-                break;
-        }
-
-        var reference = expected ?? compilation.Types.Reference(
-            adaptation == HirAdaptation.ExclusiveBorrow ? SemanticsKind.Uniq : SemanticsKind.Ref,
-            this.body.TypeOf(place) ?? BoundType.Unit);
-        return this.Temporary(reference, this.Ref(place, reference, input), node, into);
-    }
-
-    // SPEC 8.14, 15.1.5: the rvalue a Place's acquisition by its pair layer's case forms where its Type decides the case: a PairAcquire
-    // marked with the Reborrow its exclusive case makes (A3 E13 (4)) where the Type keeps a binder of the body, else a Reborrow of a Type
-    // that is exclusive; none where the acquisition Copies the Place. Acquire and a default's copy (Inline) take it.
-    private MirRvalue? ByCase(MirPlace place, BoundType type, bool input)
-    {
-        if (MirCases.Binder(this.body, type) is var binder and >= 0)
-        {
-            return MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq);
-        }
-
-        return MirTypes.IsExclusive(type) ? this.Ref(place, type, input) : null;
-    }
-
-    // SPEC 13.5.6, 5.4: a reference of a Type to a Place, the one rule of every borrow: of the Place it lends (Lent), in its Type's mode
-    // (MirTypes.RefKind; an exclusive reservation, a call's input or an update's destination, is two-phase).
-    private MirRvalue Ref(MirPlace place, BoundType reference, bool input)
-        => MirRvalue.Ref(MirTypes.RefKind(reference, input), this.Lent(place, reference), reference);
-
-    // SPEC 13.5.6, 6.2.2: the Place a reference of a Type to a Place lends: the Place's layer whose Type is the reference's referent (an
-    // object borrow's payload, a reborrow's referent) or its base that is (a base view).
-    private MirPlace Lent(MirPlace place, BoundType reference)
-    {
-        var referent = reference.Components is [var target] ? target : null;
-        var depth = 0;
-        place = referent is null ? place : this.Follow(place, 16, referent);
-        for (var layer = this.body.TypeOf(place); referent is not null && layer is not null && !MirTypes.Agree(layer, referent); layer = AdtDef.Base(layer))
-        {
-            depth = AdtDef.Base(layer) is null ? 0 : depth + 1;
-        }
-
-        return depth == 0 ? place : this.body.Project(place, MirProjectionKind.Base, depth);
-    }
-
-    // An rvalue in a new temp of its Type, or in the place given where that has its Type, moved.
-    private MirOperand Temporary(BoundType type, in MirRvalue rvalue, Koto node, MirPlace? into = null)
-    {
-        var temp = this.Temp(type, node, into);
-        this.Set(temp, rvalue, node);
-        return MirOperand.Move(temp);
-    }
-
-    // A borrow of a Place in a new temp of the reference a Semantics kind forms to it (uniq: exclusive; ref, objref: shared), moved: a
-    // synthesized call's input, so an exclusive one is two-phase (SPEC 15.6.7).
-    private MirOperand Borrow(SemanticsKind semantics, MirPlace place, Koto node)
-    {
-        var view = compilation.Types.Reference(semantics, this.body.TypeOf(place) ?? BoundType.Unit);
-        var temp = this.Temp(view, node);
-        this.Set(temp, this.Ref(place, view, input: true), node);
-        return MirOperand.Move(temp);
     }
 
     // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
