@@ -7,21 +7,27 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    // DECISIONS BU-10 (removed with the old path at R6-check): whether a Place's path selects a built-in element, one that no user
-    // index's selected call designates, which the old paths never borrow through exclusively to a stored reference's referent.
-    private static bool SelectsBuiltInElement(Koto place)
+    // DECISIONS BU-10 (the owner's whitelist; removed with the old path at R6-check): whether the old paths lower an exclusive read
+    // of a user index's element through the reference it stores: only on the receiver paths shown to generate, a local, parameter or
+    // capture, a stored Field of such a path, a Tuple element reached through a reference (the referent of a `uniq/` parameter) and
+    // another user index's element on such a path. A built-in element, a local's Tuple element or any other path is not lowered.
+    private static bool LowersExclusiveElementRead(Koto element)
     {
-        for (var node = KotoHelper.UnwrapParentheses(place); node is BinaryKoto selection and (IndexKoto or MemberAccessKoto);)
+        for (var node = KotoHelper.UnwrapParentheses(element); ;)
         {
-            if (selection is IndexKoto index && !ElementAccess.IsUserIndex(index))
+            switch (node)
             {
-                return true;
+                case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture }:
+                    return true;
+                case IndexKoto index when ElementAccess.IsUserIndex(index):
+                case MemberAccessKoto { BoundSymbol.Property.IsStored: true }:
+                case MemberAccessKoto { Right: NumberLiteralKoto } tuple when ReferenceTypes.IsTuple(tuple.Left.BoundType):
+                    node = KotoHelper.UnwrapParentheses(((BinaryKoto)node).Left);
+                    break;
+                default:
+                    return false;
             }
-
-            node = KotoHelper.UnwrapParentheses(selection.Left);
         }
-
-        return false;
     }
 
     // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
@@ -431,11 +437,11 @@ public sealed partial class OwnershipAnalysis
         if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
             // DECISIONS BU-10 (removed with the old path at R6-check): the old paths reach the referent of the reference an element
-            // stores only one layer deep, and exclusively only where no built-in element is on the path (they borrow no dynamic element
-            // exclusively, STATUS); any other read through an element's stored layers has no matching reference source there.
+            // stores only one layer deep, shared on every path shown and exclusively only on the whitelisted ones; any other read through
+            // an element's stored layers has no matching reference source there.
             var read = adaptation.Type.Components[0];
             if (root.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } element && !ReferenceEquals(read, element) &&
-                (!ReferenceEquals(read, stored) || (exclusive && SelectsBuiltInElement(root))))
+                (!ReferenceEquals(read, stored) || (exclusive && !LowersExclusiveElementRead(root))))
             {
                 this.Unsupported(root);
                 return -1;

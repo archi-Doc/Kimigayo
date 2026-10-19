@@ -191,8 +191,8 @@ first. IntrinsicId returns to 30 at R8.
   Analysis and Emission paths receive no new accepted forms or generation features. Allowed: deletion, miscompile fixes
   mirrored on the new path, the mechanical follow-up that a stage of the plan names, the owner's exception for the Place
   result removal (DECISIONS PR-1), and the owner's exception for G147 (2b): the old paths accept the forms its Binding
-  correction makes valid where the old Emission generates them, and a guard in the old analysis reports the old
-  Emission's limit for them, as BU-10 states it, as `Unsupported_Kd` until R6-check (DECISIONS BU-10).
+  correction makes valid where the old Emission is shown to generate them (the owner's whitelist of receiver paths), and
+  a guard in the old analysis reports the others as `Unsupported_Kd` until R6-check (DECISIONS BU-10).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.

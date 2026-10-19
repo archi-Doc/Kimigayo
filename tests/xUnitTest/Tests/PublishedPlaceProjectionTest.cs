@@ -141,10 +141,59 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredLayer", Source, string.Empty);
     }
 
+    // DECISIONS BU-10 (the owner's whitelist, until R6-check): an exclusive use of a part below a user index's element storing one
+    // reference layer generates on the default pipeline where the index's receiver path is a local's stored Field, a Field or Tuple
+    // element reached through a `uniq/` parameter, another user index's element or a capture.
+    [Fact]
+    public void WhitelistedReceiverPathsReachTheReferent()
+    {
+        const string Source = """
+            struct Inner
+                public var x: i32 = 0
+                public init() => ()
+                public func mutate(self: uniq/Self) => self.x += 1
+            struct Point
+                public var inner: Inner = Inner.init()
+                public var n: i32 = 0
+                public init() => ()
+            struct Holder {a}
+                public var map: Dictionary<i32, uniq/Point during a>
+                public init(map: Dictionary<i32, uniq/Point during a>) => self.map = map@move
+            func field(value: uniq/Point during a)
+                var h = Holder.init([1: value@move])
+                h.map[1].n += 1
+            func through(h: uniq/Holder)
+                h.map[1].inner.mutate()
+            func referent(value: uniq/Point during a)
+                var h = Holder.init([1: value@move])
+                through(h@uniq)
+            func pair(t: uniq/(Dictionary<i32, uniq/Point during a>, i32))
+                t.0[1].n += 1
+            func tuple(value: uniq/Point during a)
+                var t = ([1: value@move], 0)
+                pair(t@uniq)
+            func nested(value: uniq/Point during a)
+                var outer: Dictionary<i32, Dictionary<i32, uniq/Point during a>> = [0: [1: value@move]]
+                outer[0][1].n += 1
+            func captured(value: uniq/Point during a)
+                var entries: Dictionary<i32, uniq/Point during a> = [1: value@move]
+                var g = func [entries@uniq] () => entries[1].n += 1
+                g()
+            var p = Point.init()
+            field(p@uniq)
+            referent(p@uniq)
+            tuple(p@uniq)
+            nested(p@uniq)
+            captured(p@uniq)
+            require p.n == 4 and p.inner.x == 1 else => $abort("paths")
+            """;
+        ScalarEmissionTest.EmitFixture("PublishedPlaceStoredPaths", Source, string.Empty);
+    }
+
     // DECISIONS BU-10 (until R6-check): the old paths reach the referent of the reference an element stores only one layer deep, and
-    // exclusively only where no built-in element is on the path, so the old analysis reports any other read through an element's stored
-    // layers, a comparison's included, as the located Unsupported_Kd at the element, although Binding accepts it and the MIR builds it
-    // in place.
+    // exclusively only on the whitelisted receiver paths (a built-in element and a local's Tuple element are not), so the old analysis
+    // reports any other read through an element's stored layers, a comparison's included, as the located Unsupported_Kd at the
+    // element, although Binding accepts it and the MIR builds it in place.
     [Theory]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].inner.mutate()", "entries[1]")]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].n", "entries[1]")]
@@ -159,6 +208,9 @@ public class PublishedPlaceProjectionTest
     [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].n = 5", "vals[0][1]")]
     [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].inner.mutate()", "vals[0][1]")]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> bool\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].name == \"a\"", "entries[1]")]
+    [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].n = 5", "t.0[1]")]
+    [InlineData("func f(value: uniq/Point during a)\n    var t = (0, [1: value@move])\n    t.1[1].n = 5", "t.1[1]")]
+    [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].inner.mutate()", "t.0[1]")]
     public void TheOldEmissionReborrowLimitIsUnsupported(string function, string element)
     {
         var c = MinimalEmissionTest.Analyze("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +

@@ -2111,7 +2111,8 @@ R5 on the owner's request of 2026-10-18.
   both take the join's Type. This supersedes the @move and @copy clauses of BU-4's U3 and U4 entries.
 - **BU-10** (2026-10-19; the BU planning session; PLAN G147 (2b): designs 1 (B) and 2 (E) compared, an independent design review
   chose E with corrections (E′), adopted by the planning session; the owner's D5 exception and guard the same day; the final review's
-  corrections) `r[k]` designates the referent of its selection reference (SPEC 4.7.1, 4.7.2); a member below it continues through the
+  corrections and the owner's whitelist after its second round) `r[k]` designates the referent of its selection reference (SPEC
+  4.7.1, 4.7.2); a member below it continues through the
   element's own safe value-reference layers (3.4.3), as below a local of Type `sel/E`: its Origin is 10.2's one shared reference, its
   authority the meet of the selection and each layer (15.6.2), never a Take (15.1.5). A recorded in-place read of an element is one
   shared reference to the Type declaring the selected member: for an element storing safe layers, the selection's reference continued
@@ -2133,9 +2134,14 @@ R5 on the owner's request of 2026-10-18.
   the correction makes valid where the old Emission generates them (checked natively at O0 on both pipelines: parts below one stored
   layer of a user index's element as receivers, writes, updates, Tuple elements and returned borrows, and shared reads and compared
   strings below an element); the guard in `OwnershipAnalysis.Receiver` reports the located `Unsupported_Kd` at the element for a
-  recorded read that reaches through more than one stored layer, or that is exclusive where the element's path selects a built-in
-  element (the old paths borrow no dynamic element exclusively, STATUS; `vals[0][1].n = 5` on `Array<Dictionary<i32, uniq/Point>>`
-  included), and goes with the old analysis at R6-check. Rejected: A, `IsBarePlace` reading the node's Type for a synthesized read
+  recorded read that reaches through more than one stored layer, or that is exclusive on a receiver path outside the owner's
+  whitelist (2026-10-19, after the final review's second round found a third shape the old path cannot lower; an evidence-based list,
+  `LowersExclusiveElementRead`): a user index's element whose receiver path is a local, parameter or capture, a stored Field of such
+  a path, a Tuple element reached through a reference (the referent of a `uniq/` parameter) or another user index's element on such
+  a path. A built-in element (`vals[0].n = 5`, `vals[0][1].n = 5`) and a local's Tuple element (`t.0[1].n = 5`) are outside it. A
+  shared one-layer read is admitted on every path, since every one shown generates (below a built-in element, a local's Tuple
+  element `t.0[1].n`, an element of a built-in element, a capture). The guard goes with the old analysis at R6-check. Rejected: A,
+  `IsBarePlace` reading the node's Type for a synthesized read
   (one form; `PathAuthority` stays Owner, so Take and writes through `ref/` stay accepted); B, no read for a layered element (drops
   the selection's dependency: `return entries[1].inner@uniq` through `uniq/Dictionary<i32, uniq/Point during a>` accepted `during
   a`, unsound); C, Binding's predicates no longer reading a recorded read (rewrites ten `ElementAccess` readers that the old path
