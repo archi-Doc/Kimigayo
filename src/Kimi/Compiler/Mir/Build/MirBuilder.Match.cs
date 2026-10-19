@@ -107,27 +107,7 @@ internal sealed partial class MirBuilder
         place = this.Follow(place, position.ImplicitFollows);
         if (position.Kind == BoundPatternKind.Literal)
         {
-            var literal = position.Literal;
-            var value = this.Temp(BoundType.Boolean, position.Source);
-            var operand = MirOperand.Copy(place);
-            if (literal.Kind == PatternLiteralKind.String)
-            {
-                operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
-            }
-
-            var operands = this.body.AddOperand(operand);
-            var magnitude = (Int128)literal.Magnitude;
-            this.body.AddOperand(
-                MirOperand.Const(
-                this.body.Const(
-                literal.Kind switch
-            {
-                PatternLiteralKind.String => new(MirConstKind.String, BoundType.String, Value: literal.Text),
-                PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
-                _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
-            })));
-            this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
-            this.Pass(MirOperand.Copy(value), 1, next, position.Source);
+            this.LiteralTest(position, place, next);
             tested = true;
         }
         else if (position is { Kind: BoundPatternKind.Case, Case.Ordinal: var ordinal })
@@ -144,6 +124,33 @@ internal sealed partial class MirBuilder
         }
 
         return tested;
+    }
+
+    // SPEC 14.8.1, 13.4: a Literal position's test, the comparison of the value its Place holds with the literal's (a string's inspected
+    // through a shared borrow); a mismatch goes on to the next arm.
+    private void LiteralTest(in BoundPattern position, MirPlace place, int next)
+    {
+        var literal = position.Literal;
+        var value = this.Temp(BoundType.Boolean, position.Source);
+        var operand = MirOperand.Copy(place);
+        if (literal.Kind == PatternLiteralKind.String)
+        {
+            operand = this.Borrow(SemanticsKind.Ref, place, position.Source);
+        }
+
+        var operands = this.body.AddOperand(operand);
+        var magnitude = (Int128)literal.Magnitude;
+        this.body.AddOperand(
+            MirOperand.Const(
+            this.body.Const(
+            literal.Kind switch
+        {
+            PatternLiteralKind.String => new(MirConstKind.String, BoundType.String, Value: literal.Text),
+            PatternLiteralKind.Boolean => new(MirConstKind.Bool, BoundType.Boolean, magnitude),
+            _ => new(MirConstKind.Integer, this.body.TypeOf(place)!, literal.Negative ? -magnitude : magnitude),
+        })));
+        this.Set(value, MirRvalue.Binary(MirBinaryOp.Eq, operands, proven: true), position.Source);
+        this.Pass(MirOperand.Copy(value), 1, next, position.Source);
     }
 
     // A test's branch: on in a new block where the value is the expected one, else to the next arm.

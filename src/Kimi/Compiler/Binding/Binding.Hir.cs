@@ -105,20 +105,7 @@ public sealed partial class Binding
                 }
             }
 
-            // A number literal's value as Binding fits it (SPEC 3.1, 13.5.4): its floating-point Type's bits, else the integer it names.
-            if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
-            {
-                var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
-                    : number.TryGetIntegerMagnitude(out var magnitude) ? unchecked((Int128)(negative ? 0 - magnitude : magnitude)) : (Int128?)null;
-                HirTables.PlanFor(node, value is not null).Folded = value;
-            }
-
-            // A fixed-array element at a literal position keeps the position on its own row, beside its PlaceShape (SPEC 15.1.3).
-            if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
-            {
-                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
-            }
-
+            Fold(node, op);
             if (parts is not (HirOp.Unset or HirOp.Error) &&
                 (parts != HirOp.Syntax || (node is FunctionKoto function && PartsPublished(function) && (position & HirPosition.Replaced) == 0)))
             {
@@ -179,6 +166,23 @@ public sealed partial class Binding
         // parser recovered, a parameter default or a call's last argument).
         private static bool CompoundPlace(Koto node) => node is MemberAccessKoto or IndexKoto or DereferenceKoto or ParenthesizedKoto ||
             (node is ConversionKoto conversion && ConversionTargetSyntax(conversion) is TypeSemanticsKoto target && target.Names(Constants.FollowOperation));
+
+        // The constant Binding decided that a node's own plan row keeps (Folded): a number literal's value as Binding fits it (SPEC 3.1,
+        // 13.5.4), its floating-point Type's bits, else the integer it names; a fixed-array element's literal position, beside its
+        // PlaceShape (SPEC 15.1.3).
+        private static void Fold(Koto node, HirOp op)
+        {
+            if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
+            {
+                var value = node.BoundType is { IsFloatingPoint: true } type ? ScalarTypes.TryFloatLiteral(number, type, negative, out var bits) ? (Int128)bits : null
+                    : number.TryGetIntegerMagnitude(out var magnitude) ? unchecked((Int128)(negative ? 0 - magnitude : magnitude)) : (Int128?)null;
+                HirTables.PlanFor(node, value is not null).Folded = value;
+            }
+            else if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
+            {
+                HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
+            }
+        }
 
         // The position of a child: a declaration evaluates its body, defaults and initializer, an expression its operands, and
         // nothing evaluates Types, names it declares or selects, attributes, Origin clauses or a fill length; an Error replaces its
