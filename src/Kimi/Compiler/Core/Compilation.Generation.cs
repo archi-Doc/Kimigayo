@@ -14,8 +14,8 @@
 // inputs (LlvmEmitter's CheckInputs).
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
-// catalog Project discovers after acceptance, never discovered again here) or a Library's every root (a closed override of a slot Applies
-// refutes is a Language error at check, so no root is one); a root without an item is a broken contract.
+// catalog Project discovers after acceptance, never discovered again here) or a Library's every root but a closed override body whose slot
+// Applies refutes (InstanceCollector.Generates, checked only, R4-M28); a root without an item or with an undecided slot is a broken contract.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
 // LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
@@ -100,7 +100,7 @@ public partial class Compilation
 
     // MIR code generation (R5 C0b1, K11; DECISIONS R5-M65, R5-M77) of an accepted program: ModuleCodegen over the Generated items of its
     // checked set. A program check did not accept adds no record (check reported why); an accepted one without its MIR, its checked set or
-    // an item for each output root, or a module neither written nor explained by a record, is a broken contract. A record is a code without
+    // its output roots, or a module neither written nor explained by a record, is a broken contract. A record is a code without
     // facts (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, or InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS
     // 4.1): the records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are one problem.
     private bool GenerateMir(TextWriter writer)
@@ -111,7 +111,7 @@ public partial class Compilation
             return false;
         }
 
-        if (this.mir is not { } program || this.instances is not { } collector || !this.OutputRoots(collector.Set))
+        if (this.mir is not { } program || this.instances is not { } collector || !this.OutputRoots(collector))
         {
             this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
             return false;
@@ -140,10 +140,10 @@ public partial class Compilation
     }
 
     // K package 4.10: the items of the output roots, an Application's startup body, a test build's discovered tests or a Library's every
-    // root; false when one has no item.
-    private bool OutputRoots(Backend.CheckedSet set)
+    // root the collector generates; false when one has no item or its slot is undecided.
+    private bool OutputRoots(Backend.InstanceCollector collector)
     {
-        var roots = this.outputRoots;
+        var (roots, set) = (this.outputRoots, collector.Set);
         roots.Clear();
         var startup = this.Binding.Startup;
         if (startup.Kind == StartupKind.Test)
@@ -157,7 +157,15 @@ public partial class Compilation
         {
             for (var root = 0; root < set.RootCount; root++)
             {
-                roots.Add(root);
+                if (collector.Generates(root) is not { } generates)
+                {
+                    return false;
+                }
+
+                if (generates)
+                {
+                    roots.Add(root);
+                }
             }
         }
         else

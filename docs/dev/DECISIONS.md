@@ -3696,21 +3696,24 @@ structure is recorded here by the unit that first implements it.
   (`Compilation.Generation.cs`), after gate step 1 and acceptance, names the roots: an Application's startup body (`Binding.Startup`,
   `main`'s Fn body, else the root module's top-level statements), a test build's tests (the Test body of each `Tests.Cases` entry's
   `TestCase.Symbol`: the catalog `Project` discovers after acceptance, which the entry reads and never discovers again) and a Library's
-  every root (a `public` declaration is no export, the plan's "public roots" being the package's "every root"); a root without an item
-  is `InternalInvariant_Kd` at the project. `CheckedSet.Mark(roots)` sets the set's Generated column, one bool per item: the roots and,
+  every root but the checked-only ones (a `public` declaration is no export, the plan's "public roots" being the package's "every root");
+  a root without an item is `InternalInvariant_Kd` at the project. `CheckedSet.Mark(roots)` sets the set's Generated column, one bool per item: the roots and,
   transitively, every item a runtime target of a Generated item names, so an item only the checks reach is checked and never generated
   through that target; a mark replaces the previous one, a new collection has none (`IsGenerated` reads it), and a warm mark allocates
   nothing (a pooled worklist). `ModuleCodegen` writes the Generated items in admission order (names stay item-indexed) and the output
   form around the roots it is given (an Application's entry calls its startup root; a test build's TestEntry row is at each test root);
   `Signature`, the one request that names an item, records `InternalInvariant_Kd` at the item's site for an item outside Generated.
-  - R4-M28's exception (K §4.4, §4.10: a closed root body of an override `TyCtxt.Applies` refutes) is empty in an accepted program: a
-    closed override or virtual of a refuted slot is a Language error at check (`InvalidConstraint_Kd`), a generic body is no root and
-    K8 gives refuted slots no target, so a Library's roots need no applicability test.
+  - Checked-only roots (K §4.4, §4.10, R4-M28): `InstanceCollector.Generates(root)` leaves out the body of a closed virtual or override
+    whose slot `TyCtxt.Applies` refutes at its struct's layer owning the original, its struct being its receiver's Self; it reads the one
+    slot rule K8's VTable targets read (`Applies(type, table, slot)`), and an undecided slot is a broken contract, `InternalInvariant_Kd`
+    at the project. Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
+    `T is Marker`); the old generator skips it too (`IsInapplicableVirtualBody`). An Application or a test build reaches none: a refuted
+    slot has no target and a call of it is a Binding error.
   - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked
     items; discovering tests in the entry, as the old generator's `TryPrepare` does (a second discovery per generation; `Project` owns
     it after acceptance); TestEntry roots from the root module's Test bodies (a second copy of discovery's selection); the mark in
     `ModuleCodegen`, which decides no generation (package C §3.3).
   - Verified: an Application generates its startup closure only (an unused function is neither written nor recorded; its Library
-    twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root;
-    the mark follows runtime targets only and is replaced by the next mark and cleared by a new collection; writing an unmarked body
-    records `InternalInvariant_Kd` at its site; the closed refuted override is rejected at check; warm generation 0 B.
+    twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
+    but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
+    next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.

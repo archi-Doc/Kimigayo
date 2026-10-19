@@ -32,8 +32,13 @@ public sealed class FunctionCodegenTest
 
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
 
-    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels, an explicit startup and unused functions
-    // with scalar, string-borrow, zero-sized and Never signatures.
+    // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
+    private const string Signatures =
+        "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
+        "func stop() -> Never\n    loop\n        let x = 1\n";
+
+    // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels and an explicit startup (an Application
+    // generates only what its startup body reaches, K11; Signatures are a Library's).
     public static TheoryData<string, string> Frames => new()
     {
         {
@@ -47,11 +52,7 @@ public sealed class FunctionCodegenTest
             "var running = true\nlabel outer: loop\n    if running\n        running = false\n        continue to outer\n    exit to outer\n" +
             "let found: i32 = loop => exit 5\nvar again = true\nwhile again\n    again = false\n"
         },
-        {
-            "FrameMain",
-            "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
-            "func stop() -> Never\n    loop\n        let x = 1\npublic func main()\n    var running = true\n    while running\n        running = false\n"
-        },
+        { "FrameMain", "public func main()\n    var running = true\n    while running\n        running = false\n" },
     };
 
     // The first programs (R5 C0b2): console output through writeLine, one line, several lines, an empty line and non-ASCII text. MIR code
@@ -180,6 +181,7 @@ public sealed class FunctionCodegenTest
     [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1", "value" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
+    [InlineData(Signatures, OutputKind.Library, new string[0])]
     public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, OutputKind output, string[] sites)
     {
         var c = Analyze(source, output);
@@ -232,18 +234,21 @@ public sealed class FunctionCodegenTest
         static int Of(CheckedSet set, string? name) => Enumerable.Range(0, set.Items.Length).Single(x => set.Items[x].Key.Body.Def.Decl?.Name == name);
     }
 
-    // K11: a Library's roots are all its roots. R4-M28's exception, a closed body of an override no instance applies, never occurs in an
-    // accepted program: a closed override of a slot Applies refutes is a Language error at check.
-    [Fact]
-    public void AClosedOverrideOfARefutedSlotIsRejectedAtCheck()
+    // K11 with R4-M28 (K package 4.4, 4.10): a Library generates every root but the body of a closed override whose slot TyCtxt.Applies
+    // refutes at its owning layer, which is checked only (the old generator skips it too); where the slot applies, the override is generated.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ALibraryLeavesOutTheOverrideOfARefutedSlot(bool applies)
     {
         var c = Analyze(
-            "struct NonCopy\n    public init() => ()\n    drop => ()\nopen struct Base<T>\n    T is Owned\n    public init() => ()\n" +
-            "    public virtual func copy(self: objref/Self, value: ref/T) -> i32\n        T is Copy\n        return 5\n" +
-            "struct Plain : Base<NonCopy>\n    public init() => ()\n    override func copy(self: objref/Self, value: ref/NonCopy) -> i32 => 7\n",
+            "contract Marker\nstruct Thing\n" + (applies ? "    Self is Marker\n" : string.Empty) + "    public init() => ()\nopen struct Base<T>\n" +
+            "    public init() => ()\n    public virtual func mark(self: objref/Self) -> i32\n        T is Marker\n        return 5\n" +
+            "struct Plain : Base<Thing>\n    public init() => ()\n    override func mark(self: objref/Self) -> i32 => 7\n",
             OutputKind.Library);
-        Assert.Equal(DiagnosticCode.InvalidConstraint_Kd, Assert.Single(c.Binding.Issues).Code);
-        Assert.False(c.Generate(TextWriter.Null));
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
+        _ = c.Generate(TextWriter.Null);
+        Assert.Contains(("mark", applies), Generated(c.Instances!));
     }
 
     // Every milestone generates under MIR code generation, or records only coverage rows: never a broken contract.
