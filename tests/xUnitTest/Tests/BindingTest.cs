@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Reflection;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
@@ -286,6 +287,21 @@ public class BindingTest
             $"func view(a0: ref/i32 during source{inputs}) -> ref/i32 during source => a0\n" + calls + "public func main() => ()\n";
         string[] expected = code is null ? [] : [code];
         Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    // The nested-order contract holds in every configuration: a return out of order is a fault, never a silent clear over another
+    // buffer's length. No program reaches the pool directly, so the test drives it.
+    [Fact]
+    public void ScratchReturnedOutOfOrderIsAContractBreak()
+    {
+        var type = typeof(Binding).GetNestedType("ScratchBuffers`1", BindingFlags.NonPublic)!.MakeGenericType(typeof(int));
+        var pool = Activator.CreateInstance(type, nonPublic: true)!;
+        var rent = type.GetMethod("Rent", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var back = type.GetMethod("Return", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var outer = rent.Invoke(pool, [1]);
+        _ = rent.Invoke(pool, [1]);
+        var fault = Assert.Throws<TargetInvocationException>(() => back.Invoke(pool, [outer, false]));
+        Assert.IsType<InvalidOperationException>(fault.InnerException);
     }
 
     [Fact]
