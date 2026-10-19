@@ -557,8 +557,8 @@ public sealed partial class Binding
         {
             this.argumentOperationScratch.Return(operations, clearArray: true);
             this.typeScratch.Return(instantiated, clearArray: true);
-            this.originScratch.Return(argumentOrigins, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
+            this.originScratch.Return(argumentOrigins, clearArray: true);
         }
     }
 }

@@ -249,9 +249,9 @@ public sealed partial class Binding
         }
         finally
         {
-            this.typeScratch.Return(children, clearArray: true);
-            this.typeScratch.Return(caseArguments, clearArray: true);
             this.adaptationCaseScratch.Return(cases, clearArray: true);
+            this.typeScratch.Return(caseArguments, clearArray: true);
+            this.typeScratch.Return(children, clearArray: true);
         }
     }
 
