@@ -8,9 +8,9 @@
 // conflict at its access or activation, coded by A3 5's A6 table (CallReservationConflict_Kd for a Loan in its reservation holder,
 // CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else
 // ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow), with the Loan's
-// anchor, its witness's next use or the store that carries it and an activation's reservation as facts, and Unsupported_Kd at a destruction
-// or a call it does not classify (a destruction walk past its bound, CallRetention.Limit), through MirReport; and Work, the steps it took
-// (A3 6.2).
+// anchor, its witness's next use or the store that carries it, an activation's reservation and an inline default copy's call (R4-M69) as
+// facts, and Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound, CallRetention.Limit), a
+// limit record without that fact, through MirReport; and Work, the steps it took (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
 // state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, τ_s, and a guard candidate's γ, E7). A
 // Loan exists per non-raw Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no

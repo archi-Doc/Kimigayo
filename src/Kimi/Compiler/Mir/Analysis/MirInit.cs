@@ -1,10 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns initialization and moves (A1; SPEC 15.1, 14.10.3; DECISIONS R4-M21, R4-M6a) per body and Semantics case view.
+// Owns initialization and moves (A1; SPEC 15.1, 14.10.3, 7.2.3; DECISIONS R4-M21, R4-M6a, R4-M69) per body and Semantics case view.
 // Input: a validated body, its move paths (MirMoveData), its dataflow (MirDataflow) and the selected view (MirCases). Output: the
-// problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd and StaticMovePathRequired_Kd through MirReport, and to A2 (MirDrops) the
-// paths its entry initializes (the arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state before
-// each Drop the runtime edges reach and each state event there.
+// problems UninitializedPlace_Kd, MovedPlace_Kd, ReassignedLet_Kd, StaticMovePathRequired_Kd and DefaultArgumentMove_Kd through MirReport,
+// each inside an inline default copy with the copy's call as its Inlined fact, and to A2 (MirDrops) the paths its entry initializes (the
+// arguments'; a constructing _0's own bit has no subtree event) and, in its checks replay, the state before each Drop the runtime edges
+// reach and each state event there.
 // Five lanes per path, joined by union: MaybeUninit, MaybeMoved, EverInit, and for A2 MaybeInit and MaybePartial (a non-root path a Move or
 // a Drop took out of its parent, cleared with the subtree by any event of an ancestor-or-self). A definition initializes a path's subtree, a
 // Move or a Drop uninitializes it, StorageLive and StorageDead start a fresh binding lifetime; a use needs its whole subtree initialized on
@@ -14,7 +15,8 @@
 // temporaries' states), but the state rules
 // report only the Places of Var, Arg and Return roots: a compiler temporary is never a Place of the program. A whole use of the return local
 // is a delivery, checked only where the runtime edges reach it; a Return checks nothing. A Move without a Move Path is reported whatever its
-// root. A body no view decides is analyzed once, for every view.
+// root: DefaultArgumentMove_Kd for a default template's prepared slot or its owned contents, which the default cannot Move (SPEC 7.2.3),
+// else StaticMovePathRequired_Kd. A body no view decides is analyzed once, for every view.
 // Must not judge Take eligibility (Binding's), decide a Drop (A2's), apply a derived-problem rule (MirReport's) or copy the body per view.
 
 using Kimi.Diagnostics;
@@ -76,6 +78,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
     private struct Transfer(MirBody body, MirMoveData moves, MirCases cases, MirDataflow flow, ulong[] state, MirDrops drops) : IMirFlow, IMirUses
     {
         private SourceRef subject;
+        private int scope; // The location's scope.
         private MirLocation at;
         private bool runtime; // Whether the runtime edges reach the block applied.
 
@@ -114,7 +117,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             for (var i = 0; i < data.Count; i++)
             {
                 ref readonly var statement = ref body.Statements[data.Start + i];
-                (this.subject, this.at) = (body.Subject(statement.Source), new(block, i));
+                (this.subject, this.scope, this.at) = (body.Subject(statement.Source), statement.Source.Scope, new(block, i));
                 if (statement.Kind is MirStatementKind.StorageLive or MirStatementKind.StorageDead)
                 {
                     var path = moves.Find(statement.Place, out _);
@@ -129,7 +132,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
             if (data.Terminator.Kind != MirTerminatorKind.Return)
             {
-                (this.subject, this.at) = (body.Subject(data.Terminator.Source), new(block, data.Count));
+                (this.subject, this.scope, this.at) = (body.Subject(data.Terminator.Source), data.Terminator.Source.Scope, new(block, data.Count));
                 MirUses.ForEach(cases, this.at, ref this);
             }
         }
@@ -170,7 +173,9 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
                 this.Check(path, this.Selection(place));
                 if (this.Checks && how == MirMoveData.NoPath && (access & MirAccess.Moves) != 0)
                 {
-                    this.Add(DiagnosticCode.StaticMovePathRequired_Kd, OwnershipRequirement.StaticMovePathRequired);
+                    var (code, requirement) = this.Prepared(place) ? (DiagnosticCode.DefaultArgumentMove_Kd, OwnershipRequirement.DefaultArgumentMove)
+                        : (DiagnosticCode.StaticMovePathRequired_Kd, OwnershipRequirement.StaticMovePathRequired);
+                    this.Add(code, requirement, this.subject);
                 }
             }
             else if ((access & MirAccess.Defines) != 0)
@@ -226,6 +231,35 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
             return layer;
         }
 
+        // Whether a Place is a default template's prepared slot or its owned contents (SPEC 7.2.3, R4-M69): rooted at a PreparedInput p_i,
+        // through its Deref and then no step into storage the slot does not own: a Deref, a PairLayer the view makes a reference (SPEC
+        // 13.5.5) or an Index of a value, a Slice's or a raw pointer's (MirTypes.SelectsByValue).
+        private readonly bool Prepared(MirPlace place)
+        {
+            if (place.IsStatic || body.Locals[place.Root].Role != MirLocalRole.PreparedInput)
+            {
+                return false;
+            }
+
+            var projections = body.Projections;
+            for (var id = place.Projection; projections[id].Prefix > 0; id = projections[id].Prefix)
+            {
+                var borrowed = projections[id].Kind switch
+                {
+                    MirProjectionKind.Deref => true,
+                    MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is not null,
+                    MirProjectionKind.Index => MirTypes.SelectsByValue(body.TypeOf(place with { Projection = projections[id].Prefix })),
+                    _ => false,
+                };
+                if (borrowed)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
         // A definition: every strict ancestor constructed (its own bit initialized), a path admitting one placement initialized once per
         // binding lifetime (SPEC 15.1.1, 11.7), then the subtree initialized.
         private readonly void Define(int path)
@@ -243,7 +277,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
 
             if (checks && paths[path].Once && MirDataflow.Any(state, Lanes, Ever, path, paths[path].End))
             {
-                this.Add(DiagnosticCode.ReassignedLet_Kd, OwnershipRequirement.ReassignedLet);
+                this.Add(DiagnosticCode.ReassignedLet_Kd, OwnershipRequirement.ReassignedLet, this.subject);
             }
 
             MirDataflow.Apply(state, Lanes, path, paths[path].End, set: (1 << Ever) | (1 << Init), clear: (1 << Uninit) | (1 << Moved) | (1 << Partial));
@@ -285,12 +319,18 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // Whether the state rules report on a path: its root is a Place of the program, not a compiler temporary.
         private readonly bool Reported(int path) => body.Locals[moves.Paths[path].Local].Kind is MirLocalKind.Var or MirLocalKind.Arg or MirLocalKind.Return;
 
-        private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement)
-            => this.Report.Add(new(code, DiagnosticRequirement.Ownership(requirement), this.subject, this.Views));
-
         // A use of a Place some incoming path leaves uninitialized: MovedPlace_Kd where it may have been moved, else UninitializedPlace_Kd.
-        private readonly void Uninitialized(bool moved, SourceRef subject) => this.Report.Add(moved
-            ? new(DiagnosticCode.MovedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse), subject, this.Views)
-            : new(DiagnosticCode.UninitializedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse), subject, this.Views));
+        private readonly void Uninitialized(bool moved, SourceRef subject) => this.Add(
+            moved ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd,
+            moved ? OwnershipRequirement.PossiblyMovedUse : OwnershipRequirement.UninitializedUse,
+            subject);
+
+        // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69).
+        private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject)
+        {
+            var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, this.Views);
+            var inlined = body.Inlining(this.scope);
+            this.Report.Add(problem, inlined < 0 ? default : [new(MirFactKind.Inlined, body.Scopes[inlined].Source)]);
+        }
     }
 }

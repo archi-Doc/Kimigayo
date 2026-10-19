@@ -444,7 +444,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M10** A6: a problem rooted at an Opaque site is derived and dropped; an effect caused by one is Unknown with that
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
-  `DefaultArgument*_Kd`.
+  `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded, and its Inlined rule amended, by R4-M69.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. The key is R4-M3a's until U11.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
@@ -661,7 +661,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Field, and a second record of an early return's missing Field); a vocabulary member or a role for the exit request (a FakeRead
   is the analyses' read). The first-placement rule, the exit request, the reporting rule, the whole-subtree use and the delivery
   rule were added after U1's ledger and its independent review (main session, 2026-10-12). Its three lanes are superseded by
-  R4-M6a (five lanes).
+  R4-M6a (five lanes). Its rejection of DefaultArgumentMove decided in A1, and the PreparedInput rule left to MirReport, are
+  superseded by R4-M69.
 - **R4-M15a** (2026-10-12, planning session; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
   Resource code; it is decided at the one place that sizes analysis arenas, `MirDataflow.Prepare` (A1's state arena now, A5's
   Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.2's text changes in R6). An
@@ -1624,6 +1625,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: an A6 merge by (anchor, reservation), a merge after the fact; reporting at the activation only (unsound on 38j).
   Conditions for 2f: a Φ_c met at a receiver's formation is located at its later call (DIAGNOSTICS); a shared-receiver Φ_c takes the
   receiver's mode, or 2f reruns this rule's prototype variant with that case.
+- **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-6). It
+  supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's rejection of
+  "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording rule name its
+  requirement, and `MirReport` has no Place and must not derive a requirement from a code.
+  - A1's mapping: A1 codes a Move of a PreparedInput slot (`MirLocalRole.PreparedInput`) or of its owned contents
+    `DefaultArgumentMove_Kd`, requirement `Ownership.DefaultArgumentMove` (SPEC 7.2.3: a default cannot Move that slot). The owned
+    contents lie past the slot's Deref with no other Deref, no PairLayer the view makes a reference and no Index of a value (a Slice's
+    or a raw pointer's); a Move past a borrow the slot's value holds keeps `StaticMovePathRequired_Kd`. A default's bare read of a
+    preceding parameter becomes Binding's failure at R5's H1 (Q8-4, Q8-8); its MIR is then Opaque and has no Move, so the rule needs no
+    condition.
+  - R4-M10's Inlined rule, amended: a recording rule that finds a Language problem inside an Inlined scope adds `MirFactKind.Inlined`
+    (the scope's call, from `MirBody.Inlining(scope)`), and `MirReport.Add` drops the problem: it is its template's check (SPEC 7.2.3).
+    The recorders are A1's, A2's incomplete layer at a Drop and A5's Loan conflicts. Limit records found inside a copy (A5's
+    `CallRetention.Limit` and the destruction walk's bound) get no Inlined fact and stay (SPEC 23.1.1, R4-M51): they depend on the
+    concrete instantiation. MirLints needs nothing (the builder copies no MustNotComplete row), and A4's problems lie at Binding's rows.
+  - Premise: a copy reaches its caller's state only through the prologue's shared borrows of the pending slots, formed at the call in
+    the caller's scope, so a conflict with the caller is found at a caller-scope location (the design review's r01 and p15). A builder
+    change that breaks this (W1, F9) revisits the rule.
+  - Rejected: the PreparedInput role on the copy's borrow temp (it changes the role's meaning, keeps the copy's duplicate, one problem
+    per body under G125, and touches the held golden `tests/mir/defaults.mir`).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each

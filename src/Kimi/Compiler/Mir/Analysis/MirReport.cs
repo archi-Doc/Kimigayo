@@ -7,7 +7,8 @@
 // with the views that have it merged, in insertion order (bodies in program order), and each problem's facts by its index. A merge keeps
 // the first problem, its requirement and facts included, and ORs the views; merged problems name one requirement, and a disagreement is a
 // recording rule's defect, reported as one InternalInvariant_Kd problem at the subject. Add is the one home of the rules that drop derived
-// problems (R4-M10); storage is pooled, so a warm version allocates nothing.
+// problems (R4-M10): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's check (SPEC
+// 7.2.3, R4-M69). Storage is pooled, so a warm version allocates nothing.
 // Must not publish, decide acceptance, derive a requirement from a code, or keep a problem a rule of Add drops.
 
 using System.Runtime.InteropServices;
@@ -33,11 +34,20 @@ internal sealed class MirReport
     internal ReadOnlySpan<MirFact> Facts(int problem) => CollectionsMarshal.AsSpan(this.facts).Slice(this.spans[problem].Start, this.spans[problem].Count);
 
     /// <summary>Adds a problem with its facts, or merges its views into the first problem of the same code and subject, which must name the
-    /// same requirement: a merge that names another is the recording rules' defect, an InternalInvariant_Kd problem at the subject.</summary>
+    /// same requirement: a merge that names another is the recording rules' defect, an InternalInvariant_Kd problem at the subject. A
+    /// problem with an Inlined fact is dropped: found inside an inline default copy, it is its template's check (SPEC 7.2.3, R4-M69).</summary>
     /// <param name="problem">The problem.</param>
     /// <param name="facts">Its facts, kept only for a new problem.</param>
     internal void Add(in MirProblem problem, ReadOnlySpan<MirFact> facts = default)
     {
+        foreach (var fact in facts)
+        {
+            if (fact.Kind == MirFactKind.Inlined)
+            {
+                return;
+            }
+        }
+
         ref var slot = ref CollectionsMarshal.GetValueRefOrAddDefault(this.index, new(problem.Code, problem.Subject), out var exists);
         if (exists)
         {

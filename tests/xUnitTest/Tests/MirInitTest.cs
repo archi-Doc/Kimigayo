@@ -129,6 +129,26 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "    let bare = first(names)@follow\n"));
     }
 
+    // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: a Move of a preceding parameter or of its owned contents in the
+    // template, explicit or bare, is DefaultArgumentMove_Kd, while a Move past a borrow the parameter holds keeps StaticMovePathRequired_Kd.
+    // Each is the template's check: the calls' inline copies, in a caller of two views, add none.
+    [Fact]
+    public void ADefaultCannotMoveItsPreparedSlot()
+    {
+        var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = x) => ()\n" +
+            "func part(p: (string, i32), y: string = p.0@move) => ()\nfunc lent(x: ref/string, y: string = x@follow) => ()\n" +
+            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n    let text = \"d\"\n" +
+            "    lent(text@ref)\n");
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(
+            [
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1", "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd x@follow 1",
+            ],
+            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
+    }
+
     // SPEC 15.1.3: a Move of a constant index forms the referenced element's Move Path; the paths follow the accesses, never the declared
     // length (an input-size property of MirMoveData).
     [Fact]
@@ -377,8 +397,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    return n[once(s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f()\n    let s = \"x\"\n    unsafe\n        _ = *take(s@move, s@move)\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32)\n    let s = \"x\"\n    _ = n[func (k: i32) -> i32 => take(s@move, s@move)]\n"));
-        // A recovered group (the default's list item) gives the problems of the default written correctly: each Move of the prepared slot.
-        string[] slot = ["StaticMovePathRequired_Kd s 1", "StaticMovePathRequired_Kd s 1"];
+        // A recovered group (the default's list item) gives the problems of the default written correctly: each Move of the prepared slot
+        // (SPEC 7.2.3, R4-M69).
+        string[] slot = ["DefaultArgumentMove_Kd s 1", "DefaultArgumentMove_Kd s 1"];
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
     }

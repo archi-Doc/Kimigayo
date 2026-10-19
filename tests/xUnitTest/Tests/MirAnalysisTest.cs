@@ -138,6 +138,82 @@ public sealed class MirAnalysisTest
             report.All.ToArray());
     }
 
+    // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
+    // check and is dropped; a limit record, which a copy records without that fact, stays, as does the template's own problem.
+    [Fact]
+    public void AnInlinedProblemIsDropped()
+    {
+        var report = new MirReport();
+        var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0b10);
+        var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0b10);
+        report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]);
+        report.Add(limit);
+        report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]);
+        Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
+        Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
+    }
+
+    // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
+    // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
+    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, which the two-view copy joins.
+    [Fact]
+    public void ADefaultsProblemsAreItsTemplates()
+    {
+        var c = MirBuildTest.Compile("""
+            struct Resource
+                var name: string
+                public init(name: string) => self.name = name@move
+            func make() -> Resource => Resource.init("r")
+            func consume(r: Resource) => ()
+            struct Box
+                public var value: Resource
+                public init(value: Resource) => self.value = value@move
+                drop => ()
+            func f(n: i32, y: i32 = label w: do
+                var a = 1
+                let r = a@ref
+                a = 2
+                exit to w r@follow
+            ) => ()
+            func g(n: i32, y: i32 = label w: do
+                var box = Box.init(make())
+                consume(box.value@move)
+                let s = make()
+                consume(s@move)
+                consume(s@move)
+                exit to w 1
+            ) => ()
+            struct Nest<T>
+                public var value: T
+                public var next: Option<rc/Nest<(T, T)>> = .None
+                public init(value: T) => self.value = value
+            func h(n: i32, y: i32 = label w: do
+                var z = 1
+                let nest = Nest<ref/i32>.init(value: z@ref)
+                exit to w 1
+            ) => ()
+            func pair<s/T>(v: s/T)
+                s is ref or uniq
+                f(1)
+                g(1)
+                h(1)
+            func c1()
+                f(1)
+                f(2)
+                g(2)
+            func c2() => f(3)
+
+            """);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(
+            [
+                "ComparisonLoanConflict_Kd a = 2 1", "MovedPlace_Kd s 1", "MovedPlace_Kd var box = Box.init(make()) 1",
+                "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 3",
+            ],
+            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}").Order(StringComparer.Ordinal));
+    }
+
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
     // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
     // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its

@@ -4,7 +4,8 @@
 // Input: the values a recording rule gives: its code, the requirement it judged, its subject, the Semantics case views that have it, and
 // each related site with what it is. Output: MirProblem and MirFact values, which MirReport keeps and the difference ledger reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
-// rule 1); its views are bits of its body's MirCases views; a fact is a site the problem relates, never a cause or a message.
+// rule 1); its views are bits of its body's MirCases views; a fact is a site the problem relates, never a message: an Inlined fact names
+// the inline default copy whose template a Language problem belongs to, which a limit record never carries (R4-M69).
 // Must not derive a requirement from a code, carry message text, or merge or drop problems (MirReport's).
 
 #pragma warning disable SA1402 // The problem and fact records belong together.
@@ -23,13 +24,15 @@ namespace Kimi.Compiler.Mir;
 internal readonly record struct MirProblem(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceRef Subject, ulong Views);
 
 /// <summary>What a related site of a problem is (R4-M3a): a Loan's anchor, its witness holder's next use, the store whose value
-/// carries it, or the anchor of the reservation the problem's activation or destruction is of (design A3 6.4).</summary>
+/// carries it, the anchor of the reservation the problem's activation or destruction is of (design A3 6.4), or the call of the inline
+/// default copy a Language problem was found in (R4-M69).</summary>
 internal enum MirFactKind : byte
 {
     Anchor,
     Use,
     Store,
     Reservation,
+    Inlined, // The call of the Inlined scope the problem lies in: its template's check (SPEC 7.2.3), which MirReport drops.
 }
 
 /// <summary>A related site of a problem (R4-M3a).</summary>
