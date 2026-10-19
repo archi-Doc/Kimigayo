@@ -593,7 +593,7 @@ A call is checked as follows:
 
 A `uniq` requirement creates an exclusive Loan, and an exclusive Loan stays exclusive while a result depends on it; Origin equalities neither create nor release Loans. Protection begins when a Borrow is formed, in evaluation order (eligible exclusive borrows start as reservations, [§15.6.7](#1567-call-reservations)), and lasts through the whole call, including callee cleanup. Which results and writable storage, including storage reached through a Closure's captures, may retain an argument is determined by the instantiated public contract, for direct and indirect calls alike; an unproven absence of retention never permits access. Retention is decided per argument, never per Origin: a result or storage that may retain an Origin inside a borrowed argument's referent Type, including a Closure's call receiver, carries every Loan that a read through the argument carries ([§15.6](#156-borrow-checking)), whichever of those Origins it names; one that may retain any other Origin of an argument carries the argument's Loans, and those of such a read too when the argument is a borrow. A result that descends from the receiver of a call that [§15.6.3](#1563-reborrowing-and-region-splitting) names also carries the Loans it adds there.
 
-**Effect summaries.** A callable's **effect summary** lists the static Fields ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) whose storage it may access with its reads, borrows, writes, replacements, destructions and first-access initializations. It includes the effects of its callees, of every implementation in its closed explicit-specialization set ([§12.7.2](12-expressions.md#1272-implementation-families)), and of defaults, accessors, lazy initialization and cleanup. It is computed once per declaration, in terms of its own Type parameters, as the least fixed point over recursive calls. Calls through Callable inputs are recorded once per input and receiver mode and composed with the actual arguments at each use. Conformance effect bounds are checked against the completed summaries ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)).
+**Effect summaries.** A callable's **effect summary** lists the static Fields ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) whose storage it may access with its reads, borrows, writes, replacements, destructions and first-access initializations. It includes the effects of its callees, of every implementation in its closed explicit-specialization set ([§12.7.2](12-expressions.md#1272-implementation-families)), and of defaults, accessors, lazy initialization and cleanup. It is computed once per declaration, in terms of its own Type parameters, as the least fixed point over recursive calls. Its **parameter-dependent effects** are those it keeps in terms of a Type parameter or an associated-Type projection: destructions of such a Type not proven Copy ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)), the user-code effects of published operations on such a Type ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)) and calls through Callable inputs. When a summary would keep one on a projection one of whose bases (its base, that base's base, and so on) the premises of the summary's declaration prove to conform to a recursive Contract ([§8.3.3](08-generics-constraints-and-contracts.md#833-recursion-and-finality)), it has unknown environment effects instead. The other parameter-dependent effects have a bounded projection depth, so the fixed point is finite. Calls through Callable inputs are recorded once per input and receiver mode and composed with the actual arguments at each use. Conformance effect bounds are checked against the completed summaries ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)).
 
 - A call or direct static access that conflicts with a live Loan ([§15.6.2](#1562-place-overlap-and-conflicts)) is an error. A live Loan anchored to a Field proves only that Field initialized.
 - A call with unknown environment effects, or an erased destruction ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)), conflicts with every live Loan anchored in mutable static storage, shared or exclusive, regardless of the Field's visibility. Loans anchored in immutable static storage are never affected. A task call always has unknown environment effects ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
@@ -619,6 +619,36 @@ func run(g: () -> ())
     g()           // Error: g's unknown effects conflict with c, used below.
     inspect(c)
     inspect(l)    // l alone would not conflict.
+```
+
+A widened effect conflicts as an unknown call does, even where the caller's premises would classify every effect it replaces:
+
+```kimi
+contract Tree
+    associate Child is Tree       // Recursive (§8.3.3).
+    func child(self: ref/Self) -> Option<Self.Child>
+        effect confined
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree // Every U.Child… of a CopyTree U is Copy.
+
+group Trees
+    public func walk<T>(node: T, depth: i32)
+        T is Tree
+        if depth == 0 => return
+        match node.child()
+            .Some(let next) => Trees.walk(next@move, depth - 1)
+            .None => return
+// walk's summary has unknown environment effects: T.Child has the recursive base T.
+
+group Counters
+    public var count: i32 = 0
+
+func visitCopies<U>(node: U)
+    U is CopyTree
+    let c = Counters.count@ref
+    Trees.walk(node, 2)           // Error: walk's environment effects are unknown and conflict with c.
+    inspect(c)
 ```
 
 ### 15.6.5. Judging Origin relations

@@ -1,7 +1,7 @@
 # Effect Atoms Widen
 
-Date: 2026-10-19, revised twice the same day after independent reviews (§11). Status: proposal; its form is the owner's choice,
-not yet integrated or implemented. Written by R4 unit 2x-S5 of the
+Date: 2026-10-19, revised twice the same day after independent reviews (§11). Status: adopted by the owner on 2026-10-19 as form (c)
+(DECISIONS R4-M74, R4-M76) and integrated into SPEC on 2026-10-19 (`draft/INTEGRATED.md`); not implemented. Written by R4 unit 2x-S5 of the
 [A5 Step 2 Implementation Plan](<2026-10-18 A5 Step 2 Implementation Plan.md>) under the standing rule OD7 of the
 [Complete Polonius A5 Plan](<2026-10-16 Complete Polonius A5 Plan.md>) (A5P; DECISIONS R4-M35): a rule that is not finitely
 expressible gets its own SPEC proposal. The owner adopted S5 on 2026-10-19 (OQ13 (a), DECISIONS R4-M74) as A5P §5.2 words it:

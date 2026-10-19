@@ -1,5 +1,5 @@
 #:property Nullable=disable
-// Model of S5 (draft/Proposals/2026-10-19 Effect Atoms Widen.md): effect summaries in terms of a declaration's own Type parameters
+// Model of S5 (draft/Changes/2026-10-19 Effect Atoms Widen.md): effect summaries in terms of a declaration's own Type parameters
 // (SPEC 15.6.4), composed along each summary dependency (a call, or a destruction that runs a drop body) through its substitution, with
 // normalization (SPEC 8.2.3, 8.5) and destruction resolution (SPEC 16.3.3). A summary keeps the destruction of an abstract Type (a Type
 // parameter or an associated-Type projection) that its declaration's premises do not prove Copy as an atom; a concrete part is resolved,

@@ -690,6 +690,52 @@ session the R4 planning session recommended: four items already decided, integra
 made precise as form (c), DECISIONS R4-M74 and R4-M76), S3 (OQ12 (a) of the A5 step 2 plan, R4-M74), S1-a (R4-M76 (a)) and
 the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the planning session's question Q2, 「持つ (推奨)」).
 
+- `Changes/2026-10-19 Effect Atoms Widen.md`: 取り込み済み (text of `dd6feebf`). Mapping of its §2.5 and §10:
+  - §8.3.3 line 162 → §8.3.3's Recursion paragraph as written: a Contract is recursive when `T is C` supplies, directly
+    or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with
+    any Type arguments, or to a Contract that refines it (form (c)'s proof-rule definition, R4-M76). It replaces "When a
+    Contract's associated-Type Constraint leads back to the same Contract"; the `Tree`/`Node` example stays.
+  - §15.6.4 line 596 → §15.6.4's Effect summaries paragraph, after the fixed-point sentence, as written: a summary's
+    parameter-dependent effects, and unknown environment effects in place of one on a projection one of whose bases the
+    premises of the summary's declaration prove to conform to a recursive Contract.
+  - §15.6.4 after line 622 → a new §15.6.4 block, `visitCopies` as written, after one introducing sentence. Spec case
+    `15.6.4-widened-effects` (family F5): `ComparisonLoanConflict_Kd` at `Trees.walk(node, 2)`; the old path records
+    Binding's `InvalidAssignment_Kd` for the static Borrow, class (b) (PLAN G100, P42), as `15.6.4-static-anchors` does.
+  - §16.3.3 line 196 and §4.9.6 line 568 → ", unless §15.6.4 widens it", as written. Appendix E → the rows
+    Parameter-dependent effect and Recursive Contract, with links in place of the bare section numbers.
+  - §10's gap (1) → §8.3.2's Contract refinement row: `T is C` supplies `C`'s own and inherited Constraints, the supply
+    the definition and every generic body under `T is C` rely on.
+  - §10's gap (2) → a clarification in §8.5.3's first paragraph, before its Loan-independence sentence: a Contract may
+    constrain a deeper projection of `Self` (`Self.(A).X.(B).Y is A`), each step needing §8.5.2's evidence, and as a
+    condition on the conforming Self it is an implementation requirement (§6.1.4) that `T is A` supplies. No new rule: Appendix F's `ConstraintSubject` admits
+    the form, §8.5.2 lets a projection's base be another projection and §6.1.4 gives the role. Binding accepts it at this
+    session's base: rv-G's `f` proves `g`'s premise `U.(B).Y is A` from it (without the clause the call is
+    `UnprovenConstraint_Kd`), and a conformance checks it (`Root: A` with `Root.X.Y` bound to `i32` is
+    `UnsatisfiedConstraint_Kd`). No verdict changes.
+  - §1–§7 and §9–§11 → the rationale, losses, census, rejected options and evidence below, unchanged.
+  - §8 → transferred: A4's widening, Binding's recursive-Contract view and their tests go to the S5 implementation unit that
+    the planning session places after this session (OQ9's S5 item in PLAN); §8's interim lasts until that unit. §10's side
+    finding → PLAN G170.
+  - Every item is incorporated, rejected with a reason or transferred. The file moved to `Changes` with only its status
+    sentence replaced; its links to the plans that stay in `Proposals` are not rewritten. The two `Sketches/A5 Step 2`
+    files that name it (`S5EffectWidening.cs`, `S5Probe.cs`) name the new path.
+  - Rationale. A summary is a least fixed point (§15.6.4), and under polymorphic recursion through an associated Type its
+    parameter-dependent effects grow without bound (`walk`, cleanup cycles included); P5 removed the open-key cut for
+    static keys and nothing replaced it. The rule needs no notion of recursion or of summary dependencies: it reads one
+    Type and the declaration's premises, and the remaining effects have bounded projection depth (proposal §2.3, argued
+    and model-checked on 50,000 random programs). Its losses (§4) are all in declarations whose premises name a recursive
+    Contract, which no concrete Type can instantiate. Rejected (§6, R4-M76): form (a), which keeps "grows" but needs a
+    SPEC definition of summary dependencies, their cycles and a self-map rule; a depth limit whose excess is a Resource
+    failure; the open-key form, which widens instantiable programs; exact summaries, a second effect representation; a
+    list of Constraint kinds (two blocking review rounds); a hold.
+  - Principles. One Concept, One Canonical Form: the widened effect is the existing unknown environment effects, and
+    "recursive" reuses the proof rule. Local Reasoning: the test reads one Type and the premises of one declaration and
+    makes the fixed point finite without a work budget. Explicit Semantics: the widening and its losses are SPEC text,
+    and gap (1) names the supply generic checking relies on. Compiler Server Protocol: the conflict is reported at the
+    call with existing codes and facts.
+  - Usage: library, milestones, SPEC examples and xUnit 0 (proposal §4 and §5, H: a grep-level scan). The default
+    pipeline keeps its verdicts (OD5); no implementation is claimed. Not refreshed: SPECJ (its §15.6.4 still has the
+    pre-P5 open key) and GUIDE.
 - [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
   frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
   - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a

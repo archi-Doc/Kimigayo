@@ -83,6 +83,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Pair binder / pair target | In a pair parameter `<s/T>`: `s` / `T`. | [§8.1.1](../08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters) |
 | Pair layer | A Type whose outer Semantics is a pair binder. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Parameter acquisition shape | One acquisition mode for overlapping parameters of one function group. | [§7.4](../07-functions-and-callable-values.md#74-parameter-acquisition-shape) |
+| Parameter-dependent effect | An effect a summary keeps in terms of a Type parameter or associated-Type projection, composed by callers with the actual Type unless [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) widens it. | [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) |
 | Place / Storage | Selected storage with its Type and capabilities / a region that holds values. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
 | `preserves results` | Effect bound: a call conflicts with no Loan of an earlier result of the same requirement. | [§8.11.3](../08-generics-constraints-and-contracts.md#8113-preserves-results) |
@@ -97,6 +98,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Reborrow | A borrow derived from an existing borrow. | [§13.5.6](../13-operators-and-assignment.md#1356-borrow-and-reborrow) |
 | Receiver Expression | The receiver of a method, accessor or function-value call. | [§3.4.1](../03-types-and-values.md#341-access-paths-and-value-kinds) |
 | Receiver shape | The Semantics of a receiver's Type; one per function group. | [§7.3.2](../07-functions-and-callable-values.md#732-receiver-shape) |
+| Recursive Contract | A Contract whose Constraints require a projection of the conforming Type to conform to it again; no concrete Type conforms. | [§8.3.3](../08-generics-constraints-and-contracts.md#833-recursion-and-finality) |
 | Reference-path selection | Selection through successive safe reference layers, by Types alone. | [§3.4.3](../03-types-and-values.md#343-reference-path-selection) |
 | Region | A set of program points; `region(o)` is what Origin `o` denotes. | [§15.2.1](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
 | Region splitting | Deriving several child Loans from one parent Loan; exclusive children never overlap. | [§15.6.3](../15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) |

@@ -1,4 +1,4 @@
-// Probe for S5 (draft/Proposals/2026-10-19 Effect Atoms Widen.md): A4's summaries (MirEffects) after the mir pipeline's analysis,
+// Probe for S5 (draft/Changes/2026-10-19 Effect Atoms Widen.md): A4's summaries (MirEffects) after the mir pipeline's analysis,
 // read by reflection. Per source: Binding issues, MIR problems, A4 body views, views whose summary has a Limit (the located
 // Unsupported_Kd where a bound is owed; any growth reaches one at TyCtxt.Apply's depth 64), recursive call edges (A4's call edges whose
 // callee reaches the caller; destructor entries are not edges, so a cycle through cleanup has none, case rv-F), recursive edges whose
