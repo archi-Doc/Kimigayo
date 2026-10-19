@@ -974,8 +974,8 @@ public sealed partial class Binding
         }
         finally
         {
-            this.originScratch.Return(origins, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
             if (arguments is not null && !ReferenceEquals(arguments, boundArguments))
             {
                 this.typeScratch.Return(arguments, clearArray: true);
