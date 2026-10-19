@@ -184,12 +184,12 @@ function Invoke-Tests([string] $configuration, [string[]] $filters, [string] $ta
     $line = if ($summary) { $summary.Line.Trim() } else { 'no summary' }
     $ok = $code -eq 0
     $detail = "$line; $log"
-    if ($Codegen -eq 'mir') {
-        # Under sel the pending gate judges the failing cases, so the step fails on a run error its results record instead.
-        $ok = (Test-Path -LiteralPath $xml) -and @(Select-Xml -LiteralPath $xml -XPath '//assembly[@errors!="0"]').Count -eq 0
-        $detail = "$line; failing cases judged by codegen pending; $log"
-    }
     try {
+        if ($Codegen -eq 'mir') {
+            # Under sel the pending gate judges the failing cases, so the step fails on a run error its results record instead.
+            $detail = "$line; failing cases judged by codegen pending; $log"
+            $ok = (Test-Path -LiteralPath $xml) -and @(Select-Xml -LiteralPath $xml -XPath '//assembly[@errors!="0"]').Count -eq 0
+        }
         # Zero executed tests is never evidence, and each requested selector executes a test of its own, so one that matches
         # only Explicit tests is not hidden by the common checks or another selector.
         $executed = @(Get-KimiExecutedTests $xml)

@@ -152,30 +152,33 @@ function Write-KimiCodegenPending([string] $Evidence, [string] $Mode, [string] $
     [ordered]@{ report = $report; executed = $executed; totals = $totals; differences = $differences }
 }
 
-# Writes the ledger a report implies and returns the files it changed: pending and out-of-scope rows stay in their files,
-# rows that pass now or are no longer executed leave, and an added row goes to its group by the filing rule. Each file keeps
-# the report's ordinal order with LF line ends; a file whose rows did not change is not written, and one left without rows
-# is removed.
+# Writes the ledger a report implies and returns, for each file it changed, the rows added and removed: pending and
+# out-of-scope rows stay in their files, rows that pass now or are no longer executed leave, and an added row goes to its
+# group by the filing rule. Each file keeps the report's ordinal order with LF line ends; a file whose rows did not change is
+# not written, and one left without rows is removed.
 function Update-KimiCodegenLedger([string] $Ledger, [string] $Report) {
     $files = [Collections.Generic.SortedDictionary[string, Collections.Generic.List[string]]]::new([StringComparer]::Ordinal)
-    foreach ($group in (Read-KimiCodegenLedger $Ledger).groups) { $files[$group] = [Collections.Generic.List[string]]::new() }
+    $changes = @{}
+    foreach ($group in (Read-KimiCodegenLedger $Ledger).groups) { $files[$group] = [Collections.Generic.List[string]]::new(); $changes[$group] = @(0, 0) }
     foreach ($entry in (Get-Content -LiteralPath $Report -Raw | ConvertFrom-Json).entries) {
-        if ($entry.state -cne 'pending' -and $entry.state -cne 'outOfScope' -and $entry.state -cne 'added') { continue }
+        if ($entry.state -cne 'pending' -and $entry.state -cne 'outOfScope' -and $entry.state -cne 'added') { $changes[$entry.group][1]++; continue }
         $row = if ($entry.kind -ceq 'test') { "test`t$($entry.key)`t$($entry.name)" } else { "fixture`t$($entry.key)`t1" }
         if ($row -cnotmatch $KimiCodegenRow) { throw "$($row.Replace("`t", ' ')) cannot be a pending row." }
         $group = if ($entry.state -ceq 'added') { Get-KimiCodegenGroup $row } else { $entry.group }
-        if (-not $files.ContainsKey($group)) { $files[$group] = [Collections.Generic.List[string]]::new() }
+        if (-not $files.ContainsKey($group)) { $files[$group] = [Collections.Generic.List[string]]::new(); $changes[$group] = @(0, 0) }
+        if ($entry.state -ceq 'added') { $changes[$group][0]++ }
         $files[$group].Add($row)
     }
     $utf8 = [Text.UTF8Encoding]::new($false)
     foreach ($group in $files.Keys) {
         $path = Join-Path $Ledger "$group.tsv"
         $text = -join @($files[$group] | ForEach-Object { "$_`n" })
-        if ($files[$group].Count -eq 0) { Remove-Item -LiteralPath $path; "$group.tsv removed" }
+        $counts = "$group.tsv +$($changes[$group][0]) -$($changes[$group][1])"
+        if ($files[$group].Count -eq 0) { Remove-Item -LiteralPath $path; "$counts, removed" }
         elseif (-not (Test-Path -LiteralPath $path) -or [IO.File]::ReadAllText($path, $utf8) -cne $text) {
             $null = [IO.Directory]::CreateDirectory($Ledger)
             [IO.File]::WriteAllText($path, $text, $utf8)
-            "$group.tsv ($($files[$group].Count) rows)"
+            "$counts, $($files[$group].Count) rows"
         }
     }
 }

@@ -163,7 +163,7 @@ $changes = New-Run 'update-run' @('A.New(s: "b")=Fail', 'A.Keep(x: 1)=Fail', 'A.
     @(@{ 'DictionaryNew.ll' = '!O0' }) $methods ($methods + 'FunctionCodegenTest.Out')
 $summary = Write-KimiCodegenPending $changes 'Unit' 'Release' @('*.ll') $update
 $written = @(Update-KimiCodegenLedger $update $summary.report)
-Expect ($summary.differences -eq 6 -and ($written -join ' | ') -ceq 'C-drop.tsv (1 rows) | C-frame.tsv (2 rows) | C-scalar.tsv removed | library-2.tsv (1 rows)') `
+Expect ($summary.differences -eq 6 -and ($written -join ' | ') -ceq 'C-drop.tsv +1 -0, 1 rows | C-frame.tsv +1 -2, 2 rows | C-scalar.tsv +0 -1, removed | library-2.tsv +1 -0, 1 rows') `
     "Unexpected update: $($written -join ' | ')"
 function Text([string] $file) { [IO.File]::ReadAllText((Join-Path $update $file)) }
 Expect ((Text 'C-frame.tsv') -ceq "$(Row 'A.Keep(x: 1)')`n$(Row 'A.New(s: "b")')`n") 'Kept and added rows are sorted with LF ends.'
