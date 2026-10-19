@@ -230,7 +230,9 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, new(PatternAccessMode.Owned, null));
+            // SPEC 15.1.6: the Subject Place of a ByValue Subject is owned by the match; a bare Place's is a borrow of it.
+            var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: plan.Mode == SubjectMode.ByValue);
+            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, reach);
             plan.ArmStorage.Add(new(arm, root));
             this.MarkPatternTree(arm.Pattern);
         }
@@ -362,7 +364,7 @@ public sealed partial class Binding
         }
 
         var structural = syntax is not IdentifierNameKoto { IdentifierName: "_" } and not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
-        var type = this.SelectLayers(matched, structural, outer, ref reach, out var layers);
+        var type = this.SelectLayers(plan, matched, structural, outer, ref reach, out var layers);
         var unsupported = false;
 
         if (structural && type.Semantics != SemanticsKind.Owner)
@@ -378,22 +380,27 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Wildcard, WholePosition = true };
                 break;
             case SyntaxFormKoto { Akind: KotoKind.BindingPattern, BoundSymbol: { } symbol } binding:
-                // SPEC 15.1.6: a part of the acquired owned Subject is bound as its stored Type; a Place reached
-                // with shared or exclusive access binds ref/T or uniq/T, also for a Copy T. A whole-Subject binding
-                // of a reference-valued Subject copies that reference and never selects the internal slot.
-                symbol.Type = reach.Access == PatternAccessMode.Owned ? matched
-                    : this.types.Intern(BoundTypeKind.Semantics, null, reach.Access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: reach.Origin);
+                // SPEC 15.1.6: a whole-Subject binding of a reference-valued Subject copies that reference and never selects the
+                // internal slot. Exclusive access to an owned part of the Subject lends the Subject Place itself, which a getter result
+                // cannot lend exclusively (SPEC 15.1.5, 11.5): the binding is an error, never a shared binding.
+                symbol.Type = this.BindingTypeOf(type, reach);
                 symbol.BindsReference = reach.Access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
+                if (reach is { Access: PatternAccessMode.Exclusive, OwnedPart: true } && IsGetterResult(plan.Syntax.Expression))
+                {
+                    this.Fail(binding, BindingFailure.InvalidAssignment);
+                }
+
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
                 if (this.symbols.TryGetValue(binding.Operands[0], out var candidate) && candidate.Kind == BindingSymbolKind.PatternCandidate)
                 {
-                    // SPEC 14.8.3: a guard candidate is a shared reference to its Place whatever the mode and Copy capability.
+                    // SPEC 14.8.3: a guard candidate is a shared reference to its Place, the one the body binding takes, whatever the mode
+                    // and Copy capability.
                     var candidateOrigin = this.OriginAtom(CandidateOriginBinder(candidate), OriginKind.Projection, candidate.Slot);
                     candidate.Type = parent < 0 && matched is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 }
                         ? this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched.Components[0]], origin: matched.Origin ?? candidateOrigin)
-                        : this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [matched], origin: candidateOrigin);
+                        : this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [type], origin: candidateOrigin);
                     position = position with { CandidateSymbol = candidate };
                 }
 
@@ -451,6 +458,7 @@ public sealed partial class Binding
             End = plan.PositionStorage.Count,
             AccessMode = reach.Access,
             ImplicitFollows = layers,
+            OwnedPart = reach.OwnedPart,
         };
         plan.PositionStorage[index] = position;
         if (position.Kind == BoundPatternKind.Invalid)

@@ -90,25 +90,19 @@ public sealed partial class Binding
         var userEntry = element is null && iterable is not null &&
             this.BindUserIteration(source, scope, iterable, out element);
 
-        // SPEC 14.6.2, 14.8.1: structural decomposition selects every safe reference layer. A shared
-        // layer bounds the path; Copying a ref restarts its Origin, while uniq keeps the reached dependency.
+        // SPEC 14.6.2, 15.1.6: Some delivers one owned item, independently of the entry mode, which the ordinary match plan
+        // decomposes: a parenthesized binding by the item's Tuple position and one Binding position per slot, each selected by the
+        // Pattern layer step; a single slot binds the item unchanged.
+        var decomposition = userEntry ? this.BeginIterationStep(source, element!) : null;
+        var reach = new PatternReach(PatternAccessMode.Owned, null, OwnedPart: true);
         var tuple = element;
-        var access = PatternAccessMode.Owned;
-        BoundOrigin? tupleOrigin = null;
-        var layers = 0;
-        if (source.IsTupleBinding && (userEntry || ReferenceTypes.IsTuple(element)))
+        if (decomposition is not null && source.IsTupleBinding)
         {
-            while (tuple is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-            {
-                access = tuple.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
-                tupleOrigin = tuple.Semantics == SemanticsKind.Ref || tupleOrigin is null ? tuple.Origin ?? tupleOrigin
-                    : tuple.Origin is { } layer ? this.Meet(tupleOrigin, layer) : tupleOrigin;
-                tuple = tuple.Components[0];
-                layers++;
-            }
+            tuple = this.SelectLayers(decomposition, element!, structural: true, scope, ref reach, out var layers);
+            var item = new BoundPattern(source.Iteration!.Item, element!, BoundPatternKind.Tuple, 0, 0, decomposition.PositionStorage[0].End);
+            decomposition.PositionStorage.Add(item with { AccessMode = reach.Access, ImplicitFollows = layers, OwnedPart = reach.OwnedPart });
         }
 
-        var sharedTuple = layers != 0;
         var result = this.BeginResult(source, scope, BoundType.Unit);
         Koto? duplicate = null;
         for (var i = 0; i < source.Bindings.Count; i++)
@@ -116,19 +110,37 @@ public sealed partial class Binding
             var name = source.Bindings[i];
             duplicate ??= name.BoundSymbol!.Next is not null ? name : null;
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
-            if (sharedTuple && slot is not null)
+            var slotReach = reach;
+            var slotLayers = 0;
+            var selected = decomposition is not null && source.IsTupleBinding && slot is not null
+                ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
+            var symbol = name.BoundSymbol!;
+            symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach);
+            symbol.BindsReference = slotReach.Access != PatternAccessMode.Owned || (!userEntry && source.Mode != SubjectMode.ByValue);
+            Complete(name, symbol.Type);
+            if (decomposition is not null && slot is not null)
             {
-                slot = this.types.Intern(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [slot], origin: tupleOrigin);
+                var proof = this.ProveCopy(slot, name);
+                var acquisition = slotReach.Access != PatternAccessMode.Owned ? PatternAcquisition.Borrow
+                    : proof == ConstraintProof.Proven ? PatternAcquisition.Copy
+                    : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
+                var parent = source.IsTupleBinding ? 1 : 0;
+                var position = new BoundPattern(name, slot, BoundPatternKind.Binding, parent, parent * i, decomposition.Positions.Count + 1);
+                decomposition.PositionStorage.Add(position with
+                {
+                    BodySymbol = symbol,
+                    Acquisition = acquisition,
+                    WholePosition = true,
+                    AccessMode = slotReach.Access,
+                    ImplicitFollows = slotLayers,
+                    OwnedPart = slotReach.OwnedPart,
+                });
             }
-
-            name.BoundSymbol!.Type = slot;
-            name.BoundSymbol.BindsReference = sharedTuple || (!userEntry && source.Mode != SubjectMode.ByValue);
-            Complete(name, slot);
         }
 
-        if (userEntry && element is not null)
+        if (decomposition is not null)
         {
-            this.BindIterationStep(source, element, tuple!, access, layers);
+            this.EndIterationStep(source, decomposition, tuple);
         }
 
         this.BindNode(source.Body, scope);
@@ -318,18 +330,18 @@ public sealed partial class Binding
         return this.BindCall(plan.Next, plan.Scope, null);
     }
 
-    private void BindIterationStep(ForKoto source, BoundType item, BoundType tuple, PatternAccessMode access, int layers)
+    // SPEC 14.6.2: Some delivers one owned item, independently of the entry mode. Reuse the ordinary match decomposition and its
+    // acquisition validation; the synthetic nodes never replace source parents. The plan starts with its Some position, owned.
+    private BoundMatch? BeginIterationStep(ForKoto source, BoundType item)
     {
         var plan = source.Iteration!;
         if (plan.Next.BoundType is not { } option || !ReferenceEquals(option.Symbol, this.Library.Option) ||
             option.Components.Count != 1 || !ReferenceEquals(option.Components[0], item))
         {
             this.Fail(source, BindingFailure.TypeMismatch);
-            return;
+            return null;
         }
 
-        // SPEC 14.6.2: Some delivers one owned item, independently of the entry mode. Reuse the ordinary
-        // match decomposition and its acquisition validation; the synthetic nodes never replace source parents.
         var match = plan.Decomposition;
         match.Reset(plan.Match);
         match.Mode = SubjectMode.ByValue;
@@ -338,34 +350,28 @@ public sealed partial class Binding
         Complete(plan.Match.Arms[1].Body, BoundType.Unit);
         Complete(plan.Item, item);
         var some = plan.Match.Arms[0].Pattern;
-        var none = plan.Match.Arms[1].Pattern;
         Complete(some, option);
-        Complete(none, option);
+        Complete(plan.Match.Arms[1].Pattern, option);
         var end = source.IsTupleBinding ? source.Bindings.Count + 2 : 2;
-        var borrowedTuple = layers != 0;
-        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, 0)));
-        if (source.IsTupleBinding)
-        {
-            if (tuple.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count)
-            {
-                match.IsCurrent = false;
-                return;
-            }
+        match.PositionStorage.Add(new(some, option, BoundPatternKind.Case, -1, -1, end, Case: AdtDef.Case(option, 0), OwnedPart: true));
+        return match;
+    }
 
-            match.PositionStorage.Add(new(plan.Item, item, BoundPatternKind.Tuple, 0, 0, end, AccessMode: access, ImplicitFollows: layers));
+    // The None position and the two arms after the item's positions; a parenthesized binding of an item that is no Tuple of its
+    // arity leaves the plan not current (the loop reports the mismatch).
+    private void EndIterationStep(ForKoto source, BoundMatch match, BoundType? tuple)
+    {
+        if (source.IsTupleBinding && (tuple?.Kind != BoundTypeKind.Tuple || tuple.Components.Count != source.Bindings.Count))
+        {
+            match.IsCurrent = false;
+            return;
         }
 
-        for (var i = 0; i < source.Bindings.Count; i++)
-        {
-            var name = source.Bindings[i];
-            var type = borrowedTuple ? tuple.Components[i] : name.BoundType!;
-            var proof = this.ProveCopy(type, name);
-            var acquisition = borrowedTuple ? PatternAcquisition.Borrow : proof == ConstraintProof.Proven ? PatternAcquisition.Copy : proof == ConstraintProof.Refuted ? PatternAcquisition.Move : PatternAcquisition.CopyOrMove;
-            match.PositionStorage.Add(new(name, type, BoundPatternKind.Binding, source.IsTupleBinding ? 1 : 0, source.IsTupleBinding ? i : 0, match.Positions.Count + 1, BodySymbol: name.BoundSymbol, Acquisition: acquisition, WholePosition: true, AccessMode: access));
-        }
-
-        match.PositionStorage.Add(new(none, option, BoundPatternKind.Case, -1, -1, end + 1, Case: AdtDef.Case(option, 1)));
+        var plan = source.Iteration!;
+        var some = match.PositionStorage[0];
+        var none = AdtDef.Case(some.MatchedType, 1);
+        match.PositionStorage.Add(new(plan.Match.Arms[1].Pattern, some.MatchedType, BoundPatternKind.Case, -1, -1, some.End + 1, Case: none));
         match.ArmStorage.Add(new(plan.Match.Arms[0], 0));
-        match.ArmStorage.Add(new(plan.Match.Arms[1], end));
+        match.ArmStorage.Add(new(plan.Match.Arms[1], some.End));
     }
 }

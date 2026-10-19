@@ -2311,6 +2311,36 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   longest simple path); a declaration-level expansive-cycle check (it cannot see growth through associated projections);
   inline-only preparation (B: changes G128 and breaks R4-M58, whose growing composed atom `Apply` still refuses). Deleted:
   `InstanceStorage.Prepared` and `Height`. Not temporary (G128's limits go at R7).
+- **BU-14** (2026-10-19; the BU planning session; PLAN G100's Subject item, A5 step 2 plan 2x-E7: designs 1 and 2 compared, R4's
+  independent design review adopted design 2 with corrections F1–F4 and N2–N4, N6; owner decisions of 2026-10-19 below) Every
+  Pattern position of a match arm or a `for` decomposition reaches its Place by one layer step, `Binding.SelectLayers`
+  (`Binding.Patterns.Layers.cs`, a canonical component), which carries SPEC 13.5.5's state as `PatternReach` (the mode reached,
+  the dependency, and whether the Place may lie in the owned Subject or item). A structural position selects every safe
+  value-reference layer that lacks its structure; a Binding selects nothing, except the qualifying pair layer of a Place it reaches
+  with owned access, which offers no Take: it binds `ref/T` (ref admitted) or `uniq/T` of the layer's selected Place (13.5.5's mode
+  row; `try` extracts a value, SPEC 17.3: `BoundMatch.ExtractsValue`). The pair step's dependency is `PairSlot`'s, the one case
+  split `PairOrigin` also uses: the Place reached (at an owned Subject or item reached by no layer, its Subject Place's atom,
+  `OriginAtom(match, Projection, 0)`) or the layer's outer slot met with the borrows reached. `BoundPattern.OwnedPart` publishes
+  whether a position's Place may lie in the owned Subject or item (true at the root of a ByValue Subject or an owned item, kept only
+  through pair layers admitting owner). Its readers: Binding's 11.5 check (an `Exclusive` binding with `OwnedPart` in a match on a
+  getter result is `InvalidAssignment_Kd` at the binding, SPEC 15.1.6's example), `EffectBounds.LeftParts` (a part borrowed past such
+  a layer stays in the Subject) and the old-path guard. The guard candidate is built from the selected Type (14.8.3: the body
+  binding's Place). `Binding.Sequences` decomposes an item through the same step (its copy of the walk, which selected no pair
+  layer, is deleted). HIR: a Pattern binding's PlaceShape publishes its follows (`Layers`, R5's consent; the builder lends the
+  binding by its Type through `Lent`, no MIR change). Owner decisions: (b) SPEC is clarified (14.8.1: a Binding reached with
+  by-value access at a qualifying pair layer binds a reference to the selected Place in the mode past it; 3.4.3's single-name
+  binding is a `let` or `var` declaration or a single `for` slot); (d) a pair layer that is not qualifying, such as one admitting
+  Object Semantics, binds its slot by value (13.5.5 and 15.1.6 scoped to qualifying layers; no code change); D5 exception until
+  R6-check: the old analysis (`OwnershipAnalysis.SupportsMatch`) reports the located `Unsupported_Kd` at the match or loop for a
+  position with `OwnedPart` and access other than Owned (F1: the old analysis has no Place for a borrow into the owned Subject),
+  and for a Binding that selects a pair layer (the old Emission cannot generate it: `GenerationFailed_Kd` for the uniq-only
+  admitted sets F1's predicate leaves); the guard extends a pre-existing cascade, `UninitializedPlace_Kd` beside the
+  `Unsupported_Kd` when every arm returns (N1, PLAN). Why: a Binding at a pair layer took its slot by value, so the SPEC 15.1.6
+  example was accepted, an owned Subject's pair step had no Origin (false `NoApplicableOverload_Kd`) and the `for` copy rejected
+  pair-layer Tuple items (false `TypeMismatch_Kd`). Rejected: design 1 (a builder follow beside `Lent` in held files, a shared
+  column's contract changed across phases, the getter check through `BorrowableTemporary`'s `spelled`); binding the slot
+  (`uniq/(s/T)`); an `OwnedPart` query re-walking the followed layers; teaching the old Emission the follow (D5); the Subject's own
+  mode for pair-typed non-bare Subjects (PLAN, S6: needs a borrowed temporary Subject). Not temporary, except the guard.
 
 ## R5 and R6 (adopted 2026-10-18)
 

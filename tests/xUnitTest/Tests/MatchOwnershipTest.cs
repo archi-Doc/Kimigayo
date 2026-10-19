@@ -339,6 +339,25 @@ public class MatchOwnershipTest
         Assert.Single(decompositions);
     }
 
+    // DECISIONS BU-14 (D5 exception until R6-check): a position that may borrow a part of the owned Subject or item past a pair layer
+    // admitting owner, or a Binding that selects a pair layer, is the old path's located Unsupported_Kd at its match or loop, although
+    // Binding accepts it and the MIR builds it (SPEC 13.5.5, 15.1.6); a borrowed path's pair layer stays judged here.
+    [Theory]
+    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
+    [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
+    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is owner or uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", "match o@move")]
+    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>)\n    s is owner or uniq\n    for (x, _) in arr@move => use(x)", "for (x, _) in arr@move => use(x)")]
+    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items@move => use(x)", "for (x, y) in items@move => use(x)")]
+    [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items => use(x)", null)]
+    [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", null)]
+    public void APairLayerBorrowIntoAnOwnedSubjectIsTheOldPathsLimit(string source, string? at)
+    {
+        var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var unsupported = c.Problems.Where(static x => x.Code == DiagnosticCode.Unsupported_Kd).Select(x => c.SyntaxOf(x.Subject).ToString()!.Split('\n')[0]).ToArray();
+        Assert.Equal(at is null ? [] : [at], unsupported);
+    }
+
     private static OwnershipBody Body(Compilation c) => c.Ownership.Bodies.Single(b => b.Function.Name == "f");
 
     private static Compilation Parse(string source)

@@ -53,14 +53,17 @@ public enum PatternLiteralKind : byte
 
 public readonly record struct PatternLiteral(PatternLiteralKind Kind, UInt128 Magnitude = default, bool Negative = false, string? Text = null);
 
-/// <summary>A preorder position; direct children are walked by advancing to each child's End. A structural position selects
-/// the referent of <see cref="ImplicitFollows"/> safe value-reference layers of its matched Type (SPEC 14.8.1), and
-/// <see cref="AccessMode"/> is the access its path grants to the selected value.</summary>
+/// <summary>A preorder position; direct children are walked by advancing to each child's End. A position selects the referent of
+/// <see cref="ImplicitFollows"/> safe value-reference layers of its matched Type (SPEC 14.8.1, 13.5.5: a structural position every
+/// layer that lacks its structure, a Binding reached with owned access the qualifying pair layer it would otherwise take by value),
+/// <see cref="AccessMode"/> is the access its path grants to the selected value, and <see cref="OwnedPart"/> whether that value may
+/// lie in the owned Subject or iteration item: its path passed only pair layers admitting owner, whose owner case selects the
+/// Place itself (SPEC 15.1.6 "a part of an owned Subject or iteration item", 13.5.5).</summary>
 public readonly record struct BoundPattern(Koto Source, BoundType MatchedType, BoundPatternKind Kind, int Parent, int Element, int End,
     BoundEnumCase? Case = null, BindingSymbol? BodySymbol = null, PatternAcquisition Acquisition = PatternAcquisition.None,
     bool WholePosition = false, PatternLiteral Literal = default,
     PatternAccessMode AccessMode = PatternAccessMode.Owned, int ImplicitFollows = 0,
-    BindingSymbol? CandidateSymbol = null);
+    BindingSymbol? CandidateSymbol = null, bool OwnedPart = false);
 
 public readonly record struct BoundMatchArm(MatchArmKoto Syntax, int Pattern);
 
@@ -94,6 +97,10 @@ public sealed class BoundMatch
 
     /// <summary>Gets or sets the Subject mode: the access that the Subject Place grants (SPEC 15.1.6).</summary>
     internal SubjectMode Mode { get; set; }
+
+    /// <summary>Gets a value indicating whether the plan is a try's, whose success binding extracts its payload as a value (SPEC 17.3)
+    /// and is no Pattern binding of SPEC 15.1.6.</summary>
+    internal bool ExtractsValue => this.Syntax is TryKoto;
 
     /// <summary>Gets the Pattern plan (PatternPlan, plan 5.3) the current pass made for a match or a try, or the Some/None decomposition
     /// of a for loop over a user iteration entry, whose positions bind its iteration bindings; null for another node or loop.</summary>
