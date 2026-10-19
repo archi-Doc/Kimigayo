@@ -105,7 +105,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
 
             foreach (var decl in table.Hir.Defaults!)
             {
-                if (!decl.Function.IsAnonymous && !this.visited.ContainsKey(decl))
+                if (BoundClosure.Of(decl.Function) is null && !this.visited.ContainsKey(decl))
                 {
                     this.Visit(decl);
                 }
@@ -123,11 +123,13 @@ internal sealed partial class MirBuilder(Compilation compilation)
             }
 
             var symbol = HirTables.Symbol(node);
-            switch (node)
+            switch (symbol?.Kind)
             {
-                case FunctionKoto function: // A module's top-level statements have no symbol (SPEC 22.4.1).
+                case null or BindingSymbolKind.Function: // A module's top-level statements have no symbol (SPEC 22.4.1).
+                    var function = (FunctionKoto)node;
+                    var closure = BoundClosure.Of(function) is not null; // A Closure's definition (DECISIONS R5-M79).
                     MirBodyKind kind;
-                    if (function.IsAnonymous)
+                    if (closure)
                     {
                         kind = MirBodyKind.Closure;
                     }
@@ -136,16 +138,17 @@ internal sealed partial class MirBuilder(Compilation compilation)
                         kind = TestDefinition.Marker(function) is null ? MirBodyKind.Fn : MirBodyKind.Test;
                     }
 
-                    var result = function.IsAnonymous ? symbol?.Type ?? BoundType.Unit : TypeOf(node);
+                    var result = closure ? symbol?.Type ?? BoundType.Unit : TypeOf(node);
                     this.Body(new(symbol, kind, symbol is null ? table.Module : 0), node, symbol, result, (Koto?)function.Body ?? function.ExpressionBody!);
                     break;
-                case PropertyAccessorKoto accessor:
+                case BindingSymbolKind.PropertyAccessor:
+                    var accessor = (PropertyAccessorKoto)node;
                     var executing = CallPlan.Accessor(accessor); // SPEC 11.3: the function its calls target.
                     kind = accessor.AccessorKind == PropertyAccessorKind.Get ? MirBodyKind.Getter : MirBodyKind.Setter;
                     this.Body(new(executing, kind), node, executing, executing.Type ?? BoundType.Unit, accessor.Body!);
                     break;
-                case PropertyKoto property when HirTables.ResOf(node) == HirRes.Static:
-                    this.Body(new(symbol, MirBodyKind.StaticInit), node, null, symbol!.Type ?? BoundType.Unit, property.InitializerKoto!);
+                case BindingSymbolKind.Property when HirTables.ResOf(node) == HirRes.Static:
+                    this.Body(new(symbol, MirBodyKind.StaticInit), node, null, symbol!.Type ?? BoundType.Unit, ((PropertyKoto)node).InitializerKoto!);
                     break;
             }
         }
@@ -172,7 +175,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var parameters = this.OpenScope(block: true);
         PairBinder.Collect(declaration, body.Binders);
         var special = template || function is null ? null : CallPlan.Parameter(function, -1); // A constructor's or destructor's self.
-        var self = !template && declaration is FunctionKoto { IsConstructor: true } constructor ? AdtDef.ReceiverType(constructor) : null;
+        var self = !template && AdtDef.IsConstructor(function) ? AdtDef.ReceiverType((FunctionKoto)declaration) : null;
         body.AddLocal(new(self ?? result, MirLocalKind.Return, this.Info(declaration, local: true)));
         if (self is not null)
         {
@@ -210,7 +213,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             var layer = this.body.AddLocal(new(special.Type ?? BoundType.Unit, MirLocalKind.Arg, this.Info(declaration, local: true), Name: special.Name));
             this.Register(Cleanup.Fields, this.locals[special] = layer, null, parameters);
         }
-        else if (declaration is FunctionKoto { IsAnonymous: true } closure && BoundClosure.Of(closure) is { EnvironmentType: { } environment } plan)
+        else if (key.Kind == MirBodyKind.Closure && BoundClosure.Of((FunctionKoto)declaration) is { EnvironmentType: { } environment } plan)
         {
             this.receiver = this.Argument(
                 plan.Receiver == SemanticsKind.Owner ? environment : compilation.Types.Reference(plan.Receiver, environment),
@@ -219,7 +222,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         // The parameters after the special receiver in slot order, or receiver first (MirCallee.Slot).
-        for (var position = 0; !template && function is not null && position < ((FunctionKoto)function.Declaration).Parameters.Count; position++)
+        for (var position = 0; !template && function is not null && position < Arity(function); position++)
         {
             var parameter = CallPlan.Parameter(function, special is null ? MirCallee.Slot(function, position) : position)!;
             this.locals[parameter] = this.Argument(parameter.Type ?? BoundType.Unit, parameter.Name, parameters);

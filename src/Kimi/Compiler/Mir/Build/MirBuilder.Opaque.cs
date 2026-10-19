@@ -136,7 +136,7 @@ internal sealed partial class MirBuilder
                     break;
             }
 
-            var captures = node is FunctionKoto { IsAnonymous: true } closure ? BoundClosure.Of(closure)?.Captures : null;
+            var captures = node is FunctionKoto function ? BoundClosure.Of(function)?.Captures : null; // A named function has no definition.
             for (var i = 0; i < captures?.Count; i++)
             {
                 this.Add(captures[i].Source);

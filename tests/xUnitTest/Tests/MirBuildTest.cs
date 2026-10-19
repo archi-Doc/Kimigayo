@@ -336,6 +336,21 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
+    // Plan 5.6.2, SPEC 23.1.2 (DECISIONS R5-M79): the defaults a template omits are those of the calls it builds. A closure Binding failed
+    // to define, here after binding its body, is published Error and its body replaced (Syntax), so the call in that body is no edge: the
+    // default is no call of its own template, and the call that omits it takes an Opaque value built at the call.
+    [Fact]
+    public void AFailedClosureInADefaultIsNoEdge()
+    {
+        var c = Compile("func id<T>(x: T) -> i32 => 1\nfunc run(n: i32, k: i32 = id(func (x: Missing) => run(1))) -> i32 => n + k\n" +
+            "require run(3) == 4 else => $abort(\"x\")\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var top = program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0);
+        Assert.DoesNotContain(top.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: > 0 } });
+        Assert.True(top.HasOpaque);
+    }
+
     // Plan 5.6.2, SPEC 7.2.3: each statement and terminator of a copy is its template's, folded: at its template's location, in the
     // copy's scopes under the one Inlined at the omitting call; a PairAcquire too, which the instance's case acquires again (R4-M66):
     // Copied (concrete), Reborrowed (exclusive, a default the analysis rejects: DefaultArgumentBorrow_Kd in its uniq case), by the
@@ -1144,6 +1159,30 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain("move (*(*", body, StringComparison.Ordinal);
     }
 
+    // SPEC 4.7.1, 15.1.5 (DECISIONS BU-13): a user index below an inline part of a var root (a Tuple element, an Array element) selects
+    // indexUniq, and the write goes through the exclusive reference it returns: no write or exclusive borrow follows a shared Deref.
+    [Theory]
+    [InlineData("var t = ([1: value@move], 0)\n    t.0[1].n = 5")]
+    [InlineData("var vals: Array<Dictionary<i32, uniq/Point during a>> = [[1: value@move]]\n    vals[0][1].n = 5")]
+    public void AUserIndexBelowAnInlinePartOfAVarRootSelectsIndexUniq(string statements)
+    {
+        var program = Compile("struct Point\n    public var n: i32 = 0\n    public init() => ()\nfunc f(value: uniq/Point during a)\n    " + statements + "\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        var dump = text.ToString()[text.ToString().IndexOf("fn f @", StringComparison.Ordinal)..];
+        Assert.Contains("= indexUniq(", dump, StringComparison.Ordinal);
+        Assert.DoesNotContain("= index(", dump, StringComparison.Ordinal);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        foreach (var statement in body.Statements)
+        {
+            Assert.False(statement.Kind == MirStatementKind.Assign && BelowSharedDeref(body, statement.Place), dump);
+            var exclusive = statement.Rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Uniq or (byte)MirRefKind.TwoPhaseUniq };
+            Assert.False(exclusive && BelowSharedDeref(body, statement.Rvalue.Place), dump);
+        }
+    }
+
     // SPEC 3.4, 13.7: Binding designates a Property target through its parentheses, so an update or assignment of a parenthesized
     // Property builds as the unparenthesized one does (its syntax ids aside), whichever of its accessors is custom.
     [Theory]
@@ -1248,6 +1287,21 @@ public sealed class MirBuildTest(ITestOutputHelper output)
                 yield return new(block, i);
             }
         }
+    }
+
+    // SPEC 15.6.2: whether a Place is reached through a Deref of a shared reference or view, which grants Read only.
+    private static bool BelowSharedDeref(MirBody body, MirPlace place)
+    {
+        for (var id = place.Projection; id != 0; id = body.Projections[id].Prefix)
+        {
+            if (body.Projections[id].Kind == MirProjectionKind.Deref &&
+                body.TypeOf(place with { Projection = body.Projections[id].Prefix }) is { Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc })
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // A Place as its root and its projections in order: a Deref as *, a Field as its position, so (*_1).0 is _1*.0.

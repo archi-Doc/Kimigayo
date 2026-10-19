@@ -37,7 +37,7 @@ public class IdentityAcquisitionEmissionTest
     public void AcquisitionTransfersExactlyOneDestructionResponsibility(string name, string source, string counts, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("IdentityAcquisition" + name, source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("IdentityAcquisition" + name, source, ir, string.Empty, counts, order: order);
+        StringEmissionTest.WriteAuditedFixture("IdentityAcquisition" + name, ir, string.Empty, counts, order: order);
     }
 
     [Theory]

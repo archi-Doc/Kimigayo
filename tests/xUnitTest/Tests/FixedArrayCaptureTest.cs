@@ -29,7 +29,7 @@ public class FixedArrayCaptureTest
         if (name is "Consume" or "PartialMove")
         {
             // Each comparison literal is a separate temporary in addition to the captured string it checks.
-            StringEmissionTest.WriteAuditedFixture("FixedArrayCapture" + name, source, ir, string.Empty, name == "Consume" ? "first=2;last=2" : "first=2;last=1");
+            StringEmissionTest.WriteAuditedFixture("FixedArrayCapture" + name, ir, string.Empty, name == "Consume" ? "first=2;last=2" : "first=2;last=1");
         }
     }
 

@@ -34,7 +34,7 @@ public class AggregateDefaultTest
     public void AggregateAcquisitionHasExactCleanup(string name, string source, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("AggregateDefault" + name, source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateDefault" + name, source, ir, string.Empty, destructions, order: order);
+        StringEmissionTest.WriteAuditedFixture("AggregateDefault" + name, ir, string.Empty, destructions, order: order);
     }
 
     [Trait("Purpose", "Allocation")]

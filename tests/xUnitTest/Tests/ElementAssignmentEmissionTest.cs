@@ -135,7 +135,7 @@ public class ElementAssignmentEmissionTest
     {
         const string Source = "var a = (\"first\", (0, false), \"last\")\na.1 = (label work: do\n    defer => Console.writeLine(\"cleanup\")\n    exit to work (42, true)\n)\nif a.1.0 == 42 and a.1.1 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementAssignmentLifetime", Source, "cleanup\nok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementAssignmentLifetime", Source, ir, "cleanup\nok\n", "first=1;last=1;cleanup=1;ok=1", order: [2, 3, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementAssignmentLifetime", ir, "cleanup\nok\n", "first=1;last=1;cleanup=1;ok=1", order: [2, 3, 1, 0]);
     }
 
     [Fact]
@@ -144,7 +144,7 @@ public class ElementAssignmentEmissionTest
         const string Source = "var a: (string, [0 of i32]) = (\"held\", [])\ndefer => Console.writeLine(\"bad\")\na.1[0] = 42";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementAssignmentAbortLifetime", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementAssignmentAbortLifetime", Source, ir, string.Empty, "held=0;bad=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementAssignmentAbortLifetime", ir, string.Empty, "held=0;bad=0", 1, Error);
     }
 
     [Fact]

@@ -18,7 +18,7 @@ public class SharedAbortEmissionTest
     {
         name = "SharedAbort" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout, exit, stderr);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions, exit, stderr);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions, exit, stderr);
     }
 
     // BodyLowering validates every lowered body, including each monomorphized instance, so a corrupt

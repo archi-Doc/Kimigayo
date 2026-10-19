@@ -444,7 +444,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M10** A6: a problem rooted at an Opaque site is derived and dropped; an effect caused by one is Unknown with that
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
-  `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded, and its Inlined rule amended, by R4-M69.
+  `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
   places the merge across bodies at publication.
@@ -1271,7 +1272,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
   planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
   CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by
-  R4-M70) A5's Loan stratum, its joint core. `MirBorrows`
+  R4-M70; 1b-4's guard code settled and its merge's unit moved to 2a by R4-M72) A5's Loan stratum, its joint core. `MirBorrows`
   (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
   decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
   facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
@@ -1696,6 +1697,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
     constructors, of two and nine cases, gave one problem with `0x1FF`).
   - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
     same facts).
+- **R4-M72** (2026-10-19; decided by the planning session on 2026-10-18, adopting the design review of 1c's two designs (its verdicts
+  4 and 5 and its R4-M72 draft) with the 1c design, and by the owner through the step-2 plan's PD7 and PD11, adopted with the plan
+  (R4-M74, OQ1); with group 1c's final review's records; recorded by unit 1c-9; A3 §12 E15). The A6 table of A5's Loan problems
+  (DIAGNOSTICS, MIR Loan problems) and the placements group 1c left. It supersedes A3 §5's A6 rows for effects, `PreparedInput` roots
+  and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their merge, R4-M10's placement of the Access and Borrow codes in
+  A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
+  - Effects: err(effect), a static or unknown-environment effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
+    the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
+    unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
+    and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both
+    supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet: unit 2b
+    implements the first (none arises while no static Loan exists, since Binding rejects every borrow of group storage, PLAN G100) and
+    2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation.
+  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a template the preceding
+    parameters a default reads are the template's own parameters, whose callers' Loans lie outside its body, and a copy reaches its
+    pending slots only past the prologue's shared borrows, where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as
+    `DefaultArgumentMove_Kd` is A1's (R4-M69).
+  - Guard: err(ended) (E7) is `ComparisonLoanConflict_Kd` at the candidate's cleanup, its `EndBorrow`, anchored at the candidate, as
+    DIAGNOSTICS' escaped borrows; no guard-local code exists (A3 §9 item 9's DIAGNOSTICS record).
+  - Merge: E7's and E12's merge (the `destroy` conflict on a Loan `_0` carries whose Borrow the Origin stratum refuted, and err(ended)
+    where γ_H reaches `_0`) moves from unit 1c to 2a (2a-2, completed by 2g-5; the step-2 plan's PD11), since the Refuted relations it
+    reads come from the Origin stratum (A5-F4).
+  - View skip (unit 1c-3): `MirBorrows.Run` skips a body view only when it has no Loan and no guard candidate, since E7's γ needs no
+    Loan; A3 §6.1's skip of a view without a Loan accepted a guard value escaping in a Loan-free view (the design review's r02, an
+    unsound acceptance). The root flags only select the accesses checked.
+  - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
+    so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
@@ -2253,10 +2281,10 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   (one form; `PathAuthority` stays Owner, so Take and writes through `ref/` stay accepted); B, no read for a layered element (drops
   the selection's dependency: `return entries[1].inner@uniq` through `uniq/Dictionary<i32, uniq/Point during a>` accepted `during
   a`, unsound); C, Binding's predicates no longer reading a recorded read (rewrites ten `ElementAccess` readers that the old path
-  shares; the direction for R6-check and R7); D, a separate published element-Place fact (R7). Open: `let`-owned subscripts (BU-8); a
+  shares; the direction for R6-check and R7); D, a separate published element-Place fact (R7). Open: `let`-owned subscripts (BU-8; fixed by BU-13); a
   direct receiver through a built-in element's stored `uniq/` (`vals[0].bump()`) passes checking and fails generation, pre-existing
   and not a recorded read; a receiver through two stored layers stays `NoApplicableOverload_Kd` (BU-8); PLAN G147 (2) lists an `rc/`
-  handle's PathAuthority and a false `InvalidAssignment_Kd` below `Array<Dictionary<i32, Point>>`. Temporary: the guard (R6-check).
+  handle's PathAuthority and a false `InvalidAssignment_Kd` below `Array<Dictionary<i32, Point>>` (both fixed by BU-13). Temporary: the guard (R6-check).
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
   refuses an instance whose stored Types nest more than 64 levels, R4-M51's located `Unsupported_Kd`, the capability row
@@ -2311,6 +2339,31 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   longest simple path); a declaration-level expansive-cycle check (it cannot see growth through associated projections);
   inline-only preparation (B: changes G128 and breaks R4-M58, whose growing composed atom `Apply` still refuses). Deleted:
   `InstanceStorage.Prepared` and `Height`. Not temporary (G128's limits go at R7).
+- **BU-13** (2026-10-19; the BU planning session; PLAN G147 (2)'s Open; option A of the BU7 diagnosis, chosen by the planning
+  session, with R4's regression rows) A selection that reaches its element through `indexUniq` (a user index or an exclusive view;
+  an owned `Array` element, SPEC 4.7.1) needs its receiver exclusively acquired, which storage rooted in a `let` binding or an owned
+  parameter, or reached through a shared layer, cannot be (SPEC 15.1.5, 15.6.2). One predicate decides it, `ExclusivelyAcquirable`
+  (`Binding.PlaceAuthority.cs`): the receiver's path continued through its own layers is not shared (`ReferentAuthority`) and its
+  binding permits it (`AcquirableByBinding`: an exclusive reference, also held in a `let`; a writable Place; an inline part of a
+  writable root, `ElementAccess.WritableRoot`; a Temporary Value). The `indexUniq` binding (`Binding.Indexers.cs`) and the exclusive
+  view (`Binding.Views.cs`, whose copy goes) select by it; `PathAuthority`'s user-index and owned-`Array`-element arms apply its
+  binding half and let the rest of their walk decide the path, so a denied selection shares the element (Ref). `PathAuthority`'s
+  member arm reads every member's receiver through all layers of the receiver's own Type (`LayerAuthority`: rc, arc and objref
+  views shared, a pair layer by its weakest admitted case, SPEC 13.5.5), replacing `BorrowedPathRoot`, whose miss of `ref/(rc/T)`
+  and similar receivers fell to Owner; `IsBarePlace` finds a member's declaring Type below every layer (a handle's View Target), so
+  `p.inner@move` through `ref/(rc/Point)` is a Place without Take. The walk returns the authority its layers grant and, apart,
+  whether a binding denies a selection's receiver: `PathAuthority` bounds the path to Ref then, while a Take, which acquires
+  nothing exclusively, reads the layers alone (`OffersTake`), so its diagnostic is unchanged (`ExclusivePathTake_Kd` below a user
+  index, `StaticMovePathRequired_Kd` for an `Array` element). `AccessFailure` names a binding's denial `InvalidAssignment_Kd` (as
+  `let pair; pair[0] = 3` and `let slot = entries[1]@uniq` were) and a shared layer `SharedPathAccess_Kd`; a receiver or Reborrow
+  fails overload resolution (`NoApplicableOverload_Kd`). Why: Binding accepted writes, exclusive borrows,
+  receivers and Reborrows through `let`-owned or owned-parameter subscripts and owned `Array` elements (the MIR wrote past
+  `index`, the old path reported `TransferRequired_Kd` or `Unsupported_Kd`), and writes and Takes below an rc, arc or obj view
+  behind a reference or an element; `t.0[1].n = 5` and `vals[0][1].n = 5` below a `var` root selected `index` (wrong code on the
+  MIR, a false `InvalidAssignment_Kd` for an owned element). BU-10's guard still excludes those `var` forms; the old Emission
+  generates them correctly once they select `indexUniq` (O0, both pipelines). Rejected: B, a fourth `PathAuthority` outcome for a
+  binding's denial, read by about 25 consumers, with a handle view recorded by `ReceiverThroughLayers` (shared structure for one
+  diagnostic distinction). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -3910,6 +3963,111 @@ structure is recorded here by the unit that first implements it.
     twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
     but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
     next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.
+- **R5-M78 The first program's forms brought forward: `Ref`, the Keep and Elide drops, the string glue and gate step 2's stand-in**
+  (2026-10-19, C lane; plan C0c, package C §3.2, §3.6 and §3.8; owner, 2026-10-19: 「C0b2 の次の作業順を (a) 前倒しする」, choosing
+  (a) "bring C2b's unprojected-local `Ref` and C4a's string Keep/Elide Drop forward with a stand-in for gate step 2, a temporary
+  structure removed by C4a" over (b) "keep the package order"; under R5-M18 form 1, R5-M65 and R5-M73) Brought forward, each a whole
+  row of its table: C2b's `Ref` over the place writer (`FunctionCodegen.Rvalues.cs`; every `MirRefKind` is one pointer, IMPL 21.1.3;
+  the place writer's one covered Place is a local without projection that has storage, its home); C4a's Drop verdict rows
+  (`FunctionCodegen.Drops.cs`): a Keep destroys exactly when `MirTypes.MayNeedDrop(TypeOf(item, body.TypeOf(place)))` holds, the rule
+  the collector targets a Drop's glue by: refuted (a Type parameter instanced at a Type that owns nothing), nothing is written; else it
+  calls the collector's target, the Type's DropGlue item, on the Place's address with the Drop's location text, and a missing target is
+  `InternalInvariant_Kd` (package C 3.2 I8); Elide writes nothing. PD18's string row of the glue table: `DropGlue.Release` (the file K7
+  created) gives a Type's routine, the runtime release for a string, and every other Type is that table's located `Unsupported_Kd`
+  (C4a); ModuleCodegen names and signs the item (`__kimi_drop<item>`, `void (ptr, ptr, i64)`, `DropGlue.Parameters`, package C 3.3),
+  and `FunctionCodegen.WriteGlue` writes its function, the routine called with its own parameters through the call writer the
+  `writeLine` row uses (PD3).
+  - Why a stand-in: under sel `Accepts` reads the old analysis (`MirRecords` holds construction, validator and collector records
+    only), so the MIR analyses' A1 and A2 problems refuse nothing. Ledger row a1-whole-incomplete's `let a: [2 of string] = ["a",
+    "b"]` / `_ = a[0]@move` / `a.indices` is accepted with A1's `MovedPlace_Kd` at `a.indices` and a Keep row in its body. R4-M6a
+    makes A2's verdicts exact only for programs A1 accepts. Rule (temporary): a Drop row is written only for a program whose MIR
+    analyses recorded no problem whose requirement is in the Ownership partition: A1 with its arena record, A2 and, conservatively, A4
+    and A5. A3's control-flow problems do not gate (PD12). The check runs once per program version. Otherwise the Drop is one
+    location-only `Unsupported_Kd` at its location in the Emission partition. A runtime Drop without a group in a program it passes
+    is `InternalInvariant_Kd` (PD12). Removal: C4a's per-body gate step 2, which records the problem's own code at its subject (package
+    §3.8) once R4's 1c-8 publishes `MirProblem.Body` (G125). It must attribute an inline copy's problem, which R4's 1c-6 reports as its
+    template's, to the caller body.
+  - Kept: C2b keeps the projected and zero-sized `Ref`s (the zero-sized address symbol) and the other rvalues; C4a the glue of the
+    other Types (from `DropGlue.Parts`), the per-body step 2 with its refusal record and the entry superseding R4-M1, and this
+    stand-in's removal; C4s its matrix except the string rows' IR checks. Every C0c string is Static, so E2's audit sees no free; heap
+    strings come with C8c and C9c.
+  - `StringEmissionTest.WriteAuditedFixture` finds the audited constants among the audited module's own definitions (both generators'
+    `LlvmConstantPool`), not through the old generator's module: under sel the old module's numbering named other strings, so two
+    audit fixtures failed natively while the code was right.
+  - Departure (for the owner's departures list at R5's group review): rows of C2b and C4a (G:C-aggregate, G:C-drop) land in a
+    G:C-frame unit ahead of the package order. Gate step 2 is a program-wide stand-in over the Ownership partition, wider than PD12's
+    per-body A1/A2 rule. It records `Unsupported_Kd` at the Drop rather than the problem's code at its subject, because that record
+    needs G125 and byte facts A1's arena record does not keep. Glue bodies are written by `FunctionCodegen.WriteGlue` through the one call writer and
+    named by ModuleCodegen, so `Backend/DropGlue.cs` keeps the glue table (`DropGlue.Release`), not package 3.6's glue writing;
+    C4a extends that table (round-2 review note).
+- **R5-M79 Mir/Build's syntax-class decisions read published facts** (2026-10-19, W1; plan Q16, Q8 package §3.5 and D6; under
+  R5-M10 and R5-M23; DEC Q6 form 1) The 17 sites R5-M10 left, where a Koto type test chose an operation, read the fact that decides
+  it: `HirOp.Continue` (a transfer), `HirOp.Group` (a parenthesized Place), `Binding.WritesText` (an interpolation's text bytes, the
+  text read from its literal), `BoundFormatting.Acquisition` (an owning interpolation's calls before its writes), the Type kind (a
+  FixedArray aggregate, a Tuple's being any other, Unit included), `TyCtxt.Signature`'s count (a call's and a body's parameters), the
+  symbol kind (a definition's body: Function or none, PropertyAccessor, a static Property), `AdtDef.IsConstructor`, and the two views
+  of Q8 D6: `Binding.Reassignable(symbol)` (`Binding/Binding.Reassignable.cs`, which owns the rule with `IsMutableDeclaration`;
+  computed, no state) for every local, Pattern binding, iteration slot and static, replacing three copies in Binding (the package named
+  two; `Binding.Closures`' exclusive capture is the third), and a Tuple element's position on its Field node's own row
+  (`PlanRow.Folded`), which the publisher's `Fold` writes beside a ConstIndex's. ElementAccess.cs, due by AGENTS' three-units rule,
+  gets no split: its one change replaces a copy of the expression by a call to its owner, no logic added (by analogy with the
+  propagation form DECISIONS Q7 exempts); its old-path members leave at R6.
+  - Decided beyond the package: (a) the closure fact in Mir/Build is the published closure definition, `BoundClosure.Of`: the Opaque
+    roots walk and the default-edges walk, the default templates (a closure has none, SPEC 7.2.2) and `Module`'s body kind, which
+    `Body` and `Bound` then read (`MirBodyKind.Closure`). The default-edges walk reads the call plans of the calls the template builds
+    only: none at a node published `HirOp.Syntax` (a replaced or covered part; it goes on to the parts below, which may be evaluated),
+    `Error` or `Unset` (an Opaque value, no call built), so a closure Binding did not define, published Error with its body replaced
+    even where Binding bound that body first (a concrete closure without an expected Type, SPEC 23.1.2), adds no edge, and the call
+    that omits the default takes an Opaque value built at the call (review rounds 1 and 2, B1; `MirBuildTest.AFailedClosureInADefaultIsNoEdge`). (b) Sites with the same cause, replaced too:
+    `MirBuilder.cs:108` (defaults of a closure), `:222` (a body's parameter count), `MirBuilder.Blocks.cs:135` (a local's mutability)
+    and `MirBuilder.Formatting.cs:31` (an interpolation's form); `Bind`'s loop parameter is gone. (c) `Binding.WritesText` is the one
+    classification of a text write, which `Binding.HasFacts` (an interpolation's write needs a Type argument unless it writes text) and
+    the builder's estimate read.
+  - Not sites (syntax data, R5-M10): `Published`'s value-child switch, a constructor's base call, the literal forms under
+    `HirOp.Literal` (G122).
+  - Rejected: a stored `BindingSymbol.Mutable` (Q8 open point 6: computed); `HirOp.Closure` for the walks (a closure whose creation
+    failed is published Error, and one in a replaced part Syntax, though its body is built, R5-M63); a Type-kind test for Tuple (an
+    empty Tuple literal's Type is Unit); a constructor view (`AdtDef.IsConstructor` exists); `HirOp.Literal` for a text write (the
+    interpolation's facts are judged before its parts are published); stopping the edges walk at a Syntax node (a covered callee's
+    receiver and a `$tryWrite` text's values lie below one).
+- **R5-M80 The conversion rows and floating-point operands of MIR code generation** (2026-10-19, C lane; plan C1b, package C §3.2 I5,
+  I7 and I9, §3.9, audit rows Cast Integer to IntToPointer and Const Float; under R5-M18 form 1, R5-M17 and R5-M76) `FunctionCodegen.Casts`
+  writes a Cast into an unprojected local through `LlvmScalarText`'s conversions (P4b) by one table, `ConversionOf`: a switch keyed by
+  the `MirCastKind`, the source's and the target's class (a signed or unsigned integer, a wrapping one by its argument; floating point; a
+  raw pointer) and the sign of the target's width less the source's (Layout). A row is the LLVM cast, null where the representation is
+  kept (same-width integers, a raw pointer to a raw pointer), and its check, one P4b writer: Range (SPEC 13.5.4: each side where the
+  source holds a value the target cannot, `slt` and `sgt` or `ugt`, against the target's extreme at the source's width;
+  `WriteCheckedConversion`, KIMI_E_INT_CONVERSION), Truncation (float to integer: the minimum's predecessor where the significand holds
+  it, `ule`, else the minimum, `ult`, and 2^(N - sign), `uge`, unordered so NaN and the infinities fail; the same writer) and Narrowing
+  (f64 to f32: the f32 maximum plus half an ulp, ordered; `WriteFloatingNarrowing`, KIMI_E_FLOAT_CONVERSION, so NaN and the infinities
+  convert). A Proven Cast writes no check; a Range whose closed Types leave no side (an instance of a generic conversion, which the
+  builder cannot bound) writes the cast alone. A new form adds a row. Upcast (C6a) and Erasure (C5b) have none: a located
+  `Unsupported_Kd`, as is a Cast of a raw pointer's null (C8a); 128-bit to or from floating point stays the collector's capability gap.
+  - Floating-point operands: R5-M76's table gains its fifth column (f32, f64): fadd, fsub, fmul, fdiv and fneg, and the fcmp
+    predicates oeq, une, olt, ole, ogt and oge (SPEC 13.4: a NaN operand makes `!=` true and the others false; +0.0 == -0.0); SPEC
+    defines no floating remainder, bitwise or shift operator, so those entries are empty. A unary operator's fixed operand belongs to its
+    entry (Neg's integer entries subtract from 0, Not's xor with -1; fneg has none and keeps the sign of zero), and a Proven operation
+    takes its column's unchecked column (`Unchecked`: an integer's wrapping column, any other its own). `Rows` is checked at type
+    initialization against both operator enums and the column count (C1a's review, item 5).
+  - Floating constants: a Value of prefix `x` is LLVM's hexadecimal double; an f32 constant is widened exactly in code, so a NaN keeps
+    its payload and signaling bit, which a hardware widening sets (the old generator's does, an open issue). `WriteValue` spells through
+    the one `Spell`, and C1a's failure operands are one `Failure` for both tables.
+  - Rejected: a second operator table for floating point; a row-level fixed operand (`fneg` takes none, and `fsub 0, x` loses -0.0);
+    per-form arms or a plan computed beside the table (the old `BodyLowering.PlanConversion` shape); a Proven test in codegen; a check
+    written with no test (`WriteCheckedConversion` needs a bound); the runtime's float-to-double conversion for constants.
+- **R5-M81 The pending ledger's gate** (2026-10-19, E lane; plan E11, PD10, OQ9; under R5-M8, R5-M66 and R5-M73; removed with the
+  ledger at G4, OQ9) Under `-Codegen mir` a run passes only when its failing set equals the ledger within its scope (R5-M66's
+  coverage): an entry that passes now, is no longer executed or is added fails it. The verdict is the `codegen pending` step's, after
+  the tests, native steps and milestones (a fixture's state needs every native step); the sel test and native steps fail only on
+  missing evidence (no executed case, a selector executing none, a run error the results record, a selected fixture without a result),
+  so listed fixtures run. A sel Session discovers its methods too, and a selected method the results record no case of (a partial run)
+  fails the step without a report. `verify.ps1 -UpdatePending` (sel only) writes the ledger from the run's `codegen-pending.json`
+  after the input-stability step, and only when the gate is the run's one failed step: pending and out-of-scope rows stay in their
+  files, rows that pass now or are no longer executed leave, and an added row is filed by R5-M73's rule, whose one owner is
+  `Get-KimiCodegenGroup` (`scripts/codegen-pending.ps1`); an unchanged file is not written, an emptied one is removed, and that run is
+  not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
+  - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
+    input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
 - **R5-M82 Unsupported static storage is a capability row at its declaration** (2026-10-19, K lane; unit K11b, the planning session's
   decisions on R4's sel pending check and on K11b's review; under R5-M18, R5-M40, R5-M53 and R5-M77; the capability rows approved with
   the K package, §11) Since K11 MIR code generation reaches only what an output requires, so a form a codegen coverage row refused only

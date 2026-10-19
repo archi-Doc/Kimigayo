@@ -58,7 +58,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("ReferenceTemporary" + name, ir, stdout);
-        StringEmissionTest.WriteAuditedFixture("ReferenceTemporary" + name, source, ir, stdout, audit);
+        StringEmissionTest.WriteAuditedFixture("ReferenceTemporary" + name, ir, stdout, audit);
     }
 
     [Theory]
@@ -154,7 +154,7 @@ public class ReferenceEmissionTest
         Assert.DoesNotContain("noalias", ir);
         var functionText = ir[ir.IndexOf("define internal i1 @__kimi_f0", StringComparison.Ordinal)..];
         Assert.DoesNotContain("readonly", functionText);
-        StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", Source, ir, "a\n", "a=1");
+        StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", ir, "a\n", "a=1");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -268,7 +268,7 @@ public class ReferenceEmissionTest
     {
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("ReferenceAbort" + name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture("ReferenceAbort" + name, source, ir, string.Empty, "held=0", 1, stderr);
+        StringEmissionTest.WriteAuditedFixture("ReferenceAbort" + name, ir, string.Empty, "held=0", 1, stderr);
     }
 
     [Fact]

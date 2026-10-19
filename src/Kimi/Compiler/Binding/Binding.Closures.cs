@@ -502,7 +502,7 @@ public sealed partial class Binding
         }
 
         var exclusive = capture.Operation == Constants.UniqKeyword;
-        if (exclusive && !(source.MutableCapture || IsMutableDeclaration(source.Declaration)))
+        if (exclusive && !Reassignable(source))
         {
             return BindingFailure.InvalidAssignment; // A let binding's slot grants no Write (SPEC 15.1.5).
         }

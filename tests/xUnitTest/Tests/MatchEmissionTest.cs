@@ -68,7 +68,7 @@ public class MatchEmissionTest
     {
         name = "Match" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, expected);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, expected, destructions);
+        StringEmissionTest.WriteAuditedFixture(name, ir, expected, destructions);
     }
 
     [Theory]
@@ -199,7 +199,7 @@ public class MatchEmissionTest
         name = "MatchAbort" + name;
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, destructions, 1, stderr);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, destructions, 1, stderr);
     }
 
     [Theory]
@@ -216,7 +216,7 @@ public class MatchEmissionTest
     {
         const string Source = "let result = match \"subject\"@move\n    _\n        let local = \"local\"\n        defer => Console.writeLine(\"cleanup\")\n        yield \"result\"\nConsole.writeLine(result)";
         var ir = ScalarEmissionTest.EmitFixture("MatchCleanupOrder", Source, "cleanup\nresult\n");
-        StringEmissionTest.WriteAuditedFixture("MatchCleanupOrder", Source, ir, "cleanup\nresult\n", "subject=1;local=1;cleanup=1;result=1", order: [2, 1, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture("MatchCleanupOrder", ir, "cleanup\nresult\n", "subject=1;local=1;cleanup=1;result=1", order: [2, 1, 0, 3]);
     }
 
     [Fact]
