@@ -1167,15 +1167,22 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.DoesNotContain(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Intrinsic });
     }
 
-    // SPEC 4.6.1 (DECISIONS R5-M84): a position of a Type parameter, whose range its instance decides, is one located Unsupported_Kd.
-    [Fact]
-    public void APositionOfATypeParameterIsUnsupported()
+    // SPEC 4.6.1, 23.1.2 (DECISIONS R5-M84, R5-M63): a position of a Type parameter, whose range its instance decides, is one located
+    // Unsupported_Kd at the position. Its value is built already, so the Opaque in its place names that value's root, not the position's
+    // syntax, and a root the value moved is not used again there (fail-before: a MovedPlace_Kd at conv<I>(b@move)).
+    [Theory]
+    [InlineData("values[p]", "p")]
+    [InlineData("values[conv<I>(b@move)]", "conv<I>(b@move)")]
+    [InlineData("values[^conv<I>(b@move)]", "conv<I>(b@move)")]
+    public void APositionOfATypeParameterIsUnsupported(string selection, string position)
     {
-        var c = Compile("func f<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\n");
+        var c = Compile("struct Box\n    public var n: i32 = 1\n    public init() => ()\nfunc conv<I>(b: Box) -> I\n    I is PrimitiveInteger\n" +
+            $"    return 1\nfunc f<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let b = Box.init()\n    return {selection}\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
-        Assert.Equal((DiagnosticCode.Unsupported_Kd, "p"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, position), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
     // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one

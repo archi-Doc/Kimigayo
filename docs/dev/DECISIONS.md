@@ -4074,7 +4074,9 @@ structure is recorded here by the unit that first implements it.
   isize (and Never) is used; a Type whose range lies within isize's (`Within`, the rule a Conversion's Proven shares, IMPL 21.3.3) is a
   Proven Integer Cast; another (i128, u64, usize, u128; i64 and u32 on a 32-bit target) is first compared with isize's extremes in its
   own Type, the minimum only where it is signed, each failing test leaving for a block that writes -1 (`Unresolved`), and is otherwise
-  the Proven Cast. A Type parameter's range is its instance's, which no builder rule decides: a located `Unsupported_Kd` (open issue).
+  the Proven Cast. A Type parameter's range is its instance's, which no builder rule decides: a located `Unsupported_Kd` (open issue),
+  whose Opaque names the built value's root, not the position's syntax (R5-M63's rule: an Opaque site names a part located already by
+  its Place's root), so a root the value moved is not used again there.
   A written `^x` is `L - x` where `0 <= x` (a literal in range proves it), else -1 by the same join, so every boundary is evaluated
   before the selection fails, at the selection (SPEC 4.7.4, 22.5.1). MIR has no select form, so the shape is a diamond (a select at
   O2); the position local stays the selection's (R4-M56), written on both arms. No vocabulary entry.

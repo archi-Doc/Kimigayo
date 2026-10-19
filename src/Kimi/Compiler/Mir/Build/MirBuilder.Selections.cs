@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Mir;
@@ -76,7 +77,15 @@ internal sealed partial class MirBuilder
 
         if (this.Width(type, out var signed) == 0)
         {
+            // The value is built already: located there, the Opaque in its place names its root, not the position's syntax (R5-M63).
+            var mark = this.located.Count;
+            if (position.Kind != MirOperandKind.Const)
+            {
+                this.located.Add((node, position.Place));
+            }
+
             this.Unsupported(node, local);
+            CollectionsMarshal.SetCount(this.located, mark);
             return local;
         }
 
