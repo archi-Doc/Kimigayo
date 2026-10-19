@@ -23,7 +23,8 @@
 // witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
-// Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
+// Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
+// P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
 // the Type argument of an intrinsic whose row names one), each type-driven item's Type and a DropGlue's collection element Types (X34) take
@@ -32,9 +33,10 @@
 // storage derives from a Binding error; a type-driven item needs an Ok verdict.
 // Admission (K 4.6, X19): a new key is admitted once; its representative is the first composed substitution or Type, erased only into the
 // key (KD3). A call of a nested function whose substitution does not carry its enclosing instance (DECISIONS R5-M43), a substitution
-// TyCtxt cannot make, an access of a static of a generic container's group (X33 (a)) and OCC-X's refused witness are the capability
-// table's gaps; depth past 128, 16 ancestors of the same definition and 1,024 items of one definition are GenerationResourceLimit_Kd; a
-// representative that is open or leaves its body open, and a requirement call of a closed Self without a witness, are InternalInvariant_Kd.
+// TyCtxt cannot make and OCC-X's refused witness are the capability table's gaps (an access of a static of a generic container's group
+// is none: its declaration is, X33 (a), R5-M82); depth past 128, 16 ancestors of the same definition and 1,024 items of one definition
+// are GenerationResourceLimit_Kd; a representative that is open or leaves its body open, and a requirement call of a closed Self without a
+// witness, are InternalInvariant_Kd.
 // A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached; code generation's records take the same rule.

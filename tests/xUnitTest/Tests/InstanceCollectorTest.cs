@@ -1039,8 +1039,9 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.5 row 7: a static's access is its initializer's StaticInit body (MirProgram.StaticInit), a root in the root module, also from an
-    // instance; an access of a static of a generic container's group, also in an instance, is the generic-static-key gap, Unsupported_Kd at
-    // the access (X33 (a): generic storage keys are P42's), which the old path accepts for this immutable scalar (an R5-M18 (e) row).
+    // instance; a static of a generic container's group has no instance key (X33 (a): generic storage keys are P42's), so its accesses admit
+    // nothing and its declaration is the static-storage gap once (DECISIONS R5-M82, superseding R5-M60's record at each access), which the
+    // old path accepts for this immutable scalar (an R5-M18 (e) row).
     [Fact]
     public void AStaticAccessIsItsInitializer()
     {
@@ -1053,8 +1054,28 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["StaticInit total"], Targets(program, set, "Fn use"));
         Assert.Equal(["StaticInit total"], Targets(program, set, "Fn read [bool]"));
         Assert.InRange(Item(program, set, "StaticInit total"), 0, set.RootCount - 1);
+        Assert.Equal([(DiagnosticCode.Unsupported_Kd, "public let count: i32 = 0")], set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // DECISIONS R5-M82: a root-module static of storage P42 has not brought (a var, a Type that is not a scalar, a static of a generic
+    // container's group, a literal one included) is the capability table's static-storage gap, Unsupported_Kd at its declaration, whether or
+    // not anything reads it (K11 generates only what an output requires); an immutable scalar of a closed group is none, also one with a
+    // first-access initializer.
+    [Theory]
+    [InlineData("group State\n    public var counter: i32 = 0\nlet x = 1\n", "public var counter: i32 = 0")]
+    [InlineData("group State\n    public var counter: i32 = 0\nlet x = State.counter\n", "public var counter: i32 = 0")]
+    [InlineData("group State\n    public let pair: (i32, i32) = (1, 2)\nlet x = 1\n", "public let pair: (i32, i32) = (1, 2)")]
+    [InlineData("group State\n    public let counter: i32 = 0\nlet x = State.counter\n", null)]
+    [InlineData("group State\n    public let counter: i32 = 0\nlet x = 1\n", null)]
+    [InlineData("group State\n    public let counter: i32 = State.start()\n    public func start() -> i32 => 3\nlet x = State.counter\n", null)]
+    [InlineData("struct Cache<T>\n    public group Statistics\n        public let count: i32 = 0\nlet x = 1\n", "public let count: i32 = 0")]
+    public void UnsupportedStaticStorageIsAGapAtItsDeclaration(string source, string? declaration)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal(
-            [(DiagnosticCode.Unsupported_Kd, "Cache<i32>.Statistics.count"), (DiagnosticCode.Unsupported_Kd, "Cache<T>.Statistics.count")],
+            declaration is null ? [] : [(DiagnosticCode.Unsupported_Kd, declaration)],
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
@@ -1420,8 +1441,8 @@ public sealed class InstanceCollectorTest
     }
 
     // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
-    // program, which the old analysis rejects at the same accesses), whose accesses of a static of a generic container's group are the
-    // generic-static-key gap (X33 (a), DECISIONS R5-M18, R5-M60).
+    // program, which the old analysis rejects at the same accesses), whose statics of P42's storage (vars, Resource lets, the unused one
+    // included, and the static of a generic container's group, X33 (a)) are the static-storage gap at their declarations (DECISIONS R5-M82).
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void TheMilestonesHaveNoCollectorRecordUnderMirCodegen(string name)
@@ -1431,8 +1452,12 @@ public sealed class InstanceCollectorTest
             return;
         }
 
-        string[] expected = name != "milestone/Milestone42" ? [] :
-            [.. new[] { "i32", "i32", "string", "string", "i32", "string" }.Select(static x => $"Unsupported_Kd Cache<{x}>.Statistics.hits")];
+        string[] statics =
+        [
+            "public var count: i32 = Registry.initialCount()", "public let primary: Resource = Registry.makeResource(1)",
+            "public var replaced: Resource = Registry.makeResource(2)", "public let unused: Resource = Resource.init(9)", "public var hits: i32 = 0",
+        ];
+        string[] expected = name != "milestone/Milestone42" ? [] : [.. statics.Select(static x => "Unsupported_Kd " + x)];
 
         var c = Compilation.CreateForTest();
         c.Pipeline = CompilerPipeline.Mir;

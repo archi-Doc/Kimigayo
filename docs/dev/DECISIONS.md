@@ -3538,7 +3538,8 @@ structure is recorded here by the unit that first implements it.
     (`Unsupported_Kd` at each access; X33 (a)). Search (K7's condition): over the library, the 44 milestones, the mutation, syntax and pair
     corpora (456 cases) and the 63 spec-case variants, only Milestone 42 uses the form, P42's completion program, which the old analysis
     rejects at the same accesses; no accepted program does. An immutable scalar `let` there, which the old path accepts and builds, is
-    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit.
+    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit. Superseded
+    by R5-M82 (2026-10-19): such a static is the `StaticStorage` row once at its declaration, and its accesses carry no record.
   - The plan row's "through a `MirTypes.Destruction` visitor" is `MayNeedDrop` (presence) with `DropGlue.Parts` (the parts), as X3 and
     X27 decided.
   - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
@@ -4067,3 +4068,32 @@ structure is recorded here by the unit that first implements it.
   not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
   - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
     input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
+- **R5-M82 Unsupported static storage is a capability row at its declaration** (2026-10-19, K lane; unit K11b, the planning session's
+  decisions on R4's sel pending check and on K11b's review; under R5-M18, R5-M40, R5-M53 and R5-M77; the capability rows approved with
+  the K package, §11) Since K11 MIR code generation reaches only what an output requires, so a form a codegen coverage row refused only
+  when every item was written is accepted when nothing reaches it; for a form no common rule covers, that accepts a narrow subset of it
+  (AGENTS Diagnostics). Static storage is one such form (P42; STATUS "Static members"). The capability check decides it from facts the
+  Backend reads, MIR code generation's own contract: a verified static of a root module is the `StaticStorage` row, `Unsupported_Kd` at
+  its declaration (its StaticInit body's source), used or not, when it can be set (`BoundProperty.Setter.IsPresent`: a `var`), when its
+  StaticInit body's result Type is not a scalar (`ScalarTypes`: an aggregate, borrowed or drop-needing Type) or when its definition
+  instantiates (`TyCtxt.Instantiates`: a static of a generic container's group, whose storage the MIR keys by its symbol alone, a literal
+  `let` included). It comes from the collector's definition-stage scan of root-module bodies (A3b), so under MIR code generation it rejects
+  at check (R5-M41). An unverified static is Binding's error; an immutable scalar of a closed group, also one with a first-access
+  initializer, is no record. Removal condition: P42, not C7b.
+  - One record per cause: this row supersedes R5-M60's `GenericStaticKey`, which recorded each access of a static of a generic
+    container's group; such an access admits nothing and records nothing (the declaration is the record), and the row is deleted. The
+    bundled library declares no such static (its rooted check, P5, has no record). Changed expectations: `AStaticAccessIsItsInitializer`
+    (one record at `public let count: i32 = 0` for the two accesses) and Milestone 42 (five declarations, no access records).
+  - Pending rows (R5-M73's rule applied by hand): the sel cases whose programs declare unsupported static storage now reject at check:
+    `CallableEffectBoundTest.FunctionItemsUseTheirTransitiveEffects` (closure, C5a's Callable*), `EffectBoundReportTest.ReportsTheViolatingEffect`
+    x3 and `MilestoneSourcesTest.AuthoredProgramsMatchTheirRecordedStageAndDiagnostic` (C-frame, no unit names them),
+    `Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction` x2 (format, C9a's Utf*); their fixtures are unchanged.
+  - Search for other forms that relied on every item being written: the remaining coverage rows (Closure, DefaultTemplate and StaticInit
+    bodies, MIR forms, mono-item kinds, TestEntry) name forms the frame will write, so an unreached one is no accepted subset.
+  - Rejected: the old pipeline's `StaticScalar` predicate (it decides by syntax, the Backend may not read it, and a `Supports` wrapper over
+    it would be a `Supports*` gate; editing the frozen old generator to share it is outside D5); a pending row for the unused static (it
+    would ledger the unsound acceptance); a row for every StaticInit (it refuses statics C7b supports); a `var`-only row (one rule for
+    P42's remainder); coverage records for items outside Generated (codegen requests only Generated items, R5-M77).
+  - Verified: an unused and a read static `var`, an aggregate `let` and a literal `let` of a generic container's group are the gap at the
+    declaration; an immutable scalar `let`, literal or first-access, is none; `ModuleEmissionTest`'s unused-dependency `var` is refused
+    under both pipelines.
