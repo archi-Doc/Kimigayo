@@ -3690,3 +3690,23 @@ structure is recorded here by the unit that first implements it.
     and clause) without a target or the override's instance; both failed-override outcomes without a record; type tests and a clone
     without a target or record (an oversized never-created struct, a never-created Leaf<i32>); warm collection 0 B. Under sel the
     library roots and the 44 milestones give no new record.
+- **R5-M75 A tuple operator is expanded in MIR over its leaves** (2026-10-19, W1; plan F7, PD15 as package F item 5 and §4.8 refine
+  it, S2-S4 row 7; under R5-M68; DEC Q6 form 1) A comparison whose `CallPlan.TupleOperator` is set is built by `MirBuilder.Expand`
+  (`MirBuilder.Calls.Comparisons.cs`, which `==` now reaches too) from `TyCtxt.Comparison(the built-in target's Contract,
+  call.ConformingType, operators: true)` instead of its whole-tuple call (SPEC 13.4, 13.4.1, 12.4.3). Operands: the call's two inputs
+  as Binding adapted them, the `ref/Self` views, the left pending and secured as a built-in operator's, never moved; the leaves are
+  Places below them, depth first (a Tuple part its Field, a `ref` layer its referent; the Never value its own leaf). A Builtin leaf's
+  pair is its Places Copied, a string's (the one built-in leaf Type that is not Copy) shared borrows, Copied: a `Binary` as a direct
+  string comparison builds, which code generation lowers to the string comparison call (the package's "string call"; MIR has none);
+  a Witness leaf is a `Fn` callee, a Requirement leaf a `Requirement` callee naming the Contract, each on fresh shared borrows; an
+  Equatable leaf's bool is its equality, a Comparable leaf's i32 is paired with 0. Each leaf but the last tests `Eq` of its pair (an
+  Equatable leaf its bool) and branches: equal goes on, unequal decides by the operator on the pair (for `==` and `!=` the test's bool
+  or its negation); the last leaf decides by the operator on its pair; each path writes the destination once and every `Binary` is
+  proven. IEEE makes an unordered pair unequal and its ordering false (SPEC 13.4). A null `Comparison` (a Limit) is one located
+  `Unsupported_Kd` with an Opaque value, the operands not built; a None leaf is `InternalInvariant_Kd` with a derived Opaque result
+  (R5-M68). `ComparisonPlan(CallPlan)` stays for its old readers (H11). A1–A5 see two shared Loans live to the join, Copies through
+  them, reborrows into each leaf call and an edge per Contract leaf: A4 no longer meets a composite built-in comparison's Limit for a
+  tuple operator (`MirEffectsTest`'s generic row), nor the collector a Builtin shim (its shim test retargeted to generic instances'
+  Contract-mapping comparisons, the shims' remaining producers). Rejected: a string leaf as a call (F6's Builtin leaf names no callee;
+  a second form of one comparison); testing the last pair too and deciding all-equal by a constant (a redundant test, two string
+  passes); deciding `==` by recomputing the pair (a second comparison); the legacy four-valued relation code (a new form).
