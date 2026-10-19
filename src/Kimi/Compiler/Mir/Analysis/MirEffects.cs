@@ -32,21 +32,16 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
     private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
-    private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number,
-    private readonly List<BindingSymbol> fields = []; // and the Field of each number (P5: one key per Field).
     private int[] bases = []; // The first node of each body, by ordinal: a node is a body view.
     private int[] owners = []; // The body of each node.
     private byte[] local = []; // The classes of each node's local facts.
     private int[] itemEnds = []; // The end of each node's local inputs in items.
     private int[] edgeEnds = []; // The end of each node's calls in edges.
-    private int[] keyEnds = []; // The end of each node's local keys in localKeys.
     private Atom[] items = [];
     private Edge[] edges = [];
-    private int[] localKeys = []; // A key's bit: 2 × its Field's number, plus 1 for a write.
     private int nodeCount;
     private int itemCount;
     private int edgeCount;
-    private int keyCount;
     private byte found; // The classes the current evaluation or local walk found.
 
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
@@ -113,19 +108,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         }
 
         return false;
-    }
-
-    // A local access to a mutable static Field: its key, numbered by Field once per program version.
-    private void AddKey(BindingSymbol field, bool write)
-    {
-        if (!this.fieldIds.TryGetValue(field, out var id))
-        {
-            (id, this.fieldIds[field]) = (this.fields.Count, this.fields.Count);
-            this.fields.Add(field);
-        }
-
-        MirDataflow.Grow(ref this.localKeys, this.keyCount + 1);
-        this.localKeys[this.keyCount++] = (2 * id) + (write ? 1 : 0);
     }
 
     // SPEC 8.11.2, 8.11.4, 8.11.6: what a terminator adds. A published operation adds its row through the call's substitution, never
