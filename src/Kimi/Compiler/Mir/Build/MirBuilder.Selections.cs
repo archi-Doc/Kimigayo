@@ -5,7 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Built-in selections (SPEC 4.6, 4.7): an element of a fixed array, Array, Slice or UniqSlice at a literal or runtime position, or a range
-// of them as a Slice; the receiver is located once, before the index (SPEC 4.7.4), and each position is the isize the selection reads.
+// of them as a Slice; the receiver is located once, before the index (SPEC 4.7.4), and each position is the isize the selection reads,
+// which only the selection's one bounds check rejects (SPEC 4.6.3).
 internal sealed partial class MirBuilder
 {
     // SPEC 15.1.3: a fixed-array element at a literal position in range (its PlaceShape): at the position the index's own plan row keeps
@@ -57,27 +58,61 @@ internal sealed partial class MirBuilder
     private MirPlace Handle(MirPlace sequence, Koto node) => MirTypes.SelectsByValue(this.body.TypeOf(sequence))
         ? this.Secure(MirOperand.Copy(sequence), node).Place : sequence;
 
-    // SPEC 4.6.1: a position as the isize a selection reads, its value compared mathematically: a Type no wider than isize wraps (a same-width
-    // unsigned value isize cannot hold reads as negative, which the bounds check rejects), a wider one converts checked; in a local located
-    // at its selection, whose subject A1 reports an access through its Index under (DECISIONS R4-M56).
+    // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84): a position as the isize a selection reads, its value compared mathematically: the value
+    // where isize holds it, else -1 (Unresolved), which the selection's one bounds check rejects at the selection; it has no check of its
+    // own. A Type whose range lies within isize's (Within: i8 to i32 and u8 to u32 on a 64-bit target) converts proven; another is first
+    // compared with isize's extremes in its own Type, the minimum only where it is signed. A Type parameter's range is its instance's, which
+    // no rule here decides (Unsupported). The local is located at its selection, whose subject A1 reports an access through its Index under
+    // (DECISIONS R4-M56).
     private MirPlace Position(in MirOperand position, Koto node, Koto selection)
     {
         var type = this.TypeOf(position) ?? BoundType.ISize;
         var local = this.Temp(BoundType.ISize, selection);
-        var operand = this.body.AddOperand(position);
-        var wraps = this.Width(type, out _) is var width and > 0 && width <= compilation.PointerWidth;
-        MirRvalue value;
-        if (ReferenceEquals(type, BoundType.ISize))
+        if (ReferenceEquals(type, BoundType.ISize) || ReferenceEquals(type, BoundType.Never))
         {
-            value = MirRvalue.Use(operand);
-        }
-        else
-        {
-            value = MirRvalue.Cast(wraps ? MirCastKind.Wrap : MirCastKind.Integer, operand, BoundType.ISize) with { Proven = wraps };
+            this.Use(local, position, node);
+            return local;
         }
 
-        this.Set(local, value, node);
+        if (this.Width(type, out var signed) == 0)
+        {
+            this.Unsupported(node, local);
+            return local;
+        }
+
+        var outside = this.Within(type, BoundType.ISize) ? -1 : this.body.AddBlock();
+        if (outside >= 0)
+        {
+            var value = position.Kind == MirOperandKind.Move ? MirOperand.Copy(position.Place) : position;
+            var test = this.Temp(BoundType.Boolean, node);
+            var extreme = Int128.One << (compilation.PointerWidth - 1);
+            if (signed)
+            {
+                this.Compare(test, MirBinaryOp.Le, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type, -extreme))), value, outside, node);
+            }
+
+            this.Compare(test, MirBinaryOp.Le, value, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, type, extreme - 1))), outside, node);
+        }
+
+        this.Set(local, MirRvalue.Cast(MirCastKind.Integer, this.body.AddOperand(position), BoundType.ISize) with { Proven = true }, node);
+        if (outside >= 0)
+        {
+            this.Unresolved(local, outside, node);
+        }
+
         return local;
+    }
+
+    // SPEC 4.6.1, 4.6.3: a position that does not resolve, where its tests leave for outside, is -1, which the selection's one bounds check
+    // rejects; building goes on where it joins the resolved one.
+    private void Unresolved(MirPlace position, int outside, Koto node)
+    {
+        var join = this.body.AddBlock();
+        this.body.Terminate(this.current, MirTerminator.Goto(join, this.Info(node)));
+        this.current = outside;
+        this.Use(position, MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize, -1))), node);
+        this.body.Terminate(outside, MirTerminator.Goto(join, this.Info(node)));
+        this.current = join;
     }
 
     // SPEC 4.6.3, 4.8.1: a built-in range selection: the receiver located once and its range resolved against its length, a range written
@@ -157,10 +192,10 @@ internal sealed partial class MirBuilder
         this.Serve(destination, CompilerFunctionKind.RawSlice, null, [element], at, index);
     }
 
-    // A selection's position (SPEC 4.6.1, 4.7.1): an integer as the isize it reads; a written ^x, which resolves only for 0 <= x <= L, the
-    // length minus x. An offset below 0 fails as an out-of-bounds position (KIMI_E_INDEX_BOUNDS, SPEC 22.5.2), a literal one in range proving
-    // it, so the subtraction cannot overflow; an offset past the length gives a negative position, which the selection's bounds check rejects.
-    // The position is a local located at its selection (Position).
+    // A selection's position (SPEC 4.6.1, 4.7.1): an integer as the isize it reads (Position); a written ^x, which resolves only for
+    // 0 <= x <= L, the length minus x where 0 <= x, a literal in range proving it, so the subtraction cannot overflow, else -1 (Unresolved);
+    // an offset past the length gives a negative position. Neither fails here: the selection's one bounds check rejects it, after every
+    // boundary is evaluated (SPEC 4.7.4), at the selection (SPEC 22.5.1). The position is a local located at its selection.
     private MirPlace Boundary(Koto node, MirPlace length, Koto selection)
     {
         if (node is not FromEndIndexKoto { Operand: var offset } || HirTables.Op(node) != HirOp.Range)
@@ -170,19 +205,23 @@ internal sealed partial class MirBuilder
 
         var operand = this.Operand(offset, expected: null);
         var x = this.Position(operand, offset, offset);
-        var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
+        var position = this.Temp(BoundType.ISize, selection);
+        var outside = -1;
         if (operand.Kind != MirOperandKind.Const || this.body.Consts[operand.Arg].Bits < 0 || this.body.Consts[operand.Arg].Bits > int.MaxValue)
         {
-            var test = this.Temp(BoundType.Boolean, node);
-            var fail = this.body.AddBlock();
-            this.Compare(test, MirBinaryOp.Le, zero, MirOperand.Copy(x), fail, node);
-            this.Fail(fail, "KIMI_E_INDEX_BOUNDS", node);
+            var zero = MirOperand.Const(this.body.Const(new(MirConstKind.Integer, BoundType.ISize)));
+            outside = this.body.AddBlock();
+            this.Compare(this.Temp(BoundType.Boolean, node), MirBinaryOp.Le, zero, MirOperand.Copy(x), outside, node);
         }
 
-        var position = this.Temp(BoundType.ISize, selection);
         var operands = this.body.AddOperand(MirOperand.Copy(length));
         this.body.AddOperand(MirOperand.Copy(x));
         this.Set(position, MirRvalue.Binary(MirBinaryOp.Sub, operands, proven: true), node);
+        if (outside >= 0)
+        {
+            this.Unresolved(position, outside, node);
+        }
+
         return position;
     }
 

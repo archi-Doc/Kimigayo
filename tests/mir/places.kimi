@@ -32,3 +32,4 @@ func nestedProjections() -> i32
     let b = a.0.0
     let n = a.0.0.0
     return n
+func wide(a: [3 of i32], w: i128, u: u64) -> i32 => a[w] + a[u + 1]

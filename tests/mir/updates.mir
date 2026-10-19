@@ -92,7 +92,7 @@ fn counters @11
       StorageLive(_19) @43 s1
       _19 = &(*_2): ref/[3 of i32] @43 s1
       StorageLive(_20) @43 s1
-      _20 = const 1_i32 as isize (Wrap) proven @45 s1
+      _20 = const 1_i32 as isize (Integer) proven @45 s1
       EndBorrow(_19) @43 s1
       (*_2)[_20] = move _18 @42 s1
       _17 = const () @42 s1
@@ -251,7 +251,7 @@ fn divergentReplacementIndex @75
     * goto bb8 check bb9 @96 s2
   bb1:
       StorageLive(_15) @85 s1
-      _15 = move _5 as isize (Wrap) proven @87 s1
+      _15 = move _5 as isize (Integer) proven @87 s1
       EndBorrow(_4) @85 s1
       drop _1[_15] -> bb14 @84 s1
   bb2:
