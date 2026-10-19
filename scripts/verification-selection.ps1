@@ -43,11 +43,16 @@ function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) 
     }
 }
 
-# The tests a run executed, as Class.Method, from its per-test results (-result-xml). xUnit reports Explicit tests not
+# The cases a run executed, the test nodes of its per-test results (-result-xml). xUnit reports Explicit tests not
 # requested as Not Run; a run without a result file executed none.
-function Get-KimiExecutedTests([string] $ResultXml) {
+function Get-KimiExecutedCases([string] $ResultXml) {
     if (-not (Test-Path -LiteralPath $ResultXml)) { return }
-    Select-Xml -LiteralPath $ResultXml -XPath '//test[@result!="NotRun"]' | ForEach-Object { "$($_.Node.type).$($_.Node.method)" }
+    Select-Xml -LiteralPath $ResultXml -XPath '//test[@result!="NotRun"]' | ForEach-Object { $_.Node }
+}
+
+# The tests a run executed, as Class.Method.
+function Get-KimiExecutedTests([string] $ResultXml) {
+    Get-KimiExecutedCases $ResultXml | ForEach-Object { "$($_.type).$($_.method)" }
 }
 
 # Every class and method selection matches one of the tests, Class.Method: the methods discovered in the freshly built
