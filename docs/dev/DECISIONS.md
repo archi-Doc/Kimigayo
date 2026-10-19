@@ -3821,6 +3821,7 @@ structure is recorded here by the unit that first implements it.
   flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
   and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
   next change.
+  - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
   package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
   DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a
