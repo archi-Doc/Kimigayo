@@ -1,35 +1,39 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76, R5-M78, R5-M80), MIR
-// code generation: the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance,
-// and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
-// Inputs: the item and its body; its Types (InstanceCollector.TypeOf) and its records' location rule (InstanceCollector.Subject, K package
-// 4.9) and targets; the program's drop table and analysis problems (A2, R4-M6a); the compilation's Layout and runtime location texts;
-// ModuleCodegen's signature table (Abi.Of under the internal convention, IMPL 21.3.1), constant pool and record list.
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76, R5-M78, R5-M80,
+// R5-M83), MIR code generation: the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the
+// item's instance, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never
+// wrong code.
+// Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
+// X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and analysis problems
+// (A2, R4-M6a); the compilation's Layout and runtime location texts; ModuleCodegen's signature table (Abi.Of under the internal
+// convention, IMPL 21.3.1), constant pool and record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored
 // into its local's slot, a pointer-passed argument and the result slot used in place; I3 exactly the blocks MirReach.Walk(body, 0,
 // checks: false) reaches, in index order, so code only the checks reach is never generated (SPEC 14.10.3); I4 an operand is loaded at
 // each use; I5 a check not Proven Aborts at its site's location text (SPEC 22.5.1); I7 every Type is Layout.Of(TypeOf(item, t)); I9 no
-// nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign to a
-// local without projection of a Use, from a Copy or Move of such a local or a Bool, Integer, Float or Unit constant (a zero-sized value
-// writes nothing, a scalar is loaded and stored in its storage representation), or of a string constant to a string local (its UTF-8
-// bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and
-// Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw pointer Cast by the conversion
-// table (FunctionCodegen.Casts); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy
-// runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1); a Ref and a Drop's Keep and Elide verdicts
-// (FunctionCodegen.Rvalues.cs, FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a), DefaultTemplate (C3a) and
-// StaticInit (C7b) bodies; projections (C2a) and statics (C7b); Aggregate, Discriminant, Len and Adapt, PairAcquire, copies of slot Types
-// and zero-sized addresses (C2b); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string operations (C8c),
-// checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a) and raw-pointer
-// constants (C8a); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot (C6c), an intrinsic (C8a,
-// C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag (C4b)
-// and Open (C4c) verdicts. A warm write allocates nothing. Files: this frame and the dispatch; the place writer and the loads and stores of
-// homes (FunctionCodegen.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs)
-// and drops (.Drops.cs).
-// Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact, compose a Subst or a
-// Type (TypeOf does), resolve a callee, select a Semantics view before a covered form depends on it (C2a), or use LINQ, Supports*,
+// nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign into
+// a Place the place writer locates (FunctionCodegen.Places: a local's home and the projections, an Index with its bounds check), after
+// its rvalue: of a Use, from a Copy or Move of such a Place or a Bool, Integer, Float or Unit constant (a zero-sized value writes nothing,
+// a scalar is loaded and stored in its storage representation), or of a string constant to a string Place (its UTF-8 bytes a pooled
+// constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and Unit operands by
+// the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw pointer Cast by the conversion table
+// (FunctionCodegen.Casts), or of a Ref, or of a fixed-array Aggregate of such operands (FunctionCodegen.Rvalues; R5-M78, R5-M83); Goto,
+// SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given
+// the call site's location text (SPEC 22.5.1); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written
+// yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; statics (C7b); a handle's or object borrow's Deref (C6a);
+// Tuple, struct, enum and Closure aggregates, Discriminant, Len and Adapt, PairAcquire, copies of slot Types and zero-sized addresses
+// (C2b); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string operations (C8c), checked 128-bit
+// arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a) and raw-pointer constants (C8a);
+// calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot (C6c), an intrinsic (C8a, C10a) or another
+// legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag (C4b) and Open (C4c)
+// verdicts. A warm write allocates nothing. Files: this frame and the dispatch; the place writer and the loads and stores through it
+// (FunctionCodegen.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs) and
+// drops (.Drops.cs).
+// Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
+// (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
 // Ok are broken contracts: InternalInvariant_Kd.
 
@@ -43,6 +47,7 @@ internal sealed partial class FunctionCodegen
 {
     private readonly ModuleCodegen module;
     private readonly MirReach reach = new();
+    private readonly MirCases cases; // The item's case view (X13).
     private Slot[] slots = []; // By local.
     private BoundType[] types = []; // By local, in the item's instance.
     private BoundType[] parameters = []; // The argument Types in slot order.
@@ -56,7 +61,8 @@ internal sealed partial class FunctionCodegen
 
     /// <summary>Initializes a new instance of the <see cref="FunctionCodegen"/> class.</summary>
     /// <param name="module">The module whose signatures and records it uses.</param>
-    internal FunctionCodegen(ModuleCodegen module) => this.module = module;
+    /// <param name="types">The Type context of the program, whose case Types the item's view selects.</param>
+    internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.cases) = (module, new(types));
 
     // Where a local lives (I2).
     private enum Home : byte
@@ -94,6 +100,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        _ = this.cases.Select(body, collector.Set.Items[item].View); // X13: the collector's one view of the item's body.
         this.abi = abi;
         this.Prologue();
         this.reach.Clear(body.Blocks.Length);
@@ -112,9 +119,6 @@ internal sealed partial class FunctionCodegen
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
     // signed range is the negative number with the same bits.
     private static Int128 Signed(Int128 bits, int width) => width >= 128 ? bits : (bits << (128 - width)) >> (128 - width);
-
-    // Whether a Place is a local without projection, the frame's one Place form (C2a projects, C7b roots statics).
-    private static bool IsLocal(MirPlace place) => place.Root >= 0 && place.Projection == 0;
 
     // Lays out every local in the item's instance (I7), then gets the item's signature from local 0 and the arguments in slot order (SPEC
     // 7.3: the Arg locals hold them receiver first); null after a record.
@@ -192,7 +196,7 @@ internal sealed partial class FunctionCodegen
             if (parameter.Kind is AbiParameterKind.Value or AbiParameterKind.SharedReference)
             {
                 var local = this.LocalOf(parameter);
-                this.Store(local, this.Widen(this.slots[local].Value, new('a', parameter.LogicalIndex)));
+                this.StoreAt(new('h', local), this.slots[local].Value.Layout, this.Widen(this.slots[local].Value, new('a', parameter.LogicalIndex)));
             }
         }
 
@@ -230,7 +234,7 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // An Assign by its rvalue's row, to a local without projection (C2a projects).
+    // An Assign by its rvalue's row, into its Place through the place writer.
     private void Assign(in MirStatement statement)
     {
         switch (statement.Rvalue.Kind)
@@ -238,20 +242,23 @@ internal sealed partial class FunctionCodegen
             case MirRvalueKind.Opaque:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source); // The gate passes no program with an Opaque value.
                 return;
-            case MirRvalueKind.Use when IsLocal(statement.Place):
+            case MirRvalueKind.Use:
                 this.Use(statement);
                 return;
-            case MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp when IsLocal(statement.Place):
+            case MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp:
                 this.Operator(statement);
                 return;
-            case MirRvalueKind.Ref when IsLocal(statement.Place):
-                this.Ref(statement.Place.Root, statement.Rvalue.Place, statement.Source);
+            case MirRvalueKind.Ref:
+                this.Ref(statement);
                 return;
-            case MirRvalueKind.Cast when IsLocal(statement.Place):
+            case MirRvalueKind.Cast:
                 this.Cast(statement);
                 return;
+            case MirRvalueKind.Aggregate:
+                this.Aggregate(statement);
+                return;
             default:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // Aggregate, Discriminant, Len and Adapt (C2b).
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // Discriminant, Len and Adapt (C2b).
                 return;
         }
     }
@@ -262,17 +269,12 @@ internal sealed partial class FunctionCodegen
         value = default;
         switch (operand.Kind)
         {
-            case MirOperandKind.Copy or MirOperandKind.Move when IsLocal(operand.Place):
-                if (this.slots[operand.Place.Root].Home != Home.None)
-                {
-                    value = this.Load(operand.Place.Root);
-                }
-
-                return true;
+            case MirOperandKind.Copy or MirOperandKind.Move:
+                return this.Read(operand.Place, out value);
             case MirOperandKind.Const:
                 return this.Constant(this.body.Consts[operand.Arg], out value);
             default:
-                return false; // A projected Place (C2a), a static (C7b), a PairAcquire (C2b).
+                return false; // A PairAcquire (C2b).
         }
     }
 
@@ -319,9 +321,9 @@ internal sealed partial class FunctionCodegen
         return null;
     }
 
-    // The representation of a covered operand's Type: a local's, or a constant's in the item's instance (null after a record).
+    // The representation of a covered operand's Type: its Place's, or a constant's in the item's instance (null after a record).
     private ValueLowering? LoweringOf(in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const ? this.Representation(this.body.Consts[operand.Arg].Type) : this.slots[operand.Place.Root].Value;
+        => operand.Kind == MirOperandKind.Const ? this.Representation(this.body.Consts[operand.Arg].Type) : this.LoweringOf(operand.Place);
 
     private void Terminator(in MirTerminator terminator)
     {

@@ -5,8 +5,8 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The operator rows (R5 plan C1a, C1b, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80): a BinaryOp or UnaryOp into an unprojected
-// local through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's Type class. A Proven operation
+// The operator rows (R5 plan C1a, C1b, package C 3.2 I5 and I9; DECISIONS R5-M76, R5-M80): a BinaryOp or UnaryOp into its Place
+// through LlvmScalarText (P4a), by one table keyed by the operator and its left operand's Type class. A Proven operation
 // (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check Aborts at the statement's location text (SPEC
 // 22.5.1-22.5.2).
 internal sealed partial class FunctionCodegen
@@ -116,8 +116,8 @@ internal sealed partial class FunctionCodegen
         return text[..(start + digits)];
     }
 
-    // An operator into an unprojected local: its operands in their computation representation, its row's entry for the left operand's
-    // Type, the operation with its check unless Proven, and the result stored in the local's storage representation (bool widened).
+    // An operator into its Place: its operands in their computation representation, its row's entry for the left operand's Type, the
+    // operation with its check unless Proven, and the result stored in the Place's storage representation (bool widened).
     private void Operator(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -126,20 +126,19 @@ internal sealed partial class FunctionCodegen
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A projected Place (C2a), a static (C7b) or a constant of a later row.
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A Place of a later row (a static, C7b; a payload, C6a) or a constant of one.
             return;
         }
 
         right = operands.Length == 2 ? right : left; // A unary operator's operand is on both sides; its row fixes the other.
-        if (left.Lowering is null || right.Lowering is null)
+        if (left.Lowering is null || right.Lowering is null || this.LoweringOf(statement.Place) is not { } target)
         {
             return; // A broken contract, recorded.
         }
 
-        var local = statement.Place.Root;
         if (left.Lowering.Layout.Size == 0)
         {
-            this.Store(local, this.Widen(this.slots[local].Value, new('\0', row.Reflexive ? 1 : 0))); // SPEC 13.4: Unit has one value.
+            this.Store(statement, this.Widen(target, new('\0', row.Reflexive ? 1 : 0))); // SPEC 13.4: Unit has one value.
             return;
         }
 
@@ -174,7 +173,7 @@ internal sealed partial class FunctionCodegen
             Spell(result, text[(2 * SpellingLength)..]),
             comparison: rvalue.Kind == MirRvalueKind.BinaryOp && rvalue.Op >= (byte)MirBinaryOp.Eq);
         this.Write(check, operation, (int)result.Number, location, right.Lowering.ComputationType);
-        this.Store(local, this.Widen(this.slots[local].Value, result));
+        this.Store(statement, this.Widen(target, result));
     }
 
     // An operation with its check and failure block, named by its result's number id (%checked<id>, abort<id>, the success label
@@ -238,7 +237,7 @@ internal sealed partial class FunctionCodegen
         if (this.LoweringOf(operand) is { } lowering)
         {
             var constant = operand.Kind == MirOperandKind.Const;
-            var type = constant ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type)! : this.types[operand.Place.Root];
+            var type = constant ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type)! : this.InstanceType(operand.Place)!;
             computed = new(constant || lowering.Layout.Size == 0 ? value : this.Narrow(lowering, value), type, lowering);
         }
 

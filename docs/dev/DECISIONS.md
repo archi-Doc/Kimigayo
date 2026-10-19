@@ -4067,3 +4067,36 @@ structure is recorded here by the unit that first implements it.
   not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
   - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
     input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
+- **R5-M83 The place writer of MIR code generation** (2026-10-19, C lane; plan C2a, package C §3.2 I5, I7 and I9, X1 and X13; under
+  R5-M18 form 1, R5-M65, R5-M78 and R5-M80) `FunctionCodegen.Places` is the one owner of a Place's address. It starts at the root's
+  home and takes each step of the interned chain, root first, through one switch over the seven `MirProjectionKind`s, with offsets from
+  `Layout.Of(TypeOf(item, prefix))`:
+  - Field: `FieldOffsets[arg]`. Base: no offset (X1, the complete base is a prefix). ConstIndex: `arg` × the element's stride, without a
+    check (the validator proved it in range). Downcast: the enum record's payload offset (`FieldOffsets[1]`).
+  - Deref of a reference or a raw pointer loads the address it stores (IMPL 21.1.3). An object handle's or object borrow's payload is
+    C6a's row.
+  - PairLayer: `MirCases.Layer` under the item's view. `FunctionCodegen` selects that view once per item, with its own `MirCases`, from
+    the collector's `View(item)` (X13). The owner case keeps the address; any other case takes its case Type's Deref row.
+  - Index: the isize position local is compared unsigned (`icmp uge`) with the length, so a negative position fails too. The length is a
+    fixed array's closed Length, or the length word of an Array's or Slice's handle record (`FieldOffsets[1]`); the buffer word is the
+    element base. The failure goes through `LlvmScalarText.WriteFailure` with KIMI_E_INDEX_BOUNDS at the position local's location,
+    which R4-M56 places at the selection (SPEC 22.5.1). The element is then at `mul` by the stride and `getelementptr i8`, the old
+    generator's text. A zero-sized element keeps its check and takes no address of its own. No `inbounds` (I9).
+  - Every operand Place (Copy, Move), every Assign destination (Use, operators, casts, Ref, the aggregate), a Ref's Place and a Drop's
+    Place go through it. An Assign computes its rvalue, then locates its Place (SPEC 13.7.1), so a right-hand side's Abort precedes
+    the target's bounds check.
+  - Moved from C2b (planning session, 2026-10-19; the same group G:C-aggregate, so no departure from the owner-approved package beyond
+    the order inside the group): the `Aggregate(FixedArray)` row for the operands the frame covers. Each element is stored at its index
+    × the stride once the Place is located; `noinit`, from no operand, stores none. A native program has no other indexable value
+    before C2b. An element of a slot Type and Tuple, struct, enum Case and Closure aggregates stay C2b's; an Array or Dictionary from
+    none is C8d's and C8e's.
+  - Restructuring first (behavior unchanged): `FunctionCodegen.cs` is split into `.Places.cs`, `.Rvalues.cs` and `.Calls.cs`, and the
+    item's `FunctionAbi` is a field. `ModuleCodegen` passes the compilation's `TyCtxt` to `FunctionCodegen` (Q7's one-argument form).
+  - Left to W1 (F19, PLAN G157 (20)): a position wider than isize is still the builder's checked Integer Cast, which Aborts with
+    KIMI_E_INT_CONVERSION where SPEC 4.6.1 asks for KIMI_E_INDEX_BOUNDS. F19 builds it from existing forms (proven compares, then -1
+    or a proven Cast). A new `MirCastKind` for it was rejected: it would be a vocabulary entry for a meaning existing forms express.
+  - Rejected: an arm or plan per projection form beside the switch; promoting the old `WriteElementAddress` (its operands are the old
+    IR's, and its shared part, the failure block, is already `WriteFailure`); deciding a PairLayer from the closed prefix and step Types
+    (a second copy of `MirCases`' case decision); the consuming statement's location for an Index check (`f(a[i])` would report the
+    call, not the selection); a Proven bit on Index (a vocabulary change; a range's redundant element check is O2's, measured at the
+    group review).
