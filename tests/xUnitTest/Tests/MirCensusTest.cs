@@ -10,14 +10,15 @@ namespace XunitTest;
 
 /// <summary>The MIR census (docs/dev/DECISIONS.md R4-M12, R4-M74 OQ1; A5 step 2 plan PD22) over four sets, each loaded as its own tests
 /// load it: the Kimi library, the milestone programs, the <c>tests/mir</c> goldens and the variants of
-/// <c>tests/diagnostics/spec-cases.json</c> the SPEC accepts. No validator finding, which would leave a program unanalyzed, and no A5
-/// problem (the codes the ledger gives A5, R4-M4: A1's storage limit shares A5's code and counts, A5's located Unsupported_Kd shares
-/// A4's and does not) in any program (R4-M12); no construction record, whose Opaque value would leave a program partly analyzed, and no problem of any MIR analysis
-/// (A1–A5, merged by A6's report) in a Binding-complete program (R4-M47). A program Binding rejects may have other records and problems
-/// that failure causes, whose report SPEC 23.1.2 leaves implementation-defined: the test output lists them, not asserted. With
+/// <c>tests/diagnostics/spec-cases.json</c> the SPEC accepts. In any program (R4-M12): no validator finding, which would leave it
+/// unanalyzed, no problem outside the ledger's MIR pairs (a recording rule's defect, B) and no A5 problem (the analysis the ledger gives
+/// a problem's requirement and code, R4-M4, R4-M67: A1's storage limit shares A5's pair and counts, A5's located Unsupported_Kd shares
+/// A4's and does not). In a Binding-complete program (R4-M47): no construction record, whose Opaque value would leave it partly
+/// analyzed, and no problem of any MIR analysis (A1–A5, merged by A6's report). A program Binding rejects may have other records and
+/// problems that failure causes, whose report SPEC 23.1.2 leaves implementation-defined: the test output lists them, not asserted. With
 /// <c>KIMI_MIR_PROBLEMS</c> naming a directory, each set writes <c>census-&lt;set&gt;.tsv</c> there: per record, finding or problem
-/// its program, the program's section (the ledger's: complete or incomplete), analysis (the ledger's; B for a record or finding), code
-/// and subject. The class stays in the normal suite while its tests take under 60 s together in a Session's results.</summary>
+/// its program, the program's section (the ledger's: complete or incomplete), analysis (the ledger's; B for a record, a finding or a
+/// defect), code and subject. The class stays in the normal suite while its tests take under 60 s together in a Session's results.</summary>
 public sealed class MirCensusTest(ITestOutputHelper output)
 {
     // R4-M12, V17: the library bodies have no problems; the library case binds an empty program.
@@ -47,8 +48,8 @@ public sealed class MirCensusTest(ITestOutputHelper output)
         => SemanticSnapshotTest.CaseNames().Where(selected).Select(static x => (x, SemanticSnapshotTest.Bind(x).Compilation));
 
     // Builds and analyzes each program as it comes, writes the set's rows when asked, lists the programs Binding rejects with their rows
-    // not asserted, and requires a Binding-complete program and no asserted row: a finding or an A5 problem in any program, any record
-    // or problem in a Binding-complete one.
+    // not asserted, and requires a Binding-complete program and no asserted row: a finding, a defect or an A5 problem in any program,
+    // any record or problem in a Binding-complete one.
     private void Census(string set, IEnumerable<(string Name, Compilation Compilation)> programs)
     {
         var (rows, rejected, count) = (new List<(string Text, bool Asserted)>(), new List<string>(), 0);
@@ -74,8 +75,8 @@ public sealed class MirCensusTest(ITestOutputHelper output)
 
             foreach (var problem in program.Problems.All)
             {
-                var analysis = MirDifferenceLedger.AnalysisOf(problem.Code);
-                rows.Add(Row(name, complete, analysis, problem.Code, c.SyntaxOf(problem.Subject), complete || analysis == "A5"));
+                var analysis = MirDifferenceLedger.MirAnalysisOf(problem.Requirement, problem.Code) ?? "B";
+                rows.Add(Row(name, complete, analysis, problem.Code, c.SyntaxOf(problem.Subject), complete || analysis is "A5" or "B"));
             }
         }
 
