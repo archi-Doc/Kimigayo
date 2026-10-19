@@ -200,7 +200,7 @@ public sealed class FunctionCodegenTest
         var c = Analyze("Console.writeLine(\"a\")\n");
         var program = c.BuildMir();
         var requirement = ownership ? DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse) : DiagnosticRequirement.ControlFlow;
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, program.Bodies[0].Source, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, program.Bodies[0].Source, 0, 1));
         using var writer = new StringWriter();
         Assert.Equal(written, c.Generate(writer));
         Assert.Equal(written ? [] : [("Unsupported_Kd", (string?)"\"a\"")], Records(c));
