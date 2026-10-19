@@ -320,6 +320,8 @@ public sealed partial class Binding
         this.inferredConstructorTargets.Clear();
         this.callInferenceFailures?.Clear();
         this.storageVersion++;
+        this.storageMarks.Clear();
+        this.storageStack.Clear();
         this.issues.Clear();
         this.lints.Clear();
         this.callableSelectionFailures.Clear();

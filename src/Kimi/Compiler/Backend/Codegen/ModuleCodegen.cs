@@ -4,10 +4,11 @@
 // Responsibility: one module of a program version from its checked set: every item in admission order, a body item written by
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), the output form around them (IMPL 21.4.2: an
 // Application's __kimi_start calls its startup body and exits with 0, a Library has no entry) and the module frame through LlvmModuleText
-// in the old generator's order (header, runtime, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item
-// kinds and output forms: DropGlue (C4a), ClosureErasure and ItemAdapter (C5b), a test build's TestEntry (C10a).
+// in the old generator's order (header with the pooled constants, runtime, overflow declarations, functions, entry, footer); the coverage
+// rows (PD11) of the item kinds and output forms: DropGlue (C4a), ClosureErasure and ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
+// property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, TypeOf and
-// location rule (K package 4.9); the compilation's Layout; the startup selection.
+// location rule (K package 4.9); the compilation's Layout and runtime location texts (Compilation.Locations); the startup selection.
 // Output: the complete module written to the caller's writer, or nothing and the Records of why: one Unsupported_Kd per subject of a
 // row not written yet (until the R5 plan's unit X2), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
 // without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
@@ -34,14 +35,21 @@ internal sealed class ModuleCodegen
 
     /// <summary>Initializes a new instance of the <see cref="ModuleCodegen"/> class.</summary>
     /// <param name="layout">The layout of the compilation's Types.</param>
-    internal ModuleCodegen(Layout layout)
+    /// <param name="locations">The compilation's runtime location texts.</param>
+    internal ModuleCodegen(Layout layout, SourceLocationTable locations)
     {
-        this.Layout = layout;
+        (this.Layout, this.Locations) = (layout, locations);
         this.bodies = new(this);
     }
 
     /// <summary>Gets the layout of the compilation's Types.</summary>
     internal Layout Layout { get; }
+
+    /// <summary>Gets the runtime location texts (SPEC 22.5.1) a runtime routine receives.</summary>
+    internal SourceLocationTable Locations { get; }
+
+    /// <summary>Gets the module's private UTF-8 constants, which the header defines.</summary>
+    internal LlvmConstantPool Constants => this.constants;
 
     /// <summary>Gets the records of the latest <see cref="Write"/>, one per code and subject.</summary>
     internal List<Problem> Records { get; } = [];
@@ -141,7 +149,10 @@ internal sealed class ModuleCodegen
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C4a writes drop glue; C5b the erasure and item adapters.
                 return;
             case MonoKind.Builtin or MonoKind.PropertyWitness:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // K6's requirement shims: C3b, C8f and C9b write them (R5-M67).
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).
+                return;
+            case MonoKind.ObjectDescriptor or MonoKind.VTable:
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C6a writes descriptors, C6c the VTables (R5-M74).
                 return;
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");

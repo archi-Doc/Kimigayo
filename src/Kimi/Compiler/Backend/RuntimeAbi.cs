@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Backend;
 /// <summary>The runtime representations, constants and routine signatures shared by generated code and the runtime template.</summary>
 internal static class RuntimeAbi
 {
-    /// <summary>The Static string releaseKind: compiler constant backing that is never freed (SPEC 22.7).</summary>
+    /// <summary>The Static string releaseKind: compiler constant backing that is never freed (the string representation, IMPL 21.1.3).</summary>
     internal const int StaticReleaseKind = 0;
 
     /// <summary>The buffer address of an Array with zero-sized elements (SPEC 4.5): nonnull and page-aligned, so aligned for every
@@ -23,7 +23,7 @@ internal static class RuntimeAbi
 
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
-    // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (SPEC 22.7).
+    // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3).
     internal static readonly ValueLowering String = new(new("%kimi.string", 24, 8, 24, new[] { 0, 8, 16 }), "%kimi.string", "ptr");
 
     internal static readonly ValueLowering StringReference = new(new("ptr", 8, 8, 8, ReadOnlyMemory<int>.Empty), "ptr", "ptr");

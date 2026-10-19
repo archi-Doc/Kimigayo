@@ -362,8 +362,78 @@ public sealed class InstanceCollectorTest
                 var holder => $"{holder}<{box}, {Nest("Box", 4, box)}>",
             };
         }
+    }
 
-        static string Nest(string wrapper, int depth, string leaf) => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
+    // DECISIONS BU-12 (PLAN G153 (2)): the Types of one strongly connected component of storage share its height, the largest exit, so a
+    // cycle is decided by its exits in every order. R and X (X stores R through a handle, R stores Box^200) are refused at every call;
+    // `L`, which stores itself through Option<rc/L<T>>, is an instance with Box^59 (h's 3 levels + 60) and refused with Box^61, either
+    // way round; a ring of 16 or 17 structs is an instance (height 1), a ring of 63 too, while a ring of 64 passes the 256 Types the walk's
+    // path may hold. A growing G reaches that cap in every order, while G2, which repeats, is an instance. N stores its T, a Tuple tree as
+    // deep as the growth, before its growth Field, so it reaches the cap only because the walk enters each Type once (structural Types
+    // too): walked as trees, its Tuples would not end within the test run (RetentionTest.GrowingRecursiveContractsAreTheLimit guards the
+    // same through A5's retention). Over the cap the verdict may depend on the other Types the program prepares: a 63-ring behind Box^4
+    // is refused alone and admitted once S1 is prepared anywhere (the owner's accepted residual).
+    [Theory]
+    [InlineData(0, "R X", "R X")]
+    [InlineData(0, "X R", "X R")]
+    [InlineData(0, "X", "X")]
+    [InlineData(0, "OL59", "")]
+    [InlineData(0, "L59 OL59", "")]
+    [InlineData(0, "OL59 L59", "")]
+    [InlineData(0, "OL61 L61", "OL61 L61")]
+    [InlineData(16, "S1", "")]
+    [InlineData(17, "S1", "")]
+    [InlineData(17, "S9 OS1", "")]
+    [InlineData(63, "S1", "")]
+    [InlineData(64, "S1", "S1")]
+    [InlineData(63, "W4", "W4")]
+    [InlineData(63, "W4 W4", "W4 W4")]
+    [InlineData(63, "W4 S1 W4", "")]
+    [InlineData(0, "G", "G")]
+    [InlineData(0, "G2 G", "G")]
+    [InlineData(0, "G G2", "G")]
+    [InlineData(0, "N", "N")]
+    public void StorageNestingIsAPropertyOfTheComponent(int ring, string arguments, string refused)
+    {
+        var c = MirBuildTest.Compile(
+            $"struct Box<T>\n    public let value: T\nstruct R<T>\n    public let x: X<T>\n    public let y: {Nest("Box", 200, "T")}\nstruct X<T>\n" +
+            "    public let r: Option<rc/R<T>>\nstruct L<T>\n    public let next: Option<rc/L<T>>\n    public let v: T\nstruct G<T>\n" +
+            "    public let next: Option<rc/G<(T, T)>>\nstruct G2<T>\n    public let next: Option<rc/G2<T>>\nstruct N<T>\n    public let v: T\n" +
+            "    public let next: Option<rc/N<(T, T)>>\n" + Ring(ring) + "func h<T>(x: Option<raw/T>) => ()\npublic func main() -> ()\n" +
+            string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) + "    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(
+            refused.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (DiagnosticCode.Unsupported_Kd, $"h<{Text(x)}>(.None)")),
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+
+        static string Text(string argument) => argument switch
+        {
+            "R" or "X" or "G" or "G2" or "N" => argument + "<i32>",
+            "OS1" => "Option<rc/S1>",
+            "W4" => Nest("Box", 4, "S1"),
+            ['O', 'L', ..] => $"Option<rc/{Text(argument[1..])}>",
+            ['L', ..] => $"L<{Nest("Box", int.Parse(argument[1..], CultureInfo.InvariantCulture), "i32")}>",
+            _ => argument,
+        };
+    }
+
+    // DECISIONS BU-12: a ring of structs linked by Option<rc/…> is an instance up to the storage walk's cap, so a value of it reaches the
+    // collector's drop glue, whose depth limit it meets past 42 structs: GenerationResourceLimit_Kd at the destroyed value, and no
+    // storage-nesting gap at the call.
+    [Theory]
+    [InlineData(42, "")]
+    [InlineData(50, "GenerationResourceLimit_Kd v@move")]
+    public void StorageRingsMeetTheGlueDepth(int ring, string records)
+    {
+        var c = MirBuildTest.Compile(
+            Ring(ring) + "func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: Option<rc/S1> = .None\n    let w = pick(v@move)\n" +
+            "    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }
 
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
@@ -434,13 +504,170 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
     }
 
-    // K 4.5 rows 4 and 12: the Item of a virtual slot, whose calls dispatch, is no target where it is made (K8: its receiver's VTable).
+    // K 4.5 rows 4 and 12 (X5): the Item of a virtual slot, whose calls dispatch, is no target where it is made: its receiver's VTable holds
+    // the entries, and a program that makes no object has neither.
     [Fact]
     public void AVirtualSlotsItemHasNoTarget()
     {
         var (program, set) = Collect("open struct Base\n    public virtual func value(self: objref/Self) -> i32 => 1\nlet v = Base.value\n");
         Assert.Empty(set.Records);
         Assert.Empty(Targets(program, set, "Fn top"));
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable);
+    }
+
+    // K 4.5 row 8, K 4.3, DECISIONS R5-M62, R5-M74 (VirtualGenericDispatchTest's closed tables): a creation is its payload's descriptor, one
+    // per erased payload whatever the handle, whose targets are the payload's glue and its VTable; the VTable's are each slot's
+    // implementation in the first layer that owns it, in slot order, and a Virtual call has no target; the bodies a table reaches call
+    // their bases directly.
+    [Fact]
+    public void ACreationIsItsPayloadsDescriptorAndItsTableTheSlotsBodies()
+    {
+        var (program, set) = Collect(VirtualGenericDispatchTest.Hierarchy + "let a = Leaf<i32>.init()@obj\nlet b = Leaf<string>.init()@rc\n" +
+            "let c = Leaf<i32>.init()@arc\nrequire a.read() == 31 and b.nested() == 132 and a.direct() == 11 else => $abort(\"dispatch\")\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(1, set.Items.ToArray().Count(x => Label(program, x) == "ObjectDescriptor Leaf<i32>"));
+        Assert.Equal(2, Targets(program, set, "Fn top").Count(static x => x == "ObjectDescriptor Leaf<i32>"));
+        Assert.Equal(["VTable Leaf<i32>"], Targets(program, set, "ObjectDescriptor Leaf<i32>"));
+        Assert.Equal(["Fn read [Leaf<i32>]", "Fn nested [Base<i32>]"], Targets(program, set, "VTable Leaf<i32>"));
+        Assert.Equal(["Fn read [Leaf<string>]", "Fn nested [Base<string>]"], Targets(program, set, "VTable Leaf<string>"));
+        Assert.Equal(["Fn read [Middle<i32>]"], Calls(program, set, "Fn read [Leaf<i32>]"));
+        Assert.Equal(["Fn read [Base<i32>]"], Calls(program, set, "Fn read [Middle<i32>]"));
+        Assert.Empty(Calls(program, set, "Fn nested [Base<i32>]"));
+    }
+
+    // K 4.5 rows 5, 8, 12 and 13 (VirtualGenericDispatchTest's factory Item): an Item of a handle operation's function runs what its call
+    // does, so in an instance it is the descriptor of its payload where it is made, called and erased, and that VTable holds the bodies
+    // the instance's object dispatches to.
+    [Fact]
+    public void AFactoryItemIsItsPayloadsDescriptorInTheInstance()
+    {
+        var (program, set) = Collect(VirtualGenericDispatchTest.Hierarchy + "func build<T>() -> obj/Leaf<T>\n    T is Owned\n" +
+            "    let factory = Kimi.Intrinsics.makeObj<Leaf<T>>\n    return factory(Leaf<T>.init())\nlet a = build<i32>()\n" +
+            "let erased: (Leaf<string>) -> obj/Leaf<string> = Kimi.Intrinsics.makeObj<Leaf<string>>\nlet b = erased(Leaf<string>.init())\n" +
+            "require a.nested() == 132 and b.nested() == 132 else => $abort(\"factory item\")\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(
+            ["ObjectDescriptor Leaf<i32>", "ObjectDescriptor Leaf<i32>"],
+            Calls(program, set, "Fn build [i32]").Where(static x => x.StartsWith("Object", StringComparison.Ordinal)));
+        Assert.Equal(["ObjectDescriptor Leaf<string>"], Targets(program, set, "ItemAdapter function item Kimi.Intrinsics.makeObj<Leaf<string>>"));
+        Assert.Equal(["Fn read [Leaf<i32>]", "Fn nested [Base<i32>]"], Targets(program, set, "VTable Leaf<i32>"));
+        Assert.Equal(["Fn read [Leaf<string>]", "Fn nested [Base<string>]"], Targets(program, set, "VTable Leaf<string>"));
+    }
+
+    // SPEC 13.6.4, 8.15.3 (DECISIONS R5-M74): a runtime Type test and a clone acquire nothing and need no layout, so neither has a target:
+    // a test of a struct no creation makes, oversized or with a table, collects nothing of it, and a clone of a handle to an oversized
+    // payload records nothing; only creations are descriptors.
+    [Fact]
+    public void ATypeTestAndACloneHaveNoTarget()
+    {
+        const string Huge = "struct Huge\n    public var v: (" + Big + ", u8)\n";
+        var (program, set) = Collect(Huge + VirtualGenericDispatchTest.Hierarchy + "open struct S\n    public init() => ()\n" +
+            "let s = S.init()@obj\nlet t = s is Huge\nlet a = Middle<i32>.init()@obj\nlet u = a is Leaf<i32>\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(
+            ["ObjectDescriptor S", "ObjectDescriptor Middle<i32>"],
+            Targets(program, set, "Fn top").Where(static x => x.StartsWith("Object", StringComparison.Ordinal)));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) is var label && (label.Contains("Huge", StringComparison.Ordinal) ||
+            label.Contains("Leaf<i32>", StringComparison.Ordinal)));
+        (program, set) = Collect(Huge + "func f(x: ref/(rc/Huge)) -> rc/Huge => Kimi.Intrinsics.clone(x)\n");
+        Assert.Empty(set.Records);
+        Assert.Empty(Targets(program, set, "Fn f"));
+    }
+
+    // K 4.5 rows 2, 6, 12 (DECISIONS R5-M74): an Item of a function without a MIR body runs what its call does, the requirement its
+    // published row runs (Text.toString's format witness) or what its intrinsic's row names (Text.writer's destination's reserve witness).
+    [Fact]
+    public void ABodylessFunctionsItemIsWhatItsCallRuns()
+    {
+        var source = FormatSource
+            .Replace("let one = show(Box.init(1))", "let print = Text.toString<Box>\nlet box = Box.init(1)\nlet one = print(box@ref)", StringComparison.Ordinal)
+            .Replace("var writer = Text.writer(sink@uniq)", "let make = Text.writer<Sink>\n    var writer = make(sink@uniq)", StringComparison.Ordinal);
+        var (program, set) = Collect(source);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn format", "Fn format"], Calls(program, set, "Fn top").Where(static x => x == "Fn format"));
+        Assert.Equal(["Fn reserve", "Fn reserve"], Calls(program, set, "Fn toSink").Where(static x => x == "Fn reserve"));
+    }
+
+    // K 4.6 for tables (VirtualGenericDispatchTest's dependency programs): an override that creates an object of its own struct's instance
+    // reuses the descriptor of a finite cycle, and one of a growing instance stops when 16 bodies of its definition are on the chain,
+    // GenerationResourceLimit_Kd at the creation, a root-module site.
+    [Fact]
+    public void ATablesDependenciesReuseAFiniteCycleAndStopAGrowingKey()
+    {
+        var (program, set) = Collect(VirtualGenericDispatchTest.DependencyProgram("i32"));
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn read [Leaf<i32>]"], Targets(program, set, "VTable Leaf<i32>"));
+        Assert.Contains("ObjectDescriptor Leaf<i32>", Calls(program, set, "Fn read [Leaf<i32>]"));
+        var c = MirBuildTest.Compile(VirtualGenericDispatchTest.DependencyProgram("Next<T>"));
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var growing = c.BuildMir();
+        var records = new InstanceCollector(c.Types, c.Layout).Run(growing, 1);
+        Assert.Equal(16, records.Items.ToArray().Count(x => Label(growing, x).StartsWith("Fn read [Leaf<", StringComparison.Ordinal)));
+        Assert.Equal(
+            [(DiagnosticCode.GenerationResourceLimit_Kd, "Leaf<Next<T>>.init()@obj")],
+            records.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
+    // K 4.3 (VirtualGenericDispatchTest): an original that a table replaces adds nothing the table does not reach, and a program that makes
+    // no object has no object item and no instance of a slot's body.
+    [Fact]
+    public void OnlyTheTablesSlotBodiesAreInstances()
+    {
+        var (program, set) = Collect("struct Next<T>\n    T is Owned\nopen struct Base<T>\n    T is Owned\n    public init() => ()\n" +
+            "    public virtual func read(self: objref/Self) -> i32\n        let child = Base<Next<T>>.init()@obj\n        return 1\n" +
+            "struct Leaf<T> : Base<T>\n    T is Owned\n    public init() => ()\n    override func read(self: objref/Self) -> i32 => 7\n" +
+            "let a = Leaf<string>.init()@obj\nrequire a.read() == 7 else => $abort(\"replaced\")\n");
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn read [Leaf<string>]"], Targets(program, set, "VTable Leaf<string>"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x).StartsWith("ObjectDescriptor Base<", StringComparison.Ordinal));
+        (program, set) = Collect(VirtualGenericDispatchTest.Hierarchy + "()");
+        Assert.DoesNotContain(set.Items.ToArray(), static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable || x.Representative is not null);
+    }
+
+    // R4-M28, F 4.3 (VirtualConditionalDispatchTest): a conditional slot, a Block member or a clause, that Applies refutes at its layer has no
+    // target in that instance's table, the other slots keep theirs in slot order, and the override's body is not an instance there; an
+    // inapplicable body's own creations add nothing.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ARefutedSlotHasNoTarget(bool block)
+    {
+        var (program, set) = Collect(VirtualConditionalDispatchTest.Program(block));
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn first [Base<i32>]", "Fn copy [Leaf<i32>]", "Fn last [Leaf<i32>]"], Targets(program, set, "VTable Leaf<i32>"));
+        Assert.Equal(["Fn first [Base<NonCopy>]", "Fn last [Leaf<NonCopy>]"], Targets(program, set, "VTable Leaf<NonCopy>"));
+        Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "Fn copy [Leaf<NonCopy>]");
+        const string Copy = "override func copy(self: objref/Self, value: ref/T) -> T";
+        var (growing, inapplicable) = Collect(VirtualConditionalDispatchTest.Program(block)
+            .Replace(Copy + " => value@follow", Copy + "\n        let child = Leaf<(T, T)>.init()@obj\n        return value@follow", StringComparison.Ordinal)
+            .Replace("let a = Leaf<i32>.init()@obj\n", string.Empty, StringComparison.Ordinal)
+            .Replace("a.copy(7) == 7 and a.last() == 30 and ", string.Empty, StringComparison.Ordinal));
+        Assert.Empty(inapplicable.Records);
+        Assert.Equal(
+            ["VTable Leaf<NonCopy>"],
+            inapplicable.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.VTable).Select(x => Label(growing, x)));
+    }
+
+    // F4's two published outcomes of a failed override (DECISIONS R5-M62, R4-M18): a struct whose override failed at slot selection has no
+    // table, so its descriptor has no VTable; a definition that failed later stays in the table without a MIR body, so its slot has no
+    // target. Both are Binding's errors, so the collector records nothing.
+    [Fact]
+    public void AFailedOverrideIsNoTargetAndNoRecord()
+    {
+        var unresolved = MirBuildTest.Compile(VirtualConditionalDispatchTest.Program(false).Replace(
+            "override func last(self: objref/Self) -> i32 => 30", "override func last(self: objref/Self) -> i64 => 30", StringComparison.Ordinal));
+        Assert.False(unresolved.Binding.Result.IsComplete);
+        var program = unresolved.BuildMir();
+        var set = new InstanceCollector(unresolved.Types, unresolved.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Empty(Targets(program, set, "ObjectDescriptor Leaf<i32>"));
+        var later = MirBuildTest.Compile("open struct Base\n    public init() => ()\n    public virtual func one(self: objref/Self) -> i32 => 1\n" +
+            "    public virtual func bump(self: objuniq/Self) -> i32 => 2\nlet a = Base.init()@obj\n");
+        Assert.False(later.Binding.Result.IsComplete);
+        program = later.BuildMir();
+        set = new InstanceCollector(later.Types, later.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn one"], Targets(program, set, "VTable Base"));
     }
 
     // K 4.5 rows 5, 12 and 13, DECISIONS R5-M70: a requirement's function item is, in the instance, the item of the witness its requirement
@@ -851,7 +1078,7 @@ public sealed class InstanceCollectorTest
 
     // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37), and the old generator, whose pool takes Layout's
     // verdict, agrees for a struct chain and a one-component Tuple chain, read down to the scalar leaf, at 64 and 65 levels; the height-64
-    // difference R5-M37 anticipated does not arise.
+    // difference R5-M37 anticipated does not arise. The old generator is selected whatever the process's code generator (R5-M73).
     [Theory]
     [InlineData("Struct", 64, false)]
     [InlineData("Struct", 65, true)]
@@ -883,7 +1110,7 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
         Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, $"func f(value: {type}) -> i32 => value{leaf}")] : [], records);
-        var legacy = MinimalEmissionTest.Analyze(source.ToString());
+        var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
         Assert.Equal(!limited, legacy.Validate(out var error));
         Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
     }
@@ -1196,16 +1423,33 @@ public sealed class InstanceCollectorTest
         Assert.Equal((items, targets), (set.Items.Length, Enumerable.Range(0, set.Items.Length).Sum(x => set.Targets(x).Length)));
     }
 
-    // S2-S4 X15: one row per intrinsic, and only ErasedWriter, StaticEnsure, the handle operations and DestroyValues name a target.
+    // A warm rebind collects a program's descriptors and tables again (VirtualGenericDispatchTest's warm closed tables) with no allocation.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRunOfTablesAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(
+            VirtualGenericDispatchTest.Hierarchy + "let a = Leaf<i32>.init()@obj\nrequire a.nested() == 132 else => $abort(\"dispatch\")\n");
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(c.BuildMir(), 1);
+        var tables = set.Items.ToArray().Count(static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            collector.Run(c.BuildMir(), 1);
+        }));
+        Assert.Equal(2, tables);
+        Assert.Equal(tables, set.Items.ToArray().Count(static x => x.Key.Kind is MonoKind.ObjectDescriptor or MonoKind.VTable));
+    }
+
+    // S2-S4 X15 with DECISIONS R5-M74: one row per intrinsic, and only ErasedWriter, StaticEnsure, the creations and DestroyValues name a
+    // target (a type test and a clone acquire nothing, SPEC 13.6.4).
     [Fact]
     public void OnlyTheWhitelistedIntrinsicsCarryATarget()
     {
         var targets = Enum.GetValues<IntrinsicId>().Where(static x => x != IntrinsicId.None && IntrinsicRows.Of(x).Target != IntrinsicTarget.None);
         Assert.Equal(
-            [
-                IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.Clone,
-                IntrinsicId.TypeTest, IntrinsicId.StaticEnsure,
-            ],
+            [IntrinsicId.DestroyValues, IntrinsicId.ErasedWriter, IntrinsicId.MakeObj, IntrinsicId.MakeRc, IntrinsicId.MakeArc, IntrinsicId.StaticEnsure],
             targets);
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
@@ -1226,6 +1470,14 @@ public sealed class InstanceCollectorTest
 
     private static int Item(MirProgram program, CheckedSet set, string label)
         => Enumerable.Range(0, set.Items.Length).Single(x => Label(program, set.Items[x]) == label);
+
+    // A Type of `depth` nested wrappers around a leaf, as Box^3<i32> = Box<Box<Box<i32>>>.
+    private static string Nest(string wrapper, int depth, string leaf)
+        => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
+
+    // A ring of `count` structs S1, S2, ..., each storing the next through Option<rc/…>, the last S1.
+    private static string Ring(int count)
+        => string.Concat(Enumerable.Range(1, count).Select(k => $"struct S{k}\n    public let next: Option<rc/S{(k % count) + 1}>\n"));
 
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
