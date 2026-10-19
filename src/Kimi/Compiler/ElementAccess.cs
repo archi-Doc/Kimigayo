@@ -173,7 +173,7 @@ internal static class ElementAccess
             return null;
         }
 
-        return symbol.MutableCapture || Binding.IsMutableDeclaration(symbol.Declaration) ? root : null;
+        return Binding.Reassignable(symbol) ? root : null;
     }
 
     // SPEC 5.2, 12: *p, p[n], and the stored fields, Tuple elements and integer-indexed fixed-array elements of one are raw

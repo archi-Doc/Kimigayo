@@ -6,11 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 6.6, 14.6.1, 14.8.2: var locals, var Pattern bindings and var iteration slots are reassignable.
-    internal static bool IsMutableDeclaration(Koto? declaration)
-        => declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true } ||
-            (declaration is IdentifierNameKoto { Parent: ForKoto loop } slot && loop.IsMutableSlot(slot));
-
     // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
     // assigned to it names that mode and the spellings that bind or update a value instead. A binding whose stored Type
     // is itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that
@@ -111,7 +106,7 @@ public sealed partial class Binding
             }
         }
 
-        return node.BoundSymbol?.MutableCapture == true || IsMutableDeclaration(node.BoundSymbol?.Declaration);
+        return node.BoundSymbol is { } symbol && Reassignable(symbol);
     }
 
     // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
