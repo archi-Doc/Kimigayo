@@ -54,7 +54,7 @@ public class TerminalGuardContinuationTest
         const string Source = "func run(early: bool)\n    let outer = \"outer\"\n    match \"subject\"\n        let candidate if (if early => return else => false) => Console.writeLine(candidate)\n        _ => Console.writeLine(\"fallback\")\n    Console.writeLine(outer)\nrun(true)\nrun(false)";
         const string Name = "TerminalGuardWindowTransfers";
         var ir = ScalarEmissionTest.EmitFixture(Name, Source, "fallback\nouter\n");
-        StringEmissionTest.WriteAuditedFixture(Name, Source, ir, "fallback\nouter\n", "outer=2;subject=2;fallback=1");
+        StringEmissionTest.WriteAuditedFixture(Name, ir, "fallback\nouter\n", "outer=2;subject=2;fallback=1");
     }
 
     [Fact]
@@ -64,7 +64,7 @@ public class TerminalGuardContinuationTest
         const string Name = "TerminalGuardWindowAbort";
         var stderr = "Hello.kimi:1:" + (Source.IndexOf("$abort", StringComparison.Ordinal) + 1) + ": abort KIMI_E_ABORT: halt\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, Source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture(Name, Source, ir, string.Empty, "held=0;fallback=0", 1, stderr);
+        StringEmissionTest.WriteAuditedFixture(Name, ir, string.Empty, "held=0;fallback=0", 1, stderr);
     }
 
     // A guard that never completes leaves its body and the end of its candidate's borrow to the checks (their MIR: tests/mir/matches.kimi

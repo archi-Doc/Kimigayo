@@ -279,7 +279,7 @@ public class ElementBorrowEmissionTest
     {
         var stdout = name == "ReturnResult" ? "cleanup\nok\n" : "ok\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowCleanup" + name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture("ElementBorrowCleanup" + name, source, ir, stdout, destructions, order: order);
+        StringEmissionTest.WriteAuditedFixture("ElementBorrowCleanup" + name, ir, stdout, destructions, order: order);
     }
 
     [Fact]
@@ -304,7 +304,7 @@ public class ElementBorrowEmissionTest
     {
         const string Source = "let a = (\"held\", \"sibling\")\nlet same = a.0 == a.0\nif same => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowResponsibility", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementBorrowResponsibility", Source, ir, "ok\n", "held=1;sibling=1;ok=1", order: [2, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementBorrowResponsibility", ir, "ok\n", "held=1;sibling=1;ok=1", order: [2, 1, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var comparison = Assert.Single(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.StringEquals);
@@ -317,7 +317,7 @@ public class ElementBorrowEmissionTest
         const string Source = "func inspect(a: ref/string, b: i32) => ()\nlet a = (\"held\", \"sibling\")\nlet empty: [0 of i32] = []\ndefer => Console.writeLine(\"bad\")\ninspect(a.0, empty[0])";
         const string Error = "Hello.kimi:5:14: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowBounds", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementBorrowBounds", Source, ir, string.Empty, "held=0;sibling=0;bad=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementBorrowBounds", ir, string.Empty, "held=0;sibling=0;bad=0", 1, Error);
     }
 
     [Theory]

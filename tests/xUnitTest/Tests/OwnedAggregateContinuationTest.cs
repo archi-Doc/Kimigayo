@@ -14,7 +14,7 @@ public class OwnedAggregateContinuationTest
         const string Name = "OwnedAggregateWindowCleanup";
         const string Output = "selected\nactive\nchosen\nreplacement\nreplacement\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, source, Output);
-        StringEmissionTest.WriteAuditedFixture(Name, source, ir, Output, "active=2;selected=1;chosen=2;remaining=2;replacement=2", order: [1, 0, 0, 2, 3, 4, 2, 3, 4]);
+        StringEmissionTest.WriteAuditedFixture(Name, ir, Output, "active=2;selected=1;chosen=2;remaining=2;replacement=2", order: [1, 0, 0, 2, 3, 4, 2, 3, 4]);
     }
 
     [Theory]
@@ -75,6 +75,6 @@ public class OwnedAggregateContinuationTest
         const string Name = "OwnedAggregateBodyExits";
         const string Output = "first\nloopB\nkept\nn3\nn1\n";
         var ir = ScalarEmissionTest.EmitFixture(Name, Source, Output);
-        StringEmissionTest.WriteAuditedFixture(Name, Source, ir, Output, "first=2;second=2;loopA=1;loopB=1;kept=1;dropped=1;none=0;n1=2;n2=2;n3=1");
+        StringEmissionTest.WriteAuditedFixture(Name, ir, Output, "first=2;second=2;loopA=1;loopB=1;kept=1;dropped=1;none=0;n1=2;n2=2;n3=1");
     }
 }

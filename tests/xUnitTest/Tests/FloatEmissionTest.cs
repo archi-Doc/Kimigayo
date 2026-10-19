@@ -110,7 +110,7 @@ public class FloatEmissionTest
         var ir = Emit(name, source, expected);
         if (name == "FloatOwnedAggregate")
         {
-            StringEmissionTest.WriteAuditedFixture(name, source, ir, expected, "held=1;cleanup=1", order: [1, 0]);
+            StringEmissionTest.WriteAuditedFixture(name, ir, expected, "held=1;cleanup=1", order: [1, 0]);
         }
     }
 

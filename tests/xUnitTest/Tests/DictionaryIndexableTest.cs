@@ -10,10 +10,12 @@ public class DictionaryIndexableTest
     [Fact]
     public void SubscriptsSelectTheSameSourceEntries()
     {
-        var c = MinimalEmissionTest.Analyze("var values = [1: 42]\nvalues[1] = 43\nrequire values[1] == 43 else => $abort(\"value\")");
+        const string Source = "var values = [1: 42]\nvalues[1] = 43\nrequire values[1] == 43 else => $abort(\"value\")";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.GetSymbol(KimiDeclarationId.DictionaryIndex)!.Declaration));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.GetSymbol(KimiDeclarationId.DictionaryIndexUniq)!.Declaration));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryIndex)!.Declaration, generated);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryIndexUniq)!.Declaration, generated);
         ScalarEmissionTest.WriteFixture("DictionaryIndexableSubscript", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
