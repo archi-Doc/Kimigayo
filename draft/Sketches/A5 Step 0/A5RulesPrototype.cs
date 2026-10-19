@@ -93,8 +93,8 @@
 //               adds val(X) (E13 (1)(d)), and a reservation the Call activates counts as uniq at its effects (W6); (R3) a destruction of a
 //               static's old value holds an exclusive Loan that its own key, or Unknown on a mutable static, meets (PD12 (iii)); (R4) a
 //               live Loan on the ensured Field proves it initialized, which P5 cannot tell from another key's: a conflict that proof would
-//               decide is a located Unsupported_Kd (PD12 (ii)). Every problem goes through Report, so the hold and the taint apply
-//               (R4-M73). Variants: R18NoW6, R18LiveOnly, R18NoR3, R18Merged (G93's bool), R18EnsureExact (P42's key identity),
+//               decide is a located Unsupported_Kd (PD12 (ii)). Err owns clean Loan disposition; Report also preserves taint
+//               (R4-M69, R4-M73). Variants: R18NoW6, R18LiveOnly, R18NoR3, R18Merged (G93's bool), R18EnsureExact (P42's key identity),
 //               R18EnsureByField, R18EnsureIgnored, R18StaticEnds. R18G: SPEC 15.2.4's Transferable against HoldsRaw (G124). -r18 prints it.
 //        Round 19 (ER-defaults, A5-F9; unit 2x-P9): on R18, a default template's own rules at its prepared slots (Case.Prepared): E15, the
 //               PreparedInput's Deref is the slot itself (the inline segment '@'; today's shared Deref '*' is Case.PreparedShared); R26-borrow,
@@ -426,6 +426,7 @@ int Round19()
     return fails;
 }
 if (args.Contains("-r19")) return Round19();
+if (args.Contains("-disposition")) return DispositionChecks.Run();
 var table3 = new StringBuilder("| Case | SPEC | S1′ | design A | Class |\n| --- | --- | --- | --- | --- |\n");
 string V(Analysis a) => a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
 void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact; round 11: SA = SecureAcquire's encoding;
@@ -1559,7 +1560,7 @@ class Analysis
                     // Round 16 (the owner's route taint): γ only tainted sets hold is the located Unsupported_Kd, as a Loan's conflict is.
                     var (cleanH, taintOf) = GammaTaint ? Taints(F0, entries0, X == Abl.R16Route) : (null, null);
                     var holding = F0.Where(t => t.L == "γ" + h0).Select(t => t.H).ToList();
-                    if (cleanH == null || holding.Any(cleanH.Contains)) { if (held) Unsupp("γ" + h0, i, "ended " + h0, i); else Err("γ" + h0, i, "ended " + h0); }
+                    if (cleanH == null || holding.Any(cleanH.Contains)) Err("γ" + h0, i, "ended " + h0);
                     else Unsupp("γ" + h0, Located(holding, taintOf, i), "ended " + h0, i);
                 }
             }
@@ -1693,7 +1694,7 @@ class Analysis
                 // destruction's own key on that Field meets, and an Unknown effect where the Field is mutable.
                 if (X != Abl.R18NoR3)
                     foreach (var f in n.Accs.Where(a => a.Kind == K.Destroy).Select(a => Root(a.Place)).Where(Enc.Statics.ContainsKey).Distinct())
-                        if (n.Keys.Any(k => k.F == f) || unknown && Enc.Statics[f]) { if (held) Unsupp("Δ" + f, i, "destruction", i); else Err("Δ" + f, i, "destruction"); }
+                        if (n.Keys.Any(k => k.F == f) || unknown && Enc.Statics[f]) Err("Δ" + f, i, "destruction");
                         else if (limit && Enc.Statics[f]) Unsupp("Δ" + f, i, "destruction (Limit)", i);
             }
         }
@@ -1708,7 +1709,7 @@ class Analysis
         var (clean, taint) = Defaults ? Taints(F, entries, RouteTaint) : (null, null);
         foreach (var g in hits.GroupBy(x => x.L))
             if (ns[i].InScope) Dropped.Add((g.Key, i, what)); // round 19 (R4-M69): a Loan problem inside a copy's Inlined scope is its template's
-            else if (clean == null || g.Any(x => clean.Contains(x.H))) { if (held) Unsupp(g.Key, i, what, i); else Err(g.Key, i, what); }
+            else if (clean == null || g.Any(x => clean.Contains(x.H))) Err(g.Key, i, what);
             else if (X == Abl.R19InlinedDrop) Dropped.Add((g.Key, i, what)); // round 19: the audit's option (a), the marker as a drop
             else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), what, i);
     }
@@ -1754,9 +1755,12 @@ class Analysis
     // RouteAllParents (designer A's option 2, not chosen): h holds a reservation whose window contains i.
     bool PendingHolder(string h, int i) => issue.Values.Any(r => r.Reserve && r.Into == h && InWindow(h, r.Id, i));
 
+    // A proven Loan failure belongs to its template before the hold can reclassify a surviving body-owned problem.
+    // Taint-only problems and genuine Limits keep their existing Unsupported route.
     void Err(string l, int i, string what)
     {
         if (ns[i].InScope) { if (!Dropped.Contains((l, i, what))) Dropped.Add((l, i, what)); return; } // round 19 (R4-M69): a copy's problem is its template's
+        if (held) { Unsupp(l, i, what, i); return; } // R4-M73: only the held view's surviving Loan problems are reclassified
         if (!Errors.Contains((l, i, what))) Errors.Add((l, i, what));
     }
     void Unsupp(string l, int i, string what, int access) { if (!Unsupported.Contains((l, i, what))) Unsupported.Add((l, i, what)); if (!Reclassified.Contains((l, access, what))) Reclassified.Add((l, access, what)); }
@@ -6514,6 +6518,75 @@ static class R18G
             "view" or "obj" or "struct" or "enum" => Decl.ContainsKey(t.Name) && seen.Add(t.Name) && Decl[t.Name].Any(p => HoldsRaw(p, seen)),
             _ => t.Parts.Any(p => HoldsRaw(p, seen)),
         };
+    }
+}
+
+// Regression of existing R4-M69/M73 disposition, not a new rule round. The e17 prefix establishes the real store-induced hold;
+// only its effect suffix is replaced. Expected channels include Dropped, so silently losing a copy's known problem does not pass.
+static class DispositionChecks
+{
+    const string Field = "#State:count";
+    public static int Run()
+    {
+        int checks = 0, failures = 0;
+        foreach (var mode in new[] { Abl.R18, Abl.R19, Abl.R19Taint })
+            foreach (bool held in new[] { false, true })
+                foreach (bool inlined in new[] { false, true })
+                    foreach (var (kind, effect) in new[] { ("destruction", "key"), ("destruction", "unknown"), ("destruction", "limit"),
+                        ("effect", "key"), ("effect", "unknown"), ("effect", "limit"), ("guard", "none") })
+                    {
+                        var c = Prefix(held);
+                        string loan, what;
+                        Node at;
+                        if (kind == "guard")
+                        {
+                            c.N("guard candidate g").Def("g").Borrow("Lg", "#guard", false, "g");
+                            c.N("copy g into sink").Def("sink").Flow("g", "sink");
+                            at = c.N("end guard").EndBorrow("g");
+                            c.N("use sink").Use("sink");
+                            loan = "γg"; what = "ended g";
+                        }
+                        else
+                        {
+                            if (kind == "effect") c.N("borrow static").Def("s").Borrow("Ls", Field, false, "s");
+                            at = c.N(kind);
+                            if (kind == "destruction") at.Drop(Field);
+                            if (effect == "key") at.Key(Field, write: true);
+                            else at.Fx(unknown: effect == "unknown", limit: effect == "limit");
+                            if (kind == "effect") c.N("use static borrow").Use("s");
+                            loan = kind == "destruction" ? "Δ" + Field : "Ls";
+                            what = kind + (effect == "limit" ? " (Limit)" : "");
+                        }
+                        if (inlined) at.Inlined();
+                        // An independent outside-copy failure must remain, even when the known failure above is Dropped.
+                        c.N("outside local").Def("#outside");
+                        c.N("outside borrow").Def("out").Borrow("Lout", "#outside", false, "out");
+                        var outside = c.N("outside write").Assign("#outside");
+                        c.N("outside use").Use("out");
+                        var errors = new List<(string, int, string)>();
+                        var unsupported = new List<(string, int, string)>();
+                        var dropped = new List<(string, int, string)>();
+                        (effect == "limit" ? unsupported : inlined ? dropped : held ? unsupported : errors).Add((loan, at.Ix, what));
+                        (held ? unsupported : errors).Add(("Lout", outside.Ix, "Write #outside"));
+                        var a = new Analysis(c, Mode.A, mode, prefixKill: true);
+                        bool Same(List<(string, int, string)> x, List<(string, int, string)> y) => x.Count == y.Count && x.ToHashSet().SetEquals(y);
+                        bool ok = a.Held == held && Same(a.Errors, errors) && Same(a.Unsupported, unsupported) && Same(a.Dropped, dropped)
+                            && Same(a.Reclassified, unsupported) && a.DefaultProblems.Count == 0;
+                        checks++; if (!ok) failures++;
+                        Console.WriteLine($"{mode} {kind}/{effect} held={held} inlined={inlined}: {(ok ? "PASS" : "FAIL")}; "
+                            + $"held={a.Held}; Errors=[{string.Join(";", a.Errors)}]; Unsupported=[{string.Join(";", a.Unsupported)}]; Dropped=[{string.Join(";", a.Dropped)}]");
+                    }
+        Console.WriteLine($"Disposition checks: {checks}, failures: {failures}");
+        return failures;
+    }
+
+    static Case Prefix(bool held)
+    {
+        var c = R18.All().Single(c => c.Id == "e17");
+        int suffix = c.Nodes.FindIndex(n => n.Label == "let c = State.count@ref");
+        c.Nodes.RemoveRange(suffix, c.Nodes.Count - suffix);
+        if (!held) c.ByArgument.Clear();
+        return c;
     }
 }
 
