@@ -44,10 +44,12 @@ public class DynamicArrayCostTest
     [InlineData(false)]
     public void RepeatingConstructionCompilesOnlyItsImplementationLoop(bool used)
     {
-        var c = MinimalEmissionTest.Analyze(used ? "let values = Array<i32>.init(repeating: 1, count: 3)\nrequire values[2] == 1 else => $abort(\"value\")" : "let values = Array<i32>.init(capacity: 3)\nrequire values.length == 0 else => $abort(\"value\")");
+        var source = used ? "let values = Array<i32>.init(repeating: 1, count: 3)\nrequire values[2] == 1 else => $abort(\"value\")"
+            : "let values = Array<i32>.init(capacity: 3)\nrequire values.length == 0 else => $abort(\"value\")";
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Validate(out var failure), MinimalEmissionTest.Describe(c, failure));
-        var implementation = c.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation)!.Declaration;
-        Assert.Equal(used, c.Ownership.Bodies.Any(body => ReferenceEquals(body.Function, implementation)));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(source);
+        Assert.Equal(used, generated.Contains(sel.Library.GetSymbol(KimiDeclarationId.ArrayRepeatingImplementation)!.Declaration));
     }
 
     [Trait("Purpose", "Allocation")]

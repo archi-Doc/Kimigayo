@@ -461,6 +461,24 @@ public sealed class FunctionCodegenTest
         Assert.Equal(0, allocated);
     }
 
+    // The library bodies an Application reaches (K12, DECISIONS R4-M13a, R5-M77), where generation decides them: the program analyzed under
+    // MIR code generation, whatever the process's generators, and the definitions of the body items its generation marks Generated. The
+    // mark precedes writing, so a coverage row not written yet (Unsupported_Kd) leaves it whole; any other record fails.
+    internal static (Compilation C, Koto[] Definitions) GeneratedDefinitions(string source)
+    {
+        var c = Analyze(source);
+        Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
+        if (!c.Generate(TextWriter.Null))
+        {
+            Assert.All(Records(c), static x => Assert.Equal("Unsupported_Kd", x.Code));
+        }
+
+        var set = c.Instances!;
+        var generated = Enumerable.Range(0, set.Items.Length).Where(set.IsGenerated).ToArray();
+        Assert.NotEmpty(generated); // The startup body at least: the mark was made.
+        return (c, [.. generated.Where(x => set.Items[x].Key.Kind == MonoKind.Body).Select(x => set.Items[x].Key.Body.Def.Decl?.Declaration).OfType<Koto>()]);
+    }
+
     // A program analyzed under MIR code generation (sel) for an output form.
     private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
