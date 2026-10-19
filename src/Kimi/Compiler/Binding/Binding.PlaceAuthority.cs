@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 //   the in-place read Binding records for a receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement,
 //   SharedElementView; ElementRead through the layers an element stores) or for a compared operand (CompareInPlace).
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
-//   PairCapability) and a named root's mutability (Writable).
+//   PairCapability), a named root's mutability (Writable) and a special receiver's authority (Receiver).
 // - Outputs: the predicates above, and the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which
 //   ElementAccess.AccessType and IsSynthesizedAccess publish to Binding, the HIR publisher and the old paths.
 // - Invariants: one path computation decides writes, Moves and borrows; a shared layer anywhere on a path bounds it to Read; a node
@@ -68,9 +68,10 @@ public sealed partial class Binding
 
     // SPEC 3.4, 13.5.5, 15.1.5: the access a Place's path grants, computed once for writes, Moves and borrows. Owner is a
     // direct path (a local, parameter or static and their inline parts), Uniq a path through an exclusive reference or
-    // objuniq view, and Ref a path through a shared layer: a ref reference, a Slice element, an objref, rc or arc view or
-    // a guard candidate. A shared layer anywhere on the path bounds it to shared access; the path never changes the Type. Below a
-    // base Place, the layers are those of the base's own Type (SPEC 3.4.3); a recorded in-place read of it is representation.
+    // objuniq view or rooted at the destruction receiver (Receiver), and Ref a path through a shared layer: a ref reference,
+    // a Slice element, an objref, rc or arc view or a guard candidate. A shared layer anywhere on the path bounds it to shared
+    // access; the path never changes the Type. Below a base Place, the layers are those of the base's own Type (SPEC 3.4.3); a
+    // recorded in-place read of it is representation.
     internal static SemanticsKind PathAuthority(Koto source)
     {
         var path = PathAuthority(source, out var bindingDenies);
@@ -169,6 +170,9 @@ public sealed partial class Binding
                 case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
                     next = part.Left; // An inline part shares its owner's path.
                     break;
+                case IdentifierNameKoto root when Receiver(root) is { } receiver:
+                    bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
+                    return receiver.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
                 default:
                     bindingDenies = denied;
                     return authority;
@@ -235,13 +239,15 @@ public sealed partial class Binding
     };
 
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
-    // exclusive reference grants Read and Write but not Take, and otherwise the binding itself forbids the access, also through a
-    // selection whose receiver it cannot exclusively acquire.
+    // exclusive reference grants Read and Write but not Take, a writable part of a special receiver that SPEC lends exclusively
+    // but its row does not yet is unsupported (Receiver, SPEC 6.3.4), and otherwise the binding itself forbids the access, also
+    // through a selection whose receiver it cannot exclusively acquire.
     private static BindingFailure AccessFailure(Koto target, bool take = false)
         => PathAuthority(target, out _) switch
         {
             SemanticsKind.Ref => BindingFailure.SharedPathAccess,
             SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
+            SemanticsKind.Owner when !take && ReceiverOfPart(target) is { LendsFields: false } && Writable(target) => BindingFailure.Unsupported,
             _ => BindingFailure.InvalidAssignment,
         };
 
@@ -504,11 +510,11 @@ public sealed partial class Binding
 
             if (source is MemberAccessKoto access)
             {
-                // SPEC 16.3.1: the destruction receiver has access equivalent to uniq/Self, so its initialized fields
-                // may be borrowed exclusively although the receiver itself is not an assignable binding.
-                if (IsSpecialField(access, out var special) && special.IsDestructor)
+                // SPEC 15.1.5: a special receiver lends its own initialized Fields as its row says, although the receiver itself is
+                // not an assignable binding (Receiver).
+                if (Receiver(access.Left) is { } special)
                 {
-                    return true;
+                    return !exclusive || special.LendsFields;
                 }
 
                 if (access.Left.BoundType?.HandleMode is { } handle)

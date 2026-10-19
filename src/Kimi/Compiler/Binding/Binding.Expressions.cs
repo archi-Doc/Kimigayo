@@ -92,7 +92,7 @@ public sealed partial class Binding
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
             (AdtDef.IsStruct(field.Left.BoundType) || field.Left.BoundType?.HandleMode is not null) &&
-            !IsSpecialField(field, out _) && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
+            Receiver(field.Left) is null && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.
         }
@@ -826,8 +826,8 @@ public sealed partial class Binding
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
-        if (symbol.Name == "self" && symbol.Declaration is FunctionKoto special && (special.IsConstructor || special.IsDestructor) &&
-            ((special.BaseInitializer is { } initializer && IsWithin(node, initializer)) || node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))
+        if (Receiver(node) is { } receiver && ((symbol.Declaration is FunctionKoto { BaseInitializer: { } initializer } && IsWithin(node, initializer)) ||
+            (!receiver.Whole && (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))))
         {
             return this.Fail(node, BindingFailure.InvalidAssignment);
         }

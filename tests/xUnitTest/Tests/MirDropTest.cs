@@ -90,34 +90,28 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     }
 
     // SPEC 16.3.1-16.3.2: a destructor's self is no owner, so its body's end destroys the layer's parts, never the layer, whose drop would
-    // run again: each own Field whose Type may need drop, last to first, then the base; a moved Field is skipped (Elide, or Flag where it is
-    // moved on some paths, set at the entry). A Field or a base whose own Type declares a drop must be complete there (MovedPlace_Kd at its
-    // Drop, which is Open), one without is destroyed as it is; a second Move of a Field is A1's record alone (corpus case 06ee21107fb1).
+    // run again: each own Field whose Type may need drop, last to first, then the base. No part of drop's self is Moved out (SPEC 16.3.1):
+    // each such Move is Binding's ExclusivePathTake_Kd, and the MIR asserts nothing on those programs.
     [Fact]
     public void ADestructorBodyDestroysItsLayersParts()
     {
         const string Pair = Resource + "struct Pair\n    var on: bool\n    var first: Resource\n    var second: Resource\n" +
             "    public init(on: bool, first: Resource, second: Resource)\n        self.on = on\n        self.first = first@move\n" +
             "        self.second = second@move\n";
-        const string Moved = Pair + "    drop\n        let moved = self.first@move\n";
-        Assert.Empty(Problems(Moved));
-        Assert.Equal(["drop _2 -> bb1 [keep]", "drop _1.2 -> bb2 [keep]", "drop _1.1 -> bb3 [elide]"], Lines(Moved, "drop"));
-        Assert.Equal(
-            ["flags 1 [set f0]", "drop _1.2 -> bb5 [keep]", "_4 = move _1.1 [clear f0]", "drop _4 -> bb4 [keep]", "drop _1.1 -> bb6 [flag f0] [clear f0]"],
-            Lines(Pair + "    drop\n        if self.on\n            let moved = self.first@move\n", "drop"));
+        Assert.Equal(["drop _1.2 -> bb1 [keep]", "drop _1.1 -> bb2 [keep]"], Lines(Pair + "    drop\n        let on = self.on\n", "drop"));
+        Assert.Equal(["self.first@move"], Takes(Pair + "    drop\n        let moved = self.first@move\n"));
+        Assert.Equal(["self.first@move"], Takes(Pair + "    drop\n        if self.on\n            let moved = self.first@move\n"));
         const string Holder = Resource + "struct Holder\n    var box: Box\n    public init(box: Box) => self.box = box@move\n    drop\n" +
             "        let moved = self.box.value@move\n";
-        Assert.Equal(["MovedPlace_Kd drop 1"], Problems(Holder + Box[Resource.Length..]));
-        Assert.Equal(["drop _2 -> bb1 [keep]", "drop _1.0 -> bb2 [open (.0 elide)]"], Lines(Holder + Box[Resource.Length..], "drop"));
+        Assert.Equal(["self.box.value@move"], Takes(Holder + Box[Resource.Length..]));
         const string Base = Resource + "open struct Base\n    public var value: Resource\n    protected init(value: Resource)\n" +
             "        self.value = value@move\nstruct Leaf : Base\n    public var extra: i32 = 7\n    public init(value: Resource) : base(value@move)\n" +
             "        ()\n    drop\n        let moved = self.value@move\n";
-        Assert.Empty(Problems(Base));
-        Assert.Equal(["drop _2 -> bb1 [keep]", "drop _1.base1 -> bb2 [open (.0 elide)]"], Lines(Base, "drop"));
-        Assert.Equal(["MovedPlace_Kd drop 1"], Problems(Base.Replace("value@move\nstruct", "value@move\n    drop => ()\nstruct", StringComparison.Ordinal)));
+        Assert.Equal(["self.value@move"], Takes(Base));
+        Assert.Equal(["self.value@move"], Takes(Base.Replace("value@move\nstruct", "value@move\n    drop => ()\nstruct", StringComparison.Ordinal)));
         Assert.Equal(
-            ["MovedPlace_Kd self.value 1"],
-            Problems("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n" +
+            ["self.value@move", "self.value@move"],
+            Takes("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n" +
                 "        let again = self.value@move\nlet value = Box<i32>.init(7)\n"));
     }
 
@@ -243,6 +237,14 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     {
         Assert.Empty(MirBuildTest.Compile(source).Binding.Issues);
         return MirInitTest.Problems(source);
+    }
+
+    // The nodes of a source's Binding issues, each ExclusivePathTake_Kd.
+    private static string[] Takes(string source)
+    {
+        var issues = MirBuildTest.Compile(source).Binding.Issues;
+        Assert.All(issues, static x => Assert.Equal(Kimi.DiagnosticCode.ExclusivePathTake_Kd, x.Code));
+        return [.. issues.Select(static x => x.Node.ToString()!)];
     }
 
     [GeneratedRegex(@" @[0-9:]+( s[0-9]+)?$")]
