@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1, C0b2, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73), the frame of MIR code generation:
+// FunctionCodegen (R5 plan C0b1-C0c, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M78), the frame of MIR code generation:
 // the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance, and the coverage
 // rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf) and its records' location rule (InstanceCollector.Subject, K package
-// 4.9); the compilation's Layout and runtime location texts; ModuleCodegen's signature table (Abi.Of under the internal convention, IMPL
-// 21.3.1), constant pool and record list.
+// 4.9) and targets; the program's drop table and analysis problems (A2, R4-M6a); the compilation's Layout and runtime location texts;
+// ModuleCodegen's signature table (Abi.Of under the internal convention, IMPL 21.3.1), constant pool and record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored
@@ -15,12 +15,13 @@
 // (nothing is generated); an Assign of a Use to a local without projection, from a Copy or Move of such a local or a Bool, Integer or
 // Unit constant (a zero-sized value writes nothing, a scalar is loaded and stored in its storage representation), or of a string constant
 // to a string local (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3); Goto, SwitchInt, Return and Unreachable; a Call of the console
-// writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1). Rows not
-// written yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and statics (C7b); BinaryOp and UnaryOp
-// (C1a), Cast (C1b), Ref, Aggregate, Discriminant, Len and Adapt, PairAcquire and copies of slot Types (C2b); Float (C1b), FnItem (C5a),
+// writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1); a Ref and
+// a Drop's Keep and Elide verdicts (FunctionCodegen.Rvalues.cs, FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a),
+// DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and statics (C7b); BinaryOp and UnaryOp (C1a), Cast (C1b),
+// Aggregate, Discriminant, Len and Adapt, PairAcquire, copies of slot Types and zero-sized addresses (C2b); Float (C1b), FnItem (C5a),
 // Location (C3b), TypeToken (C3a) and raw-pointer constants (C8a), string operations (C8c); calls of a function's instance (C3a), a
 // requirement (C3b), a value (C5a), a virtual slot (C6c), an intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a), and the legacy rows
-// in a caller-location body, which forward its location (C3b); Drop (C4a). A warm write allocates nothing.
+// in a caller-location body, which forward its location (C3b); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates nothing.
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact, compose a Subst or a
 // Type (TypeOf does), resolve a callee, select a Semantics view before a covered form depends on it (C2a), or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -32,7 +33,7 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>Writes the LLVM definition of one body item from its MIR (R5 package C 3.2).</summary>
-internal sealed class FunctionCodegen
+internal sealed partial class FunctionCodegen
 {
     private readonly ModuleCodegen module;
     private readonly MirReach reach = new();
@@ -60,13 +61,14 @@ internal sealed class FunctionCodegen
     }
 
     /// <summary>Writes the definition of a body item, or records why not.</summary>
+    /// <param name="program">The program, whose body the item replays and whose drop table and problems its drops read.</param>
     /// <param name="collector">The collector of the checked set.</param>
     /// <param name="item">The item.</param>
-    /// <param name="body">Its MIR body.</param>
     /// <param name="output">The module's buffer.</param>
-    internal void Write(InstanceCollector collector, int item, MirBody body, TextWriter output)
+    internal void Write(MirProgram program, InstanceCollector collector, int item, TextWriter output)
     {
-        (this.collector, this.item, this.body, this.output, this.next) = (collector, item, body, output, 0);
+        var body = program.Bodies[collector.Set.Items[item].BodyOrdinal];
+        (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
         switch (body.Key.Kind)
         {
             case MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test:
@@ -194,7 +196,7 @@ internal sealed class FunctionCodegen
 
     private void Block(int index, FunctionAbi abi)
     {
-        var block = this.body.Blocks[index];
+        var block = this.body.Blocks[this.at = index];
         this.output.Write('b');
         WriteNumber(this.output, index);
         this.output.Write(":\n");
@@ -232,6 +234,12 @@ internal sealed class FunctionCodegen
         }
 
         var local = statement.Place.Root;
+        if (rvalue.Kind == MirRvalueKind.Ref && IsLocal(statement.Place))
+        {
+            this.Ref(local, rvalue.Place, statement.Source);
+            return;
+        }
+
         if (rvalue.Kind != MirRvalueKind.Use || !IsLocal(statement.Place))
         {
             this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
@@ -364,7 +372,7 @@ internal sealed class FunctionCodegen
                 this.Call(terminator, abi);
                 return;
             case MirTerminatorKind.Drop:
-                this.Report(DiagnosticCode.Unsupported_Kd, terminator.Source); // C4a writes drops.
+                this.Drop(terminator);
                 return;
             default:
                 throw new InvalidOperationException($"The MIR terminator kind {terminator.Kind} has no code generation row.");
@@ -421,9 +429,9 @@ internal sealed class FunctionCodegen
             return;
         }
 
-        if (this.module.Locations.Text(this.body.Subject(call.Source)) is not { } location)
+        var constant = this.Location(call.Source);
+        if (constant < 0)
         {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source); // A call site of a body has its source document.
             return;
         }
 
@@ -433,7 +441,6 @@ internal sealed class FunctionCodegen
             this.arguments = new Value[parameters.Length];
         }
 
-        var constant = this.module.Constants.Intern(location, LlvmConstantKind.Location);
         for (var i = 0; i < parameters.Length; i++)
         {
             switch (parameters[i].Kind)
@@ -614,6 +621,12 @@ internal sealed class FunctionCodegen
             return;
         }
 
+        if (value.Prefix == 'h')
+        {
+            this.WriteHome((int)value.Number);
+            return;
+        }
+
         if (value.Prefix != '\0')
         {
             this.output.Write('%');
@@ -647,10 +660,23 @@ internal sealed class FunctionCodegen
     // A record at a site of the body, located by the collector's rule (K package 4.9).
     private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
 
+    // The pooled location text (SPEC 22.5.1) of a site of the body, which a runtime routine receives; -1 after InternalInvariant_Kd for a
+    // site without a source document.
+    private int Location(in SourceInfo source)
+    {
+        if (this.module.Locations.Text(this.body.Subject(source)) is { } text)
+        {
+            return this.module.Constants.Intern(text, LlvmConstantKind.Location);
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A site of a body has its source document.
+        return -1;
+    }
+
     // A local's home and representation: Index is a pointer-passed argument's slot.
     private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
 
-    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @) or the
-    // literal integer Number (Prefix NUL).
+    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @), the home
+    // of local Number, its address (Prefix h), or the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 }

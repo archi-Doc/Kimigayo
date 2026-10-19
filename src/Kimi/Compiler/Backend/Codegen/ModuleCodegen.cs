@@ -5,7 +5,8 @@
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), the output form around them (IMPL 21.4.2: an
 // Application's __kimi_start calls its startup body and exits with 0, a Library has no entry) and the module frame through LlvmModuleText
 // in the old generator's order (header with the pooled constants, runtime, overflow declarations, functions, entry, footer); the coverage
-// rows (PD11) of the item kinds and output forms: DropGlue (C4a), ClosureErasure and ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
+// rows (PD11) of the item kinds and output forms: DropGlue (its string row DropGlue.Write's, R5-M78; C4a the others), ClosureErasure and
+// ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
 // property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, TypeOf and
 // location rule (K package 4.9); the compilation's Layout and runtime location texts (Compilation.Locations); the startup selection.
@@ -143,10 +144,17 @@ internal sealed class ModuleCodegen
         switch (entry.Key.Kind)
         {
             case MonoKind.Body:
-                this.bodies.Write(collector, item, program.Bodies[entry.BodyOrdinal], this.functions);
+                this.bodies.Write(program, collector, item, this.functions);
                 return;
-            case MonoKind.DropGlue or MonoKind.ClosureErasure or MonoKind.ItemAdapter:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C4a writes drop glue; C5b the erasure and item adapters.
+            case MonoKind.DropGlue:
+                if (!DropGlue.Write(this.bodies.Glue(item), entry.RepresentativeType!, this.functions))
+                {
+                    this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C4a writes the glue of the other Types (R5-M78).
+                }
+
+                return;
+            case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C5b writes the erasure and item adapters.
                 return;
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).

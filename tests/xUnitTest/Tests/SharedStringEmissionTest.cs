@@ -29,6 +29,6 @@ public class SharedStringEmissionTest
     {
         name = "SharedString" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions);
     }
 }

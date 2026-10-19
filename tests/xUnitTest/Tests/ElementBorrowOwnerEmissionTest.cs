@@ -83,7 +83,7 @@ public class ElementBorrowOwnerEmissionTest
     public void OwnersKeepTheirSpecifiedLifetime(string name, string source, string stdout, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowOwnerLifetime" + name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture("ElementBorrowOwnerLifetime" + name, source, ir, stdout, destructions, order: order);
+        StringEmissionTest.WriteAuditedFixture("ElementBorrowOwnerLifetime" + name, ir, stdout, destructions, order: order);
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class ElementBorrowOwnerEmissionTest
     {
         var error = $"Hello.kimi:{line}:{column}: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementBorrowOwnerAbort" + name, source, string.Empty, 1, error);
-        StringEmissionTest.WriteAuditedFixture("ElementBorrowOwnerAbort" + name, source, ir, string.Empty, "head=0;tail=0;bad=0", 1, error);
+        StringEmissionTest.WriteAuditedFixture("ElementBorrowOwnerAbort" + name, ir, string.Empty, "head=0;tail=0;bad=0", 1, error);
     }
 
     [Theory]

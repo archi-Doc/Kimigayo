@@ -80,7 +80,7 @@ public class CharEmissionTest
     {
         const string Source = "var a = ('A', \"old\", ('😀', \"nested\"))\na = ('B', \"new\", ('あ', \"last\"))";
         var ir = ScalarEmissionTest.EmitFixture("CharOwnedAggregate", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("CharOwnedAggregate", Source, ir, string.Empty, "old=1;nested=1;new=1;last=1", order: [1, 0, 3, 2]);
+        StringEmissionTest.WriteAuditedFixture("CharOwnedAggregate", ir, string.Empty, "old=1;nested=1;new=1;last=1", order: [1, 0, 3, 2]);
     }
 
     [Theory]

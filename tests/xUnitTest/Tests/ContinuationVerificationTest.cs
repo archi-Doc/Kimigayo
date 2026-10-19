@@ -24,7 +24,7 @@ public class ContinuationVerificationTest
             "match \"subject\"\n    let text if (label guard: do\n        let local = \"guard\"\n        exit to guard same(text, \"other\")\n    ) => ()\n    let text if same(text, \"subject\") => Console.writeLine(text)\n    _ => ()";
         var name = "VerificationContinuation" + Configuration + "GuardCleanup";
         var ir = ScalarEmissionTest.EmitFixture(name, Source, "subject\n");
-        StringEmissionTest.WriteAuditedFixture(name, Source, ir, "subject\n", "subject=2;guard=1;other=1", order: [2, 1, 0, 0]);
+        StringEmissionTest.WriteAuditedFixture(name, ir, "subject\n", "subject=2;guard=1;other=1", order: [2, 1, 0, 0]);
     }
 
     [Theory]
@@ -65,7 +65,7 @@ public class ContinuationVerificationTest
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, string.Empty);
         if (drops.Length != 0)
         {
-            StringEmissionTest.WriteAuditedFixture(fixture, source, ir, string.Empty, drops);
+            StringEmissionTest.WriteAuditedFixture(fixture, ir, string.Empty, drops);
         }
     }
 

@@ -49,7 +49,7 @@ public class ElementPathEmissionTest
     {
         const string Source = "var a = (\"first\", (40, 2), \"last\")\na.1.0 += a.1.1++\nif a.1.0 == 42 and a.1.1 == 3 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementPathLifetime", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementPathLifetime", Source, ir, "ok\n", "first=1;last=1;ok=1", order: [2, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementPathLifetime", ir, "ok\n", "first=1;last=1;ok=1", order: [2, 1, 0]);
     }
 
     // SPEC 13.7.2: the RHS and the index operands are evaluated before the element is located,

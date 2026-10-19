@@ -125,7 +125,7 @@ public class AggregateArgumentInferenceTest
     {
         const string Source = "func use(value: (u8, string)) => ()\nfunc use(value: (i8, string)) => ()\nuse((255, \"owned\"))";
         var ir = ScalarEmissionTest.EmitFixture("AggregateArgumentCleanup", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateArgumentCleanup", Source, ir, string.Empty, "owned=1", order: [0]);
+        StringEmissionTest.WriteAuditedFixture("AggregateArgumentCleanup", ir, string.Empty, "owned=1", order: [0]);
     }
 
     [Trait("Purpose", "Allocation")]

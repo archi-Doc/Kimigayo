@@ -71,7 +71,7 @@ public class ReceiverDefaultTest
     {
         const string Source = "struct Box\n    public let text: string\n    public init(text: string) => self.text = text@move\n    public func inspect(self) -> i32\n        Console.writeLine(self.text)\n        return 4\nfunc f(box: Box, value: i32 = box.inspect()) => Console.writeLine(\"callee\")\nf(Box.init(\"prepared\"))";
         var ir = ScalarEmissionTest.EmitFixture("ReceiverDefaultCleanup", Source, "prepared\ncallee\n");
-        StringEmissionTest.WriteAuditedFixture("ReceiverDefaultCleanup", Source, ir, "prepared\ncallee\n", "prepared=1;callee=1", order: [1, 0]);
+        StringEmissionTest.WriteAuditedFixture("ReceiverDefaultCleanup", ir, "prepared\ncallee\n", "prepared=1;callee=1", order: [1, 0]);
     }
 
     [TestClass(DisableParallelization = true)]

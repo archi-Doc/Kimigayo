@@ -27,6 +27,10 @@ public sealed class FunctionCodegenTest
     private const string Strings =
         "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n()";
 
+    // Two literals' temporaries, one on a conditional path, each borrowed and destroyed (Keep), and a string never initialized (Elide).
+    private const string Drops =
+        "Console.writeLine(\"a\")\nlet s: string\nlet flag = true\nif flag\n    Console.writeLine(\"b\")\n";
+
     // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels, an explicit startup and unused functions
     // with scalar, string-borrow, zero-sized and Never signatures.
     public static TheoryData<string, string> Frames => new()
@@ -49,9 +53,8 @@ public sealed class FunctionCodegenTest
         },
     };
 
-    // The first programs (R5 C0b2): console output through writeLine, one line, several lines, an empty line and non-ASCII text. MIR code
-    // generation writes their calls and literals; it generates them once the Ref (C2b) and Drop (C4a) rows their string temporaries need
-    // exist (DECISIONS R5-M73).
+    // The first programs (R5 C0b2, C0c): console output through writeLine, one line, several lines, an empty line and non-ASCII text: the
+    // literal, its borrow, the call and the temporary's destruction (DECISIONS R5-M73, R5-M78).
     public static TheoryData<string, string, string> Hellos => new()
     {
         { "HelloWorld", "Console.writeLine(\"Hello, world!\")\n", "Hello, world!\n" },
@@ -70,7 +73,7 @@ public sealed class FunctionCodegenTest
 
     // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
     // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
-    // local, its bytes a header constant and its release kind Static (SPEC 22.7); the empty string has no bytes.
+    // local, its bytes a header constant and its release kind Static (IMPL 21.1.3); the empty string has no bytes.
     [Fact]
     public void WriteLineCallsTheConsoleRuntimeRow()
     {
@@ -88,6 +91,51 @@ public sealed class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
+    }
+
+    // DECISIONS R5-M78, R4-M6a: a Ref stores its local's address; a Keep Drop calls the dropped Type's glue once, on the Place's address, and
+    // an Elide Drop nothing, so each string a path initializes is destroyed exactly once and the one never initialized is not; the string's
+    // glue item calls the runtime release with its own parameters (PD18).
+    [Fact]
+    public void EachInitializedStringIsDestroyedOnce()
+    {
+        var ir = GeneratedIr.Parse(Generate(Drops));
+        var body = ir.Startup;
+        var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
+        var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
+            .Select(static x => Assert.Single(x.Operands)).ToArray();
+        var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
+        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
+        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
+        Assert.Equal(3, strings.Length);
+        Assert.Equal(2, literals.Distinct().Count());
+        Assert.Equal(literals, borrows);
+        Assert.Equal(2, writes.Length);
+        Assert.Equal(literals, drops.Select(static x => x.Operands[0]));
+        Assert.All(drops, static x => Assert.Equal("call void @(ptr %, ptr @, i64 15)", x.Shape));
+        var glue = Assert.Single(drops.Select(static x => x.Callee).Distinct())!;
+        Assert.Equal(["call void @(ptr %, ptr %, i64 %)", "ret void"], glue.Instructions.Select(static x => x.Shape));
+        Assert.Same(ir.Function("__kimi_destroy_string"), glue.Instructions[0].Callee);
+        Assert.Equal(glue.Parameters, glue.Instructions[0].Operands);
+    }
+
+    // Gate step 2's stand-in (DECISIONS R5-M78): A2's verdicts are exact only for programs A1 accepts (R4-M6a), and under sel the old analysis
+    // decides acceptance, so a program whose MIR analyses recorded an Ownership problem writes no Drop: each is one located Unsupported_Kd; a
+    // control-flow problem (A3) does not gate. No program the old analysis accepts and the frame covers holds such a problem yet (ledger row
+    // a1-whole-incomplete needs a fixed array, and the arena-skipped bodies are rejected first), so the problem is added to the version's
+    // report.
+    [Theory]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    public void AnOwnershipProblemOfTheProgramLeavesItsDropsUnwritten(bool ownership, bool written)
+    {
+        var c = Analyze("Console.writeLine(\"a\")\n");
+        var program = c.BuildMir();
+        var requirement = ownership ? DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse) : DiagnosticRequirement.ControlFlow;
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, program.Bodies[0].Source, 1));
+        using var writer = new StringWriter();
+        Assert.Equal(written, c.Generate(writer));
+        Assert.Equal(written ? [] : [("Unsupported_Kd", (string?)"\"a\"")], Records(c));
     }
 
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
@@ -158,15 +206,14 @@ public sealed class FunctionCodegenTest
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. Console.writeLine's call is written, and its literal's borrow (C2b) and destruction (C4a, the Drop and the
-    // string's DropGlue item) are one record at the literal (DECISIONS R5-M73), as a callee's result's are at that call (C3a); the Utf8Slice
-    // overload is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings its
-    // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
-    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
+    // its valid counterpart is. A string's Move into another local copies a slot Type (C2b's row), at the source; a callee's call is C3a's,
+    // at that call; the Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and
+    // of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS
+    // R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
     [Theory]
     [InlineData("func twice(a: i32) -> i32 => a + a\n()", new[] { "a + a" })]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", new[] { "twice(1)" })]
-    [InlineData("Console.writeLine(\"\")\n", new[] { "\"\"" })]
+    [InlineData("let t = \"x\"\nlet u = t@move\n", new[] { "t" })]
     [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n()", new[] { "name()" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n()", new[] { "Console.writeLine(text)" })]
     [InlineData(ForLoop, new[] { "for value in values\n        total = 1", "value" })]
@@ -190,6 +237,7 @@ public sealed class FunctionCodegenTest
     [Theory]
     [InlineData(Branches)]
     [InlineData(Strings)]
+    [InlineData(Drops)]
     public void GenerationIsDeterministic(string source)
     {
         var first = Generate(Analyze(source));
@@ -223,6 +271,7 @@ public sealed class FunctionCodegenTest
     [Theory]
     [InlineData(Branches)]
     [InlineData(Strings)]
+    [InlineData(Drops)]
     public void WarmGenerationAllocatesNothing(string source)
     {
         var c = Analyze(source);

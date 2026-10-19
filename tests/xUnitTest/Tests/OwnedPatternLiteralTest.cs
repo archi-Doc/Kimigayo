@@ -38,6 +38,6 @@ public class OwnedPatternLiteralTest
             """;
         const string Name = "OwnedPatternWindowUtf8";
         var ir = ScalarEmissionTest.EmitFixture(Name, Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture(Name, Source, ir, "ok\n", "=1;é=2;e\u0301=1;x\0y=1;left=1;right=1;wrong=0;ok=1");
+        StringEmissionTest.WriteAuditedFixture(Name, ir, "ok\n", "=1;é=2;e\u0301=1;x\0y=1;left=1;right=1;wrong=0;ok=1");
     }
 }

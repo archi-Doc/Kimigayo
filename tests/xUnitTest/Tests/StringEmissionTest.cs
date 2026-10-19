@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text;
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
 using Xunit;
@@ -49,7 +51,7 @@ public class StringEmissionTest
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
         Assert.DoesNotContain("llvm.memcpy", ir);
-        WriteAuditedFixture(name, source, ir, stdout, destructions);
+        WriteAuditedFixture(name, ir, stdout, destructions);
     }
 
     [Theory]
@@ -59,7 +61,7 @@ public class StringEmissionTest
     {
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, stderr);
-        WriteAuditedFixture(name, source, ir, string.Empty, destructions, 1, stderr);
+        WriteAuditedFixture(name, ir, string.Empty, destructions, 1, stderr);
     }
 
     [Theory]
@@ -215,16 +217,24 @@ public class StringEmissionTest
         ScalarEmissionTest.WriteFixture("StringAuditMissing", missing, "single\n", 120, string.Empty);
     }
 
-    internal static void WriteAuditedFixture(string name, string source, string ir, string stdout, string destructions, int exit = 0, string? stderr = null, int[]? order = null)
+    // Audits the destructions of the module's string constants (count, and optionally order, per text). A constant is found by its bytes
+    // among the definitions of the audited text itself, which either generator writes through LlvmConstantPool, so the audit holds for
+    // both; a text the module defines no constant for (its code is never generated) cannot be destroyed, so it matches no handle.
+    internal static void WriteAuditedFixture(string name, string ir, string stdout, string destructions, int exit = 0, string? stderr = null, int[]? order = null)
     {
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
+        var constants = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (Match definition in Regex.Matches(ir, @"(?m)^@([\w.]+) = private unnamed_addr constant \[\d+ x i8\] c""((?:\\[0-9A-F]{2})*)"", align 1$"))
+        {
+            var hex = definition.Groups[2].Value.Replace("\\", string.Empty, StringComparison.Ordinal);
+            constants.Add(Encoding.UTF8.GetString(Convert.FromHexString(hex)), definition.Groups[1].Value);
+        }
+
         var entries = destructions.Split(';').Select(item =>
         {
             var separator = item.LastIndexOf('=');
             var text = item[..separator];
-            var constant = text.Length == 0 ? null : Enumerable.Range(0, module.Constants.Count).Select(i => module.Constants[i]).Single(x => x.Value == text);
-            return (Symbol: constant?.Name, Length: constant?.ByteLength ?? 0, Count: int.Parse(item.AsSpan(separator + 1), System.Globalization.CultureInfo.InvariantCulture));
+            var count = int.Parse(item.AsSpan(separator + 1), System.Globalization.CultureInfo.InvariantCulture);
+            return (Symbol: constants.GetValueOrDefault(text), Length: Encoding.UTF8.GetByteCount(text), Count: count);
         }).ToArray();
         ScalarEmissionTest.WriteFixture(name + "Audit", StringLifetimeAudit.Instrument(ir, entries, order: order), stdout, exit, stderr);
     }

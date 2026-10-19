@@ -49,7 +49,7 @@ public class ArrayArgumentEmissionTest
     public void ArrayArgumentsRetainOneCleanupResponsibility(string name, string source, string counts, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("ArrayArgument" + name, source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("ArrayArgument" + name, source, ir, string.Empty, counts, order: order);
+        StringEmissionTest.WriteAuditedFixture("ArrayArgument" + name, ir, string.Empty, counts, order: order);
     }
 
     [Fact]
