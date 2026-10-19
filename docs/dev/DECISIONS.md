@@ -3527,12 +3527,14 @@ structure is recorded here by the unit that first implements it.
   requirement on the constant (`StaticInit` reads only its value).
 - **R5-M73 The console `writeLine` row, string constants and the first pending files** (2026-10-19, C lane; plan C0b2, package C §3.2
   and §7, audit rows WriteLine and Const String; under R5-M18 form 1, R5-M65 and R5-M66) `FunctionCodegen` writes a Call whose Fn
-  callee is a compiler function by its legacy runtime row (the Body disposition, until R8), the console `writeLine` first:
-  `RuntimeAbi.WriteLine` called with the call's operands at its parameters' slots and the call site's location text
-  (`Compilation.Locations`, SPEC 22.5.1, a pooled `Location` constant; a site without text is `InternalInvariant_Kd`). In a
-  caller-location body the row forwards the body's own location, C3b's row; the other kinds are C8b-C8e's and C9a's. A `Use` of a
-  string constant into an unprojected `string` local stores the whole `%kimi.string`: its UTF-8 bytes a pooled `Text` constant, the
-  Static release kind (SPEC 22.7), the empty string `null` and 0. The entry stays C0b1's (R5-M65).
+  callee is a compiler function of the Body disposition (the published `IntrinsicDisposition`; a Shim is the shim items' row) by its
+  legacy runtime row, until R8, the console `writeLine` first; C9a's formatting rows come from one Backend table beside
+  `LegacyRuntimeHelpers.FormattingRow`. `writeLine` is `RuntimeAbi.WriteLine` called with the call's operands at its parameters'
+  slots and the call site's location text (`Compilation.Locations`, SPEC 22.5.1, a pooled `Location` constant; a site without text
+  is `InternalInvariant_Kd`). In a caller-location body the row forwards the body's own location, C3b's row; the other kinds are
+  C8b-C8e's and C9a's. A `Use` of a string constant into an unprojected `string` local stores the whole `%kimi.string`: its UTF-8
+  bytes a pooled `Text` constant, the Static release kind (the string representation, IMPL 21.1.3), the empty string `null` and 0.
+  The entry stays C0b1's (R5-M65).
   - First program: `Console.writeLine("x")` also needs C2b's `Ref` of the literal's temporary and C4a's Keep Drop with the string's
     DropGlue item, which PD12's gate step 2 guards (R4-M6a's verdicts are exact only for programs A1 accepts; the per-body fact waits
     for R4's G125). So no console-output program generates under MIR code generation yet: the `Hello*` fixtures of
@@ -3540,8 +3542,11 @@ structure is recorded here by the unit that first implements it.
   - Pending files: one full sel suite's failing cases, each filed under the review group (the plan's §4 Review column without `G:`;
     a unit reviewed alone by its ID, `C7b.tsv`) of the first unit, in plan order C0a to C10b then K13a to K13c, whose verification
     column names its class exactly, else of the first whose `X*` family prefixes the class's simple name, else `C-frame.tsv`, the
-    group of the ledger's own units (C0b2 writes it, E10 reports and E11 gates it). A fixture has a row only when it is written and
-    fails natively; a case that fails only under load (PLAN G138) has none. A new row follows the same rule.
+    group of the ledger's own units (C0b2 writes it, E10 reports and E11 gates it). K13a-K13c name their classes in the Change
+    column, which is read for them (`OwnershipStorageLimitTest`, there only as marked for G7, is not named, so `Ownership*` files it
+    under C-drop); a nested class is filed by its outermost class; `FunctionCodegenTest` falls under C3a's `Function*` (call). A
+    fixture has a row only when it is written and fails natively; a case that fails only under load (PLAN G138) has none. A new row
+    follows the same rule, which E11 implements.
   - `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` asserts the old generator's agreement, so it selects the old generator
     whatever the process's; `verify.ps1` normalizes `-Mode` as it does `-Pipeline` and `-Codegen`, since `codegen-pending.ps1`
     compares the spelling.

@@ -883,13 +883,7 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
         Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, $"func f(value: {type}) -> i32 => value{leaf}")] : [], records);
-        var legacy = Compilation.CreateForTest();
-        legacy.Codegen = CompilerCodegen.Legacy;
-        Assert.True(legacy.Prepare(WindowsProfile.Target));
-        legacy.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source.ToString()));
-        legacy.Bind();
-        legacy.Binding.CheckStartup(OutputKind.Application);
-        legacy.Analyze();
+        var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
         Assert.Equal(!limited, legacy.Validate(out var error));
         Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
     }

@@ -14,7 +14,7 @@
 // each use; I7 every Type is Layout.Of(TypeOf(item, t)); I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow
 // (nothing is generated); an Assign of a Use to a local without projection, from a Copy or Move of such a local or a Bool, Integer or
 // Unit constant (a zero-sized value writes nothing, a scalar is loaded and stored in its storage representation), or of a string constant
-// to a string local (its UTF-8 bytes a pooled constant, Static, SPEC 22.7); Goto, SwitchInt, Return and Unreachable; a Call of the console
+// to a string local (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3); Goto, SwitchInt, Return and Unreachable; a Call of the console
 // writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1). Rows not
 // written yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and statics (C7b); BinaryOp and UnaryOp
 // (C1a), Cast (C1b), Ref, Aggregate, Discriminant, Len and Adapt, PairAcquire and copies of slot Types (C2b); Float (C1b), FnItem (C5a),
@@ -258,8 +258,8 @@ internal sealed class FunctionCodegen
         }
     }
 
-    // A string constant stored into a string local (SPEC 22.7): its UTF-8 bytes a pooled constant, the Static release kind, so never
-    // released; the empty string has no bytes (null, length 0).
+    // A string constant stored into a string local (the string representation, implementation-defined by IMPL 21.1.3: RuntimeAbi.String):
+    // its UTF-8 bytes a pooled constant, the Static release kind, so never released; the empty string has no bytes (null, length 0).
     private void Text(int local, string text)
     {
         var output = this.output;
@@ -311,7 +311,7 @@ internal sealed class FunctionCodegen
         value = default;
         if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Unit))
         {
-            return false; // Float (C1b), String (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a).
+            return false; // Float (C1b), String other than into a string local (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
@@ -371,27 +371,42 @@ internal sealed class FunctionCodegen
         }
     }
 
-    // A Call by its callee's row: a compiler function's legacy row; a function's instance (the collector's target) is C3a's, a requirement
-    // C3b's, a Closure or function value C5a's, a virtual slot C6c's and an intrinsic its IntrinsicRows unit's (C8a, C10a).
+    // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
+    // legacy row; the other rows are not written yet, each at the call.
     private void Call(in MirTerminator call, FunctionAbi abi)
     {
-        switch (call.Callee.Kind)
+        var callee = call.Callee;
+        switch (callee.Kind)
         {
-            case MirCalleeKind.Fn when call.Callee.Symbol!.CompilerFunction != CompilerFunctionKind.None:
+            case MirCalleeKind.Fn when callee.Symbol!.CompilerFunction is not CompilerFunctionKind.None and var kind &&
+                IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
                 this.Legacy(call, abi);
                 return;
-            case MirCalleeKind.Fn or MirCalleeKind.Requirement or MirCalleeKind.Value or MirCalleeKind.Virtual or MirCalleeKind.Intrinsic:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
+            case MirCalleeKind.Fn:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C3a calls the collector's target; C8f and C9b the Shim dispositions.
+                return;
+            case MirCalleeKind.Requirement:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C3b calls the requirement's target.
+                return;
+            case MirCalleeKind.Value:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C5a calls a Closure or function value.
+                return;
+            case MirCalleeKind.Virtual:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C6c loads the virtual slot.
+                return;
+            case MirCalleeKind.Intrinsic:
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C8a and C10a write the intrinsic rows.
                 return;
             default:
-                throw new InvalidOperationException($"The MIR callee kind {call.Callee.Kind} has no code generation row.");
+                throw new InvalidOperationException($"The MIR callee kind {callee.Kind} has no code generation row.");
         }
     }
 
     // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition): the console
-    // writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); the other rows are C8b-C8e's and C9a's. The routine takes
-    // the call's operands at its parameters' slots and the call site's location text (SPEC 22.5.1), which a caller-location body forwards
-    // instead (C3b); its result is Unit, so the destination takes nothing.
+    // writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one
+    // Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine takes the call's operands at its
+    // parameters' slots and the call site's location text (SPEC 22.5.1), which a caller-location body forwards instead (C3b); its result is
+    // Unit, so the destination takes nothing.
     private void Legacy(in MirTerminator call, FunctionAbi abi)
     {
         var symbol = call.Callee.Symbol!;

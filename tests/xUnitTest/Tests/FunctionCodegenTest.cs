@@ -159,13 +159,16 @@ public sealed class FunctionCodegenTest
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
     // its valid counterpart is. Console.writeLine's call is written, and its literal's borrow (C2b) and destruction (C4a, the Drop and the
-    // string's DropGlue item) are one record at the literal (DECISIONS R5-M73); the records of a for loop's statement and of the siblings its
+    // string's DropGlue item) are one record at the literal (DECISIONS R5-M73), as a callee's result's are at that call (C3a); the Utf8Slice
+    // overload is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings its
     // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
     // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
     [Theory]
     [InlineData("func twice(a: i32) -> i32 => a + a\n()", new[] { "a + a" })]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", new[] { "twice(1)" })]
     [InlineData("Console.writeLine(\"\")\n", new[] { "\"\"" })]
+    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n()", new[] { "name()" })]
+    [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n()", new[] { "Console.writeLine(text)" })]
     [InlineData(ForLoop, new[] { "for value in values\n        total = 1", "value" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n()", new[] { "let limit: i32 = 4" })]
     [InlineData("func twice(a: i32) -> i32 => a\n()", new string[0])]
