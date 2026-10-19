@@ -85,6 +85,7 @@ All folders are direct children of `draft`, so moving a document between them ke
 | `2026-10-06 G75 Common Ownership Analysis C.md` | 取り込み済み | 2026-10-06 取り込み（S1–S9）。§7.6.3、§8.1.1、§8.1.2、§8.9、§8.10（Semantics cases 新設）、§13.5.5.1、§15.3.5、§15.6.4、§23.3.6.4、§23.3.6.5、付録 E（Semantics case）。S7 は診断コード（仕様文なし）。実装は U0–U6（PLAN G75）。原稿は固定。 |
 | `2026-10-06 G75 Common Ownership Analysis.md` | 完了 | 計画 A。2026-10-06 に計画 C が置き換え（U0–U7 の共通モデル再設計は採用せず、ケース実行で代替）。`Obsolete/` へ移動（本文は変更なし）。 |
 | `2026-10-06 G75 Common Ownership Analysis B.md` | 完了 | 計画 B。2026-10-06 に計画 C が置き換え（`W` への `o_s` 付与と単一パスの条件付きルートは採用せず、`o_b` アクセサとケース実行で代替）。`Obsolete/` へ移動（本文は変更なし）。 |
+| `2026-10-17 Unlabeled Exit from Do.md` | 完了 | 案 A。2026-10-20 に案 B が置き換え（対象の決定規則は案 B に移管、結果を捨てる `do` へのラベルなし `exit` の受理は不採用）。`Obsolete/` へ移動（本文は変更なし）。詳細は 2026-10-20 の節。 |
 
 ## Design
 
@@ -785,3 +786,24 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
   - Principles. One Concept, One Canonical Form: one Loan rule for fills of every length, constant or generic. Local
     Reasoning: the acquisition, not the length, decides. Explicit Semantics: the edge case is stated.
   - Usage: library 0, milestones 0 (a grep finds no fill of literal length zero, H); no default-pipeline verdict changes.
+
+## 2026-10-20 — Unlabeled `exit` from `do` (plan B)
+
+The owner's instruction of 2026-10-20: "Commit plan B, push it to dev, and register its intake in INTEGRATED. Move plan A
+to Obsolete as superseded."
+
+- [Unlabeled Exit from Do B](Proposals/2026-10-17%20Unlabeled%20Exit%20from%20Do%20B.md): 一部取り込み (open, intake
+  only). An unlabeled `exit` targets the innermost `for`, `while`, `loop`, `do` or Deferred Block (`do` added), chosen
+  independently of label, operand, Type and context; one whose target is a `do` in Discard Context is an error, as an
+  unlabeled `yield` to a discarded selection already is. Implementation starts after R9 (plan A's decision, kept). No
+  section is integrated into SPEC or IMPL, and no text is frozen. Plan B claims no precedence over SPEC; its rules take
+  effect at formal integration, which its U0 checks. Intake implies no implementation support.
+- Planned mapping (its §5): §2.1 → SPEC §14.5.2's table; §2.2 → §14.5.2's text and §14.3; §2.3 → §14.2.2's table; §2.5 →
+  §16.1.1. §14.1, §14.9, Chapter 15, §16.2 and Appendix F stay unchanged. The diagnostic rename of its §4.1
+  (`UnlabeledYieldTarget_Kd`) needs the owner's approval in the implementing commit.
+- `Obsolete/2026-10-17 Unlabeled Exit from Do.md` (plan A): 完了, text unchanged (the blob of `78d8fdd6`, whose intake
+  record never reached dev). Its target rule is transferred to plan B. Its acceptance of an unlabeled `exit` to a
+  discarded `do` is rejected: such an `exit` silently retargeted existing Unit transfers and departed from the `yield`
+  rule (plan B §1.3, §3.3). Its other sections (results and ownership, nesting, Deferred Block, migration,
+  implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
+  closure.
