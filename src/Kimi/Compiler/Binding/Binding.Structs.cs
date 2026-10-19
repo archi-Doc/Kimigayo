@@ -18,7 +18,7 @@ public sealed partial class Binding
     private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
 
     // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused), or an open Type's position
-    // on the walk's stack (Open), which every query leaves empty.
+    // on the walk's stack (Open), which every query leaves empty; ResetPass clears both, after a walk a fault aborted too.
     private readonly Dictionary<BoundType, (int Height, int Open)> storageMarks = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> storageStack = new();
     private Dictionary<Koto, ConstructorAbsence>? constructorAbsences;

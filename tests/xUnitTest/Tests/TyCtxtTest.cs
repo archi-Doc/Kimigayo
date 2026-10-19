@@ -475,8 +475,8 @@ public sealed class TyCtxtTest
         Assert.Equal(RequirementTargetKind.Limit, c.Types.Witness(inner.Target, inner.RequirementContract, c.Types.SubstOf(call)!).Kind);
         Assert.Equal(RequirementTargetKind.Body, Witness(c, (inner, outer)).Kind);
 
-        // Option^40<i32> (storage depth 80): Wrap^80 counts as prepared in the pass once Witness prepared it, since its failing part is a
-        // Type argument that no Field stores.
+        // Option^40<i32> (storage height 80) is past the bound whatever Witness prepared before it (Wrap^80, whose Type argument no Field
+        // stores, is refused too; DECISIONS BU-11, BU-12), so the caller's instance composes no substitution.
         var option = KotoTree.Walk(c.Kotonoha.RootKoto).Select(static x => x.TypeOf()).First(static x => x is { Symbol.Name: "Option" })!;
         var nested = BoundType.I32;
         for (var i = 0; i < 40; i++)

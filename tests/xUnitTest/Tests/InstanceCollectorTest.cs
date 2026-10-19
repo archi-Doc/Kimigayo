@@ -368,9 +368,11 @@ public sealed class InstanceCollectorTest
     // cycle is decided by its exits in every order. R and X (X stores R through a handle, R stores Box^200) are refused at every call;
     // `L`, which stores itself through Option<rc/L<T>>, is an instance with Box^59 (h's 3 levels + 60) and refused with Box^61, either
     // way round; a ring of 16 or 17 structs is an instance (height 1), a ring of 63 too, while a ring of 64 passes the 256 Types the walk's
-    // path may hold. A growing G reaches that cap in every order (its Tuple arguments are walked once each: a tree walk would not end),
-    // while G2, which repeats, is an instance. Over the cap the verdict may depend on the other Types the program prepares: a 63-ring
-    // behind Box^4 is refused alone and admitted once S1 is prepared anywhere (the owner's accepted residual).
+    // path may hold. A growing G reaches that cap in every order, while G2, which repeats, is an instance. N stores its T, a Tuple tree as
+    // deep as the growth, before its growth Field, so it reaches the cap only because the walk enters each Type once (structural Types
+    // too): walked as trees, its Tuples would not end within the test run (RetentionTest.GrowingRecursiveContractsAreTheLimit guards the
+    // same through A5's retention). Over the cap the verdict may depend on the other Types the program prepares: a 63-ring behind Box^4
+    // is refused alone and admitted once S1 is prepared anywhere (the owner's accepted residual).
     [Theory]
     [InlineData(0, "R X", "R X")]
     [InlineData(0, "X R", "X R")]
@@ -390,14 +392,15 @@ public sealed class InstanceCollectorTest
     [InlineData(0, "G", "G")]
     [InlineData(0, "G2 G", "G")]
     [InlineData(0, "G G2", "G")]
+    [InlineData(0, "N", "N")]
     public void StorageNestingIsAPropertyOfTheComponent(int ring, string arguments, string refused)
     {
         var c = MirBuildTest.Compile(
             $"struct Box<T>\n    public let value: T\nstruct R<T>\n    public let x: X<T>\n    public let y: {Nest("Box", 200, "T")}\nstruct X<T>\n" +
             "    public let r: Option<rc/R<T>>\nstruct L<T>\n    public let next: Option<rc/L<T>>\n    public let v: T\nstruct G<T>\n" +
-            "    public let next: Option<rc/G<(T, T)>>\nstruct G2<T>\n    public let next: Option<rc/G2<T>>\n" + Ring(ring) +
-            "func h<T>(x: Option<raw/T>) => ()\npublic func main() -> ()\n" + string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) +
-            "    return\n");
+            "    public let next: Option<rc/G<(T, T)>>\nstruct G2<T>\n    public let next: Option<rc/G2<T>>\nstruct N<T>\n    public let v: T\n" +
+            "    public let next: Option<rc/N<(T, T)>>\n" + Ring(ring) + "func h<T>(x: Option<raw/T>) => ()\npublic func main() -> ()\n" +
+            string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) + "    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
@@ -407,7 +410,7 @@ public sealed class InstanceCollectorTest
 
         static string Text(string argument) => argument switch
         {
-            "R" or "X" or "G" or "G2" => argument + "<i32>",
+            "R" or "X" or "G" or "G2" or "N" => argument + "<i32>",
             "OS1" => "Option<rc/S1>",
             "W4" => Nest("Box", 4, "S1"),
             ['O', 'L', ..] => $"Option<rc/{Text(argument[1..])}>",
@@ -425,7 +428,8 @@ public sealed class InstanceCollectorTest
     public void StorageRingsMeetTheGlueDepth(int ring, string records)
     {
         var c = MirBuildTest.Compile(
-            Ring(ring) + "func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: Option<rc/S1> = .None\n    let w = pick(v@move)\n    return\n");
+            Ring(ring) + "func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: Option<rc/S1> = .None\n    let w = pick(v@move)\n" +
+            "    return\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
@@ -1294,10 +1298,12 @@ public sealed class InstanceCollectorTest
         => Enumerable.Range(0, set.Items.Length).Single(x => Label(program, set.Items[x]) == label);
 
     // A Type of `depth` nested wrappers around a leaf, as Box^3<i32> = Box<Box<Box<i32>>>.
-    private static string Nest(string wrapper, int depth, string leaf) => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
+    private static string Nest(string wrapper, int depth, string leaf)
+        => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
 
     // A ring of `count` structs S1, S2, ..., each storing the next through Option<rc/…>, the last S1.
-    private static string Ring(int count) => string.Concat(Enumerable.Range(1, count).Select(k => $"struct S{k}\n    public let next: Option<rc/S{(k % count) + 1}>\n"));
+    private static string Ring(int count)
+        => string.Concat(Enumerable.Range(1, count).Select(k => $"struct S{k}\n    public let next: Option<rc/S{(k % count) + 1}>\n"));
 
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
