@@ -14,8 +14,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 14.8, 17.3: a match, or a try with its synthesized arms, a target for a yield. The Subject and the tests' temporaries end
     // when the match does, after the selected arm's scope (SPEC 15.1.6); a link whose Pattern tests nothing and has no guard still branches,
-    // on a constant, to the next one, so that even a catch-all can fail for the analyses.
-    private void Match(MirPlace destination, MatchKoto match)
+    // on a constant, to the next one, so that even a catch-all can fail for the analyses; as a call's input, each arm's value as Result
+    // places it (input).
+    private void Match(MirPlace destination, MatchKoto match, bool input)
     {
         var plan = BoundMatch.Of(match)!;
         if (plan.Invalid || plan.Pending)
@@ -55,7 +56,7 @@ internal sealed partial class MirBuilder
             this.scope = (ushort)this.body.AddScope(outer, MirScopeKind.Lexical, SourceRef.Of(arm.Syntax.Pattern));
             var bindings = this.temporaries = this.OpenScope(block: true);
             this.Bind(plan, arm.Pattern, start);
-            this.Result(destination, arm.Syntax.Body, arm.Syntax.Body);
+            this.Result(destination, arm.Syntax.Body, arm.Syntax.Body, input);
             this.CloseScope(bindings);
             this.scope = outer;
             this.Join(after, arm.Syntax.Body);
