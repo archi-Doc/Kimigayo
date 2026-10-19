@@ -218,14 +218,21 @@ public sealed partial class Binding
 
     // SPEC 3.4.3, 13.5.5: the Type below one layer of a Type (a reference, handle or object view, raw pointer or pair layer); null
     // for a Type without one.
-    private static BoundType? BelowLayer(BoundType? type)
-        => TryPairLayer(type, out _, out var target) ? target : type is { Kind: BoundTypeKind.Semantics, Components: [var component] } ? component : null;
+    private static BoundType? BelowLayer(BoundType? type) => type switch
+    {
+        _ when TryPairLayer(type, out _, out var target) => target,
+        { Kind: BoundTypeKind.Semantics, Components: [var component] } => component,
+        _ => null,
+    };
 
     // SPEC 13.5.5: a pair layer's weakest admitted case: shared when it admits a shared one, and otherwise exclusive unless it
     // admits an owner, an owning handle or a raw pointer, which keeps the operand's own path.
-    private static SemanticsKind? PairAuthority(SemanticsMask admitted)
-        => (admitted & (SemanticsMask.Ref | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.ObjRef)) != 0 ? SemanticsKind.Ref :
-            (admitted & (SemanticsMask.Owner | SemanticsMask.Obj | SemanticsMask.Raw)) == 0 ? SemanticsKind.Uniq : null;
+    private static SemanticsKind? PairAuthority(SemanticsMask admitted) => admitted switch
+    {
+        _ when (admitted & (SemanticsMask.Ref | SemanticsMask.Rc | SemanticsMask.Arc | SemanticsMask.ObjRef)) != 0 => SemanticsKind.Ref,
+        _ when (admitted & (SemanticsMask.Owner | SemanticsMask.Obj | SemanticsMask.Raw)) == 0 => SemanticsKind.Uniq,
+        _ => null,
+    };
 
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
     // exclusive reference grants Read and Write but not Take, and otherwise the binding itself forbids the access, also through a
