@@ -9,7 +9,6 @@ public sealed partial class Binding
 {
     // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
-    private readonly List<OriginRelationFact> relationScratch = new();
     private Dictionary<Koto, List<OriginRelationFact>>? callRelations;
 
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)

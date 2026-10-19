@@ -15,12 +15,16 @@ namespace Kimi.Compiler;
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
 //   other chains through RecordMoreRelation, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
 //   or fails it Unsupported, and returns whether a position failed.
-// - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state; a
-//   record names a chain, never a whole meet at the longer end; `relationScratch` is empty when RecordOriginFitFailure returns.
+// - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state; an
+//   `outlives` record names a failing operand's chain, the whole longer end only when no operand fails alone; `relationScratch`
+//   is empty when RecordOriginFitFailure returns.
 // - Prohibitions: no structural Type comparison (the caller decided that the storage matches); no message text (the diagnostics
 //   adapter writes it from the facts).
 public sealed partial class Binding
 {
+    // The failed chains of one fit (FailedOriginRelation with `all`), which RecordOriginFitFailure publishes.
+    private readonly List<OriginRelationFact> relationScratch = new();
+
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records. A position the relation judge fails records every failed chain; a position that is only unproven is recorded when an
     // end is unresolved and is otherwise Unsupported. Either is a dependent of a failed Origin environment instead, the first only

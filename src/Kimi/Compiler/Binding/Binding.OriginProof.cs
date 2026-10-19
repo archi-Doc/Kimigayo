@@ -392,9 +392,9 @@ public sealed partial class Binding
     }
 
     // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
-    // their owner's part: a local's (a VariableKoto that is not a PropertyKoto, always a Local symbol) by the local part,
-    // JudgeLocalClause, which A5 judges from rows after R6, and any other owner's, a Field's, Case's or alias's, by the declaration
-    // part, JudgeDeclaredRelation, which stays Binding's (OJ1).
+    // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
+    // owner's, a Field's, Case's, alias's or associated formation's, by the declaration part, JudgeDeclaredRelation: a declaration's
+    // own clause, which Binding alone judges.
     private void ValidateOriginRelations()
     {
         foreach (var declaration in this.originDeclarations.Values)
@@ -409,7 +409,7 @@ public sealed partial class Binding
                 if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
                     (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
                 {
-                    if (declaration.Owner is VariableKoto and not PropertyKoto)
+                    if (declaration.Owner is FieldKoto)
                     {
                         this.JudgeLocalClause(declaration, relation);
                     }
@@ -454,7 +454,8 @@ public sealed partial class Binding
         return new OriginRelationFact(use, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter), use);
     }
 
-    // The declaration part (OJ1): a Field's, Case's or alias's clause is recorded at the clause.
+    // The declaration part: a Field's, Case's, alias's or associated formation's own clause, which Binding alone judges, is recorded
+    // at the clause.
     private void JudgeDeclaredRelation(OriginRelation relation)
     {
         if (this.FailedDeclaredRelation(relation) is { } failed)
@@ -478,8 +479,7 @@ public sealed partial class Binding
         var use = relation.Syntax;
         if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
         {
-            var ends = (this.OriginAtUse(relation.Longer, use), this.OriginAtUse(relation.Shorter, use), use);
-            this.FailExplained(ref this.principalOriginFailures, local.Owner, BindingFailure.MissingOrigin, ends);
+            this.FailExplained(ref this.principalOriginFailures, local.Owner, BindingFailure.MissingOrigin, (failed.Longer, failed.Shorter, use));
             return;
         }
 
