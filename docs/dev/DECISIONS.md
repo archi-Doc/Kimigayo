@@ -1272,7 +1272,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
   planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
   CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by
-  R4-M70; 1b-4's guard code fixed and its merge's unit moved to 2a by R4-M72) A5's Loan stratum, its joint core. `MirBorrows`
+  R4-M70; 1b-4's guard code settled and its merge's unit moved to 2a by R4-M72) A5's Loan stratum, its joint core. `MirBorrows`
   (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
   decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
   facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
@@ -1697,18 +1697,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
     constructors, of two and nine cases, gave one problem with `0x1FF`).
   - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
     same facts).
-- **R4-M72** (2026-10-19; group 1c's records, unit 1c-9; from the design review of 1c's two designs, its verdicts 1–5, and group 1c's
-  final review; A3 §12 E15). The A6 table of A5's Loan problems (DIAGNOSTICS, MIR Loan problems) and the placements group 1c left. It
-  supersedes A3 §5's A6 rows for effects, `PreparedInput` roots and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their
-  merge, and fixes R4-M57's guard code.
+- **R4-M72** (2026-10-19; decided by the planning session on 2026-10-18, adopting the design review of 1c's two designs (its verdicts
+  4 and 5 and its R4-M72 draft) with the 1c design, and by the owner through the step-2 plan's PD7 and PD11, adopted with the plan
+  (R4-M74, OQ1); with group 1c's final review's records; recorded by unit 1c-9; A3 §12 E15). The A6 table of A5's Loan problems
+  (DIAGNOSTICS, MIR Loan problems) and the placements group 1c left. It supersedes A3 §5's A6 rows for effects, `PreparedInput` roots
+  and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their merge, R4-M10's placement of the Access and Borrow codes in
+  A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
   - Effects: err(effect), a static or unknown-environment effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
-    the call, as the spec case `15.6.4-static-anchors` expects; `CallEffectConflict_Kd`, whose catalog message and DIAGNOSTICS rule are
-    the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both supersede A3 §5's Effect
-    row, which coded every effect `CallEffectConflict_Kd`. No MIR rule produces either yet: unit 2b implements the first and 2f the
-    second, under R4-M68's condition for a Φ_c met at a receiver's formation.
-  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer, since a default's copy reaches
-    its pending slots only past the prologue's shared borrows, where no Loan forms (E3; R4-M69's premise): they are A5-F9's (unit 2e),
-    as `DefaultArgumentMove_Kd` is A1's (R4-M69).
+    the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
+    unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
+    and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both
+    supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet (no static
+    Loan exists while Binding rejects every borrow of group storage, PLAN G100): unit 2b implements the first and 2f the second, under
+    R4-M68's condition for a Φ_c met at a receiver's formation.
+  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a template its pending slots
+    are its parameters, whose callers' Loans lie outside its body, and a copy reaches them only past the prologue's shared borrows,
+    where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as `DefaultArgumentMove_Kd` is A1's (R4-M69).
   - Guard: err(ended) (E7) is `ComparisonLoanConflict_Kd` at the candidate's cleanup, its `EndBorrow`, anchored at the candidate, as
     DIAGNOSTICS' escaped borrows; no guard-local code exists (A3 §9 item 9's DIAGNOSTICS record).
   - Merge: E7's and E12's merge (the `destroy` conflict on a Loan `_0` carries whose Borrow the Origin stratum refuted, and err(ended)
@@ -1717,8 +1721,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - View skip (unit 1c-3): `MirBorrows.Run` skips a body view only when it has no Loan and no guard candidate, since E7's γ needs no
     Loan; A3 §6.1's skip of a view without a Loan accepted a guard value escaping in a Loan-free view (the design review's r02, an
     unsound acceptance). The root flags only select the accesses checked.
-  - Publication: R4-M71's merge across bodies by (code, subject, Reason) is its publisher's, R5's H3, so it is an obligation among H0's
-    inputs, which R4 hands over through ask AR-4 (the step-2 plan's X-3 list); R4 publishes no MIR problem (R4-M1).
+  - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
+    so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
