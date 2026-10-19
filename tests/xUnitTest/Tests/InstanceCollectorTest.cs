@@ -116,7 +116,8 @@ public sealed class InstanceCollectorTest
 
         """;
 
-    // An Equatable and a Comparable struct compared in tuples of borrows, nested and in a generic function's instance.
+    // An Equatable and a Comparable struct compared in tuples of borrows, nested, through generic functions' Contract mapping and by a tuple
+    // operator in a generic function's instance.
     private const string CompareSource = """
         struct Box
             Self is Equatable
@@ -132,10 +133,22 @@ public sealed class InstanceCollectorTest
         func same<T>(a: ref/T, b: ref/T) -> bool
             T is Equatable
             return (a, 1) == (b, 1)
+        func equal<T>(a: ref/T, b: ref/T) -> bool
+            T is Equatable
+            return a == b
+        func differ<T>(a: ref/T, b: ref/T) -> bool
+            T is Equatable
+            return a != b
+        func less<T>(a: ref/T, b: ref/T) -> bool
+            T is Comparable
+            return a < b
         let x = Box.init(1)
         let r = Rank.init(2)
-        require (x@ref, 1) == (x@ref, 1) and ((x@ref, 2), x@ref) == ((x@ref, 2), x@ref) else => $abort("equal")
-        require (r@ref, 3) < (r@ref, 4) and same(x@ref, x@ref) else => $abort("order")
+        let pair = (x@ref, 1)
+        let nest = ((x@ref, 2), x@ref)
+        let ranked = (r@ref, 3)
+        require equal(pair@ref, pair@ref) and equal(nest@ref, nest@ref) and not differ(pair@ref, pair@ref) else => $abort("equal")
+        require less(ranked@ref, ranked@ref) and same(x@ref, x@ref) else => $abort("order")
 
         """;
 
@@ -251,6 +264,31 @@ public sealed class InstanceCollectorTest
         var (program, set) = Collect(Source);
         Assert.Equal(["Fn later (check)", "library Fn init in struct Duration (check)"], Targets(program, set, "Fn after"));
         Assert.All(set.Targets(Item(program, set, "Fn top")).ToArray(), static x => Assert.True(x.Runtime));
+    }
+
+    // K 4.10 (DECISIONS R5-M77): the Generated column holds exactly the roots Mark is given and the items their runtime targets reach,
+    // transitively; a callee only the checks reach stays checked only, a mark replaces the previous one and a new collection has none.
+    [Fact]
+    public void TheMarkIsTheRuntimeClosureOfItsRoots()
+    {
+        var c = MirBuildTest.Compile(Source);
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        set.Mark([Item(program, set, "Fn top")]);
+        Assert.Equal(["Fn later", "library Fn init in struct Duration"], Marked(false));
+        set.Mark([Item(program, set, "Fn after")]);
+        Assert.Equal(["Fn after"], Marked(true));
+        set.Mark([]);
+        Assert.Empty(Marked(true));
+        set.Mark([0]);
+        program.Version++;
+        Assert.DoesNotContain(Enumerable.Range(0, collector.Run(program, 1).Items.Length), set.IsGenerated);
+
+        // The labels of the items whose Generated mark is the given one.
+        string[] Marked(bool generated)
+            => [.. Enumerable.Range(0, set.Items.Length).Where(x => set.IsGenerated(x) == generated).Select(x => Label(program, set.Items[x]))
+                .Order(StringComparer.Ordinal)];
     }
 
     // K 4.3: a repeated run of a program version keeps its set, and a program with validator findings has an empty one.
@@ -775,9 +813,11 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Fn emit [i32]"], Calls(program, set, "Fn toFixed"));
     }
 
-    // K 4.3, F package 4.6: a built-in comparison of a composite Self is its Builtin shim, keyed by its compiler function and the erased
-    // Self, whose targets are its leaves' witnesses under the Contract's mapping (TyCtxt.Comparison), depth first: each user leaf's equals or
-    // compare body, none for a built-in leaf; a generic instance's comparison over its Type parameter shares the shim of its erased Self.
+    // K 4.3, F package 4.6: a built-in comparison of a composite Self, a generic instance's comparison over its Type parameter, is its
+    // Builtin shim, keyed by its compiler function and the erased Self, whose targets are its leaves' witnesses under the Contract's mapping
+    // (TyCtxt.Comparison), depth first: each user leaf's equals or compare body, none for a built-in leaf; two instances comparing one
+    // erased Self share its shim. A tuple operator is no shim: its expansion calls its leaves' witnesses in the instance (F package 4.8,
+    // DECISIONS R5-M75).
     [Fact]
     public void AComparisonShimsTargetsAreItsLeafWitnesses()
     {
@@ -786,7 +826,11 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Fn equals"], Targets(program, set, "Builtin (ref/Box, i32) BuiltinEquals"));
         Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
         Assert.Equal(["Fn compare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
-        Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn same [Box]"));
+        Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn equal [(ref/Box, i32)]"));
+        Assert.Equal(
+            set.Targets(Item(program, set, "Fn equal [(ref/Box, i32)]"))[0].Item,
+            set.Targets(Item(program, set, "Fn differ [(ref/Box, i32)]"))[0].Item);
+        Assert.Equal(["Fn equals"], Targets(program, set, "Fn same [Box]"));
         Assert.Equal(
             ["struct Box", "struct Box", "struct Box", "struct Rank"],
             new[] { "Builtin (ref/Box, i32) BuiltinEquals", "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals", "Builtin (ref/Rank, i32) BuiltinCompare" }

@@ -3836,3 +3836,76 @@ structure is recorded here by the unit that first implements it.
     and clause) without a target or the override's instance; both failed-override outcomes without a record; type tests and a clone
     without a target or record (an oversized never-created struct, a never-created Leaf<i32>); warm collection 0 B. Under sel the
     library roots and the 44 milestones give no new record.
+- **R5-M75 A tuple operator is expanded in MIR over its leaves** (2026-10-19, W1; plan F7, PD15 as package F item 5 and §4.8 refine
+  it, S2-S4 row 7; under R5-M68; DEC Q6 form 1) A comparison whose `CallPlan.TupleOperator` is set is built by `MirBuilder.Expand`
+  (`MirBuilder.Calls.Comparisons.cs`, which `==` now reaches too) from `TyCtxt.Comparison(the operator's Contract, call.ConformingType,
+  operators: true)` instead of its whole-tuple call (SPEC 13.4, 13.4.1, 12.4.3), the Contract SPEC 13.4.1's for the operator from the
+  declaration table (`Library.GetSymbol`; no Binding internal or Koto slot, ARCH's dependency table). Operands: the call's two inputs
+  as Binding adapted them, the `ref/Self` views, the left pending and secured as a built-in operator's, never moved; the leaves are
+  Places below them, depth first (a Tuple part its Field, a `ref` layer its referent; the Never value its own leaf). A Builtin leaf's
+  pair is its Places Copied, a string's (the one built-in leaf Type that is not Copy) shared borrows, Copied: a `Binary` as a direct
+  string comparison builds, which code generation lowers to the string comparison call (the package's "string call"; MIR has none);
+  a Witness leaf is a `Fn` callee, a Requirement leaf a `Requirement` callee naming the Contract, each on fresh shared borrows; an
+  Equatable leaf's bool is its equality, a Comparable leaf's i32 is paired with 0. Each leaf but the last tests `Eq` of its pair (an
+  Equatable leaf its bool) and branches: equal goes on, unequal decides by the operator on the pair (for `==` and `!=` the test's bool
+  or its negation); the last leaf decides by the operator on its pair; each path writes the destination once and every `Binary` is
+  proven. IEEE makes an unordered pair unequal and its ordering false (SPEC 13.4). A null `Comparison` (a Limit) is one located
+  `Unsupported_Kd` with an Opaque value, the operands not built; a None leaf is `InternalInvariant_Kd` with a derived Opaque result
+  (R5-M68). `ComparisonPlan(CallPlan)` stays for its old readers (H11). A1–A5 see two shared Loans live to the join, Copies through
+  them, reborrows into each leaf call and an edge per Contract leaf: A4 no longer meets a composite built-in comparison's Limit for a
+  tuple operator (`MirEffectsTest`'s generic row), nor the collector a Builtin shim (its shim test retargeted to generic instances'
+  Contract-mapping comparisons, the shims' remaining producers). Rejected: a string leaf as a call (F6's Builtin leaf names no callee;
+  a second form of one comparison); testing the last pair too and deciding all-equal by a constant (a redundant test, two string
+  passes); deciding `==` by recomputing the pair (a second comparison); the legacy four-valued relation code (a new form).
+- **R5-M76 The operator rows of MIR code generation** (2026-10-19, C lane; plan C1a, package C §3.2 I5 and I9, §3.9, audit row
+  "Rvalue BinaryOp (16), UnaryOp (2)"; under R5-M18 form 1, R5-M17, R5-M20 and R5-M65) `FunctionCodegen.Arithmetic` writes a BinaryOp
+  or UnaryOp into an unprojected local through `LlvmScalarText` by one table, `Rows`: a row per `MirBinaryOp`, then per `MirUnaryOp`.
+  The row's entries are keyed by the left operand's closed Type (`TypeOf`): signed integer, unsigned integer, signed wrapping and
+  unsigned wrapping integer (SPEC 3.1.1: the argument's signedness). Each entry is an LLVM operator (an instruction, an icmp predicate
+  or an overflow intrinsic's stem) and SPEC 13.3.1's check, one `LlvmScalarText` writer (none, overflow, signed quotient, zero,
+  wrapping quotient, shift). bool and char take the unsigned entries, whose operators (equality, char's order, `not`) check nothing.
+  A unary row fixes its other operand: Neg is `0 - x`; Not is `x xor -1`, logical on i1 and bitwise on an integer as the vocabulary
+  says. A row's Reflexive column gives a comparison of zero-sized operands (Unit's one value, SPEC 13.4) without an instruction. A new
+  Type class adds a column and an operator adds a row; the writer has one arm per check.
+  - Proven: the builder's `MirRvalue.Proven` (IMPL 21.3.3) selects the wrapping entry without its check (`WriteOperation`, with its
+    literal -1 rules): an operation that cannot fail computes its wrapping result. Codegen never decides Proven itself.
+  - Abort: a check Aborts through `WriteFailure` at its statement's location (`Location`, the one rule the writeLine row now reads
+    too: `Compilation.Locations.Text(body.Subject(source))` as a pooled Location constant; in a caller-location body a record until
+    C3b forwards the body's own location, SPEC 22.5.1). Its names reuse the result's number (`%checked<n>`, `abort<n>`, success label
+    `c<n>`). No nsw, nuw or inbounds (I9).
+  - Rows not written yet (located `Unsupported_Kd`, PD11): floating-point operands (C1b, with Float constants), raw-pointer equality
+    and displacement (C8a, whose raw memory rows bring the stride addressing; no raw pointer reaches a generated program before
+    them), string borrows (C8c), and checked 128-bit add, subtract, multiply and negate, whose `WideOverflowDeclarations` are
+    `ModuleCodegen`'s module-level request (open issue; `ModuleCodegen.cs` was held by K11). 128-bit division is the collector's
+    capability gap and never reaches codegen.
+  - Rejected: arms per operator (the old `BodyLowering.Graph` shape); deriving the check from (operator, signedness, wrapping) in
+    code beside the table (a second copy of SPEC 13.3.1's rule); a Proven test in codegen (it would re-derive the builder's fact);
+    writing the wide declarations from `FunctionCodegen` (module-level text, duplicated per function); a raw-pointer column now
+    (not verifiable before C1b, C2b or C8a produce a pointer value).
+- **R5-M77 The Generated mark at emit** (2026-10-19, K lane; plan K11, the K package's §4.4 and §4.10, package C §3.3 and §3.8, design 2
+  §2.9; under R5-M18, R5-M35, R5-M64 and R5-M65; DEC Q6 form 1) MIR code generation writes exactly the items of the checked set the
+  output requires (IMPL 21.3.1), the closure of its output roots over runtime targets. The generation entry
+  (`Compilation.Generation.cs`), after gate step 1 and acceptance, names the roots: an Application's startup body (`Binding.Startup`,
+  `main`'s Fn body, else the root module's top-level statements), a test build's tests (the Test body of each `Tests.Cases` entry's
+  `TestCase.Symbol`: the catalog `Project` discovers after acceptance, which the entry reads and never discovers again) and a Library's
+  every root but the checked-only ones (a `public` declaration is no export, the plan's "public roots" being the package's "every root");
+  a root without an item is `InternalInvariant_Kd` at the project. `CheckedSet.Mark(roots)` sets the set's Generated column, one bool per item: the roots and,
+  transitively, every item a runtime target of a Generated item names, so an item only the checks reach is checked and never generated
+  through that target; a mark replaces the previous one, a new collection has none (`IsGenerated` reads it), and a warm mark allocates
+  nothing (a pooled worklist). `ModuleCodegen` writes the Generated items in admission order (names stay item-indexed) and the output
+  form around the roots it is given (an Application's entry calls its startup root; a test build's TestEntry row is at each test root);
+  `Signature`, the one request that names an item, records `InternalInvariant_Kd` at the item's site for an item outside Generated.
+  - Checked-only roots (K §4.4, §4.10, R4-M28): `InstanceCollector.Generates(root)` leaves out the body of a closed virtual or override
+    whose slot `TyCtxt.Applies` refutes at its struct's layer owning the original, its struct being its receiver's Self; it reads the one
+    slot rule K8's VTable targets read (`Applies(type, table, slot)`), and an undecided slot is a broken contract, `InternalInvariant_Kd`
+    at the root's site (as K8 records it at a VTable's). Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
+    `T is Marker`); the old generator skips it too (`IsInapplicableVirtualBody`). An Application or a test build reaches none: a refuted
+    slot has no target and a call of it is a Binding error.
+  - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked
+    items; discovering tests in the entry, as the old generator's `TryPrepare` does (a second discovery per generation; `Project` owns
+    it after acceptance); TestEntry roots from the root module's Test bodies (a second copy of discovery's selection); the mark in
+    `ModuleCodegen`, which decides no generation (package C §3.3).
+  - Verified: an Application generates its startup closure only (an unused function is neither written nor recorded; its Library
+    twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
+    but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
+    next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.

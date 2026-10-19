@@ -12,10 +12,13 @@ namespace XunitTest;
 /// value, label, generated function or generator helper, so it holds for both generators wherever both are correct.</summary>
 public sealed class GeneratedIrTest
 {
-    // Both generators cover these forms (R5 C0b1): scalar, string-borrow, zero-sized, tuple and Never signatures and scalar constants.
-    private const string Program =
+    // Both generators cover these forms (R5 C0b1): scalar, string-borrow, zero-sized, tuple and Never signatures, a Library's roots (an
+    // Application generates only what its startup body reaches, K11), and scalar constants in an Application's startup body.
+    private const string Definitions =
         "func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\nfunc stop() -> Never\n" +
-        "    loop => ()\nlet small: u8 = 255\nlet wide: i128 = -5\n";
+        "    loop => ()\n";
+
+    private const string Program = "let small: u8 = 255\nlet wide: i128 = -5\n";
 
     private const string Text = """
         %kimi.string = type { ptr, i64, i64 }
@@ -43,20 +46,26 @@ public sealed class GeneratedIrTest
     private static readonly string[] Profile =
         ["uwtable(async)", "\"target-cpu\"=\"x86-64\"", "\"target-features\"=\"+sse2\"", "\"denormal-fp-math\"=\"ieee,ieee\""];
 
-    // The same requirement on the text of each generator: every definition's profile attributes (IMPL 21.4.1 and 21.2), the ABI of the
-    // signatures (IMPL 21.3), a Never function that loops without a return (IMPL 21.3.1), constants in two's complement at their width
-    // stored into slots of their Type (IMPL 21.1.3), the entry's startup call and __kimi_exit(0) (IMPL 21.4.2), and no termination claim,
-    // though every function, value and label is named differently.
+    // The same requirement on the text of each generator: every definition's profile attributes (IMPL 21.4.1 and 21.2), the ABI of a
+    // Library's signatures (IMPL 21.3), a Never function that loops without a return (IMPL 21.3.1), an Application's constants in two's
+    // complement at their width stored into slots of their Type (IMPL 21.1.3), its entry's startup call and __kimi_exit(0) (IMPL 21.4.2),
+    // and no termination claim, though every function, value and label is named differently.
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
     public void OneRequirementHoldsForBothGenerators(bool mir)
     {
-        var ir = GeneratedIr.Parse(Generate(Program, mir));
-        Assert.All(ir.Functions.Where(static x => x.Blocks.Count != 0), static x => Assert.All(Profile, y => Assert.Contains(y, x.Attributes)));
-        ir.Single("internal i1 (i1, i64, ptr noundef nonnull align 8 dereferenceable(24))");
-        Assert.DoesNotContain(ir.Single("internal void (ptr)").Instructions, static x => x.Opcode == "alloca");
-        var stop = Assert.Single(ir.Functions, static x => x.Signature == "internal void ()" && x.Attributes.Contains("noreturn"));
+        var library = GeneratedIr.Parse(Generate(Definitions, OutputKind.Library, mir));
+        var ir = GeneratedIr.Parse(Generate(Program, OutputKind.Application, mir));
+        foreach (var module in new[] { library, ir })
+        {
+            Assert.All(module.Functions.Where(static x => x.Blocks.Count != 0), static x => Assert.All(Profile, y => Assert.Contains(y, x.Attributes)));
+            module.AssertNoTerminationClaim();
+        }
+
+        library.Single("internal i1 (i1, i64, ptr noundef nonnull align 8 dereferenceable(24))");
+        Assert.DoesNotContain(library.Single("internal void (ptr)").Instructions, static x => x.Opcode == "alloca");
+        var stop = Assert.Single(library.Functions, static x => x.Signature == "internal void ()" && x.Attributes.Contains("noreturn"));
         var seen = new HashSet<IrBlock>();
         for (var block = stop.Blocks[0]; seen.Add(block); block = Assert.Single(block.Successors))
         {
@@ -72,7 +81,6 @@ public sealed class GeneratedIrTest
         Assert.Equal(["noreturn", .. startup.Attributes], start.Attributes);
         Assert.Equal(["call void @()", "call void @(i32 0)", "unreachable"], Assert.Single(start.Blocks).Instructions.Select(static x => x.Shape));
         Assert.Same(ir.Function("__kimi_exit"), start.Instructions[1].Callee);
-        ir.AssertNoTerminationClaim();
     }
 
     // Shapes abstract values, labels and symbols but keep named types; an operand is its definition (a phi's later one included, its
@@ -130,8 +138,8 @@ public sealed class GeneratedIrTest
         Assert.ThrowsAny<XunitException>(() => GeneratedIr.Parse("declare void @g()\ndefine internal void @a() {\nentry:\n  call void @g() #1\n  ret void\n}"));
     }
 
-    // The program's text under one generator, whatever the process's: the old one or MIR code generation (sel).
-    private static string Generate(string source, bool mir)
+    // The program's text for an output form under one generator, whatever the process's: the old one or MIR code generation (sel).
+    private static string Generate(string source, OutputKind output, bool mir)
     {
         var c = Compilation.CreateForTest();
         c.Pipeline = mir ? CompilerPipeline.Mir : CompilerPipeline.Legacy;
@@ -139,7 +147,7 @@ public sealed class GeneratedIrTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         return CompilationTestHelper.WriteIr(c);
     }

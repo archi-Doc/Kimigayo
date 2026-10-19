@@ -929,13 +929,30 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
-    // borrow), an increment's one is of the old value's Type, not of its Never-typed target's, and a rejected node of Type Never keeps its
-    // Opaque value: each body validates.
+    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, not of its Never-typed target's, and a
+    // rejected node of Type Never keeps its Opaque value: each body validates.
     [Theory]
     [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
+    [InlineData("func f(b: (string, i32)) -> bool\n    return (return false) < b\n")]
     [InlineData("func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\n")]
     [InlineData("func f() -> i32\n    return true\n")]
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
+
+    // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
+    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call).
+    [Fact]
+    public void ATupleOperatorWithoutItsComparisonIsUnsupported()
+    {
+        var deep = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
+        var c = Compile("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n" +
+            "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+            $"func f(a: ref/({deep}, i32), b: ref/({deep}, i32)) -> bool => a == b\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
+    }
 
     // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
     // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
@@ -1024,9 +1041,9 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
     // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
-    // iterator symbol, a write of an interpolation) is published Error and recorded as InternalInvariant_Kd at it, with an Opaque value
-    // in its place, which the validator accepts, never a fault. A node Binding rejected that lacks the same fact is an Error derived from
-    // its error, without a record.
+    // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75) is published Error and recorded as
+    // InternalInvariant_Kd at it, with an Opaque value in its place, which the validator accepts, never a fault. A node Binding rejected
+    // that lacks the same fact is an Error derived from its error, without a record.
     [Fact]
     public void AResolvedNodeWithoutItsFactsIsABrokenContract()
     {
@@ -1040,7 +1057,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\n" +
             "func discard<s/T>(value: i32) -> ()\n    s is owner or ref or object\n    _ = value@s\n" +
             "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
-            "func text(x: i32) -> string => \"a\\(x)\"\n");
+            "func text(x: i32) -> string => \"a\\(x)\"\nfunc order(a: (i32, f64), b: (i32, f64)) -> bool => a < b\n");
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.ToString() == "one()").ToArray();
         var call = calls[0];
@@ -1061,8 +1078,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         HirTables.PlanFor(adaptation, written: false).Plan = null;
         HirTables.Of(loop.Iteration!.Receiver).Symbols[loop.Iteration.Receiver.SyntaxId] = null;
         HirTables.PlanFor(text.Formatting!.Writes[1], written: false).Plan = null;
+        var order = nodes.OfType<BinaryKoto>().Single(static x => x.ToString() == "a < b");
+        var tuple = CallPlan.Of(order)!;
+        Assert.True(tuple.TupleOperator);
+        var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
+        tuple.Set(tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
+        tuple.TupleOperator = true; // Its conforming Type is gone.
         var program = c.BuildMir();
-        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text];
+        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order];
         Assert.Empty(program.Findings);
         Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(
