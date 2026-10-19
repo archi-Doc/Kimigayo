@@ -4,8 +4,8 @@ namespace Kimi.Compiler.Mir;
 
 // A5's check-set candidates (A3 5's check sets and mode, E13 (1), (5)): each Loan an element of a gather's pass finds, once per mode (a
 // two-phase Loan is shared only in its reservation holder), tagged with the passes, operands and holders that reached it, apart for the sets
-// without a default taint and those with one (R4-M70: a marker whose role is a taint, MarkerOf; markers sort before Loans, so a set's taint
-// is known before its Loans), and listed by its Place's root, so an access scans only its root's; a marker found, the holder it was first
+// without a taint and those with one (a marker whose kind is a taint, MarkerOf: a default's, R4-M70, or P13's, R4-M73; markers sort before
+// Loans, so a set's taint is known before its Loans), and listed by its Place's root, so an access scans only its root's; a marker found, the holder it was first
 // seen in (E7's witness). Which check sets hold a candidate is Tags.Takes; the passes and the closure are the gather's (MirBorrows.CheckSets).
 // Must not compare Places or decide a conflict (MirBorrows.Checks), or read a holder's state itself.
 internal sealed partial class MirBorrows
@@ -16,7 +16,7 @@ internal sealed partial class MirBorrows
     private int[] rootMarks = []; // By root key: the check that found a candidate on it.
     private int[] rootFirst = []; // By root key: the first and last of its candidates at that check.
     private int[] rootLast = [];
-    private int[] markSeen = []; // By marker (γ_H, a default taint): the check that saw it in the Based or Stored passes.
+    private int[] markSeen = []; // By marker (γ_H, a taint): the check that saw it in the Based or Stored passes.
     private int[] markVia = []; // By marker: the holder that check first saw it in (-1: a transit value).
     private int candidateCount;
     private int taint = None; // The first taint marker of the set being scanned (Scan), None for none.
@@ -46,7 +46,7 @@ internal sealed partial class MirBorrows
         if (element < this.loanBase)
         {
             // A marker never conflicts: a taint marks its set; the holder a guard-local γ_H is first seen in witnesses err(ended).
-            this.taint = this.taint == None && this.MarkerOf(element - Markers) == Marker.Taint ? element : this.taint;
+            this.taint = this.taint == None && this.MarkerOf(element - Markers) is Marker.Taint or Marker.ByArgument ? element : this.taint;
             if (this.pass is Based or Stored && this.markSeen[element] != this.stamp)
             {
                 (this.markSeen[element], this.markVia[element]) = (this.stamp, via);

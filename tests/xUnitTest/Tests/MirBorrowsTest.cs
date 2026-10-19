@@ -20,6 +20,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         func pin(slot: ref/(ref/i32 during a)) -> ref/i32 during slot => slot@follow
         func keep(value: ref/i32) -> ref/i32 during value => value
         func put(slot: uniq/(ref/i32 during a), value: ref/i32 during a) => slot@follow = value
+        func put4(slot: uniq/(uniq/(uniq/(uniq/(ref/i32 during a) during c) during d) during e), value: ref/i32 during a) => slot@follow@follow@follow@follow = value
         func size(value: ref/i32) -> i32 => value@follow
         func two(a: uniq/Pair, b: ref/Pair) => ()
         func both(a: ref/Pair, b: ref/Pair) => ()
@@ -172,6 +173,45 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             public var v: i32 = 0
             public init() => ()
             public func plus(self: Self, o: Num) -> i32 => 1
+
+        """;
+
+    // The callees of the rows on a call's stores (A3 E-store): stores through two and three exclusive layers, a raw pointer and a Field, from
+    // one part's reference into another, out of a taken-out layer-1 reference into its own storage, a depth-3 sibling copy; callees that
+    // store nothing; loops over an exclusive parameter and a Field, then an append.
+    private const string Stores = """
+        func put2(slot: uniq/(uniq/(ref/i32 during a) during c), value: ref/i32 during a) => slot@follow@follow = value
+        func put3(slot: uniq/(uniq/(uniq/(ref/i32 during a) during c) during d), value: ref/i32 during a) => slot@follow@follow@follow = value
+        func putRaw(slot: uniq/(raw/(ref/i32 during a)), value: ref/i32 during a)
+            unsafe => slot@follow[0] = value
+        func moveIn(pair: uniq/(uniq/(ref/i32 during a) during c, ref/i32 during a)) => pair@follow.0@follow = pair@follow.1
+        func keep4(slot: uniq/(ref/(ref/i32 during a) during c), value: ref/i32 during a) => ()
+        func peek2(slot: uniq/(uniq/(ref/i32 during q) during c), n: i32 = 1) => ()
+        struct Box2<T> {c}
+            public var r: uniq/T during c
+            public init(r: uniq/T during c) => self.r = r
+        func putBox(box: uniq/(Box2<ref/i32 during a> during c), value: ref/i32 during a) => box.r@follow = value
+        func takeOut(p: uniq/(Option<uniq/(S during a) during a>) during d)
+            match Kimi.Intrinsics.exchange(p@follow@uniq, with: .None)
+                .Some(let q) => q.r = q.n@ref
+                .None => ()
+        func keepOut(p: uniq/(Option<uniq/(S during a) during a>) during d) => ()
+        func copyOver(q: uniq/(uniq/(ref/i32 during a) during c, uniq/(ref/i32 during a) during c))
+            let v: ref/i32 during a = q@follow.1@follow
+            q@follow.0@follow = v
+        func copyDeep(p: uniq/(uniq/(uniq/(ref/i32 during a) during c, uniq/(ref/i32 during a) during c) during e) during f)
+            copyOver(p@follow@follow@uniq)
+        func bumpAll(values: uniq/Array<i32>)
+            for v in values
+                v@follow = v@follow + 1
+            values.append(0)
+        struct Bag
+            public var items: Array<i32> = []
+            public init() => ()
+            public func bump(self: uniq/Self)
+                for v in self.items
+                    _ = v@follow
+                self.items.append(0)
 
         """;
 
@@ -445,6 +485,209 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     e.append(Kimi.Intrinsics.makeRc(S.init(r: x@ref)))
                     inspect(e@ref)
                 """));
+
+    // SPEC 15.6, 15.6.2, 15.6.4 (A3 E-store, DECISIONS R4-M73; PLAN G148): a call's store reaches every holder its argument reaches, past
+    // each exclusive layer, a struct's Field, a raw pointer to a local's storage (E) and a parameter's referent (E), as its direct twin's
+    // does, so a write of the stored borrow's Place while the route is used errs: through two or three layers, a Box2's Field, a raw
+    // pointer, a moved parameter's route and one part's reference into another (acrossLayers); a callee that takes the layer-1 reference
+    // out and stores a borrow of its own storage into it (takenOut, the design review's s1) or stores nothing, as its contract lets it
+    // (keptOut, s1c); a depth-3 sibling copy (siblingCopy, s2e), a swap (swapped, n1) and a local's borrow stored through a parameter's
+    // route (escapes, v1: b's end). Each was accepted while a store reached only refs(val(a_j)). A route's own Loan the store returns to
+    // its holder errs at the holder's next use (inspect(w)), as SPEC 15.6.4 decides per argument. Valid: a shared reborrow's parent past
+    // the guard (sharedParent), reads through the argument's own holder (peeked, peekedGiven), a loop over an exclusive parameter or a Field
+    // then an append (bumped, bagged: their elements hold no Loan) and Milestone24's writer, whose Loan<uniq/u8> refers to Loan-free
+    // storage (the guard stops at it).
+    [Fact]
+    public void ACallStoresIntoEveryHolderItsArgumentReaches()
+        => Assert.Equal(
+            [
+                "twoLayers: b = 3", "twoLayers: inspect(w)", "threeLayers: b = 3", "threeLayers: inspect(w)", "hiddenLayer: b = 3",
+                "hiddenLayer: inspect(w)", "rawPointee: b = 3", "parameterRoute: b = 3", "acrossLayers: z = 5", "acrossLayers: inspect(w)",
+                "takenOut: s.n = 5", "takenOut: s.r@follow", "keptOut: s.n = 5", "keptOut: s.r@follow", "siblingCopy: x2 = 5",
+                "siblingCopy: w1@follow", "swapped: w2 = x1@ref", "swapped: w1@follow", "escapes: var b = 2",
+            ],
+            Problems(Stores + """
+                func twoLayers()
+                    var x = 1
+                    var b = 2
+                    var w = x@ref
+                    var s = w@uniq
+                    put2(s@uniq, b@ref)
+                    b = 3
+                    inspect(w)
+                func threeLayers()
+                    var x = 1
+                    var b = 2
+                    var w = x@ref
+                    var s = w@uniq
+                    var t = s@uniq
+                    put3(t@uniq, b@ref)
+                    b = 3
+                    inspect(w)
+                func hiddenLayer()
+                    var x = 1
+                    var b = 2
+                    var w = x@ref
+                    var h = Box2<ref/i32>.init(r: w@uniq)
+                    putBox(h@uniq, b@ref)
+                    b = 3
+                    inspect(w)
+                func rawPointee()
+                    var x = 1
+                    var b = 2
+                    var w = x@ref
+                    var p = w@raw
+                    putRaw(p@uniq, b@ref)
+                    b = 3
+                    unsafe => inspect(p[0])
+                func parameterRoute(q: uniq/(ref/i32 during a))
+                    var b = 2
+                    var s = q@move
+                    put2(s@uniq, b@ref)
+                    b = 3
+                func acrossLayers()
+                    var x = 1
+                    var z = 3
+                    var w = x@ref
+                    var t = (w@uniq, z@ref)
+                    moveIn(t@uniq)
+                    z = 5
+                    inspect(w)
+                func takenOut()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    var o: Option<uniq/S> = .Some(s@uniq)
+                    takeOut(o@uniq)
+                    s.n = 5
+                    inspect(s.r@follow)
+                func keptOut()
+                    var z = 0
+                    var s = S.init(r: z@ref)
+                    var o: Option<uniq/S> = .Some(s@uniq)
+                    keepOut(o@uniq)
+                    s.n = 5
+                    inspect(s.r@follow)
+                func siblingCopy()
+                    var x1 = 1
+                    var x2 = 2
+                    var w1 = x1@ref
+                    var w2 = x2@ref
+                    var u = (w1@uniq, w2@uniq)
+                    var s = u@uniq
+                    copyDeep(s@uniq)
+                    x2 = 5
+                    inspect(w1@follow)
+                func swapped()
+                    var x1 = 1
+                    var x2 = 2
+                    var w1 = x1@ref
+                    var w2 = x2@ref
+                    var s1 = w1@uniq
+                    var s2 = w2@uniq
+                    Kimi.Intrinsics.swap(s1@uniq, s2@uniq)
+                    w2 = x1@ref
+                    inspect(w1@follow)
+                func escapes(q: uniq/(ref/i32 during a))
+                    var b = 2
+                    var t = (q@move, b@ref)
+                    moveIn(t@uniq)
+                func sharedParent()
+                    var x = 1
+                    var b = 2
+                    var w = x@ref
+                    var s = w@uniq
+                    var r = s@follow@ref
+                    keep4(r@uniq, b@ref)
+                    b = 3
+                    inspect(w)
+                func peeked()
+                    var x = 1
+                    var w = x@ref
+                    var s = w@uniq
+                    peek2(s@uniq)
+                    inspect(s@follow@follow)
+                    inspect(s@follow@follow)
+                func peekedGiven()
+                    var x = 1
+                    var w = x@ref
+                    var s = w@uniq
+                    peek2(s@uniq, 2)
+                    inspect(s@follow@follow)
+                    inspect(s@follow@follow)
+                func bumped()
+                    var a: Array<i32> = []
+                    a.append(1)
+                    bumpAll(a@uniq)
+                    inspect(a)
+                func bagged()
+                    var b = Bag.init()
+                    b.bump()
+                func written()
+                    var bytes = [64 of 0@u8]
+                    var buffer = Text.fixed(bytes@uniq)
+                    var writer = Text.writer(buffer@uniq)
+                    _ = $tryWrite(writer@uniq, "x")
+                    _ = buffer.text()
+                """));
+
+    // SPEC 15.6.4, 15.6 (A3 E-store, DECISIONS R4-M73): retention is decided per argument, never per Origin, and E may be used after every
+    // point, so a call's store reaches the holders of its argument's route with every Loan it stores, the route's own included; rustc
+    // accepts each of these, and SPEC's letter rejects them (no loss; PLAN's G148-X precision candidate would recover the first three).
+    // Through a concrete route they are Language problems: a self-row returning a route's own Loan to its holder, read twice
+    // (twoLayersRead, acrossLayersRead). Where the route passes a holder whose Type passes the guard only through a Type argument (an
+    // iterator's Loan<uniq/T>), the store carries P13's taint, so each is a located Unsupported_Kd until the guard reads each part
+    // (R4-M73): an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
+    // then a shared one (exclusiveElements, MemberThroughLayersTest's program), and an exclusive parameter's iteration whose stores reach E,
+    // then an append (bumpRefs, its Loan met once, where the loop's Borrow of values is formed, R4-M68).
+    [Fact]
+    public void ACallStoreFollowsSpecsPerArgumentRule()
+    {
+        var c = MirBuildTest.Compile(Prelude + Stores + """
+                func twoLayersRead()
+                    var x = 1
+                    var b = 2
+                    var w = x@ref
+                    var s = w@uniq
+                    put2(s@uniq, b@ref)
+                    inspect(w@follow@ref)
+                    inspect(w@follow@ref)
+                func acrossLayersRead()
+                    var x = 1
+                    var z = 3
+                    var w = x@ref
+                    var t = (w@uniq, z@ref)
+                    moveIn(t@uniq)
+                    inspect(w@follow@ref)
+                    inspect(w@follow@ref)
+                func iterated()
+                    var x = 1
+                    var y = 2
+                    var refs: Array<ref/i32> = []
+                    refs.append(x@ref)
+                    for e in refs@uniq
+                        e@follow = y@ref
+                    inspect(refs@ref)
+                    inspect(refs@ref)
+                func exclusiveElements()
+                    var b = Data.init()
+                    var exclusive: [1 of uniq/Data] = [b@uniq]
+                    for v in exclusive@uniq
+                        v.value += 10
+                    for v in exclusive
+                        inspect(v)
+                func bumpRefs(values: uniq/Array<ref/i32 during a>, y: ref/i32 during a)
+                    for v in values
+                        v@follow = y
+                    values.append(y)
+                """);
+        Assert.Equal(
+            [
+                "twoLayersRead: w@follow@ref", "twoLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref", "acrossLayersRead: w@follow@ref",
+                "iterated: refs@ref Unsupported_Kd", "iterated: refs@ref Unsupported_Kd", "exclusiveElements: exclusive Unsupported_Kd",
+                "bumpRefs: values Unsupported_Kd",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
 
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
     // into the raw storage, which the body does not own (E), so its Loans are checked at every later point: a write or an exclusive use of
@@ -1667,6 +1910,78 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Contains(program.Problems.Facts(clean).ToArray(), x => x.Kind == MirFactKind.Use && Line(c, x.Site) == "inspect(r)");
     }
 
+    // A3's listed loss P13 under its interim (DECISIONS R4-M73, R4-M76, PD30; until the guard reads each part, before R4's exit): the guard
+    // is per holder, so a call's store follows what a holder carries past a holder whose Type passes it only through a Type argument, a
+    // pair layer or an abstract part, and every value stored only past such a holder carries P13's taint; a conflict whose Loan only tainted
+    // sets hold is a located Unsupported_Kd at the conflicting access, never a Language problem: a generic loop over a local Array<T>,
+    // then an append (g1: the iterator's next stores the Array's own Loan into it and, by the Φ_E it read through that Loan, into E, so
+    // the append and the Array's end conflict), the same over Array<s/T> (pairs, the pair cases' f<s/T>, whose `v@follow = x`, G147
+    // (8i), moves to Unsupported_Kd through E's join, the imprecision R4-M70 accepts), over an abstract Iterable (count: its parameter's
+    // end) and a shared loop over a local Array<uniq/(ref/i32)> (sharedOverExclusive: an exclusive Loan the iterator read through its
+    // shared one; its twin without next is valid). A Loan a clean holder keeps too stays the Language problem: the live iterator of
+    // cleanRoute.
+    [Fact]
+    public void AListedLossIsUnsupported()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func g1<T>(a: T, b: T)
+                T is Copy
+                var xs: Array<T> = []
+                xs.append(a)
+                for e in xs
+                    _ = e
+                xs.append(b)
+            func pairs<s/T>(value: s/T, x: T)
+                s is owner or uniq
+                T is Copy
+                var v = value@move
+                let child = v
+                do
+                    var arr: Array<s/T> = [child@move]
+                    for e in arr
+                        _ = e@follow@follow
+                v@follow = x
+            func count<S>(items: S) -> i32
+                S is Iterable
+                var n: i32 = 0
+                for _ in items
+                    n += 1
+                return n
+            func sharedOverExclusive()
+                var x = 1
+                var w = x@ref
+                do
+                    var arr: Array<uniq/(ref/i32)> = [w@uniq]
+                    for e in arr
+                        _ = e
+                inspect(w)
+            func sharedOverExclusiveTwin()
+                var x = 1
+                var w = x@ref
+                do
+                    var arr: Array<uniq/(ref/i32)> = [w@uniq]
+                    var it = arr.iterate()
+                    _ = it@uniq
+                inspect(w)
+            func cleanRoute<T>(a: T, b: T)
+                T is Copy
+                var xs: Array<T> = []
+                xs.append(a)
+                var it = xs.iterate()
+                _ = it.next()
+                xs.append(b)
+                _ = it.next()
+            """);
+        Assert.Equal(
+            [
+                "g1: xs.append(b) Unsupported_Kd", "g1: var xs: Array<T> = [] Unsupported_Kd", "pairs: var arr: Array<s/T> = [child@move] Unsupported_Kd",
+                "pairs: v@follow = x Unsupported_Kd", "count: func count<S>(items: S) -> i32 Unsupported_Kd",
+                "sharedOverExclusive: var arr: Array<uniq/(ref/i32)> = [w@uniq] Unsupported_Kd", "sharedOverExclusive: inspect(w) Unsupported_Kd",
+                "cleanRoute: xs.append(b) CallActivationConflict_Kd", "cleanRoute: var xs: Array<T> = [] Unsupported_Kd",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
     // is derived and never arises (the 1c design's op6; R5's Q21 review N3: a failed member access whose operand's Loan a kept temp holds,
     // `get(x@ref).missing` and `(p@uniq).missing`), while a Loan another holder keeps is checked: op5's p, o7's r, and j1's h on the path
@@ -1955,7 +2270,8 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // live nodes). N loops that each write a root, borrow it again into one reference and read it (review V1) leave k Loans in the
     // reference in loop k, an output quadratic in N: the worklist settles each loop before the next (R4-M65), so the passes stay constant
     // and the work and the Loan-set bytes (ν) are dense, not cubic. One operation with N operands, each carrying a Loan and each an
-    // access of a borrowed root, gathers its check sets once (A3 E13 (5)), so it stays linear.
+    // access of a borrowed root, gathers its check sets once (A3 E13 (5)), so it stays linear. N calls storing through a four-layer chain
+    // write every layer (A3 E-store), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]
@@ -1974,6 +2290,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         true)]
     [InlineData("    var x = 0\n    var r = x@ref\n", "    while flag\n        x = {0}\n        r = x@ref\n        inspect(r)\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n    let rr = r@ref\n", "", "", false, "r")]
+    [InlineData("    var x = 1\n    var b = 2\n    var w = x@ref\n    var s1 = w@uniq\n    var s2 = s1@uniq\n    var s3 = s2@uniq\n", "    put4(s3@uniq, b@ref)\n", "", true)]
     public void TheWorkScalesWithTheProgram(string head, string each, string after, bool dense, string operand = "")
     {
         var (work, bytes) = this.Scaled(head, each, after, operand);

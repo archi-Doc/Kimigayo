@@ -2,8 +2,9 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's Call transfer (A3 5, Calls; E14): a Call's retention rows (Rows), its callee's contract by operand position, carry its inputs'
-// values into its result or through an argument's referents.
+// A5's Call transfer (A3 5, Calls; E14, E-store): a Call's retention rows (Rows), its callee's contract by operand position, carry its
+// inputs' values into its result or into every holder an argument's store reaches (W, MirBorrows.Values), one W per output; a value stored
+// only past a holder that passes the guard by argument carries P13's taint (R4-M73).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = [];
@@ -13,8 +14,8 @@ internal sealed partial class MirBorrows
     // or a view handle, whose Index is a borrow Deref (E6).
     private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
-    // A Call at a location (A3 5, Calls; E14): its arguments' Moves, then each row of its retention (Rows) into the result or through an
-    // argument's referents, then the result into the destination (Placed: a default template's result carries its slot's default taint);
+    // A Call at a location (A3 5, Calls; E14, E-store): its arguments' Moves, then each row of its retention (Rows) into the result or into
+    // W of an argument's value, then the result into the destination (Placed: a default template's result carries its slot's default taint);
     // Φ_E for an untied result. A Value callee's environment, its value or what a reference to it refers to, reaches the result too (its
     // captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
     private void Call(ulong[] state, MirLocation at, in MirTerminator call)
@@ -35,7 +36,7 @@ internal sealed partial class MirBorrows
         }
 
         var retained = this.Rows(call, out var untied);
-        var refsOf = Retention.Result; // The output whose referents the targets hold.
+        var (writesOf, clean) = (Retention.Result, 0); // The output whose writable holders the targets are, and the first P13 one.
         foreach (var row in retained)
         {
             var value = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
@@ -45,15 +46,16 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            if (row.Output != refsOf)
+            if (row.Output != writesOf)
             {
-                this.Refs(this.argValues[row.Output]);
-                refsOf = row.Output;
+                clean = this.Writes(state, this.argValues[row.Output]);
+                writesOf = row.Output;
             }
 
-            foreach (var target in this.targets)
+            var tainted = clean < this.targets.Count ? this.sets.Add(value, Markers + this.body.Locals.Length) : value; // P13's marker.
+            for (var k = 0; k < this.targets.Count; k++)
             {
-                this.AddSlot(target, value, 0, Joined, issue: false);
+                this.AddSlot(this.targets[k], k < clean ? value : tainted, 0, Joined, issue: false);
             }
         }
 

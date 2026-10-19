@@ -7,8 +7,9 @@ namespace Kimi.Compiler.Mir;
 // A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23): a conflict's code (a Loan found in its reservation holder is a reservation
 // conflict) and each problem recorded through MirReport under its requirement with its facts: the Loan's or candidate's anchor, its witness
 // (a holder's next use in its chain, the location for a value an access takes, a transit value's or E's store), an activation's
-// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, and at
-// the source of the pending slot whose default taint every set holding a conflict's Loan carries (R4-M70, until A5-F9).
+// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, and,
+// where every set holding a conflict's Loan carries a taint, at its first taint's location: a default's at its pending slot's source
+// (R4-M70, until A5-F9), P13's at the conflicting access (R4-M73, until the guard reads each part).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -17,17 +18,19 @@ internal sealed partial class MirBorrows
     // A conflict's code (A3 5's A6 table): a Loan found in its reservation holder is a reservation conflict, else the check's code.
     private DiagnosticCode Code(in Candidate candidate, DiagnosticCode code) => this.Reserved(candidate) ? DiagnosticCode.CallReservationConflict_Kd : code;
 
-    // A conflicting candidate's problem: where only sets with a default taint hold it in the check set, A5's located Unsupported_Kd at the
-    // source of the first taint's pending slot, the omitting call (R4-M70, never a Language problem until A5-F9 checks defaults); else its
-    // Loan's anchor, and its witness among the sets without a taint (E13 (6)): a holder it was found live in (for an activation, other than
-    // its own), else the location, whose operation uses the value that carries it.
+    // A conflicting candidate's problem: where only sets with a taint hold it in the check set, A5's located Unsupported_Kd, never a
+    // Language problem, located by its first taint's kind: a default's at the source of its pending slot, the omitting call (R4-M70, until
+    // A5-F9 checks defaults), P13's at the access (R4-M73); else its Loan's anchor, and its witness among the sets without a taint (E13 (6)):
+    // a holder it was found live in (for an activation, other than its own), else the location, whose operation uses the value that carries
+    // it.
     private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation)
     {
         ref readonly var found = ref this.candidates[candidate];
         var clean = found.Clean;
         if (!clean.Takes(taking))
         {
-            this.Unsupported(this.body.Subject(this.body.Locals[found.Taint - Markers].Source));
+            var marker = found.Taint - Markers;
+            this.Unsupported(this.MarkerOf(marker) == Marker.Taint ? this.body.Subject(this.body.Locals[marker].Source) : this.Subject(at));
             return;
         }
 
