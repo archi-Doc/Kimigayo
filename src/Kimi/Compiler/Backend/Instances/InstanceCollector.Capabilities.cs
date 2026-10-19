@@ -38,12 +38,14 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // A3b's declaration row (DECISIONS R5-M82): a verified root-module static whose storage StaticScalar does not support (the one
-    // predicate of supported static storage) is the static-storage gap at its declaration, its StaticInit body's source, whether or not
-    // anything reads it; an unverified one is Binding's error.
+    // A3b's declaration row (DECISIONS R5-M82): a verified root-module static that can be set (its setter present), whose StaticInit
+    // body's result Type is not a scalar (ScalarTypes) or whose definition instantiates (a generic container's group, TyCtxt.Instantiates)
+    // is the static-storage gap at its declaration, its StaticInit body's source, whether or not anything reads it; an unverified one is
+    // Binding's error.
     private void CheckStatic(MirBody body)
     {
-        if (body.Key is { Kind: MirBodyKind.StaticInit, Decl.Property: { IsVerified: true } property } && !StaticScalar.Supports(property))
+        if (body.Key is { Kind: MirBodyKind.StaticInit, Decl: { Property: { IsVerified: true } property } definition } &&
+            (property.Setter.IsPresent || !ScalarTypes.Supports(body.Locals[0].Type) || this.types.Instantiates(definition)))
         {
             this.Set.Report(Capability.Code(CapabilityGap.StaticStorage), body.Source);
         }

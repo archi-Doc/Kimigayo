@@ -7,12 +7,6 @@ namespace Kimi.Compiler;
 /// <summary>Immutable group scalars, with folded reads or a first-access initializer execution view.</summary>
 internal static class StaticScalar
 {
-    /// <summary>Gets whether a static's storage is supported (STATUS "Static members", P42's landed part; DECISIONS R5-M82): an immutable
-    /// group scalar whose reads fold or that has a first-access initializer. Every other static storage is P42's remainder.</summary>
-    /// <param name="property">The static's property.</param>
-    /// <returns>Whether its storage is supported.</returns>
-    internal static bool Supports(BoundProperty? property) => TryGet(property, out _) || IsDynamic(property);
-
     internal static bool IsDynamic(BoundProperty? property)
     {
         if (property is not { IsVerified: true, Getter.IsStandard: true, Symbol.Scope.Owner: GroupKoto } ||

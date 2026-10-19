@@ -569,6 +569,6 @@ public sealed partial class LlvmEmitter
         }
 
         return container is not GroupKoto || container.Members.All(x => x is FunctionKoto or AliasKoto ||
-            (x is PropertyKoto property && StaticScalar.Supports(property.BoundSymbol?.Property)));
+            (x is PropertyKoto property && (StaticScalar.TryGet(property.BoundSymbol?.Property, out _) || StaticScalar.IsDynamic(property.BoundSymbol?.Property))));
     }
 }

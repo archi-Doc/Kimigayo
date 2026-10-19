@@ -4,9 +4,9 @@
 // windows-x64, the capability check of COMPILER_ARCHITECTURE's closed vocabularies, which the instance collector reads, at the definition
 // stage (A3b) and per instance.
 // Rows: the instance gaps of storage nesting past Binding's bound (PLAN G128, R5 PD30), whose substitution TyCtxt.Apply cannot make, and of
-// a nested function called without its enclosing instance (until PLAN G149), and of a static of a generic container's group, whose storage
-// key P42 brings (X33 (a), DECISIONS R5-M60), and of a requirement call whose inherited witness cannot preserve its receiver (OCC-X,
-// DECISIONS R5-M67); the declaration row of a static whose storage P42 has not brought (DECISIONS R5-M82); the operation rows of IMPL
+// a nested function called without its enclosing instance (until PLAN G149), and of a requirement call whose inherited witness cannot
+// preserve its receiver (OCC-X, DECISIONS R5-M67); the declaration row of a static whose storage P42 has not brought, a generic
+// container's included (DECISIONS R5-M82, superseding R5-M60's access row); the operation rows of IMPL
 // 21.3.3's 128-bit subset, division and remainder of i128 and u128 (a compound form builds as the same operation) and numeric conversions
 // between them and f32 or f64 (a direct literal conversion is a constant, Binding having fitted the literal, so it is no Cast).
 // Input: for an operation, its MIR rvalue and its first operand's closed Type. Output: a gap's record, Unsupported_Kd at the subject the
@@ -28,17 +28,13 @@ internal enum CapabilityGap : byte
     [Transitional("R5", Reason = "PLAN G149 represents the enclosing-instance chain in a call's substitution.")]
     EnclosingInstance,
 
-    // A static of a generic container's group (SPEC 22.4.4), whose storage the MIR keys by its symbol alone, so no key holds the
-    // container's Type arguments (S2-S4 X6; the owner's choice X33 (a): generic storage keys belong to P42; DECISIONS R5-M60).
-    GenericStaticKey,
-
     // A requirement call whose witness is inherited and takes a receiver, which lends only its base prefix and so preserves no exclusive
     // or owning requirement receiver (OCC-X, SPEC 12.7.1; Binding's refused witness, DECISIONS R5-M22, R5-M67).
     ExclusiveInheritedWitness,
 
-    // A static whose storage P42 has not brought (SPEC 22.4, STATUS "Static members"): every one a root module declares but the immutable
-    // group scalars StaticScalar supports (a var, an aggregate, borrowed or drop-needing Type, a non-literal one in a generic container),
-    // used or not, since code generation reaches only what the output requires (DECISIONS R5-M77, R5-M82).
+    // A static whose storage P42 has not brought (SPEC 22.4, 22.4.4; STATUS "Static members"): one a root module declares that can be set,
+    // whose Type is not a scalar, or in a generic container's group, whose storage the MIR keys by its symbol alone (X33 (a)), used or not,
+    // since code generation reaches only what the output requires (DECISIONS R5-M77, R5-M82).
     StaticStorage,
 
     WideDivision, // Division or remainder of i128 or u128 (IMPL 21.3.3).
@@ -55,7 +51,6 @@ internal static class Capability
     {
         CapabilityGap.StorageNesting => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.EnclosingInstance => DiagnosticCode.Unsupported_Kd,
-        CapabilityGap.GenericStaticKey => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.ExclusiveInheritedWitness => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.StaticStorage => DiagnosticCode.Unsupported_Kd,
         CapabilityGap.WideDivision => DiagnosticCode.Unsupported_Kd,
