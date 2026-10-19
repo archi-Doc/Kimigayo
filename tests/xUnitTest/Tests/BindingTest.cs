@@ -270,6 +270,24 @@ public class BindingTest
         Assert.Equal(0, AllocationMeasurement.Measure(() => compilation.Binding.Bind(BindingMode.Final)));
     }
 
+    // Scratch returns in nested order: a call through a function value, a reference at a Function Type, a Function Item argument and the
+    // record of a rejected reference each rent the callee's Origins and its input Origins. Returned in renting order, 17 inputs were
+    // cleared over the other list's first 16-slot buffer, and these programs faulted (CheckFaulted_Kd).
+    [Theory]
+    [InlineData("func use() -> i32\n    let n = 7\n    let h = pick\n    return h(n@ref{0})\n", null)]
+    [InlineData("func use() -> i32\n    let n = 7\n    let h: (ref/i32{1}) -> i32 = pick\n    return h(n@ref{0})\n", null)]
+    [InlineData("func apply(h: (ref/i32{1}) -> i32) -> i32 => h(7{0})\nfunc use() -> i32 => apply(pick)\n", null)]
+    [InlineData("func use() -> i32\n    let h: (ref/i32{1}) -> ref/i32 during static = view\n    return 0\n", nameof(DiagnosticCode.UnprovenOriginContract_Kd))]
+    public void ScratchReturnsInNestedOrder(string body, string? code)
+    {
+        var inputs = string.Concat(Enumerable.Range(1, 16).Select(static i => $", a{i}: i32"));
+        var calls = string.Format(body, string.Concat(Enumerable.Repeat(", 0", 16)), string.Concat(Enumerable.Repeat(", i32", 16)));
+        var source = $"func pick(a0: ref/i32 during source{inputs}) -> i32 => a0@follow\n" +
+            $"func view(a0: ref/i32 during source{inputs}) -> ref/i32 during source => a0\n" + calls + "public func main() => ()\n";
+        string[] expected = code is null ? [] : [code];
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
     [Fact]
     public void ParenthesizedArrayLengthsBindEverySyntaxNode()
     {
