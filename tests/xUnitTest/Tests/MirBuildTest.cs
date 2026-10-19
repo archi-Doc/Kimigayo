@@ -336,6 +336,48 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
+    // Plan 5.6.2, SPEC 7.2.3: each statement and terminator of a copy is its template's, folded: at its template's location, in the
+    // copy's scopes under the one Inlined at the omitting call; a PairAcquire too, which the instance's case acquires again (R4-M66):
+    // Copied (concrete), Reborrowed (exclusive, a default the analysis rejects: DefaultArgumentBorrow_Kd in its uniq case), by the
+    // caller's binder (generic) and as the input of a call in the template (called). Only the slots and the prologue's borrows are the
+    // caller's.
+    [Theory]
+    [InlineData("concrete", "pick")]
+    [InlineData("exclusive", "grab")]
+    [InlineData("generic", "pick")]
+    [InlineData("called", "via")]
+    public void ACopyLiesInItsInlinedScopeAtItsTemplatesLocations(string caller, string callee)
+    {
+        var program = Compile("func pick<s/T>(a: s/T, b: s/T = a) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\nfunc id<s/T>(x: s/T) -> s/T\n    s is owner or ref\n" +
+            "    T is Copy\n    return x\nfunc via<s/T>(a: s/T, b: s/T = id(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func concrete(r: ref/i32) -> i32 => pick(r)\nfunc generic<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return pick(x)\n" +
+            "func exclusive(u: uniq/i32) -> i32 => grab(u)\nfunc called(r: ref/i32) -> i32 => via(r)\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var bodies = program.Bodies.ToArray();
+        var template = bodies.Single(x => x.Key.Kind == MirBodyKind.DefaultTemplate && x.Key.Decl?.Name == callee);
+        var body = bodies.Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == caller);
+        var inlined = Enumerable.Range(0, body.Scopes.Length).Single(x => body.Scopes[x].Kind == MirScopeKind.Inlined);
+        Assert.Equal(Sources(template, static _ => true), Sources(body, Copied));
+
+        bool Copied(int scope)
+        {
+            while (scope > inlined)
+            {
+                scope = body.Scopes[scope].Outer;
+            }
+
+            return scope == inlined;
+        }
+
+        // The statements' kinds and the statements' and terminators' syntax and statement starts in the scopes given.
+        static string[] Sources(MirBody body, Func<int, bool> copied) => body.Statements.ToArray().Where(x => copied(x.Source.Scope))
+            .Select(static x => $"{x.Kind} {x.Source.Syntax} {x.Source.StatementStart}")
+            .Concat(body.Blocks.ToArray().Select(static x => x.Terminator.Source).Where(x => copied(x.Scope))
+                .Select(static x => $"end {x.Syntax} {x.StatementStart}"))
+            .Order(StringComparer.Ordinal).ToArray();
+    }
+
     // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record.

@@ -5,7 +5,10 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler.Mir;
 
 // Default copies (plan 5.6.2, SPEC 7.2.3): where a call omits a default whose template is not recursive and did not fail (Defaults), its
-// value is a copy of the template's MIR in the calling body, folded once under the call's substitution.
+// value is a copy of the template's MIR in the calling body, folded once under the call's substitution. Each statement and terminator of
+// a copy is its template's, folded: at its template's location, in the copy's scopes under the one Inlined at the call; its case decides
+// a PairAcquire's rvalue again (ByCase). Only the pending slots and the prologue's borrows (Defaults) and the Unsupported value of a fold
+// that fails are the caller's.
 internal sealed partial class MirBuilder
 {
     private readonly List<int> folded = []; // A copy's scopes, locals and blocks in this body.
@@ -14,7 +17,7 @@ internal sealed partial class MirBuilder
     // call, its locals after this body's (its result the slot, its parameters the borrows from at), its entry block the current one (the
     // builder targets no entry block) and its returns going on after it; each Type applied and each callee's substitution composed
     // (TyCtxt.Compose), each Place projected again, so that a pair layer the substitution decides is its case's layer and a case-dependent
-    // acquisition its case's (Acquire), each static and constant added again, and a Drop the instance's Type does not need left out. A Type
+    // acquisition its case's (ByCase), each static and constant added again, and a Drop the instance's Type does not need left out. A Type
     // or callee the call does not instantiate is unsupported at the call. No MustNotComplete row is copied: a copy's verdict is its
     // template's, which A3 judges once (SPEC 7.2.3).
     private void Inline(MirBody template, Subst? subst, int at, MirPlace slot, Koto node)
@@ -67,21 +70,13 @@ internal sealed partial class MirBuilder
             foreach (ref readonly var statement in template.Statements.Slice(block.Start, block.Count))
             {
                 var copy = statement with { Place = FoldPlace(statement.Place), Source = FoldInfo(statement.Source) };
-                if (statement is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Use, Op: not 0 } acquire })
+                if (statement.Kind == MirStatementKind.Assign)
                 {
-                    // A PairAcquire, acquired into its local as the instance's case decides it, by the borrow its marker names.
-                    var acquired = this.Acquire(
-                        new(HirAcquire.ByCase, HirAdaptation.None),
-                        FoldPlace(template.Operands[acquire.Start].Place),
-                        null,
-                        acquire.Op == (byte)MirRefKind.TwoPhaseUniq,
-                        node,
-                        copy.Place);
-                    this.Use(copy.Place, acquired, node);
-                    continue;
+                    var acquires = statement.Rvalue is { Kind: MirRvalueKind.Use, Op: not 0 }; // A PairAcquire's Use is marked (R4-M66).
+                    copy = copy with { Rvalue = acquires ? Reacquired(statement.Rvalue) : FoldRvalue(statement.Rvalue) };
                 }
 
-                this.body.Push(this.current, statement.Kind == MirStatementKind.Assign ? copy with { Rvalue = FoldRvalue(statement.Rvalue) } : copy);
+                this.body.Push(this.current, copy);
             }
 
             var terminator = block.Terminator;
@@ -188,6 +183,14 @@ internal sealed partial class MirBuilder
             var place = rvalue.Kind is MirRvalueKind.Ref or MirRvalueKind.Discriminant or MirRvalueKind.Len or MirRvalueKind.Adapt
                 ? FoldPlace(rvalue.Place) : default;
             return rvalue with { Place = place, Start = this.Flush(start), Type = rvalue.Type is { } type ? FoldType(type) : null };
+        }
+
+        // A PairAcquire, acquired again as the instance's case decides it (ByCase), by the borrow its marker names; or Copied (R4-M66).
+        MirRvalue Reacquired(in MirRvalue acquire)
+        {
+            var place = FoldPlace(template.Operands[acquire.Start].Place);
+            return this.ByCase(place, this.body.TypeOf(place) ?? BoundType.Unit, acquire.Op == (byte)MirRefKind.TwoPhaseUniq)
+                ?? MirRvalue.Use(this.body.AddOperand(MirOperand.Copy(place)));
         }
     }
 }
