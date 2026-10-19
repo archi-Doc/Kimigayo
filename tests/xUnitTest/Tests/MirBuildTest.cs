@@ -336,6 +336,58 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
+    // Plan 5.6.2, SPEC 7.2.3: each statement and terminator of a copy is its template's, folded: at its template's location, in the
+    // copy's scopes under the one Inlined at the omitting call; a PairAcquire too, which the instance's case acquires again (R4-M66):
+    // Copied (concrete), Reborrowed (exclusive, a default the analysis rejects: DefaultArgumentBorrow_Kd in its uniq case), by the
+    // caller's binder (generic) and as the input of a call in the template (called). A template's own copy (outer's of pick) is copied
+    // into its nested Inlined scope (nested, nestedGeneric). Only the slots and the prologue's borrows are the caller's.
+    [Theory]
+    [InlineData("concrete", "pick")]
+    [InlineData("exclusive", "grab")]
+    [InlineData("generic", "pick")]
+    [InlineData("called", "via")]
+    [InlineData("nested", "outer pick")]
+    [InlineData("nestedGeneric", "outer pick")]
+    public void ACopyLiesInItsInlinedScopeAtItsTemplatesLocations(string caller, string templates)
+    {
+        var program = Compile("func pick<s/T>(a: s/T, b: s/T = a) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\nfunc id<s/T>(x: s/T) -> s/T\n    s is owner or ref\n" +
+            "    T is Copy\n    return x\nfunc via<s/T>(a: s/T, b: s/T = id(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func outer<s/T>(a: s/T, c: i32 = pick(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return c\n" +
+            "func concrete(r: ref/i32) -> i32 => pick(r)\nfunc generic<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return pick(x)\n" +
+            "func exclusive(u: uniq/i32) -> i32 => grab(u)\nfunc called(r: ref/i32) -> i32 => via(r)\nfunc nested(r: ref/i32) -> i32 => outer(r)\n" +
+            "func nestedGeneric<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return outer(x)\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var bodies = program.Bodies.ToArray();
+        var body = bodies.Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == caller);
+        foreach (var callee in templates.Split(' '))
+        {
+            // The body's first copy, of the template given, then the template's own copy of the next.
+            var template = bodies.Single(x => x.Key.Kind == MirBodyKind.DefaultTemplate && x.Key.Decl?.Name == callee);
+            var inlined = Enumerable.Range(0, body.Scopes.Length).First(x => body.Scopes[x].Kind == MirScopeKind.Inlined);
+            Assert.Equal(Sources(template, 0), Sources(body, inlined));
+            body = template;
+        }
+
+        // The statements' kinds and the statements' and terminators' syntax and statement starts under a root scope, each after the kinds
+        // of the scopes from the root to its own.
+        static string[] Sources(MirBody body, int root) => body.Statements.ToArray().Select(static x => (x.Source, Kind: x.Kind.ToString()))
+            .Concat(body.Blocks.ToArray().Select(static x => (x.Terminator.Source, Kind: "end")))
+            .Select(x => (Path: Path(body, x.Source.Scope, root), x.Source, x.Kind)).Where(static x => x.Path is not null)
+            .Select(static x => $"{x.Path}{x.Kind} {x.Source.Syntax} {x.Source.StatementStart}").Order(StringComparer.Ordinal).ToArray();
+
+        static string? Path(MirBody body, int scope, int root)
+        {
+            var path = string.Empty;
+            for (; scope > root; scope = body.Scopes[scope].Outer)
+            {
+                path = $"{body.Scopes[scope].Kind}/{path}";
+            }
+
+            return scope == root ? path : null;
+        }
+    }
+
     // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record.
@@ -877,13 +929,30 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     }
 
     // SPEC 3.8, 14.10.3 (DECISIONS R4-M62): where only the checks continue, any acquisition takes the Never value as it is (a comparison's
-    // borrow), an increment's one is of the old value's Type, not of its Never-typed target's, and a rejected node of Type Never keeps its
-    // Opaque value: each body validates.
+    // borrow, a tuple operator's leaves, R5-M75), an increment's one is of the old value's Type, not of its Never-typed target's, and a
+    // rejected node of Type Never keeps its Opaque value: each body validates.
     [Theory]
     [InlineData("func f() -> bool\n    let s = \"a\"\n    return s == (return false)\n")]
+    [InlineData("func f(b: (string, i32)) -> bool\n    return (return false) < b\n")]
     [InlineData("func f() -> i32\n    var a: [1 of i32] = [0]\n    ++a[(return 42)]\n    return 0\n")]
     [InlineData("func f() -> i32\n    return true\n")]
     public void TheNeverValueValidatesWhereOnlyTheChecksContinue(string source) => _ = Body(source, "f");
+
+    // SPEC 13.4, package F 4.8 (DECISIONS R5-M75): a tuple operator whose leaf's storage nests past Binding's bound has no comparison (a
+    // Limit of TyCtxt.Comparison): one located Unsupported_Kd at the operator, with its Opaque value (fail-before: none, the tuple's call).
+    [Fact]
+    public void ATupleOperatorWithoutItsComparisonIsUnsupported()
+    {
+        var deep = string.Concat(Enumerable.Repeat("Wrap<", 80)) + "i32" + new string('>', 80);
+        var c = Compile("struct Wrap<V>\n    Self is Equatable\n    public init() => ()\n" +
+            "    public func equals(self: ref/Self, other: ref/Self) -> bool => true\n" +
+            $"func f(a: ref/({deep}, i32), b: ref/({deep}, i32)) -> bool => a == b\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, "a == b"), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.True(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").HasOpaque);
+    }
 
     // SPEC 4.6.3, 4.8.1, 5.6 (DECISIONS R4-M40, R4-M55): a range selection's RawSlice takes what the Slice retains as its backing, the
     // third operand: a shared borrow of an array's whole Place, or a Slice receiver's handle, its value and never borrowed, read where it
@@ -972,9 +1041,9 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // DECISIONS R4-M61: the publisher gives a node an Op only with the facts its building rule reads, so a node Binding resolved without
     // them (a call's, an indexer's or a view selection's plan, a local's symbol, a closure's definition, a case adaptation's plan, a loop's
-    // iterator symbol, a write of an interpolation) is published Error and recorded as InternalInvariant_Kd at it, with an Opaque value
-    // in its place, which the validator accepts, never a fault. A node Binding rejected that lacks the same fact is an Error derived from
-    // its error, without a record.
+    // iterator symbol, a write of an interpolation, a tuple operator's conforming Type, R5-M75) is published Error and recorded as
+    // InternalInvariant_Kd at it, with an Opaque value in its place, which the validator accepts, never a fault. A node Binding rejected
+    // that lacks the same fact is an Error derived from its error, without a record.
     [Fact]
     public void AResolvedNodeWithoutItsFactsIsABrokenContract()
     {
@@ -988,7 +1057,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             "func makeAdder(offset: i32) -> (i32) -> i32\n    return func [offset] (value) => value + offset\n" +
             "func discard<s/T>(value: i32) -> ()\n    s is owner or ref or object\n    _ = value@s\n" +
             "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\n" +
-            "func text(x: i32) -> string => \"a\\(x)\"\n");
+            "func text(x: i32) -> string => \"a\\(x)\"\nfunc order(a: (i32, f64), b: (i32, f64)) -> bool => a < b\n");
         var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
         var calls = nodes.OfType<InvocationKoto>().Where(static x => x.ToString() == "one()").ToArray();
         var call = calls[0];
@@ -1009,8 +1078,14 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         HirTables.PlanFor(adaptation, written: false).Plan = null;
         HirTables.Of(loop.Iteration!.Receiver).Symbols[loop.Iteration.Receiver.SyntaxId] = null;
         HirTables.PlanFor(text.Formatting!.Writes[1], written: false).Plan = null;
+        var order = nodes.OfType<BinaryKoto>().Single(static x => x.ToString() == "a < b");
+        var tuple = CallPlan.Of(order)!;
+        Assert.True(tuple.TupleOperator);
+        var (mapping, types, operations) = (tuple.ArgumentToParameter.ToArray(), tuple.TypeArguments.ToArray(), tuple.ArgumentOperations.ToArray());
+        tuple.Set(tuple.Target, tuple.ReturnType, tuple.Receiver, mapping, types, operations: operations);
+        tuple.TupleOperator = true; // Its conforming Type is gone.
         var program = c.BuildMir();
-        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text];
+        Koto[] broken = [call, indexes[0], indexes[1], local, closure, adaptation, loop, text, order];
         Assert.Empty(program.Findings);
         Assert.All(broken.Append(calls[1]), static x => Assert.Equal(HirOp.Error, HirTables.Op(x)));
         Assert.Equal(

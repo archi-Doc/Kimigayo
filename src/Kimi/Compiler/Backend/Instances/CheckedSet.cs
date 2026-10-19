@@ -4,14 +4,16 @@ namespace Kimi.Compiler.Backend;
 
 /// <summary>The checked set of a program version (SPEC 8.15.3, IMPL 21.3.1), which only <see cref="InstanceCollector"/> writes: its items in
 /// admission order, the roots first, each with its targets in its body's location order, and its instance-stage records, one per code and
-/// subject, which <c>Compilation.MirRecords</c> publishes under MIR code generation. Its arrays and lookup keep their storage, so collecting
-/// a program again allocates nothing.</summary>
+/// subject, which <c>Compilation.MirRecords</c> publishes under MIR code generation; at emit, its Generated column (K package 4.10), which the
+/// generation entry marks. Its arrays and lookup keep their storage, so collecting and marking a program again allocate nothing.</summary>
 internal sealed class CheckedSet
 {
     private readonly Dictionary<MonoKey, int> lookup = new();
     private readonly HashSet<Problem> reported = new();
     private MonoItem[] items = [];
     private MonoTarget[] targets = [];
+    private bool[] generated = []; // The Generated column, by item.
+    private int[] marking = []; // Mark's worklist.
     private int itemCount;
     private int targetCount;
 
@@ -39,11 +41,43 @@ internal sealed class CheckedSet
     /// <returns>The item, or -1.</returns>
     internal int Find(in MonoKey key) => this.lookup.TryGetValue(key, out var item) ? item : -1;
 
+    /// <summary>Gets whether code is generated for an item: whether the latest <see cref="Mark"/> of this version reached it.</summary>
+    /// <param name="item">The item.</param>
+    /// <returns>Whether the item is Generated.</returns>
+    internal bool IsGenerated(int item) => this.generated[item];
+
+    /// <summary>Marks the Generated column (K package 4.10, IMPL 21.3.1): exactly the output roots and, transitively, every item a runtime
+    /// target of a Generated item names; an item only the checks reach is checked, never generated through that target.</summary>
+    /// <param name="roots">The output roots.</param>
+    internal void Mark(ReadOnlySpan<int> roots)
+    {
+        this.generated.AsSpan(0, this.itemCount).Clear();
+        if (this.marking.Length < this.itemCount)
+        {
+            this.marking = new int[this.items.Length];
+        }
+
+        var count = 0;
+        foreach (var root in roots)
+        {
+            count = this.Generate(root, count);
+        }
+
+        while (count > 0)
+        {
+            foreach (var target in this.Targets(this.marking[--count]))
+            {
+                count = target.Runtime ? this.Generate(target.Item, count) : count;
+            }
+        }
+    }
+
     internal void Clear(ulong version)
     {
         this.lookup.Clear();
         this.reported.Clear();
         this.Records.Clear();
+        this.generated.AsSpan(0, this.itemCount).Clear();
         (this.itemCount, this.targetCount, this.RootCount, this.Version) = (0, 0, 0, version);
     }
 
@@ -53,6 +87,7 @@ internal sealed class CheckedSet
         if (this.itemCount == this.items.Length)
         {
             Array.Resize(ref this.items, Math.Max(64, this.itemCount * 2));
+            Array.Resize(ref this.generated, this.items.Length);
         }
 
         var item = this.itemCount++;
@@ -85,5 +120,17 @@ internal sealed class CheckedSet
         entry.FirstTarget = entry.TargetCount == 0 ? this.targetCount : entry.FirstTarget;
         entry.TargetCount++;
         this.targets[this.targetCount++] = target;
+    }
+
+    // An item Generated now, onto the worklist once.
+    private int Generate(int item, int count)
+    {
+        if (!this.generated[item])
+        {
+            this.generated[item] = true;
+            this.marking[count++] = item;
+        }
+
+        return count;
     }
 }
