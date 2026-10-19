@@ -4,8 +4,8 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The capability check of operations (K package 4.7; DECISIONS R4-M8, R5-M53, R5-M54): the capability table read for the operations of a
-// body, at the definition stage (A3b) and in each instance.
+// The capability check of operations and declarations (K package 4.7; DECISIONS R4-M8, R5-M53, R5-M54, R5-M82): the capability table read
+// for the operations of a body, at the definition stage (A3b) and in each instance, and for a root-module static's declaration.
 internal sealed partial class InstanceCollector
 {
     // Whether an operation's Types depend on slots: its first operand's or its result's.
@@ -35,6 +35,19 @@ internal sealed partial class InstanceCollector
         if (operand is not null && (rvalue.Type is null || result is not null) && Capability.Of(rvalue with { Type = result }, operand) is { } gap)
         {
             this.Set.Report(Capability.Code(gap), subject);
+        }
+    }
+
+    // A3b's declaration row (DECISIONS R5-M82): a verified root-module static that can be set (its setter present), whose StaticInit
+    // body's result Type is not a scalar (ScalarTypes) or whose definition instantiates (a generic container's group, TyCtxt.Instantiates)
+    // is the static-storage gap at its declaration, its StaticInit body's source, whether or not anything reads it; an unverified one is
+    // Binding's error.
+    private void CheckStatic(MirBody body)
+    {
+        if (body.Key is { Kind: MirBodyKind.StaticInit, Decl: { Property: { IsVerified: true } property } definition } &&
+            (property.Setter.IsPresent || !ScalarTypes.Supports(body.Locals[0].Type) || this.types.Instantiates(definition)))
+        {
+            this.Set.Report(Capability.Code(CapabilityGap.StaticStorage), body.Source);
         }
     }
 }

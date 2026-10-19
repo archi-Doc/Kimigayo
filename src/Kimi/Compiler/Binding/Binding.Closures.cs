@@ -555,10 +555,10 @@ public sealed partial class Binding
                 }
 
                 var source = this.Lookup(capture.Name, scope.Parent!, function, false);
-                if (source is { Kind: BindingSymbolKind.Parameter, Name: "self", Declaration: FunctionKoto { IsConstructor: true } or FunctionKoto { IsDestructor: true } })
+                if (source is not null && Receiver(source) is not null)
                 {
                     // SPEC 7.7.2, 6.3, 16.3: an explicit capture obeys the construction and destruction restrictions, under
-                    // which self is reached only through its Fields.
+                    // which self is reached only through its Fields (Receiver).
                     return this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type ?? BoundType.Unit, source);
                 }
 

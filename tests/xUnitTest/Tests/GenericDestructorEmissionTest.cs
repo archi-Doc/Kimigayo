@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
 using Kimi.Compiler;
 using Xunit;
 
@@ -62,21 +63,32 @@ public class GenericDestructorEmissionTest
         ScalarEmissionTest.EmitFixture("DestructorFieldBorrows", source, "count 1\n");
     }
 
+    // SPEC 16.3.1, 15.1.5: the general rules judge the whole destruction receiver under its exclusive access (DECISIONS BU-15): a
+    // shared borrow is a helper borrow, and a Move, Copy, exclusive acquisition, assignment or uniq/Self argument is their record.
     [Theory]
-    [InlineData("Support.take(self@uniq)")]
-    [InlineData("Support.take(self)")]
-    public void DestructorReceiverIsNotAnOrdinaryBorrow(string use)
+    [InlineData("let whole = self@ref\n        Support.see(whole)", null)]
+    [InlineData("Support.see(self)", null)]
+    [InlineData("Support.take(self@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("Support.take(self)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("Support.sink(self@move)", DiagnosticCode.ExclusivePathTake_Kd)]
+    [InlineData("Support.sink(self)", DiagnosticCode.TransferRequired_Kd)]
+    [InlineData("let copied = self@copy", DiagnosticCode.NonCopyOperand_Kd)]
+    [InlineData("self = Owner.init()", DiagnosticCode.InvalidAssignment_Kd)]
+    public void TheWholeDestructionReceiverIsJudgedUnderExclusiveAccess(string use, DiagnosticCode? code)
     {
         var c = MinimalEmissionTest.Analyze($$"""
             struct Owner
                 var n: i32
                 public init() => self.n = 0
-                drop => {{use}}
+                drop
+                    {{use}}
             group Support
+                public func see(owner: ref/Owner) => ()
                 public func take(owner: uniq/Owner) => ()
+                public func sink(owner: Owner) => ()
             ()
             """);
-        Assert.False(c.Binding.Result.IsComplete);
+        Assert.Equal(code is { } expected ? [expected] : [], c.Binding.Issues.Select(static x => x.Code));
     }
 
     [Fact]
@@ -209,12 +221,12 @@ public class GenericDestructorEmissionTest
         Assert.Contains("grows", error, StringComparison.Ordinal);
     }
 
+    // SPEC 16.3.1: no Field of drop's self is Moved out, so each Move is Binding's record, in a generic body too.
     [Fact]
     public void GenericDestructorStillRejectsUninitializedFields()
     {
         var c = MinimalEmissionTest.Analyze("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n        let again = self.value@move\nlet value = Box<i32>.init(7)");
-        Assert.True(c.Binding.Result.IsComplete);
-        Assert.True(c.Analysis.ErrorCount > 0);
+        Assert.Equal([DiagnosticCode.ExclusivePathTake_Kd, DiagnosticCode.ExclusivePathTake_Kd], c.Binding.Issues.Select(static x => x.Code));
         using var output = new StringWriter();
         Assert.False(c.WriteIr(output, out _));
         Assert.Empty(output.ToString());

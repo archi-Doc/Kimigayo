@@ -8,6 +8,17 @@ namespace XunitTest;
 
 public class InheritedStorageTest
 {
+    // A constructor of Tally whose body continues once its Fields are initialized; Buffer is Non-Copy.
+    private const string Tally =
+        "struct Buffer\n    public var n: i32 = 0\n    public init() => ()\ngroup Audit\n    public func change(value: uniq/Buffer) => value.n += 10\n" +
+        "    public func read(value: ref/Buffer) -> i32 => value.n\n    public func pass(value: uniq/Buffer) -> uniq/Buffer => value\n" +
+        "struct Tally\n    var total: i32\n    var buffer: Buffer\n    public init(start: i32)\n        self.total = 0\n        self.buffer = Buffer.init()\n";
+
+    // A constructor of Holder, whose view Field stores a shared reference during a, once its Fields are initialized.
+    private const string Holder =
+        "struct Buffer\n    public var n: i32 = 0\n    public init() => ()\nstruct Holder {a}\n    var buffer: Buffer\n    public var view: ref/Buffer during a\n" +
+        "    public init(other: ref/Buffer during a)\n        self.buffer = Buffer.init()\n        self.view = other\n";
+
     [Fact]
     public void InheritedStandardStorageKeepsItsDeclaringLayer()
     {
@@ -52,11 +63,40 @@ public class InheritedStorageTest
     [InlineData("struct S\n    var a: i32\n    public var b: i32 = 0\n        get() -> i32 => storage\n    public init()\n        self.a = self.b\n", "self.b")]
     [InlineData("struct S\n    public var b: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init()\n        self.b += 1\n", "self.b")]
     [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct S\n    var r: R\n    public init(r: R)\n        self.r = r@move\n        let moved = self.r@move\n", "self.r@move")]
+    [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct H\n    public var r: R = R.init()\nstruct S\n    var h: H\n    public init(h: H)\n        self.h = h@move\n        let moved = self.h.r@move\n", "self.h.r@move")]
     public void TheConstructionReceiverForbidsInheritedComputedAndMovingAccess(string declarations, string at)
     {
         var source = declarations + "public func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
+    // SPEC 6.3.4, 15.1.5: a constructor's writable Fields are lent exclusively, but no analysis models those Loans yet ("Field borrows end
+    // before completion"; PLAN G166), so each exclusive borrow is one located Unsupported_Kd and the body reaches no analysis: no
+    // conflict is accepted, no read of `start` is a conflict and no check faults (DECISIONS BU-15). The rows are a write, a second
+    // borrow, a read, `exchange` and early exits while a borrow lives, and a stored reference Field lent to `exchange`.
+    [Theory]
+    [InlineData(Tally + "        Kimi.Intrinsics.replace(self.total@uniq, with: 5)\n", "self.total@uniq")]
+    [InlineData(Tally + "        let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        Audit.change(self.buffer@uniq)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        self.buffer = Buffer.init()\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        let s = self.buffer@uniq\n        Audit.change(r)\n        Audit.change(s)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = Audit.pass(self.buffer@uniq)\n        let n = Audit.read(self.buffer@ref)\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        if start > 0\n            return\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        let k = start + 1\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Holder + "        let old = Kimi.Intrinsics.exchange(self.view@uniq, with: self.buffer@ref)\n", "self.view@uniq")]
+    [InlineData(Holder + "        var local = Buffer.init()\n        let old = Kimi.Intrinsics.exchange(self.view@uniq, with: local@ref)\n", "self.view@uniq")]
+    public void AConstructorsExclusiveFieldBorrowIsUnsupported(string declarations, string at)
+    {
+        var source = declarations + "public func main() => ()\n";
+        var expected = new List<(string, int, int)>();
+        for (var i = source.IndexOf(at, StringComparison.Ordinal); i >= 0; i = source.IndexOf(at, i + 1, StringComparison.Ordinal))
+        {
+            expected.Add((nameof(DiagnosticCode.Unsupported_Kd), i, at.Length));
+        }
+
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
     }
 
     [Trait("Purpose", "Allocation")]

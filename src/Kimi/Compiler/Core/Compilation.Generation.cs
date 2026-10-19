@@ -125,7 +125,7 @@ public partial class Compilation
 
         var roots = CollectionsMarshal.AsSpan(this.outputRoots);
         collector.Set.Mark(roots);
-        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations);
+        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations, this.Types);
         if (generator.Write(program, collector, this.Binding.Startup, roots, writer))
         {
             return true;

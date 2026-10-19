@@ -73,17 +73,40 @@ public sealed partial class Binding
         return result is not null && this.PrepareTypeStorage(result) ? result : null;
     }
 
+    // SPEC 6.3.4, 15.1.5, 16.3.1: what the receiver `self` of a constructor or destructor grants, the one decision the Place checks read
+    // (DECISIONS BU-15); null for a node or symbol naming no such receiver. Every special receiver writes its own initialized Fields
+    // (Writable), no part of it gives up a Non-Copy value (CompleteTransfer) and no capture entry takes it (Binding.Closures).
+    // Parts: the authority its path gives every part (PathAuthority). Whole: whether a use of the whole receiver is judged by the
+    // general rules under Parts (BindReference). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
+    // where SPEC lends them but Binding does not, the exclusive borrow is a located Unsupported_Kd (AccessFailure).
+    // - Construction (6.3.4): an owner's path; the whole receiver is never named. Its Fields are not lent exclusively until PLAN
+    //   G166 models the Loans the old analysis and A5 lack (6.3.4's "Field borrows end before completion"); LendsFields then goes.
+    // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
+    //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment).
+    private static ReceiverAuthority? Receiver(Koto? node) => Receiver((node as IdentifierNameKoto)?.BoundSymbol);
+
+    private static ReceiverAuthority? Receiver(BindingSymbol? symbol)
+        => symbol is { Name: "self", Declaration: FunctionKoto function } ? function switch
+        {
+            { IsConstructor: true } => new(SemanticsKind.Owner, Whole: false, LendsFields: false),
+            { IsDestructor: true } => new(SemanticsKind.Uniq, Whole: true, LendsFields: true),
+            _ => null,
+        } : null;
+
+    // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
+    private static ReceiverAuthority? ReceiverOfPart(Koto place)
+        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(part)) : null;
+
+    // One row of the special-receiver table (Receiver).
+    private readonly record struct ReceiverAuthority(SemanticsKind Parts, bool Whole, bool LendsFields);
+
+    // A member selected directly on a special receiver (`self.f`) and the receiver's function, which the construction rules read (SPEC
+    // 6.3.4, 11.7: own Fields used as storage and placed first).
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {
-        if (node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol: { Name: "self", Declaration: FunctionKoto receiver } } } &&
-            (receiver.IsConstructor || receiver.IsDestructor))
-        {
-            function = receiver;
-            return true;
-        }
-
-        function = null!;
-        return false;
+        function = node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol.Declaration: FunctionKoto receiver } left } &&
+            Receiver(left) is not null ? receiver : null!;
+        return function is not null;
     }
 
     // The storage height of a Type the walk meets as the path-th Type from the query's root, one strongly connected component at a time

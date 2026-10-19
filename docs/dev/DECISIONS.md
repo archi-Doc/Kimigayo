@@ -1002,7 +1002,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
-    R5-M9. OD4's parallel run was suspended by R4-M77 and restored by R4-M78 (both 2026-10-19).
+    R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19).
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -1883,10 +1883,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   design nor code in place of AB-5's BU reviewers and AR-2's R5 reviewers. AR-7's acceptance stays R5's (the owner's condition,
   R4-M74 OQ6) and waits for its resume or goes to the owner; AR-6 is met (R5-M63).
 - **R4-M78 R5 and the Binding units resumed** (owner, 2026-10-19, verbatim 「すみません。まだトークンに余裕があったため、BUとR5を再開させてください。」; supersedes
-  R4-M77) The pause of R4-M77 is lifted the same day: R5 and BU resume their work, R5-M1's parallel run (OD4) is restored, and the
-  PLAN §3 hold protocol applies as before, and BU's step-2 units (PD6) and the asks of BU and R5 (AB-1–AB-6, AR-1–AR-8) stand as
-  before R4-M77. The owner's reason: token budget remains. During the pause R4 changed no file R5 or BU held; BU's handoff in
-  `artifacts/handoff/2026-10-19-pause/` stays as the record of its stop.
+  R4-M77; superseded by R4-M79 the same day) The pause of R4-M77 is lifted the same day: R5 and BU resume their work, R5-M1's
+  parallel run (OD4) is restored, and the PLAN §3 hold protocol applies as before, and BU's step-2 units (PD6) and the asks of
+  BU and R5 (AB-1–AB-6, AR-1–AR-8) stand as before R4-M77. The owner's reason: token budget remains. During the pause R4 changed
+  no file R5 or BU held; BU's handoff in `artifacts/handoff/2026-10-19-pause/` stays as the record of its stop.
+- **R4-M79 R5 and the Binding units paused again; R4 continues alone** (owner, 2026-10-19, verbatim
+  「R5/Binding unitsのエージェントを一時停止します。新規作業の開始は行わず、現在の作業のMergeまで（難しい場合は、きりの良いところまで）行ってください。作業が停止したら、引き継ぎ文書を作成してください。そして、再開時のプロンプトを書いてください。R4はそのまま継続してください。」;
+  supersedes R4-M78) R5 and BU start no new unit. Their units in flight finish through their dev merges; a unit that cannot
+  reach its merge stops at a clean point on its pushed branch, unmerged. Each session then releases its PLAN §3 holds, writes
+  its handoff and resume prompt in `artifacts/handoff/2026-10-19-pause-2/` (main checkout) and stops its agents; R5-M1's
+  parallel run (OD4) is suspended until the owner resumes it. Consequences (planning session), as R4-M77's: R4's sign-off
+  reviews of the units in flight (R5's F19, BU's BU-15) continue; a unit cannot reach its merge after a second blocking
+  review, when its fix needs a new design or when much of its work remains, and its handoff then carries any owner choice. R4
+  may edit the files R5 and BU held, under COMPILER_ARCHITECTURE's ownership rules, and their PLAN §3 lines and §7 rows where
+  it completes the owner's PLAN compression of 2026-10-19 for a session that did not start its share; it lists each such
+  change in that folder's README for their resume. It re-plans BU's step-2 units (PD6) and its asks of R5 (AR-1, AR-2, AR-8)
+  as they come due, with reviewers that wrote neither design nor code; AR-7's acceptance stays R5's and waits for its resume or
+  goes to the owner.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -1932,7 +1945,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4 and
-R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 (both 2026-10-19).
+R5 on the owner's request of 2026-10-18; paused by R4-M77, resumed by R4-M78 and paused again by R4-M79 (all 2026-10-19).
 
 - **BU-1** (2026-10-18; the BU planning session; correction of R4-M51's Stores clause, found by R4's E14 implementer at
   `f6b365bb`; R4-M51's contract stands) Stores of call retention (SPEC 15.6.4): an Origin occurrence is writable storage of
@@ -2424,6 +2437,76 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   generates them correctly once they select `indexUniq` (O0, both pipelines). Rejected: B, a fourth `PathAuthority` outcome for a
   binding's denial, read by about 25 consumers, with a handle view recorded by `ReceiverThroughLayers` (shared structure for one
   diagnostic distinction). Not temporary.
+- **BU-14** (2026-10-19; the BU planning session; PLAN G100's Subject item, A5 step 2 plan 2x-E7: designs 1 and 2 compared, R4's
+  independent design review adopted design 2 with corrections F1–F4 and N2–N4, N6; owner decisions of 2026-10-19 below) Every
+  Pattern position of a match arm or a `for` decomposition reaches its Place by one layer step, `Binding.SelectLayers`
+  (`Binding.Patterns.Layers.cs`, a canonical component), which carries SPEC 13.5.5's state as `PatternReach` (the mode reached,
+  the dependency, and whether the Place may lie in the owned Subject or item). A structural position selects every safe
+  value-reference layer that lacks its structure; a Wildcard (a `for` slot `_` included) and a grouping select nothing; a Binding
+  selects nothing, except the qualifying pair layer of a Place it reaches with owned access, which offers no Take: it binds `ref/T` (ref admitted) or `uniq/T` of the layer's selected Place (13.5.5's mode
+  row; `try` extracts a value, SPEC 17.3: `BoundMatch.ExtractsValue`). The pair step's dependency is `PairSlot`'s, the one case
+  split `PairOrigin` also uses: the Place reached (at an owned Subject or item reached by no layer, its Subject Place's atom,
+  `OriginAtom(match, Projection, 0)`) or the layer's outer slot met with the borrows reached. `BoundPattern.OwnedPart` publishes
+  whether a position's Place may lie in the owned Subject or item (true at the root of a ByValue Subject or an owned item, kept only
+  through pair layers admitting owner). Its readers: Binding's 11.5 check (an `Exclusive` binding with `OwnedPart` in a match on a
+  getter result is `InvalidAssignment_Kd` at the binding, SPEC 15.1.6's example), `EffectBounds.LeftParts` (a part borrowed past such
+  a layer stays in the Subject) and the old-path guard. The guard candidate is built from the selected Type (14.8.3: the body
+  binding's Place). `Binding.Sequences` decomposes an item through the same step (its copy of the walk, which selected no pair
+  layer, is deleted). HIR: a Pattern binding's PlaceShape publishes its follows (`Layers`, R5's consent; the builder lends the
+  binding by its Type through `Lent`, no MIR change). Owner decisions: (b) SPEC is clarified (14.8.1: a Binding reached with
+  by-value access at a qualifying pair layer binds a reference to the selected Place in the mode past it; 3.4.3's single-name
+  binding is a `let` or `var` declaration or a single `for` slot); (d) a pair layer that is not qualifying, such as one admitting
+  Object Semantics, binds its slot by value (13.5.5 and 15.1.6 scoped to qualifying layers; no code change); D5 exception until
+  R6-check: the old analysis (`OwnershipAnalysis.SupportsMatch`) reports the located `Unsupported_Kd` at the match or loop for a
+  Binding position with `OwnedPart` and access other than Owned (F1: the old analysis has no Place for a borrow into the owned
+  Subject; a structural position only tests, a Wildcard selects nothing), and for a Binding that selects a pair layer (the old Emission cannot generate it: `GenerationFailed_Kd` for the uniq-only
+  admitted sets F1's predicate leaves); the guard extends a pre-existing cascade, `UninitializedPlace_Kd` beside the
+  `Unsupported_Kd` when every arm returns (N1, PLAN). Second owner decision (2026-10-19, re-approval of the D5 exception on a
+  corrected premise): forms the default pipeline accepted and ran on dev become its located `Unsupported_Kd` until R6-check: a
+  Binding at a pair-layer slot of an owned Subject or item, which dev bound by value (`match pair@move` `(let x, _) => use(x)`,
+  `s is owner or uniq` or `s is uniq`; `for (x, _) in arr@move`), and a structural follow from an owned Subject past a layer
+  admitting owner (`match o@move` `.Some(let n) => n@follow = 5`, `o: s/Option<i32>`, owner or uniq: dev accepted it and its O0
+  build ran correctly in both instances; the design review's statement that dev rejected it was wrong); no library or milestone
+  program has such a form. The guard as built is F1's predicate at Binding positions (`OwnedPart` and access other than Owned)
+  plus a Binding that selects a pair layer (the final review's correction: a Wildcard at a pair layer and a structural test with
+  no binding below, `(_, let n)`, `.Some(_)`, `_`, `for (_, n)`, stay judged and generated as on dev); the second part's reproducer: `match pair@move` `(let x, _) => x@follow = value` under `s is uniq` (no
+  `OwnedPart`), whose old-path build gave `GenerationFailed_Kd` ("Selected composite acquisition does not follow its Pattern
+  tree", instance `set<uniq/i32>`) before that part. Why: a Binding at a pair layer took its slot by value, so the SPEC 15.1.6
+  example was accepted, an owned Subject's pair step had no Origin (false `NoApplicableOverload_Kd`) and the `for` copy rejected
+  pair-layer Tuple items (false `TypeMismatch_Kd`). Rejected: design 1 (a builder follow beside `Lent` in held files, a shared
+  column's contract changed across phases, the getter check through `BorrowableTemporary`'s `spelled`); binding the slot
+  (`uniq/(s/T)`); an `OwnedPart` query re-walking the followed layers; teaching the old Emission the follow (D5); the Subject's own
+  mode for pair-typed non-bare Subjects (PLAN, S6: needs a borrowed temporary Subject). Not temporary, except the guard.
+- **BU-15** (2026-10-19; the BU planning session; A5 step 2 plan units 2x-E4a and 2x-E6, PLAN G100; the shared-structure design,
+  adopted by the planning session and endorsed by R4, narrowed after its independent review blocked the construction grant (R4's
+  variant (a)); R5 consented to the two `Binding.Expressions.cs` hunks) What the receiver `self` of a constructor or destructor
+  grants is one decision, `Receiver` (`Binding.Structs.cs`), a table with a row per receiver that every Place check reads. Every
+  special receiver writes its own initialized Fields (`Writable`), no part of it gives up a Non-Copy value (`CompleteTransfer`, nested
+  parts included, SPEC 6.3.4) and no capture entry takes it (`Binding.Closures`). Columns: `Parts`, the authority its path gives every
+  part (`PathAuthority`); `Whole`, whether the general rules judge a use of the whole receiver (`BindReference`); `LendsFields`,
+  whether its writable Fields are lent exclusively (`BorrowablePlace`). Destruction (16.3.1): access equivalent to `uniq/Self`, so
+  no part offers Take, a Copy one included (15.1.3, 15.1.5), and of the whole receiver only a shared borrow is valid: a Move is
+  `ExclusivePathTake_Kd`, a bare owned argument `TransferRequired_Kd`, `@copy` `NonCopyOperand_Kd`, `@uniq`, assignment and
+  exchange `InvalidAssignment_Kd`, a `uniq/Self` argument `NoApplicableOverload_Kd`; its Fields are lent exclusively. Construction
+  (6.3.4): an owner's path, the whole receiver never named, and its Fields not lent exclusively although SPEC lends them: no
+  analysis models those Loans (the review's B1 to B3: conflicts accepted by the old path, a false conflict at a parameter read, an
+  internal fault, an escape the MIR accepts), so `AccessFailure` names an exclusive borrow of a writable part of a receiver whose
+  row does not lend it a located `Unsupported_Kd` (explicit `@uniq`, `exchange`, `replace`, Exclusive closure calls); a Receiver
+  Expression stays overload resolution's `NoApplicableOverload_Kd` (BU-13). Temporary: `LendsFields` goes when PLAN G166 grants
+  the construction row. Readers, each replacing a clause that re-decided part of the rule: `PathAuthority` (no destruction root:
+  Moves out of drop's `self` passed), `BorrowablePlace` (a destructor-only clause), `Writable` (`!IsSpecialField`),
+  `CompleteTransfer` (direct Fields only), `BindReference` (both receivers' whole uses rejected) and `Binding.Closures`' own
+  identity test; `IsSpecialField` keeps the identity for the construction rules of 6.3.4 and 11.7. Default-pipeline verdicts
+  against dev 2aec6b83: drop: a Copy Field's `@move` (accepted) and other part Moves (`Unsupported_Kd`) become `ExclusivePathTake_Kd`;
+  `self@ref` and a `ref/Self` argument (`InvalidAssignment_Kd`) the old path's `Unsupported_Kd`; constructor: an exclusive Field
+  borrow `InvalidAssignment_Kd` becomes `Unsupported_Kd` (6.3.4's example, spec-cases row 6.3.4), a nested Non-Copy Move
+  (`Unsupported_Kd`) `InvalidAssignment_Kd`. Library, milestones and the diagnostic corpus unchanged. 2x-P10's d09 (`self@move`)
+  gets `ExclusivePathTake_Kd`, not its model's `InvalidAssignment_Kd` (R4's 2g-D). Rejected: one `PathAuthority` arm (leaves the
+  other copies); typing drop's `self` as `uniq/Self` (`self@ref` would borrow the slot; changes MIR, the old path and generation);
+  extending the constructor clause of `CompleteTransfer` to the destructor; Uniq for the construction row (refuses a Copy Field's
+  `@move`, which 6.3.4 forbids only for Non-Copy values); granting the construction row now (the review's B1 to B3). Open: PLAN
+  G163 (capture of the helper borrow; every borrow in a `drop` body has the Origin `Projection[drop#0]`), G164 (writes below a
+  receiver's Field, `ElementAccess.WritableRoot`), G165 (old-path acceptance of Field borrow conflicts in `drop`), G166.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -2435,7 +2518,7 @@ structure is recorded here by the unit that first implements it.
 - **R5-M1 Adoption** (owner, 2026-10-18; OQ1, OQ4, OQ10, OQ11 and the start) The plan is the formal plan for R5 (MIR code
   generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three exit
   gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5 runs now, in
-  parallel with R4 (OD4 stands; suspended by R4-M77 and restored by R4-M78, both 2026-10-19), in its own planning session. The
+  parallel with R4 (OD4 stands; suspended by R4-M77 and R4-M79, restored by R4-M78, all 2026-10-19), in its own planning session. The
   design packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
   then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and groups
   it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11 (temporary codegen
@@ -3598,7 +3681,8 @@ structure is recorded here by the unit that first implements it.
     (`Unsupported_Kd` at each access; X33 (a)). Search (K7's condition): over the library, the 44 milestones, the mutation, syntax and pair
     corpora (456 cases) and the 63 spec-case variants, only Milestone 42 uses the form, P42's completion program, which the old analysis
     rejects at the same accesses; no accepted program does. An immutable scalar `let` there, which the old path accepts and builds, is
-    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit.
+    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit. Superseded
+    by R5-M82 (2026-10-19): such a static is the `StaticStorage` row once at its declaration, and its accesses carry no record.
   - The plan row's "through a `MirTypes.Destruction` visitor" is `MayNeedDrop` (presence) with `DropGlue.Parts` (the parts), as X3 and
     X27 decided.
   - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
@@ -3797,6 +3881,7 @@ structure is recorded here by the unit that first implements it.
   flag at `Site`; it also routes the two producers that still write the roots directly (the derived jump, `MirBuilder.Control.cs`,
   and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
   next change.
+  - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
   package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
   DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a
@@ -4127,3 +4212,81 @@ structure is recorded here by the unit that first implements it.
   not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
   - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
     input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
+- **R5-M82 Unsupported static storage is a capability row at its declaration** (2026-10-19, K lane; unit K11b, the planning session's
+  decisions on R4's sel pending check and on K11b's review; under R5-M18, R5-M40, R5-M53 and R5-M77; the capability rows approved with
+  the K package, §11) Since K11 MIR code generation reaches only what an output requires, so a form a codegen coverage row refused only
+  when every item was written is accepted when nothing reaches it; for a form no common rule covers, that accepts a narrow subset of it
+  (AGENTS Diagnostics). Static storage is one such form (P42; STATUS "Static members"). The capability check decides it from facts the
+  Backend reads, MIR code generation's own contract: a verified static of a root module is the `StaticStorage` row, `Unsupported_Kd` at
+  its declaration (its StaticInit body's source), used or not, when it can be set (`BoundProperty.Setter.IsPresent`: a `var`), when its
+  StaticInit body's result Type is not a scalar (`ScalarTypes`: an aggregate, borrowed or drop-needing Type) or when its definition
+  instantiates (`TyCtxt.Instantiates`: a static of a generic container's group, whose storage the MIR keys by its symbol alone, a literal
+  `let` included). It comes from the collector's definition-stage scan of root-module bodies (A3b), so under MIR code generation it rejects
+  at check (R5-M41). An unverified static is Binding's error; an immutable scalar of a closed group, also one with a first-access
+  initializer, is no record. Removal condition: P42, not C7b.
+  - One record per cause: this row supersedes R5-M60's `GenericStaticKey`, which recorded each access of a static of a generic
+    container's group; such an access admits nothing and records nothing (the declaration is the record), and the row is deleted. The
+    bundled library declares no such static (its rooted check, P5, has no record). Changed expectations: `AStaticAccessIsItsInitializer`
+    (one record at `public let count: i32 = 0` for the two accesses) and Milestone 42 (five declarations, no access records).
+  - Pending rows (R5-M73's rule applied by hand): the sel cases whose programs declare unsupported static storage now reject at check:
+    `CallableEffectBoundTest.FunctionItemsUseTheirTransitiveEffects` (closure, C5a's Callable*), `EffectBoundReportTest.ReportsTheViolatingEffect`
+    x3 and `MilestoneSourcesTest.AuthoredProgramsMatchTheirRecordedStageAndDiagnostic` (C-frame, no unit names them),
+    `Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction` x2 (format, C9a's Utf*); their fixtures are unchanged.
+  - Search for other forms that relied on every item being written: the remaining coverage rows (Closure, DefaultTemplate and StaticInit
+    bodies, MIR forms, mono-item kinds, TestEntry) name forms the frame will write, so an unreached one is no accepted subset.
+  - Rejected: the old pipeline's `StaticScalar` predicate (it decides by syntax, the Backend may not read it, and a `Supports` wrapper over
+    it would be a `Supports*` gate; editing the frozen old generator to share it is outside D5); a pending row for the unused static (it
+    would ledger the unsound acceptance); a row for every StaticInit (it refuses statics C7b supports); a `var`-only row (one rule for
+    P42's remainder); coverage records for items outside Generated (codegen requests only Generated items, R5-M77).
+  - Verified: an unused and a read static `var`, an aggregate `let` and a literal `let` of a generic container's group are the gap at the
+    declaration; an immutable scalar `let`, literal or first-access, is none; `ModuleEmissionTest`'s unused-dependency `var` is refused
+    under both pipelines.
+- **R5-M83 The place writer of MIR code generation** (2026-10-19, C lane; plan C2a, package C §3.2 I5, I7 and I9, X1 and X13; under
+  R5-M18 form 1, R5-M65, R5-M78 and R5-M80) `FunctionCodegen.Places` is the one owner of a Place's address. It starts at the root's
+  home and takes each step of the interned chain, root first, through one switch over the seven `MirProjectionKind`s, with offsets from
+  `Layout.Of(TypeOf(item, prefix))`:
+  - Field: `FieldOffsets[arg]`. Base: no offset (X1, the complete base is a prefix). ConstIndex: `arg` × the element's stride, without a
+    check (the validator proved it in range). Downcast: the enum record's payload offset (`FieldOffsets[1]`).
+  - Deref of a reference or a raw pointer loads the address it stores (IMPL 21.1.3). An object handle's or object borrow's payload is
+    C6a's row.
+  - PairLayer: `MirCases.Layer` under the item's view. `FunctionCodegen` selects that view once per item, with its own `MirCases`, from
+    the collector's `View(item)` (X13). The owner case keeps the address; any other case takes its case Type's Deref row.
+  - Index: the isize position local is compared unsigned (`icmp uge`) with the length, so a negative position fails too. The length is a
+    fixed array's closed Length, or the length word of an Array's or Slice's handle record (`FieldOffsets[1]`); the buffer word is the
+    element base. The failure goes through `LlvmScalarText.WriteFailure` with KIMI_E_INDEX_BOUNDS at the position local's location,
+    which R4-M56 places at the selection (SPEC 22.5.1). The element is then at `mul` by the stride and `getelementptr i8`, the old
+    generator's text. A zero-sized element keeps its check and takes no address of its own. No `inbounds` (I9).
+  - Every operand Place (Copy, Move), every Assign destination (Use, operators, casts, Ref, the aggregate), a Ref's Place and a Drop's
+    Place go through it. An Assign computes its rvalue, then locates its Place (SPEC 13.7.1), so a right-hand side's Abort precedes
+    the target's bounds check.
+  - Moved from C2b (planning session, 2026-10-19; the same group G:C-aggregate, so no departure from the owner-approved package beyond
+    the order inside the group): the `Aggregate(FixedArray)` row for the operands the frame covers. Each element is stored at its index
+    × the stride once the Place is located; `noinit`, from no operand, stores none. A native program has no other indexable value
+    before C2b. An element of a slot Type and Tuple, struct, enum Case and Closure aggregates stay C2b's; an Array or Dictionary from
+    none is C8d's and C8e's.
+  - Restructuring first (behavior unchanged): `FunctionCodegen.cs` is split into `.Places.cs`, `.Rvalues.cs` and `.Calls.cs`, and the
+    item's `FunctionAbi` is a field. `ModuleCodegen` passes the compilation's `TyCtxt` to `FunctionCodegen` (Q7's one-argument form).
+  - Left to W1 (F19, PLAN G157 (20)): a position wider than isize is still the builder's checked Integer Cast, which Aborts with
+    KIMI_E_INT_CONVERSION where SPEC 4.6.1 asks for KIMI_E_INDEX_BOUNDS. F19 builds it from existing forms (proven compares, then -1
+    or a proven Cast). A new `MirCastKind` for it was rejected: it would be a vocabulary entry for a meaning existing forms express.
+  - Rejected: an arm or plan per projection form beside the switch; promoting the old `WriteElementAddress` (its operands are the old
+    IR's, and its shared part, the failure block, is already `WriteFailure`); deciding a PairLayer from the closed prefix and step Types
+    (a second copy of `MirCases`' case decision); the consuming statement's location for an Index check (`f(a[i])` would report the
+    call, not the selection); a Proven bit on Index (a vocabulary change; a range's redundant element check is O2's, measured at the
+    group review).
+- **R5-M84 A position's conversion** (2026-10-19, W1; plan F19, PLAN G157 (20); C2a's design option B, the planning session's
+  decision) SPEC 4.6.1, 4.6.3, 22.5.1-22.5.2: the MIR builder converts a position to the isize its selection reads, its value where
+  isize holds it, else -1, which the selection's one bounds check (the Index's, a range's chain) rejects with KIMI_E_INDEX_BOUNDS at the
+  selection; a position has no check of its own (the old IR's `PositionConversion`). `MirBuilder.Position` decides by the Type's range:
+  isize (and Never) is used; a Type whose range lies within isize's (`Within`, the rule a Conversion's Proven shares, IMPL 21.3.3) is a
+  Proven Integer Cast; another (i128, u64, usize, u128; i64 and u32 on a 32-bit target) is first compared with isize's extremes in its
+  own Type, the minimum only where it is signed, each failing test leaving for a block that writes -1 (`Unresolved`), and is otherwise
+  the Proven Cast. A Type parameter's range is its instance's, which no builder rule decides: a located `Unsupported_Kd` (open issue),
+  whose Opaque names the built value's root, not the position's syntax (R5-M63's rule: an Opaque site names a part located already by
+  its Place's root), so a root the value moved is not used again there.
+  A written `^x` is `L - x` where `0 <= x` (a literal in range proves it), else -1 by the same join, so every boundary is evaluated
+  before the selection fails, at the selection (SPEC 4.7.4, 22.5.1). MIR has no select form, so the shape is a diamond (a select at
+  O2); the position local stays the selection's (R4-M56), written on both arms. No vocabulary entry.
+  - Rejected: `MirCastKind.Position` (option A: a vocabulary entry); failing at the conversion (option C: an Abort before later
+    boundaries are evaluated); a branchless shift-and-or encoding (not a MIR form, opaque to review); keeping Wrap for a same-width
+    unsigned position (a second encoding of an unresolved position).

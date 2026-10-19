@@ -148,8 +148,8 @@ public sealed partial class Binding
         }
         finally
         {
-            this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
+            this.originScratch.Return(inputs, clearArray: true);
         }
     }
 }

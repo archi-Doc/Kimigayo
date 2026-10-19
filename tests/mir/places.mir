@@ -86,7 +86,7 @@ fn elements @60
       StorageLive(_8) @75
       _8 = &_1: ref/[3 of i32] @75
       StorageLive(_9) @75
-      _9 = copy _3 as isize (Wrap) proven @77
+      _9 = copy _3 as isize (Integer) proven @77
       EndBorrow(_8) @75
       _0 = Add(move _4, copy _1[_9]) @67
       StorageDead(_9) @75
@@ -276,14 +276,73 @@ fn nestedProjections @158
   bb8:
       StorageDead(_1) @161 s1
       unreachable @160
-fn init @188
-  _0: Item return @188
-  _1: () temp @189
-  s1: lexical in s0 @189
+fn wide @188
+  _0: i32 return @188
+  _1: [3 of i32] arg a @188
+  _2: i128 arg w @188
+  _3: u64 arg u @188
+  _4: ref/[3 of i32] temp @196
+  _5: isize temp @196
+  _6: bool temp @198
+  _7: i32 temp @196
+  _8: ref/[3 of i32] temp @199
+  _9: u64 temp @201
+  _10: isize temp @199
+  _11: bool temp @201
   bb0:
-      StorageLive(_1) @189
+      StorageLive(_4) @196
+    * _4 = &_1: ref/[3 of i32] @196
+      StorageLive(_5) @196
+      StorageLive(_6) @198
+      _6 = Le(const -9223372036854775808_i128, copy _2) proven @198
+      switch copy _6 [1: bb2, otherwise: bb1] @198
+  bb1:
+      _5 = const -1_isize @198
+      goto bb4 @198
+  bb2:
+      _6 = Le(copy _2, const 9223372036854775807_i128) proven @198
+      switch copy _6 [1: bb3, otherwise: bb1] @198
+  bb3:
+      _5 = copy _2 as isize (Integer) proven @198
+      goto bb4 @198
+  bb4:
+      EndBorrow(_4) @196
+      StorageLive(_7) @196
+      _7 = copy _1[_5] @196
+      StorageLive(_8) @199
+      _8 = &_1: ref/[3 of i32] @199
+      StorageLive(_9) @201
+      _9 = Add(copy _3, const 1_u64) @201
+      StorageLive(_10) @199
+      StorageLive(_11) @201
+      _11 = Le(copy _9, const 9223372036854775807_u64) proven @201
+      switch copy _11 [1: bb6, otherwise: bb5] @201
+  bb5:
+      _10 = const -1_isize @201
+      goto bb7 @201
+  bb6:
+      _10 = move _9 as isize (Integer) proven @201
+      goto bb7 @201
+  bb7:
+      EndBorrow(_8) @199
+      _0 = Add(move _7, copy _1[_10]) @195
+      StorageDead(_11) @201
+      StorageDead(_10) @199
+      StorageDead(_9) @201
+      StorageDead(_8) @199
+      StorageDead(_7) @196
+      StorageDead(_6) @198
+      StorageDead(_5) @196
+      StorageDead(_4) @196
+      return @195
+fn init @204
+  _0: Item return @204
+  _1: () temp @205
+  s1: lexical in s0 @205
+  bb0:
+      StorageLive(_1) @205
     * _0.0 = const 7_i32 @39
-    * _1 = const () @189 s1
-      FakeRead(_0) @188 s1
-      StorageDead(_1) @189
-      return @189
+    * _1 = const () @205 s1
+      FakeRead(_0) @204 s1
+      StorageDead(_1) @205
+      return @205
