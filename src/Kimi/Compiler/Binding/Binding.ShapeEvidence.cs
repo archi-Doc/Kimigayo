@@ -9,7 +9,7 @@ public sealed partial class Binding
     private readonly Dictionary<FunctionKoto, int> shapeCallCandidates = new(ReferenceEqualityComparer.Instance);
 
     private static bool SameShapeBinding(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (FitsType(a, b) && FitsType(b, a));
+        => ReferenceEquals(a, b) || (IsSubtype(a, b) && IsSubtype(b, a));
 
     private static bool MatchingConstructionExpectation(BoundType pattern, BoundType expected, int own)
     {

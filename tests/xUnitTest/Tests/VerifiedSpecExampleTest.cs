@@ -67,10 +67,7 @@ public class VerifiedSpecExampleTest
         var example = DiagnosticCorpus.SpecCases.Single(x => x.Name == name[..name.LastIndexOf('/')]);
         var variant = example.Variants[int.Parse(name[(name.LastIndexOf('/') + 1)..], System.Globalization.CultureInfo.InvariantCulture)];
         var source = DiagnosticCorpus.Source(example, variant);
-        var c = CompilationTestHelper.ParseSuccess(source, Document);
-        c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
-        Assert.Empty(c.Binding.StartupIssues);
+        var c = Bind(source);
         c.Analyze();
         var (common, old, passed, mir) = MirDifferenceLedger.Sides(c, c.BuildMir());
         AssertRecords("old", source, variant.Old?.Records ?? variant.Expected, [.. common, .. old, .. passed]);
@@ -78,6 +75,16 @@ public class VerifiedSpecExampleTest
         {
             AssertRecords("MIR", source, variant.Mir?.Records ?? variant.Expected, [.. common, .. mir]);
         }
+    }
+
+    // Binds a variant's source as the Hello.kimi of an Application, whose startup has no issue.
+    internal static Compilation Bind(string source)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source, Document);
+        c.Bind();
+        c.Binding.CheckStartup(OutputKind.Application);
+        Assert.Empty(c.Binding.StartupIssues);
+        return c;
     }
 
     // An error verdict (`// Error` on a line, or on an explanation line after it) of an active line needs a record of the block as written on

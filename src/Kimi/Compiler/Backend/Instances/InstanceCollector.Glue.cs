@@ -39,7 +39,7 @@ internal sealed partial class InstanceCollector
         var site = this.Set.Items[item].Site;
         if (key.Kind is MonoKind.Builtin or MonoKind.PropertyWitness)
         {
-            this.Target(item, this.Shim(item, site, key, type));
+            this.Shim(program, item, site, key, type);
             return;
         }
 

@@ -38,26 +38,6 @@ internal sealed partial class MirBuilder
     // Whether a consumer takes a node's value as the node builds it (its Adjust): a Temporary or a group's operand, not adapted (Assign).
     private static bool InPlace(HirAdjust adjust) => adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None };
 
-    // Whether a Type holds a Never element where a literal builds one: a Tuple's component or an array's element, through those kinds
-    // only (Aggregate; DECISIONS R4-M59). A Never elsewhere, a Function's result or a Type argument, is a declared Type.
-    private static bool HoldsNeverElement(BoundType type)
-    {
-        if (type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Array))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (ReferenceEquals(type.Components[i], BoundType.Never) || HoldsNeverElement(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
     // parentheses, is two-phase (SPEC 15.6.7).
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
@@ -325,18 +305,10 @@ internal sealed partial class MirBuilder
     }
 
     // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
-    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides,
-    // and a literal (no Case construction) whose Type holds a Never element, which Binding may have typed before its position's Type was
-    // decided (SPEC 3.8, 14.9.2; DECISIONS R4-M59, temporary until PLAN G129).
+    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides.
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
         var construction = BoundEnumConstruction.Of(node);
-        if (construction is null && HoldsNeverElement(type))
-        {
-            this.Unsupported(node, destination);
-            return;
-        }
-
         if (node is ArrayLiteralKoto { FillLength: null } literal && type.Kind == BoundTypeKind.Array)
         {
             this.Collection(destination, literal, type);
