@@ -362,8 +362,74 @@ public sealed class InstanceCollectorTest
                 var holder => $"{holder}<{box}, {Nest("Box", 4, box)}>",
             };
         }
+    }
 
-        static string Nest(string wrapper, int depth, string leaf) => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
+    // DECISIONS BU-12 (PLAN G153 (2)): the Types of one strongly connected component of storage share its height, the largest exit, so a
+    // cycle is decided by its exits in every order. R and X (X stores R through a handle, R stores Box^200) are refused at every call;
+    // `L`, which stores itself through Option<rc/L<T>>, is an instance with Box^59 (h's 3 levels + 60) and refused with Box^61, either
+    // way round; a ring of 16 or 17 structs is an instance (height 1), a ring of 63 too, while a ring of 64 passes the 256 Types the walk's
+    // path may hold. A growing G reaches that cap in every order (its Tuple arguments are walked once each: a tree walk would not end),
+    // while G2, which repeats, is an instance. Over the cap the verdict may depend on the other Types the program prepares: a 63-ring
+    // behind Box^4 is refused alone and admitted once S1 is prepared anywhere (the owner's accepted residual).
+    [Theory]
+    [InlineData(0, "R X", "R X")]
+    [InlineData(0, "X R", "X R")]
+    [InlineData(0, "X", "X")]
+    [InlineData(0, "OL59", "")]
+    [InlineData(0, "L59 OL59", "")]
+    [InlineData(0, "OL59 L59", "")]
+    [InlineData(0, "OL61 L61", "OL61 L61")]
+    [InlineData(16, "S1", "")]
+    [InlineData(17, "S1", "")]
+    [InlineData(17, "S9 OS1", "")]
+    [InlineData(63, "S1", "")]
+    [InlineData(64, "S1", "S1")]
+    [InlineData(63, "W4", "W4")]
+    [InlineData(63, "W4 W4", "W4 W4")]
+    [InlineData(63, "W4 S1 W4", "")]
+    [InlineData(0, "G", "G")]
+    [InlineData(0, "G2 G", "G")]
+    [InlineData(0, "G G2", "G")]
+    public void StorageNestingIsAPropertyOfTheComponent(int ring, string arguments, string refused)
+    {
+        var c = MirBuildTest.Compile(
+            $"struct Box<T>\n    public let value: T\nstruct R<T>\n    public let x: X<T>\n    public let y: {Nest("Box", 200, "T")}\nstruct X<T>\n" +
+            "    public let r: Option<rc/R<T>>\nstruct L<T>\n    public let next: Option<rc/L<T>>\n    public let v: T\nstruct G<T>\n" +
+            "    public let next: Option<rc/G<(T, T)>>\nstruct G2<T>\n    public let next: Option<rc/G2<T>>\n" + Ring(ring) +
+            "func h<T>(x: Option<raw/T>) => ()\npublic func main() -> ()\n" + string.Concat(arguments.Split(' ').Select(x => $"    h<{Text(x)}>(.None)\n")) +
+            "    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(
+            refused.Split(' ', StringSplitOptions.RemoveEmptyEntries).Select(x => (DiagnosticCode.Unsupported_Kd, $"h<{Text(x)}>(.None)")),
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+
+        static string Text(string argument) => argument switch
+        {
+            "R" or "X" or "G" or "G2" => argument + "<i32>",
+            "OS1" => "Option<rc/S1>",
+            "W4" => Nest("Box", 4, "S1"),
+            ['O', 'L', ..] => $"Option<rc/{Text(argument[1..])}>",
+            ['L', ..] => $"L<{Nest("Box", int.Parse(argument[1..], CultureInfo.InvariantCulture), "i32")}>",
+            _ => argument,
+        };
+    }
+
+    // DECISIONS BU-12: a ring of structs linked by Option<rc/…> is an instance up to the storage walk's cap, so a value of it reaches the
+    // collector's drop glue, whose depth limit it meets past 42 structs: GenerationResourceLimit_Kd at the destroyed value, and no
+    // storage-nesting gap at the call.
+    [Theory]
+    [InlineData(42, "")]
+    [InlineData(50, "GenerationResourceLimit_Kd v@move")]
+    public void StorageRingsMeetTheGlueDepth(int ring, string records)
+    {
+        var c = MirBuildTest.Compile(
+            Ring(ring) + "func pick<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let v: Option<rc/S1> = .None\n    let w = pick(v@move)\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Equal(records, string.Join(" | ", set.Records.Select(x => $"{x.Code} {c.SyntaxOf(x.Subject)}")));
     }
 
     // SPEC 6.1.3, 8.13.3, DECISIONS R5-M40 (the F3 reproducers, X40): an instance of a nested function holds its enclosing instance. A call
@@ -1226,6 +1292,12 @@ public sealed class InstanceCollectorTest
 
     private static int Item(MirProgram program, CheckedSet set, string label)
         => Enumerable.Range(0, set.Items.Length).Single(x => Label(program, set.Items[x]) == label);
+
+    // A Type of `depth` nested wrappers around a leaf, as Box^3<i32> = Box<Box<Box<i32>>>.
+    private static string Nest(string wrapper, int depth, string leaf) => string.Concat(Enumerable.Repeat(wrapper + "<", depth)) + leaf + new string('>', depth);
+
+    // A ring of `count` structs S1, S2, ..., each storing the next through Option<rc/…>, the last S1.
+    private static string Ring(int count) => string.Concat(Enumerable.Range(1, count).Select(k => $"struct S{k}\n    public let next: Option<rc/S{(k % count) + 1}>\n"));
 
     private static string[] Targets(MirProgram program, CheckedSet set, string label)
         => set.Targets(Item(program, set, label)).ToArray().Select(x => Label(program, set.Items[x.Item]) + (x.Runtime ? string.Empty : " (check)")).ToArray();
