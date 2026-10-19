@@ -1002,7 +1002,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
-    R5-M9. OD4's parallel run was suspended by R4-M77 and restored by R4-M78 (both 2026-10-19).
+    R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19).
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -1823,10 +1823,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   design nor code in place of AB-5's BU reviewers and AR-2's R5 reviewers. AR-7's acceptance stays R5's (the owner's condition,
   R4-M74 OQ6) and waits for its resume or goes to the owner; AR-6 is met (R5-M63).
 - **R4-M78 R5 and the Binding units resumed** (owner, 2026-10-19, verbatim 「すみません。まだトークンに余裕があったため、BUとR5を再開させてください。」; supersedes
-  R4-M77) The pause of R4-M77 is lifted the same day: R5 and BU resume their work, R5-M1's parallel run (OD4) is restored, and the
-  PLAN §3 hold protocol applies as before, and BU's step-2 units (PD6) and the asks of BU and R5 (AB-1–AB-6, AR-1–AR-8) stand as
-  before R4-M77. The owner's reason: token budget remains. During the pause R4 changed no file R5 or BU held; BU's handoff in
-  `artifacts/handoff/2026-10-19-pause/` stays as the record of its stop.
+  R4-M77; superseded by R4-M79 the same day) The pause of R4-M77 is lifted the same day: R5 and BU resume their work, R5-M1's
+  parallel run (OD4) is restored, and the PLAN §3 hold protocol applies as before, and BU's step-2 units (PD6) and the asks of
+  BU and R5 (AB-1–AB-6, AR-1–AR-8) stand as before R4-M77. The owner's reason: token budget remains. During the pause R4 changed
+  no file R5 or BU held; BU's handoff in `artifacts/handoff/2026-10-19-pause/` stays as the record of its stop.
+- **R4-M79 R5 and the Binding units paused again; R4 continues alone** (owner, 2026-10-19, verbatim
+  「R5/Binding unitsのエージェントを一時停止します。新規作業の開始は行わず、現在の作業のMergeまで（難しい場合は、きりの良いところまで）行ってください。作業が停止したら、引き継ぎ文書を作成してください。そして、再開時のプロンプトを書いてください。R4はそのまま継続してください。」;
+  supersedes R4-M78) R5 and BU start no new unit. Their units in flight finish through their dev merges; a unit that cannot
+  reach its merge stops at a clean point on its pushed branch, unmerged. Each session then releases its PLAN §3 holds, writes
+  its handoff and resume prompt in `artifacts/handoff/2026-10-19-pause-2/` (main checkout) and stops its agents; R5-M1's
+  parallel run (OD4) is suspended until the owner resumes it. Consequences (planning session), as R4-M77's: R4's sign-off
+  reviews of the units in flight (R5's F19, BU's BU-15) continue; a unit cannot reach its merge after a second blocking
+  review, when its fix needs a new design or when much of its work remains, and its handoff then carries any owner choice. R4
+  may edit the files R5 and BU held, under COMPILER_ARCHITECTURE's ownership rules, and their PLAN §3 lines and §7 rows where
+  it completes the owner's PLAN compression of 2026-10-19 for a session that did not start its share; it lists each such
+  change in that folder's README for their resume. It re-plans BU's step-2 units (PD6) and its asks of R5 (AR-1, AR-2, AR-8)
+  as they come due, with reviewers that wrote neither design nor code; AR-7's acceptance stays R5's and waits for its resume or
+  goes to the owner.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -1872,7 +1885,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4 and
-R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 (both 2026-10-19).
+R5 on the owner's request of 2026-10-18; paused by R4-M77, resumed by R4-M78 and paused again by R4-M79 (all 2026-10-19).
 
 - **BU-1** (2026-10-18; the BU planning session; correction of R4-M51's Stores clause, found by R4's E14 implementer at
   `f6b365bb`; R4-M51's contract stands) Stores of call retention (SPEC 15.6.4): an Origin occurrence is writable storage of
@@ -2415,7 +2428,7 @@ structure is recorded here by the unit that first implements it.
 - **R5-M1 Adoption** (owner, 2026-10-18; OQ1, OQ4, OQ10, OQ11 and the start) The plan is the formal plan for R5 (MIR code
   generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three exit
   gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5 runs now, in
-  parallel with R4 (OD4 stands; suspended by R4-M77 and restored by R4-M78, both 2026-10-19), in its own planning session. The
+  parallel with R4 (OD4 stands; suspended by R4-M77 and R4-M79, restored by R4-M78, all 2026-10-19), in its own planning session. The
   design packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
   then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and groups
   it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11 (temporary codegen
