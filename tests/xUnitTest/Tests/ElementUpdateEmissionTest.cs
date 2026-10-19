@@ -216,7 +216,7 @@ public class ElementUpdateEmissionTest
     {
         const string Source = "var a = (\"first\", 40, \"last\")\na.1 += 1\nlet previous = a.1++\nif previous == 41 and a.1 == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementUpdateLifetime", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementUpdateLifetime", Source, ir, "ok\n", "first=1;last=1;ok=1", order: [2, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementUpdateLifetime", ir, "ok\n", "first=1;last=1;ok=1", order: [2, 1, 0]);
     }
 
     [Fact]
@@ -225,7 +225,7 @@ public class ElementUpdateEmissionTest
         const string Source = "var a: (string, u8) = (\"held\", 255)\ndefer => Console.writeLine(\"bad\")\na.1++";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementUpdateAbortLifetime", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementUpdateAbortLifetime", Source, ir, string.Empty, "held=0;bad=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementUpdateAbortLifetime", ir, string.Empty, "held=0;bad=0", 1, Error);
     }
 
     [Theory]

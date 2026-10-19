@@ -127,7 +127,7 @@ A1.
 - `Φ_E` ("may refer to storage the body does not own") is carried by every Loan-capable value of unknown provenance:
   Args at entry, Opaque values, static and raw-pointer reads, unknown callees' results, and results with an untied
   Origin (`Retains.Untied`).
-- `τ_s` marks Opaque site s, for A6.
+- `τ_s` marks Opaque site s, for A6 (E15).
 - `γ_H` marks a guard candidate's guard-local Origin (E7).
 
 A *phantom* `Φ_c` does conflict (F6).
@@ -243,7 +243,7 @@ mode(L, H)         :  Shared → ref; Uniq → uniq; Φ_c → uniq; TwoPhaseUniq
 content(S)         =  ⋃{σ(T) | L∈S, named(L,T)} ∪ (σ(E) if Φ_E∈S)            // monotone in S
 refs(S)            =  {T | L∈S, named(L,T)} ∪ ({E} if Φ_E∈S);  refs^k(S) = refs(content^(k-1)(S))
 val(Aggregate|Cast{Erasure,Upcast,Pointer}) = ⋃ val(operands);  val(BinaryOp|UnaryOp|Discriminant|Len|Const) = ∅
-val(Opaque s)      =  ⋃ σ(roots of s) ∪ {τ_s, Φ_E};  val(static or raw-derived Place) ∪= {Φ_E};  Adapt per MirCases
+val(Opaque s)      =  ⋃ σ(roots of s) ∪ {τ_s, Φ_E};  val(static or raw-derived Place) ∪= {Φ_E};  Adapt per MirCases   // E15: {Φ_E}
 
 // ---- Carrying (forward)
 σ(H, entry)        =  {Φ_E} for a Loan-capable Arg, else ∅;  σ(E, entry) = ∅
@@ -294,9 +294,10 @@ err(conflict,L,ℓ)  :- access(ℓ,X,k), L ∈ CS(ℓ) via H, real(L), hits(X, p
                       !excused(L,ℓ), !partition(L,ℓ,k,X).
 err(activate,R,L,ℓ):- reserved(R,t,_,ℓ), L ∈ CS_call(ℓ,t) via H, real(L), hits(place(R), place(L), uborrow),
                       conflicts(uborrow, mode(L,H)), !excused(L,ℓ).     // a destroying R: hits as write (shallow)
+                      // (E15: mode(L,H) = ref only)
 err(destroy,L,ℓ)   :- destroys(ℓ, K, e), X = (K's elements if e else K), L ∈ CS_call(ℓ,t_K) via H, real(L),
                       observes(Type(X)), hits(X, place(L), obs), ¬hits(X, place(L), uborrow),   // E11: ¬hits(…, write)
-                      conflicts(destroy, mode(L,H)).   // at the call, on σ_in, so before ended
+                      conflicts(destroy, mode(L,H)).   // at the call, on σ_in, so before ended (E15: an err(conflict) row)
                       // only the obs part beyond the shallow activation: the target's own Places are already
                       // checked by the call's activation, so one Loan never gets two codes (r3 N4)
 // Arguments of one call (S15:614): every exclusive argument borrow is a reservation (G5), and its activation scans the
@@ -351,12 +352,12 @@ excused(L,ℓ)       :- ℓ forms an argument reservation of a Call c2 with excu
 | A TwoPhaseUniq Loan in its reservation holder | `CallReservationConflict_Kd` |
 | Activation at a Call | `CallActivationConflict_Kd` |
 | Activation at the writeback write (`OwnershipModel.cs:238`) | `PlacementActivationConflict_Kd` |
-| Effect | `CallEffectConflict_Kd` |
-| A `PreparedInput` root (R4-M10) | `DefaultArgumentAccess_Kd` / `DefaultArgumentBorrow_Kd` |
-| `ended` on a `GuardCandidate` | DIAGNOSTICS choice (§9) |
+| Effect | `CallEffectConflict_Kd` (E15) |
+| A `PreparedInput` root (R4-M10) | `DefaultArgumentAccess_Kd` / `DefaultArgumentBorrow_Kd` (E15) |
+| `ended` on a `GuardCandidate` | DIAGNOSTICS choice (§9) (E15) |
 | Otherwise, including `destroy` | `ComparisonLoanConflict_Kd` |
 
-A problem whose access is an Opaque site's, or whose witness holder carries `τ_s`, is derived from s.
+A problem whose access is an Opaque site's, or whose witness holder carries `τ_s`, is derived from s (E15).
 
 **Partition lemma** (DIAGNOSTICS; E12 replaces it): every Loan that exactly reaches `_0` passed a fit into the result's fixed Origin, so a
 body-rooted one is the Refuted relation (S15:575). Over-approximated Loans are harmless to exclude.
@@ -369,7 +370,7 @@ Per body view, in `MirAnalysis` step 4 (after A4's `Run`; `flow.Begin` and `move
 
 1. **Pre-pass**, one `MirUses` walk: holders, Loans (CSR by place root and base root; E8: no base root), `destroys`/`destroying` sites
    and per-root conflict flags. A view with no real Loan, or with no access that can conflict by root flags, skips the
-   stratum (census: 161 + 266 + 16 Loan-free views).
+   stratum (census: 161 + 266 + 16 Loan-free views) (E15).
 2. **Liveness solve**: `flow.Backward` over `⌈Hf/64⌉` words.
 3. **Carrying solve**: `flow.Forward` over `Hf + 1` node slots, with the node-union join and head pruning.
 4. **Replay**, per reached chain, in two sweeps:
@@ -415,7 +416,7 @@ under the same term. `MirBorrows.Work` counts each term: transfer steps, slot jo
   - `MirReach` stays the one traversal.
   - Views come from `MirCases`; a body without case-dependent accesses runs once.
   - A2 is read only through `Group`.
-- **Errors**: each adds `MirProblem(code, subject, views)` with fact rows (R4-M3a): the Loan anchor; the witness holder's
+- **Errors**: each adds `MirProblem(code, subject, views)` (E15) with fact rows (R4-M3a): the Loan anchor; the witness holder's
   next use, or the store site for a transit Loan; for an activation, the other anchor. No check re-runs analysis.
 
 ## 7. Origin stratum
@@ -534,7 +535,7 @@ implementation a call cannot see relates its fixed input-position Origins to its
 | 0f | A4 `Keys` | Keys per Call/Drop, linear | `MirEffects` tests, scaling |
 | 1a | Binding C1+C8 `Retains(callee, Subst)`; catalog `InPlace` | Immutable after Bind; allow list | View tests, `KimiLibraryShapeTest` |
 | 1b | `MirLoanSets`, `MirBorrows` F1, F2, F3, F10 (joint core), with §12's errata. Units (`../A5 Step 1/choice-1b.md` §3): 1b-1 `MirLoanSets`; 1b-2 pre-pass, liveness, carrying with retention and stores, check sets and the conflict check; 1b-3 reservations, activation, E1, destroying calls and `obs`; 1b-4 guards (E7), with `partition` leaving the Loan stratum (E12); 1b-5 the driver step in shadow. Before 1b-5: the MIR units G92b, G123, G94 (one MirBuilder lane) and G91; G92a may follow | Library and milestones produce no A5 problem (R4-M12 from here). Shadow watch: raw writes in `Storage.kimi` and `DictionaryStorage.kimi` moving Loans into `σ(E)` | SPEC-example table (`tests/diagnostics/spec-cases.json`: about 40 error and 34 accepting variants); 0b's cases as MIR-layer tests; scaling shapes 1–8 |
-| 1c | A6 mapping and derived taint for 1b's codes | Codes per §5 | Corpus snapshots, ledger |
+| 1c | A6 mapping and derived taint for 1b's codes (E15) | Codes per §5 | Corpus snapshots, ledger |
 | 2a0 | Binding boundary: OriginObligations, atoms, universal relations, T1 rows, unowned items, `ValidateOriginRelations` split, ledger split | Rows immutable; no double owner | View tests, ledger |
 | 2a | F4 `MirOrigins` | audit-origins §3 tests; the old reporter's rows matched | Shape 9, ledger |
 | 2b | F5 (keys, unknown, P6) | S15:540-558 per P6; S16:199-202 | Rule tests |
@@ -591,11 +592,11 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   unchanged (E13 (1) adds a borrow's R2 parents to its own check). Without it a self-referential holder is unsound (39o, 100, 100d, 101).
 - **E6, Slice index.** The Index of a Slice handle is a shared borrow Deref in the step classes (SPEC 4.8.1: the element
   is the handle's referent), not an inline step. UniqSlice has no built-in Index (`index`/`indexUniq` calls).
-- **E7, guard-local Origin (SPEC 14.8.3).** A marker `γ_H` (with `Φ_E` and `τ_s`): each value issued into a guard
+- **E7, guard-local Origin (SPEC 14.8.3).** A marker `γ_H` (with `Φ_E` and `τ_s`) (E15): each value issued into a guard
   candidate H (`MirLocalRole.GuardCandidate`) carries `γ_H`, which never conflicts and is carried like a Loan but is no
   Place Loan (`ended` does not remove it). `err(ended,ℓ) :- EndBorrow H at ℓ, H a guard candidate, γ_H ∈ CS(ℓ)`; the
   Loan-based `err(ended)` row is deleted, and other `EndBorrow`s get no ended check. A6's merge (E12) also covers
-  `err(ended)` when `γ_H` reaches `_0` (one failure, one code; unit 1c). It makes the case 23a review's C2 lowering
+  `err(ended)` when `γ_H` reaches `_0` (one failure, one code; unit 1c) (E15). It makes the case 23a review's C2 lowering
   contract unnecessary.
 - **E8, Loan ending (owner, 2026-10-17: the case 23a proposal, option (c); DECISIONS R4-M52).** Destroying in place a Move
   Path K (by `=`, StorageLive/StorageDead or an `InPlace` target) ends every Loan whose access path K exactly prefixes:
@@ -631,7 +632,7 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   2026-10-17, on the SPEC revision's review, PLAN G113).** The Loan stratum cannot tell a Loan a value carries exactly
   from one it carries by a simplification, so it excludes nothing: it reports every conflict it finds, a `destroy`
   conflict on a Loan `_0` carries included, and `partition` leaves `err(conflict)` (unit 1b-4). A6's merge (unit 1c,
-  completed in 2g) drops such a Loan-stratum problem only when the Origin stratum reported the relation of the same
+  completed in 2g; E15) drops such a Loan-stratum problem only when the Origin stratum reported the relation of the same
   Borrow as Refuted (one failure, one code), never by Loan membership. A Loan `_0` carries only by a simplification,
   such as P1's whole holders or P12's parent Loans, has no Refuted relation, so its conflict stays: SPEC states those
   simplifications (15.6's holders, 15.6.3–15.6.4), and 36f without its write errs at `return first` (SPEC 15.6.5,
@@ -665,7 +666,7 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
      at its own call's effects and cleanup, which follow its activation, so there it counts as `uniq` (SPEC 15.6.7: every
      reservation becomes live at once with the call's effects on static storage; needed before unit 2b). Discriminant, Len and
      FakeRead take no value (`val` is ∅); a destruction that observes nothing takes no value; an Opaque site's accesses take
-     val(Opaque).
+     val(Opaque) (E15).
   2. **Operand order in MIR (amends DECISIONS R4-M55).** MIR reads the Place operands it leaves at ℓ in operand order, a Value
      callee's first, and the builder makes that order the evaluation order: a Place operand is secured into a temp where it is
      evaluated when a later operand builds code (G123) or when an operand evaluated after it precedes it in the operation's
@@ -712,6 +713,46 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   writes into storage the body does not own (the design review's census); the library's `Raw.initialize` calls store generic or
   parameter values, which already carry `Φ_E`. Prototype round 11 (278 cases) models the store; the design review's extension
   (cases 134a–135c) joins round 12 with E13.
+- **E15, group 1c's codes, Opaque values and default taint (the design review of 1c's two designs, 2026-10-18; group 1c's final
+  review B1; items 1, 3 and 4 the owner-approved design, DECISIONS R4-M75; items 2 and 5–7 decided by the planning session; recorded
+  in DECISIONS R4-M68, R4-M70 and R4-M72; SPEC 7.2.3, 8.11.4, 14.8.3, 15.6.4, 15.6.7, 23.1.2).**
+  1. **Activation (R4-M68).** `err(activate)` meets only a Loan whose mode is shared in the holder where it is found: its
+     `conflicts(uborrow, mode(L,H))` reads `mode(L,H) = ref`, for the deep activation and a destroying one's shallow write alike. An
+     exclusive Loan that hits the reservation R was met where the later of the two Borrows was formed or activated: at R's formation
+     (`ComparisonLoanConflict_Kd`), or at its own formation or inner activation (`CallReservationConflict_Kd`, R being shared in its
+     holder). So each (Loan, reservation) is reported once (SPEC 15.6.7: the target is checked once).
+  2. **err(destroy) as a conflicts row (group 1c's final review B1).** Its hits and conflicts clauses become an access kind `obsPast`
+     of the target X at the destroying call, checked as `err(conflict)` on the activation's set (E11, E13 (1) (b)): `hits(X, place(L),
+     obsPast) :- hits(X, place(L), obs), ¬hits(X, place(L), write)`, and `conflicts(obsPast, m)` for every mode m; `observes(Type(X))`
+     stays (past the destruction walk's bound the call is a located `Unsupported_Kd`). Its Loan is then chosen as every conflict's is
+     (item 4), not by the first holder that holds one.
+  3. **Opaque values (R4-M70, option P).** `val(Opaque s) = {Φ_E}`: an Opaque value carries none of its roots' Loans, and `τ_s` leaves
+     the Loan sets. Every Opaque site rests on a recorded error, so a Loan problem found only through one never arises, which is
+     R4-M10's "derived and dropped" by construction, while a Loan another route reaches stays checked (SPEC 23.1.2). §5's sentence on
+     problems derived from s is void. An Opaque site's own accesses are not checked: a problem rooted at one is derived (R4-M10), as
+     the code leaves it (PLAN G136); this replaces E13 (1)'s "take val(Opaque)".
+  4. **Default taint (R4-M70; temporary, removed by A5-F9, unit 2e).** A value a default's evaluation places into its pending slot D
+     (a template call's result, or an inline copy's store into D, a pending slot outside the copy's Inlined scope) carries D's marker,
+     the default taint. The per-local markers (element 1 + L) are a role table: `GuardCandidate` → `γ_H` (E7), `PendingSlot` → the
+     default taint. A Loan conflict whose Loan only sets carrying a taint hold in the access's check set is a located `Unsupported_Kd`
+     at D's source, the omitting call, never a Language problem (SPEC 7.2.3's checks of a default are F9's); a Loan that a set without
+     a taint also holds stays the Language problem and is reported first. A holder that joins a tainted and a clean value is tainted
+     (accepted until F9).
+  5. **The A6 table (R4-M72).** err(effect), a static or unknown-environment effect (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
+     the call or the Drop whose effects meet the Loan (`key` and `unknown` are a Call's or a Drop's, §4.2; an erased destruction's are
+     unknown, SPEC 16.3.3; unit 2b); `CallEffectConflict_Kd` is F6's requirement-call effect `Φ_c` at the later call (SPEC 8.11.4; unit
+     2f), also where the later call's receiver formation meets it (item 1). The `PreparedInput` row has no Loan-stratum producer: in a
+     template the preceding parameters a default reads are its own parameters, whose callers' Loans lie outside its body, and a copy
+     reaches its pending slots only past the prologue's shared borrows (E3), so `DefaultArgumentAccess_Kd` and
+     `DefaultArgumentBorrow_Kd` are F9's (unit 2e), and A1 codes a Move of the slot or its owned contents `DefaultArgumentMove_Kd`
+     (R4-M69). `ended` on a `GuardCandidate` is `ComparisonLoanConflict_Kd` at the candidate's cleanup, anchored at the candidate
+     (DIAGNOSTICS). A Language problem found inside an inline copy's Inlined scope is its template's and is dropped (R4-M69), and a
+     problem carries its body (R4-M71).
+  6. **The view skip (§6.1; unit 1c-3).** A view skips the stratum only when it has no Loan and no guard candidate: E7's `γ_H` needs no
+     Loan, so skipping a Loan-free view accepted a guard value escaping there (the design review's r02). The root flags only select the
+     accesses checked.
+  7. **E7's and E12's merge (unit 2a).** The merge moves from unit 1c to 2a (2a-2, completed by 2g-5; the step-2 plan's PD11): the
+     Refuted relations it reads come from the Origin stratum (A5-F4).
 
 - **E16, a call's stores reach every holder its argument reaches (PLAN G148; SPEC 15.6, 15.6.2, 15.6.4; prototype round 14; owner
   2026-10-19, DECISIONS R4-M73, R4-M76).** A row `retains(c, i, κ, store j)` joins ret(i, κ) into every holder of W(val(a_j)), the least
@@ -757,5 +798,10 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   review).
 - **E13** (2026-10-18, §12; prototype round 13): the values an access takes, operands in evaluation order in MIR, activation of
   every reservation input, pair-layer acquisitions secured and marked (core review B1, B2; the owner's choices R1 and one rule).
+- **E15** (2026-10-19, §12; group 1c's records, unit 1c-9): an activation meets only Loans shared in their holder, err(destroy) a
+  conflicts row, Opaque values `{Φ_E}`, the default taint, the A6 table's effect, default and guard rows, the view skip, E7's and
+  E12's merge in unit 2a and E13's Opaque accesses (the design review of 1c's two designs; group 1c's final review B1; DECISIONS
+  R4-M68, R4-M70, R4-M72).
 - **E16** (2026-10-19, §12; unit G148): a call's stores reach every holder its argument reaches, with MirTypes' guard; listed loss P13
   and its interim taint (the completed G148 design review; DECISIONS R4-M73, R4-M76).
+||||||| 2fc31a40

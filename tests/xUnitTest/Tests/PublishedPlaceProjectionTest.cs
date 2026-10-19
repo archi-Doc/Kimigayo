@@ -260,7 +260,6 @@ public class PublishedPlaceProjectionTest
     [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].inner.mutate()", "vals[0]")]
     [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n = 5", "vals[0]")]
     [InlineData("func f(value: uniq/Point during a)\n    var vals: Array<uniq/Point during a> = [value@move]\n    vals[0].n += 1", "vals[0]")]
-    [InlineData("func f(value: uniq/Point during a)\n    let vals: Array<uniq/Point during a> = [value@move]\n    vals[0].inner.mutate()", "vals[0]")]
     [InlineData("func f(a: uniq/Array<uniq/Point during x>) => a[0].n = 5", "a[0]")]
     [InlineData("func f(value: uniq/(i32, i32) during a)\n    var vals: Array<uniq/(i32, i32) during a> = [value@move]\n    vals[0].0 = 5", "vals[0]")]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var vals: Array<uniq/(uniq/Point during a) during b> = [value@move]\n    return vals[0].n", "vals[0]")]

@@ -8,6 +8,14 @@ namespace Kimi.Compiler.Mir;
 // Call assembly (SPEC 7.3): a node's call, its callee, receiver and arguments in their order, and its Call terminator.
 internal sealed partial class MirBuilder
 {
+    // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
+    // past them asks for no Type).
+    private static int Arity(BindingSymbol function)
+    {
+        _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+        return count;
+    }
+
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
     // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1).
     private void Call(MirPlace destination, Koto node)
@@ -38,7 +46,7 @@ internal sealed partial class MirBuilder
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
-        var count = function is null ? call.Signature.Components[0].Components.Count : ((FunctionKoto)function.Declaration).Parameters.Count;
+        var count = function is null ? call.Signature.Components[0].Components.Count : Arity(function);
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
             (receiver is not null && function!.ReceiverIndex < 0))
@@ -50,29 +58,8 @@ internal sealed partial class MirBuilder
         var source = call.ReceiverOperation.Source ?? call.CalleeValue;
         var pending = this.arguments.Count;
         var subst = compilation.Types.SubstOf(call);
-        // SPEC 12.2: the last argument that builds code, in evaluation order: the receiver -2, first -1, the others in order; and from
-        // after, by argument, the least position of the arguments evaluated after it.
-        var (last, after, least, earliest) = (-2, this.leastAfter.Count, int.MaxValue, -1);
-        CollectionsMarshal.SetCount(this.leastAfter, after + call.ArgumentOperations.Length);
-        for (var i = call.ArgumentOperations.Length - 1; i >= 0; i--)
-        {
-            ref readonly var argument = ref call.ArgumentOperations[i];
-            if (ReferenceEquals(argument.Source, first))
-            {
-                earliest = i;
-                continue;
-            }
-
-            (this.leastAfter[after + i], least) = (least, Math.Min(least, MirCallee.Position(function, argument.ParameterIndex)));
-            last = last == -2 && !ReferenceEquals(argument.Source, given) && Builds(argument.Source!) ? i : last;
-        }
-
-        if (earliest >= 0)
-        {
-            this.leastAfter[after + earliest] = least;
-            last = last == -2 && !ReferenceEquals(first, given) && Builds(first!) ? -1 : last;
-        }
-
+        var after = this.leastAfter.Count;
+        var last = this.Order(call, function, first, given);
         if (function is null)
         {
             // The callee value, pending while the arguments are evaluated.
@@ -150,6 +137,34 @@ internal sealed partial class MirBuilder
             ReferenceEquals(call.ReturnType, BoundType.Never) || MirDescriptors.Of(disposition.Id).Diverges,
             function is null ? this.arguments[pending] : default);
         this.arguments.RemoveRange(pending, start - pending);
+    }
+
+    // SPEC 12.2: the last argument of a call that builds code, in evaluation order (the receiver -2, first -1, the others in order), and,
+    // appended to leastAfter by argument, the least position of the arguments evaluated after it.
+    private int Order(CallPlan call, BindingSymbol? function, Koto? first, Koto? given)
+    {
+        var (last, after, least, earliest) = (-2, this.leastAfter.Count, int.MaxValue, -1);
+        CollectionsMarshal.SetCount(this.leastAfter, after + call.ArgumentOperations.Length);
+        for (var i = call.ArgumentOperations.Length - 1; i >= 0; i--)
+        {
+            ref readonly var argument = ref call.ArgumentOperations[i];
+            if (ReferenceEquals(argument.Source, first))
+            {
+                earliest = i;
+                continue;
+            }
+
+            (this.leastAfter[after + i], least) = (least, Math.Min(least, MirCallee.Position(function, argument.ParameterIndex)));
+            last = last == -2 && !ReferenceEquals(argument.Source, given) && Builds(argument.Source!) ? i : last;
+        }
+
+        if (earliest >= 0)
+        {
+            this.leastAfter[after + earliest] = least;
+            last = last == -2 && !ReferenceEquals(first, given) && Builds(first!) ? -1 : last;
+        }
+
+        return last;
     }
 
     // SPEC 6.4.5: a virtual receiver's borrow covers the whole payload, so the receiver is borrowed as the view of its payload's own Type

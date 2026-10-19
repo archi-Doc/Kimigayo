@@ -127,10 +127,9 @@ public sealed partial class Binding
             return true;
         }
 
-        // SPEC 4.7.1: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
-        // the receiver path can lend exclusively; a use that needs it through another path is diagnosed by that path.
-        if (this.exclusiveIndexers.Contains(source) && PathAuthority(source.Left) != SemanticsKind.Ref &&
-            (source.Left.BoundType?.Semantics == SemanticsKind.Uniq || Writable(source.Left)))
+        // SPEC 4.7.1, 15.1.5: indexUniq is selected for updates and exclusive borrows. It is bound when the conformance offers it and
+        // the receiver can be exclusively acquired; a use that needs it through another path is diagnosed by that path.
+        if (this.exclusiveIndexers.Contains(source) && ExclusivelyAcquirable(source.Left))
         {
             this.BindIndexerCall(source, scope, true);
         }

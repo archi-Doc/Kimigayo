@@ -42,7 +42,7 @@ public class StringComparisonEmissionTest
         }
 
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions);
     }
 
     [Theory]
@@ -100,7 +100,7 @@ public class StringComparisonEmissionTest
         var branch = function.Instructions.FindIndex(comparison + 1, x => x.Opcode == EmissionOpcode.ConditionalBranch);
         Assert.True(comparison >= 0 && comparison < destroy && destroy < branch);
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonConditionOrder", Source, "after\n");
-        StringEmissionTest.WriteAuditedFixture("StringComparisonConditionOrder", Source, ir, "after\n", "condition=1;literal=1;bad=0;after=1", order: [1, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture("StringComparisonConditionOrder", ir, "after\n", "condition=1;literal=1;bad=0;after=1", order: [1, 0, 3]);
     }
 
     [Theory]
@@ -110,7 +110,7 @@ public class StringComparisonEmissionTest
     {
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("StringComparisonAbort" + name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture("StringComparisonAbort" + name, source, ir, string.Empty, destructions, 1, stderr);
+        StringEmissionTest.WriteAuditedFixture("StringComparisonAbort" + name, ir, string.Empty, destructions, 1, stderr);
     }
 
     [Fact]

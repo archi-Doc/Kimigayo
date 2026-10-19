@@ -32,7 +32,7 @@ public class OwnedDefaultTest
     public void OwnedPreparationHasExactCleanup(string name, string source, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("OwnedDefault" + name, source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("OwnedDefault" + name, source, ir, string.Empty, destructions, order: order);
+        StringEmissionTest.WriteAuditedFixture("OwnedDefault" + name, ir, string.Empty, destructions, order: order);
     }
 
     [TestClass(DisableParallelization = true)]

@@ -17,7 +17,7 @@ public sealed class PlacedExclusiveReferenceTest
     [InlineData("    let items = (c@move, b@move)\n    items.1@follow = 42\n    items.0@follow = 7")]
     [InlineData("    let items = (b@move, c@move)\n    items.0@follow = 42\n    items.1@follow = 7")]
     [InlineData("    var entries = [1: c@move, 2: b@move]\n    entries[2]@follow = 42\n    entries[1]@follow = 7")]
-    [InlineData("    let items = [c@move, b@move]\n    items[1]@follow = 42\n    items[0]@follow = 7")]
+    [InlineData("    var items = [c@move, b@move]\n    items[1]@follow = 42\n    items[0]@follow = 7")]
     [InlineData("    let items = (b@move, 1)\n    c@follow = 7")]
     public void AParentPlacedWhileItsReborrowChildIsLiveIsRejected(string body)
     {
