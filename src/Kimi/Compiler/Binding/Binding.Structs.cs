@@ -73,17 +73,32 @@ public sealed partial class Binding
         return result is not null && this.PrepareTypeStorage(result) ? result : null;
     }
 
+    // SPEC 6.3.4, 15.1.5, 16.3.1: what the receiver `self` of a constructor or destructor grants, the one decision the Place checks read
+    // (DECISIONS BU-15); null for a node naming no such receiver. Every special receiver is an exclusively writable root for its own
+    // initialized Fields (15.1.5: Writable, BorrowablePlace). Parts: the authority its path gives every part (PathAuthority). Whole:
+    // whether a use of the whole receiver is judged by the general rules under Parts (BindReference). NonCopyTake: whether a part
+    // offers Take of a Non-Copy value (CompleteTransfer).
+    // - Construction (6.3.4): an owner's path whose parts give up no Non-Copy value; the whole receiver is never named.
+    // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
+    //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment).
+    private static ReceiverAuthority? Receiver(Koto? node)
+        => node is IdentifierNameKoto { BoundSymbol: { Name: "self", Declaration: FunctionKoto function } } ? function switch
+        {
+            { IsConstructor: true } => new(SemanticsKind.Owner, Whole: false, NonCopyTake: false),
+            { IsDestructor: true } => new(SemanticsKind.Uniq, Whole: true, NonCopyTake: false),
+            _ => null,
+        } : null;
+
+    // One row of the special-receiver table (Receiver).
+    private readonly record struct ReceiverAuthority(SemanticsKind Parts, bool Whole, bool NonCopyTake);
+
+    // A member selected directly on a special receiver (`self.f`) and the receiver's function, which the construction rules read (SPEC
+    // 6.3.4, 11.7: own Fields used as storage and placed first).
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {
-        if (node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol: { Name: "self", Declaration: FunctionKoto receiver } } } &&
-            (receiver.IsConstructor || receiver.IsDestructor))
-        {
-            function = receiver;
-            return true;
-        }
-
-        function = null!;
-        return false;
+        function = node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol.Declaration: FunctionKoto receiver } left } &&
+            Receiver(left) is not null ? receiver : null!;
+        return function is not null;
     }
 
     // The storage height of a Type the walk meets as the path-th Type from the query's root, one strongly connected component at a time

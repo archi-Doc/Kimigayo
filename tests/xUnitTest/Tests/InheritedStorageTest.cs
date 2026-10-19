@@ -52,11 +52,54 @@ public class InheritedStorageTest
     [InlineData("struct S\n    var a: i32\n    public var b: i32 = 0\n        get() -> i32 => storage\n    public init()\n        self.a = self.b\n", "self.b")]
     [InlineData("struct S\n    public var b: i32 = 0\n        get() -> i32 => storage\n        set(value: i32) -> () => storage = value\n    public init()\n        self.b += 1\n", "self.b")]
     [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct S\n    var r: R\n    public init(r: R)\n        self.r = r@move\n        let moved = self.r@move\n", "self.r@move")]
+    [InlineData("struct R\n    public var n: i32 = 0\n    drop => ()\nstruct H\n    public var r: R = R.init()\nstruct S\n    var h: H\n    public init(h: H)\n        self.h = h@move\n        let moved = self.h.r@move\n", "self.h.r@move")]
     public void TheConstructionReceiverForbidsInheritedComputedAndMovingAccess(string declarations, string at)
     {
         var source = declarations + "public func main() => ()\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
+    // SPEC 6.3.4, 15.1.5, 16.3.1: a special receiver is an exclusively writable root for its initialized own Fields (DECISIONS BU-15):
+    // the constructor lends them exclusively to an intrinsic, an argument and a receiver, as the destructor does.
+    [Fact]
+    public void SpecialReceiversLendTheirInitializedFieldsExclusively()
+    {
+        const string Source = """
+            struct Buffer
+                public var n: i32 = 0
+                public init() => ()
+                public func bump(self: uniq/Self) => self.n += 1
+            group Audit
+                public func change(value: uniq/Buffer) => value.n += 10
+                public func read(value: ref/Buffer) -> i32 => value.n
+            struct Tally
+                public var count: i32
+                public var total: i32
+                public var buffer: Buffer
+                public var spare: Buffer
+                public init(start: i32)
+                    self.count = start
+                    self.total = 0
+                    self.buffer = Buffer.init()
+                    self.spare = Buffer.init()
+                    self.count = self.count + 1
+                    Kimi.Intrinsics.replace(self.total@uniq, with: 5)
+                    self.buffer.bump()
+                    Audit.change(self.buffer@uniq)
+                    let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())
+                    Kimi.Intrinsics.replace(self.spare@uniq, with: old@move)
+                drop
+                    let k = self.count
+                    self.buffer.bump()
+                    Audit.change(self.spare@uniq)
+                    let b = Audit.read(self.buffer@ref)
+                    let s = Audit.read(self.spare@ref)
+                    Console.writeLine("drop \(k) \(self.total) \(b) \(s)")
+            let t = Tally.init(3)
+            Console.writeLine("\(t.count) \(t.total) \(t.buffer.n) \(t.spare.n)")
+            """;
+        ScalarEmissionTest.EmitFixture("ConstructionReceiverFields", Source, "4 5 0 11\ndrop 4 5 1 21\n");
     }
 
     [Trait("Purpose", "Allocation")]

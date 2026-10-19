@@ -106,9 +106,10 @@ public sealed partial class Binding
     // whose Type alone makes it supply no normal completion (SPEC 14.9.3).
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
-        // SPEC 6.3.4: construction also allows no Non-Copy Move out of its receiver.
+        // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!OffersTake(conversion.Left) ||
-            (IsSpecialField(KotoHelper.UnwrapParentheses(conversion.Left), out var special) && special.IsConstructor && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
+            (KotoHelper.UnwrapParentheses(conversion.Left) is BinaryKoto part && Receiver(ElementAccess.OwnedPathRoot(part)) is { NonCopyTake: false } &&
+            this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
             var failure = AccessFailure(conversion.Left, take: true);
             return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);

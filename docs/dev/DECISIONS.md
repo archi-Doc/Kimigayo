@@ -2336,6 +2336,30 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   generates them correctly once they select `indexUniq` (O0, both pipelines). Rejected: B, a fourth `PathAuthority` outcome for a
   binding's denial, read by about 25 consumers, with a handle view recorded by `ReceiverThroughLayers` (shared structure for one
   diagnostic distinction). Not temporary.
+- **BU-15** (2026-10-19; the BU planning session; A5 step 2 plan units 2x-E4a and 2x-E6, PLAN G100; the shared-structure design,
+  adopted by the planning session and endorsed by R4; R5 consented to the two `Binding.Expressions.cs` hunks) What the receiver
+  `self` of a constructor or destructor grants is one decision, `Receiver` (`Binding.Structs.cs`), a table with a row per receiver
+  that every Place check reads. Both are an exclusively writable root for their own initialized Fields (SPEC 15.1.5). Construction
+  (6.3.4): an owner's path; no part gives up a Non-Copy value, nested parts included; the whole receiver is never named. Destruction
+  (16.3.1): access equivalent to `uniq/Self`, so no part offers Take, a Copy one included (15.1.3, 15.1.5); the general rules judge
+  a use of the whole receiver under that authority, so its shared borrow (`self@ref`, a `ref/Self` argument) is a helper borrow and
+  a Move is `ExclusivePathTake_Kd`, a bare owned argument `TransferRequired_Kd`, `@copy` `NonCopyOperand_Kd`, `@uniq`, assignment
+  and exchange `InvalidAssignment_Kd`, a `uniq/Self` argument `NoApplicableOverload_Kd`. Readers, each replacing a clause that
+  re-decided part of the rule: `PathAuthority` (a destruction-receiver root, which it lacked: Binding accepted every Move out of
+  drop's `self`), `BorrowablePlace` (its destructor-only clause: 6.3.4's example `replace(self.total@uniq, with: 5)` was
+  `InvalidAssignment_Kd`), `Writable` (`!IsSpecialField`), `CompleteTransfer` (the constructor clause, direct Fields only) and
+  `BindReference` (both receivers' whole uses rejected; now the Destruction row's `Whole`); `IsSpecialField` keeps the identity
+  for the construction rules of 6.3.4 and 11.7 (storage access, first placement). Default-pipeline verdicts: a Copy Field's
+  `@move` in `drop` becomes `ExclusivePathTake_Kd` (accepted before) and a Non-Copy one, earlier `Unsupported_Kd`; 6.3.4's
+  example and a constructor's Field lent to `exchange`, a `uniq/` argument or a `uniq/Self` receiver become valid (O0 output
+  checked on both pipelines); `self@ref` in `drop` becomes the old path's `Unsupported_Kd` (it models only the Fields); a
+  constructor's nested Non-Copy Move becomes `InvalidAssignment_Kd` (earlier `Unsupported_Kd`). Library and milestones unchanged.
+  2x-P10's d09 (`self@move` whole) gets `ExclusivePathTake_Kd`, not its model's `InvalidAssignment_Kd` (R4's 2g-D). Rejected: one
+  `PathAuthority` arm (leaves three copies of the rule and the constructor defect); typing drop's `self` as `uniq/Self` (`self@ref`
+  would borrow the slot; changes MIR, the old path and generation); extending the constructor clause of `CompleteTransfer` to the
+  destructor (a second copy that misses nested and base parts); Uniq for the construction row (it would refuse a Copy Field's
+  `@move`, which 6.3.4 forbids only for Non-Copy values). Open: the capture of the helper borrow (PLAN G160), for which Binding
+  lacks the fact (every borrow in a `drop` body has the Origin `Projection[drop#0]`). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
