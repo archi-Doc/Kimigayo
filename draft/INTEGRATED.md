@@ -682,3 +682,22 @@ ending) and **P12**.
   clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3); S5's
   proposal (2x-S5) and, after its review, its SPEC integration (OQ13); each family's approved losses as SPEC clauses (OQ8).
   Adoption implies no implementation support.
+
+## 2026-10-19 — Effect atoms widen, Origin inference bounds, P1's completion and the zero-length fill
+
+The owner's request of 2026-10-19, 「SPEC の改訂、Copy の証明の問題の登録、推奨の作業を行ってください。」, includes the SPEC
+session the R4 planning session recommended: four items already decided, integrated together. S5 (the owner's OQ13 answer
+made precise as form (c), DECISIONS R4-M74 and R4-M76), S3 (OQ12 (a) of the A5 step 2 plan, R4-M74), S1-a (R4-M76 (a)) and
+the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the planning session's question Q2, 「持つ (推奨)」).
+
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+  frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
+  - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a
+    variable's bounds are followed through other variables to fixed or finite Origins and `static`, and a variable that
+    reaches none has no candidate, so it is a local region in an executable body and needs an annotation elsewhere.
+  - Rationale: without the sentence, a variable whose only bounds are other variables, such as a covariant variable bounded
+    by a contravariant one, had no defined candidate (plan §5.2). No verdict changes: it states the reading the solver
+    already follows (`LocalRegionInferenceTest`, `CallOriginRelationTest`, `OriginPremiseClosureTest` and
+    `ResultOnlyOriginTest` pass unchanged on both pipelines) and the one 2a0-3b implements on the MIR.
+  - Principles. Local Reasoning: a candidate is found by a finite walk over the body's own bounds. Explicit Semantics: the
+    case with no fixed, finite or `static` bound is named, and its outcome is the existing local-region rule.
