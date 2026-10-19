@@ -85,6 +85,17 @@
 //               located Unsupported_Kd at its access; one the default taint already makes Unsupported_Kd keeps the omitting call.
 //               R17PerPart: W takes no step from a ByArgument holder (the per-part guard's program), the reference for dependence and
 //               cost. The review's cases (R16X, rv-r16/work/rx) join the round. -r17 prints it; A5 Step 2/body-hold.md records it.
+//        Round 18 (ER-effects, A5-F5; unit 2x-P5 of the step-2 plan): on R17Hold, static roots ('#' names in Case.Statics, mutable or
+//               not; a static's Loan names no holder and its whole write ends none, G136) and A4's keys and classes at a Call, a Drop or a
+//               staticEnsure (Node.Key, Node.Fx, Node.StaticEnsure). R18: (R1) a key (f, write) meets a Loan on f in any mode, (f, read) a
+//               uniq one; Unknown meets every mutable-static Loan; Limit alone is a located Unsupported_Kd where a mutable-static Loan is
+//               met; Derived alone reports nothing (R4-M10, R4-M70); (R2) the Call's set is E13 (1)(b)'s with no holder left out, a Drop's
+//               adds val(X) (E13 (1)(d)), and a reservation the Call activates counts as uniq at its effects (W6); (R3) a destruction of a
+//               static's old value holds an exclusive Loan that its own key, or Unknown on a mutable static, meets (PD12 (iii)); (R4) a
+//               live Loan on the ensured Field proves it initialized, which P5 cannot tell from another key's: a conflict that proof would
+//               decide is a located Unsupported_Kd (PD12 (ii)). Every problem goes through Report, so the hold and the taint apply
+//               (R4-M73). Variants: R18NoW6, R18LiveOnly, R18NoR3, R18Merged (G93's bool), R18EnsureExact (P42's key identity),
+//               R18EnsureByField, R18EnsureIgnored, R18StaticEnds. R18G: SPEC 15.2.4's Transferable against HoldsRaw (G124). -r18 prints it.
 using System.Text;
 using Fact = (string H, string L);
 
@@ -285,6 +296,61 @@ int Round17()
     return fails;
 }
 if (args.Contains("-r17")) return Round17();
+// Round 18 (ER-effects, A5-F5; unit 2x-P5): A4's static keys and classes (R1), the Call's and Drop's sets with W6 (R2), a destruction's own
+// exclusive Loan (R3) and staticEnsure under PD12 (R4) on R17Hold, with G136's lemma and G124's Transferable. Checks: (i) the earlier cases
+// keep R17Hold's outcome under R18; (ii) each round-18 case meets its expected outcome under R18; (iii) G136: R18 and R18StaticEnds give
+// one verdict everywhere; (iv) each G124 case's Transferable gives its SPEC verdict. -r18 prints only this; its exit code counts the failures.
+var round18Variants = new[] { Abl.R18NoW6, Abl.R18LiveOnly, Abl.R18NoR3, Abl.R18Merged, Abl.R18EnsureExact, Abl.R18EnsureByField, Abl.R18EnsureIgnored, Abl.R18StaticEnds };
+var round18Modes = round18Variants.Prepend(Abl.R18).ToArray();
+int Round18()
+{
+    string O(Analysis a) => a.Errors.Count == 0 && a.Unsupported.Count == 0 ? "valid"
+        : string.Join("; ", new[] { a.Errors.Count > 0 ? "error at `" + string.Join("`, `", a.ErrorNodes()) + "`" : null,
+            a.Unsupported.Count > 0 ? "U at `" + string.Join("`, `", a.UnsupportedNodes()) + "`" : null }.Where(x => x != null));
+    string Expected(Case c) => c.At.Length == 0 && c.UnsuppAt.Length == 0 ? "valid"
+        : string.Join("; ", new[] { c.At.Length > 0 ? "error at `" + string.Join("`, `", c.At) + "`" : null,
+            c.UnsuppAt.Length > 0 ? "U at `" + string.Join("`, `", c.UnsuppAt) + "`" : null }.Where(x => x != null));
+    // Against SPEC: an accepted SPEC error is unsound; a Language error of a SPEC-valid program is over-strict (a located U is neither).
+    string W(Case c, Analysis a) => O(a) + (c.Err && a.Errors.Count == 0 && a.Unsupported.Count == 0 ? " **UNSOUND**" : !c.Err && a.Errors.Count > 0 ? " (over-strict)" : "");
+    int fails = 0;
+    var earlier = Cases.All().Concat(R16.All()).Concat(R16X.All()).ToList();
+    var changed = earlier.Where(c => O(Design(c, Abl.R18)) != O(Design(c, Abl.R17Hold))).Select(c => c.Id).ToList();
+    fails += changed.Count;
+    var cases = R18.All().ToList();
+    Console.WriteLine($"\nRound 18, ER-effects (A5-F5; {cases.Count} cases, {R18G.All.Length} G124 cases):");
+    Console.WriteLine($"(i) earlier cases ({earlier.Count}) whose outcome under R18 differs from R17Hold's: {(changed.Count == 0 ? "none" : string.Join(", ", changed))}");
+    Console.WriteLine("\n| Case | Program | SPEC | expected (R18) | R18 | " + string.Join(" | ", round18Variants) + " | meets |\n|" + string.Concat(Enumerable.Repeat(" --- |", round18Variants.Length + 6)));
+    foreach (var c in cases)
+    {
+        var d = Design(c, Abl.R18);
+        bool ok = d.ErrorNodes().ToHashSet().SetEquals(c.At) && d.UnsupportedNodes().ToHashSet().SetEquals(c.UnsuppAt) && W(c, d) == O(d);
+        fails += ok ? 0 : 1;
+        Console.WriteLine($"| {c.Id} | {c.Title} | {(c.Err ? "error" : "valid")} | {Expected(c)} | {O(d)} | {string.Join(" | ", round18Variants.Select(v => W(c, Design(c, v))))} | {(ok ? "yes" : "**NO**")} |");
+    }
+    Console.WriteLine($"(ii) failures: {fails - changed.Count}");
+    // (iii) G136's lemma: the static's ending changes no verdict (accept, Language error or U), only where a Loan already met is met again.
+    var verdict = cases.Where(c => Design(c, Abl.R18) is var a && Design(c, Abl.R18StaticEnds) is var b && (a.Errors.Count > 0, a.Unsupported.Count > 0) != (b.Errors.Count > 0, b.Unsupported.Count > 0)).Select(c => c.Id).ToList();
+    var moved = cases.Where(c => O(Design(c, Abl.R18)) != O(Design(c, Abl.R18StaticEnds))).Select(c => $"{c.Id} (R18 {O(Design(c, Abl.R18))}; R18StaticEnds {O(Design(c, Abl.R18StaticEnds))})").ToList();
+    fails += verdict.Count;
+    Console.WriteLine($"(iii) G136: cases whose verdict the static's ending changes: {(verdict.Count == 0 ? "none" : string.Join(", ", verdict))}; whose locations it changes: {(moved.Count == 0 ? "none" : string.Join("; ", moved))}");
+    foreach (var v in round18Variants)
+        Console.WriteLine($"{v}: " + string.Join("; ", cases.Where(c => O(Design(c, v)) != O(Design(c, Abl.R18))).Select(c => $"{c.Id}: {W(c, Design(c, v))}").DefaultIfEmpty("no change")));
+    Console.WriteLine("\n| Case | Static's Type (read by a confined witness) | SPEC Transferable | SPEC | HoldsRaw (today) | today |\n| --- | --- | --- | --- | --- | --- |");
+    foreach (var (id, text, type, specErr) in R18G.All)
+    {
+        int t = R18G.Transferable(type); bool raw = R18G.HoldsRaw(type);
+        if ((t != 0) != specErr) fails++;
+        string Today() => raw == specErr ? "same" : specErr ? "**UNSOUND** (accepted)" : "over-strict";
+        Console.WriteLine($"| {id} | {text} | {new[] { "Proven", "Unknown", "Refuted" }[t]} | {(t != 0 ? "error" : "valid")}{((t != 0) != specErr ? " **NO**" : "")} | {(raw ? "error" : "valid")} | {Today()} |");
+    }
+    if (verbose)
+        foreach (var c in cases)
+            foreach (var x in round18Modes)
+                Console.WriteLine($"{c.Id,-5} {x,-17}: " + string.Join("; ", Design(c, x) is var a ? a.Errors.Select(e => $"{e.L} at `{a.LabelAt(e.P)}` vs {e.What}").Concat(a.Unsupported.Select(e => $"U {e.L} at `{a.LabelAt(e.P)}` vs {e.What}")) : []));
+    Console.WriteLine($"\nRound 18 failures: {fails}");
+    return fails;
+}
+if (args.Contains("-r18")) return Round18();
 var table3 = new StringBuilder("| Case | SPEC | S1′ | design A | Class |\n| --- | --- | --- | --- | --- |\n");
 string V(Analysis a) => a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
 void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact; round 11: SA = SecureAcquire's encoding;
@@ -463,7 +529,7 @@ foreach (var (ab, fd) in new[] { (Abl.None, false), (Abl.FirstDerefBase, false),
         .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab, fd)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
         .Select(g => $"{g.Count()} {g.Key}" + (g.Key != "same" ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
 Console.WriteLine();
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x) && !round17Variants.Contains(x)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x) && !round17Variants.Contains(x) && !round18Modes.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Where(c => !Cases.NoS1P(c)).Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -562,8 +628,18 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     // set rule) and no P13 marker:
     R17Hold,          // the decided rule: a body where some store row puts a non-empty value into a target reached only past a ByArgument
                       // holder is held, and every Loan problem of a held body (err(ended) included) is a located Unsupported_Kd at its access
-    R17PerPart }      // the reference for dependence and cost: rule G whose W takes no step from a ByArgument holder (the per-part guard's
+    R17PerPart,       // the reference for dependence and cost: rule G whose W takes no step from a ByArgument holder (the per-part guard's
                       // program, R4-M76), with the default taint as R17Hold
+    // Round 18 (ER-effects, A5-F5): on R17Hold, the effect rules (R18); each variant removes or replaces one of them:
+    R18,              // the round's rules R1-R4 (see the header), with G136's static items as the compiler has them
+    R18NoW6,          // a reservation stays `ref` in its holder at its own call's effects (E13 (1) before W6)
+    R18LiveOnly,      // effects on the holders live after ℓ and E only: no operand's value, no Drop's val(X)
+    R18NoR3,          // no destruction's own exclusive Loan on a static (16.4 unread)
+    R18Merged,        // G93's merged `bool` (R4-M38): Unknown, Limit and Derived all as Unknown
+    R18EnsureExact,   // P42's exact rule: a live Loan proves its own key initialized (Case.StaticKey), so its initializer does not run
+    R18EnsureByField, // P5 read as a proof: any live Loan on the ensured Field proves it initialized
+    R18EnsureIgnored, // no proof: an ensure always takes its initializer's keys
+    R18StaticEnds }   // G136 the other way: a static's whole write ends its Loans as a Move Path's does (E8's PrefixKill)
 
 record StoreRow(string Arg, string Src, bool Content, int Depth, int Hidden, bool Raw); // round 15 (G148)
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
@@ -665,6 +741,14 @@ class Node
     { Stores.Add(new(arg, src, content, depth, hidden, raw)); return Use(arg, src); }
     // Review (G148 union): designer b's encoding of the same row (its depths served only option B).
     public Node Retain(string arg, string src, bool content, params int[] depths) => Store(arg, src, content, depths.Length == 0 ? 1 : depths.Max());
+    // Round 18 (A5-F5): A4's keys at a Call, a Drop or a staticEnsure (MirEffects.Keys: each mutable static Field once, written where any
+    // access writes it) and its classes (G93: Unknown, Limit, Derived); a staticEnsure names its Field and the key it ensures (P42's Type
+    // arguments; "" for a non-generic group), and its keys are its initializer's.
+    public readonly List<(string F, bool Write)> Keys = new(); public bool Unknown, Limit, Derived; public string Ensure, EnsureKey;
+    public bool HasEffects => Keys.Count > 0 || Unknown || Limit || Derived;
+    public Node Key(string f, bool write = false) { Keys.Add((f, write)); return this; }
+    public Node Fx(bool unknown = false, bool limit = false, bool derived = false) { Unknown |= unknown; Limit |= limit; Derived |= derived; return this; }
+    public Node StaticEnsure(string f, string key = "") { Ensure = f; EnsureKey = key; return this; }
     public Node Goto(params string[] labels) { Succ = labels.ToList(); return this; }
     public Node Assume(string label) { Assumed.Add(label); return this; }                        // assumed edge (§14.10.3)
 }
@@ -689,6 +773,9 @@ class Case
     // Round 16: holders whose Type passes rule G's guard only through a Type argument, a pair layer or an abstract part (MirWrites
     // .ThroughArgument), and the nodes the round's decided rule reports a located Unsupported_Kd at.
     public readonly HashSet<string> ByArgument = new(); public string[] UnsuppAt = [];
+    // Round 18: the static roots ('#' names: a static's Loan names no holder, G136) and whether each is mutable; a static Loan's key where
+    // the Field is a generic container's (P5 merges keys; the exact rule needs them).
+    public readonly Dictionary<string, bool> Statics = new(); public readonly Dictionary<string, string> StaticKey = new();
     public Case(string id, string title) { Id = id; Title = title; }
     public Node N(string label) { var n = new Node(label, Nodes.Count); Nodes.Add(n); return n; }
     public Case Error(params string[] at) { Err = true; At = at; return this; }
@@ -752,7 +839,7 @@ class Analysis
         BuildEdges(); Carries();
         // Round 17: a body is held where, at the fixpoint, some store row puts a non-empty value into a target reached only past a ByArgument
         // holder (the first P13 target the compiler's Writes returns; an empty value holds nothing).
-        if (X == Abl.R17Hold)
+        if (X == Abl.R17Hold || Effects) // round 18: on R17Hold
             held = ns.Any(n => n.Stores.Any(r => P13Store(In[n.Ix].Where(t => !EndedBy(t.L, n.Defs)).ToList(), r)));
         if (m == Mode.A) { LivenessA(); CheckA(); } else { Liveness(); Check(); }
     }
@@ -784,7 +871,10 @@ class Analysis
     // Round 16: the taint modes, and which of them follow a taint along the closure's route and check err(ended)'s γ.
     bool Tainting => X is Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly;
     // Round 17: the default taint's markers and the set rule without P13's marker; R17Hold holds a body, R17PerPart stops W at ByArgument.
-    bool Defaults => Tainting || X is Abl.R17Hold or Abl.R17PerPart;
+    bool Defaults => Tainting || X is Abl.R17Hold or Abl.R17PerPart || Effects;
+    // Round 18: the effect rules, on R17Hold (rule G, the body hold, the default taint).
+    bool Effects => X is Abl.R18 or Abl.R18NoW6 or Abl.R18LiveOnly or Abl.R18NoR3 or Abl.R18Merged or Abl.R18EnsureExact or Abl.R18EnsureByField
+        or Abl.R18EnsureIgnored or Abl.R18StaticEnds;
     bool held; // round 17: the body is held (R17Hold)
     public bool Held => held;
     bool RouteTaint => X is Abl.R16Route or Abl.R16RouteNoGamma;
@@ -863,7 +953,8 @@ class Analysis
         if (X == Abl.PrefixKill || Pk) // review N1: direct Loans too; Defs are move paths, so K holds no Deref (round 13: the design)
         {
             var ps = Path.Segs(issue[l].Place);
-            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && !ks.Contains("*") && !ks.Contains("payload") && ps.Length >= ks.Length && ps.Take(ks.Length).SequenceEqual(ks));
+            return dip.Select(Path.Segs).Any(ks => !ks.Contains("[]") && !ks.Contains("*") && !ks.Contains("payload") && ps.Length >= ks.Length && ps.Take(ks.Length).SequenceEqual(ks)
+                && !(Effects && X != Abl.R18StaticEnds && Enc.Statics.ContainsKey(ks[0]))); // round 18 (G136): a static's write ends none
         }
         var b = Base(l);
         if (b == null) return false;
@@ -1036,6 +1127,7 @@ class Analysis
         Abl.R14GXS or Abl.R14GXSTransitA => (true, true, true, Excl.SelfRef, false),
         Abl.R14GDom => (true, true, true, Excl.Dom, true),
         Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly or Abl.R17Hold or Abl.R17PerPart => (true, true, true, Excl.None, false), // rounds 16, 17: rule G
+        _ when Effects => (true, true, true, Excl.None, false), // round 18: rule G
         _ => (false, false, false, Excl.None, false),
     };
     // Designer a's transit (a Content row's value read from the source's referents), corrected from its argument's to its source's.
@@ -1435,16 +1527,63 @@ class Analysis
                     if (X != Abl.NoRouteReach && shallowExclusive && (InWindow(h, l, i) || X == Abl.RouteAllParents && PendingHolder(h, i))) reach = true;
                     if (Path.Within(a.Place, p) || (Path.Within(p, a.Place) && (reach || !Path.DerefBelow(p, a.Place)))) hits.Add((h, l));
                 }
-                // Round 16 (R4-M70, R4-M73; the owner's route taint): a Loan some clean holder of the check set holds is the Language problem;
-                // one only tainted holders hold is the located Unsupported_Kd. Without a taint mode every holder is clean.
-                // Round 17: in a held body every Loan problem is the located Unsupported_Kd at its access; one the default taint already makes
-                // Unsupported_Kd keeps the omitting call (one record per problem).
-                var (clean, taint) = Defaults ? Taints(F, entries, RouteTaint) : (null, null);
-                foreach (var g in hits.GroupBy(x => x.L))
-                    if (clean == null || g.Any(x => clean.Contains(x.H))) { if (held) Unsupp(g.Key, i, $"{a.Kind} {a.Place}", i); else Err(g.Key, i, $"{a.Kind} {a.Place}"); }
-                    else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), $"{a.Kind} {a.Place}", i);
+                Report(i, F, entries, hits, $"{a.Kind} {a.Place}"); // rounds 16-17: the taint and the hold (Report)
+            }
+            // Round 18 (ER-effects, A5-F5): err(effect) at a Call, a Drop or a staticEnsure with A4's keys and classes, and a destruction's
+            // own exclusive Loan (R3). No earlier case carries an effect fact.
+            if (Effects && n.HasEffects)
+            {
+                // R2 (E13 (1)(b), (d)): closure(σ_in of live_out(ℓ) not overwritten ∪ σ_in(E) ∪ every operand's value, none left out); a
+                // Drop's destroyed Place adds val(X). R18LiveOnly: live_out(ℓ) and E only. (baseSet itself may hold an access's own terms by now.)
+                var F = In[i].Where(t => Esc(t.H) || after.Contains(t.H) && !dest.Contains(t.H)).ToHashSet();
+                if (X != Abl.R18LiveOnly) foreach (var o in n.Accs.Where(o => o.Input || o.Kind == K.Destroy)) foreach (var l in OpVal(o)) F.Add((Root(o.Place), l));
+                var entries = F.Select(t => t.H).ToHashSet();
+                for (var work = new Queue<Fact>(F); work.Count > 0;)
+                {
+                    var l0 = work.Dequeue().L; var T = issue[l0].Param ? "E" : Direct(l0) ? Root(issue[l0].Place) : null;
+                    if (T != null) foreach (var t in In[i].Where(t => t.H == T)) if (F.Add(t)) work.Enqueue(t);
+                }
+                // R1 (G93): the classes apart; R18Merged is A4's `bool` today (Unknown | Limit | Derived as Unknown).
+                bool merged = X == Abl.R18Merged, unknown = n.Unknown || merged && (n.Limit || n.Derived), limit = n.Limit && !merged;
+                string Static(string l) => !issue[l].Marker && !issue[l].Param && Enc.Statics.ContainsKey(Root(issue[l].Place)) ? Root(issue[l].Place) : null;
+                // R4 (SPEC 15.6.4, PD12 (ii)): a live Loan on the ensured Field proves it initialized, so its initializer does not run; under P5
+                // the Loan's key is not known to be the ensured one, so a conflict that proof would decide is the located Unsupported_Kd.
+                bool proof = n.Ensure != null && X != Abl.R18EnsureIgnored
+                    && F.Any(t => Static(t.L) == n.Ensure && (X != Abl.R18EnsureExact || Enc.StaticKey.GetValueOrDefault(t.L, "") == n.EnsureKey));
+                if (!(proof && X is Abl.R18EnsureExact or Abl.R18EnsureByField))
+                {
+                    var hits = new List<(string H, string L)>();
+                    foreach (var (h, l) in F)
+                    {
+                        if (Static(l) is not { } f) continue;
+                        // W6 (E13 (1), SPEC 15.6.7): a reservation this Call activates counts as uniq at its effects and cleanup.
+                        bool uniq = issue[l].Uniq && (!Reserved(h, l, i) || X != Abl.R18NoW6 && activeAt[l] == i);
+                        if (n.Keys.Any(k => k.F == f && (k.Write || uniq)) || unknown && Enc.Statics[f]) hits.Add((h, l));
+                        else if (limit && Enc.Statics[f]) Unsupp(l, i, "effect (Limit)", i);
+                    }
+                    if (proof) foreach (var l in hits.Select(x => x.L).Distinct()) Unsupp(l, i, "effect (ensure)", i);
+                    else Report(i, F, entries, hits, "effect");
+                }
+                // R3 (SPEC 16.4 with 16.3.1 and 16.3.3, PD12 (iii)): destroying a static's old value holds an exclusive Loan on it, which the
+                // destruction's own key on that Field meets, and an Unknown effect where the Field is mutable.
+                if (X != Abl.R18NoR3)
+                    foreach (var f in n.Accs.Where(a => a.Kind == K.Destroy).Select(a => Root(a.Place)).Where(Enc.Statics.ContainsKey).Distinct())
+                        if (n.Keys.Any(k => k.F == f) || unknown && Enc.Statics[f]) { if (held) Unsupp("Δ" + f, i, "destruction", i); else Err("Δ" + f, i, "destruction"); }
+                        else if (limit && Enc.Statics[f]) Unsupp("Δ" + f, i, "destruction (Limit)", i);
             }
         }
+    }
+
+    // Round 16 (R4-M70, R4-M73; the owner's route taint): a Loan some clean holder of the check set holds is the Language problem; one only
+    // tainted holders hold is the located Unsupported_Kd. Without a taint mode every holder is clean. Round 17: in a held body every Loan
+    // problem is the located Unsupported_Kd at its access; one the default taint already makes Unsupported_Kd keeps the omitting call (one
+    // record per problem). Round 18: err(effect) reports here too (R4-M73).
+    void Report(int i, HashSet<Fact> F, HashSet<string> entries, List<(string H, string L)> hits, string what)
+    {
+        var (clean, taint) = Defaults ? Taints(F, entries, RouteTaint) : (null, null);
+        foreach (var g in hits.GroupBy(x => x.L))
+            if (clean == null || g.Any(x => clean.Contains(x.H))) { if (held) Unsupp(g.Key, i, what, i); else Err(g.Key, i, what); }
+            else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), what, i);
     }
 
     // Round 10 (G119): strictly between the reservation's formation and its activation; the Call's own effects (its
@@ -5899,5 +6038,316 @@ static class R16X
         var c = WriteThrough(id, store: true, clean: false);
         c.ByArgument.Clear(); c.SharedOnly.Add("lh"); c.UnsuppAt = [];
         return c.Valid();
+    }
+}
+
+// ---- Round 18 (ER-effects, A5-F5; unit 2x-P5): statics are '#' roots (Case.Statics), effects A4's keys and classes at a Call, a Drop or a
+// staticEnsure. Err is SPEC's verdict; At and UnsuppAt are R18's expected outcome. An explicit static Borrow (`State.count@ref`) is Binding's
+// InvalidAssignment_Kd until P42 (G100, PD12 (i)), so a case that needs one says P42; the others use implicit static Loans (a writeback, a
+// static receiver). A staticEnsure whose initializer has no keys is left out.
+static class R18
+{
+    const bool Uniq = true, Ref = false;
+    const string Count = "#State:count", Log = "#State:log", Counter = "#State:counter", HolderS = "#State:holder", Action = "#State:action",
+        Text = "#State:text", Lim = "#State:limit", Xs = "#State:x", CacheX = "#Cache:x";
+    public static IEnumerable<Case> All() => [Compound("e1"), Compound("e2"), Compound("e3"), LiveUniq(), Receiver("e4", read: true),
+        Receiver("e5", read: false), MovedArgument(), TwoFailures(), DropHolder("e6", write: true), DropHolder("e7", write: false),
+        OwnDrop("e8"), OwnDrop("e8b"), OwnDrop("e8c"), Erased("e9"), Erased("e9b"), Erased("e9s"),
+        Ensure("e10a"), Ensure("e10b"), Ensure("e10c"), Ensure("e10d"), Run("e11", both: true), Run("e11b", both: false),
+        Classes("e12a"), Classes("e12b"), Classes("e12c"), Classes("e13a"), Classes("e13b"), Classes("e14"),
+        Generic("e15", copy: false), Generic("e15b", copy: true), Lemma("e16a"), Lemma("e16b"), Lemma("e16c"), Held()];
+
+    static Case S(string id, string title, params string[] mutableStatics)
+    {
+        var c = new Case(id, title);
+        foreach (var s in mutableStatics) c.Statics[s] = true;
+        return c;
+    }
+
+    // e1-e3 (SPEC 13.7.2, 15.6.4): `State.count += f()` reserves State.count in $w at locate and activates Lw at the write; the right-hand
+    // call's effects meet Lw, shared in its holder: g's unknown effects and w's write conflict with it, m's read does not.
+    static Case Compound(string id)
+    {
+        var (call, what) = id switch { "e1" => ("$v = g()", "g a common Function value: unknown effects"), "e2" => ("$v = m()", "m reads State.count"), _ => ("$v = w()", "w writes State.count") };
+        var c = S(id, $"`State.count += {call[5..]}` ({what})", Count);
+        c.N("$w = TwoPhaseUniq(State.count) (writeback)").Def("$w").Borrow("Lw", Count, Uniq, "$w", reserve: true);
+        var n = c.N(call).Def("$v");
+        if (id == "e1") n.Fx(unknown: true); else n.Key(Count, write: id == "e3");
+        c.N("(*$w) = (*$w) + $v (activates Lw)").A(K.Read, "$w.*").Activate("Lw").Through("$w.*", "$v");
+        return id == "e2" ? c.Valid() : c.Error(call);
+    }
+
+    // e2u: a read key meets a live uniq Loan.
+    static Case LiveUniq()
+    {
+        var c = S("e2u", "`var u = State.count@uniq; m(); u@follow = 1` (m reads State.count; P42)", Count);
+        c.N("var u = State.count@uniq").Def("u").Borrow("Lu", Count, Uniq, "u");
+        c.N("m()").Key(Count);
+        c.N("u@follow = 1").A(K.Write, "u.*");
+        return c.Error("m()");
+    }
+
+    // e4, e5 (W6; SPEC 15.6.7: every reservation becomes live at once with the call's effects on static storage): a method on a static
+    // receiver, whose reservation Lr the Call activates, so its effects meet Lr as uniq.
+    static Case Receiver(string id, bool read)
+    {
+        var c = S(id, $"`State.counter.bump()` (bump(self: uniq/Counter) {(read ? "reads State.counter through its group" : "touches no static")})", Counter);
+        c.N("$r = &uniq two-phase State.counter (receiver, reserved)").Def("$r").Borrow("Lr", Counter, Uniq, "$r", reserve: true);
+        var n = c.N("bump(move $r)").Input(K.Move, "$r").Activate("Lr");
+        if (read) n.Key(Counter);
+        return read ? c.Error("bump(move $r)") : c.Valid();
+    }
+
+    // e4m (E13 (1)(b): an operand's value, its holder dead after the Call): writer receives s, which holds a borrow of State.count.
+    static Case MovedArgument()
+    {
+        var c = S("e4m", "`var s = Holder(r: State.count@ref); writer(s@move)` (writer writes State.count; P42)", Count);
+        c.N("var s = Holder(r: State.count@ref)").Def("s").Borrow("Lc", Count, Ref, "s");
+        c.N("writer(move s)").Input(K.Move, "s").Key(Count, write: true);
+        return c.Error("writer(move s)");
+    }
+
+    // e4c (2b-3: an activation and an effect on one Loan are two failures): the activation meets Lc, the effect Lc and Lr (W6).
+    static Case TwoFailures()
+    {
+        var c = S("e4c", "`let c = State.counter@ref; State.counter.add(1); inspect(c)` (add writes State.counter through its group; P42)", Counter);
+        c.N("let c = State.counter@ref").Def("c").Borrow("Lc", Counter, Ref, "c");
+        c.N("$r = &uniq two-phase State.counter (receiver, reserved)").Def("$r").Borrow("Lr", Counter, Uniq, "$r", reserve: true);
+        c.N("add(move $r, 1)").Input(K.Move, "$r").Activate("Lr").Key(Counter, write: true);
+        c.N("inspect(c)").Input(K.Read, "c");
+        return c.Error("add(move $r, 1)");
+    }
+
+    // e6, e7 (E13 (1)(d); SPEC 15.6: a Loan is live up to an observation by its destruction): s's own drop runs while s holds Lc.
+    static Case DropHolder(string id, bool write)
+    {
+        var c = S(id, $"`var s = Holder(r: State.count@ref); inspect(s)`; at scope end Holder's drop {(write ? "writes" : "reads")} State.count (P42)", Count);
+        c.N("var s = Holder(r: State.count@ref)").Def("s").Borrow("Lc", Count, Ref, "s");
+        c.N("inspect(s)").Input(K.Read, "s");
+        c.N("scope end: drop s").Drop("s").Key(Count, write);
+        return write ? c.Error("scope end: drop s") : c.Valid();
+    }
+
+    // e8, e8b, e8c (R3; SPEC 16.4, S16:220: destruction holds an exclusive Loan on the destroyed storage, and any other access to it, through
+    // a static Field included, conflicts): replacing a static's value destroys the old one, whose drop reads that static by name (e8), touches
+    // no static (e8b), or touches none but lies past A4's Limit (e8c: the located Unsupported_Kd).
+    static Case OwnDrop(string id)
+    {
+        var what = id switch { "e8" => "reads State.holder through its group", "e8b" => "touches no static", _ => "touches no static, past A4's Limit" };
+        var c = S(id, $"`State.holder = Holder.init()` (the old value's drop {what})", HolderS);
+        const string drop = "drop State.holder (old value)";
+        c.N("$n = Holder.init()").Def("$n");
+        var d = c.N(drop).Drop(HolderS);
+        if (id == "e8") d.Key(HolderS); else if (id == "e8c") d.Fx(limit: true);
+        c.N("State.holder = move $n").Input(K.Move, "$n").Assign(HolderS);
+        if (id == "e8c") c.UnsuppAt = [drop];
+        return id == "e8" ? c.Error(drop) : c.Valid();
+    }
+
+    // e9 (R3 with SPEC 16.3.3, PD12 (iii)): the old environment of a mutable static of a common Function Type is an erased destruction,
+    // whose unknown effects meet its own exclusive Loan; e9b: `exchange` moves the old value out, and its later erased destruction meets no
+    // live mutable-static Loan; e9s: SPEC 16.3.3's example.
+    static Case Erased(string id)
+    {
+        if (id == "e9s")
+        {
+            var s = S(id, "SPEC 16.3.3: `var action: () -> () = func [resource@move] () => (); let view = State.text@ref; action = func [] () => (); inspect(view)`", Text);
+            s.N("var action = func [resource@move] () => ()").Def("action");
+            s.N("let view = State.text@ref").Def("view").Borrow("Lv", Text, Ref, "view");
+            s.N("$f = func [] () => ()").Def("$f");
+            s.N("drop action (old environment: erased)").Drop("action").Fx(unknown: true);
+            s.N("action = move $f").Input(K.Move, "$f").Assign("action");
+            s.N("inspect(view)").Input(K.Read, "view");
+            return s.Error("drop action (old environment: erased)");
+        }
+        var c = S(id, id == "e9" ? "`State.action = func [] () => ()` (State.action: () -> (), mutable)"
+            : "`let old = exchange(State.action@uniq, with: func [] () => ())`; scope end drops old (erased)", Action);
+        c.N("$f = func [] () => ()").Def("$f");
+        if (id == "e9")
+        {
+            c.N("drop State.action (old environment: erased)").Drop(Action).Fx(unknown: true);
+            c.N("State.action = move $f").Input(K.Move, "$f").Assign(Action);
+            return c.Error("drop State.action (old environment: erased)");
+        }
+        c.N("$t = &uniq two-phase State.action (reserved)").Def("$t").Borrow("Lt", Action, Uniq, "$t", reserve: true);
+        c.N("let old = exchange(move $t, move $f)").Def("old").Input(K.Move, "$t").Input(K.Move, "$f").Activate("Lt");
+        c.N("scope end: drop old (erased)").Drop("old").Fx(unknown: true);
+        return c.Valid();
+    }
+
+    // e10a-e10d (R4; SPEC 15.6.4: a live Loan anchored to a Field proves only that Field initialized; PD12 (ii)): a staticEnsure of x takes
+    // x's initializer's keys (it writes State.log); a live Loan on x proves x initialized, so the initializer does not run, but under P5 A5
+    // does not know that Loan's key is the ensured one (e10d: a Loan on Cache<i32>'s key proves nothing for Cache<string>'s), so where the
+    // proof decides, the ensure is a located Unsupported_Kd. e10b: no proof; e10c: nothing for the initializer to meet. P42 for lx and ll.
+    static Case Ensure(string id)
+    {
+        bool proof = id != "e10b", other = id != "e10c", generic = id == "e10d";
+        string f = generic ? CacheX : Xs, xi = generic ? "Cache<i32>.S.x" : "State.x", xe = generic ? "Cache<string>.S.x" : "State.x";
+        var c = S(id, (proof ? $"`var lx = {xi}@ref; " : "`") + (other ? "var ll = State.log@ref; " : "") + $"let v = {xe}; inspect(…)` (x's initializer writes State.log)", f, Log);
+        if (proof)
+        {
+            c.N($"staticEnsure({xi})").StaticEnsure(f, generic ? "i32" : "").Key(Log, write: true);
+            c.N($"var lx = {xi}@ref").Def("lx").Borrow("Lx", f, Ref, "lx");
+            if (generic) c.StaticKey["Lx"] = "i32";
+        }
+        if (other) c.N("var ll = State.log@ref").Def("ll").Borrow("Ll", Log, Ref, "ll");
+        var ensure = $"staticEnsure({xe}) for `let v`";
+        c.N(ensure).StaticEnsure(f, generic ? "string" : "").Key(Log, write: true);
+        c.N($"let v = {xe}").Def("v").A(K.Read, f);
+        c.N("inspect(lx), inspect(ll)").Use(new[] { proof ? "lx" : null, other ? "ll" : null }.Where(x => x != null).ToArray());
+        if (proof && other) c.UnsuppAt = [ensure];
+        return id == "e10b" ? c.Error(ensure) : id == "e10d" ? c.Error() : c.Valid();
+    }
+
+    // e11, e11b: SPEC 15.6.4's `run`: g's unknown effects meet c's Loan on the mutable State.count, never l's on the immutable State.limit.
+    static Case Run(string id, bool both)
+    {
+        var c = S(id, both ? "SPEC 15.6.4 `run`: `let c = State.count@ref; let l = State.limit@ref; g(); inspect(c); inspect(l)`"
+            : "`run` with l alone: `let l = State.limit@ref; g(); inspect(l)`", Count);
+        c.Statics[Lim] = false;
+        if (both) c.N("let c = State.count@ref").Def("c").Borrow("Lc", Count, Ref, "c");
+        c.N("let l = State.limit@ref").Def("l").Borrow("Ll", Lim, Ref, "l");
+        c.N("g()").Fx(unknown: true);
+        if (both) c.N("inspect(c)").Input(K.Read, "c");
+        c.N("inspect(l)").Input(K.Read, "l");
+        return both ? c.Error("g()") : c.Valid();
+    }
+
+    // e12a-e14 (R1, G93): a call while c lives. e12a: A4's Limit (f's summary past A4's bound; f only reads State.count) is a located
+    // Unsupported_Kd, never a Language error; e12b: with c dead, nothing; e12c: Limit and Unknown, Unknown decides. e13a: f's only unknown is
+    // Derived (a callee resting on an error, an Opaque site, R4-M10): A5 reports nothing, the program's error being that site's, outside A5;
+    // e13b: Derived and a write key, whose conflict stays. e14: Unknown with c dead.
+    static Case Classes(string id)
+    {
+        var c = S(id, id switch
+        {
+            "e12a" => "`let c = State.count@ref; f(); inspect(c)` (f: A4's Limit; f reads State.count)",
+            "e12b" => "`let c = State.count@ref; inspect(c); f()` (f: A4's Limit)",
+            "e12c" => "`let c = State.count@ref; f(); inspect(c)` (f: Limit and Unknown)",
+            "e13a" => "`let c = State.count@ref; f(); inspect(c)` (f: Derived only)",
+            "e13b" => "`let c = State.count@ref; f(); inspect(c)` (f: Derived, and it writes State.count)",
+            _ => "`let c = State.count@ref; inspect(c); g()` (g: unknown effects)",
+        } + " (P42)", Count);
+        bool dead = id is "e12b" or "e14";
+        var call = id == "e14" ? "g()" : "f()";
+        c.N("let c = State.count@ref").Def("c").Borrow("Lc", Count, Ref, "c");
+        if (dead) c.N("inspect(c)").Input(K.Read, "c");
+        var n = c.N(call).Fx(unknown: id is "e12c" or "e14", limit: id.StartsWith("e12"), derived: id.StartsWith("e13"));
+        if (id is "e12a" or "e13b") n.Key(Count, write: id == "e13b");
+        if (!dead) c.N("inspect(c)").Input(K.Read, "c");
+        if (id == "e12a") c.UnsuppAt = [call];
+        return id is "e12c" or "e13b" ? c.Error(call) : c.Valid();
+    }
+
+    // e15, e15b (SPEC 16.3.3: in a generic body, destroying an abstract non-Copy Type is unknown for the body's own checks): sink<U>(v: U)
+    // destroys v, a parameter-dependent effect f composes with its own T.
+    static Case Generic(string id, bool copy)
+    {
+        var c = S(id, $"`func f<T>(x: T){(copy ? " where T is Copy" : "")} => State.count += sink(x)` (sink<U>(v: U) destroys v: {(copy ? "nothing for a Copy T" : "unknown in f")})", Count);
+        c.N("entry (x: T)").Param("Lpx", "x");
+        c.N("$w = TwoPhaseUniq(State.count) (writeback)").Def("$w").Borrow("Lw", Count, Uniq, "$w", reserve: true);
+        var n = c.N("$v = sink(move x)").Def("$v").Input(K.Move, "x");
+        if (!copy) n.Fx(unknown: true);
+        c.N("(*$w) = (*$w) + $v (activates Lw)").A(K.Read, "$w.*").Activate("Lw").Through("$w.*", "$v");
+        return copy ? c.Valid() : c.Error("$v = sink(move x)");
+    }
+
+    // e16a-e16c (G136's lemma, PD12 (iv)): a static's whole write hits every live Loan on it, so whether it also ends them changes no
+    // verdict: e16a errs at the write either way; e16b's second write meets Lc again only where the first ends nothing; e16c: c dead.
+    static Case Lemma(string id)
+    {
+        var c = S(id, id switch
+        {
+            "e16a" => "`var c = State.count@ref; State.count = 5; inspect(c)`",
+            "e16b" => "`var c = State.count@ref; State.count = 5; State.count = 6; inspect(c)`",
+            _ => "`var c = State.count@ref; inspect(c); State.count = 5`",
+        } + " (P42)", Count);
+        c.N("var c = State.count@ref").Def("c").Borrow("Lc", Count, Ref, "c");
+        if (id == "e16c") c.N("inspect(c)").Input(K.Read, "c");
+        c.N("State.count = 5").Assign(Count);
+        if (id == "e16b") c.N("State.count = 6").Assign(Count);
+        if (id != "e16c") c.N("inspect(c)").Input(K.Read, "c");
+        return id switch { "e16a" => c.Error("State.count = 5"), "e16b" => c.Error("State.count = 5", "State.count = 6"), _ => c.Valid() };
+    }
+
+    // e17 (R4-M73: err(effect) reports through the common rule): e11's conflict in a held body, where storeL stores past lh, a ByArgument
+    // holder (round 16's closureRoute prefix), is the located Unsupported_Kd.
+    static Case Held()
+    {
+        var c = S("e17", "`var z = x@ref; var w = z@ref; var lh = Loan.init(w@uniq); var b = x@ref; storeL(lh@uniq, b@ref); let c = State.count@ref; g(); inspect(c)` (held; P42)", Count);
+        c.N("var x = 1").Def("#x");
+        c.N("var z = x@ref").Def("z").Borrow("Lx", "#x", Ref, "z");
+        c.N("var w = z@ref").Def("w").Borrow("Lz", "z", Ref, "w");
+        c.N("$1 = &uniq two-phase w").Def("$1").Borrow("Lw", "w", Uniq, "$1", reserve: true);
+        c.N("var lh = Loan.init(move $1)").Def("lh").Input(K.Move, "$1").Activate("Lw").Flow("$1", "lh").Flow("$1.*", "lh");
+        c.N("var b = x@ref").Def("b").Borrow("Lb0", "#x", Ref, "b");
+        c.N("$p = &uniq two-phase lh").Def("$p").Borrow("Lp", "lh", Uniq, "$p", reserve: true);
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        c.N("storeL(move $p, move $v)").Input(K.Move, "$p").Input(K.Move, "$v").Activate("Lp").Store("$p", "$p", true, 1).Store("$p", "$v", false, 1);
+        c.N("let c = State.count@ref").Def("c").Borrow("Lc", Count, Ref, "c");
+        c.N("g()").Fx(unknown: true);
+        c.N("inspect(c)").Input(K.Read, "c");
+        c.SharedOnly.UnionWith(["z", "w", "b"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = ["g()"];
+        return c.Error();
+    }
+}
+
+// ---- Round 18 (G124): SPEC 15.2.4's Transferable for a confined witness's read of an immutable static (SPEC 8.11.2: an environment effect
+// unless the static's Type is proven Transferable), against the compiler's MirTypes.HoldsRaw (RawStaticRead: a raw, rc or Weak part at any
+// depth, a Kimi collection's own raw pointers included; no Function Type, view or abstract rule). K: scalar; raw, rc, weak (of an rc); fn,
+// a common Function Type; view, an object view of an open base or a runtime Contract (Name: its declared fields, if any); obj, a handle of a
+// Sealed View Target; coll, a Kimi collection or standard iterator (Parts: its elements); abstract (Name "Transferable": a premise); struct
+// and enum (Name: Decl's fields or payloads, recursion allowed).
+record Ty(string K, string Name, Ty[] Parts)
+{
+    public static Ty Of(string k, string name = null, params Ty[] parts) => new(k, name, parts);
+}
+
+static class R18G
+{
+    static readonly Ty I32 = Ty.Of("scalar"), RcItem = Ty.Of("rc", null, Ty.Of("struct", "Item"));
+    static readonly Dictionary<string, Ty[]> Decl = new()
+    {
+        ["Base"] = [I32], ["Item"] = [I32],
+        ["Hook"] = [Ty.Of("enum", "Option<obj/Hook>"), Ty.Of("fn")], ["Option<obj/Hook>"] = [Ty.Of("obj", "Hook")],
+        ["Chain"] = [Ty.Of("enum", "Option<obj/Chain>"), I32], ["Option<obj/Chain>"] = [Ty.Of("obj", "Chain")],
+    };
+    public static readonly (string Id, string Text, Ty Type, bool SpecErr)[] All = [
+        ("g1", "`obj/Base` (a base-object view)", Ty.Of("view", "Base"), true),
+        ("g2", "`obj/Shape` (a runtime-Contract view)", Ty.Of("view", "Shape"), true),
+        ("g3", "`() -> ()` (a common Function Type)", Ty.Of("fn"), true),
+        ("g4", "abstract `T` without a premise", Ty.Of("abstract"), true),
+        ("g5", "`Array<i32>` (the collections' exception)", Ty.Of("coll", "Array", I32), false),
+        ("g6", "`rc/Item` (SPEC 8.11.2's `Shared.node`)", RcItem, true),
+        ("g7", "`i32` (SPEC 8.11.2's `Shared.limit`)", I32, false),
+        ("g8", "`Array<rc/Item>` (an element refutes)", Ty.Of("coll", "Array", RcItem), true),
+        ("g9", "`T` where `T is Transferable`", Ty.Of("abstract", "Transferable"), false),
+        ("g10", "`Hook {next: Option<obj/Hook>, f: () -> ()}` (a cycle hides nothing)", Ty.Of("struct", "Hook"), true),
+        ("g11", "`Chain {next: Option<obj/Chain>, v: i32}` (a cycle ends)", Ty.Of("struct", "Chain"), false)];
+
+    // 0 Proven, 1 Unknown, 2 Refuted: the worst over OwnedOrigins' components, concrete object payloads included.
+    public static int Transferable(Ty t, HashSet<string> seen = null)
+    {
+        seen ??= new();
+        return t.K switch
+        {
+            "rc" or "weak" or "raw" or "fn" or "view" => 2,
+            "abstract" => t.Name == "Transferable" ? 0 : 1,
+            "obj" or "struct" or "enum" => seen.Add(t.Name) ? Decl[t.Name].Max(p => Transferable(p, seen)) : 0,
+            _ => t.Parts.Select(p => Transferable(p, seen)).DefaultIfEmpty(0).Max(), // a collection's own raw pointers are exempt
+        };
+    }
+
+    public static bool HoldsRaw(Ty t, HashSet<string> seen = null)
+    {
+        seen ??= new();
+        return t.K switch
+        {
+            "rc" or "weak" or "raw" or "coll" => true,
+            "fn" or "abstract" => false,
+            "view" or "obj" or "struct" or "enum" => Decl.ContainsKey(t.Name) && seen.Add(t.Name) && Decl[t.Name].Any(p => HoldsRaw(p, seen)),
+            _ => t.Parts.Any(p => HoldsRaw(p, seen)),
+        };
     }
 }
