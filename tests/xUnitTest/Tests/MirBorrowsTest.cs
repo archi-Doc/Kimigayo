@@ -274,6 +274,36 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(r)
                 """));
 
+    // SPEC 4.3.3, 4.4.2, 15.6 (DECISIONS R4-M81): a fill holds its value's Loans, at a generic length (which may be positive), at a
+    // constant one and at length 0 (the owner's Q2: the value is acquired once even then), so a write while the array lives conflicts
+    // (fail-before: the generic fill was an Opaque value and the zero-length one had no operand, neither a problem).
+    [Fact]
+    public void AFillCarriesItsValuesLoans()
+        => Assert.Equal(
+            ["generic: x = 2", "constant: x = 2", "zero: x = 2"],
+            Problems("""
+                func generic<length N>()
+                    var x = 1
+                    let a = [N of x@ref]
+                    x = 2
+                    let b = a
+                func constant()
+                    var x = 1
+                    let a = [3 of x@ref]
+                    x = 2
+                    let b = a
+                func zero()
+                    var x = 1
+                    let a = [0 of x@ref]
+                    x = 2
+                    let b = a
+                func afterLastUse()
+                    var x = 1
+                    let a = [3 of x@ref]
+                    let b = a
+                    x = 2
+                """));
+
     // SPEC 15.1.6, 15.6 (DECISIONS R5-M38): a pattern binding of a Never payload borrows the subject in place and keeps that Loan, so a
     // write to the subject while the binding lives conflicts, in an arm that never runs too.
     [Fact]

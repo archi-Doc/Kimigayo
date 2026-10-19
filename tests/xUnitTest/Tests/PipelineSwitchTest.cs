@@ -17,8 +17,8 @@ namespace XunitTest;
 /// generation records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
-    // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
-    private const string Source = "func filled<length N>(value: i32) -> [N of i32] => [N of value]\nlet values = filled<2>(1)\n";
+    // A position of a Type parameter is the MIR's one Unsupported record here, a form the old path accepts, until PLAN G167 builds it.
+    private const string Source = "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\nlet x = at([1, 2, 3], 1@u8)\n";
 
     // The default is the pipeline KIMI_PIPELINE names, legacy when unset; any other value is a configuration error, not a fallback.
     [Fact]
@@ -276,11 +276,11 @@ public sealed class PipelineSwitchTest
         Assert.False(c.Analyze().IsVerified);
         var problem = Assert.Single(c.Problems);
         Assert.Equal(DiagnosticCode.Unsupported_Kd, problem.Code);
-        Assert.Equal("[N of value]", c.SyntaxOf(problem.Subject).ToString());
+        Assert.Equal("p", c.SyntaxOf(problem.Subject).ToString());
         Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "[N of value]"), (record.Code, record.Text));
+        Assert.Equal(("Unsupported_Kd", "p"), (record.Code, record.Text));
         Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         Assert.Contains("MIR", failure);
         Assert.False(c.Validate(out _));
