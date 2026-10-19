@@ -3826,3 +3826,16 @@ structure is recorded here by the unit that first implements it.
     twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
     but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
     next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.
+- **R5-M81 The pending ledger's gate** (2026-10-19, E lane; plan E11, PD10, OQ9; under R5-M8, R5-M66 and R5-M73; removed with the
+  ledger at G4, OQ9) Under `-Codegen mir` a run passes only when its failing set equals the ledger within its scope (R5-M66's
+  coverage): an entry that passes now, is no longer executed or is added fails it. The verdict is the `codegen pending` step's, after
+  the tests, native steps and milestones (a fixture's state needs every native step); the sel test and native steps fail only on
+  missing evidence (no executed case, a selector executing none, a run error the results record, a selected fixture without a result),
+  so listed fixtures run. A sel Session discovers its methods too, and a selected method the results record no case of (a partial run)
+  fails the step without a report. `verify.ps1 -UpdatePending` (sel only) writes the ledger from the run's `codegen-pending.json`
+  after the input-stability step, and only when the gate is the run's one failed step: pending and out-of-scope rows stay in their
+  files, rows that pass now or are no longer executed leave, and an added row is filed by R5-M73's rule, whose one owner is
+  `Get-KimiCodegenGroup` (`scripts/codegen-pending.ps1`); an unchanged file is not written, an emptied one is removed, and that run is
+  not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
+  - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
+    input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
