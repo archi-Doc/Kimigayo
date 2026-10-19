@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -10,12 +11,14 @@ namespace Kimi.Compiler;
 internal sealed partial class BodyLowering
 {
     private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelpers = new();
-    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), ArrayHelper> arrayHelperCache = new();
+    private readonly Dictionary<(ArrayHelperKind Kind, int Layout, string Scalar, int Remainder, int Option, RemainderFields Fields), CachedArrayHelper>
+        arrayHelperCache = new();
+
     private bool arrayRuntimeUsed;
 
     private readonly record struct ArrayElement(BoundType Type, ValueLowering Value, AggregateLayout? Layout, bool IsString)
     {
-        internal bool IsScalar => this.Layout is null && !this.IsString && !ReferenceEquals(this.Type, BoundType.Unit);
+        internal bool IsScalar => StoredValue.TravelsAsScalar(this.Value);
 
         // A zero-sized value (Unit or an empty aggregate) has no slot, so its helpers take no value or result pointer.
         internal bool IsZeroSized => this.Value.Layout.Size == 0;
@@ -23,7 +26,17 @@ internal sealed partial class BodyLowering
         internal bool NeedsDestruction => this.IsString || this.Layout?.NeedsDestruction == true;
 
         internal long Stride => this.Value.Layout.Stride;
+
+        // The Backend element descriptor of the helpers; an aggregate that needs destruction is destroyed by its layout's routine.
+        internal StoredValue ToStored()
+        {
+            var drop = this.Layout is { NeedsDestruction: true } layout ? "__kimi_drop_aggregate" + layout.Id.ToString(CultureInfo.InvariantCulture) : null;
+            return new(this.Value, drop, this.IsString);
+        }
     }
+
+    // A cached helper with the Option and remainder records it was built from, which a cache hit must match.
+    private readonly record struct CachedArrayHelper(ArrayHelper Helper, AggregateLayout? Option, AggregateLayout? Remainder);
 
     // SPEC 22.2: the storage boundary writes a remainder record {storage, position, count[, capacity]} by Field name.
     private static RemainderFields GetRemainderFields(AggregateLayout layout, BoundType type, bool capacity)
@@ -58,13 +71,13 @@ internal sealed partial class BodyLowering
         element = default;
         if (ReferenceEquals(type, BoundType.Unit))
         {
-            element = new(type, WindowsLowering.Unit, null, false);
+            element = new(type, RuntimeAbi.Unit, null, false);
             return true;
         }
 
         if (ReferenceEquals(type, BoundType.String))
         {
-            element = new(type, WindowsLowering.String, null, true);
+            element = new(type, RuntimeAbi.String, null, true);
             return true;
         }
 
@@ -100,63 +113,22 @@ internal sealed partial class BodyLowering
         }
 
         // Keep syntax-free physical helpers across warm emission, but register only this module's used helpers.
-        if (this.arrayHelperCache.TryGetValue(key, out existing) && ReferenceEquals(existing.Option, option) && ReferenceEquals(existing.Remainder, remainder))
+        if (this.arrayHelperCache.TryGetValue(key, out var cached) && ReferenceEquals(cached.Option, option) && ReferenceEquals(cached.Remainder, remainder))
         {
-            this.arrayHelpers.Add(key, existing);
-            return existing;
+            this.arrayHelpers.Add(key, cached.Helper);
+            return cached.Helper;
         }
 
+        // The name follows the kind row's prefix with this pool's element and record ids; the row shapes the ABI.
         var suffix = element.Layout is { } layout ? "a" + layout.Id.ToString(CultureInfo.InvariantCulture) : element.IsString ? "string" : element.Value.ComputationType;
-        var prefix = kind switch
-        {
-            ArrayHelperKind.Append => "__kimi_array_append_",
-            ArrayHelperKind.Insert => "__kimi_array_insert_",
-            ArrayHelperKind.Pop => "__kimi_array_pop_",
-            ArrayHelperKind.Remove => "__kimi_array_remove_",
-            ArrayHelperKind.Place => "__kimi_array_place_",
-            ArrayHelperKind.Clear => "__kimi_array_clear_",
-            ArrayHelperKind.Swap => "__kimi_array_swap_",
-            ArrayHelperKind.BorrowStorage => "__kimi_array_borrow_",
-            ArrayHelperKind.OwnStorage => "__kimi_array_own_",
-            ArrayHelperKind.OwnFixedStorage => "__kimi_fixed_own_",
-            _ => "__kimi_array_drop_",
-        };
         var records = remainder is null ? string.Empty : "_r" + remainder.Id.ToString(CultureInfo.InvariantCulture) + (option is null ? string.Empty : "_o" + option.Id.ToString(CultureInfo.InvariantCulture));
-        var name = prefix + suffix + records;
-        var valueType = element.IsScalar ? element.Value.ComputationType : "ptr";
-        var handle = new AbiParameter("ptr", "handle");
-        var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
-        var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
-        var unit = WindowsLowering.Unit.ComputationType;
-        var indexParameter = new AbiParameter("i64", "index");
-        FunctionAbi abi = kind switch
-        {
-            ArrayHelperKind.Append when element.IsZeroSized => new(name, unit, [handle, location, length]),
-            ArrayHelperKind.Append => new(name, unit, [handle, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Insert when element.IsZeroSized => new(name, unit, [handle, indexParameter, location, length]),
-            ArrayHelperKind.Insert => new(name, unit, [handle, indexParameter, new(valueType, "value"), location, length]),
-            ArrayHelperKind.Pop => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.Place when element.IsZeroSized => new(name, unit, [handle, location, length]),
-            ArrayHelperKind.Place => new(name, unit, [handle, new("ptr", "source"), location, length]),
-            ArrayHelperKind.Remove => element.IsScalar
-                ? new(name, element.Value.ComputationType, [handle, indexParameter, location, length])
-                : element.IsZeroSized
-                ? new(name, unit, [handle, indexParameter, location, length])
-                : new(name, unit, [handle, indexParameter, new("ptr", "result", AbiParameterKind.ResultSlot), location, length], resultSlot: true),
-            ArrayHelperKind.Swap => new(name, unit, [handle, new("i64", "first"), new("i64", "second"), location, length]),
-            ArrayHelperKind.BorrowStorage => new(name, unit, [handle, new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnStorage => new(name, unit, [new("ptr", "value"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnFixedStorage when fields.StorageSize == 0 => new(name, unit, [new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            ArrayHelperKind.OwnFixedStorage => new(name, unit, [new("ptr", "value"), new("i64", "count"), new("ptr", "result", AbiParameterKind.ResultSlot)], resultSlot: true),
-            _ => new(name, unit, [handle, location, length]),
-        };
-        var helper = new ArrayHelper(kind, abi, element.Value, element.Layout, element.IsString, option, remainder, fields);
-        this.arrayHelperCache[key] = helper;
+        var helper = ArrayHelper.Create(kind, element.ToStored(), suffix, records, option?.PayloadOffset, fields);
+        this.arrayHelperCache[key] = new(helper, option, remainder);
         this.arrayHelpers.Add(key, helper);
         return helper;
     }
 
-    private bool LowerArrayOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerArrayOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -187,7 +159,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        if (kind != CompilerFunctionKind.ArrayPop && !function.Abi.CallerLocation && !this.TryGetLocation(call, directory, constants, out location))
+        if (kind != CompilerFunctionKind.ArrayPop && !function.Abi.CallerLocation && !this.TryGetLocation(call, constants, out location))
         {
             return Fail("An Array operation has no diagnostic source location.", out failure);
         }
@@ -200,13 +172,14 @@ internal sealed partial class BodyLowering
 
         this.callOperands.Clear();
         this.callOperands.Add(handle);
-        this.arrayRuntimeUsed = true;
         FunctionAbi callee;
         switch (kind)
         {
             case CompilerFunctionKind.ArrayReserve:
             case CompilerFunctionKind.ArrayShrinkToFit:
-                callee = kind == CompilerFunctionKind.ArrayReserve ? WindowsLowering.ArrayReserve : WindowsLowering.ArrayShrink;
+                // The capacity routines have no helper row (X39); every helper kind joins its row's needs.
+                this.arrayRuntimeUsed = true;
+                callee = kind == CompilerFunctionKind.ArrayReserve ? RuntimeAbi.ArrayReserve : RuntimeAbi.ArrayShrink;
                 this.callOperands.Add(new(EmissionOperandKind.Integer, element.Stride));
                 if (kind == CompilerFunctionKind.ArrayReserve)
                 {
@@ -321,7 +294,7 @@ internal sealed partial class BodyLowering
 
     // SPEC 22.2: borrowStorage and ownStorage transfer the Array handle to a remainder; lend and split
     // publish one pointer-backed capability. The source functions advance the untaken range.
-    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerStorageOperation(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -344,7 +317,7 @@ internal sealed partial class BodyLowering
 
         if (kind == CompilerFunctionKind.StoragePlaceDictionaryEntry)
         {
-            return this.LowerDictionaryPlacement(body, function, constants, directory, id, call, plan, out failure);
+            return this.LowerDictionaryPlacement(body, function, constants, id, call, plan, out failure);
         }
 
         if (kind is CompilerFunctionKind.StorageTryAllocateBytes or CompilerFunctionKind.StorageTransferBytes)
@@ -361,13 +334,13 @@ internal sealed partial class BodyLowering
 
             var reason = kind switch
             {
-                CompilerFunctionKind.StorageIndexBounds => WindowsLowering.IndexBoundsReason,
-                CompilerFunctionKind.StorageMissingDictionaryKey => WindowsLowering.MissingKeyReason,
-                CompilerFunctionKind.StorageCountOverflow => WindowsLowering.IntegerOverflowReason,
-                CompilerFunctionKind.StorageAllocationSizeExceeded => WindowsLowering.AllocationSizeReason,
-                _ => WindowsLowering.ArgumentRangeReason,
+                CompilerFunctionKind.StorageIndexBounds => AbortReasons.IndexBounds,
+                CompilerFunctionKind.StorageMissingDictionaryKey => AbortReasons.MissingKey,
+                CompilerFunctionKind.StorageCountOverflow => AbortReasons.IntegerOverflow,
+                CompilerFunctionKind.StorageAllocationSizeExceeded => AbortReasons.AllocationSize,
+                _ => AbortReasons.ArgumentRange,
             };
-            function.AddCall(id, WindowsLowering.Abort, [new(EmissionOperandKind.Integer, reason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
+            function.AddCall(id, RuntimeAbi.Abort, [new(EmissionOperandKind.Integer, reason), new(EmissionOperandKind.CallerLocation, 0), new(EmissionOperandKind.CallerLocationLength, 0), new(EmissionOperandKind.Integer, -2)]);
             function.Add(EmissionOpcode.Unreachable, id);
             return true;
         }
@@ -451,7 +424,6 @@ internal sealed partial class BodyLowering
             return Fail(failure ?? "Storage operation result is not a stored record.", out failure);
         }
 
-        this.arrayRuntimeUsed |= owning;
         var helper = this.GetArrayHelper(owning ? ArrayHelperKind.OwnStorage : ArrayHelperKind.BorrowStorage, element, remainder: result, fields: GetRemainderFields(result, returnType, owning));
         this.callOperands.Clear();
         this.callOperands.Add(pointer);

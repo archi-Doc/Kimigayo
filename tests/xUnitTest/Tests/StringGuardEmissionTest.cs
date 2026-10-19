@@ -38,8 +38,7 @@ public class StringGuardEmissionTest
     {
         var suffix = source.Contains("forever(s)", StringComparison.Ordinal) ? "Borrow" : "Plain";
         var ir = ScalarEmissionTest.EmitFixture("StringGuardDivergent" + suffix, source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]
@@ -60,7 +59,7 @@ public class StringGuardEmissionTest
     {
         const string Source = Same + "match \"subject\"@move\n    let s if same(s, \"other\") => ()\n    let s if same(s, \"subject\") => Console.writeLine(s)\n    _ => ()";
         var ir = ScalarEmissionTest.EmitFixture("StringGuardLifetime", Source, "subject\n");
-        StringEmissionTest.WriteAuditedFixture("StringGuardLifetime", Source, ir, "subject\n", "subject=2;other=1", order: [1, 0, 0]);
+        StringEmissionTest.WriteAuditedFixture("StringGuardLifetime", ir, "subject\n", "subject=2;other=1", order: [1, 0, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[0];
@@ -148,6 +147,6 @@ public class StringGuardEmissionTest
         const string Error = "Hello.kimi:2:18: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var name = temporary ? "StringGuardTemporaryAbort" : "StringGuardAbort";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, "held=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, "held=0", 1, Error);
     }
 }

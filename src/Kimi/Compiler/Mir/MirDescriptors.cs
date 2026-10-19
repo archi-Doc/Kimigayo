@@ -42,8 +42,10 @@ internal enum MirEffect : ushort
 }
 
 /// <summary>A row of the descriptor table: the access a kind makes, its effects, and for an intrinsic its arity (-1: its lowering
-/// defines it later) and whether it diverges. A kind without a row is not <see cref="Defined"/>.</summary>
-internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, bool Diverges);
+/// defines it later), whether it diverges and the operand the builder adds beyond its declaration whose value its result retains
+/// (<see cref="RetentionKind.Value"/>; -1: none; A3 E14), which the declaration's retention does not cover. A kind without a row is not
+/// <see cref="Defined"/>.</summary>
+internal readonly record struct MirDescriptor(bool Defined, MirAccess Access, MirEffect Effects, sbyte Arity, bool Diverges, sbyte Retained);
 
 /// <summary>A position in a body: the statement at an index of a block, or its terminator at the index after the last statement.</summary>
 internal readonly record struct MirLocation(int Block, int Index);
@@ -63,7 +65,8 @@ internal interface IMirUses
 
     /// <summary>Effects of the location.</summary>
     /// <param name="effects">The effects.</param>
-    /// <param name="site">The Opaque site of an Unknown effect, else -1.</param>
+    /// <param name="site">The Opaque site of an Unknown effect, the static's index in <see cref="MirBody.Statics"/> of a static
+    /// effect, else -1.</param>
     void Effect(MirEffect effects, int site);
 }
 
@@ -133,7 +136,8 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, Fail's being its SPEC 22.5.2 code as a string constant.
+    // The intrinsic table's rows (plan 5.8): arguments as the library declares them, then those the builder adds: Fail's SPEC 22.5.2
+    // code as a string constant and RawSlice's backing (DECISIONS R4-M40), which its result retains (A3 E14, R4-M63).
     internal static MirDescriptor Of(IntrinsicId id) => id switch
     {
         IntrinsicId.RawAllocate => Row(MirAccess.None, MirEffect.Allocation, 1),
@@ -143,7 +147,7 @@ internal static class MirDescriptors
         IntrinsicId.MakeRc => Row(MirAccess.None, MirEffect.Allocation, 1),
         IntrinsicId.MakeArc => Row(MirAccess.None, MirEffect.Allocation, 1),
         IntrinsicId.RawInitialize => Row(MirAccess.None, MirEffect.None, 2),
-        IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 2),
+        IntrinsicId.RawSlice => Row(MirAccess.None, MirEffect.None, 3, retained: 2), // The storage, the length and the backing (DECISIONS R4-M40).
         IntrinsicId.MoveBytes => Row(MirAccess.None, MirEffect.None, 3),
         IntrinsicId.Stride => Row(MirAccess.None, MirEffect.None, 0),
         // Capacity: a handle's view.
@@ -173,12 +177,13 @@ internal static class MirDescriptors
         _ => default,
     };
 
-    private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false) => new(
+    private static MirDescriptor Row(MirAccess access, MirEffect effects, sbyte arity = -1, bool diverges = false, sbyte retained = -1) => new(
         Defined: true,
         access,
         effects,
         arity,
-        diverges);
+        diverges,
+        retained);
 }
 
 /// <summary>The one enumeration of what a location reads, writes, moves, borrows, defines, kills and destroys, and of its effects, by the
@@ -374,7 +379,7 @@ internal static class MirUses
                 effect = entry.RawHolding && !entry.Mutable ? MirEffect.StaticRead | MirEffect.RawStaticRead : MirEffect.StaticRead;
             }
 
-            Effect(effect, -1, ref visitor);
+            Effect(effect, ~place.Root, ref visitor);
         }
     }
 

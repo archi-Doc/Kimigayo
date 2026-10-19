@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns MIR bodies by definition key, the records of construction and validation, and the problems and drop table the analyses find.
-// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey and numbered in order, and a callee's body.
+// Input: built definitions, findings and problems. Output: reusable bodies identified by MirDefKey and numbered in order, the body a callee
+// runs (Callee) and the initializer a staticEnsure names (StaticInit).
 // One key identifies one body; warm rebuilding reuses body storage.
 // Must not re-bind definitions or maintain a second body map in a consumer.
 
@@ -35,7 +36,8 @@ internal sealed class MirProgram
     internal ulong Version { get; set; }
 
     /// <summary>Gets the located records of construction, one per code and location, which the <c>mir</c> pipeline publishes: an
-    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2) and the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource).</summary>
+    /// Unsupported form's <c>Unsupported_Kd</c> (plan 6.2), the default expansion limit's <c>DefaultExpansionLimit_Kd</c> (Resource), and
+    /// a broken HIR contract's <c>InternalInvariant_Kd</c> (a node the publisher found without its Op's facts; DECISIONS R4-M61).</summary>
     internal List<Problem> Records { get; } = [];
 
     /// <summary>Gets the validator's findings, which the <c>mir</c> pipeline publishes as <c>InternalInvariant_Kd</c>.</summary>
@@ -57,6 +59,15 @@ internal sealed class MirProgram
     internal MirBody? Callee(in MirCallee callee) => callee.Arg > 0 ? this[new(callee.Symbol, MirBodyKind.DefaultTemplate, callee.Arg - 1)]
         : this[new(callee.Symbol, MirBodyKind.Fn)] ?? this[new(callee.Symbol, MirBodyKind.Getter)] ?? this[new(callee.Symbol, MirBodyKind.Setter)];
 
+    /// <summary>Gets the initializer a <c>staticEnsure</c> names (plan 5.6.6): the StaticInit body of the static whose index in the calling
+    /// body's statics the call's operand holds as a constant. The builder ensures only statics whose initializer it builds, so a consumer
+    /// treats null as a broken contract (<c>InternalInvariant_Kd</c>).</summary>
+    /// <param name="body">The calling body.</param>
+    /// <param name="operand">The staticEnsure call's operand.</param>
+    /// <returns>The body, null only when the contract is broken.</returns>
+    internal MirBody? StaticInit(MirBody body, in MirOperand operand)
+        => this[new(body.Statics[(int)body.Consts[operand.Arg].Bits].Symbol, MirBodyKind.StaticInit)];
+
     internal void Clear()
     {
         this.bodies.Clear();
@@ -68,7 +79,7 @@ internal sealed class MirProgram
 
     /// <summary>Records a problem of construction at its location, once however many bodies meet it.</summary>
     /// <param name="site">The syntax.</param>
-    /// <param name="code">An Unsupported form, or the default expansion limit.</param>
+    /// <param name="code">An Unsupported form, the default expansion limit, or a broken HIR contract.</param>
     internal void Report(SourceRef site, DiagnosticCode code = DiagnosticCode.Unsupported_Kd)
     {
         if (this.reported.Add(new(code, site)))

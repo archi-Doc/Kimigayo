@@ -35,6 +35,6 @@ public class ReferenceReplacementTest
     {
         var fixture = "ReferenceReplacement" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(fixture, source, ir, stdout, destructions);
+        StringEmissionTest.WriteAuditedFixture(fixture, ir, stdout, destructions);
     }
 }

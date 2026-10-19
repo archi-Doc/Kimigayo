@@ -18,7 +18,8 @@ internal enum MirStatementKind : byte
     StorageLive, // The storage of a Var or Temp local begins; its value is uninitialized.
     StorageDead, // The storage of a Var or Temp local ends.
     FakeRead, // The Place is read for the analyses only (a match subject, a discarded value); nothing is generated.
-    EndBorrow, // The Loans a reference local holds end (an abandoned comparison, reservation or guard borrow).
+    EndBorrow, // A use of a reference local, after which its carrying ends (an abandoned comparison or reservation, which ends unactivated);
+    // at a guard candidate's cleanup its guard-local Origin ends, so no value used afterwards may keep it (design A3 E7).
 }
 
 /// <summary>A MIR rvalue (plan 5.4). Abort on a failed check is implicit in the rvalue; Proven marks a check IMPL 21.3.3 omits.</summary>
@@ -110,7 +111,7 @@ internal enum MirRefKind : byte
 {
     Shared,
     Uniq,
-    TwoPhaseUniq, // Reserved at the borrow and activated at the Call that uses it.
+    TwoPhaseUniq, // Reserved at the borrow, activated at the Call that uses it or at the write through it (a compound update's writeback).
     Raw, // An address, through an immediately ending shared borrow (SPEC 5.4).
 }
 
@@ -156,13 +157,14 @@ internal enum MirLocalKind : byte
     DropFlag,
 }
 
-/// <summary>Why a local exists, for mapping a finding to its diagnostic code only.</summary>
+/// <summary>Why a local exists, which maps a finding to its diagnostic code; a guard candidate's role also decides A5's guard-local
+/// Origin (design A3 E7).</summary>
 internal enum MirLocalRole : byte
 {
     None,
     PreparedInput, // A parameter a later default reads (SPEC 7.2.3).
     PendingSlot, // A prepared argument slot of an inline default.
-    GuardCandidate,
+    GuardCandidate, // A match guard's candidate binding: its value carries γ, which its EndBorrow ends (SPEC 14.8.3, err(ended)).
     Subject, // A match subject.
 }
 

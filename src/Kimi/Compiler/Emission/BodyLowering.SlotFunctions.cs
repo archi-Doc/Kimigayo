@@ -53,7 +53,8 @@ internal sealed partial class BodyLowering
                 return Fail("Parameter storage does not match its logical signature.", out failure);
             }
 
-            if (body.DefaultParameter >= 0 || (FunctionAbi.GetValue(place.Type, this.aggregateLayouts)?.Layout.Size > 0 && !ReferenceTypes.IsString(place.Type) && !this.IsMaterializedScalar(place.Id)))
+            if (body.DefaultParameter >= 0 ||
+                (FunctionAbiPool.GetValue(place.Type, this.aggregateLayouts)?.Layout.Size > 0 && !ReferenceTypes.IsString(place.Type) && !this.IsMaterializedScalar(place.Id)))
             {
                 function.SlotAddresses[place.Id] = new(EmissionOperandKind.Argument, i);
             }
@@ -90,7 +91,7 @@ internal sealed partial class BodyLowering
             var place = body.Places[p];
             if (place.Kind == OwnershipPlaceKind.Result && ReferenceEquals(place.Source, body.Function) && SlotTypes.IsResult(place.Type))
             {
-                if (function.Abi.ResultSlot != FunctionAbi.HasResultSlot(place.Type, this.aggregateLayouts) || ++returns != 1)
+                if (function.Abi.ResultSlot != FunctionAbiPool.HasResultSlot(place.Type, this.aggregateLayouts) || ++returns != 1)
                 {
                     return Fail("Stored return storage has no unique ABI result slot.", out failure);
                 }

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -12,7 +13,7 @@ internal sealed partial class BodyLowering
             body.Resolve(conforming, InterpretationContext.Root) is { } self && ArithmeticContracts.Supports(self, identity)
             ? NumericArithmetic.Check(ArithmeticContracts.Operator(identity), self) : ArithmeticCheckKind.None;
 
-    private bool LowerBuiltinArithmetic(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, CallPlan call, int id, out string? failure)
+    private bool LowerBuiltinArithmetic(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, CallPlan call, int id, out string? failure)
     {
         failure = null;
         if (body.Resolve(call.ConformingType, InterpretationContext.Root) is not { } self ||
@@ -42,7 +43,7 @@ internal sealed partial class BodyLowering
 
         var check = NumericArithmetic.Check(operation, self);
         var location = -1;
-        if (this.checks[id] != check || (check != ArithmeticCheckKind.None && !this.TryGetLocation(body.Operations[id].Source, directory, constants, out location)))
+        if (this.checks[id] != check || (check != ArithmeticCheckKind.None && !this.TryGetLocation(body.Operations[id].Source, constants, out location)))
         {
             return Fail("Arithmetic witness check has no matching continuation or source location.", out failure);
         }

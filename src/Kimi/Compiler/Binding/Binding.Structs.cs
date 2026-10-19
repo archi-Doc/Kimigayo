@@ -7,88 +7,198 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // PLAN G128's implementation limits on storage preparation (DECISIONS BU-12): the height of a Type's storage, and the Types on the
+    // storage walk's path, the query's root included, which ends a Type that grows. Refused and Capped are the walk's two failures.
+    private const int StorageHeightLimit = 64;
+    private const int StoragePathLimit = 256;
+    private const int StorageRefused = int.MaxValue;
+    private const int StorageCapped = int.MaxValue - 1;
+
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
+
+    // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused), or an open Type's position
+    // on the walk's stack (Open), which every query leaves empty; ResetPass clears both, after a walk a fault aborted too.
+    private readonly Dictionary<BoundType, (int Height, int Open)> storageMarks = new(ReferenceEqualityComparer.Instance);
+    private readonly List<BoundType> storageStack = new();
     private Dictionary<Koto, ConstructorAbsence>? constructorAbsences;
     private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
 
-    internal bool PrepareTypeStorage(BoundType type) => this.PrepareInstantiatedStorage(type, 0);
-
-    internal BoundType? InstantiateStorageType(BoundType type, CallPlan call)
-        => this.InstantiateStorageType(type, call.Target, call.DeclaringType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
-
-    // A declared Type in the instance a substitution of the target's slots makes, which TyCtxt.Apply delegates to until R7 moves it there:
-    // its slots, then its stored Origins substituted, normalized in the target's Constraint scope (a Contract's Self the conforming Type self),
-    // its closures closed, its storage prepared.
-    internal BoundType? InstantiateStorageType(BoundType type, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs, BoundType? self = null)
+    // Whether a Type's storage substitutes completely within PLAN G128's limits (DECISIONS BU-12): its height is at most 64 and no walk
+    // from it passes 256 Types. A refusal marks every Type left open, each of which reaches the refusing part; a capped walk unmarks
+    // them, since the cap depends on the path. Instance substitution never queries storage, so the walk's stack is empty at entry.
+    internal bool PrepareTypeStorage(BoundType type)
     {
-        var result = this.MemberType(type, declaring) is { } member && this.SubstituteType(member, target.Declaration, types, lengths) is { } substituted
-            ? this.SubstituteStoredOrigins(substituted, target.Declaration is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : target.Declaration, origins, inputs) : null;
+        if (this.storageStack.Count != 0)
+        {
+            throw new InvalidOperationException($"Storage preparation of {type.Name} was queried during another storage walk.");
+        }
+
+        var height = this.StorageHeight(type, 1, out _);
+        foreach (var open in this.storageStack)
+        {
+            if (height == StorageRefused)
+            {
+                this.storageMarks[open] = (StorageRefused, 0);
+            }
+            else
+            {
+                this.storageMarks.Remove(open);
+            }
+        }
+
+        this.storageStack.Clear();
+        return height <= StorageHeightLimit;
+    }
+
+    internal BoundType? InstantiateStorageType(BoundType type, CallPlan call) => this.InstantiateStorageType(type, this.types.StorageSubst(call));
+
+    // A declared Type in the instance a substitution makes, which TyCtxt.Apply delegates to until R7 moves it there: its binder's slots, then
+    // its stored Origins substituted, normalized in the binder's Constraint scope (a Contract's Self the conforming Type), its closures closed
+    // in the substitution, its storage prepared.
+    internal BoundType? InstantiateStorageType(BoundType type, Subst subst)
+    {
+        var binder = subst.Binder;
+        var originBinder = binder is FunctionKoto { Accessor: { } accessor } ? accessor.Binder : binder;
+        var result = this.MemberType(type, subst.Declaring) is { } member && this.SubstituteType(member, binder, subst.Types, subst.Lengths) is { } substituted
+            ? this.SubstituteStoredOrigins(substituted, originBinder, subst.Origins, subst.Inputs) : null;
         if (result is not null)
         {
-            result = this.ContractType(result, this.ConstraintScope(target.Declaration), self);
+            result = this.ContractType(result, this.ConstraintScope(binder), subst.Self);
         }
 
-        result = result is null ? null : this.CloseClosureTypes(result, target, declaring, types, lengths, origins, inputs);
-        return result is not null && this.PrepareInstantiatedStorage(result, 0) ? result : null;
+        result = result is null ? null : this.CloseClosureTypes(result, subst);
+        return result is not null && this.PrepareTypeStorage(result) ? result : null;
     }
 
+    // SPEC 6.3.4, 15.1.5, 16.3.1: what the receiver `self` of a constructor or destructor grants, the one decision the Place checks read
+    // (DECISIONS BU-15); null for a node or symbol naming no such receiver. Every special receiver writes its own initialized Fields
+    // (Writable), no part of it gives up a Non-Copy value (CompleteTransfer) and no capture entry takes it (Binding.Closures).
+    // Parts: the authority its path gives every part (PathAuthority). Whole: whether a use of the whole receiver is judged by the
+    // general rules under Parts (BindReference). LendsFields: whether its writable Fields are lent exclusively (BorrowablePlace);
+    // where SPEC lends them but Binding does not, the exclusive borrow is a located Unsupported_Kd (AccessFailure).
+    // - Construction (6.3.4): an owner's path; the whole receiver is never named. Its Fields are not lent exclusively until PLAN
+    //   G166 models the Loans the old analysis and A5 lack (6.3.4's "Field borrows end before completion"); LendsFields then goes.
+    // - Destruction (16.3.1): access equivalent to uniq/Self, so no part offers Take, a Copy one included; of the whole receiver only a
+    //   shared borrow is valid (no Take, Copy, exclusive acquisition or assignment).
+    private static ReceiverAuthority? Receiver(Koto? node) => Receiver((node as IdentifierNameKoto)?.BoundSymbol);
+
+    private static ReceiverAuthority? Receiver(BindingSymbol? symbol)
+        => symbol is { Name: "self", Declaration: FunctionKoto function } ? function switch
+        {
+            { IsConstructor: true } => new(SemanticsKind.Owner, Whole: false, LendsFields: false),
+            { IsDestructor: true } => new(SemanticsKind.Uniq, Whole: true, LendsFields: true),
+            _ => null,
+        } : null;
+
+    // The special receiver at the root of an inline part's path (a Field, Tuple element or constant-index element below it).
+    private static ReceiverAuthority? ReceiverOfPart(Koto place)
+        => KotoHelper.UnwrapParentheses(place) is BinaryKoto part ? Receiver(ElementAccess.OwnedPathRoot(part)) : null;
+
+    // One row of the special-receiver table (Receiver).
+    private readonly record struct ReceiverAuthority(SemanticsKind Parts, bool Whole, bool LendsFields);
+
+    // A member selected directly on a special receiver (`self.f`) and the receiver's function, which the construction rules read (SPEC
+    // 6.3.4, 11.7: own Fields used as storage and placed first).
     private static bool IsSpecialField(Koto node, out FunctionKoto function)
     {
-        if (node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol: { Name: "self", Declaration: FunctionKoto receiver } } } &&
-            (receiver.IsConstructor || receiver.IsDestructor))
-        {
-            function = receiver;
-            return true;
-        }
-
-        function = null!;
-        return false;
+        function = node is MemberAccessKoto { Left: IdentifierNameKoto { BoundSymbol.Declaration: FunctionKoto receiver } left } &&
+            Receiver(left) is not null ? receiver : null!;
+        return function is not null;
     }
 
-    // Whether an instance's storage substitutes completely, nested Types included; validated once per pass. It reads
-    // storage metadata only; it never rebinds or selects a body.
-    private bool PrepareInstantiatedStorage(BoundType type, int depth)
+    // The storage height of a Type the walk meets as the path-th Type from the query's root, one strongly connected component at a time
+    // (Tarjan; DECISIONS BU-12): an edge between two members of a component counts 0, an edge to a non-member 1 + its height, so every
+    // member gets its component's height, the largest exit, when the member that opened the component closes it. The answer depends on
+    // the Type alone. An open Type gives 0 and its stack position as low; StorageRefused when a part does not substitute or a height
+    // passes 64; StorageCapped past 256 Types on the path. It reads storage metadata only; it never rebinds or selects a body.
+    private int StorageHeight(BoundType type, int path, out int low)
     {
-        if (depth > 64)
+        low = int.MaxValue;
+        if (this.storageMarks.TryGetValue(type, out var mark))
         {
-            return false;
+            low = mark.Open == 0 ? low : mark.Open;
+            return mark.Open == 0 ? mark.Height : 0;
         }
 
+        if (path > StoragePathLimit)
+        {
+            return StorageCapped;
+        }
+
+        var position = this.storageStack.Count + 1;
+        this.storageStack.Add(type);
+        this.storageMarks[type] = (0, position);
+        var height = 0;
+        var lowest = position;
+        var failure = this.StorageParts(type, path + 1, ref height, ref lowest);
+        if (failure != 0 || lowest < position)
+        {
+            low = lowest;
+            return failure != 0 ? failure : height;
+        }
+
+        for (var i = position - 1; i < this.storageStack.Count; i++)
+        {
+            this.storageMarks[this.storageStack[i]] = (height, 0);
+        }
+
+        this.storageStack.RemoveRange(position - 1, this.storageStack.Count - position + 1);
+        return height;
+    }
+
+    // Walks a Type's parts in order (a struct's or enum's base, Fields and Case payload Tuples, then its components): 0, or the failure
+    // that ends the walk.
+    private int StorageParts(BoundType type, int path, ref int height, ref int lowest)
+    {
         if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
             var instance = this.Instance(type);
-            if (instance.Prepared == this.storageVersion)
+            if (AdtDef.IsEnum(type) && instance.Cases is null)
             {
-                return true;
+                return StorageRefused;
             }
 
-            // Stamped first, so a Type reached again through its own storage is not walked twice.
-            instance.Prepared = this.storageVersion;
-            if ((AdtDef.IsEnum(type) && instance.Cases is null) || (instance.Base is { } parent && !this.PrepareInstantiatedStorage(parent, depth + 1)) ||
-                !this.PrepareEach(instance.Fields, depth) || !this.PrepareEach(instance.Cases, depth))
+            var failure = instance.Base is { } parent ? this.StorageEach([parent], path, ref height, ref lowest) : 0;
+            failure = failure != 0 ? failure : this.StorageEach(instance.Fields, path, ref height, ref lowest);
+            failure = failure != 0 ? failure : this.StorageEach(instance.Cases, path, ref height, ref lowest);
+            if (failure != 0)
             {
-                instance.Prepared = 0;
-                return false;
+                return failure;
             }
         }
 
-        return this.PrepareEach((BoundType[])type.Components, depth);
+        return this.StorageEach((BoundType[])type.Components, path, ref height, ref lowest);
     }
 
-    private bool PrepareEach(ReadOnlySpan<BoundType?> types, int depth)
+    // Raises height over parts: a part that reaches an open Type is a member of the component (no level), any other an exit (1 + its
+    // height); lowest takes the lowest open position a part reaches. 0, or the failure that ends the walk.
+    private int StorageEach(ReadOnlySpan<BoundType?> parts, int path, ref int height, ref int lowest)
     {
-        foreach (var type in types)
+        foreach (var part in parts)
         {
-            if (type is null || !this.PrepareInstantiatedStorage(type, depth + 1))
+            if (part is null)
             {
-                return false;
+                return StorageRefused;
+            }
+
+            var value = this.StorageHeight(part, path, out var low);
+            if (value > StorageHeightLimit)
+            {
+                return value;
+            }
+
+            height = Math.Max(height, low == int.MaxValue ? value + 1 : value);
+            lowest = Math.Min(lowest, low);
+            if (height > StorageHeightLimit)
+            {
+                return StorageRefused;
             }
         }
 
-        return true;
+        return 0;
     }
 
     private void IndexSpecialReceiver(FunctionKoto function, BindingScope scope)

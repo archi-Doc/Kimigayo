@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -136,41 +137,6 @@ public enum OwnershipEdgeKind : byte
     Unmatched,
 }
 
-public enum OwnershipFailure : byte
-{
-    UninitializedUse,
-    PossiblyMovedUse,
-    ReassignedLet,
-    Unsupported,
-    ExpansionLimit,
-    ComparisonLoanConflict,
-    DefaultArgumentMove,
-    DefaultArgumentAccess,
-    DefaultArgumentBorrow,
-    Internal,
-
-    // SPEC 15.1.5: a bare Place never Moves; a Non-Copy or Copy-unproven Place needs @move.
-    TransferRequired,
-
-    // SPEC 15.4.4: an Origin obligation that neither Binding nor this analysis proves, such as an Origin nothing constrains.
-    UnprovenOrigin,
-
-    // SPEC 8.6, 22.2.3: the destructions an Iterator.next or BufferWriter.reserve implementation performs exceed the
-    // published effect bound of its Contract.
-    EffectBound,
-    CallableEffectBound,
-    VirtualEffectBound,
-
-    // SPEC 4.7, 15.1.3: an element is moved only through a static Move Path: a nonnegative integer-literal index within an
-    // owned fixed array.
-    StaticMovePathRequired,
-
-    // SPEC 8.11.4, 8.11.1: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
-    CallEffectConflict,
-
-    StorageLimit,
-}
-
 public readonly record struct OwnershipPlace(int Id, Koto Source, BoundType Type, OwnershipPlaceKind Kind, bool Mutable, AcquisitionKind Acquisition)
 {
     // Deferred bodies share syntax, but each expansion has distinct temporary storage.
@@ -224,33 +190,33 @@ public readonly record struct OwnershipLending(Koto Input, Koto Call);
 // as DestroyedTemporary); Borrow is the Borrow that created the Loan, with BorrowCapture its capture entry when it is a closure's
 // (SPEC 15.6.2, 16.2.2). Cases is the set of Semantics cases the problem was found under, one bit per case of the function's
 // enumeration (SPEC 8.15, 23.1.2); empty outside a case run and once every case found the problem.
-public readonly record struct OwnershipIssue(Koto Source, OwnershipFailure Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
+public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement Failure, int Place = -1, int Reservation = -1, bool Activation = false, Koto? LoanSource = null,
     string? StorageTable = null, long RequiredBytes = 0, long LimitBytes = 0, int Capture = -1, Koto? Related = null,
     OwnershipLending? Input = null, OwnershipLending? ConflictingReservation = null, BindingObligation? Obligation = null,
     Koto? Borrow = null, int BorrowCapture = -1, string? Destroyed = null, Koto? DestroyedTemporary = null, ulong Cases = 0)
 {
     public DiagnosticCode Code => this.Failure switch
     {
-        OwnershipFailure.UninitializedUse => DiagnosticCode.UninitializedPlace_Kd,
-        OwnershipFailure.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
-        OwnershipFailure.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
-        OwnershipFailure.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
-        OwnershipFailure.ComparisonLoanConflict => this.Activation ? (this.Source is InvocationKoto ? DiagnosticCode.CallActivationConflict_Kd : DiagnosticCode.PlacementActivationConflict_Kd) :
+        OwnershipRequirement.UninitializedUse => DiagnosticCode.UninitializedPlace_Kd,
+        OwnershipRequirement.PossiblyMovedUse => DiagnosticCode.MovedPlace_Kd,
+        OwnershipRequirement.ReassignedLet => DiagnosticCode.ReassignedLet_Kd,
+        OwnershipRequirement.ExpansionLimit => DiagnosticCode.DeferredExpansionLimit_Kd,
+        OwnershipRequirement.ComparisonLoanConflict => this.Activation ? (this.Source is InvocationKoto ? DiagnosticCode.CallActivationConflict_Kd : DiagnosticCode.PlacementActivationConflict_Kd) :
             this.Reservation >= 0 ? DiagnosticCode.CallReservationConflict_Kd : DiagnosticCode.ComparisonLoanConflict_Kd,
-        OwnershipFailure.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
-        OwnershipFailure.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
-        OwnershipFailure.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
-        OwnershipFailure.TransferRequired => DiagnosticCode.TransferRequired_Kd,
-        OwnershipFailure.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
+        OwnershipRequirement.DefaultArgumentMove => DiagnosticCode.DefaultArgumentMove_Kd,
+        OwnershipRequirement.DefaultArgumentAccess => DiagnosticCode.DefaultArgumentAccess_Kd,
+        OwnershipRequirement.DefaultArgumentBorrow => DiagnosticCode.DefaultArgumentBorrow_Kd,
+        OwnershipRequirement.TransferRequired => DiagnosticCode.TransferRequired_Kd,
+        OwnershipRequirement.UnprovenOrigin => this.Obligation is { Kind: BindingObligationKind.OriginOutlives, Longer: { } longer, Shorter: { } shorter }
             ? Binding.RefutesOriginRelation(longer, shorter) ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd
             : DiagnosticCode.UnprovenConstraint_Kd,
-        OwnershipFailure.Internal => DiagnosticCode.InternalInvariant_Kd,
-        OwnershipFailure.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
-        OwnershipFailure.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
-        OwnershipFailure.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
-        OwnershipFailure.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
-        OwnershipFailure.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
-        OwnershipFailure.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
+        OwnershipRequirement.Internal => DiagnosticCode.InternalInvariant_Kd,
+        OwnershipRequirement.EffectBound => DiagnosticCode.IncompatibleContractImplementation_Kd,
+        OwnershipRequirement.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
+        OwnershipRequirement.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
+        OwnershipRequirement.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
+        OwnershipRequirement.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
+        OwnershipRequirement.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         _ => DiagnosticCode.Unsupported_Kd,
     };
 }
@@ -305,7 +271,7 @@ public sealed partial class OwnershipBody
     internal ulong[] BlockStates = [];
     internal ulong[] Scratch = [];
 #pragma warning restore SA1401
-    private readonly Dictionary<(Koto Source, OwnershipFailure Failure), int> reportedIssues = new();
+    private readonly Dictionary<(Koto Source, OwnershipRequirement Failure), int> reportedIssues = new();
     private PairCase[] caseStorage = [];
     private int caseCount;
     private ulong caseBit;
@@ -491,7 +457,7 @@ public sealed partial class OwnershipBody
         if (!condition && this.IssueStorage.Count == 0)
         {
             // A graph left partial where an earlier issue stopped it is not evidence of an implementation fault.
-            this.ReportIssue(new(source ?? this.Function, OwnershipFailure.Internal));
+            this.ReportIssue(new(source ?? this.Function, OwnershipRequirement.Internal));
         }
 
         return condition;

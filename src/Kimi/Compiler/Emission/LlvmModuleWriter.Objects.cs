@@ -1,9 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    // Decides from the old module whether it uses objects and supplies its creation records; ObjectRuntime writes the runtime
+    // text and each object from those syntax-free physical records (DECISIONS R5-M14, R5-M69).
     private static void WriteObjects(EmissionModule module, TextWriter output)
     {
         var usesObjects = module.NeedsObjectRuntime || module.Objects.Count != 0;
@@ -17,222 +21,10 @@ internal static partial class LlvmModuleWriter
             return;
         }
 
-        output.Write("""
-            define internal i1 @__kimi_object_supports(ptr %header, i64 %target) #0 {
-            entry:
-              %descriptor = load ptr, ptr %header, align 8
-              %metadata = load ptr, ptr %descriptor, align 8
-              %token = load i64, ptr %metadata, align 8
-              %same = icmp eq i64 %token, %target
-              br i1 %same, label %yes, label %bases
-            bases:
-              %map_slot = getelementptr i8, ptr %descriptor, i64 16
-              %map = load ptr, ptr %map_slot, align 8
-              %empty = icmp eq ptr %map, null
-              br i1 %empty, label %no, label %prepare
-            prepare:
-              %count = load i64, ptr %map, align 8
-              br label %test
-            test:
-              %index = phi i64 [ 0, %prepare ], [ %next, %advance ]
-              %end = icmp eq i64 %index, %count
-              br i1 %end, label %no, label %candidate
-            candidate:
-              %scaled = mul i64 %index, 16
-              %offset = add i64 %scaled, 8
-              %map_entry = getelementptr i8, ptr %map, i64 %offset
-              %base = load i64, ptr %map_entry, align 8
-              %matches = icmp eq i64 %base, %target
-              br i1 %matches, label %yes, label %advance
-            advance:
-              %next = add i64 %index, 1
-              br label %test
-            yes:
-              ret i1 true
-            no:
-              ret i1 false
-            }
-            define internal void @__kimi_object_free(ptr %header, ptr %descriptor, ptr %site) #0 {
-            entry:
-              %location = load ptr, ptr %site, align 8
-              %lengthSlot = getelementptr i8, ptr %site, i64 8
-              %length = load i64, ptr %lengthSlot, align 8
-              call void @__kimi_free(ptr %header, ptr %location, i64 %length)
-              ret void
-            }
-            define internal void @__kimi_drop_object(ptr %slot, ptr %location, i64 %length) #0 {
-            entry:
-              %site = alloca { ptr, i64 }, align 8
-              store ptr %location, ptr %site, align 8
-              %lengthSlot = getelementptr i8, ptr %site, i64 8
-              store i64 %length, ptr %lengthSlot, align 8
-              %header = load ptr, ptr %slot, align 8
-              call void @__kimi_object_finalize(ptr %header, ptr %site)
-              ret void
-            }
-            define internal void @__kimi_object_finalize(ptr %header, ptr %site) #0 {
-            entry:
-              %descriptor = load ptr, ptr %header, align 8
-              %metadata = load ptr, ptr %descriptor, align 8
-              %freeSlot = getelementptr i8, ptr %descriptor, i64 8
-              %free = load ptr, ptr %freeSlot, align 8
-              %destroySlot = getelementptr i8, ptr %metadata, i64 32
-              %destroy = load ptr, ptr %destroySlot, align 8
-              %needed = icmp ne ptr %destroy, null
-              br i1 %needed, label %destroyPayload, label %freeStorage
-            destroyPayload:
-              %payload = getelementptr i8, ptr %header, i64 16
-              call void %destroy(ptr %payload, i64 1, ptr %metadata, ptr %site)
-              br label %freeStorage
-            freeStorage:
-              call void %free(ptr %header, ptr %descriptor, ptr %site)
-              ret void
-            }
-
-            """);
-        WriteRcObjects(output);
-        WriteArcObjects(output);
+        ObjectRuntime.WriteRuntime(output);
         foreach (var item in module.Objects)
         {
-            var id = item.Id;
-            var layout = item.Payload.Layout;
-            var key = module.Constants[item.TypeKey];
-            Name(output, "@__kimi_object_type_key", id);
-            output.Write(" = private constant { i64, ptr, i64 } { i64 ");
-            WriteNumber(output, item.TypeToken);
-            output.Write(", ptr @");
-            output.Write(key.Name);
-            output.Write(", i64 ");
-            WriteNumber(output, key.ByteLength);
-            output.Write(" }, align 8\n");
-            Name(output, "@__kimi_object_metadata", id);
-            output.Write(" = private constant { i64, i64, i64, i64, ptr, ptr } { i64 ");
-            WriteNumber(output, item.TypeToken);
-            output.Write(", i64 ");
-            WriteNumber(output, layout.Size);
-            output.Write(", i64 ");
-            WriteNumber(output, layout.Alignment);
-            output.Write(item.Copy ? ", i64 1, ptr " : ", i64 0, ptr ");
-            if (item.Destroy is null)
-            {
-                output.Write("null");
-            }
-            else
-            {
-                Name(output, "@__kimi_object_destroy_values", id);
-            }
-
-            output.Write(", ptr null }, align 8\n");
-            Name(output, "@__kimi_object_descriptor", id);
-            output.Write(" = private constant { ptr, ptr, ptr, ptr } { ptr ");
-            Name(output, "@__kimi_object_metadata", id);
-            output.Write(", ptr @__kimi_object_free, ptr ");
-            if (item.BaseTokens.Length == 0)
-            {
-                output.Write("null");
-            }
-            else
-            {
-                Name(output, "@__kimi_object_views", id);
-            }
-
-            output.Write(", ptr ");
-            if (item.VirtualSlots.Length == 0)
-            {
-                output.Write("null");
-            }
-            else
-            {
-                Name(output, "@__kimi_object_virtuals", id);
-            }
-
-            output.Write(" }, align 8\n");
-            if (item.VirtualSlots.Length != 0)
-            {
-                Name(output, "@__kimi_object_virtuals", id);
-                output.Write(" = private constant [");
-                WriteNumber(output, item.VirtualSlots.Length);
-                output.Write(" x ptr] [");
-                for (var s = 0; s < item.VirtualSlots.Length; s++)
-                {
-                    output.Write(s == 0 ? "ptr " : ", ptr ");
-                    if (item.VirtualSlots[s] is { } entry)
-                    {
-                        output.Write('@');
-                        output.Write(entry.Name);
-                    }
-                    else
-                    {
-                        output.Write("null");
-                    }
-                }
-
-                output.Write("], align 8\n");
-            }
-
-            if (item.BaseTokens.Length != 0)
-            {
-                Name(output, "@__kimi_object_views", id);
-                output.Write(" = private constant [");
-                WriteNumber(output, (item.BaseTokens.Length * 2) + 1);
-                output.Write(" x i64] [i64 ");
-                WriteNumber(output, item.BaseTokens.Length);
-                foreach (var token in item.BaseTokens)
-                {
-                    output.Write(", i64 ");
-                    WriteNumber(output, token);
-                    output.Write(", i64 0");
-                }
-
-                output.Write("], align 8\n");
-            }
-
-            if (item.Destroy is not null)
-            {
-                Name(output, "define internal void @__kimi_object_destroy_values", id);
-                output.Write("(ptr %first, i64 %count, ptr %metadata, ptr %site) #0 {\nentry:\n");
-                output.Write("  %location = load ptr, ptr %site, align 8\n  %lengthSlot = getelementptr i8, ptr %site, i64 8\n  %length = load i64, ptr %lengthSlot, align 8\n  br label %test\ntest:\n  %remaining = phi i64 [ %count, %entry ], [ %index, %destroy ]\n  %empty = icmp eq i64 %remaining, 0\n  br i1 %empty, label %done, label %destroy\ndestroy:\n  %index = sub i64 %remaining, 1\n");
-                output.Write("  %offset = mul i64 %index, ");
-                WriteNumber(output, layout.Stride);
-                output.Write("\n  %value = getelementptr i8, ptr %first, i64 %offset\n  call void @");
-                output.Write(item.Destroy);
-                output.Write("(ptr %value, ptr %location, i64 %length)\n  br label %test\ndone:\n  ret void\n}\n");
-            }
-
-            output.Write(item.Abi.GetDefinition(false));
-            output.Write("entry:\n  %header = call ptr @__kimi_alloc(i64 ");
-            WriteNumber(output, (long)layout.Size + 16);
-            output.Write(", ptr %location, i64 %length)\n  store ptr ");
-            Name(output, "@__kimi_object_descriptor", id);
-            output.Write(", ptr %header, align 8\n  %control = getelementptr i8, ptr %header, i64 8\n  store i64 %controlValue, ptr %control, align 8\n");
-            if (layout.Size != 0)
-            {
-                output.Write("  %payload = getelementptr i8, ptr %header, i64 16\n");
-                if (item.Payload.ArgumentType == "ptr" && item.Payload.ComputationType != "ptr")
-                {
-                    output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
-                    WriteNumber(output, layout.Alignment);
-                    output.Write(" %payload, ptr align ");
-                    WriteNumber(output, layout.Alignment);
-                    output.Write(" %a0, i64 ");
-                    WriteNumber(output, layout.Size);
-                    output.Write(", i1 false)\n");
-                }
-                else if (item.Payload.ComputationType == "i1")
-                {
-                    output.Write("  %byte = zext i1 %a0 to i8\n  store i8 %byte, ptr %payload, align 1\n");
-                }
-                else
-                {
-                    output.Write("  store ");
-                    output.Write(layout.StorageType);
-                    output.Write(" %a0, ptr %payload, align ");
-                    WriteNumber(output, layout.Alignment);
-                    output.Write('\n');
-                }
-            }
-
-            output.Write("  store ptr %header, ptr %ret, align 8\n  ret void\n}\n");
+            ObjectRuntime.WriteObject(output, module.Constants, item);
         }
     }
 }

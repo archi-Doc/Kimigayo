@@ -3,7 +3,8 @@
 Date: 2026-10-16
 
 Status: Proposal (plan only). The owner chose the direction on 2026-10-16 and refined it the same day: a simple, fast
-implementation before exact precision (plan §1). The decisions in plan §10 are pending. This document changes no
+implementation before exact precision (plan §1). On 2026-10-17 the owner decided OD8–OD11 (OD8 and OD9 not adopted,
+OD10 adopted, OD11 confirmed) and approved OD13's first list; plan §10 records the outcomes. This document changes no
 SPEC, compiler or test.
 
 Base: `b2edea8b` (`dev`).
@@ -130,9 +131,13 @@ SPEC §15.6 uses a value-carried model, which fits Polonius:
     killed (Polonius `loan_killed_at`). The kill option is sound only because a reborrow's holder carries its parent
     Loans from the reborrow on (plan §4.3). This decides the repeated-site parent/child item (plan §5.1). The SPEC
     does not name Loans finitely yet; S1 makes the kill option the specified rule (plan §5.2). Under S1 only an
-    in-place destruction of the base or an ancestor kills: `=`, `replace` (a whole write of its target, §15.7) or
-    the end of its storage. While a child is live, the base or an ancestor cannot be Moved, exchanged, swapped or
-    exclusively borrowed other than as a `replace` target.
+    in-place destruction of the base or an ancestor, with no borrow Deref step between them, kills: `=`, `replace`
+    (a whole write of its target, §15.7) or the end of its storage. While a child is live, the base or an ancestor
+    cannot be Moved, exchanged, swapped or exclusively borrowed other than as a `replace` target. P3 (plan §4.3)
+    also makes a shared borrow of a Place on the child's path conflict with it, in either order, and the own-site
+    check excludes a holder's own Loans by holder, never by Loan id.
+  - Under design A3, conflicts compare access paths syntactically (P3, plan §4.3); referent holders and provenance
+    serve content only: flows and liveness.
 - **Origins (regions) never keep a Loan live.** They are judged in a separate stratum (plan §4.5).
 
 A5 computes typed facts from published inputs with a fixed set of rules. The rules are the specification of A5; the
@@ -158,7 +163,7 @@ marked *derived* is computed by the rules, not read from MIR.
 | `child(L2, L1, P)` | Reborrow L2 through L1 (§15.6.3) | MIR; *derived* when the parent reference's Loans come from provenance |
 | `base(L, B)` | Child Loan L was formed through the reference stored at Place B, its base (S1) | MIR, one per Borrow site |
 | `destroyed_in_place(K, P)` | At P, the old value of move path K is destroyed in place: `=`, `replace`, or the end of K's storage (S1) | MIR |
-| `base_op(P, K)` | At P, the Place K is Moved, exchanged, swapped, or exclusively borrowed other than as a `replace` target (S1). K is a Place, including one reached through a reference (`*a`), not a holder; any exclusive borrow counts | MIR |
+| `base_op(P, K)` | At P, the Place K is Moved, exchanged, swapped, or exclusively borrowed other than as a `replace` target, or K's old value is destroyed by a `drop` that may reach a base below K, also at `=` and `replace` (S1). K is a Place, including one reached through a reference (`*a`), not a holder; any exclusive borrow counts | MIR, A4 (`drop` effects) |
 | `reserved(L, P1, P2)` | Two-phase borrow reserved at P1 and activated at P2 (§15.6.7) | MIR (`TwoPhaseUniq`); (H) some acquisitions of call inputs pass `input: false` and form a plain `Uniq` (plan §6.2) |
 | `call_effect(P, summary)` | Effects of the call at P | A4 summaries |
 | `retains(call, input, output)` | A call's result or writable storage may retain an input's Loans (§15.6.4) | Binding (C1, C8) |
@@ -175,9 +180,9 @@ within(K, H)        :- K is H or a descendant of H.          // a subtree is a r
 overlap(K, H)       :- within(K, H) ; within(H, K).
 killed(K, P)        :- replaced(H, P), within(K, H).
 
-// S1. A child Loan ends where its base B, or a move-path ancestor of B with no Deref step between them, is
-// destroyed in place. Every rule that carries a Loan from P to Q takes the step, so the kill holds on every
-// propagating rule.
+// S1. A child Loan ends where its base B, or a move-path ancestor of B with no borrow Deref step between them, is
+// destroyed in place (`within`; an Index step counts only for identical constant indexes). Every rule that carries
+// a Loan from P to Q takes the step, so the kill holds on every propagating rule.
 ended(L, P)         :- base(L, B), destroyed_in_place(K, P), within(B, K).
 step(L, P, Q)       :- edge(P, Q), !ended(L, P).
 
@@ -201,8 +206,25 @@ live(T, P)          :- live(R, P), carries(R, L, P), names(L, T).
 live_loan(L, P)     :- carries(K, L, P), live(H, P), overlap(K, H).
 live_loan(L, P)     :- carries(H, L, P), escaped(H).
 
+// The drop and the store at one point: a value P stores counts at P when its destination is live after P.
+stored(L, P, T)     :- flow(H1, T, P), carries(K, L, P), overlap(K, H1).
+stored(L, P, T)     :- written_through(place, H, P), carries(K, L, P), overlap(K, H), reaches(place, T, P).
+live_loan(L, P)     :- stored(L, P, T), live(H, P), overlap(T, H).
+live_loan(L, P)     :- stored(L, P, T), escaped(T).
+
 error(L, P)         :- live_loan(L, P), access(P, place, kind),
                        overlaps(place, loan_place(L)), conflicts(kind, loan_mode(L)).
+
+// P3 (owner, 2026-10-17). loan_path(L) is the path L was formed through, across Deref steps.
+// (a) A Move or borrow of a Place reaches the Loans formed through references stored in it; in this prefix
+//     direction, reads, writes and destructions do not. The target borrow of a call that destroys its target in
+//     place (`replace`) is exempt; base_op checks that destruction.
+error(L, P)         :- live_loan(L, P), access(P, place, kind), kind ∈ {move, borrow(mode)},
+                       !destroying_target(P, place), runs_through(loan_path(L), place),
+                       conflicts(kind, loan_mode(L)).
+// (b) An access of any kind whose path extends a live Loan's path, across Deref steps, reaches that Loan.
+error(L, P)         :- live_loan(L, P), access(P, place, kind), runs_through(place, loan_path(L)),
+                       conflicts(kind, loan_mode(L)).
 
 // S1: the base of a live child, or an ancestor, cannot be Moved, exchanged, swapped or exclusively borrowed.
 // runs_through(B, K): K is B or a prefix of B, stepping across Deref steps (no provenance resolution); an Index
@@ -211,20 +233,69 @@ error(L, P)         :- live_loan(L, P), base(L, B), base_op(P, K), runs_through(
 ```
 
 - **Ban more, kill less.** `ended` kills only on a definite in-place destruction of B or a move-path ancestor with no
-  Deref step between them (`within`). (H) Whether `q = …` ends a Loan based at `(*q).p` is left to S1's proposal.
-  The ban matches any Place that may be B or an ancestor (`runs_through`), including possibly equal indexes. Erring
-  toward the ban is sound; erring toward the kill would not be.
+  borrow Deref step between them (`within`; the own payload Derefs of `obj`, `rc` and `arc` are storage). The ban
+  matches any Place that may be B or an ancestor (`runs_through`), including possibly equal indexes. Erring toward
+  the ban is sound; erring toward the kill would not be.
+- **P3 is needed for soundness, not only S1.** Without it, the rules accept the first program below even with the
+  `within` kill: `w`'s own Loan (base `q`) ends at `q = o@uniq`, and then `w.p@follow` meets nothing (prototype round
+  6, case 29a). They also miss an alias made inside a call (second program). P3 rejects each where the second of the
+  two borrows is formed, in either order: form (a) when the alias comes second, form (b) when the child does (third
+  program). (H) The current SPEC ("Inline parts exclude referents", §15.6.2) may accept the call case, a SPEC gap.
+- **Own site.** An access through a reference held in X is checked against Loans that holders other than X keep
+  live; X's own carrying is excluded by holder, never by Loan id. Exclusion by Loan id is unsound when another holder
+  carries the same Loan (round 6, case 30c).
+- **No kill across a Deref** (owner, 2026-10-17). `q = …` does not end a Loan based at `(*q).p`, so a valid write
+  through a replaced outer holder (23a) and a traversal through stored `uniq` links (30d) stay S1 precision losses.
+  With P3, killing across the Deref (the root-most kill) was sound on all 92 round-6 cases, but the owner did not
+  adopt it (`draft/Sketches/A5 Step 0/design-A3.md` §9).
+
+```kimi
+// S has `var p: uniq/i32`.
+var s = S(p: t@uniq)
+var o = S(p: u@uniq)
+var q = s@uniq             // L_q
+let c = q.p@follow@uniq    // L_c, base (*q).p: c carries L_c, L_p and L_q.
+let w = q@follow@ref       // Error (P3): borrowing *q reaches L_c, formed through the reference in s.p.
+q = o@uniq                 // Without P3, w's own Loan (base q) ends here ...
+let a = w.p@follow         // ... and w reads t through the old s.p while c can write it.
+c@follow = 5
+inspect(w.p@follow)
+```
+
+```kimi
+// Slot {o} has `var data: uniq/Array<i32> during o` and
+//   `func first(self: ref/Self) -> ref/i32 during self => self.data[0]@ref`.
+var items = [1, 2, 3]
+var slot = Slot(data: items@uniq)
+let c = slot.data@follow@uniq   // base slot.data
+let x = slot.first()            // Error (P3 a): borrowing slot reaches L_c, formed through slot.data.
+c@follow = [9]                  // Without P3: destroys the array x points into ...
+inspect(x@follow)               // ... and x reads it after free.
+```
+
+```kimi
+// The same Slot, in the other order.
+var items = [1, 2, 3]
+var slot = Slot(data: items@uniq)
+let x = slot.first()            // L_x on slot
+let c = slot.data@follow@uniq   // Error (P3 b): the path slot.data.* extends L_x's path slot.
+c@follow = [9]
+inspect(x@follow)
+```
+
+- **Values in transit.** When a drop and a store happen at one point, the stored value has left its dying Temp but
+  has not reached its destination. `stored` keeps its Loans live at that point (prototype round 5, case 24c), for a
+  destination that is live, overlaps a live holder, or has escaped.
 - **Temps.** MIR evaluates the right side of `=` into a Temp first (`MirBuilder.Replace`), so
   `cursor = cursor.children[0]@uniq` issues the child at one point and destroys `cursor` at the next. The kill
   therefore has to hold on the flow from the Temp, which `step` gives it.
 
-The block is illustrative. A preliminary prototype (not yet in the tree) needed six refinements to match the SPEC.
-Three are already in the block: parent Loans carried from the reborrow on, liveness fed back through references, and
-S1's kill on every propagating rule (`step`). Step 0's designs must carry the other three:
-
-1. accessed Places are resolved through references;
-2. flows are read through references;
-3. reservations are modeled.
+The block is illustrative; design A3 (`draft/Sketches/A5 Step 0/design-A3.md`) states the exact rules, which compare
+access paths syntactically under P3 and resolve no accessed Place. The step-0 prototype needed refinements to match
+the SPEC. Five are in the block: parent Loans carried from the reborrow on, liveness fed back through references,
+S1's kill on every propagating rule (`step`), values in transit (`stored`), and P3. The own-site check is stated
+above. The implementation must also carry the other two: flows are read through references, and reservations are
+modeled.
 
 - A flow into H2 at P is not killed by `replaced(H2, P)`: the flowed value is H2's new content, and the replacement ends
   only H2's earlier Loans. `ended` still applies. `H2·s` falls back to H2's nearest tracked ancestor.
@@ -406,12 +477,11 @@ own proposal; S1 and S2 are being drafted in a separate session.
 
 | Item | Change | SPEC | Removes | Lost | Use |
 | --- | --- | --- | --- | --- | --- |
-| S1 Loan identity by base | A Loan is identified by its Borrow site and Semantics case. A child Loan formed through a reference stored at Place B has base B. While it is live, access through B to an overlapping Place is suspended, and B and its ancestors cannot be Moved, transferred by `exchange` or `swap`, or exclusively borrowed except as a `replace` target. A definite whole write of B or an ancestor that destroys the old value in place (`=`, `replace`), or the end of B's storage, ends it; its values keep their parent Loans. A write through a reference or a non-path index ends nothing. The provenance row names Places from bases | §3.5.1, §13.5.5, §13.5.6, §15.6, §15.6.2, §15.6.3, §15.7, §15.7.3 | Unbounded Place names; OBS13's repeated-site failure. The kill option of plan §4.1 becomes the specified rule | Moving, exchanging, swapping or exclusively borrowing a base or an ancestor while its child is live, for example `let c = p@follow.x@uniq; let q = p@move; use(c)` or `let w = r@uniq` with a live child of a `var r`. Rust also rejects these | Self-reborrow loops: lib 0, ms 0, tests 0. Base operations with a live child: counted by the census |
+| S1 Loan identity by base | A Loan is identified by its Borrow site and Semantics case. A child Loan formed through a reference stored at Place B has base B. While it is live, access through B to an overlapping Place is suspended, and B and its ancestors cannot be Moved, transferred by `exchange` or `swap`, or exclusively borrowed except as a `replace` target. A definite whole write of B or an ancestor, with no borrow Deref step between them, that destroys the old value in place (`=`, `replace`), or the end of B's storage, ends it; its values keep their parent Loans. A write through a reference or a non-path index ends nothing. The provenance row names Places from bases. With P3, a borrow or Move of a Place on the child's path conflicts with it, in either order | §3.4, §3.5.1, §13.5.5, §13.5.6, §15.6, §15.6.2 (with "Inline parts exclude referents"), §15.6.3, §15.7, §15.7.3 | Unbounded Place names; OBS13's repeated-site failure. The kill option of plan §4.1 becomes the specified rule | Moving, exchanging, swapping or exclusively borrowing a base or an ancestor while its child is live, for example `let c = p@follow.x@uniq; let q = p@move; use(c)` or `let w = r@uniq` with a live child of a `var r`. Rust also rejects these. Also a write through a replaced outer holder while a child based past its Deref is live (23a), and a traversal through stored `uniq` links (30d) (plan §4.3). S1 needs P3 and the own-site check (design A3 §9) | Self-reborrow loops: lib 0, ms 0, tests 0. Step-0 census (design A3): 23a lib 0, ms 0, at most 8 reborrows in 3 test files; 30d lib 0, ms 0, 3 test files. Base operations with a live child: counted by the census |
 | S2 `preserves results` by receiver Place | An earlier call counts when it is on the same receiver Place and no path between the two calls replaces, Moves or destroys that Place or an ancestor, or writes through a reference that may reach it. Conformance checks the body as an ordinary body in which the Loans an earlier result may keep are live throughout. Calls contribute their declared effects, never callee bodies, and a delegated call may rely on the bound being verified | §8.11.3–§8.11.6, §15.6.3 | C5's value identity and its transitive result/effect domain | The same value reached through two Places; helpers whose signatures demand more access than their bodies use | lib 1 declaration (`Iterator.kimi:6`) governing 12 conformances; ms 3 conformances (Milestone13, Milestone29); xUnit 18 files |
 | S5 Effect atoms widen | An effect atom on an associated projection that grows under polymorphic recursion widens to an unclassifiable effect, as §15.6.4's open key widens static keys. The alternative is a depth limit whose excess is a Resource failure | §15.6.4, §8.11.2 | The unbounded atom domain of effect summaries | Callers whose concrete instances would classify the effect: it conflicts under `confined` and `preserves results` bounds (§8.11.2) and with live mutable-static Loans (§15.6.4) | (H) lib 0, ms 0; counted by the census |
 
-- **S1's soundness (H).** A preliminary prototype (not yet in the tree; it lands in `draft/Sketches` with the step-0
-  records) checked S1 in two rounds.
+- **S1's soundness (H).** The step-0 prototype (`draft/Sketches/A5 Step 0/`) checked S1 in rounds 1, 2, 5 and 6.
   - Round 1 (39 programs) found S1 as first written, which forbade only Moving the base, unsound in 5 programs:
     `exchange` and `swap` of the base, also as a call or inside a callee.
   - Round 2 (49 programs) found two defects in plan §4.3. Both are fixed, together with two more found in review:
@@ -420,27 +490,38 @@ own proposal; S1 and S2 are being drafted in a separate session.
       match any possibly equal index (`exchange(arr[j]@uniq, …)` with a live child of `arr[i]`);
     - the loop step `cursor = cursor.children[0]@uniq` must not conflict with its own child. Review added that MIR
       goes through a Temp, so the kill must hold on every propagating rule (`step`), not only at issue.
-  - S1 as stated here matched all 49 expected verdicts, with rule names aligned to plan §4.3. The two review
-    additions are not yet in the prototype.
-  - The load-bearing clause is the ban on exclusively borrowing the base or an ancestor: an exchange inside a call is
-    visible only as that borrow. The prototype's cases 15a and 15b show that the `replace` exemption is needed and
-    sound.
+  - Round 5 (75 programs) checked these fixes. The Temp-shape loop (21a valid, 21b rejected) and the unknown-index
+    exchange (22a rejected, constant indexes 22b valid) behave as stated. It found two more points:
+    - unsound: when a drop and a store happen at one point, the value in transit from a dying Temp was missed
+      (24c). The `stored` rule of plan §4.3 fixes it; review added escaped and overlapping destinations;
+    - over-strict: not killing across a Deref rejects a valid write through a replaced outer holder (23a). Killing
+      across the Deref passed the 75 programs, but review found it unsound without P3 (the counterexample in plan
+      §4.3).
+  - Round 6 (92 programs) found S1 unsound without P3 even under the `within` kill (29a), and unsound with exclusion
+    by Loan id (30c). S1 with P3 and the own-site check passed every case. With P3, the root-most kill across a Deref
+    was also sound, but the owner kept the `within` kill (2026-10-17), so 23a and 30d stay S1 precision losses.
+  - The load-bearing clauses are P3 and the ban on exclusively borrowing the base or an ancestor. An exchange inside a
+    call is visible only as that borrow, and P3 catches the shared aliases the ban cannot see (29a). The prototype's
+    cases 15a and 15b show that the `replace` exemption is needed and sound.
   - The Move ban is also required. Without it, a base Moved on one path (`if c => stash(r@move)`) and then written
     could end L2 while the stashed old reference keeps L1.
-  - The invariant, for an exclusive base: after the kill, nothing outside the child's descendants holds B's old
-    reference. For a shared base, Copies made before or after the child may hold it. This is harmless, because a
-    shared child conflicts only with writes, and the parent Loans it keeps cover those. (H) `ref`-base cases are
-    still to be added to the prototype.
+  - The invariant: after the kill, no value outside the child's descendants that outlives the kill can reach B's old
+    reference in a conflicting mode. P3 keeps shared aliases of a Place on the child's path from being formed while an
+    exclusive child is live (29a), and the own-site check keeps another holder's copy of the same Loan in force (30c).
+    The `ref`-base cases of round 5 (9j, 13a–e, 16e, 23b) are sound under the kill rule.
   - The rejected alternative identifies a Loan by (site, base) and renames the base on Move. It costs sites × holders
     and still cannot follow an exchange inside a callee, so it is not loss-free either.
 - **S1's proposal also defines** the base when the parent is reached through another reference or a non-path index,
   and which sites are Borrow sites: implicit borrows, Loans created by calls, comparison inspection and inlined
-  defaults. It states that an object-handle base keeps §13.5.5's handle Loan, so `=` on it stays an error. It checks
+  defaults. It follows design A3's step classes (§3): an owning handle's payload (`obj`, `rc`, `arc`) is an own step
+  that keeps §13.5.5's handle Loan, so `=` on such a base stays an error. `objref` and `objuniq` are borrow Derefs
+  like `ref` and `uniq`, with no separate handle Loan, so `=` on such a base ends the child. This is sound because
+  replacing a borrow handle releases nothing and the child keeps the parent Loan on the owning handle. It checks
   two points against §3.5.1 and §13.5.6 (H): whether some Lost forms are already rejected today, and whether
-  exclusively borrowing an ancestor for a call is a current gap that S1 closes. It also records (H) that destroying
-  an old value whose `drop` may reach the base counts as an exclusive use of the base: `=` and `replace` destroy the
-  old value while the new child is already live, as in `s = S(r: s.r@follow@uniq)` with a `drop` that writes
-  through `self.r` (§15.6.6; Rust rejects this, E0713).
+  exclusively borrowing an ancestor for a call is a current gap that S1 closes. It also states that destroying an old
+  value whose `drop` may reach the base counts as an exclusive use of the base (round 5: 24a rejected, 24b valid).
+  `=` and `replace` destroy the old value while the new child is already live, as in `s = S(r: s.r@follow@uniq)`
+  with a `drop` that writes through `self.r` (§15.6.6; Rust rejects this, E0713).
 - **S2's soundness (H)** is prototyped or argued in its proposal. A receiver Place reached through a borrowed Field is
   named by S1's bases.
 - **S2's scope:** narrower than making `preserves results` a signature rule, which is rejected because it loses the
@@ -608,8 +689,9 @@ Each family groups rules that share facts. Binding facts are prerequisites (plan
    - A census over the library, milestones, corpus and fixture sources. It sizes each family and counts:
      - the bodies with more than one Semantics case view, and the views without Loans, which Loan flow skips (Origin
        judgment still runs per view, DEC R4-M11);
-     - the forms S1–S5 and the precision losses would reject: base operations with a live child, the 15
-       `preserves results` conformances under S2, growing effect atoms, and writes through references.
+     - the forms S1–S5 and the precision losses would reject: base operations with a live child, P3's borrows and
+       Moves of a Place on a live Loan's path, the 15 `preserves results` conformances under S2, growing effect
+       atoms, and writes through references. Step 0's census (`draft/Sketches/A5 Step 0/census.md`) has the counts.
      VERIFICATION records the V16 shapes.
    - The prototype in `draft/Sketches`: the rules of plan §4.3, S1's soundness and each design's loss clauses, run on
      adversarial programs (plan §5.2, §5.3). A rule unit that reports a new loss later adds its clause to the
@@ -841,18 +923,22 @@ lists the rest (plan §9.1).
 7. **OD7.** Standing rule: each rule the audit marks "not finitely expressible" gets its own SPEC proposal; DEC O3 and
    O4 apply.
 8. **OD8.** If M39 keeps a compile-time Case terminator: a new MIR terminator (DEC O1) and a scoped change of R4-M19.
+   **Not adopted (2026-10-17):** no Case terminator; case dependence stays per view (R4-M19).
 9. **OD9.** If M39 keeps template calls for every omitted default: this replaces PLAN10 §5.6.2's inline fold
    (`MirBuilder.Defaults`) and reopens the SETTLED entry "Instance-evaluated generic defaults" (DEC O3). The
-   "closed defaults" candidate of plan §5.2 is the alternative.
+   "closed defaults" candidate of plan §5.2 is the alternative. **Not adopted (2026-10-17):** the inline fold and the
+   SETTLED entry stay, and closed defaults are not taken.
 10. **OD10.** Split R6 into R6-gen (after R5) and R6-check (after R4 and R6-gen), and keep `AnalyzeInstance` as a
-    check-only step until R6-check (plan §9.1).
+    check-only step until R6-check (plan §9.1). **Adopted (2026-10-17).**
 11. **OD11.** Confirm that a complete write through a reference ends none of the referent's earlier Loans, as S1015
-    narrowed §15.6 (S4, plan §5.2).
+    narrowed §15.6 (S4, plan §5.2). **Confirmed (2026-10-17).**
 12. **OD12.** Policy, at adoption: simple, then fast, then precise, never trading soundness. Precision losses are
     allowed only as rule clauses decided as plan §5.3 states. This is the owner's request for the resulting SPEC
     revisions.
 13. **OD13.** Approve each list of precision losses as one decision: first after step 0's designs, then whenever a
-    rule unit reports a new loss (plan §5.3).
+    rule unit reports a new loss (plan §5.3). The first list was approved on 2026-10-17
+    (`draft/Sketches/A5 Step 0/design-A3.md` §9): P1, P3, P4, P10 and P11, the optional P5, P6 and P9, and S1's
+    `within` kill; the root-most kill and relaxation (c) were not adopted.
 
 ## 11. Risks
 
@@ -908,7 +994,7 @@ lists the rest (plan §9.1).
 | 5 | A write through a reference, non-path index or dynamic container adds Loans and ends none | §15.6 | F1, F8 |
 | 6 | A joined result carries every Loan (may-analysis) | §15.6 (example after §14.9.2) | F1 |
 | 7 | Origin relations by variance; declared and substituted relations; well-formedness per case | §15.6.1 | F4 |
-| 8 | Place overlap and conflict tables; Loan provenance for followed references | §15.6.2 | F1 |
+| 8 | Place overlap and conflict tables; P3's path overlap across Derefs; Loan provenance for followed references, used for content (flows and liveness) | §15.6.2, §3.4 | F1 |
 | 9 | Reborrow child Loans; containment up to the first shared layer; region splitting; Iterator descent | §15.6.3, §15.5 | F2, F3, F4 |
 | 10 | Results kept across calls on the same receiver; `preserves results` (S2) | §15.6.3, §8.11.3–§8.11.6 | F6 |
 | 11 | Call steps 1–5; retention by the instantiated public contract | §15.6.4 | F3 |

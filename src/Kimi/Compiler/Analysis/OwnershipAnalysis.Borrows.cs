@@ -1,11 +1,53 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
+    // DECISIONS BU-10 (the owner's whitelist; removed with the old path at R6-check): whether the old paths lower a read through the
+    // one reference a Place stores, on the paths shown to generate: below a built-in element, only a shared read whose sequence is a
+    // name (IsName); below a user index's element, or a Field or Tuple element read in place for a comparison, a shared read on any
+    // path, and an exclusive one when the path is a name, a stored Field of such a path, a Tuple element reached through a reference
+    // (the referent of a `uniq/` parameter) or another user index's element on such a path.
+    private static bool LowersElementRead(Koto element, bool exclusive)
+    {
+        var node = KotoHelper.UnwrapParentheses(element);
+        if (node is IndexKoto builtIn && !ElementAccess.IsUserIndex(builtIn))
+        {
+            return !exclusive && IsName(builtIn.Left);
+        }
+
+        if (!exclusive)
+        {
+            return true;
+        }
+
+        for (; ; node = KotoHelper.UnwrapParentheses(((BinaryKoto)node).Left))
+        {
+            switch (node)
+            {
+                case IdentifierNameKoto when IsName(node):
+                    return true;
+                case IndexKoto index when ElementAccess.IsUserIndex(index):
+                case MemberAccessKoto { BoundSymbol.Property.IsStored: true }:
+                case MemberAccessKoto { Right: NumberLiteralKoto } tuple when ReferenceTypes.IsTuple(tuple.Left.BoundType):
+                    break;
+                default:
+                    return false;
+            }
+        }
+    }
+
+    // A local, parameter or capture: a receiver path the old paths read an element's stored reference through (DECISIONS BU-10).
+    private static bool IsName(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is IdentifierNameKoto
+        {
+            BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture,
+        };
+
     // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
     // remains unchecked is its own record, reported without adding constraints, so an unchecked obligation leaves the analysis
     // unverified. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it; any other unchecked
@@ -75,7 +117,7 @@ public sealed partial class OwnershipAnalysis
             {
                 // A chain between two body Origins needs region inference over Loan edges; it is a located limit, not a proof.
                 var at = use is VariableKoto { InitializerKoto: { } initializer } && Binding.IsFitObligation(obligation) ? initializer : use;
-                this.issues.Add(new(at, OwnershipFailure.Unsupported));
+                this.issues.Add(new(at, OwnershipRequirement.Unsupported));
                 return false;
             }
 
@@ -111,12 +153,12 @@ public sealed partial class OwnershipAnalysis
             // An `==` that only its reverse direction fails is shown in that direction, which also decides whether it is Refuted.
             if (reversed)
             {
-                this.issues.Add(new(use, OwnershipFailure.UnprovenOrigin, Obligation: obligation with { Longer = obligation.Shorter, Shorter = longer }));
+                this.issues.Add(new(use, OwnershipRequirement.UnprovenOrigin, Obligation: obligation with { Longer = obligation.Shorter, Shorter = longer }));
                 return false;
             }
         }
 
-        this.issues.Add(new(obligation.Use, OwnershipFailure.UnprovenOrigin, Obligation: obligation));
+        this.issues.Add(new(obligation.Use, OwnershipRequirement.UnprovenOrigin, Obligation: obligation));
         return obligation is not { Kind: BindingObligationKind.OriginOutlives, Longer: not null, Shorter: not null };
     }
 
@@ -412,6 +454,17 @@ public sealed partial class OwnershipAnalysis
 
         if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
+            // DECISIONS BU-10 (removed with the old path at R6-check): the old paths reach the referent of the reference an element
+            // stores only one layer deep, and only on the whitelisted paths (LowersElementRead); any other read through an
+            // element's stored layers has no matching reference source there.
+            var read = adaptation.Type.Components[0];
+            if (root.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } element && !ReferenceEquals(read, element) &&
+                (!ReferenceEquals(read, stored) || !LowersElementRead(root, exclusive)))
+            {
+                this.Unsupported(root);
+                return -1;
+            }
+
             return this.BorrowStruct(root, ElementAccess.AccessType(root, exclusive)!);
         }
 
@@ -444,7 +497,7 @@ public sealed partial class OwnershipAnalysis
         {
             // SPEC 3.5: a Place is never moved by bare acquisition; a non-Copy field needs an explicit borrow or @move, which
             // the shared path refutes. The read is still modeled, so later uses are checked and the result is delivered.
-            this.body.ReportIssue(new(field, OwnershipFailure.TransferRequired));
+            this.body.ReportIssue(new(field, OwnershipRequirement.TransferRequired));
         }
         else if (!this.SupportsCopySnapshot(type, field))
         {

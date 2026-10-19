@@ -133,7 +133,11 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
     }
 
+    // The `false` row expects the rule before SPEC 15.6.4's retention per argument (A5 P4, with P1's holders): `r` kept only
+    // the pair's `x` Loans. Now it carries every Loan of the pair, so writing `w` conflicts; the default pipeline keeps the
+    // old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "P4")]
     [InlineData(false)]
     [InlineData(true)]
     public void CompleteTypePositionsKeepIndependentSources(bool conflict)
@@ -220,7 +224,10 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         }
     }
 
+    // The valid rows expect the rule before SPEC 15.6's holders (A5 P1): writing `holder`'s first part ended the Loan
+    // `store` added. Now it ends none, so `z@follow = 42` conflicts; the default pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "P1")]
     [InlineData("Tuple", 0, true)]
     [InlineData("Tuple", 1, false)]
     [InlineData("Array", 0, true)]

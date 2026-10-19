@@ -83,11 +83,6 @@ public sealed class FunctionKoto : DeclarationKoto
 
     internal SourceSpan DispatchModifierSpan { get; }
 
-    // Anonymous bodies also inherit their enclosing function's substitution through every environment boundary.
-    internal bool RequiresInstantiation => !this.IsSpecialization &&
-        (this.GenericArguments.Count != 0 || this.BoundSymbol?.Scope.Owner.BoundSymbol?.Schema is { GenericSlots.Count: > 0 } ||
-        (this.IsAnonymous && this.BoundSymbol?.Scope.Function?.RequiresInstantiation == true));
-
     private List<TypeKoto>? genericArguments;
 
     private List<FunctionParameterKoto>? parameters;

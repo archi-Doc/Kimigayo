@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -57,7 +58,7 @@ public class ReferenceEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         var ir = CompilationTestHelper.WriteIr(c);
         ScalarEmissionTest.WriteFixture("ReferenceTemporary" + name, ir, stdout);
-        StringEmissionTest.WriteAuditedFixture("ReferenceTemporary" + name, source, ir, stdout, audit);
+        StringEmissionTest.WriteAuditedFixture("ReferenceTemporary" + name, ir, stdout, audit);
     }
 
     [Theory]
@@ -144,7 +145,7 @@ public class ReferenceEmissionTest
         Assert.DoesNotContain(function.Slots, x => ReferenceTypes.IsString(body.Places[x.Place].Type));
         var borrowed = module.GetFunction(1);
         Assert.Empty(borrowed.Slots);
-        Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.MoveString);
+        Assert.DoesNotContain(borrowed.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.MoveString);
         using var writer = new StringWriter();
         Assert.True(c.WriteIr(writer, out error), error);
         var ir = writer.ToString();
@@ -153,7 +154,7 @@ public class ReferenceEmissionTest
         Assert.DoesNotContain("noalias", ir);
         var functionText = ir[ir.IndexOf("define internal i1 @__kimi_f0", StringComparison.Ordinal)..];
         Assert.DoesNotContain("readonly", functionText);
-        StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", Source, ir, "a\n", "a=1");
+        StringEmissionTest.WriteAuditedFixture("ReferenceSingleDestruction", ir, "a\n", "a=1");
     }
 
     [Trait("Purpose", "Allocation")]
@@ -224,7 +225,7 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var pool = new FunctionAbiPool();
         var same = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
-        var abi = pool.Get(0, same);
+        var abi = pool.Get(0, same, c.Layout);
         var oldType = same.Parameters[0].Type.TypeOf();
         c = MinimalEmissionTest.Analyze(Source.Replace("same", "renamed", StringComparison.Ordinal));
         Assert.True(c.Bind().IsComplete);
@@ -233,7 +234,7 @@ public class ReferenceEmissionTest
         Assert.True(c.Emission.TryPrepare(out module, out error), error);
         var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
         Assert.NotSame(oldType, renamed.Parameters[0].Type.TypeOf());
-        Assert.Same(abi, pool.Get(0, renamed));
+        Assert.Same(abi, pool.Get(0, renamed, c.Layout));
     }
 
     [Fact]
@@ -257,8 +258,7 @@ public class ReferenceEmissionTest
             ? "func test(a: ref/string, flag: bool) -> bool => flag\nfunc forever() -> bool\n    loop => ()\nlet a = \"held\"\ntest(a, forever())"
             : "func forever(a: ref/string) -> Never\n    loop => ()\nlet a = \"held\"\nforever(a)";
         var ir = ScalarEmissionTest.EmitFixture("ReferenceDivergent" + argument, source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]
@@ -268,7 +268,7 @@ public class ReferenceEmissionTest
     {
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("ReferenceAbort" + name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture("ReferenceAbort" + name, source, ir, string.Empty, "held=0", 1, stderr);
+        StringEmissionTest.WriteAuditedFixture("ReferenceAbort" + name, ir, string.Empty, "held=0", 1, stderr);
     }
 
     [Fact]
@@ -288,7 +288,7 @@ public class ReferenceEmissionTest
     {
         var c = MinimalEmissionTest.Analyze(Same + "()");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "same");
-        pool.Get(0, function);
+        pool.Get(0, function, c.Layout);
         return new WeakReference(function);
     }
 }

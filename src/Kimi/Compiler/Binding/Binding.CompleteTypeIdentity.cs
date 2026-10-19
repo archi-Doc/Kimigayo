@@ -29,7 +29,7 @@ public sealed partial class Binding
             ((BoundOrigin[])left.OriginArguments).AsSpan().SequenceEqual((BoundOrigin[])right.OriginArguments) && left.Components.Count == right.Components.Count;
         if (equal && left.Kind == BoundTypeKind.Function)
         {
-            equal = FitsType(left, right) && FitsType(right, left);
+            equal = IsSubtype(left, right) && IsSubtype(right, left);
         }
         else
         {

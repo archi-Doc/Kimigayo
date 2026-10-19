@@ -7,12 +7,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<Koto, ResultContext> resultContexts = new(ReferenceEqualityComparer.Instance);
-    private readonly Dictionary<BindingSymbol, BoundType?> resultLocalEvidence = new(ReferenceEqualityComparer.Instance);
 
     private readonly List<ResultContext> resultPool = new();
-    private readonly List<Koto> resultChildren = new();
     private readonly List<BoundType> resultTypes = new();
-    private ResultCollector? resultCollector;
     private StructuralCompletion? resultStructure;
     private int resultCursor;
 
@@ -30,6 +27,21 @@ public sealed partial class Binding
         return terminal.Kind == BoundTypeKind.Primitive && ScalarTypes.Supports(terminal) ? terminal : null;
     }
 
+    /// <summary>Gets the result a function's or accessor's Block body must deliver: the written result, else the bound contract; Unit
+    /// for a discarded body and a setter (SPEC 7.1, 11.3).</summary>
+    /// <param name="boundary">The function or accessor.</param>
+    /// <returns>The result Type, or null while Binding has not resolved it.</returns>
+    internal static BoundType? DeclaredResult(Koto boundary) => boundary switch
+    {
+        FunctionKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
+        FunctionKoto function => KotoHelper.DiscardsFunctionBody(function) ? BoundType.Unit : function.BoundSymbol?.Type,
+        PropertyAccessorKoto { AccessorKind: PropertyAccessorKind.Set } => BoundType.Unit,
+        PropertyAccessorKoto { ReturnType: { BindingState: BindingState.Resolved } written } => written.BoundType,
+        PropertyAccessorKoto { Parent: PropertyKoto { BindingState: BindingState.Resolved } property } => property.BoundType,
+        PropertyAccessorKoto accessor => accessor.ReturnType?.BoundType ?? accessor.BoundType,
+        _ => null,
+    };
+
     /// <summary>Selects the result Type that every supplied Type fits, independently of source order (SPEC 14.9.2).</summary>
     /// <param name="types">The non-Never source Types.</param>
     /// <param name="scope">The scope supplying read-Type Constraints.</param>
@@ -44,7 +56,7 @@ public sealed partial class Binding
             var fitsAll = true;
             for (var j = 0; j < types.Count && fitsAll; j++)
             {
-                fitsAll = FitsType(types[j], candidate);
+                fitsAll = IsSubtype(types[j], candidate);
             }
 
             if (fitsAll)
@@ -85,17 +97,27 @@ public sealed partial class Binding
     internal bool InfersUnit(Koto target) => this.resultContexts.TryGetValue(target, out var context) && context.Inferred &&
         target.BindingState == BindingState.Resolved && ReferenceEquals(target.BoundType, BoundType.Unit);
 
-    // Whether each operand of a written `^x` or range is literal-only, already bound or a Name, so binding it while surveying
-    // result sources reaches no syntax the survey cannot bind yet.
-    private static bool SurveyablePosition(Koto node)
+    // SPEC 14.5.2: a transfer's lexical target, which the jump binding writes to the jump's target row when the transfer may go there
+    // (KotoHelper.IsValidTransfer). A null row is a jump the HIR lints record as invalid (rows 9-10), so no transfer is built from it.
+    private static Koto? BindTransferTarget(JumpKoto jump)
     {
-        node = KotoHelper.UnwrapParentheses(node);
-        return node switch
+        var target = KotoHelper.ResolveTransferTarget(jump);
+        var valid = KotoHelper.IsValidTransfer(jump, target);
+        HirTables.PlanFor(jump, valid).Plan = valid ? target : null;
+        return target;
+    }
+
+    // The Target Result Type a position fixes for a result target (SPEC 14.9.2 step 1): Unit outside a value context and for while and
+    // for; none for an expectation whose Origin is still inferred, so that the result's actual dependency is inferred before a local
+    // annotation is completed.
+    private static BoundType? ResultExpectation(Koto target, BoundType? expected)
+    {
+        if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
         {
-            FromEndIndexKoto fromEnd => SurveyablePosition(fromEnd.Operand),
-            RangeKoto range => (range.Start is null || SurveyablePosition(range.Start)) && (range.End is null || SurveyablePosition(range.End)),
-            _ => IsUnfittedLiteral(node) || node.BindingState == BindingState.Resolved || node is IdentifierNameKoto,
-        };
+            return BoundType.Unit;
+        }
+
+        return expected?.Origin?.Kind == OriginKind.Inference ? null : expected;
     }
 
     private BoundType? CommonBorrowResult(BoundType left, BoundType right)
@@ -155,35 +177,8 @@ public sealed partial class Binding
 
     private ResultContext BeginResult(Koto target, BindingScope scope, BoundType? expected, bool deferEvidence = false)
     {
-        if (expected?.Origin?.Kind == OriginKind.Inference)
-        {
-            // Infer the result's actual dependency before completing a local annotation.
-            expected = null;
-        }
-
-        if ((target is not (TryKoto or FunctionKoto) && !KotoHelper.IsValueContext(target)) || target is WhileKoto or ForKoto)
-        {
-            expected = BoundType.Unit;
-        }
-
-        // Rent by a pass-local cursor, not by the map size: rebinding a target that is already mapped
-        // must not hand the next target a context that is still in use.
-        if (this.resultCursor == this.resultPool.Count)
-        {
-            this.resultPool.Add(new());
-        }
-
-        var context = this.resultPool[this.resultCursor++];
-        context.HasLiteral = false;
-        context.PartialEvidence = false;
-        context.Expected = expected;
-        context.Inferred = expected is null;
-        context.Invalid = context.Pending = false;
-        context.Sources.Clear();
-        context.Evidence.Clear();
-        context.ArrayShape = null;
-        context.ArrayElement = context.ArrayDefault = null;
-        context.ArrayFailure = null;
+        expected = ResultExpectation(target, expected);
+        var context = this.RentResult(expected);
         this.resultContexts[target] = context;
         if (expected is null && !deferEvidence)
         {
@@ -193,325 +188,18 @@ public sealed partial class Binding
         return context;
     }
 
-    private void InferResultExpected(Koto target, BindingScope scope, ResultContext context)
+    // Rents a cleared context by the pass-local cursor, not by the map size: rebinding a target that is already mapped must not hand
+    // the next target a context that is still in use.
+    private ResultContext RentResult(BoundType? expected)
     {
-        this.resultLocalEvidence.Clear();
-        if (this.arrayInferenceShapes.TryGetValue(target, out var shape))
+        if (this.resultCursor == this.resultPool.Count)
         {
-            context.ArrayShape = shape;
-            this.FindResultEvidence(target, scope, context);
-            context.ArrayShape = null;
-            context.Expected = this.ArrayAnnotationExpectation(shape, scope, context.ArrayElement ?? context.ArrayDefault);
-            if (context.Expected is null && context.ArrayFailure is null)
-            {
-                var leaf = shape;
-                while (leaf is FixedArrayTypeKoto array)
-                {
-                    leaf = ArrayShapeSyntax(array.ElementType);
-                }
-
-                if (IsArrayHole(leaf))
-                {
-                    this.FailExplained(ref this.arrayInferenceFailures, leaf, BindingFailure.ArrayAnnotationInference, new(ArrayInferenceProblem.Element, target));
-                }
-            }
-
-            return;
+            this.resultPool.Add(new());
         }
 
-        this.FindResultEvidence(target, scope, context);
-        if (context.HasLiteral)
-        {
-            // Only literal fitting needs early read-conversion evidence. Ordinary borrow results must wait for
-            // block-local declarations and all their Origins before selecting a common reference Type.
-            context.Evidence.Clear();
-            context.PartialEvidence = false;
-            this.resultLocalEvidence.Clear();
-            this.FindResultEvidence(target, scope, context);
-        }
-
-        context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
-        if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesOrigin: true })
-        {
-            // SPEC 14.9.2, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
-            // of a later body-local Borrow.
-            context.Expected = null;
-        }
-
-        if (context.Expected?.Kind == BoundTypeKind.Function)
-        {
-            // SPEC 10.2: a common-Type search compares each source's own Type; it cannot supply the fixed
-            // Function expectation that enables erasure. The ordinary source pass collects those Types below.
-            context.Expected = null;
-        }
-
-        if (context.HasLiteral && context.Expected is { } common && this.ReadTypeReferent(common, scope) is { } terminal)
-        {
-            // SPEC 3.5.3, 14.9.2: an unfitted literal is fitted to the terminal read Type of the reference sources,
-            // which then supply that Type by a value read.
-            context.Expected = terminal;
-        }
-
-        context.Invalid |= conflict;
-        context.Evidence.Clear();
-    }
-
-    private BoundType? ResultEvidence(Koto source, BindingScope scope, bool readConversions = false)
-    {
-        source = KotoHelper.UnwrapParentheses(source);
-        if (source.BoundType is { } known)
-        {
-            return known;
-        }
-
-        switch (source)
-        {
-            case TryKoto propagation:
-                var operand = this.ResultEvidence(propagation.Expression, scope);
-                return operand?.Kind == BoundTypeKind.Constructed && (operand.Symbol == this.Library.Option || operand.Symbol == this.Library.Result) ? operand.Components[0] : null;
-            case BoolLiteralKoto or IsKoto { IsRuntimeTest: true }:
-                return BoundType.Boolean;
-            case StringLiteralKoto or InterpolatedStringKoto:
-                return BoundType.String;
-            case CharLiteralKoto:
-                return BoundType.Char;
-            case UnitLiteralKoto:
-                return BoundType.Unit;
-            case UnaryKoto { Akind: KotoKind.Not } or BinaryKoto { Akind: KotoKind.And or KotoKind.Or or KotoKind.EqualsEquals or KotoKind.ExclamationEquals or KotoKind.LessThan or KotoKind.LessThanEquals or KotoKind.GreaterThan or KotoKind.GreaterThanEquals }:
-                return BoundType.Boolean;
-            case UnaryKoto { Akind: KotoKind.PrefixMinus or KotoKind.PrefixPlus } sign:
-                return this.ResultEvidence(sign.Operand, scope);
-            case BinaryKoto binary when binary.Akind is >= KotoKind.Equals and <= KotoKind.GreaterThanGreaterThanEquals:
-                return BoundType.Unit;
-            case BinaryKoto binary when binary.Akind is KotoKind.LessThanLessThan or KotoKind.GreaterThanGreaterThan:
-                return this.ResultEvidence(binary.Left, scope);
-            case BinaryKoto binary when binary.Akind is KotoKind.Plus or KotoKind.Minus or KotoKind.Asterisk or KotoKind.Slash or KotoKind.Percent or KotoKind.Ampersand or KotoKind.Bar or KotoKind.Caret:
-                return this.ResultEvidence(binary.Left, scope) ?? this.ResultEvidence(binary.Right, scope);
-            case ConversionKoto conversion:
-                if (!this.ConversionCanComplete(conversion.Left, scope))
-                {
-                    return BoundType.Never;
-                }
-
-                if (IsCopyOperation(conversion))
-                {
-                    return this.ResultEvidence(conversion.Left, this.NodeScope(source, scope));
-                }
-
-                // A literal branch can use `position@ref` as read-Type evidence, provided its operand is already
-                // known. Do not bind conversions over unavailable block locals while surveying result sources.
-                var conversionScope = this.NodeScope(source, scope);
-                var operandSyntax = KotoHelper.UnwrapParentheses(conversion.Left);
-                if (readConversions && (operandSyntax.BindingState == BindingState.Resolved || operandSyntax is IdentifierNameKoto) &&
-                    this.ResultEvidence(conversion.Left, conversionScope) is { } operandType &&
-                    (ScalarTypes.Supports(operandType) || this.IsReadType(operandType, conversionScope) || this.ReadTypeReferent(operandType, conversionScope) is not null))
-                {
-                    return this.BindNode(conversion, conversionScope);
-                }
-
-                return this.BindType(conversion.Right, conversionScope);
-            case IdentifierNameKoto name:
-                var symbol = this.Lookup(name.IdentifierName, this.NodeScope(name, scope), name, false);
-                if (symbol?.Kind == BindingSymbolKind.Function)
-                {
-                    // A declaration's Type is its return contract, not the Type of a reference to that declaration.
-                    // Bind the Item in the ordinary source pass; result inference must not invent an erasure signature.
-                    return null;
-                }
-
-                if (symbol?.Type is { } type)
-                {
-                    return type;
-                }
-
-                if (symbol?.Declaration is VariableKoto { TypeKoto: { } declared })
-                {
-                    return this.BindType(declared, symbol.Scope);
-                }
-
-                if (symbol is { Kind: BindingSymbolKind.Local, Declaration: VariableKoto { InitializerKoto: { } initializer } })
-                {
-                    // Survey only independent evidence, without checking or retyping the initializer. A local numeric
-                    // literal still commits its own default. Memoization avoids rescanning shared local dependency chains;
-                    // the pending entry also stops cycles, which ordinary Name/initialization checking diagnoses.
-                    if (!this.resultLocalEvidence.TryGetValue(symbol, out var evidence))
-                    {
-                        this.resultLocalEvidence.Add(symbol, null);
-                        evidence = this.ResultEvidence(initializer, symbol.Scope, readConversions);
-                        this.resultLocalEvidence[symbol] = evidence;
-                    }
-
-                    return evidence;
-                }
-
-                return null;
-            case InvocationKoto { Method: IdentifierNameKoto callee }:
-                var function = this.Lookup(callee.IdentifierName, this.NodeScope(callee, scope), callee, false);
-                return function is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 } } ? this.CallResultEvidence(function.Type, scope, readConversions) : null;
-            case InvocationKoto { Method: MemberAccessKoto member } when !this.MayBeValueQualifier(member.Left is GenericsKoto generic ? generic.Identifier! : member.Left, this.NodeScope(member, scope)):
-                // A Type-qualified, fully formed container supplies its constructor/Case result without surveying arguments
-                // or evaluating a receiver. Unbound qualifiers and overloaded functions still wait for ordinary binding.
-                var selected = this.Member(member, this.NodeScope(member, scope));
-                var declaring = this.memberSelections.GetValueOrDefault(member).DeclaringType ??
-                    (selected?.Declaration is FunctionKoto { IsConstructor: true } ? member.Left.BoundType : null);
-                if (declaring is not null && (selected?.EnumCase is not null || selected?.Declaration is FunctionKoto { IsConstructor: true }))
-                {
-                    if (declaring.Components.Count != (declaring.Symbol?.Schema?.GenericSlots.Count ?? 0) ||
-                        declaring.OriginArguments.Count != (declaring.Symbol?.Schema?.Origins.Count ?? 0))
-                    {
-                        return null;
-                    }
-
-                    for (var i = 0; i < declaring.Components.Count; i++)
-                    {
-                        if (declaring.Components[i] is null)
-                        {
-                            return null;
-                        }
-                    }
-
-                    return this.CallResultEvidence(declaring, scope, readConversions);
-                }
-
-                return selected is { Next: null, Declaration: FunctionKoto { GenericArguments.Count: 0 }, Type: { } result } ? this.CallResultEvidence(this.MemberType(result, declaring), scope, readConversions) : null;
-            case RangeKoto or FromEndIndexKoto when !IsUnfittedLiteral(source) && SurveyablePosition(source):
-                // SPEC 4.6.2, 14.9.2: a written `^x` or range with a typed operand has an independent Type, which a
-                // literal-only source such as `0..3` beside `0..n` then fits.
-                return this.BindNode(source, this.NodeScope(source, scope));
-            default:
-                return null;
-        }
-    }
-
-    // A signature's result Origins belong to the declaration and must be instantiated by the actual call before a join.
-    // Its terminal read Type can still fit a literal; no borrowed Origin is taken from this survey.
-    private BoundType? CallResultEvidence(BoundType? result, BindingScope scope, bool readConversions)
-        => result is not { CarriesOrigin: true } ? result : readConversions ? this.ReadTypeReferent(result, scope) : null;
-
-    private void FindResultEvidence(Koto target, BindingScope scope, ResultContext context)
-    {
-        switch (target)
-        {
-            case FunctionKoto { Body: { } body }:
-                this.TransferEvidence(body, target, scope, context);
-                return;
-            case IfKoto conditional:
-                for (var i = 0; i < conditional.Branches.Count; i++)
-                {
-                    this.BodyEvidence(conditional.Branches[i].Body, scope, context);
-                }
-
-                if (conditional.ElseBody is { } other)
-                {
-                    this.BodyEvidence(other, scope, context);
-                }
-
-                break;
-            case MatchKoto match:
-                for (var i = 0; i < match.Arms.Count; i++)
-                {
-                    var arm = match.Arms[i];
-                    this.BodyEvidence(arm.Body, this.NodeScope(arm.Pattern, scope), context);
-                }
-
-                break;
-            case DoKoto scoped:
-                this.BodyEvidence(scoped.Body, scope, context);
-                break;
-        }
-
-        this.TransferEvidence(target, target, scope, context);
-    }
-
-    private void BodyEvidence(Koto body, BindingScope scope, ResultContext context)
-    {
-        scope = this.NodeScope(body, scope);
-        var expression = body is CodeBlockKoto { IsExpressionBody: true } block ? block.Items[0] : body;
-        if (expression is not CodeBlockKoto && KotoHelper.IsValueContext(expression))
-        {
-            this.SourceEvidence(expression, scope, context);
-        }
-    }
-
-    private void SourceEvidence(Koto expression, BindingScope scope, ResultContext context)
-    {
-        expression = KotoHelper.UnwrapParentheses(expression);
-        if (context.ArrayShape is { } shape)
-        {
-            if (context.ArrayFailure is null)
-            {
-                var element = context.ArrayElement;
-                var literalDefault = context.ArrayDefault;
-                this.ArrayElementEvidence(shape, expression, this.NodeScope(expression, scope), ref element, ref literalDefault, out var failed);
-                context.ArrayElement = element;
-                context.ArrayDefault = literalDefault;
-                context.ArrayFailure = failed;
-            }
-
-            return;
-        }
-
-        if (expression is LabeledKoto label)
-        {
-            expression = label.Target;
-        }
-
-        if (expression is not TryKoto && expression is IfKoto or MatchKoto or LoopKoto or DoKoto)
-        {
-            this.FindResultEvidence(expression, scope, context);
-            return;
-        }
-
-        var evidence = this.ResultEvidence(expression, scope, context.HasLiteral);
-        if (evidence is not null && !ReferenceEquals(evidence, BoundType.Never))
-        {
-            context.Evidence.Add(evidence);
-        }
-        else if (evidence is null && IsUnfittedLiteral(expression))
-        {
-            context.HasLiteral = true;
-        }
-        else if (evidence is null)
-        {
-            context.PartialEvidence = true;
-        }
-    }
-
-    private void TransferEvidence(Koto node, Koto target, BindingScope scope, ResultContext context)
-    {
-        scope = this.NodeScope(node, scope);
-        if (node is TryKoto propagation)
-        {
-            // The generated failure return is checked against the result, but supplies no result-inference evidence.
-            this.TransferEvidence(propagation.Expression, target, scope, context);
-            return;
-        }
-
-        if (node is JumpKoto { Expression: { } expression } jump && jump is not ContinueKoto && KotoHelper.ResolveTransferTarget(jump) == target)
-        {
-            this.SourceEvidence(expression, scope, context);
-        }
-
-        if (node is FunctionKoto or PropertyAccessorKoto or DeferredBlockKoto or CompileTimeSwitchKoto)
-        {
-            return;
-        }
-
-        if (node is IsKoto { IsRuntimeTest: true } test)
-        {
-            this.TransferEvidence(test.Left, target, scope, context);
-            return;
-        }
-
-        var start = this.resultChildren.Count;
-        node.VisitChildren(this.resultCollector ??= new(this.resultChildren));
-        var end = this.resultChildren.Count;
-        for (var i = start; i < end; i++)
-        {
-            this.TransferEvidence(this.resultChildren[i], target, scope, context);
-        }
-
-        this.resultChildren.RemoveRange(start, end - start);
+        var context = this.resultPool[this.resultCursor++];
+        context.Clear(expected);
+        return context;
     }
 
     private void AddBodyResult(Koto body, ResultContext context, StructuralCompletion structural)
@@ -520,11 +208,24 @@ public sealed partial class Binding
         if (KotoHelper.IsBodyExpression(item) && KotoHelper.IsValueContext(item))
         {
             // SPEC 3.5.3, 10.2: an adapted source supplies the Type of its one adaptation.
-            context.Sources.Add(this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
+            context.Add(body, this.adaptations.TryGetValue(item, out var adaptation) ? adaptation.Type : item.ErasedFunctionType ?? item.BoundType);
         }
         else if (structural.CanComplete(body))
         {
-            context.Sources.Add(BoundType.Unit);
+            // DIAGNOSTICS §4.4: the completion of a body the parser supplied is a guess, which decides no inferred Target Result Type.
+            context.Add(null, context.Expected is null && IsRecovery(body, out _) ? null : BoundType.Unit);
+        }
+    }
+
+    // SPEC 7.1, 14.9.3 (DECISIONS PD32): the structural end of a function's or accessor's Block body supplies Unit, which a declared
+    // result other than Unit cannot take, so a body that can complete there is HIR lint row 12 at the body. The Final walk asks once
+    // per function and accessor, with its structural completion.
+    private void EndArrival(Koto owner, StructuralCompletion structural)
+    {
+        var body = owner switch { FunctionKoto function => function.Body, PropertyAccessorKoto accessor => accessor.Body, _ => null };
+        if (body is CodeBlockKoto && DeclaredResult(owner) is { } result && !ReferenceEquals(result, BoundType.Unit) && structural.CanComplete(body))
+        {
+            this.lints.Add((body, LintRow.FunctionFallthrough, null));
         }
     }
 
@@ -548,8 +249,8 @@ public sealed partial class Binding
         var structural = this.ResultStructure();
         switch (node)
         {
-            case FunctionKoto { Body: { } body }:
-                this.AddBodyResult(body, context, structural);
+            case FunctionKoto function:
+                this.AddBodyResult((function.Body ?? function.ExpressionBody)!, context, structural);
                 break;
             case IfKoto conditional:
                 for (var i = 0; i < conditional.Branches.Count; i++)
@@ -579,26 +280,27 @@ public sealed partial class Binding
             (node is WhileKoto loop && structural.CanComplete(loop.Condition)) ||
             (node is ForKoto iteration && structural.CanComplete(iteration.Iterable)))
         {
-            context.Sources.Add(BoundType.Unit);
+            context.Add(null, BoundType.Unit);
         }
 
+        context.Collecting = false;
+        return this.DecideResult(node, context);
+    }
+
+    // SPEC 14.9.2: the Target Result Type of the collected sources, each source checked against it, and the Expression Type.
+    private BoundType? DecideResult(Koto node, ResultContext context)
+    {
         var types = this.resultTypes;
         types.Clear();
-        foreach (var source in context.Sources)
+        var awaiting = this.ResultCandidates(context, types);
+        if (context.Expected is null && types.Count == 0 && awaiting && this.AwaitsWithoutCandidate(node, context, types))
         {
-            if (source is null)
-            {
-                context.Pending = true;
-            }
-            else if (!ReferenceEquals(source, BoundType.Never))
-            {
-                types.Add(source);
-            }
+            return Complete(node, null); // SPEC 14.9.2: nested results propagate the same way; its position decides its Type.
         }
 
-        var suppliedValue = types.Count > 0;
+        var suppliedValue = types.Count > 0 || awaiting;
         var common = context.Expected;
-        if (common is not null && suppliedValue && HasArrayLengthHole(common))
+        if (common is not null && types.Count > 0 && HasArrayLengthHole(common))
         {
             common = this.CompleteArrayExpectation(common, types[0]);
         }
@@ -623,6 +325,13 @@ public sealed partial class Binding
             }
         }
 
+        // SPEC 14.9.2 step 3: each source that awaits its position takes the Target Result Type, by its late Type (no Never fitting).
+        if (awaiting && common is not null && this.PropagateSources(node, context, common) is { } misfit)
+        {
+            context.Invalid = true;
+            failed ??= misfit;
+        }
+
         types.Clear();
         if (context.Invalid)
         {
@@ -634,13 +343,8 @@ public sealed partial class Binding
             return Complete(node, null);
         }
 
-        var completion = node is FunctionKoto { Body: { } functionBody } ? functionBody : node;
-        return Complete(node, !suppliedValue && !structural.CanComplete(completion) ? BoundType.Never : common);
-    }
-
-    private sealed class ResultCollector(List<Koto> children) : KotoVisitor
-    {
-        public override void Visit(Koto node) => children.Add(node);
+        var completion = node is FunctionKoto function ? (function.Body ?? function.ExpressionBody)! : node;
+        return Complete(node, !suppliedValue && !this.ResultStructure().CanComplete(completion) ? BoundType.Never : common);
     }
 
     private sealed class ResultContext
@@ -660,14 +364,53 @@ public sealed partial class Binding
 
         internal List<BoundType?> Sources { get; } = new();
 
+        // Each source's node beside its Type: the body or transfer operand that supplies it, or null for a structural Unit.
+        internal List<Koto?> SourceNodes { get; } = new();
+
         internal List<BoundType> Evidence { get; } = new();
 
         internal bool Pending { get; set; }
+
+        // Whether the target collects its sources after its survey, so that a literal source waits for its Type (SPEC 14.9.2 step 3).
+        internal bool Collecting { get; set; }
+
+        // Whether the target waits for its position's Type, which decides it when the position binds it (SPEC 14.9.2).
+        internal bool Waiting { get; set; }
 
         internal bool Invalid { get; set; }
 
         internal bool HasLiteral { get; set; }
 
         internal bool PartialEvidence { get; set; }
+
+        internal bool HasNever { get; set; }
+
+        // A survey's Type for the literal sources, whether one does not fit it, and the first literal's default.
+        internal BoundType? LiteralFit { get; set; }
+
+        internal bool LiteralMisfit { get; set; }
+
+        internal BoundType? LiteralDefault { get; set; }
+
+        internal void Clear(BoundType? expected)
+        {
+            this.HasLiteral = this.PartialEvidence = this.HasNever = this.LiteralMisfit = false;
+            this.LiteralFit = this.LiteralDefault = null;
+            this.Expected = expected;
+            this.Inferred = expected is null;
+            this.Invalid = this.Pending = this.Collecting = this.Waiting = false;
+            this.Sources.Clear();
+            this.SourceNodes.Clear();
+            this.Evidence.Clear();
+            this.ArrayShape = null;
+            this.ArrayElement = this.ArrayDefault = null;
+            this.ArrayFailure = null;
+        }
+
+        internal void Add(Koto? node, BoundType? type)
+        {
+            this.Sources.Add(type);
+            this.SourceNodes.Add(node);
+        }
     }
 }

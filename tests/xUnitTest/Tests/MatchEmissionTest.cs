@@ -7,6 +7,18 @@ namespace XunitTest;
 
 public class MatchEmissionTest
 {
+    // SPEC 14.8.1 (DECISIONS BU-14): a Wildcard at a pair layer of an owned Subject or item selects nothing, so the old path judges and
+    // generates it as before, in the owner and uniq instances: a Tuple element, a whole Subject, a for slot `_` and a structural test.
+    private const string PairWildcard = "func second<s/T>(pair: (s/T, i32)) -> i32\n    s is owner or uniq\n    match pair@move\n        (_, let n) => return n\n" +
+        "func only<s/T>(pair: (s/T, i32)) -> i32\n    s is owner\n    match pair@move\n        (_, let n) => return n\n" +
+        "func has<s/T>(o: s/Option<T>, marker: s/T) -> bool\n    s is owner or uniq\n    match o@move\n        .Some(_) => return true\n        .None => return false\n" +
+        "func whole<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    match value@move\n        _ => return 3\n" +
+        "func sum<s/T>(items: Array<(s/T, i32)>) -> i32\n    s is owner or uniq\n    var total: i32 = 0\n    for (_, n) in items@move\n        total += n\n    return total\n" +
+        "var n: i32 = 1\nvar p: i32 = 2\nlet five: i32 = 5\nvar v: Option<i32> = .Some(1)\nvar m: i32 = 0\nlet none: Option<i32> = .None\nlet k: i32 = 0\n" +
+        "let a = second((n@uniq, 7)) + second((five, 8)) + only((five, 9))\nlet b = has(v@uniq, m@uniq) and not has(none, k)\nlet c = whole(n@uniq) + whole(five)\n" +
+        "let d = sum([(five, 2), (five, 3)]) + sum([(n@uniq, 4), (p@uniq, 6)])\nrequire a == 24 and b and c == 6 and d == 15 else => $abort(\"wildcard\")\n" +
+        "Console.writeLine(\"ok\")";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "Boolean", "let b = true\nmatch b\n    true => Console.writeLine(\"yes\")\n    false => Console.writeLine(\"no\")", "yes\n" },
@@ -35,6 +47,7 @@ public class MatchEmissionTest
         { "Snapshot", "var n = 1\nlet result = match n\n    1\n        defer => n = 2\n        yield n\n    _ => 0\nif result == 1 and n == 2 => Console.writeLine(\"ok\")", "ok\n" },
         { "NeverSubject", "func f()\n    match (return)\n        _ => Console.writeLine(\"bad\")\nf()\nConsole.writeLine(\"ok\")", "ok\n" },
         { "Raw", "match \"a\"@move\n    \"a\" => Console.writeLine(\"ok\")\n    \"\"\"a\"\"\" => Console.writeLine(\"bad\")\n    _ => ()", "ok\n" },
+        { "PairWildcard", PairWildcard, "ok\n" },
     };
 
     [Theory]
@@ -68,7 +81,7 @@ public class MatchEmissionTest
     {
         name = "Match" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, expected);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, expected, destructions);
+        StringEmissionTest.WriteAuditedFixture(name, ir, expected, destructions);
     }
 
     [Theory]
@@ -199,7 +212,7 @@ public class MatchEmissionTest
         name = "MatchAbort" + name;
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, destructions, 1, stderr);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, destructions, 1, stderr);
     }
 
     [Theory]
@@ -208,7 +221,7 @@ public class MatchEmissionTest
     public void DivergenceHasNoResultDelivery(string name, string source)
     {
         var ir = ScalarEmissionTest.EmitFixture("MatchDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]
@@ -216,7 +229,7 @@ public class MatchEmissionTest
     {
         const string Source = "let result = match \"subject\"@move\n    _\n        let local = \"local\"\n        defer => Console.writeLine(\"cleanup\")\n        yield \"result\"\nConsole.writeLine(result)";
         var ir = ScalarEmissionTest.EmitFixture("MatchCleanupOrder", Source, "cleanup\nresult\n");
-        StringEmissionTest.WriteAuditedFixture("MatchCleanupOrder", Source, ir, "cleanup\nresult\n", "subject=1;local=1;cleanup=1;result=1", order: [2, 1, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture("MatchCleanupOrder", ir, "cleanup\nresult\n", "subject=1;local=1;cleanup=1;result=1", order: [2, 1, 0, 3]);
     }
 
     [Fact]

@@ -28,6 +28,7 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     [InlineData("Result", "func make<T>() -> Option<T> => .None\npublic func main() -> ()\n    let x = make()\n", "make()", "T", null)]
     [InlineData("Constraint", "func make<T>() -> i32\n    T is Equatable\n    return 1\npublic func main() -> ()\n    require make() == 1 else => $abort(\"u7b\")\n", "make()", "T", null)]
     [InlineData("TypeIdentity", "func count<I, E>(items: uniq/I) -> i32\n    I is Iterator\n    I.Item is E\n    return 0\npublic func main() -> ()\n    var values = [1, 2, 3]\n    var it = values.iterate()\n    require count(it@uniq) == 0 else => $abort(\"ident\")\n", "count(it@uniq)", "E", null)]
+    [InlineData("NeverElement", "func id<T>(value: T) -> T => value@move\nfunc f() -> i64\n    let a: i64 = 2\n    let x = id((a, (return 1)))\n    return 0\npublic func main() -> () => ()\n", "id((a, (return 1)))", "T", null)]
     public void AnUnsolvedSlotOfTheSelectedCandidateIsTheInferenceBoundary(string name, string source, string call, string slot, string? argument)
     {
         var check = DiagnosticCorpus.Check(source);
@@ -40,6 +41,24 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Contains(related, static x => x.Role == "declaration");
         Assert.Equal(argument, related.SingleOrDefault(static x => x.Role == "argument") is { } waiting ? Text(source, waiting.Span) : null);
         Assert.Contains(argument is null ? $"binds {slot} (SPEC 10.8)" : "never evidence for an outer slot", error.Note, StringComparison.Ordinal);
+    }
+
+    // SPEC 10.8 (DECISIONS BU-2): an expected result Never is ordinary evidence, so it fills the slot that a Never argument does not.
+    [Fact]
+    public void AnExpectedNeverResultFillsTheSlot()
+    {
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nfunc stop() -> Never => $abort(\"stop\")\nlet x: Never = identity(stop())");
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "identity");
+        Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
+    }
+
+    // SPEC 10.8, 3.8 (DECISIONS BU-2, R11): a Never component of a typed argument's Type is ordinary evidence.
+    [Fact]
+    public void ANeverComponentOfATypedArgumentIsEvidence()
+    {
+        var c = MinimalEmissionTest.Analyze("func h<T>(x: (T, i64)) -> () => ()\nfunc f(u: (Never, i64)) => h(u@move)");
+        var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>(), static x => x.CallOf()?.Target.Name == "h");
+        Assert.Same(BoundType.Never, call.CallOf()!.TypeArguments[0]);
     }
 
     // SPEC 10.8, 10.3: the parts of a fit that do not contain the slot are still checked, so a result whose outer structure the expected
@@ -67,6 +86,18 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
 
         var open = "func run<T, F>(action: ref/F) -> i32\n    F is Callable<(T) -> i32>\n    return 7\npublic func main() -> ()\n    let r = run(func (n) => n + missing)\n";
         Assert.Equal(nameof(DiagnosticCode.UnboundTypeArgument_Kd), Assert.Single(DiagnosticCorpus.Check(open).Diagnostics).Code);
+    }
+
+    // SPEC 14.9.2, 23.1.2: the open result is inferred from the body's own sources, so their conflict (the value i32 and a returned bool)
+    // is an independent problem reported beside the call's unbound slot.
+    [Fact]
+    public void AConflictAmongTheBodysOwnSourcesStaysVisible()
+    {
+        var source = RunR + "public func main() -> ()\n    let r = run(func (n) => if n > 0 => n else => (return true))\n";
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(2, diagnostics.Length);
+        Assert.Equal((nameof(DiagnosticCode.UnboundTypeArgument_Kd), "run(func (n) => if n > 0 => n else => (return true))"), (diagnostics[0].Code, Text(source, diagnostics[0].Span)));
+        Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "func (n) => if n > 0 => n else => (return true)"), (diagnostics[1].Code, Text(source, diagnostics[1].Span)));
     }
 
     // SPEC 10.4, 10.5, 10.8: a candidate with an unsolved slot, or one whose F has no Callable Constraint, is compared unchanged, with the
@@ -97,11 +128,13 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
     }
 
-    // SPEC 10.8: a parameter Type that holds an unsolved slot is neither identical to nor a subtype of another Type, so the candidates tie
-    // in step 2 even though one uses a default; omitted header Types rest on the ambiguity.
+    // SPEC 10.8, 10.2.1: a parameter Type that holds an unsolved slot is neither identical to nor a subtype of another Type, so the
+    // candidates tie in step 2 even though one uses a default, and a Literal is no evidence; omitted header Types rest on the ambiguity.
     [Theory]
     [InlineData("func size<T>(value: Option<T>) -> i32 => 1\nfunc size(value: Option<i32>, extra: i32 = 0) -> i32 => 2\npublic func main() -> ()\n    let r = size(.None)\n", "size(.None)")]
     [InlineData("func run(action: (i32) -> i32) -> i32 => action(1)\nfunc run<T>(action: (T) -> T, extra: i32 = 0) -> i32 => 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", "run(func (n) => n + 1)")]
+    [InlineData("func h(value: i32) -> i32 => 1\nfunc h<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = h(1)\n", "h(1)")]
+    [InlineData("func g2(value: f64) -> i32 => 1\nfunc g2<T>(value: T) -> i32 => 2\npublic func main() -> ()\n    let r = g2(1.5)\n", "g2(1.5)")]
     public void OpenParameterTypesAreIncomparable(string source, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -110,15 +143,48 @@ public class UnboundCallSlotTest(ITestOutputHelper output)
     }
 
     // SPEC 10.5, 23.1.2: the body of the selected candidate's argument keeps its own error without a fallback to another candidate, and
-    // a failed selection leaves the omitted header Types derived.
+    // a failed selection leaves the omitted header Types derived. SPEC 10.2.1: a check that fails once the defaults apply is the selected
+    // candidate's own record: a literal that its default does not fit, or a refuted Constraint.
     [Theory]
     [InlineData("func run<F>(action: ref/F) -> i32\n    F is Callable<(i32) -> i32>\n    return action(1)\nfunc run<T, F>(action: ref/F, extra: i32 = 0) -> i32\n    F is Callable<(T) -> T>\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + missing)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "missing")]
     [InlineData("func run<F>(action: ref/F, x: i32) -> i32\n    F is Callable<(i32) -> i32>\n    return action(x)\npublic func main() -> ()\n    let r = run(func (n) => n + 1, true)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "run(func (n) => n + 1, true)")]
     [InlineData("func run<F>(action: ref/F) -> i32\n    return 0\npublic func main() -> ()\n    let r = run(func (n) => n + 1)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "n")]
+    [InlineData("func f<T>(x: T) => ()\npublic func main() -> ()\n    f(3000000000)\n", nameof(DiagnosticCode.InvalidNumericLiteral_Kd), "3000000000")]
+    [InlineData("func fi<T>(x: T)\n    T is PrimitiveInteger\n    return\npublic func main() -> ()\n    fi(1.5)\n", nameof(DiagnosticCode.NoApplicableOverload_Kd), "fi(1.5)")]
     public void OneRecordPerIndependentProblem(string source, string code, string at)
     {
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
+    }
+
+    // SPEC 10.5.1, 10.5.3, 10.5.4 (D4; owner decision 2026-10-18): a nested call or construction whose slot only a waiting callable binds
+    // is typed by that callable when it needs no S and otherwise waits for its outer expectation, a call and a construction alike: the
+    // typed result is then fitted as a typed argument is, and a waiting one that no expectation types is the outer call's record.
+    [Theory]
+    [InlineData("takeF(Option.Some(func (v: i64) -> i64 => v))", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("takeF(wrap(func (v: i64) -> i64 => v))", nameof(DiagnosticCode.NoApplicableOverload_Kd))]
+    [InlineData("keep(Option.Some(func (v: i64) -> i64 => v))", null)]
+    [InlineData("keep(wrap(func (v: i64) -> i64 => v))", null)]
+    [InlineData("takeF(Option.Some(func (v) => v))", null)]
+    [InlineData("takeF(wrap(func (v) => v))", null)]
+    [InlineData("keep(Option.Some(func (v) => v))", nameof(DiagnosticCode.UnboundTypeArgument_Kd))]
+    [InlineData("keep(wrap(func (v) => v))", nameof(DiagnosticCode.UnboundTypeArgument_Kd))]
+    public void AWaitingCallableFixesItsSlotWhenItNeedsNoS(string call, string? code)
+    {
+        var source = "func wrap<T>(value: T) -> Option<T> => Option.Some(value@move)\nfunc takeF(value: Option<(i64) -> i64>) => ()\nfunc keep<T>(value: T) => ()\npublic func main() -> ()\n    " + call + "\n";
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))).ToArray();
+        Assert.Equal(code is null ? [] : new[] { (code, call) }, errors);
+    }
+
+    // SPEC 10.2.1, 23.1.2: every Literal that its default does not fit is its own record, an argument, element or payload alike.
+    [Theory]
+    [InlineData("func f2<T>(a: T, b: T) => ()\npublic func main() -> ()\n    f2(3000000000, 5000000000)\n", "3000000000", "5000000000")]
+    [InlineData("func id<T>(value: T) -> T => value@move\npublic func main() -> ()\n    let x = id((3000000000, 4000000000))\n", "3000000000", "4000000000")]
+    [InlineData("enum Two<T>\n    Both(T, T)\npublic func main() -> ()\n    let x = Two.Both(3000000000, 5000000000)\n", "3000000000", "5000000000")]
+    public void EveryLiteralItsDefaultDoesNotFitIsItsOwnRecord(string source, string first, string second)
+    {
+        var errors = DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))).ToArray();
+        Assert.Equal(new[] { (nameof(DiagnosticCode.InvalidNumericLiteral_Kd), first), (nameof(DiagnosticCode.InvalidNumericLiteral_Kd), second) }, errors);
     }
 
     // SPEC 23.1: the record and its related locations reach the CLI, the language server and JSON.

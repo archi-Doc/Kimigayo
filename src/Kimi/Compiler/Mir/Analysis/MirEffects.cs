@@ -3,9 +3,10 @@
 // Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
-// Input: validated bodies per MirCases view, their uses (MirUses), A2's verdicts (MirProgram.Drops), TyCtxt's obligations and callee facts.
+// Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
+// (MirProgram.Drops), TyCtxt's obligations and callee facts.
 // Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and the per-node summaries for A5.
+// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's static keys (Keys).
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there); requirement and virtual calls
 // take the bounds of the caller's own premises; one worklist with recorded dependencies solves the least fixed point; storage is pooled and
 // reset by counts, so a warm version allocates nothing.
@@ -21,8 +22,8 @@ namespace Kimi.Compiler.Mir;
 /// solves the summaries of the program version and judges the obligations.</summary>
 /// <param name="types">The Type context, whose effect facts Binding published.</param>
 /// <param name="cases">The Semantics case views.</param>
-/// <param name="reach">The one reachability walk: the blocks of a body the runtime edges reach.</param>
-internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach reach)
+/// <param name="flow">The dataflow, begun with the body whose views <see cref="Local"/> records: the blocks the runtime edges reach.</param>
+internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDataflow flow)
 {
     private const byte Environment = 1; // The classes of a summary: an environment effect (SPEC 8.11.2),
     private const byte Unknown = 2; // an effect that cannot be classified,
@@ -43,9 +44,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
     private int edgeCount;
     private byte found; // The classes the current evaluation or local walk found.
 
-    /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2): its effects and static accesses, its calls
-    /// with a body as edges into the callee views their substitution selects, and the parts its Drops destroy (by A2's verdicts) and the
-    /// Callable inputs it calls through as inputs of its summary. The first view of the first body starts a program version.</summary>
+    /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
+    /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its
+    /// Drops destroy (by A2's verdicts) and the Callable inputs it calls through as inputs of its summary. The first view of the first body
+    /// starts a program version.</summary>
     /// <param name="program">The program.</param>
     /// <param name="body">The body, whose view is selected.</param>
     /// <param name="view">The selected view.</param>
@@ -53,7 +55,9 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
     {
         if (body.Ordinal == 0 && view == 0)
         {
-            this.nodeCount = this.itemCount = this.edgeCount = 0;
+            this.nodeCount = this.itemCount = this.edgeCount = this.keyCount = 0;
+            this.fieldIds.Clear();
+            this.fields.Clear();
         }
 
         var node = this.nodeCount++;
@@ -62,11 +66,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         MirDataflow.Grow(ref this.local, this.nodeCount);
         MirDataflow.Grow(ref this.itemEnds, this.nodeCount);
         MirDataflow.Grow(ref this.edgeEnds, this.nodeCount);
+        MirDataflow.Grow(ref this.keyEnds, this.nodeCount);
         if (view == 0)
         {
             this.bases[body.Ordinal] = node;
-            reach.Clear(body.Blocks.Length);
-            reach.Walk(body, 0, checks: false); // The blocks where Drops run (R4-M6a).
         }
 
         (this.owners[node], this.found) = (body.Ordinal, 0);
@@ -82,6 +85,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         }
 
         (this.local[node], this.itemEnds[node], this.edgeEnds[node]) = (this.found, this.itemCount, this.edgeCount);
+        this.keyEnds[node] = this.keyCount;
     }
 
     private static byte Class(CompilerFunctionEffect effect) => effect switch
@@ -91,6 +95,20 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         CompilerFunctionEffect.Dependent => Derived,
         _ => Limit,
     };
+
+    // Whether a direct child row of a verdict row, between it and the row after its subtree, covers its part of an argument.
+    private static bool Covers(ReadOnlySpan<MirDropRow> rows, int row, int next, int part)
+    {
+        for (var i = row + 1; i < next; i++)
+        {
+            if (rows[i].Depth == rows[row].Depth + 1 && rows[i].Step != MirProjectionKind.Base && rows[i].Arg == part)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     // SPEC 8.11.2, 8.11.4, 8.11.6: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
@@ -201,14 +219,15 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         {
             _ = this.Destroyed(program.Drops.RowsOf(body.Ordinal), group, body, type);
         }
-        else if (reach[block])
+        else if (flow.Runtime(block))
         {
             this.Item(type, Drop);
         }
     }
 
     // A verdict row and its subtree: Elide destroys nothing, Keep and Flag the node's Type, Open no own layer (one that declares a drop is
-    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit. Returns the row after the subtree.
+    // A2's MovedPlace_Kd) but each child row and each part without one, which follows the own bit; a part is covered by a direct child row
+    // of its argument (a mask below 64 parts, past them the rows themselves). Returns the row after the subtree.
     private int Destroyed(ReadOnlySpan<MirDropRow> rows, int row, MirBody body, BoundType? type)
     {
         var node = rows[row];
@@ -222,7 +241,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         while (next < rows.Length && rows[next].Depth > node.Depth)
         {
             var child = rows[next];
-            covered |= child.Step == MirProjectionKind.Base ? 0UL : 1UL << Math.Min(child.Arg, 63);
+            covered |= child.Step == MirProjectionKind.Base || child.Arg > 63 ? 0UL : 1UL << child.Arg;
             based |= child.Step == MirProjectionKind.Base;
             next = this.Destroyed(rows, next, body, body.ProjectedType(type, child.Step, child.Arg));
         }
@@ -243,7 +262,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         };
         for (var i = 0; i < count; i++)
         {
-            if (i > 63 || (covered & (1UL << i)) == 0)
+            if (i > 63 ? !Covers(rows, row, next, i) : (covered & (1UL << i)) == 0)
             {
                 this.Item(body.ProjectedType(type, kind, i), Drop);
                 if (kind == MirProjectionKind.ConstIndex)
@@ -317,6 +336,10 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirReach 
         {
             owner.found |= (effects & (MirEffect.Environment | MirEffect.IntToPointer | MirEffect.RawStaticRead)) != 0 ? Environment : (byte)0;
             owner.found |= (effects & MirEffect.Unknown) != 0 ? Derived : (byte)0;
+            if ((effects & (MirEffect.StaticRead | MirEffect.StaticWrite)) != 0 && body.Statics[site].Mutable)
+            {
+                owner.AddKey(body.Statics[site].Symbol, (effects & MirEffect.StaticWrite) != 0);
+            }
         }
     }
 }

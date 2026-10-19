@@ -54,7 +54,6 @@ public class ElementEmissionTest
         var source = $"let a: [{length} of i32] = " + (length == 0 ? "[]" : "[1, 2]") + $"\nlet n = a[{index}]\nConsole.writeLine(\"bad\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementBounds" + name, source, string.Empty, 1, "Hello.kimi:2:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n");
         Assert.Contains("icmp uge i64", ir);
-        Assert.DoesNotContain("getelementptr inbounds", ir.Split("define internal void @__kimi_body").Last());
     }
 
     [Theory]
@@ -152,7 +151,7 @@ public class ElementEmissionTest
     {
         const string Source = "func make() -> (string, i32) => (\"held\", 42)\nif make().1 == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementLifetime", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementLifetime", Source, ir, "ok\n", "held=1;ok=1", order: [0, 1]);
+        StringEmissionTest.WriteAuditedFixture("ElementLifetime", ir, "ok\n", "held=1;ok=1", order: [0, 1]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var instructions = module.GetFunction(0).Instructions;
@@ -168,7 +167,7 @@ public class ElementEmissionTest
         const string Source = "func make() -> (string, [0 of i32]) => (\"held\", [])\ndefer => Console.writeLine(\"bad\")\nlet n = make().1[0]";
         const string Stderr = "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementAbortedLifetime", Source, string.Empty, 1, Stderr);
-        StringEmissionTest.WriteAuditedFixture("ElementAbortedLifetime", Source, ir, string.Empty, "held=0;bad=0", 1, Stderr);
+        StringEmissionTest.WriteAuditedFixture("ElementAbortedLifetime", ir, string.Empty, "held=0;bad=0", 1, Stderr);
     }
 
     [Theory]

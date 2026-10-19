@@ -85,6 +85,7 @@ All folders are direct children of `draft`, so moving a document between them ke
 | `2026-10-06 G75 Common Ownership Analysis C.md` | 取り込み済み | 2026-10-06 取り込み（S1–S9）。§7.6.3、§8.1.1、§8.1.2、§8.9、§8.10（Semantics cases 新設）、§13.5.5.1、§15.3.5、§15.6.4、§23.3.6.4、§23.3.6.5、付録 E（Semantics case）。S7 は診断コード（仕様文なし）。実装は U0–U6（PLAN G75）。原稿は固定。 |
 | `2026-10-06 G75 Common Ownership Analysis.md` | 完了 | 計画 A。2026-10-06 に計画 C が置き換え（U0–U7 の共通モデル再設計は採用せず、ケース実行で代替）。`Obsolete/` へ移動（本文は変更なし）。 |
 | `2026-10-06 G75 Common Ownership Analysis B.md` | 完了 | 計画 B。2026-10-06 に計画 C が置き換え（`W` への `o_s` 付与と単一パスの条件付きルートは採用せず、`o_b` アクセサとケース実行で代替）。`Obsolete/` へ移動（本文は変更なし）。 |
+| `2026-10-17 Unlabeled Exit from Do.md` | 完了 | 案 A。2026-10-20 に案 B が置き換え（対象の決定規則は案 B に移管、結果を捨てる `do` へのラベルなし `exit` の受理は不採用）。`Obsolete/` へ移動（本文は変更なし）。詳細は 2026-10-20 の節。 |
 
 ## Design
 
@@ -433,3 +434,376 @@ conditional designs/estimates are planning inputs, not adopted representations. 
 - `Proposals/2026-10-06 Callable and Local Region Implementation Plan.md` stays 一部取り込み. Its design point that Function
   contracts carry a Value/PlaceRef/PlaceUniq result category is superseded by this removal and needs no further work; its
   frozen text is unchanged.
+
+## 2026-10-16 — Named alias declarations
+
+- [Named Alias Declarations](Proposals/2026-10-16%20Named%20Alias%20Declarations.md): 一部取り込み (open).
+  Intake: the owner requested an English specification-change and implementation plan after approving ordinary named
+  alias declarations and their boundary rules. No section is integrated or frozen; implementation is unverified.
+- By the owner's explicit instruction, this plan takes precedence over SPEC and its references for its stated changes;
+  existing specifications govern everything else. This intake changes no current specification.
+- Revision 2026-10-17, at the owner's request after a readiness review: an opening target never resolves through a
+  named alias; alias access is the ordinary §9.4.4 API-signature rule at every access level; A1–A2 form a unit of R7's
+  resolver consolidation. The text was restructured and duplicated policy removed.
+- Planned mapping: §2.1–2.2 → SPEC §§1, 6.1, 6.7, 9.1–9.3, 9.7.1, 18.2 and Appendix F; §2.3 → §§9.2, 9.5–9.6,
+  18.1–18.2, 18.4.1; §2.4 → §§3.3.2, 8.1, 9.7.2, 15.3–15.4 and Appendix F; §2.5 → §§6.3.2, 6.5.2, 9.1, 9.7, 10.8;
+  §2.6 → §§9.4, 18.2–18.3 and Appendix D; §2.7 → §§18.2.1, 19.1, 19.4; §3 → affected examples; §§4–5 → implementation,
+  services, verification and conditional maintenance listed in the plan. Formal integration requires a later
+  instruction; no support claim follows from this intake.
+
+## 2026-10-16 — Complete Polonius A5 plan
+
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み (open). The owner
+  adopted it for R4's remaining scope on 2026-10-16 and 2026-10-17 (its decisions OD1–OD13: the direction in its status line, the
+  2026-10-17 outcomes in its §10; DECISIONS R4-M35) and approved its step 0 design A3 (`Sketches/A5 Step 0/design-A3.md`, §9) on 2026-10-17. It is a working plan:
+  no section is integrated into SPEC or IMPL, and no text is frozen.
+- Its SPEC change items go separately: S1, S2 and S5 as proposals, S3 and S4 as clarifications (plan §5.2, OD7), and each approved
+  list of precision losses as one SPEC revision before the R4 exit (OD13); each is recorded here when it lands. Adoption implies no
+  implementation support.
+
+## 2026-10-17 — A5 SPEC simplifications and Loan identity by base
+
+The owner's request is OD12 of the Complete Polonius A5 Plan (DECISIONS R4-M35): simple, then fast, then precise, never
+trading soundness, with each precision loss written as a decidable SPEC rule clause before the R4 exit (plan §5.3). The
+owner approved design A3's losses, relaxations and clarification c1 on 2026-10-17 (`Sketches/A5 Step 0/design-A3.md` §9),
+adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirmed S4 (OD11).
+
+- `Changes/2026-10-16 Loan Identity by Base.md`: 取り込み済み (text of `61b1abf2`). Mapping of its §2.3:
+  - §15.6 line 450 → the §15.6 Loans paragraph. Its last clause ("through static anchors") now reads "they are checked
+    where the body is called, against what the call may reach and its effects on static storage", since P6 below leaves
+    no result anchors to name.
+  - §15.6 line 453 → the §15.6 liveness bullet: the check by value, never by Loan id (A3's own-site check); a stored
+    value counts when stored "into a holder used after P" (P1's holders) rather than "into a Place".
+  - §15.6.2 line 495 → the §15.6.2 lead paragraph (access paths, own steps, dereferences) and its distinct-roots row;
+    line 500 → the reach bullet (A3's P3, both forms, with the `replace` exemption) and the comparison bullet.
+  - §15.6.3 line 513 → the first two §15.6.3 paragraphs, split before the base ("It is contained" now names the child);
+    the end never crosses a dereference (the plan's `within`).
+  - §15.6.6 line 596 → the second §15.6.6 paragraph; §13.5.5 line 353 and §3.5.1 line 359 → as written; Appendix E →
+    the Loan row and the new Base row.
+  - §3 and §4.1 → examples: `deepest` in §15.6.3 with `deepestCleared`'s `clear()` as its commented error (the plan §5.2
+    form); one §15.6.3 block for the base operations (the `replace` program, with the `exchange` program's line and §4.1's
+    Move as commented errors on the same `r`); §15.6.6's observing destruction, with `x` and `y` declared. §3's `touch`
+    join program and the list-walk prose are not added.
+  - §2.2, §4 to §9: rationale, losses, evidence and rejected options, unchanged. §10's test list → the `OldRule` tags
+    below; its new rule tests belong to A5's units.
+  - Every item is integrated; none is rejected or transferred. The file moved to `Changes` with only its status sentence
+    replaced at closure (adopted, DECISIONS R4-M39, and integrated); its links to files that stay in `Proposals` (S2, the
+    A5 plan, PLAN10) are not rewritten. `Sketches/LoanIdentityByBase.mjs` names the new path.
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+  frozen: §5.2's S4 and its Optional row "Mutable-static borrows never leave the body" (P6). The other clauses are
+  §5.3's first list as design A3 §2 and §9 word them. The rest of the plan stays a working plan.
+  - S4 → the second §15.6 example (`slot`, `r@follow = b@ref`).
+  - P1 → the §15.6 Holders bullet. P10 → the §15.6 write-through bullet (holders named by the reference's Loans with no
+    dereference, its parents' included). P11 → that bullet's last sentence and §13.7.2's Writeback protection.
+  - P3 → S1's reach bullet above. P4 → §15.6.4's retention sentence (per argument, never per Origin; a Closure's call
+    receiver included) and §15.6.3's descent sentence.
+  - P5 → the §15.6 introduction, the §15.6.2 key bullet, §15.6.4's effect summaries (static Fields; no open key) and
+    §22.4.4.
+  - P6 → §15.6.4's Mutable-static Loans (replacing Mutable-static anchors), §15.6.5's finite Origins and §11.8. Its rules
+    for results that carry an anchor are deleted as vacuous: §6.4.6 (virtual slots), §7.7.4 (erasure), §8.6's result row,
+    §8.11.6 (Callable binding), §12.7.1 and §15.6.7. In the §15.6.4 example `current` becomes an error, `leak` stores
+    `State.text@ref` directly and stays an error, and `let f = current` is removed. A3 §2 said `leak` and `f` keep their
+    verdicts, but under P6 no call result carries a mutable-static Loan, so `current(anchor)`'s result depends on
+    `anchor` alone and both old lines would be valid.
+  - P9 → §7.2.3's recursive defaults.
+  - Relaxation (a) → §15.6.2's distinct-roots row, replacing the distinct-anchors row and "Distinct reference variables
+    … prove nothing"; (b) → the Case-payload row.
+  - c1 → §15.6.5's inferred regions.
+  - Consequential: §12.7.1 relates a referent through the Places its reference's Loans name, since "Follow Loan
+    provenance" left §15.6.2; §15.6.7 protects "the references it was reached through" instead of its provenance; §13.5.5's
+    pair-layer table names `P` as the base of a `uniq` layer's child (S1); §3.4 says §15.6.2 states when Loan checking
+    treats Places as disjoint, since distinct Case payloads may share bytes (relaxation (b)); Appendix E's Access path row
+    points to §15.6.2, and a Holder row is added.
+  - Clarified at intake, after the independent review: a call writes the storage its contract lets it write as a write
+    through a reference, so `replace`, `exchange` and `swap` completely replace no holder (A3 §5 adds to a store target;
+    S4). S1 §2.1's `replaced(X,P)` sketch also listed their targets; the SPEC follows A3 and S4, and `replace` ends only
+    the children of §15.6.3. "Storage the body does not own" is decided as A3's `Φ_E` is: a reference from a parameter
+    or capture, static or raw storage, or a call result its contract ties to no argument. Paths include base subobject
+    steps, and examples write a dereference as `.*`.
+  - Not integrated: S2, S3, S5, the root-most kill and relaxation (c) (not adopted).
+- Principles. One Concept, One Canonical Form: one Loan identity (the Borrow site), one Place name (the access path), one
+  carrying unit (the holder) and one retention unit (the argument). Local Reasoning: a verdict depends on one body's
+  paths, published contracts and finite facts; no clause needs value identity or unbounded Places. Explicit Semantics:
+  every operation that keeps an old reference alive is a visible conflict at its site, and the event that ends a child
+  is written at its base. Compiler Server Protocol: a conflict names the operation, the Borrow site and the base.
+  Soundness: each loss only adds conflicts or keeps Loans longer (A3 §2); the relaxations rest on P3 and the caller's
+  activation rule (A3 §3, §9).
+- Usage: none of the clauses changes a library or milestone verdict (A3 §2, S1 §7, rechecked at intake). The default
+  pipeline keeps the earlier rules until R6-check (plan §9.2, OD5; STATUS). Tests that expect an earlier rule carry
+  `[Trait("OldRule", "<id>")]` with a comment naming their rows: S1 in `StoredReferenceLoanTest`, `OwnedStoredReferenceTest`
+  (locations), `ContentUpdateTest` (`replace` now valid) and `DictionaryStoredReferenceTest`; P1 in
+  `LocalRegionCompositionTest` and `FixedOriginRetentionTest`; P4 (a by-value argument, with P1's holders) in
+  `FixedOriginRetentionTest`; S4 in `LocalRegionCompletionTest` (the old path's strong update through a reference).
+  S1 §7 counted no accepted test for its §4.2 form; the `DictionaryStoredReferenceTest` rows are such forms (an exclusive
+  Borrow of the Dictionary while a Borrow through a stored reference, which carries the `index` or `tryGet` result's
+  Loan, is live; Rust rejects them too). `tests/diagnostics/pair-cases.json` row `B12-parent-move` becomes an error in
+  its `uniq` case (a Move of the base) and is not tagged here. Not refreshed: SPECJ and GUIDE.
+
+## 2026-10-17 — Loan ending by exact Move-Path prefix, P12 and two clarifications
+
+The owner decided on 2026-10-17 (DECISIONS R4-M52, design A3 §9 item 11): the case 23a proposal as option (c), 「(c)
+base なしで採用」, and its SPEC revision, with P12's and the reported gaps, 「別セッションで実施」. P12 (A3 §2, §9 item
+10, `desc(c)`) was approved the same day (「承認します。」, DECISIONS R4-M35) as plan §5.3's next loss. This revision is
+that session's work. Item ids for `OldRule` traits and corpus `Old` entries (DECISIONS R4-M50, R4-M60): **E8** (the
+ending) and **P12**.
+
+- `Changes/2026-10-17 Loan Termination Across Borrow Dereferences.md`: 取り込み済み. Mapping:
+  - §1, §3.1 → §15.6.3's ending sentences, as option (c): destroying in place a Move Path ends every Loan whose access
+    path it exactly prefixes, compared step by step (a constant index only with the same constant, never a runtime
+    index), the path continuing with any steps, dereferences included (A3 §12 E8). This replaces S1's base before the
+    last dereference, its "contains it with no dereference between them" and the sentence for a base behind a
+    dereference. The proposal's first-dereference base (option (b)) is not adopted: the owner chose the same verdicts
+    without the term (R4-M52; review-23a N1). Rule 2 (no ending base for a Loan without a dereference) has no
+    counterpart: ending a direct Loan is unobservable, since a live one is reached by the destruction and reported
+    first. Rule 4 is the existing list of destroying operations and §15.6's transfer rules, unchanged.
+  - §3.2 → existing rules, unchanged: P3 (§15.6.2's reach bullet), parent Loans (§15.6.3), checks before the end
+    (§15.6.3, §15.6.6), the check by value (§15.6) and owning handles (§13.5.5, §16.3.3).
+  - §3.3 → a new §15.6.3 example: 23a, with the competing alias as `let w = rr@follow@ref` (a Borrow of `rr.*`, a prefix
+    of `c`'s path, in place of the proposal's `q`/`s`/`o` program) and the old-route write `slot@follow = 2` as
+    commented errors.
+  - §2 → the rationale's evidence below (prototype rounds 8–10, review-23a, rustc), not SPEC. §4 → the safety argument
+    below, amended as review-23a C3 requires. §5 → the rejected options below (R4-M52).
+  - §6 → transferred to A5's implementation (A3 §12 E8 and §10's units; PLAN), not SPEC.
+  - §7 → §15.6.3 (the ending, its examples and the base-operation sentence, now "Moving or exchanging a prefix of a live
+    child's access path, or borrowing it other than shared while the child is shared"), Appendix E (the Base row
+    deleted; the Loan row names the ending), §13.5.5's borrow-handle sentence ("when it is a Move Path, ends the child
+    Loans whose access paths it exactly prefixes", so `views[i] = w` ends nothing) and its pair-layer `uniq` cell ("the
+    child Loan's access path runs through `P`", review-23a C4: `P` may lie behind a dereference). Consequential: §15.6's
+    write-through bullet and §15.6.6 say Loan for child Loan, and the examples of §15.6.3 and §15.6.6 drop "base". The
+    DECISIONS entry is R4-M52, which supersedes R4-M39's ending rule.
+  - Every item is incorporated, rejected with a reason or transferred. The file moved to `Changes` with only its status
+    sentence replaced; its link to the A5 plan, which stays in `Proposals`, is not rewritten.
+- `Proposals/2026-10-16 Complete Polonius A5 Plan.md` stays 一部取り込み: P12 is the next row of its §5.3 list, as A3 §2
+  and §9 item 10 word it.
+  - P12 → §15.6.3's descent sentence ("descends from a call's receiver, such as an Iterator or remainder"), §15.6.4's
+    retention sentence and a new §15.6.3 example (`takeFirst`, 36f with the holder reached through a parameter, whose
+    storage end ends the parent Loan): a value that descends from the receiver of a requirement call without a known
+    concrete callee or of a call through a Callable-constrained value (A3's `abstract(c)`) also carries every Loan of
+    the receiver argument except the call's receiver Loan. A dynamic virtual call, whose effects also follow §8.11.4's
+    rules (§6.4.6), is not such a call.
+- Clarifications reported by A5 step 1 (`Sketches/A5 Step 1/choice-1b.md` §5), stating the reading the implementation
+  follows; neither changes a verdict.
+  - SPEC 14.10.3 → a Never form's assumed completion initializes nothing it is placed into (`let y: i32 = fail()` leaves
+    `y` uninitialized), with two lines added to its example. `MirInitTest.CheckOnlyCodeKeepsItsOwnState` expects this;
+    the default pipeline reports `Unsupported_Kd` there, which is no verdict.
+  - SPEC 15.6.7 → overlap between arguments is judged through the Loans their values carry, as §15.6 checks every
+    activation: `g(s@uniq, s.r@follow@ref)` with `r: ref/i32` is valid, by §15.6.3's "forms no Loan of its own". The
+    default pipeline accepts it. Rust rejects `g(&mut s, &*s.r)` (E0502) and accepts the method form `s.h(&*s.r)`.
+  - Dropped, with no SPEC change: the third gap, the fold on a shared input's path (`inspect(holder@uniq.items)` read as
+    `inspect(holder.items)`). It would change verdicts: §7.3.3 states that `tasks@uniq.length` "lends `tasks`
+    exclusively, then reads it", so `let r = tasks[0]@ref; let n = tasks@uniq.length; inspect(r)` is an error under the
+    current text, and the default pipeline rejects it and `let r = holder.count@ref; inspect(holder@uniq.items);
+    inspect(r)`, while the fold accepts both. The revision stopped on it, and the planning session decided, following
+    SPEC (the owner's (b2) answer concerned reservations, which only exclusive inputs have), that the fold applies only
+    on a reserved input's path (DECISIONS R4-M52 corrected; PLAN G92).
+- Rationale.
+  - E8 recovers outer-holder replacement: 23a, 30d (a `uniq`-linked traversal reading through the new link), and 35a and
+    35b (keeping a Borrow of each node while advancing), which S1's last-dereference base rejected; rustc accepts 23a,
+    35a and 35b. 34c (`refs = other` ending a child through `refs[i]`), which S1's text already ended, stays valid under
+    the exact prefix, where A3's matcher had refused a runtime index after the Move Path. It also makes the one-step
+    form agree with the two-step `t = rr@follow@uniq; c = t@follow@uniq`, which S1 already accepted (case 37). It only
+    removes errors: on review-23a's 158 cases the rule reports no error that S1's does not, and on prototype round 10
+    (246 cases) there is no unsound acceptance and no unlisted rejection. Census (grep proxies): library, milestones,
+    xUnit literals and SPEC examples 0 verdict changes.
+  - Rejected (R4-M52, the proposal §5): keeping the last-dereference base (23a, 30d, 35a, 35b and 11 review cases stay
+    errors); the term "base" (option (b), one more concept for the same verdicts); a separate outer ending relation (two
+    representations of one decision); tracking referents or value versions (new state); ending on writes through
+    references (needs a definite-update rule); a 23a exemption or an exemption by Loan identity (repeated-site
+    unsoundness).
+  - P12 is needed for soundness. The Loans that a requirement call's result may keep on what its receiver reaches
+    (§8.11.3, §8.11.4 rule 1) run through the receiver's dereferences, and distinct roots are disjoint only because a
+    value that carries a Loan through a reference also carries that reference's Loans (§15.6.2). A descending result
+    that kept only what a read through the receiver carries was accepted unsoundly in prototype round 9: after `first =
+    cur.inner.take(); cur = b`, `a.inner.clear()` met nothing (36c; also 36e, 36g). Keeping the receiver Loan itself
+    would reject §8.11.1's `takeTwo`. The cost is 36f, `var r = h@uniq; let first = r.inner.take(); h.other = 5; return
+    first`, and a write to the receiver's Field by another name (`h.inner = src2`): rustc accepts both. Census: library
+    0 (its abstract descending calls reach the receiver through `self`, `Iteration.kimi:32, 59`), milestones 0
+    (`cursor.next()` is concrete), xUnit 0. Concrete calls keep §15.6.4's per-argument rule.
+  - P12's cost also covers the end of that local holder's storage while the result is live, a return included: under
+    §15.6.5 (a use beyond a local Place's lifetime) and §16.2.2 (borrows in the result stay valid after cleanup), 36f
+    without its write is an error at `return first` (found by this revision's review; rustc accepts it). So the SPEC
+    example reaches its holder through a parameter. The census class is the same (a receiver reached through a local
+    reference), so its counts stay 0. Design A3 §5's partition row, whose lemma calls over-approximated Loans harmless
+    to exclude, would exclude that conflict at the return and accept 36f without its write; the same may hold for other
+    Loans a result carries only by a simplification, such as P1's holders (H). Reported to the planning session (PLAN
+    G113).
+- Safety of E8 (the proposal's §4, amended by review-23a C3). When the in-place destruction of a Move Path `K` ends a
+  Loan `L` on a path `K…`, assuming, as §15.6.3 and P12 make true, that every value carrying `L` also carries its parent
+  Loans:
+  - Through `K`: the old value was destroyed in place, not transferred. While `L` was checked, P3 rejected every Move or
+    Borrow of a prefix of its path in either order, `exchange` and `swap` targets and implicit receivers, arguments and
+    captures included, and no transferring operation ends a Loan. After the destruction the path names the new value's
+    referents, which `L` never protected.
+  - The new value of `K` cannot reach `L`'s old storage except through values that carry `L`'s parent Loans. Every other
+    route needs a Borrow of a holder on the old route (`slot`, `x` in 23a) or a reborrow through `K`, and each conflicts
+    with the parent Loans that `L`'s values keep (review cases 87, 94) or with `L` before the end (51, 53, 62–64). A
+    value derived from `L`, even one stored into `K` itself (89), carries the parents.
+  - The holders after `K`: each lies in the referent of the preceding holder's reference, whose Loans are `L`'s parent
+    Loans, so every other route to that storage conflicts while `L`'s values are used. A parent Loan that ends at the
+    same point ends for its own holder's destruction, and the argument applies to it in turn. Siblings under `K` end
+    together; they were checked against each other while both were live.
+  - `rc` and `arc` own steps between `K` and a dereference: a surviving clone keeps the payload, so its storage is not
+    destroyed. Soundness rests instead on shared-only access past `rc` and `arc` (§15.6.2: the child is `ref`, and the
+    clone cannot write) and on the check of a release that may be final, which observes the payload and is checked
+    before the end (§15.6.6, §16.3.3; review cases 78–80).
+  - Reservations: a reservation reached through `K` relies on §15.6.7's protection of the references it was reached
+    through, checked at the write or destruction before any end (A3 E1, PLAN G119; review cases 84, 85).
+  - Guards: a value derived from a guard candidate depends on the guard-local Origin `g` (§14.8.3), which ends at guard
+    cleanup whatever Loans end earlier (A3 E7; review cases 92, 93).
+  - Checks precede the end on the incoming state, values in transit included (§15.6, §15.6.6; review case 91). The
+    argument is reviewable, not a completed proof; mutation runs (review-23a N4) show each safeguard is needed.
+- Principles. One Concept, One Canonical Form: one ending rule for every Loan, with no second term for its prefix, and
+  one carrying rule for descending results. Local Reasoning: an ending is decided by the destroyed Move Path and the
+  Loan's access path, and P12 by the receiver argument's carried Loans, both visible in one body. Explicit Semantics:
+  the ending event is a written destruction (`=`, a storage end, a `replace` target), and the clarifications state
+  readings the text left implicit. Compiler Server Protocol: conflicts stay located at the operation and the Borrow
+  site; no new code or diagnostic.
+- Usage: no test expects a rule this revision replaces (the census above), so no `OldRule` trait is added. The default
+  pipeline keeps the earlier rules until R6-check (STATUS): `tests/diagnostics/spec-cases.json` rows
+  `15.6.3-outer-replacement` and `15.6.3-abstract-descent` state the SPEC verdicts with class (d) `Old` entries naming
+  E8 and P12, and `14.10.3-unreachable` adds `use(y)`. Not refreshed: SPECJ and GUIDE.
+
+## 2026-10-18 — R5 and R6 implementation plan
+
+- [R5 and R6 Implementation Plan](Proposals/2026-10-17%20R5%20and%20R6%20Implementation%20Plan.md): 一部取り込み (open). The
+  owner adopted it on 2026-10-18 as the formal plan for R5, R6-gen and R6-check, with its three exit gates, and answered its
+  questions OQ1–OQ17 (its status line and §2.2 record the outcomes; DECISIONS R5-M1–R5-M13). It is a working plan: no
+  section is integrated into SPEC or IMPL, and no text is frozen.
+- Its specification work goes separately: the SETTLED "Instance-evaluated generic defaults" revision at H15 (R5-M11) and
+  any SPEC or IMPL change H0's check-only pass finds, each as an explicit revision recorded here when it lands. Adoption
+  implies no implementation support.
+
+## 2026-10-19 — A5 step 2 implementation plan
+
+- [A5 Step 2 Implementation Plan](Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md): 一部取り込み (open). The
+  owner adopted it on 2026-10-19 as R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate, and answered all of
+  its questions OQ1–OQ13 at once (its status line and §2.2 record the outcomes; DECISIONS R4-M74). It is a working plan: no
+  section is integrated into SPEC or IMPL, and no text is frozen.
+- Its specification work goes separately, each as an explicit revision recorded here when it lands: S3's SPEC 15.3.6
+  clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3); S5's
+  proposal (2x-S5) and, after its review, its SPEC integration (OQ13); each family's approved losses as SPEC clauses (OQ8).
+  Adoption implies no implementation support.
+
+## 2026-10-19 — Effect atoms widen, Origin inference bounds, P1's completion and the zero-length fill
+
+The owner's request of 2026-10-19, 「SPEC の改訂、Copy の証明の問題の登録、推奨の作業を行ってください。」, includes the SPEC
+session the R4 planning session recommended: four items already decided, integrated together. S5 (the owner's OQ13 answer
+made precise as form (c), DECISIONS R4-M74 and R4-M76), S3 (OQ12 (a) of the A5 step 2 plan, R4-M74), S1-a (R4-M76 (a)) and
+the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the planning session's question Q2, 「持つ (推奨)」).
+
+- `Changes/2026-10-19 Effect Atoms Widen.md`: 取り込み済み (text of `dd6feebf`). Mapping of its §2.5 and §10:
+  - §8.3.3 line 162 → §8.3.3's Recursion paragraph as written: a Contract is recursive when `T is C` supplies, directly
+    or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with
+    any Type arguments, or to a Contract that refines it (form (c)'s proof-rule definition, R4-M76). It replaces "When a
+    Contract's associated-Type Constraint leads back to the same Contract"; the `Tree`/`Node` example stays.
+  - §15.6.4 line 596 → §15.6.4's Effect summaries paragraph, after the fixed-point sentence, as written: a summary's
+    parameter-dependent effects, and unknown environment effects in place of one on a projection one of whose bases the
+    premises of the summary's declaration prove to conform to a recursive Contract.
+  - §15.6.4 after line 622 → a new §15.6.4 block, `visitCopies` as written, after one introducing sentence. Spec case
+    `15.6.4-widened-effects` (family F5): `ComparisonLoanConflict_Kd` at `Trees.walk(node, 2)`; the old path records
+    Binding's `InvalidAssignment_Kd` for the static Borrow, class (b) (PLAN G100, P42), as `15.6.4-static-anchors` does.
+  - §16.3.3 line 196 and §4.9.6 line 568 → ", unless §15.6.4 widens it", as written. Appendix E → the rows
+    Parameter-dependent effect and Recursive Contract, with links in place of the bare section numbers.
+  - §10's gap (1) → §8.3.2's Contract refinement row: `T is C` supplies `C`'s own and inherited Constraints, an
+    associated-Type declaration's requirement included (`associate X is R` in `C` supplies `T.(C).X is R`), the supply the
+    definition and every generic body under `T is C` rely on.
+  - §10's gap (2) → a clarification in §8.5.3's first paragraph, before its Loan-independence sentence: a Contract may
+    constrain a deeper projection of `Self` (`Self.(A).X.(B).Y is A`), each step needing §8.5.2's evidence, and as a
+    condition on the conforming Self it is an implementation requirement (§6.1.4) that `T is A` supplies; the example notes
+    that it makes `A` recursive (§8.3.3). No new rule: Appendix F's `ConstraintSubject` admits the form, §8.5.2 lets a
+    projection's base be another projection and §6.1.4 gives the role. Binding accepts it at this
+    session's base: rv-G's `f` proves `g`'s premise `U.(B).Y is A` from it (without the clause the call is
+    `UnprovenConstraint_Kd`), and a conformance checks it (`Root: A` with `Root.X.Y` bound to `i32` is
+    `UnsatisfiedConstraint_Kd`). No verdict changes.
+  - §1–§7 and §9–§11 → the rationale, losses, census, rejected options and evidence below, unchanged.
+  - §8 → transferred: A4's widening, Binding's recursive-Contract view and their tests go to the S5 implementation unit that
+    the planning session places after this session (OQ9's S5 item in PLAN); the `MirBorrowsTest.Effects` row for a growing
+    call against a live static Loan goes to 2b-3. Until that unit the MIR keeps today's verdicts: a growing atom reaches
+    G128's Limit, a located `Unsupported_Kd` (PD30; the unit switches it to the Language code), and the non-growing forms
+    of the proposal's §4 item 2, which the SPEC now rejects, stay accepted, only in code no concrete Type can instantiate.
+    §10's side finding → PLAN G170.
+  - Every item is incorporated, rejected with a reason or transferred. The file moved to `Changes` with only its status
+    sentence replaced; its links to the plans that stay in `Proposals` are not rewritten. The two `Sketches/A5 Step 2`
+    files that name it (`S5EffectWidening.cs`, `S5Probe.cs`) name the new path.
+  - Rationale. A summary is a least fixed point (§15.6.4), and under polymorphic recursion through an associated Type its
+    parameter-dependent effects grow without bound (`walk`, cleanup cycles included); P5 removed the open-key cut for
+    static keys and nothing replaced it. The rule needs no notion of recursion or of summary dependencies: it reads one
+    Type and the declaration's premises, and the remaining effects have bounded projection depth (proposal §2.3, argued
+    and model-checked on 50,000 random programs). Its losses (§4) are all in declarations whose premises name a recursive
+    Contract, which no concrete Type can instantiate. Rejected (§6, R4-M76): form (a), which keeps "grows" but needs a
+    SPEC definition of summary dependencies, their cycles and a self-map rule; a depth limit whose excess is a Resource
+    failure; the open-key form, which widens instantiable programs; exact summaries, a second effect representation; a
+    list of Constraint kinds (two blocking review rounds); a hold.
+  - Principles. One Concept, One Canonical Form: the widened effect is the existing unknown environment effects, and
+    "recursive" reuses the proof rule. Local Reasoning: the test reads one Type and the premises of one declaration and
+    makes the fixed point finite without a work budget. Explicit Semantics: the widening and its losses are SPEC text,
+    and gap (1) names the supply generic checking relies on. Compiler Server Protocol: the conflict is reported at the
+    call with existing codes and facts.
+  - Usage: library, milestones, SPEC examples and xUnit 0 (proposal §4 and §5, H: a grep-level scan). The default
+    pipeline keeps its verdicts (OD5); no implementation is claimed. Not refreshed: SPECJ (its §15.6.4 still has the
+    pre-P5 open key) and GUIDE.
+- [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
+  frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
+  - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a
+    variable's bounds are followed through other variables to fixed or finite Origins and `static`, and a variable that
+    reaches none has no candidate, so it is a local region in an executable body and needs an annotation elsewhere.
+  - Rationale: without the sentence, a variable whose only bounds are other variables, such as a covariant variable bounded
+    by a contravariant one, had no defined candidate (plan §5.2). No verdict changes: it states the reading the solver
+    already follows (`LocalRegionInferenceTest`, `CallOriginRelationTest`, `OriginPremiseClosureTest` and
+    `ResultOnlyOriginTest` pass unchanged on both pipelines) and the one 2a0-3b implements on the MIR.
+  - Principles. Local Reasoning: a candidate is found by a finite walk over the body's own bounds. Explicit Semantics: the
+    case with no fixed, finite or `static` bound is named, and its outcome is the existing local-region rule.
+  - P1, completed (S1-a, R4-M76 (a); the wording and cases of `Sketches/A5 Step 2/spec-readings.md` §2, option (a)) → the
+    last sentence of the §15.6 Holders bullet, P1's home: storage the body does not own follows the holder as Loans do, and
+    a value derives from a reference that reaches such storage when the value is a Copy or Reborrow of one, a value a call
+    may retain from one (a read of a borrowed argument included, §15.6.4) or a value read from a part of a holder that holds
+    one, directly or through a reference to that holder. The write-through bullet's "derives from such a reference" points to
+    it ("(above)"). This writes down A3's P1, which carries `Φ_E` per holder like a Loan, and the 2026-10-17 intake's
+    decision that storage the body does not own "is decided as A3's `Φ_E` is". The letter read narrower: §15.6 separates
+    "references derived from" a borrow from "aggregates … that hold one", so it accepted g5 and r3.
+  - R4-M76 kept A5's Language code for g5 until this sentence was integrated, an exception to PD30 and to R4-M35's interim
+    (a violation of an approved loss is a located `Unsupported_Kd`). The exception ends with this intake (R4-M76's S1-a
+    bullet records it): the code now states this rule.
+  - Test: `MirBorrowsTest.StorageTheBodyDoesNotOwnFollowsItsHolder`, the cases of spec-readings §2: g5, r3, r1 and g6 are
+    errors at `v@follow = 9`, g4 and r4 are valid. A5 already gives these verdicts (A5 is unchanged), so the test pins the
+    rule. The default pipeline accepts g5, r1 and r3 (spec-readings probes) and keeps its rules until R6-check (OD5).
+    Census: library 0 and milestones 0 (the 1b-5 census); no test row has the form, by reading (H).
+  - Rationale and rejected options (R4-M76): one carrying unit, the holder, for Loans and for storage the body does not own.
+    `Φ_E` per part (b) would give a second carrying unit and two verdicts for one data shape (r2, a struct built by `init`,
+    stays an error while its tuple twin r3 would become valid); a hold (c) leaves A5 with a rejection no SPEC clause
+    states. Principles: One Concept, One Canonical Form (one carrying rule); Local Reasoning (a holder's parts, as written
+    in the body, decide); Explicit Semantics (the derivation that "derives" left undefined is listed).
+- The Loans of a zero-length fill (no proposal; the owner's answer Q2 of 2026-10-19, 「持つ (推奨)」, to a question of the
+  planning session from unit 2x-E1's design) → one sentence in §4.3.3: the array carries `value`'s Loans at every length,
+  so `[0 of v]` keeps them too; and three lines in its block (`let none = [0 of x@ref]`, the commented error `x = 2`,
+  `inspect(none)`).
+  - Rationale: §4.3.3 already acquires `value` exactly once even for length zero, and a generic `[N of v]` must carry the
+    Loans whatever `N` is (§4.4.2); §15.6's "every aggregate … that holds one" alone left the constant zero length open.
+    The old path keeps the Loans; the MIR's fill of constant length zero drops its operand. One rule for every length.
+  - Spec case `4.3.3-fill-loans` (F1): the block is valid; uncommenting `x = 2` is `ComparisonLoanConflict_Kd` there. The
+    old path agrees. The MIR records nothing today, a class (b) `Mir` difference that names 2x-E1's fill form, which keeps
+    the operand (the MIR side is 2x-E1's, in flight; when it lands, the difference goes).
+  - Principles. One Concept, One Canonical Form: one Loan rule for fills of every length, constant or generic. Local
+    Reasoning: the acquisition, not the length, decides. Explicit Semantics: the edge case is stated.
+  - Usage: library 0, milestones 0 (a grep finds no fill of literal length zero, H); no default-pipeline verdict changes.
+
+## 2026-10-20 — Unlabeled `exit` from `do` (plan B)
+
+The owner's instruction of 2026-10-20: "Commit plan B, push it to dev, and register its intake in INTEGRATED. Move plan A
+to Obsolete as superseded."
+
+- [Unlabeled Exit from Do B](Proposals/2026-10-17%20Unlabeled%20Exit%20from%20Do%20B.md): 一部取り込み (open, intake
+  only). An unlabeled `exit` targets the innermost `for`, `while`, `loop`, `do` or Deferred Block (`do` added), chosen
+  independently of label, operand, Type and context; one whose target is a `do` in Discard Context is an error, as an
+  unlabeled `yield` to a discarded selection already is. Implementation starts after R9 (plan A's decision, kept). No
+  section is integrated into SPEC or IMPL, and no text is frozen. Plan B claims no precedence over SPEC; its rules take
+  effect at formal integration, which its U0 checks. Intake implies no implementation support.
+- Planned mapping (its §5): §2.1 → SPEC §14.5.2's table; §2.2 → §14.5.2's text and §14.3; §2.3 → §14.2.2's table; §2.5 →
+  §16.1.1. §14.1, §14.9, Chapter 15, §16.2 and Appendix F stay unchanged. The diagnostic rename of its §4.1
+  (`UnlabeledYieldTarget_Kd`) needs the owner's approval in the implementing commit.
+- `Obsolete/2026-10-17 Unlabeled Exit from Do.md` (plan A): 完了, text unchanged (the blob of `78d8fdd6`, whose intake
+  record never reached dev). Its target rule is transferred to plan B. Its acceptance of an unlabeled `exit` to a
+  discarded `do` is rejected: such an `exit` silently retargeted existing Unit transfers and departed from the `yield`
+  rule (plan B §1.3, §3.3). Its other sections (results and ownership, nesting, Deferred Block, migration,
+  implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
+  closure.

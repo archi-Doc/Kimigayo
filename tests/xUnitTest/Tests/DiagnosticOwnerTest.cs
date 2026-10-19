@@ -185,7 +185,7 @@ public sealed class DiagnosticOwnerTest
         var owner = new DiagnosticOwner();
         var document = new SourceDocument("main.kimi", "consume(resource)\n");
         var target = owner.GetOrAddCollection("main.kimi").For(document);
-        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipFailure.TransferRequired));
+        var key = new DiagnosticKey(null, 0, 8, 8, DiagnosticRequirement.Ownership(OwnershipRequirement.TransferRequired));
         target.Report(DiagnosticPartition.Ownership, key, new(8, 8), DiagnosticCode.TransferRequired_Kd, null, null, null, null, document, repairs:
             [new(RepairKind.Transfer, ["resource", "consume(value: Resource)"], [target.Edit(new(16, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality)]);
         var result = owner.Finalize();
@@ -281,6 +281,24 @@ public sealed class DiagnosticOwnerTest
         target.Report(DiagnosticPartition.Startup, first, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
         target.Report(DiagnosticPartition.Startup, second, new(0, 1), DiagnosticCode.MissingStartupBody_Kd, null, null, null, null, null);
         Assert.Equal(DiagnosticFault.UndefinedOrder, Assert.Throws<DiagnosticContractException>(() => owner.Finalize()).Fault);
+    }
+
+    // DIAGNOSTICS 4.1 (DECISIONS R5-M65): a code without facts reported by its location is keyed by that location, so two reports at one
+    // span are one problem whatever nodes they came from, while another code at that span or the code at another span is another problem.
+    [Fact]
+    public void ALocationKeyedReportMergesAtItsSpanOnly()
+    {
+        var owner = new DiagnosticOwner();
+        var document = new SourceDocument("main.kimi", "abc def");
+        var target = owner.GetOrAddCollection("main.kimi").For(document);
+        target.ReportLocation(DiagnosticRequirement.Emission, new(0, 3), DiagnosticCode.Unsupported_Kd, document);
+        target.ReportLocation(DiagnosticRequirement.Emission, new(0, 3), DiagnosticCode.Unsupported_Kd, document);
+        target.ReportLocation(DiagnosticRequirement.Emission, new(0, 3), DiagnosticCode.InternalInvariant_Kd, document);
+        target.ReportLocation(DiagnosticRequirement.Emission, new(4, 3), DiagnosticCode.Unsupported_Kd, document);
+        var result = owner.Finalize(DiagnosticPartition.Input, DiagnosticPartition.Emission);
+        Assert.Equal(
+            [("InternalInvariant_Kd", (SourceSpan?)new SourceSpan(0, 3)), ("Unsupported_Kd", new SourceSpan(0, 3)), ("Unsupported_Kd", new SourceSpan(4, 3))],
+            result.Diagnostics.Select(static x => (x.Code, x.Span)));
     }
 
     // SPEC 23.3, 23.1: the Reason is typed by the catalog; two long Types keep their differences and elide the rest;

@@ -60,7 +60,7 @@ public sealed partial class Binding
         signature = this.ContractType(signature, this.ConstraintScope(use));
         if (function.Origins.Count == 0 || HasOpenOrigin(required, evidenceOnly: true))
         {
-            if (!CallableSignatureFits(signature, required, SignatureOwner(item)))
+            if (!this.CallableSignatureFits(signature, required, SignatureOwner(item)))
             {
                 return false;
             }
@@ -88,8 +88,8 @@ public sealed partial class Binding
         }
         finally
         {
-            this.originScratch.Return(origins, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
         }
     }
 
@@ -276,8 +276,8 @@ public sealed partial class Binding
         }
         finally
         {
-            this.originScratch.Return(origins, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
         }
     }
 

@@ -1,7 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.CompilerServices;
 using System.Text;
+using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -126,6 +129,26 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "    let bare = first(names)@follow\n"));
     }
 
+    // SPEC 7.2.3 (DECISIONS R4-M69): a default cannot Move its prepared slot: a Move of a preceding parameter or of its owned contents in the
+    // template, explicit or bare, is DefaultArgumentMove_Kd, while a Move past a borrow the parameter holds keeps StaticMovePathRequired_Kd.
+    // Each is the template's check: the calls' inline copies, in a caller of two views, add none.
+    [Fact]
+    public void ADefaultCannotMoveItsPreparedSlot()
+    {
+        var c = MirBuildTest.Compile("func moved(x: string, y: string = x@move) => ()\nfunc bare(x: string, y: string = x) => ()\n" +
+            "func part(p: (string, i32), y: string = p.0@move) => ()\nfunc lent(x: ref/string, y: string = x@follow) => ()\n" +
+            "func calls<s/T>(v: s/T)\n    s is ref or uniq\n    moved(\"a\")\n    bare(\"b\")\n    part((\"c\", 1))\n    let text = \"d\"\n" +
+            "    lent(text@ref)\n");
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(
+            [
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1", "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd x 1",
+                "Ownership.DefaultArgumentMove DefaultArgumentMove_Kd p.0 1", "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd x@follow 1",
+            ],
+            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}"));
+    }
+
     // SPEC 15.1.3: a Move of a constant index forms the referenced element's Move Path; the paths follow the accesses, never the declared
     // length (an input-size property of MirMoveData).
     [Fact]
@@ -140,11 +163,37 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(2, moves.Paths.ToArray().Count(x => x.Local == array));
     }
 
+    // SPEC 4.7.4 (DECISIONS R4-M56): a selection's receiver is checked once, where it is located: at its guard, the selection, so an
+    // access through a runtime index into an uninitialized array is one problem whatever consumes the element.
+    [Theory]
+    [InlineData("values[i] = 9")]
+    [InlineData("use(values[i])")]
+    [InlineData("see(values[i]@ref)")]
+    [InlineData("values[i] += 1")]
+    [InlineData("let x = values[i]")]
+    public void ASelectionChecksItsReceiverOnce(string statement)
+    {
+        var source = $"func use(n: i32) => ()\nfunc see(v: ref/i32) => ()\nfunc f(i: isize)\n    var values: [3 of i32]\n    {statement}\n";
+        Assert.Equal(["UninitializedPlace_Kd values[i] 1"], Problems(source));
+    }
+
+    // SPEC 4.7.4, 15.1, 23.1 (DECISIONS R4-M56): the access through the index checks the receiver again under the selection's subject, so a
+    // receiver Moved while its own index is evaluated is MovedPlace at the selection, independent of the Move's conflict with the guard,
+    // A5's problem at the Move.
+    [Fact]
+    public void AReceiverMovedInItsIndexIsMovedAtTheSelection()
+    {
+        const string Source = "func take(a: (string, [1 of i32])) => ()\nfunc f() -> i32\n    let a: (string, [1 of i32]) = (\"a\", [1])\n" +
+            "    let n = a.1[(label work: do\n        take(a@move)\n        exit to work 0\n    )]\n    return n\n";
+        Assert.Equal(["MovedPlace_Kd a.1[( 1", "ComparisonLoanConflict_Kd a 1"], Problems(Source));
+    }
+
     // SPEC 14.10.3: code only the checks reach is checked with the state after the transfer's operand, which is never merged into a runtime
     // path: a value consumed before a return out of a do is usable after the do (plan Appendix B C1), a default that does not complete
     // delivers nothing at its template's Return, an index whose value only the checks reach leaves its compiler temporary unwritten (not a
-    // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer diverged is
-    // UninitializedPlace where only the checks read it (plan Appendix B C3).
+    // Place of the program), a value moved before a return is MovedPlace after it, and a value whose initializer or assignment diverged is
+    // UninitializedPlace where only the checks read it (plan Appendix B C3): the Never value is not placed, nor is the old value dropped
+    // (DECISIONS R4-M62); a call whose argument diverged moves its other arguments for the checks (SPEC 14.10.3).
     [Fact]
     public void CheckOnlyCodeKeepsItsOwnState()
     {
@@ -152,12 +201,102 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Empty(Problems(Box + "func consumedThenReturned(flag: bool, box: Box) -> i32\n    do\n        if flag\n            consume(box@move)\n" +
             "            return 1\n        return 2\n    consume(box@move)\n    return 3\nfunc peek(flag: bool, value: i32 = stop()) -> i32 => value\n" +
             "func caller() -> i32 => peek(true)\nfunc index()\n    var a: (string, [1 of i32]) = (\"held\", [0])\n    a.1[label work: do\n" +
-            "        defer => loop => ()\n        exit to work 0\n    ] = 42\n"));
+            "        defer => loop => ()\n        exit to work 0\n    ] = 42\nfunc replaced(box: Box) -> i32\n    var b = box@move\n    b = stop()\n" +
+            "    consume(b@move)\n    return 1\n"));
         Assert.Equal(
-            ["MovedPlace_Kd box 1", "UninitializedPlace_Kd x 1"],
+            ["MovedPlace_Kd box 1", "UninitializedPlace_Kd x 1", "UninitializedPlace_Kd y 1", "MovedPlace_Kd box 1"],
             Problems(Box + "func afterReturn(box: Box) -> i32\n    consume(box@move)\n    return 1\n    consume(box@move)\n    return 2\n" +
-                "func diverged() -> i32\n    let x: i32 = stop()\n    return x\n"));
+                "func diverged() -> i32\n    let x: i32 = stop()\n    return x\nfunc assigned() -> i32\n    var y: i32\n    y = stop()\n    return y\n" +
+                "func take(box: Box, n: i32) => ()\nfunc continued(box: Box) -> i32\n    take(box@move, (return 1))\n    consume(box@move)\n    return 2\n"));
     }
+
+    // SPEC 17.6.3 (PD22): a verification's records read the temps its comparison's operands were read into once, initialized and not yet
+    // moved: made Places of the program (A1 reports a Var's state, never a temp's), they have no problem, where a record reading an
+    // operand after the comparison's Move would be MovedPlace.
+    [Fact]
+    public void RecordsReadOperandsTheComparisonHasNotMoved()
+    {
+        var c = MirBuildTest.Compile(
+            "func helper(x: i32) -> i32 => x + 1\n#Test\nfunc sample()\n    let a = 3\n    $expect(helper(1) == a)\n    $expect((a < 4))\n",
+            test: true);
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Kind == MirBodyKind.Test);
+        var read = MirBuildTest.Records(body).Select(x => body.Operands[x.Start + 1]).Where(static x => x.Kind == MirOperandKind.Copy).ToArray();
+        Assert.Equal(3, read.Length);
+        foreach (var operand in read)
+        {
+            ref readonly var local = ref body.Locals[operand.Place.Root];
+            Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
+        }
+
+        new MirAnalysis(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 3.1.3, 14.10.3 (DECISIONS R5-M38, BU-6): a named Place of Type Never takes the acquisition Binding publishes into its node's
+    // Never temp, Copy for a bare read (Never is Copy, BU-4) and Move for x@move, which keeps its effect on the assumed path: a Never
+    // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not.
+    [Theory]
+    [InlineData(" => g(x, x)\n", "Copy Copy", "")]
+    [InlineData(" => g(x@move, x)\n", "Move Copy", "MovedPlace_Kd x 1")]
+    [InlineData(" => g(x, x@move)\n", "Copy Move", "")]
+    [InlineData("\n    let a = x@move\n    let b = x\n", "Move Copy", "MovedPlace_Kd x 1")]
+    public void ANeverPlaceIsAcquiredAsBindingPublishes(string body, string acquisitions, string problems)
+    {
+        var source = "func g(a: Never, b: Never) => ()\nfunc absurd(x: Never)" + body;
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "x" && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset);
+        Assert.Equal(acquisitions, string.Join(' ', reads.Select(static x => HirTables.AdjustOf(x).Acquire)));
+        var absurd = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        Assert.Equal(acquisitions, string.Join(' ', absurd.Operands.ToArray().Where(static x => x.Place == new MirPlace(1)).Select(static x => x.Kind)));
+        Assert.Equal(problems, string.Join(" | ", Problems(source)));
+    }
+
+    // SPEC 12.2 (DECISIONS R5-M38): a named Never Place read before a later operand builds code is acquired into its node's Never temp,
+    // which secures it and the call then moves: made a Place of the program, the temp has no problem, where an unwritten one is
+    // uninitialized.
+    [Fact]
+    public void ASecuredNeverPlaceIsWritten()
+    {
+        var c = MirBuildTest.Compile("func k() -> i32 => 1\nfunc g2(a: Never, b: i32) => ()\nfunc absurd(x: Never) => g2(x, k())\n");
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        var call = body.Blocks.ToArray().Select(static x => x.Terminator).Single(static x => x.Callee.Symbol?.Name == "g2");
+        var secured = body.Operands[call.Start];
+        Assert.Equal((MirOperandKind.Move, MirLocalKind.Temp), (secured.Kind, body.Locals[secured.Place.Root].Kind));
+        ref readonly var local = ref body.Locals[secured.Place.Root];
+        Unsafe.AsRef(in local) = local with { Kind = MirLocalKind.Var };
+        new MirAnalysis(c.Types).Run(program);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 3.8, 15.6.2 (DECISIONS R5-M38, the owner's choice): a pattern binding of a Never payload borrows the subject in place as Binding
+    // publishes it, a `ref/Never` that keeps its Loan, so the program is valid (no finding, no problem).
+    [Theory]
+    [InlineData("enum R\n    Ok(i32)\n    Err(Never)\nfunc f(r: R) -> i32 => match r\n    .Ok(let v) => v\n    .Err(let e) => 0\n")]
+    [InlineData("func f(o: Option<Never>) -> i32 => match o\n    .Some(let n) => 1\n    .None => 0\n")]
+    public void ANeverPayloadBindingIsABorrow(string source)
+    {
+        Assert.Empty(Problems(source));
+        var body = MirBuildTest.Compile(source).BuildMir().Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        Assert.Contains(
+            body.Statements.ToArray(),
+            static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Type.Components: [var referent] } && ReferenceEquals(referent, BoundType.Never));
+    }
+
+    // SPEC 14.10.3, 3.8 (DECISIONS R4-M62, R5-M38; BU-6): a read of a named Never Place supplies no normal completion, so its assumed
+    // completion initializes nothing it is placed into: the Place a let, an assignment or a Never var takes from it stays uninitialized,
+    // each later read of it an UninitializedPlace.
+    [Theory]
+    [InlineData("func absurd(x: Never) -> i32\n    let y: i32 = x\n    return y\n", "UninitializedPlace_Kd y 1")]
+    [InlineData("func absurd(x: Never) -> i32\n    let y: i32\n    y = x\n    return y\n", "UninitializedPlace_Kd y 1")]
+    [InlineData(
+        "func g(a: Never) => ()\nfunc absurd(x: Never)\n    var y: Never = x\n    g(y)\n    g(y)\n",
+        "UninitializedPlace_Kd y 1 | UninitializedPlace_Kd y 1")]
+    public void ANeverReadPlacesNothing(string source, string expected)
+        => Assert.Equal(expected.Split(" | "), Problems(source));
 
     // Plan 5.6.1, SPEC 13.5.5: a PairLayer is the Place itself in the owner case and a Deref in a reference case, so writing through an
     // unset pair layer is a problem in the uniq view only; a body whose accesses no view decides is analyzed once, for every view.
@@ -247,6 +386,30 @@ public sealed class MirInitTest(ITestOutputHelper output)
             $"arena words {string.Join(", ", arena)}");
         Assert.True(work[2] - work[1] <= (2 * (work[1] - work[0])) + 8, $"MIR size {string.Join(", ", work)}");
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
+    }
+
+    // SPEC 23.1.2 (DECISIONS R5-M63): a node Binding failed hides no independent problem of the children Binding resolved: a closure's
+    // body is built wherever its creation stands (failed, inside a let Binding rejected, or a failed Index's kept operand), and a failed
+    // Index, Field, follow or `*p` evaluates its operands before its Opaque value, which does not use a moved operand again.
+    [Fact]
+    public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
+    {
+        const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
+        const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
+        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    _ = " + Body));
+        Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    let g = " + Body));
+        const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    return n[once(s@move)]\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f()\n    let s = \"x\"\n    unsafe\n        _ = *take(s@move, s@move)\n"));
+        Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32)\n    let s = \"x\"\n    _ = n[func (k: i32) -> i32 => take(s@move, s@move)]\n"));
+        // A recovered group (the default's list item) gives the problems of the default written correctly: each Move of the prepared slot
+        // (SPEC 7.2.3, R4-M69).
+        string[] slot = ["DefaultArgumentMove_Kd s 1", "DefaultArgumentMove_Kd s 1"];
+        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
+        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
     }
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.

@@ -2,6 +2,7 @@
 
 using System.Globalization;
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -76,34 +77,34 @@ internal sealed class CompilerFunctionAdapters
         this.operands.Clear();
         var array = KimiLibraryCatalog.IsArrayOperation(kind);
         var runtime = array ? this.lowering!.CompilerArrayEntry(kind, inputs, result, this.operands) :
-            kind == CompilerFunctionKind.RawAllocate ? WindowsLowering.RawAllocate :
+            kind == CompilerFunctionKind.RawAllocate ? RuntimeAbi.RawAllocate :
             kind == CompilerFunctionKind.Clone ? result.HandleMode?.Counting switch
             {
-                ObjectCountingStep.NonAtomic => WindowsLowering.CloneRc,
-                ObjectCountingStep.Atomic => WindowsLowering.CloneArc,
+                ObjectCountingStep.NonAtomic => RuntimeAbi.CloneRc,
+                ObjectCountingStep.Atomic => RuntimeAbi.CloneArc,
                 _ => null,
             } : this.generics.ComparisonCalls.GetValueOrDefault(context) ?? this.objects.Calls.GetValueOrDefault(context).Physical?.Abi ??
                 (kind is CompilerFunctionKind.TextToString or CompilerFunctionKind.TextTryFormat or CompilerFunctionKind.WriterWrite ? this.generics.FormattingCalls.GetValueOrDefault(context) : null) ??
                 WindowsLowering.GetCompilerFunction(kind);
         var update = kind is CompilerFunctionKind.Replace or CompilerFunctionKind.Exchange or CompilerFunctionKind.Swap;
         var arithmetic = kind == CompilerFunctionKind.BuiltinArithmetic;
-        if ((!update && !arithmetic && runtime is null) || !FunctionAbi.Supports(result, this.layouts))
+        if ((!update && !arithmetic && runtime is null) || !FunctionAbiPool.Supports(result, this.layouts))
         {
             return null;
         }
 
         foreach (var input in inputs)
         {
-            if (!FunctionAbi.Supports(input, this.layouts))
+            if (!FunctionAbiPool.Supports(input, this.layouts))
             {
                 return null;
             }
         }
 
         var ordinal = this.entries.Count;
-        var slot = FunctionAbi.HasResultSlot(result, this.layouts);
         FunctionAbi abi;
-        if (ordinal < this.signatures.Count && FunctionAbiPool.Matches(this.signatures[ordinal], result, inputs, slot, this.layouts, callerLocation: true))
+        if (ordinal < this.signatures.Count &&
+            Abi.Matches(this.signatures[ordinal], this.layouts.Layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs))
         {
             abi = this.signatures[ordinal];
         }
@@ -114,7 +115,7 @@ internal sealed class CompilerFunctionAdapters
                 this.names.Add("__kimi_compiler_item" + ordinal.ToString(CultureInfo.InvariantCulture));
             }
 
-            abi = FunctionAbiPool.Build(this.names[ordinal], result, inputs, slot, this.layouts, callerLocation: true);
+            abi = Abi.Of(this.layouts.Layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs).Named(this.names[ordinal]);
             if (ordinal == this.signatures.Count)
             {
                 this.signatures.Add(abi);
@@ -129,7 +130,8 @@ internal sealed class CompilerFunctionAdapters
         var function = this.module.AddFunction(abi, exported: false);
         if (symbol.CompilerFunction == CompilerFunctionKind.RawAllocate)
         {
-            if (result.Components.Count != 1 || FunctionAbi.GetValue(result.Components[0], this.layouts) is not { } element || element.Layout.Alignment > 16)
+            if (result.Components.Count != 1 || FunctionAbiPool.GetValue(result.Components[0], this.layouts) is not { } element ||
+                element.Layout.Alignment > 16)
             {
                 return null;
             }
@@ -203,7 +205,8 @@ internal sealed class CompilerFunctionAdapters
         }
 
         this.module.NeedsObjectRuntime |= kind == CompilerFunctionKind.Clone;
-        this.module.NeedsFormattingRuntime |= symbol.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
+        this.module.RuntimeHelpers.NeedsFormattingRuntime |=
+            symbol.CompilerFunction is >= CompilerFunctionKind.TextFixed and <= CompilerFunctionKind.BuiltinFormat;
         return abi;
     }
 

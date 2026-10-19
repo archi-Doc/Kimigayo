@@ -48,7 +48,8 @@ internal sealed partial class BodyLowering
         var delivery = body.Deliveries[this.deliveries[id]];
         if (SlotTypes.IsResult(type))
         {
-            if (function.Abi.ResultSlot != FunctionAbi.HasResultSlot(type, this.aggregateLayouts) || this.slotFunctionPlaces[operation.Place] != 2 || delivery.Value != -1 ||
+            if (function.Abi.ResultSlot != FunctionAbiPool.HasResultSlot(type, this.aggregateLayouts) ||
+                this.slotFunctionPlaces[operation.Place] != 2 || delivery.Value != -1 ||
                 (uint)delivery.Write >= (uint)body.Operations.Count ||
                 body.Operations[delivery.Write] is not { Kind: OwnershipOperationKind.Write, Placement: PlacementKind.Initialization } secured ||
                 secured.Place != operation.Place || (uint)secured.Input >= (uint)body.Places.Count ||

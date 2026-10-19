@@ -16,13 +16,14 @@ public class CompilerPipelineBenchmark
 
     private string source = string.Empty;
 
-    /// <summary>Gets or sets the number of helper functions and calls from main.</summary>
-    [Params(1, 32, 128)]
-    public int Functions { get; set; }
+    /// <summary>Gets or sets the input size: the helper functions of a scalar shape, each called from main, or the item Types
+    /// of the generic shape.</summary>
+    [Params(1, 32, 64, 128)]
+    public int Size { get; set; }
 
-    /// <summary>Gets or sets a value indicating whether helpers contain conditional control flow.</summary>
-    [Params(false, true)]
-    public bool Branches { get; set; }
+    /// <summary>Gets or sets the input family.</summary>
+    [ParamsAllValues]
+    public PipelineShape Shape { get; set; }
 
     internal string Source => this.source;
 
@@ -33,26 +34,7 @@ public class CompilerPipelineBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        var builder = new StringBuilder();
-        for (var i = 0; i < this.Functions; i++)
-        {
-            builder.Append("func helper").Append(i).Append("(value: i32) -> i32\n");
-            if (this.Branches)
-            {
-                builder.Append("    if value < 0\n        return 0\n");
-            }
-
-            builder.Append("    return value + 1\n\n");
-        }
-
-        builder.Append("public func main() -> ()\n    var result: i32 = 0\n");
-        for (var i = 0; i < this.Functions; i++)
-        {
-            builder.Append("    result = helper").Append(i).Append("(result)\n");
-        }
-
-        builder.Append("    return\n");
-        this.source = builder.ToString();
+        this.source = this.Shape == PipelineShape.Generic ? GenericSource(this.Size) : this.ScalarSource();
         using var writer = new StringWriter();
         this.MirBodies = this.Compile(writer).BuildMir().Bodies.Length;
         Require(writer.GetStringBuilder().Length > 0, "Emission produced no IR.");
@@ -61,6 +43,38 @@ public class CompilerPipelineBenchmark
     /// <summary>Measures the complete fresh pipeline without per-stage instrumentation.</summary>
     [Benchmark]
     public void FreshCompileToIr() => this.Compile(TextWriter.Null);
+
+    // Each item Type instantiates Array, Dictionary, Option, a two-parameter generic struct and two generic functions under a
+    // Contract bound, so instance collection and code generation grow with the Type count.
+    internal static string GenericSource(int types)
+    {
+        var builder = new StringBuilder("contract Weighted\n    func weight(self: ref/Self) -> i64\n\n");
+        builder.Append("struct Pair<A, B>\n    public let first: A\n    public let second: B\n    public init(first: A, second: B)\n");
+        builder.Append("        self.first = first@move\n        self.second = second@move\n\n");
+        builder.Append("func total<T>(items: ref/Array<T>) -> i64\n    T is Weighted\n    var sum: i64 = 0\n    for item in items\n");
+        builder.Append("        sum += item.weight()\n    return sum\n\n");
+        builder.Append("func pairWeight<A, B>(pair: ref/Pair<A, B>) -> i64\n    A is Weighted\n    B is Weighted\n");
+        builder.Append("    return pair.first.weight() + pair.second.weight()\n\n");
+        for (var i = 0; i < types; i++)
+        {
+            var next = (i + 1) % types;
+            builder.Append($"struct Item{i}\n    Self is Weighted\n    public let value: i64\n    public init(value: i64) => self.value = value\n");
+            builder.Append($"    public func weight(self: ref/Self) -> i64 => self.value + {i}\n\n");
+            builder.Append($"func use{i}() -> i64\n    var items: Array<Item{i}> = []\n    items.append(Item{i}.init(1))\n");
+            builder.Append($"    var lookup: Dictionary<i64, Item{i}> = [:]\n    _ = lookup.tryInsert(1, Item{i}.init(2))\n");
+            builder.Append($"    let pair = Pair<Item{i}, Item{next}>.init(Item{i}.init(3), Item{next}.init(4))\n");
+            builder.Append("    var sum = total(items@ref) + pairWeight(pair@ref)\n    match lookup.tryGet(1)\n");
+            builder.Append("        .Some(let found) => sum += found.weight()\n        .None => ()\n    return sum\n\n");
+        }
+
+        builder.Append("public func main() -> ()\n    var result: i64 = 0\n");
+        for (var i = 0; i < types; i++)
+        {
+            builder.Append("    result += use").Append(i).Append("()\n");
+        }
+
+        return builder.Append("    return\n").ToString();
+    }
 
     // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. The MIR is built as the mir pipeline's
     // Analyze builds it, before the old analysis, which still decides (R3-R5).
@@ -113,4 +127,40 @@ public class CompilerPipelineBenchmark
             throw new InvalidOperationException(failure ?? "Compiler benchmark failed.");
         }
     }
+
+    private string ScalarSource()
+    {
+        var builder = new StringBuilder();
+        for (var i = 0; i < this.Size; i++)
+        {
+            builder.Append("func helper").Append(i).Append("(value: i32) -> i32\n");
+            if (this.Shape == PipelineShape.Branching)
+            {
+                builder.Append("    if value < 0\n        return 0\n");
+            }
+
+            builder.Append("    return value + 1\n\n");
+        }
+
+        builder.Append("public func main() -> ()\n    var result: i32 = 0\n");
+        for (var i = 0; i < this.Size; i++)
+        {
+            builder.Append("    result = helper").Append(i).Append("(result)\n");
+        }
+
+        return builder.Append("    return\n").ToString();
+    }
+}
+
+/// <summary>The input families of the compiler pipeline measurements.</summary>
+public enum PipelineShape
+{
+    /// <summary>Scalar helper functions.</summary>
+    Scalar,
+
+    /// <summary>Scalar helper functions with a conditional return.</summary>
+    Branching,
+
+    /// <summary>Item Types, each instantiating library and user generics.</summary>
+    Generic,
 }

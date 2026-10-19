@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
@@ -98,7 +99,7 @@ public class DictionaryCapacityTest
                 position += 1
             require position == 5 else => $abort("length")
             """;
-        NativeAllocationAudit.WriteFixture("DictionaryCapacityHoles", source, 2, 2, 288, maxTransferredBytes: 96, minTransferredBytes: 96);
+        NativeAllocationAudit.WriteFixture("DictionaryCapacityHoles", source, 2, 2, 288, transferred: 96);
     }
 
     // The compiled DictionaryStorage reserve and append, called with their private caller-location pair (SPEC 22.5.1).
@@ -106,8 +107,11 @@ public class DictionaryCapacityTest
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(1)\n_ = entries.tryInsert(1, 2)");
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        Assert.True(module.DictionaryReserveStorage!.CallerLocation && module.DictionaryAppend!.CallerLocation);
-        return (CompilationTestHelper.WriteIr(c), module.DictionaryReserveStorage.Name, module.DictionaryAppend.Name);
+        var helpers = module.RuntimeHelpers;
+        var reserve = helpers.Callee(DictionaryCallee.Reserve)!;
+        var append = helpers.Callee(DictionaryCallee.Append)!;
+        Assert.True(reserve.CallerLocation && append.CallerLocation);
+        return (CompilationTestHelper.WriteIr(c), reserve.Name, append.Name);
     }
 
     private static string Handle(long length, long capacity) => $$"""

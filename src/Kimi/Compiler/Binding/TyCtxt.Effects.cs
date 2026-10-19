@@ -21,15 +21,17 @@ internal sealed partial class TyCtxt
     };
 
     // SPEC 4.9.6, 12.4.3: an operation's published row in MIR terms (KimiLibraryCatalog.Row): the requirement it runs on the Type below
-    // parameter On and the parameter below which it destroys, -1 for none; null for an operation without a row.
-    internal (BindingSymbol? Runs, int On, int Destroys)? Published(BindingSymbol operation)
+    // parameter On, the parameter below which it destroys, -1 for none, and whether it destroys that target in place (`replace`); null for
+    // an operation without a row.
+    internal (BindingSymbol? Runs, int On, int Destroys, bool InPlace)? Published(BindingSymbol operation)
     {
         if (KimiLibraryCatalog.Row(operation) is not { } row)
         {
             return null;
         }
 
-        return (row.Runs is { } runs ? library.GetSymbol(runs)!.Contract!.Requirements[0].Symbol : null, row.On, row.Destroys); // Its one requirement.
+        var requirement = row.Runs is { } runs ? library.GetSymbol(runs)!.Contract!.Requirements[0].Symbol : null; // Its one requirement.
+        return (requirement, row.On, row.Destroys, row.InPlace);
     }
 
     // SPEC 8.11.4: what a requirement runs on a Self that is not abstract (Binding.Witnesses), appended to a caller-owned list with each

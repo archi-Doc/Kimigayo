@@ -13,7 +13,12 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
 {
     private const string Header = "func change(value: uniq/i32) => value@follow = 99\nfunc run(value: uniq/i32 during a)\n    var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    _ = entries.tryInsert(1, value@move)\n";
 
+    // The `OldRule` tests below expect the rule before Loan identity by base (A5 S1). Now a Borrow carries the Loans of the
+    // references it follows, from the last shared one on (SPEC 15.6.3), among them the Loan that the `index`, `indexUniq`
+    // or `tryGet` result keeps on `entries`; clearing or removing from `entries` while `found` is live is then an error.
+    // The default pipeline keeps the old rule until R6-check.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("Tuple", "entries[1].0@follow@ref")]
     [InlineData("OptionalTuple", "match entries.tryGet(1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")")]
     [InlineData("GenericOptionalTuple", "match lookup(entries@ref, 1)\n        .Some(let item) => item.0@follow@ref\n        .None => $abort(\"missing\")")]
@@ -76,6 +81,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     }
 
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("Shared", "index", "ref", "require found == 42 else => $abort(\"value\")")]
     [InlineData("Exclusive", "indexUniq", "uniq", "found@follow = 99")]
     public void DirectPlaceEntriesPreserveTheStoredCapability(string name, string entry, string mode, string use)
@@ -111,8 +117,10 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         Assert.False(c.Validate(out _));
     }
 
+    // The Cleared and Removed rows follow the old rule, as above.
     [Theory]
     [Trait("Purpose", "Allocation")]
+    [Trait("OldRule", "S1")]
     [InlineData("Owned", "entries", "")]
     [InlineData("Shared", "view", "let view = entries@ref\n    ")]
     [InlineData("Exclusive", "view", "let view = entries@uniq\n    ")]
@@ -136,6 +144,22 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         Assert.DoesNotContain(c.Problems, static x => x.Code == DiagnosticCode.Unsupported_Kd);
         Assert.Contains(c.Problems, x => c.SyntaxOf(x.Subject).ToString()!.Contains("entries[1]", StringComparison.Ordinal));
         Assert.False(c.Validate(out _));
+    }
+
+    // SPEC 4.7.1, 15.6.2 (DECISIONS BU-8): on the MIR a write, an exclusive borrow or an exclusive Reborrow through the stored reference
+    // selects indexUniq, whose exclusive receiver Loan conflicts with a live shared borrow of the Dictionary; a read through it does not.
+    [Theory]
+    [InlineData("change(entries[1])", true)]
+    [InlineData("entries[1]@follow = 99", true)]
+    [InlineData("let child = entries[1]@follow@uniq\n    child@follow = 3", true)]
+    [InlineData("let read: i32 = entries[1]@follow", false)]
+    public void AnExclusiveUseConflictsWithASharedBorrowOnTheMir(string use, bool conflicts)
+    {
+        var c = MirBuildTest.Compile("func inspect<T>(value: ref/T) => ()\n" + Header + "    let view = entries@ref\n    " + use + "\n    inspect(view)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(conflicts, program.Problems.All.ToArray().Any(static x => x.Code.IsLoanConflict() && x.Subject.Module == 0));
     }
 
     // SPEC 15.6.4: a referent stored in a Dictionary stays borrowed from the store until the Dictionary's last use, also on the
@@ -189,6 +213,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     }
 
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("Literal", "var entries = [1: value@move]")]
     [InlineData("Conditional", "var entries: Dictionary<i32, uniq/i32 during a> = [:]\n    if enabled => _ = entries.tryInsert(1, value@move)")]
     public void ConstructionAndConditionalStorageRetainTheInput(string name, string construction)
@@ -204,7 +229,9 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("DictionaryStoredReferenceIndependent", source, string.Empty);
     }
 
+    // Every row but SharedCopy follows the old rule, as above.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData("Local", "var value = 42\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@ref\nentries.clear()\nrequire found == 42 else => $abort(\"value\")")]
     [InlineData("SharedCopy", "let value = 42\nvar entries = [1: value@ref]\nlet found = entries[1]\nentries.clear()\nrequire found == 42 else => $abort(\"value\")")]
     [InlineData("String", "var value = \"value\"\nvar entries = [1: value@uniq]\nlet found = entries[1]@follow@ref\nentries.clear()\nrequire found == \"value\" else => $abort(\"value\")")]
@@ -274,6 +301,7 @@ public class DictionaryStoredReferenceTest(ITestOutputHelper output)
     }
 
     [Trait("Purpose", "Allocation")]
+    [Trait("OldRule", "S1")]
     [Theory]
     [InlineData(false)]
     [InlineData(true)]

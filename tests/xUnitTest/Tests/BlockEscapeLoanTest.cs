@@ -165,6 +165,20 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         output.WriteLine(name);
     }
 
+    // SPEC 16.2.2 on MIR (DECISIONS R5-M50): a transfer's secured result is delivered after the Scope Exit of the scopes it leaves, so a
+    // block value borrowing a departing local conflicts with that local's storage end even where nothing reads the value later; a
+    // Copied result does not.
+    [Theory]
+    [InlineData(NoUse, true)]
+    [InlineData(Plain, true)]
+    [InlineData("public func main() -> ()\n    let r = label block: do\n        let n = 5\n        exit to block n\n    Console.writeLine(\"x\")\n", false)]
+    public void TheMirDeliversAfterTheScopeExit(string source, bool conflict)
+    {
+        var program = MirBuildTest.Compile(source).BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
+    }
+
     // SPEC 15.6.5: the plain escape is one record, at the destruction.
     [Fact]
     public void ThePlainEscapeIsOneRecord()

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -479,7 +480,7 @@ internal sealed partial class BodyLowering
                 if (ReferenceEquals(this.PatternType(node), BoundType.String) && node.Literal.Kind == PatternLiteralKind.String && node.Literal.Text is { } text)
                 {
                     var constant = text.Length == 0 ? -1 : constants.Intern(text, LlvmConstantKind.Text);
-                    function.PatternSteps.Add(this.PatternStep(function, binding, i, WindowsLowering.String, 0, constant));
+                    function.PatternSteps.Add(this.PatternStep(function, binding, i, RuntimeAbi.String, 0, constant));
                     continue;
                 }
 

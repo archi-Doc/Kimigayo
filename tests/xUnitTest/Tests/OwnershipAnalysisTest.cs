@@ -298,7 +298,7 @@ public class OwnershipAnalysisTest
     [Fact]
     public void ReanalysisClearsPreviousFlowResults()
     {
-        var invalid = Parse("func f() -> i32\n    ()");
+        var invalid = Parse("func f()\n    require true else => ()\n    ()");
         var valid = Parse("let x = 1");
         var flow = invalid.AnalyzeControlFlow();
         Assert.NotEmpty(flow.Issues);
@@ -338,12 +338,12 @@ public class OwnershipAnalysisTest
             {
                 var before = GC.GetAllocatedBytesForCurrentThread();
                 c.Bind();
-                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+                phases[phase++ % phases.Length] = GC.GetAllocatedBytesForCurrentThread() - before;
                 before = GC.GetAllocatedBytesForCurrentThread();
                 c.Analyze();
-                phases[phase++] = GC.GetAllocatedBytesForCurrentThread() - before;
+                phases[phase++ % phases.Length] = GC.GetAllocatedBytesForCurrentThread() - before;
             });
-            Assert.True(allocated == 0, $"Allocated {allocated}; warm and measured Binding/Ownership phases: {string.Join(',', phases)}");
+            Assert.True(allocated == 0, $"Allocated {allocated}; Binding/Ownership phases of the last 16 operations: {string.Join(',', phases)}");
         }
     }
 }

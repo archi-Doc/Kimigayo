@@ -5,29 +5,302 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The MIR analyses' driver and problem record (docs/dev/DECISIONS.md R4-M2a, R4-M3a): <see cref="MirAnalysis"/> runs once per
-/// program version, and <see cref="MirReport"/> keeps one problem per code and subject with the views that have it; the analyses' costs
-/// (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
+/// <summary>The MIR analyses' driver and problem record (docs/dev/DECISIONS.md R4-M2a, R4-M3a, R5-M23): <see cref="MirAnalysis"/> runs once
+/// per program version, and <see cref="MirReport"/> keeps one problem per code and subject with its requirement and the views that have it;
+/// the analyses' costs (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
 public sealed class MirAnalysisTest
 {
-    // R4-M3a: a problem of a code and subject added again ORs its views into the first; another code or subject is its own problem.
+    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms).
+    internal const string Requirements = """
+        contract Sink
+            func put(self: uniq/Self, value: i32) -> i32
+                effect confined
+        struct S
+            Self is Sink
+            public func put(self: uniq/Self, value: i32) -> i32
+                H.discard(Loud.init())
+                return value
+        func apply<F>(f: ref/F) -> i32
+            F is Callable<() -> i32>
+                effect confined
+            return f()
+        func noisy() -> i32
+            Console.writeLine("noisy")
+            return 0
+        func entry() -> i32 => apply(noisy)
+        struct Loud
+            public var n: i32 = 0
+            drop => Console.writeLine("drop")
+        group H
+            public func discard<T>(item: T) => ()
+        open struct Base
+            public virtual func read(self: objref/Self) -> i32
+                effect confined
+                return 1
+        struct Derived : Base
+            override func read(self: objref/Self) -> i32
+                H.discard(Loud.init())
+                return 1
+        struct Resource
+            var name: string
+            public init(name: string) => self.name = name@move
+        func make() -> Resource => Resource.init("r")
+        func consume(r: Resource) => ()
+        struct Box
+            public var value: Resource
+            public init(value: Resource) => self.value = value@move
+            drop => ()
+        func layer()
+            var box = Box.init(make())
+            consume(box.value@move)
+        func moved(r: Resource)
+            consume(r@move)
+            consume(r@move)
+        func twice()
+            let resource: Resource
+            resource = make()
+            consume(resource@move)
+            resource = make()
+        func take(s: string) => ()
+        func runtime(values: Array<string>, i: isize)
+            take(values[i]@move)
+        struct Nest<T>
+            public var value: T
+            public var next: Option<rc/Nest<(T, T)>> = .None
+            public init(value: T) => self.value = value
+        contract Store
+            func keep(self: uniq/Self, value: i32) -> i32
+                effect confined
+        struct Deep
+            Self is Store
+            public func keep(self: uniq/Self, value: i32) -> i32
+                _ = Nest<i32>.init(value: 1)
+                return value
+        func deep(n: Nest<ref/i32 during a>)
+            let r = n@ref
+        func unset(flag: bool) -> i32
+            var n: i32
+            if flag => n = 1
+            return n
+        func falls(flag: bool)
+            require flag else => ()
+        func inspect(value: ref/i32) => ()
+        func conflict()
+            var x = 1
+            let r = x@ref
+            x = 2
+            inspect(r)
+        public func main() => ()
+
+        """;
+
+    private static readonly DiagnosticRequirement Moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
+    private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
+
+    // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
+    // own problem, so the views of one body's cases are never ORed into another's.
     [Fact]
     public void ARepeatedProblemMergesItsViews()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, new(0, 6), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, new(0, 5), 0b10));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10));
         Assert.Equal(
-            [new(DiagnosticCode.MovedPlace_Kd, new(0, 5), 0b11), new(DiagnosticCode.UninitializedPlace_Kd, new(0, 5), 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, new(0, 6), 0b01)],
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01),
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100),
+            ],
             report.All.ToArray());
         report.Clear();
         Assert.Equal(0, report.All.Length);
+    }
+
+    // R5-M23: the problems a key merges name one requirement, the first's; a problem that names another is a recording rule's defect, one
+    // InternalInvariant_Kd problem at the subject with the views that disagreed, however often it disagrees.
+    [Fact]
+    public void AMergeNamesOneRequirement()
+    {
+        var report = new MirReport();
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100));
+        Assert.Equal(
+            [
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01),
+                new MirProblem(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), new(0, 5), 0, 0b110),
+            ],
+            report.All.ToArray());
+    }
+
+    // R4-M69 (SPEC 7.2.3, 23.1.1): a problem with an Inlined fact, a Language problem found inside an inline default copy, is its template's
+    // check and is dropped; a limit record, which a copy records without that fact, stays, as does the template's own problem.
+    [Fact]
+    public void AnInlinedProblemIsDropped()
+    {
+        var report = new MirReport();
+        var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
+        var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
+        report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]);
+        report.Add(limit);
+        report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]);
+        Assert.Equal([limit, loan with { Views = 0b01 }], report.All.ToArray());
+        Assert.Equal([new MirFact(MirFactKind.Anchor, new(0, 4))], report.Facts(1).ToArray());
+    }
+
+    // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
+    // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
+    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, one problem in the template and
+    // one with the two-view copy's views (R4-M71).
+    [Fact]
+    public void ADefaultsProblemsAreItsTemplates()
+    {
+        var c = MirBuildTest.Compile("""
+            struct Resource
+                var name: string
+                public init(name: string) => self.name = name@move
+            func make() -> Resource => Resource.init("r")
+            func consume(r: Resource) => ()
+            struct Box
+                public var value: Resource
+                public init(value: Resource) => self.value = value@move
+                drop => ()
+            func f(n: i32, y: i32 = label w: do
+                var a = 1
+                let r = a@ref
+                a = 2
+                exit to w r@follow
+            ) => ()
+            func g(n: i32, y: i32 = label w: do
+                var box = Box.init(make())
+                consume(box.value@move)
+                let s = make()
+                consume(s@move)
+                consume(s@move)
+                exit to w 1
+            ) => ()
+            struct Nest<T>
+                public var value: T
+                public var next: Option<rc/Nest<(T, T)>> = .None
+                public init(value: T) => self.value = value
+            func h(n: i32, y: i32 = label w: do
+                var z = 1
+                let nest = Nest<ref/i32>.init(value: z@ref)
+                exit to w 1
+            ) => ()
+            func pair<s/T>(v: s/T)
+                s is ref or uniq
+                f(1)
+                g(1)
+                h(1)
+            func c1()
+                f(1)
+                f(2)
+                g(2)
+            func c2() => f(3)
+
+            """);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(
+            [
+                "ComparisonLoanConflict_Kd a = 2 1", "MovedPlace_Kd s 1", "MovedPlace_Kd var box = Box.init(make()) 1",
+                "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 1", "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 3",
+            ],
+            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}").Order(StringComparer.Ordinal));
+    }
+
+    // R4-M71 (G125, the 1c design review's r05): a Field initializer is built into each constructor, so its conflict is one problem per
+    // constructor body with that body's views: S's two constructors have one view each, G's two enumerate two and nine cases. One problem
+    // with the bodies' views ORed (0x1FF for G) loses which constructor's case a bit names.
+    [Fact]
+    public void AFieldInitializersProblemIsEachConstructors()
+    {
+        var c = MirBuildTest.Compile("""
+            struct S
+                public var v: i32 = label w: do
+                    var a = 1
+                    let r = a@ref
+                    a = 2
+                    exit to w r@follow
+                public var k: i32
+                public init(k: i32) => self.k = k
+                public init(k: i32, extra: i32) => self.k = k + extra
+            struct G<s/T>
+                public var v: i32 = label w: do
+                    var a = 1
+                    let r = a@ref
+                    a = 2
+                    exit to w r@follow
+                public var t: s/T
+                public init(t: s/T)
+                    s is ref or uniq
+                    self.t = t
+                public init(t: s/T, n: i32)
+                    self.t = t
+
+            """);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        var problems = program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).ToArray();
+        Assert.Equal(
+            [
+                "ComparisonLoanConflict_Kd a = 2 in public init(k: i32) => self.k = k: 1",
+                "ComparisonLoanConflict_Kd a = 2 in public init(k: i32, extra: i32) => self.k = k + extra: 1",
+                "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T): 3", "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T, n: i32): 511",
+            ],
+            problems.Select(x => $"{x.Code} {Line(c, x.Subject)} in {Line(c, program.Bodies[x.Body].Source)}: {x.Views}"));
+        Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Bodies[x.Body])));
+    }
+
+    // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
+    // Path and second initializations of a let, A2's incomplete layer at a Drop, A3's falling failure body, A4's confined obligations as
+    // Binding's row carries them (a conformance, a virtual function, a Callable binding) and its limit, and A5's Loan conflicts and its
+    // limit (a destruction past the walk's bound). The storage limits need large bodies: A5ChecksTheViewsA1Completed has A1's.
+    [Fact]
+    public void EachRecordingRuleNamesItsRequirement()
+    {
+        var c = MirBuildTest.Compile(Requirements);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(
+            [
+                "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
+                "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
+                "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
+                "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
+                "Ownership.Unsupported Unsupported_Kd Self is Store", "Ownership.Unsupported Unsupported_Kd func deep(n: Nest<ref/i32 during a>)",
+                "Ownership.VirtualEffectBound UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32",
+            ],
+            c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
+    }
+
+    // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
+    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its limit) none, since they lie at Binding's rows.
+    [Fact]
+    public void EachRecordingRuleNamesItsBody()
+    {
+        var c = MirBuildTest.Compile(Requirements);
+        var program = c.BuildMir();
+        Assert.Equal(
+            [
+                "ComparisonLoanConflict_Kd x = 2 conflict", "IncompatibleContractImplementation_Kd Self is Sink -", "MovedPlace_Kd r moved",
+                "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
+                "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
+                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Self is Store -",
+                "Unsupported_Kd func deep(n: Nest<ref/i32 during a>) deep",
+            ],
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Order(StringComparer.Ordinal));
     }
 
     // R4-M1: the analyses run once per program version: building an unchanged version again keeps its problems, and a new Binding pass
@@ -37,18 +310,48 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, program.Bodies[0].Source, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
     }
 
-    // R4-M12, V17: the library bodies have no problems.
+    // R4-M15a, design A3 6.1: A5 runs as the driver's step 4 over the views A1 and A2 completed, which A2's table publishes (ask A-2):
+    // every view of a body, two for a pair-generic one, so a Loan conflict is a problem of the version, and none of a body whose A1 arena
+    // exceeds the limit (N locals live across N branches, MirInitTest), which records only OwnershipStorageLimit_Kd, though A5's own arena
+    // would fit; N reference locals live across N branches fit A1's arena but not A5's, whose own OwnershipStorageLimit_Kd stops it.
     [Fact]
-    public void TheLibraryHasNoProblems()
+    public void A5ChecksTheViewsA1Completed()
     {
-        var (c, _) = SemanticSnapshotTest.Bind("library");
-        Assert.Equal(0, c.BuildMir().Problems.All.Length);
+        const string Scalars = "    var v{0} = {0}\n|    if flag => v{0} = 1\n|"; // Each part's line N times, with its index.
+        const string References = "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n";
+        const string Limit = "Ownership.StorageLimit OwnershipStorageLimit_Kd func f(flag: bool) -> i32";
+        foreach (var (size, views, line, expected) in new[]
+        {
+            (64, 1, Scalars, "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2"),
+            (13_500, 0, Scalars, Limit),
+            (2_000, 1, References, Limit),
+        })
+        {
+            var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc pair<s/T>(p: s/T) -> ()\n    s is owner or uniq\n    let v = p@move\n")
+                .Append("func f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n    let r = x@ref\n");
+            foreach (var part in line.Split('|'))
+            {
+                for (var n = 0; n < size; n++)
+                {
+                    text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
+                }
+            }
+
+            var c = MirBuildTest.Compile(text.Append("    x = 2\n    inspect(r)\n    return x\n").ToString());
+            var program = c.BuildMir();
+            Assert.Equal([expected], program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}"));
+            Assert.Equal(
+                [("f", (long)views), ("inspect", 1L), ("pair", 2L)],
+                program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect" or "pair")
+                    .Select(x => (x.Key.Decl!.Name, program.Drops.ViewsOf(x.Ordinal))).Order());
+        }
     }
 
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.
@@ -62,7 +365,8 @@ public sealed class MirAnalysisTest
             report.Clear();
             for (var i = 0; i < 64; i++)
             {
-                report.Add(new(i % 2 == 0 ? DiagnosticCode.MovedPlace_Kd : DiagnosticCode.UninitializedPlace_Kd, new(0, (i % 48) + 1), 1UL << (i % 3)));
+                report.Add(i % 2 == 0 ? new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 48) + 1), 0, 1UL << (i % 3))
+                    : new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 48) + 1), 0, 1UL << (i % 3)));
             }
         }));
         Assert.Equal(64 - 16, report.All.Length);
@@ -125,4 +429,7 @@ public sealed class MirAnalysisTest
 
         return text.Append(' ', 4 * (n + 1)).Append("()\n").ToString();
     }
+
+    // The first line of a syntax's text.
+    private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
 }

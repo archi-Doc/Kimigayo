@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
-using Kimi.Compiler;
-using Kimi.Compiler.Parsing;
 
 namespace Kimi.Testing;
 
@@ -10,7 +8,8 @@ internal static class TestRuntime
 {
     private static readonly string Runtime = Read();
 
-    internal static string Create(TestCatalog catalog, IReadOnlyDictionary<FunctionKoto, FunctionAbi> functions)
+    // names: the LLVM name of each case's entry function, in catalog case order.
+    internal static string Create(TestCatalog catalog, IReadOnlyList<string> names)
     {
         var text = new StringBuilder(Runtime);
         text.Append("\n@__kimi_test_artifact = private constant [67 x i8] c\"").Append(catalog.ArtifactId).Append("\"\n");
@@ -29,7 +28,8 @@ internal static class TestRuntime
         for (var i = 0; i < catalog.Cases.Count; i++)
         {
             text.Append("case_").Append(i).Append(":\n  call void @__kimi_test_frame(i16 1, i64 0, i32 -1, ptr @__kimi_test_case_").Append(i)
-                .Append(", i32 67)\n  call void @").Append(functions[catalog.Cases[i].Function].Name).Append("()\n  call void @__kimi_test_frame(i16 6, i64 0, i32 -1, ptr null, i32 0)\n  call void @ExitProcess(i32 0)\n  unreachable\n");
+                .Append(", i32 67)\n  call void @").Append(names[i])
+                .Append("()\n  call void @__kimi_test_frame(i16 6, i64 0, i32 -1, ptr null, i32 0)\n  call void @ExitProcess(i32 0)\n  unreachable\n");
         }
 
         return text.Append("invalid:\n  call void @ExitProcess(i32 125)\n  unreachable\n}\n").ToString();

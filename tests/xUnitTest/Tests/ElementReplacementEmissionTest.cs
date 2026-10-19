@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -42,7 +43,7 @@ public class ElementReplacementEmissionTest
     {
         var fixture = "ElementReplacement" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture(fixture, source, ir, "ok\n", destructions);
+        StringEmissionTest.WriteAuditedFixture(fixture, ir, "ok\n", destructions);
     }
 
     [Fact]
@@ -50,7 +51,7 @@ public class ElementReplacementEmissionTest
     {
         const string Source = "var a = (\"sibling\", (\"first\", \"last\"))\na.1 = (\"newFirst\", \"newLast\")\nConsole.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementReplacementOrder", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementReplacementOrder", Source, ir, "ok\n", "sibling=1;first=1;last=1;newFirst=1;newLast=1;ok=1", order: [2, 1, 5, 4, 3, 0]);
+        StringEmissionTest.WriteAuditedFixture("ElementReplacementOrder", ir, "ok\n", "sibling=1;first=1;last=1;newFirst=1;newLast=1;ok=1", order: [2, 1, 5, 4, 3, 0]);
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public class ElementReplacementEmissionTest
         const string Source = "func make() -> string\n    Console.writeLine(\"rhs\")\n    return \"new\"\nfunc outer() -> isize\n    Console.writeLine(\"outer\")\n    return 0\nfunc inner() -> isize\n    Console.writeLine(\"inner\")\n    return 0\nvar a: [1 of [1 of string]] = [[\"old\"]]\na[outer()][inner()] = make()\nConsole.writeLine(\"ok\")";
         const string Output = "rhs\nouter\ninner\nok\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementReplacementEvaluation", Source, Output);
-        StringEmissionTest.WriteAuditedFixture("ElementReplacementEvaluation", Source, ir, Output, "rhs=1;outer=1;inner=1;old=1;new=1;ok=1", order: [0, 1, 2, 3, 5, 4]);
+        StringEmissionTest.WriteAuditedFixture("ElementReplacementEvaluation", ir, Output, "rhs=1;outer=1;inner=1;old=1;new=1;ok=1", order: [0, 1, 2, 3, 5, 4]);
     }
 
     [Theory]
@@ -71,7 +72,7 @@ public class ElementReplacementEmissionTest
         const string Output = "cleanup\nok\n";
         var fixture = "ElementReplacementTransfer" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, Output);
-        StringEmissionTest.WriteAuditedFixture(fixture, source, ir, Output, "old=1;new=1;cleanup=1;ok=1", order: [1, 2, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture(fixture, ir, Output, "old=1;new=1;cleanup=1;ok=1", order: [1, 2, 0, 3]);
     }
 
     [Fact]
@@ -80,7 +81,7 @@ public class ElementReplacementEmissionTest
         const string Source = "var a: [1 of string] = [\"old\"]\ndefer => Console.writeLine(\"bad\")\na[1] = \"new\"";
         const string Error = "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementReplacementBounds", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementReplacementBounds", Source, ir, string.Empty, "old=0;new=0;bad=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementReplacementBounds", ir, string.Empty, "old=0;new=0;bad=0", 1, Error);
     }
 
     [Fact]
@@ -88,7 +89,7 @@ public class ElementReplacementEmissionTest
     {
         const string Source = "func index() -> isize\n    Console.writeLine(\"bad\")\n    return 0\nfunc f() -> i32\n    var a: [1 of string] = [\"old\"]\n    a[index()] = (return 42)\n    return 0\nif f() == 42 => Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("ElementReplacementRhsTransfer", Source, "ok\n");
-        StringEmissionTest.WriteAuditedFixture("ElementReplacementRhsTransfer", Source, ir, "ok\n", "old=1;ok=1", order: [0, 1]);
+        StringEmissionTest.WriteAuditedFixture("ElementReplacementRhsTransfer", ir, "ok\n", "old=1;ok=1", order: [0, 1]);
     }
 
     // A cleanup that never completes leaves the destruction of the old element and the placement to the checks (their MIR:
@@ -102,7 +103,7 @@ public class ElementReplacementEmissionTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = module.GetFunction(0);
-        Assert.DoesNotContain(function.Instructions, x => x.Callee == WindowsLowering.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
+        Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
         ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
     }
 
@@ -151,7 +152,7 @@ public class ElementReplacementEmissionTest
         Assert.True((body.GetInputState(plan.Write + 1, plan.Root) & PlaceState.MustInit) != 0);
         Assert.True((body.GetInputState(plan.Write + 1, input) & PlaceState.MayInit) == 0);
         var instructions = module.GetFunction(0).Instructions.Where(x => x.Operation == plan.Write).ToArray();
-        Assert.Equal(WindowsLowering.DestroyString, instructions[0].Callee);
+        Assert.Equal(RuntimeAbi.DestroyString, instructions[0].Callee);
         Assert.Equal(EmissionOpcode.MoveString, instructions[1].Opcode);
         Assert.Empty(module.GetFunction(0).LiveFlags);
     }

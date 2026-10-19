@@ -681,13 +681,13 @@
 - [演算](../spec/13-operators-and-assignment.md) / [失敗](../spec/17-failure-handling.md)：checked/Wrapping、FP、Abort と評価順序。
 - [runtime/FFI](../spec/22-core-execution-and-foreign-functions.md)：§22.6 の外部境界、§22.5 の allocation と失敗。
 - [CODEMAP.md](CODEMAP.md)：変更箇所と代表テストの探索。機能や責務を変更した場合は対応項目も更新する。
-- [WindowsLowering.cs](../../src/Kimi/Compiler/Emission/WindowsLowering.cs)、[FunctionAbi.cs](../../src/Kimi/Compiler/Emission/FunctionAbi.cs)、[FunctionAbiPool.cs](../../src/Kimi/Compiler/Emission/FunctionAbiPool.cs)：物理表現・属性・ABI cache。
+- [WindowsLowering.cs](../../src/Kimi/Compiler/Emission/WindowsLowering.cs)、[AbiRecords.cs](../../src/Kimi/Compiler/Backend/AbiRecords.cs)、[RuntimeAbi.cs](../../src/Kimi/Compiler/Backend/RuntimeAbi.cs)、[FunctionAbiPool.cs](../../src/Kimi/Compiler/Emission/FunctionAbiPool.cs)：物理表現・属性・ABI cache。
 - [EmissionModule.cs](../../src/Kimi/Compiler/Emission/EmissionModule.cs)、[BodyLowering.Graph.cs](../../src/Kimi/Compiler/Emission/BodyLowering.Graph.cs)、[BodyLowering.Pointers.cs](../../src/Kimi/Compiler/Emission/BodyLowering.Pointers.cs)：確定した命令計画と算術/pointer lowering。
 - [LlvmModuleWriter.cs](../../src/Kimi/Compiler/Emission/LlvmModuleWriter.cs)、[Closures](../../src/Kimi/Compiler/Emission/LlvmModuleWriter.Closures.cs)、[Scalars](../../src/Kimi/Compiler/Emission/LlvmModuleWriter.Scalars.cs)、[Elements](../../src/Kimi/Compiler/Emission/LlvmModuleWriter.Elements.cs)：属性・call・命令の出力。
 - [Binding.EffectBounds.cs](../../src/Kimi/Compiler/Binding/Binding.EffectBounds.cs)：既存の契約別 effect 検査。一般的な LLVM memory 属性の解析ではない。
 - [WindowsRuntime.ll.in](../../src/Kimi/Compiler/Emission/WindowsRuntime.ll.in)、[Utf8BufferRuntime.ll.in](../../src/Kimi/Compiler/Emission/Utf8BufferRuntime.ll.in)、[Utf8FormatRuntime.ll.in](../../src/Kimi/Compiler/Emission/Utf8FormatRuntime.ll.in)：runtime、memory intrinsic、poison の限定使用。
 - [Utf8FloatRyu.ll.in](../../src/Kimi/Compiler/Emission/Utf8FloatRyu.ll.in) / [generate-ryu.ps1](../../src/backend/windows-x64/generate-ryu.ps1)：Clang 生成の属性・算術 flags。生成ファイルを手編集しない。
-- [LlvmConstantPool.cs](../../src/Kimi/Compiler/Emission/LlvmConstantPool.cs) / [NativeToolchain.cs](../../src/Kimi/Compiler/Emission/NativeToolchain.cs)：定数、O2 pipeline、前後の IR verification。
+- [LlvmConstantPool.cs](../../src/Kimi/Compiler/Backend/LlvmConstantPool.cs) / [NativeToolchain.cs](../../src/Kimi/Compiler/Emission/NativeToolchain.cs)：定数、O2 pipeline、前後の IR verification。
 - [テスト一覧](../../tests/xUnitTest/Tests/)：§5.1 のクラスから関係するケースを選ぶ。
 
 ### 6.2. LLVM の一次資料

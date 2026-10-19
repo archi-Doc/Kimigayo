@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+
 namespace Kimi.Compiler;
 
 internal sealed partial class BodyLowering
@@ -15,13 +17,14 @@ internal sealed partial class BodyLowering
         }
 
         operands.Add(new(EmissionOperandKind.Argument, 0));
-        this.arrayRuntimeUsed = true;
         FunctionAbi entry;
         switch (kind)
         {
             case CompilerFunctionKind.ArrayReserve:
             case CompilerFunctionKind.ArrayShrinkToFit:
-                entry = kind == CompilerFunctionKind.ArrayReserve ? WindowsLowering.ArrayReserve : WindowsLowering.ArrayShrink;
+                // The capacity routines have no helper row (X39); every helper kind joins its row's needs.
+                this.arrayRuntimeUsed = true;
+                entry = kind == CompilerFunctionKind.ArrayReserve ? RuntimeAbi.ArrayReserve : RuntimeAbi.ArrayShrink;
                 operands.Add(new(EmissionOperandKind.Integer, element.Stride));
                 if (kind == CompilerFunctionKind.ArrayReserve)
                 {

@@ -30,8 +30,7 @@ internal sealed partial class MirBuilder
         _ => null,
     };
 
-    // SPEC 13.2, 13.3.1: a built-in operator on its operands, its check Proven where IMPL 21.3.3 omits it; or a sequence's metadata. The left
-    // operand is pending while the right one is evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3).
+    // SPEC 13.2, 13.3.1: a built-in operator on its operands (Operands, Binary); or a sequence's metadata.
     private void Primitive(MirPlace destination, Koto node, BoundType type)
     {
         switch (node)
@@ -40,11 +39,7 @@ internal sealed partial class MirBuilder
                 this.Metadata(destination, member);
                 break;
             case BinaryKoto binary when BinaryOp(binary.Akind) is { } op:
-                var start = this.arguments.Count;
-                this.arguments.Add(this.Operand(binary.Left, expected: null));
-                this.arguments.Add(this.Operand(binary.Right, expected: null));
-                var proven = this.Proven(op, type, this.arguments[^1]);
-                this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
+                this.Binary(destination, binary, op, this.Operands(binary), type);
                 break;
             case UnaryKoto { Akind: KotoKind.PrefixPlus } plus:
                 this.Assign(destination, plus.Operand);
@@ -63,6 +58,25 @@ internal sealed partial class MirBuilder
                 this.Unsupported(node, destination);
                 break;
         }
+    }
+
+    // A built-in binary operator's operands, pushed in order; where the first is pushed. The left operand is pending while the right one is
+    // evaluated, so a transfer there ends a comparison's inspection Loan (SPEC 13.4, 14.10.3), and secured where the right one builds code
+    // (SPEC 12.2).
+    private int Operands(BinaryKoto binary)
+    {
+        var start = this.arguments.Count;
+        var left = this.Operand(binary.Left, expected: null);
+        this.arguments.Add(Builds(binary.Right) ? this.Secure(left, binary.Left) : left);
+        this.arguments.Add(this.Operand(binary.Right, expected: null));
+        return start;
+    }
+
+    // SPEC 13.2, 13.3.1: a built-in binary operator on the operands pushed since start, its check Proven where IMPL 21.3.3 omits it.
+    private void Binary(MirPlace destination, BinaryKoto node, MirBinaryOp op, int start, BoundType type)
+    {
+        var proven = this.Proven(op, type, this.arguments[^1]);
+        this.Set(destination, MirRvalue.Binary(op, this.Flush(start), proven), node);
     }
 
     // SPEC 4.7, 4.6.2: a sequence's length, whether it is empty (its length equals 0) and its indices (the ResolvedRange of start 0 and
@@ -127,8 +141,9 @@ internal sealed partial class MirBuilder
 
     // SPEC 13.5.4, 13.6.1, 5.4: a numeric, wrapping, bit, pointer or object conversion, a Cast of its operand, Proven where it checks
     // nothing; a folded direct literal is its constant and evaluates nothing, a fitted literal is its operand, and a Never operand only
-    // diverges. A case adaptation (SPEC 8.14) is an Adapt, whose operation each Semantics case selects.
-    private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type)
+    // diverges. A case adaptation (SPEC 8.14) is an Adapt, whose operation each Semantics case selects, as a call's input where it produces
+    // one (input).
+    private void Convert(MirPlace destination, BinaryKoto conversion, BoundType type, bool input)
     {
         ref readonly var row = ref HirTables.PlanOf(conversion);
         var binding = (ConversionBinding)row.Mode;
@@ -150,7 +165,7 @@ internal sealed partial class MirBuilder
         }
         else if (binding == ConversionBinding.CaseAdaptation)
         {
-            this.Adapt(destination, conversion, (ExplicitAdaptationPlan)row.Plan!);
+            this.Adapt(destination, conversion, (ExplicitAdaptationPlan)row.Plan!, input);
         }
         else
         {
@@ -170,12 +185,11 @@ internal sealed partial class MirBuilder
                 _ => MirCastKind.Numeric,
             };
 
-            // IMPL 21.3.3: an integer conversion whose source range lies within its target's checks nothing (T and Wrapping<T>, u8@u32,
-            // i8@i64), nor does a widening floating-point one or one from an integer to a floating-point Type.
+            // IMPL 21.3.3: an integer conversion whose source range lies within its target's checks nothing (Within), nor does a widening
+            // floating-point one or one from an integer to a floating-point Type.
             var proven = kind switch
             {
-                MirCastKind.Integer => this.Width(source, out var signed) is var from and > 0 && this.Width(type, out var target) is var to and > 0 &&
-                    (target || !signed) && from - (signed ? 1 : 0) <= to - (target ? 1 : 0),
+                MirCastKind.Integer => this.Within(source, type),
                 MirCastKind.Floating => ReferenceEquals(type, BoundType.F64),
                 MirCastKind.Numeric => type.IsFloatingPoint,
                 _ => true,
@@ -187,14 +201,15 @@ internal sealed partial class MirBuilder
 
     // SPEC 8.14, 13.5.3: a case adaptation of its plan (MirCases.Adapt resolves it per Semantics case): the operand acquired by value, a
     // Place Copied (Binding proved Copy where a case acquires it by value) or a temporary moved, beside the token of Binding's source Type;
-    // the payload is the Place one implicit layer below the operand's, which an object borrow borrows.
-    private void Adapt(MirPlace destination, BinaryKoto conversion, ExplicitAdaptationPlan plan)
+    // the payload is the Place one implicit layer below the operand's, which an object borrow borrows. As an invocation's input, its
+    // exclusive borrow is two-phase (A3 E13 (4)).
+    private void Adapt(MirPlace destination, BinaryKoto conversion, ExplicitAdaptationPlan plan, bool input)
     {
         var temporary = HirTables.AdjustOf(conversion.Left).Acquire == HirAcquire.Temporary;
         var operand = temporary ? this.Value(conversion.Left) : this.Place(conversion.Left);
         var start = this.body.AddOperand(temporary ? MirOperand.Move(operand) : MirOperand.Copy(operand));
         this.body.AddOperand(MirOperand.Const(this.body.Const(new(MirConstKind.TypeToken, plan.Source))));
-        this.Set(destination, MirRvalue.Adapt(start, this.Follow(operand, 1), plan.Target, plan.IsShorthand), conversion);
+        this.Set(destination, MirRvalue.Adapt(start, this.Follow(operand, 1), plan.Target, plan.IsShorthand, input), conversion);
     }
 
     // IMPL 21.3.3: whether an operation cannot Abort: it checks nothing (a comparison, a bit operation, or an operation of a floating-point,
@@ -213,6 +228,11 @@ internal sealed partial class MirBuilder
             _ => true,
         };
     }
+
+    // IMPL 21.3.3: whether an integer Type's range lies within another's (T and Wrapping<T>, u8 in u32, i8 in i64), so converting between
+    // them checks nothing; false where an instance decides a width.
+    private bool Within(BoundType source, BoundType target) => this.Width(source, out var signed) is var from and > 0 &&
+        this.Width(target, out var wide) is var to and > 0 && (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
 
     // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the target's pointer width; 0 for
     // another Type, such as a Type parameter, whose instance decides it.

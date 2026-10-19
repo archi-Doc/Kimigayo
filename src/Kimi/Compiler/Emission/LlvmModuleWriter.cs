@@ -1,82 +1,32 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
-using System.Text;
+using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler;
 
 /// <summary>
-/// Serializes a closed <see cref="EmissionModule"/> directly into the destination writer. It never reads Binding,
-/// AST or ownership state, and formats numbers on the stack so warm writes allocate nothing.
+/// Serializes a closed <see cref="EmissionModule"/> directly into the destination writer, the module frame through
+/// <see cref="LlvmModuleText"/>. It never reads Binding, AST or ownership state, and formats numbers on the stack so warm
+/// writes allocate nothing.
 /// </summary>
 internal static partial class LlvmModuleWriter
 {
-    // Every generated definition carries the same profile attributes (SPEC 21.3.1).
-    private const string Footer =
-        "attributes #0 = { uwtable(" + WindowsProfile.UnwindTables + ") \"target-cpu\"=\"" + WindowsProfile.Cpu + "\" \"target-features\"=\"" + WindowsProfile.Features +
-        "\" \"denormal-fp-math\"=\"ieee,ieee\" }\n!llvm.module.flags = !{!0}\n!0 = !{i32 8, !\"PIC Level\", i32 2}\n";
-
-    // Fixed profile vocabulary: no per-module tracking or warm declaration construction.
-    // The runtime Array capacity routines and the aggregate helpers copy bytes through these intrinsics.
-    private const string MemoryDeclarations = "declare void @llvm.memcpy.p0.p0.i64(ptr noalias nocapture writeonly, ptr noalias nocapture readonly, i64, i1 immarg)\ndeclare void @llvm.memmove.p0.p0.i64(ptr nocapture writeonly, ptr nocapture readonly, i64, i1 immarg)\n";
-
-    private const string OverflowDeclarations = """
-        declare { i8, i1 } @llvm.sadd.with.overflow.i8(i8, i8)
-        declare { i8, i1 } @llvm.ssub.with.overflow.i8(i8, i8)
-        declare { i8, i1 } @llvm.smul.with.overflow.i8(i8, i8)
-        declare { i8, i1 } @llvm.uadd.with.overflow.i8(i8, i8)
-        declare { i8, i1 } @llvm.usub.with.overflow.i8(i8, i8)
-        declare { i8, i1 } @llvm.umul.with.overflow.i8(i8, i8)
-        declare { i16, i1 } @llvm.sadd.with.overflow.i16(i16, i16)
-        declare { i16, i1 } @llvm.ssub.with.overflow.i16(i16, i16)
-        declare { i16, i1 } @llvm.smul.with.overflow.i16(i16, i16)
-        declare { i16, i1 } @llvm.uadd.with.overflow.i16(i16, i16)
-        declare { i16, i1 } @llvm.usub.with.overflow.i16(i16, i16)
-        declare { i16, i1 } @llvm.umul.with.overflow.i16(i16, i16)
-        declare { i32, i1 } @llvm.sadd.with.overflow.i32(i32, i32)
-        declare { i32, i1 } @llvm.ssub.with.overflow.i32(i32, i32)
-        declare { i32, i1 } @llvm.smul.with.overflow.i32(i32, i32)
-        declare { i32, i1 } @llvm.uadd.with.overflow.i32(i32, i32)
-        declare { i32, i1 } @llvm.usub.with.overflow.i32(i32, i32)
-        declare { i32, i1 } @llvm.umul.with.overflow.i32(i32, i32)
-        declare { i64, i1 } @llvm.sadd.with.overflow.i64(i64, i64)
-        declare { i64, i1 } @llvm.ssub.with.overflow.i64(i64, i64)
-        declare { i64, i1 } @llvm.smul.with.overflow.i64(i64, i64)
-        declare { i64, i1 } @llvm.uadd.with.overflow.i64(i64, i64)
-        declare { i64, i1 } @llvm.usub.with.overflow.i64(i64, i64)
-        declare { i64, i1 } @llvm.umul.with.overflow.i64(i64, i64)
-        """ + "\n";
-
-    // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.4.7).
-    private static readonly string Header =
-        "; Kimigayo checked pre-optimization IR (" + WindowsProfile.Name + ")\ntarget triple = \"" + WindowsProfile.Target + "\"\ntarget datalayout = \"" + WindowsProfile.DataLayout + "\"\n" +
-        WindowsLowering.String.Layout.StorageType + " = type { ptr, i64, i8 }\n@" + WindowsProfile.FloatMarker + " = global i32 0, align 4\n";
-
-    private static readonly string Runtime = ReadRuntime();
-    private static readonly string FormattingRuntime = ReadFormattingRuntime();
-
-    private static readonly string TestRuntimeBase = Runtime
-        .Replace(WindowsLowering.Abort.GetDefinition(false) + "entry:\n", WindowsLowering.Abort.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal)
-        .Replace(WindowsLowering.AbortMessage.GetDefinition(false) + "entry:\n", WindowsLowering.AbortMessage.GetDefinition(false) + "entry:\n  call void @__kimi_test_aborted()\n", StringComparison.Ordinal);
-
     internal static void Write(EmissionModule module, TextWriter output)
     {
-        output.Write(Header);
         var constants = module.Constants;
-        for (var i = 0; i < constants.Count; i++)
-        {
-            output.Write(constants[i].Definition);
-        }
-
-        output.Write(module.TestRuntime is null ? Runtime : TestRuntimeBase);
-        output.Write(module.TestRuntime);
-        WriteExternals(module, output);
+        var helpers = module.RuntimeHelpers;
+        LlvmModuleText.WriteHeader(output, constants);
+        LlvmModuleText.WriteRuntime(output, module.TestRuntime);
+        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(module.Externals), module.TestRuntime);
         WriteStatics(module, output);
-        output.Write(OverflowDeclarations);
+        output.Write(LlvmModuleText.OverflowDeclarations);
         WriteWideOverflowDeclarations(module, output);
-        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || module.NeedsArrayRuntime || module.NeedsFormattingRuntime)
+        if (module.Aggregates.Count != 0 || module.TestRuntime is not null || helpers.NeedsArrayRuntime || helpers.NeedsFormattingRuntime)
         {
-            output.Write(MemoryDeclarations);
+            output.Write(LlvmModuleText.MemoryDeclarations);
             WriteArrayFillHelper(module, output);
             foreach (var aggregate in module.Aggregates)
             {
@@ -84,34 +34,13 @@ internal static partial class LlvmModuleWriter
             }
         }
 
-        if (module.NeedsArrayRuntime)
-        {
-            output.Write(ArrayRuntime);
-        }
+        helpers.WriteArrays(output);
+        helpers.WriteFormatting(output);
+        helpers.WriteDictionaries(output);
 
-        WriteArrayHelpers(module, output);
-
-        if (module.NeedsFormattingRuntime)
+        if (helpers.NeedsStringComparison)
         {
-            output.Write(FormattingRuntime);
-            WriteFormattingWrappers(module, output);
-        }
-
-        if (module.NeedsStorageBytes)
-        {
-            output.Write(StorageBytePrimitives);
-        }
-
-        if (module.NeedsDictionaryRuntime)
-        {
-            output.Write(DictionaryDuplicateAdapter);
-            WriteDictionaryStorage(module, output);
-            WriteDictionaryHelpers(module, output);
-        }
-
-        if (module.NeedsStringComparison)
-        {
-            output.Write(StringComparisons);
+            output.Write(LegacyRuntimeHelpers.StringComparisons);
         }
 
         for (var i = 0; i < module.FunctionCount; i++)
@@ -121,139 +50,7 @@ internal static partial class LlvmModuleWriter
 
         WriteObjects(module, output);
 
-        output.Write(Footer);
-    }
-
-    // The LLVM spelling after @ of an external symbol: the plain identifier, or a quoted
-    // name whose UTF-8 bytes other than printable ASCII, " and \ are written as \XX.
-    internal static string ExternalName(string symbol)
-    {
-        var plain = symbol.Length != 0 && !char.IsAsciiDigit(symbol[0]);
-        foreach (var c in symbol)
-        {
-            plain &= char.IsAsciiLetterOrDigit(c) || c is '_' or '.' or '$' or '-';
-        }
-
-        if (plain)
-        {
-            return symbol;
-        }
-
-        var text = new StringBuilder(symbol.Length + 8).Append('"');
-        foreach (var b in Encoding.UTF8.GetBytes(symbol))
-        {
-            if (b is >= 0x20 and < 0x7F and not (byte)'"' and not (byte)'\\')
-            {
-                text.Append((char)b);
-            }
-            else
-            {
-                text.Append('\\').Append(b.ToString("X2", CultureInfo.InvariantCulture));
-            }
-        }
-
-        return text.Append('"').ToString();
-    }
-
-    // Recovers the external symbol from its ExternalName spelling.
-    internal static string SymbolFromName(ReadOnlySpan<char> name)
-    {
-        if (name.Length < 2 || name[0] != '"' || name[^1] != '"')
-        {
-            return name.ToString();
-        }
-
-        name = name[1..^1];
-        var bytes = new byte[name.Length];
-        var count = 0;
-        for (var i = 0; i < name.Length; i++)
-        {
-            if (name[i] == '\\' && i + 2 < name.Length && byte.TryParse(name.Slice(i + 1, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out var escaped))
-            {
-                bytes[count++] = escaped;
-                i += 2;
-            }
-            else
-            {
-                bytes[count++] = (byte)name[i];
-            }
-        }
-
-        return Encoding.UTF8.GetString(bytes, 0, count);
-    }
-
-    private static string ReadFormattingRuntime()
-    {
-        using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8BufferRuntime.ll.in")!;
-        using var reader = new StreamReader(stream);
-        var text = reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        using var formatting = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.Utf8FormatRuntime.ll.in")!;
-        using var formatReader = new StreamReader(formatting);
-        text += "\n" + formatReader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        foreach (var name in new[] { "Utf8FloatRuntime.ll.in", "Utf8FloatRyu.ll.in" })
-        {
-            using var resource = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission." + name)!;
-            using var source = new StreamReader(resource);
-            text += "\n" + source.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal);
-        }
-
-        for (var kind = CompilerFunctionKind.TextFixed; kind <= CompilerFunctionKind.BuiltinFormat; kind++)
-        {
-            if (WindowsLowering.GetFormattingFunction(kind) is { } function)
-            {
-                text = text.Replace("{{" + function.Name + "}}\n", function.GetDefinition(false), StringComparison.Ordinal);
-            }
-        }
-
-        return text.Replace("{{reason_argument_range}}", Reason(WindowsLowering.ArgumentRangeReason), StringComparison.Ordinal)
-            .Replace("{{reason_format}}", Reason(WindowsLowering.FormatReason), StringComparison.Ordinal)
-            .Replace("{{reason_size}}", Reason(WindowsLowering.AllocationSizeReason), StringComparison.Ordinal);
-    }
-
-    // SPEC 22.6: one declaration per foreign symbol. A kernel32 import that the written runtime already
-    // declares shares that declaration; Binding proved their physical Types equal (SPEC 21.2).
-    private static void WriteExternals(EmissionModule module, TextWriter output)
-    {
-        foreach (var external in module.Externals)
-        {
-            var abi = external.Abi;
-            if (Declares(module.TestRuntime is null ? Runtime : TestRuntimeBase, abi.Name) || (module.TestRuntime is { } test && Declares(test, abi.Name)))
-            {
-                continue;
-            }
-
-            output.Write(external.DllImport ? "declare dllimport " : "declare ");
-            output.Write(abi.Result);
-            output.Write(" @");
-            output.Write(abi.Name);
-            output.Write('(');
-            for (var i = 0; i < abi.Parameters.Length; i++)
-            {
-                if (i != 0)
-                {
-                    output.Write(", ");
-                }
-
-                output.Write(abi.Parameters[i].Type);
-            }
-
-            output.Write(")\n");
-        }
-
-        static bool Declares(string runtime, string name)
-        {
-            for (var index = runtime.IndexOf(name, StringComparison.Ordinal); index >= 0; index = runtime.IndexOf(name, index + 1, StringComparison.Ordinal))
-            {
-                var end = index + name.Length;
-                if (index != 0 && runtime[index - 1] == '@' && end < runtime.Length && runtime[end] == '(' &&
-                    runtime.LastIndexOf('\n', index) is var line && runtime.AsSpan(line + 1).StartsWith("declare ", StringComparison.Ordinal))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
+        output.Write(LlvmModuleText.Footer);
     }
 
     private static void WriteFunction(TextWriter output, LlvmConstantPool constants, EmissionFunction function)
@@ -476,11 +273,11 @@ internal static partial class LlvmModuleWriter
                     }
 
                     output.Write(", i8 ");
-                    WriteNumber(output, WindowsLowering.StaticReleaseKind);
+                    WriteNumber(output, RuntimeAbi.StaticReleaseKind);
                     output.Write(" }, ptr ");
                     WriteSlot(output, function, instruction.Place);
                     output.Write(", align ");
-                    WriteNumber(output, WindowsLowering.String.Layout.Alignment);
+                    WriteNumber(output, RuntimeAbi.String.Layout.Alignment);
                     output.Write('\n');
                     break;
 
@@ -538,76 +335,56 @@ internal static partial class LlvmModuleWriter
     }
 
     private static void WriteSlot(TextWriter output, EmissionFunction function, int place)
+        => output.Write(SpellSlot(function, place, stackalloc char[OperandLength]));
+
+    // A slot's address, formatted into text, which holds OperandLength characters: its alloca or projection %p<n>, its
+    // argument or the return slot.
+    private static ReadOnlySpan<char> SpellSlot(EmissionFunction function, int place, Span<char> text)
     {
         var address = function.SlotAddresses[place];
         switch (address.Kind)
         {
             case EmissionOperandKind.SlotAddress:
             case EmissionOperandKind.ProjectedSlot:
-                Name(output, "%p", (int)address.Value);
+                place = (int)address.Value;
                 break;
             case EmissionOperandKind.Argument:
-                WriteOperand(output, address);
-                break;
+                return Spell(address, text);
             case EmissionOperandKind.ReturnAddress:
-                output.Write("%ret");
-                break;
+                return "%ret";
             case EmissionOperandKind.CaptureAddress:
-                Name(output, "%p", place);
                 break;
             default:
                 throw new InvalidOperationException("Unprepared slot address.");
         }
+
+        "%p".CopyTo(text);
+        place.TryFormat(text[2..], out var length, default, CultureInfo.InvariantCulture);
+        return text[..(2 + length)];
     }
 
     private static void WriteStorageAddress(TextWriter output, EmissionFunction function, EmissionOperand address)
-    {
-        if (address.Kind == EmissionOperandKind.EnvironmentAddress)
-        {
-            output.Write("%environmentSlot");
-        }
-        else if (address.Kind == EmissionOperandKind.SlotAddress)
-        {
-            WriteSlot(output, function, (int)address.Value);
-        }
-        else
-        {
-            WriteOperand(output, address);
-        }
-    }
+        => output.Write(SpellStorageAddress(function, address, stackalloc char[OperandLength]));
 
-    // A library record Field at its named layout offset: offset 0 is the record's own address, and a nonzero offset is
-    // reached through `{name}{id}_{offset}`, which DefineField writes before its use.
-    private static void DefineField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+    // An address operand, formatted into text, which holds OperandLength characters: a slot's address, a closure's
+    // environment slot or the operand's own spelling.
+    private static ReadOnlySpan<char> SpellStorageAddress(EmissionFunction function, EmissionOperand address, Span<char> text) => address.Kind switch
     {
-        if (offset != 0)
-        {
-            output.Write("  ");
-            WriteField(output, function, record, name, id, offset);
-            output.Write(" = getelementptr i8, ptr ");
-            WriteStorageAddress(output, function, record);
-            output.Write(", i64 ");
-            WriteNumber(output, offset);
-            output.Write('\n');
-        }
-    }
+        EmissionOperandKind.EnvironmentAddress => "%environmentSlot",
+        EmissionOperandKind.SlotAddress => SpellSlot(function, (int)address.Value, text),
+        _ => Spell(address, text),
+    };
+
+    // A library record Field at its named layout offset (LegacyRuntimeHelpers.DefineField).
+    private static void DefineField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
+        => LegacyRuntimeHelpers.DefineField(output, SpellStorageAddress(function, record, stackalloc char[OperandLength]), name, id, (long)offset);
 
     private static void WriteField(TextWriter output, EmissionFunction function, EmissionOperand record, string name, int id, Int128 offset)
-    {
-        if (offset == 0)
-        {
-            WriteStorageAddress(output, function, record);
-            return;
-        }
-
-        Name(output, name, id);
-        output.Write('_');
-        WriteNumber(output, offset);
-    }
+        => LegacyRuntimeHelpers.WriteField(output, SpellStorageAddress(function, record, stackalloc char[OperandLength]), name, id, (long)offset);
 
     private static void WriteCall(TextWriter output, LlvmConstantPool constants, FunctionAbi callee, ReadOnlySpan<EmissionOperand> operands, int result = -1, EmissionFunction? function = null, bool indirect = false)
     {
-        if (callee.Result != WindowsLowering.Unit.ComputationType)
+        if (callee.Result != RuntimeAbi.Unit.ComputationType)
         {
             if (result < 0)
             {
@@ -618,7 +395,7 @@ internal static partial class LlvmModuleWriter
             output.Write(" = ");
         }
 
-        output.Write(callee.Result == WindowsLowering.Unit.ComputationType ? "  call " : "call ");
+        output.Write(callee.Result == RuntimeAbi.Unit.ComputationType ? "  call " : "call ");
         output.Write(callee.Result);
         if (indirect)
         {
@@ -694,61 +471,9 @@ internal static partial class LlvmModuleWriter
                     continue;
                 }
 
-                output.Write("declare { i128, i1 } @llvm.sadd.with.overflow.i128(i128, i128)\n" +
-                    "declare { i128, i1 } @llvm.ssub.with.overflow.i128(i128, i128)\n" +
-                    "declare { i128, i1 } @llvm.smul.with.overflow.i128(i128, i128)\n" +
-                    "declare { i128, i1 } @llvm.uadd.with.overflow.i128(i128, i128)\n" +
-                    "declare { i128, i1 } @llvm.usub.with.overflow.i128(i128, i128)\n" +
-                    "declare { i128, i1 } @llvm.umul.with.overflow.i128(i128, i128)\n");
+                output.Write(LlvmModuleText.WideOverflowDeclarations);
                 return;
             }
         }
-    }
-
-    // TextWriter.Write(long) formats through a temporary string; format on the stack instead.
-    private static void WriteNumber(TextWriter output, long value)
-    {
-        Span<char> digits = stackalloc char[20];
-        value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
-        output.Write(digits[..length]);
-    }
-
-    private static void WriteNumber(TextWriter output, Int128 value)
-    {
-        if (value >= long.MinValue && value <= long.MaxValue)
-        {
-            WriteNumber(output, (long)value);
-            return;
-        }
-
-        Span<char> digits = stackalloc char[40];
-        value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
-        output.Write(digits[..length]);
-    }
-
-    private static string ReadRuntime()
-    {
-        using var stream = typeof(LlvmModuleWriter).Assembly.GetManifestResourceStream("Kimi.Compiler.Emission.WindowsRuntime.ll.in")!;
-        using var reader = new StreamReader(stream);
-        var runtime = WindowsLowering.ExpandAbortReasons(reader.ReadToEnd().Replace("\r\n", "\n", StringComparison.Ordinal));
-        foreach (var abi in WindowsLowering.RuntimeDefinitions)
-        {
-            // Compiler-facing runtime signatures come from the same FunctionAbi records as calls; each is defined once.
-            var marker = "{{" + abi.Name + "}}\n";
-            var index = runtime.IndexOf(marker, StringComparison.Ordinal);
-            if (index < 0 || runtime.IndexOf(marker, index + marker.Length, StringComparison.Ordinal) >= 0)
-            {
-                throw new InvalidDataException("The runtime template must contain each shared ABI definition marker exactly once.");
-            }
-
-            runtime = runtime.Replace(marker, abi.GetDefinition(exported: false), StringComparison.Ordinal);
-        }
-
-        if (runtime.Contains("{{", StringComparison.Ordinal))
-        {
-            throw new InvalidDataException("The runtime template has an unexpanded ABI definition.");
-        }
-
-        return runtime + "\n";
     }
 }

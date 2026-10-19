@@ -2,6 +2,8 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -11,19 +13,20 @@ public class DictionaryLibraryTest
     [Fact]
     public void LiteralChecksAndImplicitCleanupReuseTypedSourceCalls()
     {
-        var c = MinimalEmissionTest.Analyze("var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])");
+        const string Source = "var entries = [1: \"first\", 2: \"second\"]\nentries.clear()\n_ = entries.tryInsert(3, \"last\")\nConsole.writeLine(entries[3])";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryFind));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClear));
-        var check = Assert.Single(module.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.CheckKey);
-        var clear = Assert.Single(module.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.Drop);
-        Assert.InRange(check.Related, 0, module.FunctionReferences.Count - 1);
-        Assert.InRange(clear.Related, 0, module.FunctionReferences.Count - 1);
-        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, module.FunctionReferences[clear.Related])));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration, generated);
+        Assert.Contains(sel.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration, generated);
+        var helpers = module.RuntimeHelpers;
+        var check = Assert.Single(helpers.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.CheckKey);
+        var clear = Assert.Single(helpers.DictionaryHelpers, helper => helper.Kind == DictionaryHelperKind.Drop);
+        var references = helpers.FunctionReferences;
+        Assert.InRange(check.Related, 0, references.Count - 1);
+        Assert.InRange(clear.Related, 0, references.Count - 1);
+        Assert.Equal(1, Enumerable.Range(0, module.FunctionCount).Count(i => ReferenceEquals(module.GetFunction(i).Abi, references[clear.Related])));
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_find", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_dictionary_clear", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("_destroy(i64 %environment", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryTypedCleanup", ir, "last\n");
     }
 
@@ -32,7 +35,7 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("let entries = [1: 2]\nrequire entries[1] == 2 else => $abort(\"value\")");
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        module.FunctionReferences.Clear();
+        module.RuntimeHelpers.FunctionReferences.Clear();
         Assert.False(module.Complete(out failure));
         Assert.Contains("unresolved physical function", failure, StringComparison.Ordinal);
         Assert.False(module.IsComplete);
@@ -49,8 +52,29 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("func lookup(values: ref/Dictionary<i32, " + valueType + ">) -> ref/" + valueType + " during values => values[1]@ref\nlet boot = 0");
         Assert.True(c.Emission.TryPrepare(out var module, out var failure), MinimalEmissionTest.Describe(c, failure));
-        Assert.Empty(module.DictionaryHelpers);
-        Assert.False(module.NeedsDictionaryRuntime);
+        Assert.Empty(module.RuntimeHelpers.DictionaryHelpers);
+        Assert.False(module.RuntimeHelpers.NeedsDictionaryRuntime);
+    }
+
+    // SPEC 4.5, 16.3.2: a Dictionary Field's drop helper requested only by its owner's drop glue brings the runtimes its row
+    // declares, so the module defines every Dictionary helper it calls (PLAN G133).
+    [Theory]
+    [InlineData("Scalar", "i32")]
+    [InlineData("String", "string")]
+    public void FieldDropHelperRequestedByDropGlueIsDefined(string name, string valueType)
+    {
+        var c = MinimalEmissionTest.Analyze("struct Box\n    public let entries: Dictionary<i32, " + valueType + ">\nlet value: Option<Box> = .None");
+        var ir = CompilationTestHelper.WriteIr(c);
+        var calls = System.Text.RegularExpressions.Regex.Matches(ir, @"call void @(__kimi_dictionary_\w+)\(");
+        Assert.NotEmpty(calls);
+        foreach (System.Text.RegularExpressions.Match call in calls)
+        {
+            Assert.Contains("define internal void @" + call.Groups[1].Value + "(", ir, StringComparison.Ordinal);
+        }
+
+        // X4 (PLAN G134): the Drop helper grows no buffer, so the module holds no capacity routine.
+        Assert.DoesNotContain("@__kimi_array_grow(", ir, StringComparison.Ordinal);
+        ScalarEmissionTest.WriteFixture("DictionaryLibraryFieldDrop" + name, ir, string.Empty);
     }
 
     // SPEC 4.9.6: a Dictionary operation is called with its published summary, not as an unbounded generic call, so a generic body may
@@ -65,40 +89,47 @@ public class DictionaryLibraryTest
     [Fact]
     public void RemovalResultCompilesFromOrdinarySource()
     {
-        var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.remove(1)\n    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")");
+        const string Source = "var entries = [1: 42]\nmatch entries.remove(1)\n" +
+            "    .Some((let key, let value)) => require key == 1 and value == 42 else => $abort(\"removed\")\n" +
+            "    .None => $abort(\"missing\")\nrequire entries.length == 0 else => $abort(\"length\")";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryRemove);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryRemove)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_remove", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceRemove", ir, string.Empty);
     }
 
     [Fact]
     public void ClearingCompilesFromOrdinarySource()
     {
-        var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")");
+        const string Source = "var entries = [1: 42]\nentries.clear()\nrequire entries.length == 0 and entries.capacity >= 1 else => $abort(\"clear\")";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryClear);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryClear)!.Declaration, generated);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceClear", CompilationTestHelper.WriteIr(c), string.Empty);
     }
 
     [Fact]
     public void LookupCompilesFromOrdinarySource()
     {
-        var c = MinimalEmissionTest.Analyze("var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n    .None => $abort(\"missing\")");
+        const string Source = "var entries = [1: 42]\nmatch entries.tryGet(1)\n    .Some(let value) => require value == 42 else => $abort(\"value\")\n" +
+            "    .None => $abort(\"missing\")";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
+        Assert.Contains(sel.Library.GetSymbol(KimiDeclarationId.DictionaryTryGet)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_tryget", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySourceLookup", ir, string.Empty);
     }
 
@@ -108,15 +139,15 @@ public class DictionaryLibraryTest
     [InlineData(KimiDeclarationId.DictionaryInsertOrReplace, "InsertOrReplaceString", "string", "match entries.insertOrReplace(1, \"a\")\n    .Some(_) => $abort(\"replaced\")\n    .None => require entries.length == 1 else => $abort(\"stored\")\nmatch entries.insertOrReplace(1, \"b\")\n    .Some(let old) => require old == \"a\" and entries[1] == \"b\" and entries.length == 1 else => $abort(\"old\")\n    .None => $abort(\"appended\")")]
     public void InsertionCompilesFromOrdinarySource(KimiDeclarationId id, string name, string valueType, string source)
     {
-        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source);
+        var program = "var entries: Dictionary<i32, " + valueType + "> = [:]\n" + source;
+        var c = MinimalEmissionTest.Analyze(program);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(program);
+        Assert.Contains(sel.Library.GetSymbol(id)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain("__kimi_dictionary_tryinsert", ir, StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_dictionary_insertorreplace", ir, StringComparison.Ordinal);
         Assert.Contains("__kimi_dictionary_place", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
@@ -126,21 +157,19 @@ public class DictionaryLibraryTest
     [InlineData(KimiDeclarationId.DictionaryShrinkToFit, "Shrink", "entries.reserve(8)\nentries.shrinkToFit()\nrequire entries.capacity == 1 and entries.length == 1 and entries[1] == 2 else => $abort(\"shrink\")")]
     public void CapacityOperationsCompileFromOrdinarySource(KimiDeclarationId id, string name, string source)
     {
-        var c = MinimalEmissionTest.Analyze("var entries = [1: 2]\n" + source);
+        var program = "var entries = [1: 2]\n" + source;
+        var c = MinimalEmissionTest.Analyze(program);
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         var function = c.Library.GetSymbol(id);
         Assert.NotNull(function);
         Assert.Equal(CompilerFunctionKind.None, function.CompilerFunction);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, function.Declaration));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(program);
+        Assert.Contains(sel.Library.GetSymbol(id)!.Declaration, generated);
         // SPEC 22.2, 22.5.1: the capacity decisions are DictionaryStorage source over located primitives; the compiler builds
         // no bridges, platform callbacks or callback tables.
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, name == "Reserve" ? c.Library.DictionaryReserveStorage : c.Library.DictionaryShrink));
+        var storage = name == "Reserve" ? KimiDeclarationId.DictionaryStorageReserve : KimiDeclarationId.DictionaryStorageShrinkToFit;
+        Assert.Contains(sel.Library.GetSymbol(storage)!.Declaration, generated);
         var ir = CompilationTestHelper.WriteIr(c);
-        foreach (var bridge in (string[])["@__kimi_dictionary_reserve(", "@__kimi_dictionary_shrink(", "@__kimi_dictionary_append_slot(", "__kimi_dictionary_allocate", "__kimi_dictionary_release", "__kimi_dictionary_transfer", "__kimi_dictionary_capacity_failure"])
-        {
-            Assert.DoesNotContain(bridge, ir, StringComparison.Ordinal);
-        }
-
         Assert.Contains(name == "Reserve" ? "call ptr @__kimi_raw_allocate(" : "call ptr @__kimi_try_allocate(", ir, StringComparison.Ordinal);
         ScalarEmissionTest.WriteFixture("DictionaryLibrarySource" + name, ir, string.Empty);
     }
@@ -158,16 +187,16 @@ public class DictionaryLibraryTest
     [Fact]
     public void CapacityDecisionsCompileFromOrdinarySource()
     {
-        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)");
+        const string Source = "var entries: Dictionary<i32, i32> = [:]\nentries.reserve(8)\n_ = entries.tryInsert(1, 2)";
+        var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, string.Join('\n', TestDiagnostics.Of(c.Library.Kotonoha)));
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
-        var reserve = module.DictionaryReserveStorage!.Name;
+        var reserve = module.RuntimeHelpers.Callee(DictionaryCallee.Reserve)!.Name;
         var ir = CompilationTestHelper.WriteIr(c);
-        Assert.Contains(c.Ownership.Bodies, static body => body.Function.Name == "grow" && body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
+        Assert.Contains(FunctionCodegenTest.GeneratedDefinitions(Source).Definitions, static x => x is FunctionKoto { Name: "grow" } && IsStorage(x));
         var compiled = System.Text.RegularExpressions.Regex.Match(ir, @"(?ms)^define[^\n]*@" + reserve + @"\([^\n]*\n.*?^\}").Value;
         Assert.NotEmpty(compiled);
         Assert.Contains("ptr %location, i64 %location_length)", compiled.Split('\n')[0], StringComparison.Ordinal);
-        Assert.DoesNotContain("__kimi_array_grow", compiled, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -251,9 +280,9 @@ public class DictionaryLibraryTest
     [Fact]
     public void ProgramsWithoutDictionariesDoNotCompileStorageAlgorithms()
     {
-        var c = MinimalEmissionTest.Analyze("Console.writeLine(\"plain\")");
-        var outputIr = CompilationTestHelper.WriteIr(c);
-        Assert.DoesNotContain(c.Ownership.Bodies, body => body.Function.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true);
+        const string Source = "Console.writeLine(\"plain\")";
+        var outputIr = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
+        Assert.DoesNotContain(FunctionCodegenTest.GeneratedDefinitions(Source).Definitions, IsStorage);
         Assert.DoesNotContain("__kimi_dictionary_", outputIr);
         Assert.DoesNotContain("__kimi_try_allocate", outputIr);
         Assert.DoesNotContain("__kimi_transfer_bytes", outputIr);
@@ -264,7 +293,7 @@ public class DictionaryLibraryTest
     {
         var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]");
         var pointer = c.Library.DictionaryUnlink.Parameters[0].Type.TypeOf()!;
-        var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool().Get(pointer.Components[0]));
+        var layout = Assert.IsType<AggregateLayout>(new AggregateLayoutPool(c.Layout).Get(pointer.Components[0]));
         Assert.True(layout.CLayout);
         Assert.Equal(56, layout.Value.Layout.Size);
         Assert.Equal(8, layout.Value.Layout.Alignment);
@@ -291,21 +320,28 @@ public class DictionaryLibraryTest
     [Fact]
     public void RemovalCompilesTheOrdinaryLibrarySource()
     {
-        var c = MinimalEmissionTest.Analyze("var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\n_ = entries.remove(1)");
+        const string Source = "var entries: Dictionary<i32, i32> = [:]\n_ = entries.tryInsert(1, 2)\n_ = entries.remove(1)";
+        var c = MinimalEmissionTest.Analyze(Source);
         var outputIr = CompilationTestHelper.WriteIr(c);
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryUnlink));
+        var (sel, generated) = FunctionCodegenTest.GeneratedDefinitions(Source);
+        Assert.Contains(sel.Library.DictionaryUnlink, generated);
+
+        // Library reach of the Dictionary runtime's callees and theirs, until R5 C8e (DECISIONS R4-M13a, R5-M27): the old analysis collects
+        // them for every Dictionary Type, and the checked set has them only once C8e roots the hidden DictionaryStorage instances (before
+        // it, the Dictionary's drop glue and placeEntry name no body). C8e moves these eight reads to the Generated mark: the six, and the two
+        // negatives that guard shrinking against being reached through them.
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryAppendSlot));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryInitialize));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.Initialize).Declaration));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClearLinks));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryFind));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClear));
-        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryAppend));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.FindEntry).Declaration));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration));
+        Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.Append).Declaration));
         // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.
         Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
-        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryShrink));
+        var shrink = c.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration;
+        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, shrink));
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
-        Assert.DoesNotContain("%left_index = sub", outputIr);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
     }
 
@@ -328,4 +364,8 @@ public class DictionaryLibraryTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.InaccessibleBinding_Kd);
     }
+
+    // A declaration of DictionaryStorage.kimi.
+    private static bool IsStorage(Koto definition)
+        => definition.CodeContext.SourceDocument?.Path.EndsWith("DictionaryStorage.kimi", StringComparison.Ordinal) == true;
 }

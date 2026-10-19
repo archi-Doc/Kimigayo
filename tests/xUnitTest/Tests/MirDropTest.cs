@@ -2,7 +2,9 @@
 
 using System.Text;
 using System.Text.RegularExpressions;
+using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -41,7 +43,7 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
             Lines(Resource + "func f(flag: bool, r: Resource)\n    if flag => consume(r@move)\n", "f"));
         const string Exits = Resource + "func log() => ()\nfunc f(flag: bool) -> i32\n    let r = make()\n    defer => log()\n    if flag\n" +
             "        consume(r@move)\n        return 1\n    return 2\n";
-        Assert.Contains("drop _2 -> bb11 [flag f0] [clear f0]", Lines(Exits, "f"));
+        Assert.Contains("drop _2 -> bb12 [flag f0] [clear f0]", Lines(Exits, "f"));
         Assert.Equal(
             ["drop _2 -> bb10 [keep]", "drop _6 -> bb6 [elide]", "drop _2 -> bb8 [elide]", "drop _8 -> bb9 [elide]"],
             Lines(Resource + "func f(flag: bool)\n    var r = make()\n    if flag\n        consume(r@move)\n        r = make()\n", "f"));
@@ -88,34 +90,28 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     }
 
     // SPEC 16.3.1-16.3.2: a destructor's self is no owner, so its body's end destroys the layer's parts, never the layer, whose drop would
-    // run again: each own Field whose Type may need drop, last to first, then the base; a moved Field is skipped (Elide, or Flag where it is
-    // moved on some paths, set at the entry). A Field or a base whose own Type declares a drop must be complete there (MovedPlace_Kd at its
-    // Drop, which is Open), one without is destroyed as it is; a second Move of a Field is A1's record alone (corpus case 06ee21107fb1).
+    // run again: each own Field whose Type may need drop, last to first, then the base. No part of drop's self is Moved out (SPEC 16.3.1):
+    // each such Move is Binding's ExclusivePathTake_Kd, and the MIR asserts nothing on those programs.
     [Fact]
     public void ADestructorBodyDestroysItsLayersParts()
     {
         const string Pair = Resource + "struct Pair\n    var on: bool\n    var first: Resource\n    var second: Resource\n" +
             "    public init(on: bool, first: Resource, second: Resource)\n        self.on = on\n        self.first = first@move\n" +
             "        self.second = second@move\n";
-        const string Moved = Pair + "    drop\n        let moved = self.first@move\n";
-        Assert.Empty(Problems(Moved));
-        Assert.Equal(["drop _2 -> bb1 [keep]", "drop _1.2 -> bb2 [keep]", "drop _1.1 -> bb3 [elide]"], Lines(Moved, "drop"));
-        Assert.Equal(
-            ["flags 1 [set f0]", "drop _1.2 -> bb5 [keep]", "_4 = move _1.1 [clear f0]", "drop _4 -> bb4 [keep]", "drop _1.1 -> bb6 [flag f0] [clear f0]"],
-            Lines(Pair + "    drop\n        if self.on\n            let moved = self.first@move\n", "drop"));
+        Assert.Equal(["drop _1.2 -> bb1 [keep]", "drop _1.1 -> bb2 [keep]"], Lines(Pair + "    drop\n        let on = self.on\n", "drop"));
+        Assert.Equal(["self.first@move"], Takes(Pair + "    drop\n        let moved = self.first@move\n"));
+        Assert.Equal(["self.first@move"], Takes(Pair + "    drop\n        if self.on\n            let moved = self.first@move\n"));
         const string Holder = Resource + "struct Holder\n    var box: Box\n    public init(box: Box) => self.box = box@move\n    drop\n" +
             "        let moved = self.box.value@move\n";
-        Assert.Equal(["MovedPlace_Kd drop 1"], Problems(Holder + Box[Resource.Length..]));
-        Assert.Equal(["drop _2 -> bb1 [keep]", "drop _1.0 -> bb2 [open (.0 elide)]"], Lines(Holder + Box[Resource.Length..], "drop"));
+        Assert.Equal(["self.box.value@move"], Takes(Holder + Box[Resource.Length..]));
         const string Base = Resource + "open struct Base\n    public var value: Resource\n    protected init(value: Resource)\n" +
             "        self.value = value@move\nstruct Leaf : Base\n    public var extra: i32 = 7\n    public init(value: Resource) : base(value@move)\n" +
             "        ()\n    drop\n        let moved = self.value@move\n";
-        Assert.Empty(Problems(Base));
-        Assert.Equal(["drop _2 -> bb1 [keep]", "drop _1.base1 -> bb2 [open (.0 elide)]"], Lines(Base, "drop"));
-        Assert.Equal(["MovedPlace_Kd drop 1"], Problems(Base.Replace("value@move\nstruct", "value@move\n    drop => ()\nstruct", StringComparison.Ordinal)));
+        Assert.Equal(["self.value@move"], Takes(Base));
+        Assert.Equal(["self.value@move"], Takes(Base.Replace("value@move\nstruct", "value@move\n    drop => ()\nstruct", StringComparison.Ordinal)));
         Assert.Equal(
-            ["MovedPlace_Kd self.value 1"],
-            Problems("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n" +
+            ["self.value@move", "self.value@move"],
+            Takes("struct Box<T>\n    let value: T\n    public init(value: T) => self.value = value@move\n    drop\n        let moved = self.value@move\n" +
                 "        let again = self.value@move\nlet value = Box<i32>.init(7)\n"));
     }
 
@@ -128,10 +124,10 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _1 -> bb1 [keep in v0; elide in v1]"], Lines("func hold<s/T>(value: s/T) -> ()\n    s is owner or ref\n    ()\n", "hold"));
         const string Select = "struct Payload\n    drop => ()\ngroup Helpers\n    public func select<s/T>(pair: (s/T, s/T)) -> s/T\n" +
             "        s is ref or obj\n        return pair.0@move\n";
-        Assert.Equal(["drop _1 -> bb3 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb5 [elide]"], Lines(Select, "select"));
+        Assert.Equal(["drop _1 -> bb4 [elide in v0; open (.0 elide) in v1]", "drop _2 -> bb6 [elide]"], Lines(Select, "select"));
         const string Pick = "func pick<T>(a: T, b: T = a) -> T\n    T is Copy\n    return b\nfunc generic<U>(a: U) -> U\n    U is Copy\n    return pick(a)\n" +
             "func concrete() -> i32 => pick(1)\n";
-        Assert.Equal(["drop _1 -> bb5 [keep]", "drop _4 -> bb7 [elide]", "drop _3 -> bb8 [elide]", "drop _2 -> bb9 [elide]"], Lines(Pick, "generic"));
+        Assert.Equal(["drop _1 -> bb6 [keep]", "drop _4 -> bb8 [elide]", "drop _3 -> bb9 [elide]", "drop _2 -> bb10 [elide]"], Lines(Pick, "generic"));
         Assert.Empty(Lines(Pick, "concrete", all: true));
     }
 
@@ -150,10 +146,36 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     public void OnlyRuntimeDropsHaveVerdicts()
     {
         Assert.Equal(
-            ["drop _1 -> bb4 [keep]", "drop _2 -> bb9", "drop _2 -> bb12", "drop _1 -> bb13"],
+            ["drop _1 -> bb5 [keep]", "drop _3 -> bb10", "drop _3 -> bb13", "drop _1 -> bb14"],
             Lines(Resource + "func f() -> i32\n    let r = make()\n    return 1\n    let s = make()\n    return 2\n", "f", all: true));
         Assert.Empty(Problems(Box + "func f() -> i32\n    return 1\n    var box = Box.init(make())\n    consume(box.value@move)\n"));
         Assert.Equal(["drop _10 -> bb11 [keep]", "drop _2 -> bb12 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
+    }
+
+    // SPEC 16.2.2 (DECISIONS R5-M50): a transfer leaving a cleanup delivers its result through a temp (written and moved at its jumps) in
+    // its target's scope, not the jump's: an `exit` out of a defer body past a local with a cleanup (SPEC 16.1), through one in the scope
+    // that registered the defer, and a `yield` out of an `if` arm, through one in the scope the `if` opened in, both `t`'s; a `return`
+    // past `t`, through one in the function's own scope.
+    [Theory]
+    [InlineData("func f(c: bool)\n    let t = \"t\"\n    defer\n        let s = \"s\"\n        if c\n            exit\n        _ = s@ref\n    _ = t@ref\n", false)]
+    [InlineData("func f(c: bool)\n    let t = \"t\"\n    let v = if c\n        let s = \"s\"\n        yield 1\n    else\n        yield 2\n    _ = t@ref\n    _ = v\n", false)]
+    [InlineData("func f(c: bool) -> i32\n    let t = \"t\"\n    _ = t@ref\n    return 1\n", true)]
+    public void ADeliveredResultLiesInItsTargetsScope(string source, bool returns)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f" && x.Key.Kind == MirBodyKind.Fn);
+        var jumps = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<JumpKoto>().Select(static x => SourceRef.Of(x)).ToHashSet();
+        var (locals, operands) = (body.Locals.ToArray(), body.Operands.ToArray());
+        var atJumps = body.Statements.ToArray().Where(x => x.Kind == MirStatementKind.Assign && jumps.Contains(x.Source.Syntax)).ToArray();
+        var written = atJumps.Select(static x => x.Place.Root).ToHashSet();
+        var delivered = atJumps.Where(x => x.Rvalue.Kind == MirRvalueKind.Use && operands[x.Rvalue.Start] is { Kind: MirOperandKind.Move } moved &&
+            written.Contains(moved.Place.Root)).Select(x => locals[operands[x.Rvalue.Start].Place.Root]).ToArray();
+        var scope = returns ? 0 : locals.Single(static x => x.Name == "t").Source.Scope;
+        Assert.NotEmpty(delivered);
+        Assert.All(delivered, x => Assert.Equal(scope, x.Source.Scope));
     }
 
     // V16 (plan "New V-checks"): A2 is linear in the body: N 16/32/64 locals each initialized on one branch need N flags, and the cold analysis
@@ -215,6 +237,14 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     {
         Assert.Empty(MirBuildTest.Compile(source).Binding.Issues);
         return MirInitTest.Problems(source);
+    }
+
+    // The nodes of a source's Binding issues, each ExclusivePathTake_Kd.
+    private static string[] Takes(string source)
+    {
+        var issues = MirBuildTest.Compile(source).Binding.Issues;
+        Assert.All(issues, static x => Assert.Equal(Kimi.DiagnosticCode.ExclusivePathTake_Kd, x.Code));
+        return [.. issues.Select(static x => x.Node.ToString()!)];
     }
 
     [GeneratedRegex(@" @[0-9:]+( s[0-9]+)?$")]

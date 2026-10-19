@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 
 namespace Kimi.Compiler;
 
@@ -46,7 +47,7 @@ public sealed partial class OwnershipAnalysis
     {
         if (acquisition == AcquisitionKind.Move)
         {
-            this.body.ReportIssue(new(source, OwnershipFailure.StaticMovePathRequired));
+            this.body.ReportIssue(new(source, OwnershipRequirement.StaticMovePathRequired));
         }
         else
         {
@@ -62,7 +63,7 @@ public sealed partial class OwnershipAnalysis
             {
                 if (acquisition is null && this.compilation.Binding.ProveCopy(source.BoundType!, source) != ConstraintProof.Proven)
                 {
-                    this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                    this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
                 }
                 else
                 {
@@ -106,7 +107,7 @@ public sealed partial class OwnershipAnalysis
             {
                 // Like a bare local, the rejected acquisition still yields its typed element: dropping it would invent an
                 // uninitialized use where the value arrives, such as a returned result.
-                this.body.ReportIssue(new(source, OwnershipFailure.TransferRequired));
+                this.body.ReportIssue(new(source, OwnershipRequirement.TransferRequired));
                 result = this.Temporary(source);
             }
             else

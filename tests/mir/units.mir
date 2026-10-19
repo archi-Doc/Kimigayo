@@ -9,25 +9,26 @@ fn effects @4
   _1: bool arg flag @4
   _2: string arg text @4
   _3: bool temp @10 s1
-  _4: string temp @20 s1
-  _5: () temp @23 s1
-  _6: bool temp @24 s1
-  _7: () temp @26 s2
-  _8: string temp @30 s2
-  _9: ref/string temp @30 s2
-  _10: () temp @12 s1
-  _11: () temp @14 s3
-  _12: string temp @18 s3
-  _13: ref/string temp @18 s3
-  _14: () temp @12 s1
-  _15: () temp @14 s4
-  _16: string temp @18 s4
-  _17: ref/string temp @18 s4
+  _4: () temp @4
+  _5: string temp @20 s1
+  _6: () temp @23 s1
+  _7: bool temp @24 s1
+  _8: () temp @26 s2
+  _9: string temp @30 s2
+  _10: ref/string temp @30 s2
+  _11: () temp @12 s1
+  _12: () temp @14 s3
+  _13: string temp @18 s3
+  _14: ref/string temp @18 s3
+  _15: () temp @12 s1
+  _16: () temp @14 s4
+  _17: string temp @18 s4
+  _18: ref/string temp @18 s4
   s1: lexical in s0 @8
   s2: lexical in s1 @25
   s3: deferred in s1 @13
   s4: deferred in s1 @13
-  must not complete bb7 from bb1 @11
+  must not complete bb8 from bb1 @11
   flags 1 [set f0]
   bb0:
       StorageLive(_3) @10 s1
@@ -35,92 +36,95 @@ fn effects @4
       switch copy _3 [0: bb1, otherwise: bb2] @10 s1
   bb1:
       StorageDead(_3) @10 s1
-    * goto bb6 check bb7 @11 s1
+    * goto bb7 check bb8 @11 s1
   bb2:
       StorageDead(_3) @10 s1
-      StorageLive(_4) @20 s1
-    * _4 = move _2 [clear f0] @21 s1
-      drop _4 -> bb8 [keep] @20 s1
+      StorageLive(_5) @20 s1
+    * _5 = move _2 [clear f0] @21 s1
+      drop _5 -> bb9 [keep] @20 s1
   bb3:
       return @4
   bb4:
-      drop _2 -> bb5 [flag f0] [clear f0] @4
+      _0 = move _4 @11 s1
+      goto bb3 @11 s1
   bb5:
-      goto bb3 @4
+      drop _2 -> bb6 [flag f0] [clear f0] @4
   bb6:
-      _0 = const () @11 s1
-      goto bb4 @11 s1
-  bb7:
-      unreachable @9 s1
-  bb8:
-      StorageDead(_4) @20 s1
-      StorageLive(_5) @23 s1
-      StorageLive(_6) @24 s1
-    * _6 = copy _1 @24 s1
-      switch copy _6 [0: bb11, otherwise: bb10] @24 s1
-  bb9:
-      StorageDead(_5) @23 s1
-    * goto bb18 check bb19 @31 s1
-  bb10:
-      StorageDead(_6) @24 s1
-      StorageLive(_7) @26 s2
-      StorageLive(_8) @30 s2
-    * _8 = const "flag" @30 s2
-      StorageLive(_9) @30 s2
-      _9 = &_8: ref/string @30 s2
-      _7 = writeLine(move _9) -> bb12 @26 s2
-  bb11:
-      StorageDead(_6) @24 s1
-      _5 = const () @23 s1
-      goto bb9 @23 s1
-  bb12:
-      StorageDead(_9) @30 s2
-      drop _8 -> bb13 [keep] @30 s2
-  bb13:
-      StorageDead(_8) @30 s2
-      StorageDead(_7) @26 s2
-      _5 = const () @25 s2
-      goto bb9 @25 s1
-  bb14:
-      StorageLive(_10) @12 s1
-      StorageLive(_11) @14 s3
-      StorageLive(_12) @18 s3
-    * _12 = const "done" @18 s3
-      StorageLive(_13) @18 s3
-      _13 = &_12: ref/string @18 s3
-      _11 = writeLine(move _13) -> bb16 @14 s3
-  bb15:
       goto bb4 @4
+  bb7:
+      _4 = const () @11 s1
+      goto bb5 @11 s1
+  bb8:
+      unreachable @9 s1
+  bb9:
+      StorageDead(_5) @20 s1
+      StorageLive(_6) @23 s1
+      StorageLive(_7) @24 s1
+    * _7 = copy _1 @24 s1
+      switch copy _7 [0: bb12, otherwise: bb11] @24 s1
+  bb10:
+      StorageDead(_6) @23 s1
+    * goto bb19 check bb20 @31 s1
+  bb11:
+      StorageDead(_7) @24 s1
+      StorageLive(_8) @26 s2
+      StorageLive(_9) @30 s2
+    * _9 = const "flag" @30 s2
+      StorageLive(_10) @30 s2
+      _10 = &_9: ref/string @30 s2
+      _8 = writeLine(move _10) -> bb13 @26 s2
+  bb12:
+      StorageDead(_7) @24 s1
+      _6 = const () @23 s1
+      goto bb10 @23 s1
+  bb13:
+      StorageDead(_10) @30 s2
+      drop _9 -> bb14 [keep] @30 s2
+  bb14:
+      StorageDead(_9) @30 s2
+      StorageDead(_8) @26 s2
+      _6 = const () @25 s2
+      goto bb10 @25 s1
+  bb15:
+      StorageLive(_11) @12 s1
+      StorageLive(_12) @14 s3
+      StorageLive(_13) @18 s3
+    * _13 = const "done" @18 s3
+      StorageLive(_14) @18 s3
+      _14 = &_13: ref/string @18 s3
+      _12 = writeLine(move _14) -> bb17 @14 s3
   bb16:
-      StorageDead(_13) @18 s3
-      drop _12 -> bb17 [keep] @18 s3
+      goto bb5 @4
   bb17:
-      StorageDead(_12) @18 s3
-      StorageDead(_11) @14 s3
-      _10 = const () @13 s3
-      StorageDead(_10) @12 s1
-      goto bb15 @13 s1
+      StorageDead(_14) @18 s3
+      drop _13 -> bb18 [keep] @18 s3
   bb18:
-      _0 = const () @31 s1
-      goto bb14 @31 s1
+      StorageDead(_13) @18 s3
+      StorageDead(_12) @14 s3
+      _11 = const () @13 s3
+      StorageDead(_11) @12 s1
+      goto bb16 @13 s1
   bb19:
-      StorageLive(_14) @12 s1
-      StorageLive(_15) @14 s4
-      StorageLive(_16) @18 s4
-    * _16 = const "done" @18 s4
-      StorageLive(_17) @18 s4
-      _17 = &_16: ref/string @18 s4
-      _15 = writeLine(move _17) -> bb21 @14 s4
+      _4 = const () @31 s1
+      goto bb15 @31 s1
   bb20:
-      drop _2 -> bb23 @4
+      StorageLive(_15) @12 s1
+      StorageLive(_16) @14 s4
+      StorageLive(_17) @18 s4
+    * _17 = const "done" @18 s4
+      StorageLive(_18) @18 s4
+      _18 = &_17: ref/string @18 s4
+      _16 = writeLine(move _18) -> bb22 @14 s4
   bb21:
-      StorageDead(_17) @18 s4
-      drop _16 -> bb22 @18 s4
+      drop _2 -> bb24 @4
   bb22:
-      StorageDead(_16) @18 s4
-      StorageDead(_15) @14 s4
-      _14 = const () @13 s4
-      StorageDead(_14) @12 s1
-      goto bb20 @13 s1
+      StorageDead(_18) @18 s4
+      drop _17 -> bb23 @18 s4
   bb23:
+      StorageDead(_17) @18 s4
+      StorageDead(_16) @14 s4
+      _15 = const () @13 s4
+      StorageDead(_15) @12 s1
+      goto bb21 @13 s1
+  bb24:
       unreachable @8

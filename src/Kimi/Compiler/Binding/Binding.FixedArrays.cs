@@ -26,6 +26,31 @@ public sealed partial class Binding
         }
     }
 
+    // Rents the member's generic arguments for `array`: `E` and `N` at their slots, null elsewhere (the materializer and TyCtxt.Witness).
+    internal bool RentFixedArrayArguments(FunctionKoto witness, BoundType array, out BoundType?[] types, out BoundLength?[] lengths, out int count)
+    {
+        types = null!;
+        lengths = null!;
+        count = 0;
+        if (!this.FixedArraySlots(witness, out var element, out var length))
+        {
+            return false;
+        }
+
+        count = Math.Max(element, length) + 1;
+        types = this.RentTypes(count);
+        lengths = this.lengthScratch.Rent(count);
+        types[element] = array.Components[0];
+        lengths[length] = array.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, array.Length);
+        return true;
+    }
+
+    internal void ReturnFixedArrayArguments(BoundType?[] types, BoundLength?[] lengths)
+    {
+        this.lengthScratch.Return(lengths, clearArray: true);
+        this.typeScratch.Return(types, clearArray: true);
+    }
+
     private static bool IsFixedArrayEntry(BoundType? type, BindingSymbol contract)
         => type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } && contract.LibraryDeclaration is KimiDeclarationId.Iterable or KimiDeclarationId.UniqIterable or KimiDeclarationId.IntoIterable;
 
@@ -81,10 +106,9 @@ public sealed partial class Binding
     }
 
     // SPEC 21.3.1: a generic entry call on a fixed array instantiates the Kimi member at the array's element Type and length.
-    private CallPlan? InstantiateFixedArrayEntry(CallPlan call, BoundType self, BindingSymbol contract, CallPlan? destination)
+    private CallPlan? InstantiateFixedArrayEntry(CallPlan call, BoundType self, BindingSymbol target, CallPlan? destination)
     {
-        if (this.FixedArrayWitness(contract) is not { Declaration: FunctionKoto witness } target ||
-            !this.RentFixedArrayArguments(witness, self, out var types, out var lengths, out var count))
+        if (!this.RentFixedArrayArguments((FunctionKoto)target.Declaration, self, out var types, out var lengths, out var count))
         {
             return null;
         }
@@ -99,30 +123,5 @@ public sealed partial class Binding
         {
             this.ReturnFixedArrayArguments(types, lengths);
         }
-    }
-
-    // Rents the member's generic arguments for `array`: `E` and `N` at their slots, null elsewhere.
-    private bool RentFixedArrayArguments(FunctionKoto witness, BoundType array, out BoundType?[] types, out BoundLength?[] lengths, out int count)
-    {
-        types = null!;
-        lengths = null!;
-        count = 0;
-        if (!this.FixedArraySlots(witness, out var element, out var length))
-        {
-            return false;
-        }
-
-        count = Math.Max(element, length) + 1;
-        types = this.RentTypes(count);
-        lengths = this.lengthScratch.Rent(count);
-        types[element] = array.Components[0];
-        lengths[length] = array.LengthExpression ?? this.InternLength(KotoKind.NumberLiteral, array.Length);
-        return true;
-    }
-
-    private void ReturnFixedArrayArguments(BoundType?[] types, BoundLength?[] lengths)
-    {
-        this.lengthScratch.Return(lengths, clearArray: true);
-        this.typeScratch.Return(types, clearArray: true);
     }
 }

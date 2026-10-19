@@ -17,7 +17,7 @@ public sealed partial class Binding
 
     // Whole-contract equality includes fixed Origins and alpha-equivalent per-call binders, not just the storage Type.
     private static bool SameCallableSignature(BoundType a, BoundType b)
-        => ReferenceEquals(a, b) || (CallableSignatureFits(a, b, FunctionTypeBinder(a)) && CallableSignatureFits(b, a, FunctionTypeBinder(b)));
+        => ReferenceEquals(a, b) || (IsSubtype(a, b, FunctionTypeBinder(a)) && IsSubtype(b, a, FunctionTypeBinder(b)));
 
     private static bool SameProofPremise(BoundConstraint a, BoundConstraint b)
     {
@@ -184,76 +184,14 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
-            var source = call.ArgumentNodes[i];
-            var node = KotoHelper.UnwrapParentheses(source);
-            var parameter = parameters[i];
-            var quality = ArgumentAdaptation.Literal;
-            var kind = ArgumentOperationKind.Value;
-            BoundType? adapted = null;
-            if (IsWaitingNestedCall(node))
+            // SPEC 10.5.1: each argument fits its parameter as a call argument does; a waiting nested call is checked by the selected signature.
+            var state = this.FitArgument(call.ArgumentNodes[i], parameters[i], scope, call, out var operation);
+            if (state is not (CandidateApplicability.Applicable or CandidateApplicability.Waiting))
             {
-                quality = ArgumentAdaptation.Exact;
-            }
-            else if (IsAggregateArgument(node) || NeedsEnumContext(node))
-            {
-                var borrow = parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
-                var value = borrow ? parameter.Components[0] : parameter;
-                var state = this.ProbeAggregateArgument(node, value, scope);
-                if (state != CandidateApplicability.Applicable)
-                {
-                    return state;
-                }
-
-                quality = borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal;
-                kind = borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value;
-            }
-            else if (node is FunctionKoto { IsAnonymous: true, BoundType: null } closure)
-            {
-                if (!this.ClosureSignatureFits(closure, parameter))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-
-                quality = ArgumentAdaptation.Erasure;
-            }
-            else if (node is { BoundType: null, BindingState: BindingState.Resolved, BoundSymbol: { Kind: BindingSymbolKind.Function } group })
-            {
-                if (parameter.Kind != BoundTypeKind.Function || !this.FunctionGroupFits(node, group, parameter, scope))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-
-                quality = ArgumentAdaptation.Erasure;
-            }
-            else if (IsUnfittedLiteral(node))
-            {
-                var borrow = parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref };
-                if (!this.FitsInputLiteral(node, LiteralInputType(parameter), scope))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-
-                quality = borrow ? ArgumentAdaptation.CrossSemanticsBorrow : ArgumentAdaptation.Literal;
-                kind = borrow ? ArgumentOperationKind.Borrow : ArgumentOperationKind.Value;
-            }
-            else if (node.BoundType is { } actual)
-            {
-                if (this.ErasureSignatureFits(actual, parameter, node))
-                {
-                    quality = ArgumentAdaptation.Erasure;
-                }
-                else if (!this.AdaptInput(source, parameter, actual, scope, null, null, out adapted, out quality, out kind, recordPair: false, deferAcquisition: true) ||
-                    !this.FitsStructurallyAt(adapted, parameter, call))
-                {
-                    return CandidateApplicability.Inapplicable;
-                }
-            }
-            else
-            {
-                return CandidateApplicability.Pending;
+                return state;
             }
 
-            operations[i] = new(source, source.BoundType, parameter, kind, quality, ParameterIndex: i, AdaptedType: adapted);
+            operations[i] = operation with { ParameterIndex = i };
         }
 
         var result = signature.Components[1];

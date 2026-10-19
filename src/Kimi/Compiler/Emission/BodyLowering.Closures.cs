@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -81,7 +82,8 @@ internal sealed partial class BodyLowering
             return definition.IsVirtual && address ? this.Virtuals?.Address(definition, entry) : entry;
         }
 
-        var body = type.ClosureContext is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi : this.functions?.GetValueOrDefault(definition);
+        var body = definition.CodeContext.Compilation.Binding.ClosureCall(type) is { } context ? this.GenericCalls?.GetValueOrDefault(context)?.Abi
+            : this.functions?.GetValueOrDefault(definition);
         return definition.IsVirtual && address ? this.Virtuals?.Address(definition, body) : body;
     }
 
@@ -90,21 +92,21 @@ internal sealed partial class BodyLowering
     private FunctionAbi ValueCallAbi(BoundType signature, BoundType result)
     {
         ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
-        var resultSlot = FunctionAbi.HasResultSlot(result, this.aggregateLayouts);
+        var layout = this.aggregateLayouts.Layout;
         foreach (var candidate in this.valueCallAbis)
         {
-            if (FunctionAbiPool.Matches(candidate, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true))
+            if (Abi.Matches(candidate, layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs))
             {
                 return candidate;
             }
         }
 
-        var abi = FunctionAbiPool.Build(string.Empty, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true);
+        var abi = Abi.Of(layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs);
         this.valueCallAbis.Add(abi);
         return abi;
     }
 
-    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerClosureErasure(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -144,7 +146,7 @@ internal sealed partial class BodyLowering
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
             !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
-            !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
+            !operation.Source.CodeContext.Compilation.Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
             this.ClosureEntry(source, definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
@@ -153,7 +155,7 @@ internal sealed partial class BodyLowering
         }
 
         var location = -1;
-        if ((layout.NeedsDestruction || layout.Value.Layout.Size > 8) && !this.TryGetLocation(operation.Source, directory, constants, out location))
+        if ((layout.NeedsDestruction || layout.Value.Layout.Size > 8) && !this.TryGetLocation(operation.Source, constants, out location))
         {
             return Fail("Heap closure erasure requires its source location.", out failure);
         }
@@ -258,7 +260,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, InvocationKoto call, CallPlan plan, out string? failure)
+    private bool LowerValueCall(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, InvocationKoto call, CallPlan plan, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -358,13 +360,13 @@ internal sealed partial class BodyLowering
 
         for (var i = 0; i < inputs.Components.Count; i++)
         {
-            if (!FunctionAbi.Supports(inputs.Components[i], this.aggregateLayouts))
+            if (!FunctionAbiPool.Supports(inputs.Components[i], this.aggregateLayouts))
             {
                 return Fail("Unsupported common-function parameter representation.", out failure);
             }
         }
 
-        if (FunctionAbi.ResultType(returnType, this.aggregateLayouts) is null)
+        if (FunctionAbiPool.ResultType(returnType, this.aggregateLayouts) is null)
         {
             return Fail("Unsupported common-function result representation.", out failure);
         }
@@ -385,7 +387,7 @@ internal sealed partial class BodyLowering
 
         var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);
 
-        // A concrete closure body takes its environment before the result slot (FunctionAbiPool.Get); a common value call
+        // A concrete closure body takes its environment before the result slot (Abi.Of); a common value call
         // receives the environment from the value itself, whose address leads the operands when a reference holds it.
         var borrowed = !itemCall && body.Places[operation.Input].Type.Kind == BoundTypeKind.Semantics;
         if (!itemCall && (concreteEntry is not null || borrowed))
@@ -435,7 +437,7 @@ internal sealed partial class BodyLowering
 
             if (physical.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
-                if (!function.Abi.CallerLocation && invocationLocation < 0 && !this.TryGetLocation(call, directory, constants, out invocationLocation))
+                if (!function.Abi.CallerLocation && invocationLocation < 0 && !this.TryGetLocation(call, constants, out invocationLocation))
                 {
                     return Fail("A value call requires its invocation location.", out failure);
                 }
@@ -496,7 +498,7 @@ internal sealed partial class BodyLowering
             // The owning Callable contract transfers the whole receiver. A Shared/Exclusive concrete entry (or
             // common Function entry) only borrows its environment, so this adapter retains the final destruction
             // responsibility. A Consuming concrete entry already destroys its own remaining captures.
-            if (!this.TryGetLocation(call, directory, constants, out var location))
+            if (!this.TryGetLocation(call, constants, out var location))
             {
                 return Fail("Consuming callable cleanup has no source location.", out failure);
             }

@@ -1,6 +1,6 @@
 # Language milestones
 
-These 43 independent Applications follow the adopted compiler implementation progression.
+These 44 independent Applications follow the adopted compiler implementation progression.
 Programs 1–18 retain the established foundations; later numbers follow the completed tracks
 and the remaining implementation order in [PLAN](../../docs/dev/PLAN.md#4-milestones-execution-order).
 An earlier program can use a supported subset of a feature whose general coverage comes later.
@@ -15,7 +15,8 @@ This README owns the program catalog, expected output and source/native status.
 
 The **Former ID** column maps the numbering used before 2026-10-15. Historical commits,
 drafts, report names and evidence paths keep their original IDs. Current filenames, harnesses,
-tests and plan references use the new IDs; there are no compatibility aliases.
+tests and plan references use the new IDs; there are no compatibility aliases. Program 44 was added on
+2026-10-17 (A5 plan §9.1) and has no former ID.
 
 | Program | Former ID | Main subject |
 | --- | --- | --- |
@@ -62,8 +63,9 @@ tests and plan references use the new IDs; there are no compatibility aliases.
 | [41](Milestone41.kimi) | 35 | Weak downgrade/upgrade, expiration and cyclic construction |
 | [42](Milestone42.kimi) | 36 | Static initialization, generic storage keys and shutdown |
 | [43](Milestone43.kimi) | 38 | Integrated Properties, inheritance, objects, static state and formatting |
+| [44](Milestone44.kimi) | — | Virtual slots, overrides, direct base calls and dispatch by Dynamic Type through views, Items, erased values and handles |
 
-Programs 1–37 are complete within their recorded boundaries. The remaining main track is
+Programs 1–37 and 44 are complete within their recorded boundaries. The remaining main track is
 **38 (inheritance) → 39 (exclusive objects) → 41 (Weak) → 42 (static storage) → OCC-X → 43 (integration)**.
 Program **40 (shared objects)** is the alternating track; its strong ownership and nonnull
 Option prerequisites precede Weak. The compiler reduction and owner holds in PLAN still govern
@@ -121,8 +123,9 @@ any explicitly recorded owner decision. The pending diagnostic baselines remain 
 | 41 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; Weak/cyclic construction declarations remain incomplete (G4). |
 | 42 | YES | PASS | NOT_RUN | NOT_RUN | IN_PROGRESS | Binding passes; Ownership: `Unsupported_Kd` at `Registry`; static initialization/shutdown remain incomplete. |
 | 43 | YES | FAIL | NOT_RUN | NOT_RUN | TODO | Binding: `Unsupported_Kd` at `Weak`; also depends on refinement, object accessors and OCC-X. |
+| 44 | YES | PASS | PASS (O0/O2) | PASS (O0/O2) | DONE | Shared `objref` dispatch within the STATUS "Virtual calls" boundary; `Virtual*Test` cover neighboring forms. |
 
-`MilestoneSourcesTest` checks the exact 43-file set, these Binding results and every pending
+`MilestoneSourcesTest` checks the exact 44-file set, these Binding results and every pending
 stage, first published Error and underlined source anchor in [stage-baselines.json](stage-baselines.json).
 It also binds the supported declaration prefix independently. A different failure or a newly
 successful stage needs reviewed evidence; an arbitrary pending failure never passes.
@@ -145,10 +148,10 @@ From a source checkout, select the related verification explicitly:
 
 ```powershell
 ./scripts/verify.ps1 -Class MilestoneSourcesTest -Milestone 1
-./scripts/verify.ps1 -Mode Session -Milestone ((1..38) + 40)
+./scripts/verify.ps1 -Mode Session -Milestone ((1..38) + 40 + 44)
 ```
 
-The second command selects all 39 existing harnesses, including the executable targets
+The second command selects all 40 existing harnesses, including the executable targets
 38 and 40 whose broader implementation work remains IN_PROGRESS. There are no harnesses
 for 39, 41, 42 or 43 yet. Release is the default compiler configuration; Debug is opt-in.
 
@@ -190,6 +193,11 @@ Specification respellings:
   `ref/T during self` and `uniq/T during self` and borrow explicitly (`self.first@ref`, `self.items[key]@uniq`), and
   Program 27's `firstPlace` returns `items[0]@ref`. The uses, including `firstPlace(counts) == 42` (a comparison through
   the reference), and the expected output are unchanged.
+- Program 27 (2026-10-17, S1 and design A3's loss P4, SPEC §15.6 and §15.6.4; owner decision O3, DECISIONS R4-M64):
+  `references.sliceUniq().slice().toArray()` became `references.slice().toArray()`. Under SPEC 15.6 the temporary
+  UniqSlice's holder carries its own exclusive Loan on `references` beside the elements' Loans, and a read through the
+  Slice carries both, so the copy kept that Loan and `references = [copied]` conflicted. The copy through a shared
+  view keeps the section's intent (the outer dependency dropped, the element Origins kept); the output is unchanged.
 
 Earlier specification respellings and authoring corrections remain in Git and PLAN_HISTORY.
 No target was simplified to fit an implementation limit. In particular, the refinement, Weak,
@@ -822,4 +830,24 @@ Lamp hall destroyed.
 Device hall released.
 Registry entry expired.
 Application finished.
+```
+
+### Milestone 44
+
+[Source](Milestone44.kimi) — Virtual slots, overrides, direct base calls and dispatch by Dynamic Type through views, Items, erased values and handles.
+
+```text
+Device 1 draws 1 W.
+Lamp 2 draws 40 W.
+Lamp 3 draws 45 W.
+Fan 4 draws 2 W.
+Static slots, dynamic implementations.
+Device 4 released.
+Device 3 released.
+Device 2 released.
+Device 1 released.
+Shared handles dispatch on their payload.
+Device 6 released.
+Device 5 released.
+Virtual dispatch finished.
 ```

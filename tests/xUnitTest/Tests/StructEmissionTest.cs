@@ -109,7 +109,7 @@ public class StructEmissionTest
     {
         const string Source = "struct S\n    var text: string\n    public init(text: string) => self.text = text@move\n    drop => Console.writeLine(\"drop\")\nlet s = S.init(\"held\")";
         var ir = ScalarEmissionTest.EmitFixture("StructStringRelease", Source, "drop\n");
-        StringEmissionTest.WriteAuditedFixture("StructStringRelease", Source, ir, "drop\n", "held=1;drop=1");
+        StringEmissionTest.WriteAuditedFixture("StructStringRelease", ir, "drop\n", "held=1;drop=1");
     }
 
     [Fact]
@@ -118,7 +118,7 @@ public class StructEmissionTest
         const string Source = "struct S\n    var text: string\n    public init()\n        self.text = \"held\"\n        $abort(\"stop\")\n    drop => Console.writeLine(\"drop\")\nlet s = S.init()";
         const string Stderr = "Hello.kimi:5:9: abort KIMI_E_ABORT: stop\n";
         var ir = ScalarEmissionTest.EmitFixture("StructConstructorAbort", Source, string.Empty, 1, Stderr);
-        StringEmissionTest.WriteAuditedFixture("StructConstructorAbort", Source, ir, string.Empty, "held=0;stop=0;drop=0", 1, Stderr);
+        StringEmissionTest.WriteAuditedFixture("StructConstructorAbort", ir, string.Empty, "held=0;stop=0;drop=0", 1, Stderr);
     }
 
     [Fact]

@@ -6,6 +6,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
+using Kimi.Compiler.Backend;
 using Kimi.Diagnostics;
 using static Kimi.Compiler.ArtifactFiles;
 
@@ -445,7 +446,7 @@ internal static partial class NativeToolchain
             if (line.StartsWith("declare ", StringComparison.Ordinal) && line.IndexOf('@') is var at and >= 0 &&
                 (at + 1 < line.Length && line[at + 1] == '"' ? line.IndexOf('"', at + 2) + 1 : line.IndexOf('(', at)) is var end and > 0)
             {
-                declared[LlvmModuleWriter.SymbolFromName(line.AsSpan(at + 1, end - at - 1))] = line.StartsWith("declare dllimport ", StringComparison.Ordinal);
+                declared[LlvmModuleText.SymbolFromName(line.AsSpan(at + 1, end - at - 1))] = line.StartsWith("declare dllimport ", StringComparison.Ordinal);
             }
         }
 

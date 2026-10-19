@@ -1,212 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the indexed storage of one MIR body and its projection chains.
-// Input: builder records. Output: reusable arrays of locals, blocks, statements and associated records.
+// Input: the forms the builder appends (MirForms.cs). Output: reusable arrays of locals, blocks, statements and associated records.
 // References use body-local indices; projection chains are interned and ProjectedType owns their Type rule.
 // Must not resolve syntax or introduce a parallel representation for the same body.
 
 using System.Runtime.InteropServices;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
-#pragma warning disable SA1402 // The row types of the body belong to it.
-
 namespace Kimi.Compiler.Mir;
-
-/// <summary>A Place (plan 5.4): a root, a local from 0 or a static (<c>~index</c> into <see cref="MirBody.Statics"/>), and its
-/// projection chain, an id in <see cref="MirBody.Projections"/> (0: none).</summary>
-/// <param name="Root">The local, or the complement of the static's index.</param>
-/// <param name="Projection">The interned projection chain.</param>
-internal readonly record struct MirPlace(int Root, int Projection = 0)
-{
-    internal bool IsStatic => this.Root < 0;
-}
-
-/// <summary>An operand: a Place copied, moved or acquired as a pair binder's Semantics case decides (<see cref="Arg"/>: the binder's
-/// index in <see cref="MirBody.Binders"/>), or a constant (<see cref="Arg"/>: its id in <see cref="MirBody.Consts"/>).</summary>
-internal readonly record struct MirOperand(MirOperandKind Kind, MirPlace Place, int Arg = 0)
-{
-    internal static MirOperand Copy(MirPlace place) => new(MirOperandKind.Copy, place);
-
-    internal static MirOperand Move(MirPlace place) => new(MirOperandKind.Move, place);
-
-    internal static MirOperand PairAcquire(int binder, MirPlace place) => new(MirOperandKind.PairAcquire, place, binder);
-
-    internal static MirOperand Const(int id) => new(MirOperandKind.Const, default, id);
-}
-
-/// <summary>An rvalue. Its operands are <see cref="Count"/> entries of <see cref="MirBody.Operands"/> from <see cref="Start"/>;
-/// <see cref="Op"/> is a Ref's <see cref="MirRefKind"/>, an operator's <see cref="MirBinaryOp"/> or <see cref="MirUnaryOp"/>, a Cast's
-/// <see cref="MirCastKind"/>, an aggregate's <see cref="MirAggregateKind"/> or an Adapt's 1 for the Semantics shorthand;
-/// <see cref="Arg"/> is an Adt aggregate's Case ordinal or an Opaque's site; <see cref="Place"/> is a Ref's, Discriminant's or Len's
-/// Place or an Adapt's payload; <see cref="Type"/> is a Ref's reference Type, a Cast's or an Adapt's target Type or an aggregate's or
-/// Opaque's Type.</summary>
-internal readonly record struct MirRvalue(
-    MirRvalueKind Kind,
-    byte Op = 0,
-    MirPlace Place = default,
-    int Start = 0,
-    int Count = 0,
-    int Arg = 0,
-    BoundType? Type = null,
-    bool Proven = false)
-{
-    internal static MirRvalue Use(int operand) => new(MirRvalueKind.Use, Start: operand, Count: 1);
-
-    internal static MirRvalue Ref(MirRefKind kind, MirPlace place, BoundType type) => new(MirRvalueKind.Ref, (byte)kind, place, Type: type);
-
-    // The two operands from the first.
-    internal static MirRvalue Binary(MirBinaryOp op, int operands, bool proven) => new(
-        MirRvalueKind.BinaryOp,
-        (byte)op,
-        Start: operands,
-        Count: 2,
-        Proven: proven);
-
-    internal static MirRvalue Unary(MirUnaryOp op, int operand, bool proven) => new(MirRvalueKind.UnaryOp, (byte)op, Start: operand, Count: 1, Proven: proven);
-
-    internal static MirRvalue Cast(MirCastKind kind, int operand, BoundType type) => new(MirRvalueKind.Cast, (byte)kind, Start: operand, Count: 1, Type: type);
-
-    internal static MirRvalue Aggregate(MirAggregateKind kind, int start, int count, BoundType type, int ordinal = 0) => new(
-        MirRvalueKind.Aggregate,
-        (byte)kind,
-        default,
-        start,
-        count,
-        ordinal,
-        type);
-
-    internal static MirRvalue Discriminant(MirPlace place) => new(MirRvalueKind.Discriminant, Place: place);
-
-    internal static MirRvalue Len(MirPlace place) => new(MirRvalueKind.Len, Place: place);
-
-    internal static MirRvalue Opaque(BoundType type, int site) => new(MirRvalueKind.Opaque, Arg: site, Type: type);
-
-    // From the first, the operand acquired by value and the token of Binding's source Type; the payload is the Place one implicit layer
-    // below the operand's, which an object borrow borrows.
-    internal static MirRvalue Adapt(int operands, MirPlace payload, BoundType target, bool shorthand) => new(
-        MirRvalueKind.Adapt,
-        (byte)(shorthand ? 1 : 0),
-        payload,
-        operands,
-        2,
-        Type: target);
-}
-
-/// <summary>A statement: an Assign of its rvalue to its Place, or StorageLive, StorageDead, FakeRead or EndBorrow of its Place.</summary>
-internal readonly record struct MirStatement(MirStatementKind Kind, MirPlace Place, MirRvalue Rvalue, SourceInfo Source)
-{
-    internal static MirStatement Assign(MirPlace place, MirRvalue rvalue, SourceInfo source) => new(MirStatementKind.Assign, place, rvalue, source);
-
-    internal static MirStatement Of(MirStatementKind kind, MirPlace place, SourceInfo source) => new(kind, place, default, source);
-}
-
-/// <summary>What a Call calls: a Fn, Requirement or Virtual callee's function under its Subst (a Fn one's default template, plan 5.6.2, as
-/// its index plus 1 in <see cref="Arg"/>; a Virtual one's slot in <see cref="Arg"/>; a Requirement's dispatching Contract reference in
-/// <see cref="Contract"/>, null for its requirement's own Contract) or an Intrinsic's <see cref="IntrinsicId"/> in <see cref="Arg"/>; a
-/// Value callee is the terminator's operand.</summary>
-internal readonly record struct MirCallee(MirCalleeKind Kind, BindingSymbol? Symbol = null, Subst? Subst = null, int Arg = 0, BindingSymbol? Contract = null)
-{
-    internal static MirCallee Intrinsic(IntrinsicId id, Subst? subst = null) => new(MirCalleeKind.Intrinsic, null, subst, (int)id);
-
-    // SPEC 7.3: a call passes its callee's parameters receiver first (the self parameter at its written slot), then the others in slot order:
-    // the slot an argument position passes, and its inverse.
-    internal static int Slot(BindingSymbol function, int position)
-    {
-        if (function.ReceiverIndex is var receiver && (receiver < 0 || position > receiver))
-        {
-            return position;
-        }
-
-        return position == 0 ? receiver : position - 1;
-    }
-
-    internal static int Position(BindingSymbol? function, int slot)
-    {
-        if ((function?.ReceiverIndex ?? -1) is var receiver && (receiver < 0 || slot > receiver))
-        {
-            return slot;
-        }
-
-        return slot == receiver ? 0 : slot + 1;
-    }
-}
-
-/// <summary>A terminator. <see cref="Target"/> is a Goto's, Drop's or Call's successor (-1: the Call diverges) or a SwitchInt's
-/// otherwise, whose value-target pairs are <see cref="Count"/> entries of <see cref="MirBody.Cases"/> from <see cref="Start"/>, as a
-/// Call's arguments are of <see cref="MirBody.Operands"/>. <see cref="Operand"/> is a SwitchInt's operand or a Value callee,
-/// <see cref="Place"/> a Call's destination or the dropped Place, and <see cref="CheckTarget"/> the block only the checks reach
-/// (-1: none). A new block's terminator is a Goto without a target until it is terminated.</summary>
-internal readonly record struct MirTerminator(
-    MirTerminatorKind Kind,
-    SourceInfo Source,
-    int Target = -1,
-    int CheckTarget = -1,
-    MirOperand Operand = default,
-    MirPlace Place = default,
-    int Start = 0,
-    int Count = 0,
-    MirCallee Callee = default)
-{
-    internal static MirTerminator Goto(int target, SourceInfo source, int check = -1) => new(MirTerminatorKind.Goto, source, target, check);
-
-    internal static MirTerminator SwitchInt(MirOperand operand, int start, int count, int otherwise, SourceInfo source) =>
-        new(MirTerminatorKind.SwitchInt, source, otherwise, Operand: operand, Start: start, Count: count);
-
-    internal static MirTerminator Call(
-        MirCallee callee,
-        int start,
-        int count,
-        MirPlace destination,
-        int target,
-        SourceInfo source)
-        => new(MirTerminatorKind.Call, source, target, Place: destination, Start: start, Count: count, Callee: callee);
-
-    internal static MirTerminator Drop(MirPlace place, int target, SourceInfo source) => new(MirTerminatorKind.Drop, source, target, Place: place);
-
-    internal static MirTerminator Return(SourceInfo source) => new(MirTerminatorKind.Return, source);
-
-    internal static MirTerminator Unreachable(SourceInfo source, int check = -1) => new(MirTerminatorKind.Unreachable, source, CheckTarget: check);
-}
-
-/// <summary>A basic block: <see cref="Count"/> statements of <see cref="MirBody.Statements"/> from <see cref="Start"/>, then its terminator.</summary>
-internal record struct MirBlock(int Start, int Count, MirTerminator Terminator);
-
-/// <summary>A local: local 0 is the Return local, the Arg locals follow it (the receiver first), then Var, Temp and DropFlag locals.</summary>
-internal readonly record struct MirLocal(
-    BoundType Type,
-    MirLocalKind Kind,
-    SourceInfo Source,
-    bool Mutable = false,
-    string? Name = null,
-    MirLocalRole Role = MirLocalRole.None);
-
-/// <summary>A scope of the body; scope 0 is the body's own, and the scope a scope is in (<see cref="Outer"/>) precedes it. An Inlined scope's source
-/// is its call.</summary>
-internal readonly record struct MirScope(int Outer, MirScopeKind Kind, SourceRef Source);
-
-/// <summary>A constant; interned, so equal constants share one id.</summary>
-internal readonly record struct MirConst(MirConstKind Kind, BoundType Type, Int128 Bits = default, object? Value = null);
-
-/// <summary>An interned projection step: its <see cref="Prefix"/>, the chain it extends (0: the root), its kind and argument (a Field index,
-/// a base depth, an index local, a constant position, a Case ordinal or a pair binder's index) and the Type it selects
-/// (null when its base does not admit it).
-/// Chains are independent of their roots, so equal prefixes share ids.</summary>
-internal readonly record struct MirProjection(int Prefix, MirProjectionKind Kind, int Arg, BoundType? Type);
-
-internal readonly record struct MirSwitchCase(long Value, int Target);
-
-/// <summary>A static the body's Places root at: its symbol and Type, whether it is mutable and whether its value holds a raw pointer, an
-/// rc handle or a Weak of one at any depth (SPEC 8.11.2).</summary>
-internal readonly record struct MirStatic(BindingSymbol Symbol, BoundType Type, bool Mutable, bool RawHolding);
-
-/// <summary>The site of an Opaque value: the syntax it replaces and the roots that syntax reads, writes or borrows, <see cref="Count"/>
-/// entries of <see cref="MirBody.OpaqueRoots"/> from <see cref="Start"/> (plan 5.4).</summary>
-internal readonly record struct MirOpaque(SourceRef Source, int Start, int Count);
-
-/// <summary>A failure body that must not complete (SPEC 14.11): entered at <see cref="Entry"/>, its end <see cref="End"/> an
-/// Unreachable block without a check target that no runtime path from <see cref="Entry"/> may reach; <see cref="Subject"/> the failure
-/// body.</summary>
-internal readonly record struct MirMustNotComplete(int Entry, int End, SourceRef Subject);
 
 /// <summary>The MIR of one body (plan 5.4): struct arrays that the builder appends to (<see cref="AddLocal"/>, <see cref="AddBlock"/>,
 /// <see cref="Push"/>, <see cref="Terminate"/>, <see cref="AddOperand"/>, <see cref="Const"/>, <see cref="Project"/>,
@@ -286,6 +88,20 @@ internal sealed class MirBody
     /// <param name="source">The source of a statement, a terminator or a local.</param>
     /// <returns>The syntax.</returns>
     internal SourceRef Subject(in SourceInfo source) => source.Syntax.Id != 0 ? source.Syntax : this.Source;
+
+    /// <summary>Gets the Inlined scope a scope lies in, itself included: the inline default copy whose source is its call (DECISIONS
+    /// R4-M69).</summary>
+    /// <param name="scope">A scope of the body.</param>
+    /// <returns>The innermost Inlined scope enclosing it, or -1 when it lies in none.</returns>
+    internal int Inlining(int scope)
+    {
+        while (scope >= 0 && this.scopes[scope].Kind != MirScopeKind.Inlined)
+        {
+            scope = this.scopes[scope].Outer;
+        }
+
+        return scope;
+    }
 
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>

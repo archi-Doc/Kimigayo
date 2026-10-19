@@ -36,6 +36,7 @@ fn format @9
   _34: string temp @33 s1
   _35: ref/string temp @33 s1
   _36: ref/Utf8Writer temp @121 s1
+  _37: Result<(), BufferFull> temp @9
   s1: lexical in s0 @19
   flags 4
   bb0:
@@ -72,17 +73,17 @@ fn format @9
       StorageLive(_15) @27 s1
       StorageLive(_16) @27 s1
       StorageLive(_17) @27 s1
-      _17 = &uniq _14: uniq/HeapBuffer @27 s1
+      _17 = &uniq two-phase _14: uniq/HeapBuffer @27 s1
       _15 = intrinsic ErasedWriter<HeapBuffer>(move _17) -> bb6 @27 s1
   bb6:
       StorageLive(_18) @27 s1
-      _18 = &uniq _15: uniq/Utf8Writer @27 s1
+      _18 = &uniq two-phase _15: uniq/Utf8Writer @27 s1
       _16 = intrinsic FormatHint(move _18, const 0_isize, const type (i32)) -> bb7 @27 s1
   bb7:
       StorageLive(_19) @27 s1
       StorageLive(_20) @27 s1
       StorageLive(_21) @27 s1
-      _21 = &uniq _15: uniq/Utf8Writer @27 s1
+      _21 = &uniq two-phase _15: uniq/Utf8Writer @27 s1
       StorageLive(_22) [clear f2] @28 s1
       _22 = const "x=" [set f2] @28 s1
       StorageLive(_23) @28 s1
@@ -93,13 +94,13 @@ fn format @9
       switch copy _20 [0: bb9, otherwise: bb4] @27 s1
   bb9:
       StorageLive(_24) @27 s1
-      _24 = &uniq _15: uniq/Utf8Writer @27 s1
+      _24 = &uniq two-phase _15: uniq/Utf8Writer @27 s1
       _16 = intrinsic FormatHint(move _24, const 0_isize, const type ()) -> bb10 @27 s1
   bb10:
       StorageLive(_25) @27 s1
       StorageLive(_26) @27 s1
       StorageLive(_27) @27 s1
-      _27 = &uniq _15: uniq/Utf8Writer @27 s1
+      _27 = &uniq two-phase _15: uniq/Utf8Writer @27 s1
       StorageLive(_28) @29 s1
       _28 = &(*_1).0: ref/i32 @29 s1
       _25 = write<i32>(move _27, move _28) -> bb11 @27 s1
@@ -131,14 +132,17 @@ fn format @9
   bb17:
       goto bb1 @21 s1
   bb18:
-      goto bb26 check bb27 @20 s1
+      goto bb27 check bb28 @20 s1
   bb19:
       return @9
   bb20:
+      _0 = move _37 @20 s1
+      goto bb19 @20 s1
+  bb21:
       StorageDead(_36) @121 s1
       StorageDead(_35) @33 s1
-      drop _34 -> bb21 [flag f3] [clear f3] @33 s1
-  bb21:
+      drop _34 -> bb22 [flag f3] [clear f3] @33 s1
+  bb22:
       StorageDead(_34) [clear f3] @33 s1
       StorageDead(_33) @121 s1
       StorageDead(_32) @21 s1
@@ -150,8 +154,8 @@ fn format @9
       StorageDead(_25) @27 s1
       StorageDead(_24) @27 s1
       StorageDead(_23) @28 s1
-      drop _22 -> bb22 [flag f2] [clear f2] @28 s1
-  bb22:
+      drop _22 -> bb23 [flag f2] [clear f2] @28 s1
+  bb23:
       StorageDead(_22) [clear f2] @28 s1
       StorageDead(_21) @27 s1
       StorageDead(_20) @27 s1
@@ -160,33 +164,33 @@ fn format @9
       StorageDead(_17) @27 s1
       StorageDead(_16) @27 s1
       StorageDead(_15) @27 s1
-      drop _14 -> bb23 [flag f1] [clear f1] @27 s1
-  bb23:
-      StorageDead(_14) [clear f1] @27 s1
-      drop _13 -> bb24 [flag f0] [clear f0] @27 s1
+      drop _14 -> bb24 [flag f1] [clear f1] @27 s1
   bb24:
+      StorageDead(_14) [clear f1] @27 s1
+      drop _13 -> bb25 [flag f0] [clear f0] @27 s1
+  bb25:
       StorageDead(_13) [clear f0] @27 s1
       StorageDead(_12) @121 s1
       StorageDead(_11) @21 s1
       StorageDead(_10) @21 s1
       StorageDead(_9) @26 s1
-      drop _8 -> bb25 [keep] @26 s1
-  bb25:
+      drop _8 -> bb26 [keep] @26 s1
+  bb26:
       StorageDead(_8) @26 s1
       StorageDead(_7) @121 s1
       StorageDead(_6) @21 s1
       StorageDead(_5) @21 s1
       StorageDead(_4) @24 s1
       StorageDead(_3) @21 s1
-      goto bb19 @9
-  bb26:
-      _0 = move _3 @20 s1
-      goto bb20 @20 s1
+      goto bb20 @9
   bb27:
+      _37 = move _3 @20 s1
+      goto bb21 @20 s1
+  bb28:
       StorageDead(_36) @121 s1
       StorageDead(_35) @33 s1
-      drop _34 -> bb28 @33 s1
-  bb28:
+      drop _34 -> bb29 @33 s1
+  bb29:
       StorageDead(_34) @33 s1
       StorageDead(_33) @121 s1
       StorageDead(_32) @21 s1
@@ -198,8 +202,8 @@ fn format @9
       StorageDead(_25) @27 s1
       StorageDead(_24) @27 s1
       StorageDead(_23) @28 s1
-      drop _22 -> bb29 @28 s1
-  bb29:
+      drop _22 -> bb30 @28 s1
+  bb30:
       StorageDead(_22) @28 s1
       StorageDead(_21) @27 s1
       StorageDead(_20) @27 s1
@@ -208,18 +212,18 @@ fn format @9
       StorageDead(_17) @27 s1
       StorageDead(_16) @27 s1
       StorageDead(_15) @27 s1
-      drop _14 -> bb30 @27 s1
-  bb30:
-      StorageDead(_14) @27 s1
-      drop _13 -> bb31 @27 s1
+      drop _14 -> bb31 @27 s1
   bb31:
+      StorageDead(_14) @27 s1
+      drop _13 -> bb32 @27 s1
+  bb32:
       StorageDead(_13) @27 s1
       StorageDead(_12) @121 s1
       StorageDead(_11) @21 s1
       StorageDead(_10) @21 s1
       StorageDead(_9) @26 s1
-      drop _8 -> bb32 @26 s1
-  bb32:
+      drop _8 -> bb33 @26 s1
+  bb33:
       StorageDead(_8) @26 s1
       StorageDead(_7) @121 s1
       StorageDead(_6) @21 s1
@@ -278,17 +282,17 @@ fn label @36
       StorageLive(_4) @41
       StorageLive(_5) @41
       StorageLive(_6) @41
-      _6 = &uniq _3: uniq/HeapBuffer @41
+      _6 = &uniq two-phase _3: uniq/HeapBuffer @41
       _4 = intrinsic ErasedWriter<HeapBuffer>(move _6) -> bb3 @41
   bb3:
       StorageLive(_7) @41
-      _7 = &uniq _4: uniq/Utf8Writer @41
+      _7 = &uniq two-phase _4: uniq/Utf8Writer @41
       _5 = intrinsic FormatHint(move _7, const 8_isize, const type (i32, string)) -> bb4 @41
   bb4:
       StorageLive(_8) @41
       StorageLive(_9) @41
       StorageLive(_10) @41
-      _10 = &uniq _4: uniq/Utf8Writer @41
+      _10 = &uniq two-phase _4: uniq/Utf8Writer @41
       StorageLive(_11) @42
       _11 = const "n=" @42
       StorageLive(_12) @42
@@ -299,13 +303,13 @@ fn label @36
       switch copy _9 [0: bb6, otherwise: bb1] @41
   bb6:
       StorageLive(_13) @41
-      _13 = &uniq _4: uniq/Utf8Writer @41
+      _13 = &uniq two-phase _4: uniq/Utf8Writer @41
       _5 = intrinsic FormatHint(move _13, const 8_isize, const type (string)) -> bb7 @41
   bb7:
       StorageLive(_14) @41
       StorageLive(_15) @41
       StorageLive(_16) @41
-      _16 = &uniq _4: uniq/Utf8Writer @41
+      _16 = &uniq two-phase _4: uniq/Utf8Writer @41
       StorageLive(_17) @43
       _17 = &_1: ref/i32 @43
       _14 = write<i32>(move _16, move _17) -> bb8 @41
@@ -314,13 +318,13 @@ fn label @36
       switch copy _15 [0: bb9, otherwise: bb1] @41
   bb9:
       StorageLive(_18) @41
-      _18 = &uniq _4: uniq/Utf8Writer @41
+      _18 = &uniq two-phase _4: uniq/Utf8Writer @41
       _5 = intrinsic FormatHint(move _18, const 1_isize, const type (string)) -> bb10 @41
   bb10:
       StorageLive(_19) @41
       StorageLive(_20) @41
       StorageLive(_21) @41
-      _21 = &uniq _4: uniq/Utf8Writer @41
+      _21 = &uniq two-phase _4: uniq/Utf8Writer @41
       StorageLive(_22) @44
       _22 = const ", name=" @44
       StorageLive(_23) @44
@@ -331,26 +335,26 @@ fn label @36
       switch copy _20 [0: bb12, otherwise: bb1] @41
   bb12:
       StorageLive(_24) @41
-      _24 = &uniq _4: uniq/Utf8Writer @41
+      _24 = &uniq two-phase _4: uniq/Utf8Writer @41
       _5 = intrinsic FormatHint(move _24, const 1_isize, const type ()) -> bb13 @41
   bb13:
       StorageLive(_25) @41
       StorageLive(_26) @41
       StorageLive(_27) @41
-      _27 = &uniq _4: uniq/Utf8Writer @41
+      _27 = &uniq two-phase _4: uniq/Utf8Writer @41
       _25 = write<string>(move _27, copy _2) -> bb14 @41
   bb14:
       _26 = discriminant(_25) @41
       switch copy _26 [0: bb15, otherwise: bb1] @41
   bb15:
       StorageLive(_28) @41
-      _28 = &uniq _4: uniq/Utf8Writer @41
+      _28 = &uniq two-phase _4: uniq/Utf8Writer @41
       _5 = intrinsic FormatHint(move _28, const 0_isize, const type ()) -> bb16 @41
   bb16:
       StorageLive(_29) @41
       StorageLive(_30) @41
       StorageLive(_31) @41
-      _31 = &uniq _4: uniq/Utf8Writer @41
+      _31 = &uniq two-phase _4: uniq/Utf8Writer @41
       StorageLive(_32) @46
       _32 = const "!" @46
       StorageLive(_33) @46
@@ -427,6 +431,7 @@ fn show @47
   _21: string temp @60 s1
   _22: ref/string temp @60 s1
   _23: Never temp @57 s1
+  _24: string temp @47
   s1: lexical in s0 @55
   bb0:
       StorageLive(_2) @57 s1
@@ -438,17 +443,17 @@ fn show @47
       StorageLive(_4) @57 s1
       StorageLive(_5) @57 s1
       StorageLive(_6) @57 s1
-      _6 = &uniq _3: uniq/HeapBuffer @57 s1
+      _6 = &uniq two-phase _3: uniq/HeapBuffer @57 s1
       _4 = intrinsic ErasedWriter<HeapBuffer>(move _6) -> bb3 @57 s1
   bb3:
       StorageLive(_7) @57 s1
-      _7 = &uniq _4: uniq/Utf8Writer @57 s1
+      _7 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       _5 = intrinsic FormatHint(move _7, const 1_isize, const type (T)) -> bb4 @57 s1
   bb4:
       StorageLive(_8) @57 s1
       StorageLive(_9) @57 s1
       StorageLive(_10) @57 s1
-      _10 = &uniq _4: uniq/Utf8Writer @57 s1
+      _10 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       StorageLive(_11) @58 s1
       _11 = const "<" @58 s1
       StorageLive(_12) @58 s1
@@ -459,26 +464,26 @@ fn show @47
       switch copy _9 [0: bb6, otherwise: bb1] @57 s1
   bb6:
       StorageLive(_13) @57 s1
-      _13 = &uniq _4: uniq/Utf8Writer @57 s1
+      _13 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       _5 = intrinsic FormatHint(move _13, const 1_isize, const type ()) -> bb7 @57 s1
   bb7:
       StorageLive(_14) @57 s1
       StorageLive(_15) @57 s1
       StorageLive(_16) @57 s1
-      _16 = &uniq _4: uniq/Utf8Writer @57 s1
+      _16 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       _14 = write<T>(move _16, copy _1) -> bb8 @57 s1
   bb8:
       _15 = discriminant(_14) @57 s1
       switch copy _15 [0: bb9, otherwise: bb1] @57 s1
   bb9:
       StorageLive(_17) @57 s1
-      _17 = &uniq _4: uniq/Utf8Writer @57 s1
+      _17 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       _5 = intrinsic FormatHint(move _17, const 0_isize, const type ()) -> bb10 @57 s1
   bb10:
       StorageLive(_18) @57 s1
       StorageLive(_19) @57 s1
       StorageLive(_20) @57 s1
-      _20 = &uniq _4: uniq/Utf8Writer @57 s1
+      _20 = &uniq two-phase _4: uniq/Utf8Writer @57 s1
       StorageLive(_21) @60 s1
       _21 = const ">" @60 s1
       StorageLive(_22) @60 s1
@@ -490,47 +495,16 @@ fn show @47
   bb12:
       _2 = intrinsic FormatFinish(move _4, const 2_isize, const type (T), const false) -> bb13 @57 s1
   bb13:
-      goto bb20 check bb21 @56 s1
+      goto bb21 check bb22 @56 s1
   bb14:
       return @47
   bb15:
-      StorageDead(_22) @60 s1
-      drop _21 -> bb16 [keep] @60 s1
+      _0 = move _24 @56 s1
+      goto bb14 @56 s1
   bb16:
-      StorageDead(_21) @60 s1
-      StorageDead(_20) @57 s1
-      StorageDead(_19) @57 s1
-      StorageDead(_18) @57 s1
-      StorageDead(_17) @57 s1
-      StorageDead(_16) @57 s1
-      StorageDead(_15) @57 s1
-      StorageDead(_14) @57 s1
-      StorageDead(_13) @57 s1
-      StorageDead(_12) @58 s1
-      drop _11 -> bb17 [keep] @58 s1
-  bb17:
-      StorageDead(_11) @58 s1
-      StorageDead(_10) @57 s1
-      StorageDead(_9) @57 s1
-      StorageDead(_8) @57 s1
-      StorageDead(_7) @57 s1
-      StorageDead(_6) @57 s1
-      StorageDead(_5) @57 s1
-      StorageDead(_4) @57 s1
-      drop _3 -> bb18 [keep] @57 s1
-  bb18:
-      StorageDead(_3) @57 s1
-      drop _2 -> bb19 [elide] @57 s1
-  bb19:
-      StorageDead(_2) @57 s1
-      goto bb14 @47
-  bb20:
-      _0 = move _2 @56 s1
-      goto bb15 @56 s1
-  bb21:
       StorageDead(_22) @60 s1
-      drop _21 -> bb22 @60 s1
-  bb22:
+      drop _21 -> bb17 [keep] @60 s1
+  bb17:
       StorageDead(_21) @60 s1
       StorageDead(_20) @57 s1
       StorageDead(_19) @57 s1
@@ -541,8 +515,8 @@ fn show @47
       StorageDead(_14) @57 s1
       StorageDead(_13) @57 s1
       StorageDead(_12) @58 s1
-      drop _11 -> bb23 @58 s1
-  bb23:
+      drop _11 -> bb18 [keep] @58 s1
+  bb18:
       StorageDead(_11) @58 s1
       StorageDead(_10) @57 s1
       StorageDead(_9) @57 s1
@@ -551,11 +525,45 @@ fn show @47
       StorageDead(_6) @57 s1
       StorageDead(_5) @57 s1
       StorageDead(_4) @57 s1
-      drop _3 -> bb24 @57 s1
-  bb24:
+      drop _3 -> bb19 [keep] @57 s1
+  bb19:
       StorageDead(_3) @57 s1
-      drop _2 -> bb25 @57 s1
+      drop _2 -> bb20 [elide] @57 s1
+  bb20:
+      StorageDead(_2) @57 s1
+      goto bb15 @47
+  bb21:
+      _24 = move _2 @56 s1
+      goto bb16 @56 s1
+  bb22:
+      StorageDead(_22) @60 s1
+      drop _21 -> bb23 @60 s1
+  bb23:
+      StorageDead(_21) @60 s1
+      StorageDead(_20) @57 s1
+      StorageDead(_19) @57 s1
+      StorageDead(_18) @57 s1
+      StorageDead(_17) @57 s1
+      StorageDead(_16) @57 s1
+      StorageDead(_15) @57 s1
+      StorageDead(_14) @57 s1
+      StorageDead(_13) @57 s1
+      StorageDead(_12) @58 s1
+      drop _11 -> bb24 @58 s1
+  bb24:
+      StorageDead(_11) @58 s1
+      StorageDead(_10) @57 s1
+      StorageDead(_9) @57 s1
+      StorageDead(_8) @57 s1
+      StorageDead(_7) @57 s1
+      StorageDead(_6) @57 s1
+      StorageDead(_5) @57 s1
+      StorageDead(_4) @57 s1
+      drop _3 -> bb25 @57 s1
   bb25:
+      StorageDead(_3) @57 s1
+      drop _2 -> bb26 @57 s1
+  bb26:
       StorageDead(_2) @57 s1
       unreachable @55
 fn print @61
@@ -591,17 +599,17 @@ fn print @61
       StorageLive(_5) @67
       StorageLive(_6) @67
       StorageLive(_7) @67
-      _7 = &uniq _4: uniq/HeapBuffer @67
+      _7 = &uniq two-phase _4: uniq/HeapBuffer @67
       _5 = intrinsic ErasedWriter<HeapBuffer>(move _7) -> bb3 @67
   bb3:
       StorageLive(_8) @67
-      _8 = &uniq _5: uniq/Utf8Writer @67
+      _8 = &uniq two-phase _5: uniq/Utf8Writer @67
       _6 = intrinsic FormatHint(move _8, const 0_isize, const type (i64)) -> bb4 @67
   bb4:
       StorageLive(_9) @67
       StorageLive(_10) @67
       StorageLive(_11) @67
-      _11 = &uniq _5: uniq/Utf8Writer @67
+      _11 = &uniq two-phase _5: uniq/Utf8Writer @67
       StorageLive(_12) @68
       _12 = const "My number is " @68
       StorageLive(_13) @68
@@ -612,13 +620,13 @@ fn print @61
       switch copy _10 [0: bb6, otherwise: bb1] @67
   bb6:
       StorageLive(_14) @67
-      _14 = &uniq _5: uniq/Utf8Writer @67
+      _14 = &uniq two-phase _5: uniq/Utf8Writer @67
       _6 = intrinsic FormatHint(move _14, const 0_isize, const type ()) -> bb7 @67
   bb7:
       StorageLive(_15) @67
       StorageLive(_16) @67
       StorageLive(_17) @67
-      _17 = &uniq _5: uniq/Utf8Writer @67
+      _17 = &uniq two-phase _5: uniq/Utf8Writer @67
       StorageLive(_18) @69
       _18 = &_1: ref/i64 @69
       _15 = write<i64>(move _17, move _18) -> bb8 @67
@@ -733,17 +741,17 @@ fn forms @79
       StorageLive(_4) @84 s1
       StorageLive(_5) @84 s1
       StorageLive(_6) @84 s1
-      _6 = &uniq _3: uniq/HeapBuffer @84 s1
+      _6 = &uniq two-phase _3: uniq/HeapBuffer @84 s1
       _4 = intrinsic ErasedWriter<HeapBuffer>(move _6) -> bb3 @84 s1
   bb3:
       StorageLive(_7) @84 s1
-      _7 = &uniq _4: uniq/Utf8Writer @84 s1
+      _7 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       _5 = intrinsic FormatHint(move _7, const 1_isize, const type (i32)) -> bb4 @84 s1
   bb4:
       StorageLive(_8) @84 s1
       StorageLive(_9) @84 s1
       StorageLive(_10) @84 s1
-      _10 = &uniq _4: uniq/Utf8Writer @84 s1
+      _10 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       StorageLive(_11) @85 s1
       _11 = const "[" @85 s1
       StorageLive(_12) @85 s1
@@ -754,13 +762,13 @@ fn forms @79
       switch copy _9 [0: bb6, otherwise: bb1] @84 s1
   bb6:
       StorageLive(_13) @84 s1
-      _13 = &uniq _4: uniq/Utf8Writer @84 s1
+      _13 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       _5 = intrinsic FormatHint(move _13, const 1_isize, const type ()) -> bb7 @84 s1
   bb7:
       StorageLive(_14) @84 s1
       StorageLive(_15) @84 s1
       StorageLive(_16) @84 s1
-      _16 = &uniq _4: uniq/Utf8Writer @84 s1
+      _16 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       StorageLive(_17) @86 s1
       _17 = &_1: ref/i32 @86 s1
       _14 = write<i32>(move _16, move _17) -> bb8 @84 s1
@@ -769,13 +777,13 @@ fn forms @79
       switch copy _15 [0: bb9, otherwise: bb1] @84 s1
   bb9:
       StorageLive(_18) @84 s1
-      _18 = &uniq _4: uniq/Utf8Writer @84 s1
+      _18 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       _5 = intrinsic FormatHint(move _18, const 0_isize, const type ()) -> bb10 @84 s1
   bb10:
       StorageLive(_19) @84 s1
       StorageLive(_20) @84 s1
       StorageLive(_21) @84 s1
-      _21 = &uniq _4: uniq/Utf8Writer @84 s1
+      _21 = &uniq two-phase _4: uniq/Utf8Writer @84 s1
       StorageLive(_22) @87 s1
       _22 = const "]" @87 s1
       StorageLive(_23) @87 s1
@@ -824,17 +832,17 @@ fn forms @79
       StorageLive(_28) @90 s1
       StorageLive(_29) @90 s1
       StorageLive(_30) @90 s1
-      _30 = &uniq _27: uniq/HeapBuffer @90 s1
+      _30 = &uniq two-phase _27: uniq/HeapBuffer @90 s1
       _28 = intrinsic ErasedWriter<HeapBuffer>(move _30) -> bb19 @90 s1
   bb19:
       StorageLive(_31) @90 s1
-      _31 = &uniq _28: uniq/Utf8Writer @90 s1
+      _31 = &uniq two-phase _28: uniq/Utf8Writer @90 s1
       _29 = intrinsic FormatHint(move _31, const 1_isize, const type (i32)) -> bb20 @90 s1
   bb20:
       StorageLive(_32) @90 s1
       StorageLive(_33) @90 s1
       StorageLive(_34) @90 s1
-      _34 = &uniq _28: uniq/Utf8Writer @90 s1
+      _34 = &uniq two-phase _28: uniq/Utf8Writer @90 s1
       StorageLive(_35) @91 s1
       _35 = const "(" @91 s1
       StorageLive(_36) @91 s1
@@ -845,13 +853,13 @@ fn forms @79
       switch copy _33 [0: bb22, otherwise: bb17] @90 s1
   bb22:
       StorageLive(_37) @90 s1
-      _37 = &uniq _28: uniq/Utf8Writer @90 s1
+      _37 = &uniq two-phase _28: uniq/Utf8Writer @90 s1
       _29 = intrinsic FormatHint(move _37, const 1_isize, const type ()) -> bb23 @90 s1
   bb23:
       StorageLive(_38) @90 s1
       StorageLive(_39) @90 s1
       StorageLive(_40) @90 s1
-      _40 = &uniq _28: uniq/Utf8Writer @90 s1
+      _40 = &uniq two-phase _28: uniq/Utf8Writer @90 s1
       StorageLive(_41) @92 s1
       _41 = &_1: ref/i32 @92 s1
       _38 = write<i32>(move _40, move _41) -> bb24 @90 s1
@@ -860,13 +868,13 @@ fn forms @79
       switch copy _39 [0: bb25, otherwise: bb17] @90 s1
   bb25:
       StorageLive(_42) @90 s1
-      _42 = &uniq _28: uniq/Utf8Writer @90 s1
+      _42 = &uniq two-phase _28: uniq/Utf8Writer @90 s1
       _29 = intrinsic FormatHint(move _42, const 0_isize, const type ()) -> bb26 @90 s1
   bb26:
       StorageLive(_43) @90 s1
       StorageLive(_44) @90 s1
       StorageLive(_45) @90 s1
-      _45 = &uniq _28: uniq/Utf8Writer @90 s1
+      _45 = &uniq two-phase _28: uniq/Utf8Writer @90 s1
       StorageLive(_46) @93 s1
       _46 = const ")" @93 s1
       StorageLive(_47) @93 s1
@@ -944,13 +952,14 @@ fn early @97
   _14: isize temp @101 s1
   _15: uniq/Utf8Writer temp @101 s1
   _16: Never temp @103 s1
-  _17: uniq/Utf8Writer temp @101 s1
-  _18: Result<(), BufferFull> temp @101 s1
-  _19: isize temp @101 s1
-  _20: uniq/Utf8Writer temp @101 s1
-  _21: string temp @107 s1
-  _22: ref/string temp @107 s1
-  _23: Never temp @101 s1
+  _17: string temp @97
+  _18: uniq/Utf8Writer temp @101 s1
+  _19: Result<(), BufferFull> temp @101 s1
+  _20: isize temp @101 s1
+  _21: uniq/Utf8Writer temp @101 s1
+  _22: string temp @107 s1
+  _23: ref/string temp @107 s1
+  _24: Never temp @101 s1
   s1: lexical in s0 @99
   s2: lexical in s1 @104
   bb0:
@@ -958,22 +967,22 @@ fn early @97
       StorageLive(_2) @101 s1
     * _2 = intrinsic FormatBuffer(const 12_isize, const type (()), const false) -> bb2 @101 s1
   bb1:
-      _23 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @101 s1
+      _24 = intrinsic Fail(const "KIMI_E_FORMAT") -> ! @101 s1
   bb2:
       StorageLive(_3) @101 s1
       StorageLive(_4) @101 s1
       StorageLive(_5) @101 s1
-      _5 = &uniq _2: uniq/HeapBuffer @101 s1
+      _5 = &uniq two-phase _2: uniq/HeapBuffer @101 s1
       _3 = intrinsic ErasedWriter<HeapBuffer>(move _5) -> bb3 @101 s1
   bb3:
       StorageLive(_6) @101 s1
-      _6 = &uniq _3: uniq/Utf8Writer @101 s1
+      _6 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       _4 = intrinsic FormatHint(move _6, const 6_isize, const type (())) -> bb4 @101 s1
   bb4:
       StorageLive(_7) @101 s1
       StorageLive(_8) @101 s1
       StorageLive(_9) @101 s1
-      _9 = &uniq _3: uniq/Utf8Writer @101 s1
+      _9 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       StorageLive(_10) @102 s1
       _10 = const "prefix" @102 s1
       StorageLive(_11) @102 s1
@@ -984,31 +993,31 @@ fn early @97
       switch copy _8 [0: bb6, otherwise: bb1] @101 s1
   bb6:
       StorageLive(_12) @101 s1
-      _12 = &uniq _3: uniq/Utf8Writer @101 s1
+      _12 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       _4 = intrinsic FormatHint(move _12, const 6_isize, const type ()) -> bb7 @101 s1
   bb7:
       StorageLive(_13) @101 s1
       StorageLive(_14) @101 s1
       StorageLive(_15) @101 s1
-      _15 = &uniq _3: uniq/Utf8Writer @101 s1
+      _15 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       StorageLive(_16) @103 s1
-    * EndBorrow(_15) @105 s2
-      goto bb14 check bb15 @105 s2
+    * goto bb15 check bb16 @105 s2
   bb8:
-      StorageLive(_17) @101 s1
-      _17 = &uniq _3: uniq/Utf8Writer @101 s1
-      _4 = intrinsic FormatHint(move _17, const 0_isize, const type ()) -> bb16 @101 s1
+      _13 = write<()>(move _15, move _16) -> bb17 @101 s1
   bb9:
       return @97
   bb10:
+      _0 = move _17 @105 s2
+      goto bb9 @105 s2
+  bb11:
       StorageDead(_16) @103 s1
       StorageDead(_15) @101 s1
       StorageDead(_14) @101 s1
       StorageDead(_13) @101 s1
       StorageDead(_12) @101 s1
       StorageDead(_11) @102 s1
-      drop _10 -> bb11 [keep] @102 s1
-  bb11:
+      drop _10 -> bb12 [keep] @102 s1
+  bb12:
       StorageDead(_10) @102 s1
       StorageDead(_9) @101 s1
       StorageDead(_8) @101 s1
@@ -1017,48 +1026,58 @@ fn early @97
       StorageDead(_5) @101 s1
       StorageDead(_4) @101 s1
       StorageDead(_3) @101 s1
-      drop _2 -> bb12 [keep] @101 s1
-  bb12:
-      StorageDead(_2) @101 s1
-      drop _1 -> bb13 [elide] @101 s1
+      drop _2 -> bb13 [keep] @101 s1
   bb13:
-      StorageDead(_1) @101 s1
-      goto bb9 @97
+      StorageDead(_2) @101 s1
+      drop _1 -> bb14 [elide] @101 s1
   bb14:
-      _0 = const "early" @105 s2
-      goto bb10 @105 s2
+      StorageDead(_1) @101 s1
+      goto bb10 @97
   bb15:
-      unreachable check bb8 @104 s1
+      EndBorrow(_15) @105 s2
+      _17 = const "early" @105 s2
+      goto bb11 @105 s2
   bb16:
+      unreachable check bb8 @104 s1
+  bb17:
+      _14 = discriminant(_13) @101 s1
+      switch copy _14 [0: bb18, otherwise: bb1] @101 s1
+  bb18:
       StorageLive(_18) @101 s1
+      _18 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
+      _4 = intrinsic FormatHint(move _18, const 0_isize, const type ()) -> bb19 @101 s1
+  bb19:
       StorageLive(_19) @101 s1
       StorageLive(_20) @101 s1
-      _20 = &uniq _3: uniq/Utf8Writer @101 s1
-      StorageLive(_21) @107 s1
-      _21 = const "suffix" @107 s1
+      StorageLive(_21) @101 s1
+      _21 = &uniq two-phase _3: uniq/Utf8Writer @101 s1
       StorageLive(_22) @107 s1
-      _22 = &_21: ref/string @107 s1
-      _18 = write<string>(move _20, move _22) -> bb17 @101 s1
-  bb17:
-      _19 = discriminant(_18) @101 s1
-      switch copy _19 [0: bb18, otherwise: bb1] @101 s1
-  bb18:
+      _22 = const "suffix" @107 s1
+      StorageLive(_23) @107 s1
+      _23 = &_22: ref/string @107 s1
+      _19 = write<string>(move _21, move _23) -> bb20 @101 s1
+  bb20:
+      _20 = discriminant(_19) @101 s1
+      switch copy _20 [0: bb21, otherwise: bb1] @101 s1
+  bb21:
+      _1 = intrinsic FormatFinish(move _3, const 12_isize, const type (()), const false) -> bb22 @101 s1
+  bb22:
+      StorageDead(_23) @107 s1
+      drop _22 -> bb23 @107 s1
+  bb23:
       StorageDead(_22) @107 s1
-      drop _21 -> bb19 @107 s1
-  bb19:
-      StorageDead(_21) @107 s1
+      StorageDead(_21) @101 s1
       StorageDead(_20) @101 s1
       StorageDead(_19) @101 s1
       StorageDead(_18) @101 s1
-      StorageDead(_17) @101 s1
       StorageDead(_16) @103 s1
       StorageDead(_15) @101 s1
       StorageDead(_14) @101 s1
       StorageDead(_13) @101 s1
       StorageDead(_12) @101 s1
       StorageDead(_11) @102 s1
-      drop _10 -> bb20 @102 s1
-  bb20:
+      drop _10 -> bb24 @102 s1
+  bb24:
       StorageDead(_10) @102 s1
       StorageDead(_9) @101 s1
       StorageDead(_8) @101 s1
@@ -1067,17 +1086,17 @@ fn early @97
       StorageDead(_5) @101 s1
       StorageDead(_4) @101 s1
       StorageDead(_3) @101 s1
-      drop _2 -> bb21 @101 s1
-  bb21:
+      drop _2 -> bb25 @101 s1
+  bb25:
       StorageDead(_2) @101 s1
-      drop _1 -> bb22 @101 s1
-  bb22:
+      drop _1 -> bb26 @101 s1
+  bb26:
       StorageDead(_1) @101 s1
-    * goto bb23 check bb24 @108 s1
-  bb23:
-      _0 = const "late" @108 s1
-      goto bb9 @108 s1
-  bb24:
+    * goto bb27 check bb28 @108 s1
+  bb27:
+      _17 = const "late" @108 s1
+      goto bb10 @108 s1
+  bb28:
       unreachable @99
 fn pair @110
   _0: string return @110

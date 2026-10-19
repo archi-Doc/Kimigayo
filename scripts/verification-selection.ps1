@@ -1,4 +1,4 @@
-# Shared selector rules for verify.ps1. Discovery must use the freshly built assembly.
+# Shared selector and executed-test rules for verify.ps1. Discovery must use the freshly built assembly.
 function ConvertTo-KimiTestPattern([string] $Pattern, [switch] $Method) {
     if (-not $Pattern -or $Pattern -notmatch '^\*?[\p{L}\p{N}_.+]*\*?$' -or $Pattern -eq '**') {
         throw "Invalid test selector '$Pattern'. Use a class or Class.Method name, with '*' only at the beginning or end."
@@ -23,6 +23,12 @@ function Get-KimiTestAlternatives([string] $Pattern, [switch] $Method) {
     }
 }
 
+# The compiler configuration of a run (R5 PD4, until G4): MIR code generation needs the mir pipeline, as KIMI_CODEGEN does, so the
+# combination is rejected before building rather than by every compiler process.
+function Assert-KimiCompilerConfiguration([string] $Pipeline, [string] $Codegen) {
+    if ($Codegen -eq 'mir' -and $Pipeline -ne 'mir') { throw '-Codegen mir needs -Pipeline mir (MIR code generation runs on the mir pipeline only, R5 PD4).' }
+}
+
 # The common compiler checks every Unit test selection includes (docs/dev/VERIFICATION.md, verification scope).
 $KimiCommonTestClasses = @('XunitTest.ArchitectureRulesTest')
 
@@ -37,20 +43,36 @@ function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) 
     }
 }
 
-function Assert-KimiTestSelections([string[]] $Class, [string[]] $Method, [string[]] $DiscoveredMethods) {
-    $classes = @($DiscoveredMethods | ForEach-Object { $_.Substring(0, $_.LastIndexOf('.')) } | Sort-Object -Unique)
+# The cases a run recorded, the test nodes of its per-test results (-result-xml); a run without a result file recorded none.
+function Get-KimiRecordedCases([string] $ResultXml) {
+    if (-not (Test-Path -LiteralPath $ResultXml)) { return }
+    Select-Xml -LiteralPath $ResultXml -XPath '//test' | ForEach-Object { $_.Node }
+}
+
+# The cases a run executed: xUnit reports Explicit tests not requested as Not Run.
+function Get-KimiExecutedCases([string] $ResultXml) { Get-KimiRecordedCases $ResultXml | Where-Object result -CNE 'NotRun' }
+
+# The tests a run executed, as Class.Method.
+function Get-KimiExecutedTests([string] $ResultXml) {
+    Get-KimiExecutedCases $ResultXml | ForEach-Object { "$($_.type).$($_.method)" }
+}
+
+# Every class and method selection matches one of the tests, Class.Method: the methods discovered in the freshly built
+# assembly before the run, or the tests it executed after it.
+function Assert-KimiTestSelections([string[]] $Class, [string[]] $Method, [string[]] $Tests, [string] $Where) {
+    $classes = @($Tests | ForEach-Object { $_.Substring(0, $_.LastIndexOf('.')) } | Sort-Object -Unique)
     foreach ($selection in $Class) {
         $matched = $false
         foreach ($pattern in (Get-KimiTestAlternatives $selection)) {
             if ($classes -like $pattern) { $matched = $true; break }
         }
-        if (-not $matched) { throw "No test class matches '$selection' in the freshly built assembly." }
+        if (-not $matched) { throw "No test class matches '$selection' $Where." }
     }
     foreach ($selection in $Method) {
         $matched = $false
         foreach ($pattern in (Get-KimiTestAlternatives $selection -Method)) {
-            if ($DiscoveredMethods -like $pattern) { $matched = $true; break }
+            if ($Tests -like $pattern) { $matched = $true; break }
         }
-        if (-not $matched) { throw "No test method matches '$selection' in the freshly built assembly." }
+        if (-not $matched) { throw "No test method matches '$selection' $Where." }
     }
 }

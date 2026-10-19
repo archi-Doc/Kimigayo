@@ -6,6 +6,8 @@
 // runtime edges.
 // Must not read syntax, HIR or plans, follow CheckTarget edges, or decide that a problem is derived (MirReport's rule).
 
+using Kimi.Diagnostics;
+
 namespace Kimi.Compiler.Mir;
 
 /// <summary>A3, the runtime lints (plan P9): a require whose failure body a runtime path takes from its entry to its end, so the code after
@@ -35,7 +37,7 @@ internal sealed class MirLints(MirReach reach)
             reach.Walk(body, rows[i].Entry, checks: false);
             if (reach[rows[i].End])
             {
-                report.Add(new(DiagnosticCode.RequireFallthrough_Kd, rows[i].Subject, ulong.MaxValue));
+                report.Add(new(DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow, rows[i].Subject, body.Ordinal, ulong.MaxValue));
             }
         }
     }

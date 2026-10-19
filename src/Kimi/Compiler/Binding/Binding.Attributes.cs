@@ -44,6 +44,26 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 22.6: string, dynamic collections (SPEC 4.9), object handles (obj, rc, arc; an object borrow is none), function and Closure
+    // values, and borrows of them have no C counterpart.
+    private static bool HasNoCCounterpart(BoundType type)
+        => ReferenceEquals(type, BoundType.String) || type.HandleMode is not null ||
+            type.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Function or BoundTypeKind.Closure or BoundTypeKind.FunctionItem ||
+            (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && HasNoCCounterpart(referent));
+
+    // SPEC 22.6: a fixed-width integer Core or f32/f64 by width (i8/u8 share '1'); '?' for any other Type, a wrapping integer included.
+    private static char ScalarCode(BoundType type)
+        => type.Kind != BoundTypeKind.Primitive ? '?' : type.Name switch
+        {
+            "i8" or "u8" => '1',
+            "i16" or "u16" => '2',
+            "i32" or "u32" => '4',
+            "i64" or "u64" => '8',
+            "f32" => 'f',
+            "f64" => 'd',
+            _ => '?',
+        };
+
     private void IndexLayoutAttribute(AttributeKoto attribute)
     {
         attribute.BindingFailure = BindingFailure.None;
@@ -127,11 +147,8 @@ public sealed partial class Binding
                 }
             }
 
-            if (this.ImportAbi(function, ordinal++, out var signature) is var failure and not BindingFailure.None)
-            {
-                this.Fail(attribute, failure);
-            }
-            else if (signature is not null)
+            var signature = this.ImportAbi(attribute, function, ordinal++);
+            if (signature is not null)
             {
                 // SPEC 21.2/22.5.6: the runtime's own kernel32 declarations share the same final symbol
                 // table; an import joins one only through the reserved kernel32 supply with an equal
@@ -161,7 +178,7 @@ public sealed partial class Binding
             Complete(attribute, BoundType.Unit);
             if (attribute.BindingState == BindingState.Resolved && signature is not null && kind is not null)
             {
-                this.libraryImports.Add(new(function, name, symbol, kind));
+                this.libraryImports.Add(new(function.BoundSymbol!, name, symbol, kind));
             }
         }
 
@@ -241,14 +258,12 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 22.6: the initial Windows C ABI accepts fixed-width integers, f32/f64 and raw
-    // pointers, with Unit only as a result. The signature is one physical code per result and
-    // parameter (i8/u8 share i8, every raw/T is ptr); it is null when a Type failed to bind,
-    // since that Type already has its own diagnostic. A nonnull Option of a borrow is permitted
-    // but its representation is not laid out, so it is unsupported.
-    private BindingFailure ImportAbi(FunctionKoto function, int ordinal, out string? signature)
+    // SPEC 22.6: the signature is one physical code per result and parameter (PhysicalCode), Unit only as the result; it is null
+    // when a Type failed to bind or its decision rests on a failed struct, either having its own diagnostic, and when the import
+    // fails. A Type without a C counterpart makes the import an error; otherwise a Type outside the table makes it Unsupported,
+    // located at the first such Type. The attribute keeps one failure (DIAGNOSTICS rule 4), so the error takes precedence.
+    private string? ImportAbi(AttributeKoto attribute, FunctionKoto function, int ordinal)
     {
-        signature = null;
         if (ordinal == this.importSignatures.Count)
         {
             this.importSignatures.Add(null);
@@ -257,66 +272,59 @@ public sealed partial class Binding
         var count = function.Parameters.Count + 1;
         Span<char> codes = count <= 64 ? stackalloc char[count] : new char[count];
         var complete = true;
-        var result = function.BoundSymbol!.Type;
-        if (result is null)
+        Koto? unsupported = null;
+        for (var i = 1; i <= count; i++)
         {
-            complete = false;
-        }
-        else if (ReferenceEquals(result, BoundType.Unit))
-        {
-            codes[0] = 'v';
-        }
-        else if ((codes[0] = this.PhysicalCode(result)) is '\0' or '?')
-        {
-            return codes[0] == '?' ? BindingFailure.Unsupported : BindingFailure.InvalidImportSignature;
-        }
-
-        for (var p = 1; p < count; p++)
-        {
-            if (this.symbols[function.Parameters[p - 1]].Type is not { } type)
+            var p = i % count; // Source order: the parameters, then the result, whose code comes first.
+            if ((p == 0 ? function.BoundSymbol!.Type : this.symbols[function.Parameters[p - 1]].Type) is not { } type)
             {
                 complete = false;
             }
-            else if ((codes[p] = this.PhysicalCode(type)) is '\0' or '?')
+            else if ((codes[p] = p == 0 && ReferenceEquals(type, BoundType.Unit) ? 'v' : this.PhysicalCode(type)) == '\0')
             {
-                return codes[p] == '?' ? BindingFailure.Unsupported : BindingFailure.InvalidImportSignature;
+                this.Fail(attribute, BindingFailure.InvalidImportSignature);
+                return null;
+            }
+            else
+            {
+                complete &= codes[p] != '!';
+                unsupported ??= codes[p] == '?' ? (p == 0 ? function.ReturnType! : function.Parameters[p - 1].Type) : null;
             }
         }
 
+        if (unsupported is not null)
+        {
+            this.FailExplained(ref this.unsupportedSpans, attribute, BindingFailure.Unsupported, unsupported.Span);
+            return null;
+        }
+
+        string? signature = null;
         if (complete)
         {
             var cached = this.importSignatures[ordinal];
             signature = codes.SequenceEqual(cached.AsSpan()) ? cached : new string(codes);
         }
 
-        this.importSignatures[ordinal] = signature;
-        return BindingFailure.None;
+        return this.importSignatures[ordinal] = signature;
     }
 
-    // SPEC 22.6: a raw pointer, or a ref/uniq borrow of a C-exchangeable referent, passes as a pointer; scalars by width. A nonnull
-    // Option of such a borrow is '?', unsupported.
+    // SPEC 22.6: one decision per parameter or result Type. A Type of the table is its physical code: a scalar (ScalarCode), and a raw
+    // pointer or a ref/uniq borrow of a C-exchangeable referent is 'p'. A Type without a C counterpart is '\0', an error; a borrow whose
+    // decision rests on a failed struct is '!'. Any other Type is '?', Unsupported: bool, char, isize/usize, i128/u128, wrapping integers,
+    // Never, Unit as a parameter, Tuples, enums (the nonnull Option of a borrow is not laid out yet), Slices, structs and fixed arrays by
+    // value, object borrows and borrows of other referents.
     private char PhysicalCode(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } || this.IsImportBorrow(type) ? 'p' :
-            ReferenceEquals(type.Symbol, this.Library.Option) && type.Components is [var inner] && this.IsImportBorrow(inner) ? '?' :
-            type.Kind != BoundTypeKind.Primitive ? '\0' :
-            type.Underlying.Name switch
-            {
-                "i8" or "u8" => '1',
-                "i16" or "u16" => '2',
-                "i32" or "u32" => '4',
-                "i64" or "u64" => '8',
-                "f32" => 'f',
-                "f64" => 'd',
-                _ => '\0',
-            };
+        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components.Count: 1 } ? 'p' :
+            HasNoCCounterpart(type) ? '\0' :
+            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } ?
+                this.CExchangeable(referent, 0) switch { true => 'p', false => '?', null => '!' } :
+            ScalarCode(type);
 
-    private bool IsImportBorrow(BoundType type)
-        => type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] } && this.CExchangeable(referent, 0);
-
-    // IMPL 21.2: the initially C-exchangeable storage: owned fixed-width integers and f32/f64, raw pointers, ref/uniq borrows of
-    // eligible referents, positive-length fixed arrays of eligible elements and owned C-layout structs with eligible Fields.
+    // SPEC 22.6: whether a referent is C-exchangeable: fixed-width integer Cores and f32/f64, raw pointers, ref/uniq borrows of eligible
+    // referents, positive-length fixed arrays of eligible elements and owned C-layout structs (AdtDef.IsCLayout) with eligible prepared
+    // Fields. Null when the decision rests on a struct whose declaration or Field Type already failed, which has its own diagnostic.
     // The nonnull Option representation of a borrow is not yet laid out, so Option<ref/T> is not admitted.
-    private bool CExchangeable(BoundType type, int depth)
+    private bool? CExchangeable(BoundType type, int depth)
     {
         if (depth > 32)
         {
@@ -325,12 +333,17 @@ public sealed partial class Binding
 
         if (type.Kind == BoundTypeKind.Primitive)
         {
-            return type.Underlying.Name is "i8" or "u8" or "i16" or "u16" or "i32" or "u32" or "i64" or "u64" or "f32" or "f64";
+            return ScalarCode(type) != '?';
         }
 
         if (type is { Kind: BoundTypeKind.Semantics, Components: [var referent] })
         {
-            return type.Semantics == SemanticsKind.Raw || (type.Semantics is SemanticsKind.Ref or SemanticsKind.Uniq && this.CExchangeable(referent, depth + 1));
+            return type.Semantics switch
+            {
+                SemanticsKind.Raw => true,
+                SemanticsKind.Ref or SemanticsKind.Uniq => this.CExchangeable(referent, depth + 1),
+                _ => false,
+            };
         }
 
         if (type is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner, Length: > 0, Components: [var element] })
@@ -338,17 +351,26 @@ public sealed partial class Binding
             return this.CExchangeable(element, depth + 1);
         }
 
-        if (type.Semantics != SemanticsKind.Owner || type.Symbol?.Declaration is not StructKoto structure || !HasCLayout(structure) ||
-            structure.BoundSymbol?.Adt is not { Types.Count: > 0 } shape)
+        if (type.Semantics != SemanticsKind.Owner || type.Symbol is not { } symbol)
+        {
+            return false;
+        }
+
+        if (symbol.Declaration.BindingFailure != BindingFailure.None)
+        {
+            return null;
+        }
+
+        if (symbol.Adt is not { IsCLayout: true } shape)
         {
             return false;
         }
 
         for (var i = 0; i < shape.Types.Count; i++)
         {
-            if (this.StoredType(shape.Types[i], type) is not { } field || !this.CExchangeable(field, depth + 1))
+            if ((this.StoredType(shape.Types[i], type) is { } field ? this.CExchangeable(field, depth + 1) : null) is not true and var decision)
             {
-                return false;
+                return decision;
             }
         }
 
@@ -357,15 +379,19 @@ public sealed partial class Binding
 
     // SPEC 21.1: direct zero-sized Fields reject C layout. Struct sizes need prepared storage
     // shapes; a Field whose size depends on a Type argument is checked when its layout is formed.
+    // A rejected declaration is published as AdtDef.CLayoutRejected, which Layout treats as rejected storage.
     private void ValidateCLayoutFields()
     {
-        foreach (var container in this.cLayouts)
+        foreach (var container in this.storageDeclarations)
         {
-            for (var m = 0; m < container.Members.Count; m++)
+            var adt = container.BoundSymbol!.Adt!;
+            adt.CLayoutRejected = false;
+            for (var m = 0; adt.IsCLayout && m < container.Members.Count; m++)
             {
                 if (container.Members[m] is PropertyKoto field && IsStoredVariable(field) && (field.Modifier & ModifierKind.Static) == 0 &&
                     field.BoundSymbol?.Property?.Type is { } type && this.HasZeroStride(type))
                 {
+                    adt.CLayoutRejected = true;
                     this.Fail(field, BindingFailure.InvalidCLayout);
                     this.Fail(container, BindingFailure.InvalidTypeFormation);
                 }
@@ -404,7 +430,6 @@ public sealed partial class Binding
 
     private void ValidateLayoutFragments()
     {
-        this.cLayouts.Clear();
         for (var i = 0; i < this.nodes.Count; i++)
         {
             if (this.nodes[i] is not StructKoto container)
@@ -469,10 +494,9 @@ public sealed partial class Binding
                 this.Fail(latestSpecification!, BindingFailure.InvalidCLayout);
                 valid = false;
             }
-            else if (mode == "C" && valid)
-            {
-                this.cLayouts.Add(container);
-            }
+
+            // The published fact, written for every struct in every pass; PrepareStorage reuses a shape created here on a first pass.
+            (container.BoundSymbol!.Adt ??= new()).IsCLayout = mode == "C" && valid;
 
             if (!valid)
             {

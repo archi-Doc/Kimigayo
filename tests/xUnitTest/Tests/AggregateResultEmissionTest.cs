@@ -47,7 +47,7 @@ public class AggregateResultEmissionTest
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
         if (destruction.Length != 0)
         {
-            StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destruction);
+            StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destruction);
         }
     }
 
@@ -103,7 +103,7 @@ public class AggregateResultEmissionTest
     {
         const string Source = "var pair = (\"old\", 1)\nlet saved = label work: do\n    defer => pair = (\"new\", 2)\n    exit to work pair@move";
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionSnapshotOrder", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateSelectionSnapshotOrder", Source, ir, string.Empty, "old=1;new=1", order: [0, 1]);
+        StringEmissionTest.WriteAuditedFixture("AggregateSelectionSnapshotOrder", ir, string.Empty, "old=1;new=1", order: [0, 1]);
     }
 
     [Fact]
@@ -112,7 +112,7 @@ public class AggregateResultEmissionTest
         const string Source = "var pair = (\"old\", 1)\npair = label work: do\n    defer\n        var n = 2147483647\n        n += 1\n    exit to work (\"secured\", 2)";
         const string Error = "Hello.kimi:5:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionAbort", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("AggregateSelectionAbort", Source, ir, string.Empty, "old=0;secured=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("AggregateSelectionAbort", ir, string.Empty, "old=0;secured=0", 1, Error);
     }
 
     [Fact]
@@ -126,7 +126,7 @@ public class AggregateResultEmissionTest
         Assert.False(c.Ownership.Bodies[0].IsReachable(result.Join));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.DestroyAggregate);
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]

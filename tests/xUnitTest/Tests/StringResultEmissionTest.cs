@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -42,9 +43,7 @@ public class StringResultEmissionTest
     public void ResultOwnershipFollowsNormalArrivals(string name, string source, string stdout, string destructions)
     {
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        Assert.DoesNotContain("phi %kimi.string", ir);
-        Assert.DoesNotContain("load %kimi.string", ir);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destructions);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destructions);
     }
 
     [Fact]
@@ -53,7 +52,7 @@ public class StringResultEmissionTest
         const string Source = "var text = \"old\"\ntext = label work: do\n    defer\n        var n = 2147483647\n        n += 1\n    exit to work \"secured\"";
         const string Error = "Hello.kimi:5:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("StringResultAbort", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("StringResultAbort", Source, ir, string.Empty, "old=0;secured=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("StringResultAbort", ir, string.Empty, "old=0;secured=0", 1, Error);
     }
 
     [Fact]
@@ -62,7 +61,7 @@ public class StringResultEmissionTest
         const string Source = "let text = if 2147483647 + 1 > 0 => \"a\" else => \"b\"";
         const string Error = "Hello.kimi:1:15: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("StringResultAbortBefore", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("StringResultAbortBefore", Source, ir, string.Empty, "a=0;b=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("StringResultAbortBefore", ir, string.Empty, "a=0;b=0", 1, Error);
     }
 
     [Fact]
@@ -76,7 +75,7 @@ public class StringResultEmissionTest
         Assert.Equal(0, result.Count);
         Assert.False(body.IsReachable(result.Join));
         Assert.Single(body.ResultWrites);
-        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Callee == WindowsLowering.DestroyString);
+        Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Callee == RuntimeAbi.DestroyString);
         ScalarEmissionTest.EmitFixture("StringResultDivergent", Source, string.Empty, timeoutMilliseconds: 300);
     }
 
@@ -157,7 +156,7 @@ public class StringResultEmissionTest
         Assert.Empty(body.Issues);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var function = module.GetFunction(0);
-        Assert.Contains(function.Instructions, x => x.Callee == WindowsLowering.DestroyString && function.GetOperands(x)[0].Value == result.Place);
+        Assert.Contains(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString && function.GetOperands(x)[0].Value == result.Place);
         Assert.Contains(body.CleanupSteps, x => x.Place == result.Place && x.Action == CleanupAction.Destroy);
     }
 

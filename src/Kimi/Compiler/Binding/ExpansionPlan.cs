@@ -19,7 +19,7 @@ namespace Kimi.Compiler;
 /// <param name="First">An index's key resolution; a compound update's getter.</param>
 /// <param name="Second">An index's selected element or view call; a compound update's setter.</param>
 /// <param name="Evaluated">The argument of the key resolution that reads the length of the receiver the selection evaluated, or of the
-/// setter that takes the value the update computed; -1 when none.</param>
+/// setter that takes the value the update computed, as the call's plan records it; -1 when none.</param>
 /// <param name="Direct">An interpolation passed directly as the one argument of <c>Console.writeLine</c>, whose writes the instance places
 /// in a stack region when they are bounded within the profile's limit (SPEC 22.7).</param>
 internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? First = null, CallPlan? Second = null, int Evaluated = -1, bool Direct = false)
@@ -46,27 +46,14 @@ internal readonly record struct ExpansionPlan(ExpansionKind Kind, CallPlan? Firs
             case HirOp.CompoundAssign:
                 var target = node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand;
                 var setter = binding.PropertyCall(target, PropertyAccessorKind.Set)?.CallStorage;
-                return new(ExpansionKind.CompoundAssign, binding.PropertyCall(target, PropertyAccessorKind.Get)?.CallStorage, setter, EvaluatedArgument(setter));
+                return new(ExpansionKind.CompoundAssign, binding.PropertyCall(target, PropertyAccessorKind.Get)?.CallStorage, setter, setter?.Evaluated ?? -1);
             case HirOp.Index or HirOp.Call when node is IndexKoto index:
                 var key = binding.ResolvedKeyCall(index)?.CallStorage;
-                var selected = binding.IndexerCall(index, HirTables.PlanOf(index).Mode != 0) ?? binding.ViewRangeCall(index);
-                return new(ExpansionKind.Index, key, selected?.CallStorage, EvaluatedArgument(key));
+                var selected = binding.SelectedIndexCall(index, HirTables.PlanOf(index).Mode != 0);
+                return new(ExpansionKind.Index, key, selected?.CallStorage, key?.Evaluated ?? -1);
             default:
                 return null;
         }
-    }
-
-    private static int EvaluatedArgument(CallPlan? call)
-    {
-        for (var i = 0; call is not null && i < call.ArgumentOperations.Length; i++)
-        {
-            if (call.ArgumentOperations[i].Source is EvaluatedKoto or MemberAccessKoto { Left: EvaluatedKoto })
-            {
-                return i;
-            }
-        }
-
-        return -1;
     }
 }
 

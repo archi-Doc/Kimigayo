@@ -117,7 +117,7 @@ public class ConstructorTypeInferenceTest
     [InlineData("let a: Box<[2 of i32]> = Box.init([1, 2])")]
     [InlineData("let n: i32 = 42\nlet a = Box.init(n@ref)")]
     [InlineData("var n: i32 = 42\nlet a = Box.init(n@uniq)")]
-    [InlineData("let a = Box.init(Box.init(42))")]
+    [InlineData("let a = Box.init(Box.init(42@i32))")]
     public void CompositeAndBorrowTypesFollowTheExistingStoragePath(string use)
     {
         var c = MinimalEmissionTest.Analyze(Box + use);

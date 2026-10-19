@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -23,6 +24,8 @@ public class EnumBindingTest
     [InlineData("let x: Result<i32, string> = .Err(\"text\")")]
     [InlineData("let x: ::Kimi.Option<i32> = ::Kimi.Option<i32>.Some(1)")]
     [InlineData("let x: Option<Option<i32>> = .Some(.Some(1))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let x = P.Pair(1, (a, a))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let y: P<i64> = P.Pair(1, (a, a))")]
     public void ConstructsQualifiedAndExpectedCases(string source)
     {
         var c = CompilationTestHelper.ParseSuccess("enum Message\n    Quit\n    Write(string)\n" + source);
@@ -76,14 +79,14 @@ public class EnumBindingTest
     }
 
     [Fact]
-    public void CoreOptionUsesConditionalCopyAndResultUsesOrdinaryRules()
+    public void CoreOptionAndResultUseConditionalCopy()
     {
-        var c = CompilationTestHelper.ParseSuccess("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>");
+        // SPEC 22.1: Option is Copy when T is Copy, Result when T and E are Copy.
+        var c = CompilationTestHelper.ParseSuccess("var a: Option<i32>\nvar b: Option<string>\nvar r: Result<i32, i32>\nvar s: Result<i32, string>\nvar t: Result<string, i32>");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var variables = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
-        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(variables[0].TypeOf()!, variables[0]));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[1].TypeOf()!, variables[1]));
-        Assert.Equal(ConstraintProof.Refuted, c.Binding.ProveCopy(variables[2].TypeOf()!, variables[2]));
+        ConstraintProof[] expected = [ConstraintProof.Proven, ConstraintProof.Refuted, ConstraintProof.Proven, ConstraintProof.Refuted, ConstraintProof.Refuted];
+        Assert.Equal(expected, variables.Select(x => c.Binding.ProveCopy(x.TypeOf()!, x)));
     }
 
     [Theory]
@@ -157,17 +160,23 @@ public class EnumBindingTest
         Assert.False(c.Binding.TryGetEnumConstruction(call, out _));
     }
 
+    // SPEC 10.5.1, 6.5.2 (owner decision (1)): a contextual Case argument waits: it resolves only in the selected candidate's expected
+    // enum, and is completed there without committing a loser; an unfitted literal, an aggregate literal's elements and nested Case
+    // syntax take the payload Type, so a Tuple of literals fits as its literals do.
     [Theory]
     [InlineData("func f(x: Option<i32>) => ()\nf(.Some(1))", true)]
     [InlineData("func f(x: Option<i32>) => ()\nf(.None)", true)]
     [InlineData("func f(x: Option<Option<i8>>) => ()\nf(.Some(.Some(127)))", true)]
     [InlineData("func f(x: Option<i8>) => ()\nf(.Some(128))", false)]
-    [InlineData("func f(x: Option<i8>) => ()\nfunc f(x: Option<i32>) => ()\nf(.Some(128))", true)]
-    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.Some(128))", true)]
     [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.None)", false)]
     [InlineData("func f<T>(x: Option<T>, y: T) => ()\nf(.Some(1), 2)", true)]
     [InlineData("func f<T>(x: T) => ()\nfunc f(x: Option<i32>) => ()\nf(.None)", false)]
-    public void CallCandidatesProbeContextualCasesWithoutCommittingLosers(string source, bool valid)
+    [InlineData("func f(x: Option<(i64, i64)>) => ()\nf(.Some((1, 2)))", true)]
+    [InlineData("func f(x: Option<(i8, i64)>) => ()\nf(.Some((128, 2)))", false)]
+    [InlineData("func f(x: Option<Option<(i64, i64)>>) => ()\nf(.Some(.Some((1, 2))))", true)]
+    [InlineData("func f(x: Option<(i64, Option<i8>)>) => ()\nf(.Some((1, .None)))", true)]
+    [InlineData("func f(x: Option<[2 of i64]>) => ()\nf(.Some([1, 2]))", true)]
+    public void AContextualCaseArgumentWaitsForTheSelectedCandidate(string source, bool valid)
     {
         var c = CompilationTestHelper.ParseSuccess(source);
         Assert.Equal(valid, c.Bind().IsComplete);
@@ -177,6 +186,83 @@ public class EnumBindingTest
         {
             Assert.DoesNotContain(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
         }
+    }
+
+    // SPEC 10.5.1, 10.1 (owner decision (1)): a contextual Case is never probed per candidate, so candidates that differ only in its payload
+    // Type are ambiguous even where only one payload Type would fit.
+    [Theory]
+    [InlineData("func f(x: Option<i8>) => ()\nfunc f(x: Option<i32>) => ()\nf(.Some(128))", "f(.Some(128))")]
+    [InlineData("func f(x: Option<i32>) => ()\nfunc f(x: Option<i8>) => ()\nf(.Some(128))", "f(.Some(128))")]
+    [InlineData("func f(x: Option<(i8, i8)>) => ()\nfunc f(x: Option<(i32, i32)>) => ()\nf(.Some((128, 1)))", "f(.Some((128, 1)))")]
+    public void AContextualCaseIsNotProbedPerCandidate(string source, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.AmbiguousBinding_Kd), at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 6.5.2 item 2, 10.8.1, 10.5.1: a Case construction takes the expected Type's slots first, then its payloads' evidence by kind,
+    // element by element, then the Literal defaults; under the argument probe a construction with an unbound slot waits for its call.
+    // An anonymous payload's written header is evidence at a callable position (SPEC 10.5.4), and a waiting callable at an F binds it and
+    // is completed once every other slot is bound (SPEC 10.5).
+    [Theory]
+    [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v) => v)")]
+    [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: i64) -> i64 => v)")]
+    [InlineData("enum F<T>\n    Pair(T, (T, (T) -> T))\nfunc f()\n    let x = F.Pair(1@i32, (2, func (v) => v))")]
+    [InlineData("enum H<T>\n    Make((T) -> T)\nfunc f()\n    let x = H.Make(func (v: i64) -> i64 => v)")]
+    [InlineData("enum F<T>\n    Pair(T, (T, (T) -> T))\nfunc takeF(value: F<i64>) => ()\nfunc f() => takeF(F.Pair(1, (2, func (v) => v)))")]
+    [InlineData("func f()\n    let x = Option.Some(func (v: i64) -> i64 => v)")]
+    [InlineData("enum W<T>\n    Wrap(T, i64)\nfunc f()\n    let x = W.Wrap(func (v: i64) -> i64 => v, 1)")]
+    [InlineData("func inc(v: i64) -> i64 => v + 1\nfunc f()\n    let x = Option.Some(inc)")]
+    [InlineData("func takeF(value: Option<(i64) -> i64>) => ()\nfunc f() => takeF(Option.Some(func (v) => v))")]
+    [InlineData("enum Two<T>\n    Both(T, T)\nfunc f(w: (i64, i64)) -> Two<(i64, i64)> => Two.Both((1, 2), w)")]
+    [InlineData("enum Two<T>\n    Both(T, T)\nfunc f(a: i64) -> Two<(i64, i64)> => Two.Both((1, 2), (a, a))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64) -> P<i64> => P.Pair(1, (1, a))")]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc identity<T>(value: T) -> T => value@move\nfunc f(a: (i64, i64)) -> P<i64> => P.Pair(identity(1), a)")]
+    [InlineData("enum F<T>\n    Pair(T, (T, (T) -> T))\nfunc f() -> F<i32> => F.Pair(1, (2, func (v: i32) -> i32 => v))")]
+    [InlineData("enum Q<T>\n    Items(T, [2 of T])\nfunc f(a: i64) -> Q<i64> => Q.Items(1, [a, a])")]
+    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(Option.Some(1))")]
+    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(Option.None)")]
+    [InlineData("func f()\n    var values: Array<Option<i64>> = []\n    values@uniq.append(Option.Some(1))")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o: Option<i64> = Option.Some(identity(1))")]
+    public void ACaseConstructionSolvesItsSlotsFromItsPayloads(string source)
+    {
+        var c = CompilationTestHelper.ParseSuccess(source);
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        Assert.Contains(KotoTree.Walk(c.Kotonoha.RootKoto), x => c.Binding.TryGetEnumConstruction(x, out _));
+    }
+
+    // SPEC 6.5.2, 10.8.1, 23.1: a payload that does not fit its decided payload Type is the construction's one Type mismatch, settled,
+    // typed or Literal alike, as a call's misfit is the call's; a slot no evidence or default binds is the construction's own record, on
+    // which its waiting payloads depend; a waiting callable's own failure is its record (SPEC 10.5).
+    [Theory]
+    [InlineData("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64)\n    let x = P.Pair(1, [a, a])\n", nameof(DiagnosticCode.TypeMismatch_Kd), "P.Pair(1, [a, a])")]
+    [InlineData("func f()\n    let x: Option<i64> = Option.Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Option.Some(true)")]
+    [InlineData("func f() -> Option<i64> => .Some(true)\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
+    [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() -> Two<i64> => Two.Both(\"a\", \"b\")\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(\"a\", \"b\")")]
+    [InlineData("func takeOpt(value: Option<i64>) => ()\nfunc f() => takeOpt(.Some(true))\n", nameof(DiagnosticCode.TypeMismatch_Kd), ".Some(true)")]
+    [InlineData("enum Two<T>\n    Both(T, T)\nfunc f(b: bool)\n    let x: Two<i64> = Two.Both(b, 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(b, 1)")]
+    [InlineData("enum Two<T>\n    Both(T, T)\nfunc f() => Two.Both(1, 2.0)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(1, 2.0)")]
+    [InlineData("enum Two<T>\n    Both(T, (T) -> i64)\nfunc f(a: i64)\n    let x = Two.Both(a, func (v: bool) -> i64 => 1)\n", nameof(DiagnosticCode.TypeMismatch_Kd), "Two.Both(a, func (v: bool) -> i64 => 1)")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let x = Option.Some(identity)\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "identity")]
+    [InlineData("func f()\n    let x = Option.Some(func (v) => v)\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "v")]
+    [InlineData("func identity<T>(value: T) -> T => value@move\nfunc f()\n    let o = Option.Some(identity(1))\n", nameof(DiagnosticCode.UnresolvedBinding_Kd), "Option.Some(identity(1))")]
+    [InlineData("func takeGeneric<T>(value: Option<T>) => ()\nfunc f() => takeGeneric(Option.Some(1))\n", nameof(DiagnosticCode.UnboundTypeArgument_Kd), "takeGeneric(Option.Some(1))")]
+    public void ACaseConstructionReportsItsOwnFailure(string source, string code, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source + "public func main() -> () => ()\n").Diagnostics);
+        Assert.Equal((code, at), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // SPEC 10.8, 3.8 (DECISIONS BU-2, R11): a Never element is no evidence, while a Never component of a typed part's Type is.
+    [Theory]
+    [InlineData("let x = P.Pair(1, ((return 1), a))")]
+    [InlineData("let x = P.Pair(1, (a, (return 1)))")]
+    public void ANeverElementOfAPayloadIsNoEvidence(string statement)
+    {
+        var c = CompilationTestHelper.ParseSuccess("enum P<T>\n    Pair(T, (T, T))\nfunc f(a: i64) -> i32\n    " + statement + "\n    return 0\n");
+        Assert.True(c.Bind().IsComplete, Describe(c));
+        var construction = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Select(x => BoundEnumConstruction.Of(x)).Single(x => x is not null)!;
+        Assert.Equal("i64", construction.Type.Components[0].Name);
     }
 
     [Fact]
@@ -217,6 +303,15 @@ public class EnumBindingTest
             Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
             Assert.True(c.Binding.TryGetEnumConstruction(call, out var rebound));
             Assert.Same(plan, rebound);
+        }
+
+        [Fact]
+        public void WarmPayloadEvidenceAndWaitingConstructionsAllocateNothing()
+        {
+            var c = CompilationTestHelper.ParseSuccess(
+                "enum P<T>\n    Pair(T, (T, T))\nfunc takeOpt(value: Option<i64>) => ()\nfunc f(a: i64)\n    let x = P.Pair(1, (1, a))\n    takeOpt(Option.Some(1))");
+            Assert.True(c.Bind().IsComplete, Describe(c));
+            Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
         }
 
         [Fact]

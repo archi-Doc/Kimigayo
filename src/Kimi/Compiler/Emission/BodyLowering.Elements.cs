@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -473,7 +474,7 @@ internal sealed partial class BodyLowering
         return true;
     }
 
-    private bool LowerElement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerElement(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -509,7 +510,7 @@ internal sealed partial class BodyLowering
         var storage = layout.StorageLayer(ref field);
         // The Array layout describes its handle; the indexed storage has T's own layout.
         var stored = dynamicArray ? receiverType.Components[0] : null;
-        var representation = dynamicArray ? FunctionAbi.GetValue(stored!, this.aggregateLayouts) : storage.Fields[field];
+        var representation = dynamicArray ? FunctionAbiPool.GetValue(stored!, this.aggregateLayouts) : storage.Fields[field];
         var elementLayout = dynamicArray ? this.aggregateLayouts.GetStored(stored!) : storage.Children[field];
         if (representation is null)
         {
@@ -542,7 +543,7 @@ internal sealed partial class BodyLowering
             }
 
             var child = elementLayout;
-            var isString = ReferenceEquals(representation, WindowsLowering.String);
+            var isString = ReferenceEquals(representation, RuntimeAbi.String);
             var destination = new EmissionOperand(EmissionOperandKind.ElementAddress, plan.Operation);
             var location = -1;
             var parts = this.DestructionPath(body, operation) >= 0;
@@ -551,12 +552,12 @@ internal sealed partial class BodyLowering
                 if (parts)
                 {
                     // An owned element whose parts were moved out destroys only its remaining parts.
-                    if (!this.LowerPartDestruction(body, function, constants, directory, id, out failure))
+                    if (!this.LowerPartDestruction(body, function, constants, id, out failure))
                     {
                         return false;
                     }
                 }
-                else if (!this.TryGetLocation(operation.Source, directory, constants, out location))
+                else if (!this.TryGetLocation(operation.Source, constants, out location))
                 {
                     return Fail("Element destruction requires a source location.", out failure);
                 }
@@ -574,7 +575,7 @@ internal sealed partial class BodyLowering
         if (address)
         {
             var location = -1;
-            if ((layout.IsArray || dynamicArray) && !this.TryGetLocation(source, directory, constants, out location))
+            if ((layout.IsArray || dynamicArray) && !this.TryGetLocation(source, constants, out location))
             {
                 return Fail("Element bounds check requires a source location.", out failure);
             }
@@ -620,7 +621,7 @@ internal sealed partial class BodyLowering
                 function.Operands.Add(new(EmissionOperandKind.ElementAddress, plan.Operation));
                 function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, Place: operation.Place, OperandStart: start, OperandCount: 1, Aggregate: aggregate));
             }
-            else if (ReferenceEquals(representation, WindowsLowering.String))
+            else if (ReferenceEquals(representation, RuntimeAbi.String))
             {
                 function.AddScalar(EmissionOpcode.MoveString, id, [new(EmissionOperandKind.ElementAddress, plan.Operation)], place: operation.Place);
                 this.AddStringFlags(function, operation, id);

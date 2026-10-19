@@ -36,7 +36,7 @@ public class DefaultBindingTest
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var jump = Assert.Single(KotoTree.Walk(function.Parameters[0].DefaultValue!).OfType<JumpKoto>());
         Assert.Null(KotoHelper.ResolveTransferTarget(jump));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Span == jump.Span && x.Message.Contains("No valid target for " + keyword, StringComparison.Ordinal));
         Assert.False(c.Validate(out _));
     }
@@ -45,7 +45,7 @@ public class DefaultBindingTest
     public void DefaultFlowIsCheckedOnAnUnusedBodylessRequirement()
     {
         var c = MinimalEmissionTest.Analyze("contract C\n    func f(x: i32 = (return 1))");
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.InvalidJumpTarget_Kd) && x.Text == "return 1");
     }
 

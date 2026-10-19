@@ -1,34 +1,65 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi.Compiler;
 using Xunit;
 
 namespace XunitTest;
 
+// Fails closed: an allocation, release, process exit or bounded transfer the rewrite cannot reach fails the test instead of
+// escaping the counters.
 internal static class NativeAllocationAudit
 {
-    internal static void WriteFixture(string name, string source, int allocations, int frees, long bytes, string stdout = "", int failAllocation = 0, long maxTransferredBytes = -1, long minTransferredBytes = 0, Func<string, string>? transformIr = null, int exit = 0, string? stderr = null)
+    // Array growth (__kimi_array_grow) and the Dictionary source's private byte transfer (__kimi_transfer_bytes) each copy
+    // high-water storage once, at their anchor.
+    private const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
+    private const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
+
+    // Besides LLVM intrinsics, an audited module declares only the runtime's imports and the backend helpers (IMPL 21.4.7);
+    // any other declaration in any linkage, such as a second allocator, would escape the counters.
+    private static readonly string[] Declarations =
+    [
+        "GetProcessHeap", "HeapAlloc", "HeapFree", "GetStdHandle", "WriteFile", "GetLastError", "ExitProcess",
+        "memcmp", "memcpy", "memmove", "memset", "__chkstk",
+    ];
+
+    // Each count lies in its bound at process exit; transferred, when given, bounds the bytes the transfer routines copy.
+    internal static void WriteFixture(
+        string name,
+        string source,
+        Bound allocations,
+        Bound frees,
+        Bound bytes,
+        string stdout = "",
+        int failAllocation = 0,
+        Bound? transferred = null,
+        Func<string, string>? transformIr = null,
+        int exit = 0,
+        string? stderr = null)
     {
         var c = MinimalEmissionTest.Analyze(source);
         using var writer = new StringWriter();
         Assert.True(c.WriteIr(writer, out var error), MinimalEmissionTest.Describe(c, error));
         var ir = writer.ToString();
-        ir = (transformIr is null ? ir : transformIr(ir))
-            .Replace("call ptr @HeapAlloc(", "call ptr @audit_alloc(", StringComparison.Ordinal)
-            .Replace("call i32 @HeapFree(", "call i32 @audit_free(", StringComparison.Ordinal)
-            .Replace("call void @__kimi_exit(", "call void @__kimi_audit_exit(", StringComparison.Ordinal);
-        if (maxTransferredBytes >= 0)
+        ir = transformIr is null ? ir : transformIr(ir);
+        foreach (Match declaration in Regex.Matches(ir, @"(?m)^declare\b[^\n]*"))
         {
-            // Array growth and the Dictionary source's private byte transfer each copy high-water storage once.
-            const string CopyAnchor = "  %used = mul i64 %length, %stride\n";
-            Assert.Equal(2, ir.Split(CopyAnchor, StringSplitOptions.None).Length);
-            ir = ir.Replace(CopyAnchor, CopyAnchor + "  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, %used\n  store i64 %after_copy, ptr @audit_transferred\n", StringComparison.Ordinal);
-            const string TransferAnchor = "  call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)\n";
-            if (ir.Contains("define internal void @__kimi_transfer_bytes(", StringComparison.Ordinal))
+            var symbol = Regex.Match(declaration.Value, @"@([^(]*)\(").Groups[1].Value;
+            if (!symbol.StartsWith("llvm.", StringComparison.Ordinal))
             {
-                Assert.Equal(2, ir.Split(TransferAnchor, StringSplitOptions.None).Length);
-                ir = ir.Replace(TransferAnchor, "  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, %size\n  store i64 %after_copy, ptr @audit_transferred\n" + TransferAnchor, StringComparison.Ordinal);
+                Assert.Contains(symbol, Declarations);
             }
+        }
+
+        AssertExitsThroughHook(ir);
+        ir = Interpose(Interpose(Interpose(ir, "HeapAlloc", "audit_alloc"), "HeapFree", "audit_free"), "__kimi_exit", "__kimi_audit_exit");
+        if (transferred is not null)
+        {
+            // A bound with neither routine would count nothing.
+            var grows = ir.Contains("__kimi_array_grow", StringComparison.Ordinal);
+            Assert.True(grows || ir.Contains("__kimi_transfer_bytes", StringComparison.Ordinal), "A transfer bound needs a routine to count.");
+            ir = CountTransfers(ir, "__kimi_array_grow", CopyAnchor, CopyAnchor + Transferred("%used"));
+            ir = CountTransfers(ir, "__kimi_transfer_bytes", TransferAnchor, Transferred("%size") + TransferAnchor);
         }
 
         // Keep the real startup and cleanup path, including explicitly declared main.
@@ -40,15 +71,13 @@ internal static class NativeAllocationAudit
               %free = load i64, ptr @audit_frees
               %size = load i64, ptr @audit_bytes
               %transferred = load i64, ptr @audit_transferred
-              %a = icmp eq i64 %alloc, {{allocations}}
-              %b = icmp eq i64 %free, {{frees}}
-              %c = icmp eq i64 %size, {{bytes}}
-              %d = icmp ule i64 %transferred, {{maxTransferredBytes}}
-              %minimum = icmp uge i64 %transferred, {{minTransferredBytes}}
-              %ab = and i1 %a, %b
-              %cd = and i1 %c, %d
-              %upper = and i1 %ab, %cd
-              %ok = and i1 %upper, %minimum
+            {{Within("alloc", allocations)}}
+            {{Within("free", frees)}}
+            {{Within("size", bytes)}}
+            {{Within("transferred", transferred ?? Bound.Any)}}
+              %counts = and i1 %alloc_ok, %free_ok
+              %amounts = and i1 %size_ok, %transferred_ok
+              %ok = and i1 %counts, %amounts
               br i1 %ok, label %passed, label %failed
             passed:
               call void @__kimi_exit(i32 %exit)
@@ -92,5 +121,77 @@ internal static class NativeAllocationAudit
 
             """;
         ScalarEmissionTest.WriteFixture(name, ir, stdout, exit, stderr);
+    }
+
+    // The process exits only through __kimi_exit (IMPL 21.4.2), where an audit hooks: ExitProcess may appear only on its
+    // one declaration and inside that definition.
+    internal static void AssertExitsThroughHook(string ir)
+    {
+        var exit = Assert.Single(Regex.Matches(ir, @"(?ms)^define [^\n]*@__kimi_exit\(.*?^\}"));
+        var rest = ir.Remove(exit.Index, exit.Length);
+        var declaration = Assert.Single(Regex.Matches(rest, @"(?m)^declare [^\n]*@ExitProcess\([^\n]*$"));
+        Assert.DoesNotContain("ExitProcess", rest.Remove(declaration.Index, declaration.Length), StringComparison.Ordinal);
+    }
+
+    // Replaces the one occurrence of anchor; any other count fails.
+    internal static string Instrument(string ir, string anchor, string instrumented)
+    {
+        Assert.Equal(2, ir.Split(anchor, StringSplitOptions.None).Length);
+        return ir.Replace(anchor, instrumented, StringComparison.Ordinal);
+    }
+
+    // Redirects every call of symbol to audit except on its one declaring line; any other mention, such as a non-call use
+    // or another spelling, fails.
+    private static string Interpose(string ir, string symbol, string audit)
+    {
+        var lines = ir.Split('\n');
+        var declarations = 0;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            if (!lines[i].Contains(symbol, StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (lines[i].StartsWith("declare ", StringComparison.Ordinal) || lines[i].StartsWith("define ", StringComparison.Ordinal))
+            {
+                declarations++;
+                continue;
+            }
+
+            lines[i] = lines[i].Replace("@" + symbol + "(", "@" + audit + "(", StringComparison.Ordinal);
+            Assert.DoesNotContain(symbol, lines[i], StringComparison.Ordinal);
+        }
+
+        Assert.Equal(1, declarations);
+        return string.Join('\n', lines);
+    }
+
+    // Counts the copies at routine's anchor. The routine is mentioned in some spelling exactly when its anchor is present,
+    // so neither a changed body nor a renamed routine with an unchanged body escapes.
+    private static string CountTransfers(string ir, string routine, string anchor, string instrumented)
+    {
+        var mentioned = ir.Contains(routine, StringComparison.Ordinal);
+        Assert.Equal(mentioned, ir.Contains(anchor, StringComparison.Ordinal));
+        return mentioned ? Instrument(ir, anchor, instrumented) : ir;
+    }
+
+    // Adds bytes to the transferred total.
+    private static string Transferred(string bytes)
+        => $"  %before_copy = load i64, ptr @audit_transferred\n  %after_copy = add i64 %before_copy, {bytes}\n" +
+            "  store i64 %after_copy, ptr @audit_transferred\n";
+
+    // Sets %<counter>_ok when the counter lies in bound.
+    private static string Within(string counter, Bound bound)
+        => $"  %{counter}_low = icmp uge i64 %{counter}, {bound.Min}\n  %{counter}_high = icmp ule i64 %{counter}, {bound.Max}\n" +
+            $"  %{counter}_ok = and i1 %{counter}_low, %{counter}_high";
+
+    // An inclusive range of a count; a number converts to the range of exactly that count.
+    internal readonly record struct Bound(long Min, long Max)
+    {
+        // Any count, for an amount a test does not claim.
+        internal static readonly Bound Any = new(0, long.MaxValue);
+
+        public static implicit operator Bound(long count) => new(count, count);
     }
 }

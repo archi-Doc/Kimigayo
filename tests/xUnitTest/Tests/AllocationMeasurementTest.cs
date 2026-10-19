@@ -1,5 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Buffers;
+using System.Diagnostics;
+using System.Reflection;
+using System.Runtime.CompilerServices;
 using Xunit;
 
 namespace XunitTest;
@@ -58,6 +62,151 @@ public class AllocationMeasurementTest
         }
     }
 
+    // A pooled allocation that the operation makes once after the warm-up, of a length that no trim drops, is measured like
+    // any other allocation: it is late growth, not the effect of a pool's trim.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void MeasuresAPooledAllocationThatNoTrimExplains()
+    {
+        var calls = 0;
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            if (++calls == AllocationMeasurement.WarmupOperations + 1)
+            {
+                GC.KeepAlive(ArrayPool<PoolItem>.Shared.Rent(64));
+            }
+        });
+        Assert.True(bytes >= 64, $"{bytes} bytes");
+        Assert.Equal(AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, calls);
+    }
+
+    // The test apphost doubles as a process whose pools read High memory pressure (the GC's high-memory threshold at 10% of
+    // RAM), where a full collection empties every thread's pooled buffers; it runs TrimsUnderHighPressure there.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public async Task DiscardsWindowsWhosePooledAllocationsFollowTrims()
+    {
+        var start = new ProcessStartInfo(Path.ChangeExtension(typeof(AllocationMeasurementTest).Assembly.Location, ".exe"), ["-method", "XunitTest.AllocationMeasurementTest.TrimsUnderHighPressure", "-explicit", "only"])
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+        };
+        start.Environment["DOTNET_GCHighMemPercent"] = "0xA";
+        using var probe = Process.Start(start)!;
+        var report = probe.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
+        if (!probe.WaitForExit(TimeSpan.FromMinutes(5)))
+        {
+            probe.Kill(entireProcessTree: true);
+            probe.WaitForExit();
+        }
+
+        var text = await report;
+        Assert.True(probe.ExitCode == 0 && text.Contains("Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0", StringComparison.Ordinal), text);
+    }
+
+    // Under High memory pressure: a full collection before the first measured operation's Rent invalidates that window and
+    // the next measures nothing; one before every operation's Rent invalidates all three windows, (4 + 12) + (4 + 28) +
+    // (4 + 60) operations. Only the measuring thread uses the pool, so a trim leaves it no buffer to rent.
+    [Trait("Purpose", "Allocation")]
+    [Fact(Explicit = true)]
+    public void TrimsUnderHighPressure()
+    {
+        var first = 0;
+        var bytes = AllocationMeasurement.Measure(() => RentAfterTrim(++first == AllocationMeasurement.WarmupOperations + 1));
+        var memory = GC.GetGCMemoryInfo();
+        Assert.SkipUnless(memory.MemoryLoadBytes >= memory.HighMemoryLoadThresholdBytes * 0.9, "Pools read High pressure only in the process that DiscardsWindowsWhosePooledAllocationsFollowTrims starts.");
+        Assert.Equal(0, bytes);
+        Assert.True(first > AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, $"{first} operations");
+        var every = 0;
+        Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() =>
+        {
+            every++;
+            RentAfterTrim(true);
+        }));
+        Assert.Equal(112, every);
+
+        static void RentAfterTrim(bool trim)
+        {
+            if (trim)
+            {
+                GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+                GC.WaitForPendingFinalizers();
+            }
+
+            ArrayPool<PoolItem>.Shared.Return(ArrayPool<PoolItem>.Shared.Rent(16));
+        }
+    }
+
+    // Creating a value Type's default comparer in the first measured operation, as the first tier-0 run of a comparison does,
+    // compiles its class constructor on the measuring thread: that window is invalid, and the next measures the operation,
+    // (4 + 12) + (4 + 28) operations in all. An allocation that recurs is still measured there.
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void DiscardsTheWindowThatCreatedADefaultComparer(bool recurring)
+    {
+        var calls = 0;
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            if (++calls == AllocationMeasurement.WarmupOperations + 1)
+            {
+                _ = recurring ? CreateComparer<RecurringMarker>() : CreateComparer<OnceMarker>();
+            }
+
+            if (recurring)
+            {
+                GC.KeepAlive(new byte[128]);
+            }
+        });
+        Assert.Equal(48, calls);
+        if (recurring)
+        {
+            Assert.True(bytes >= 128 * AllocationMeasurement.MeasuredOperations, $"{bytes} bytes");
+        }
+        else
+        {
+            Assert.Equal(0, bytes);
+        }
+    }
+
+    // Storage that first grows after the warm-up is measured even when its operation compiles other code there.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void MeasuresALateAllocationThatCompilesOtherCode()
+    {
+        var calls = 0;
+        var bytes = AllocationMeasurement.Measure(() =>
+        {
+            if (++calls == AllocationMeasurement.WarmupOperations + 1)
+            {
+                Grow<LateMarker>();
+            }
+        });
+        Assert.Equal(AllocationMeasurement.WarmupOperations + AllocationMeasurement.MeasuredOperations, calls);
+        Assert.True(bytes >= 64, $"{bytes} bytes");
+    }
+
+    // An operation that creates a default comparer and allocates every time disturbs every window: the measurement fails,
+    // naming the cause, instead of passing.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void FailsWhenComparerCreationDisturbsEveryWindow()
+    {
+        Type[] types = [typeof(byte), typeof(sbyte), typeof(short), typeof(ushort), typeof(int), typeof(uint), typeof(long), typeof(ulong), typeof(char), typeof(bool), typeof(float), typeof(double), typeof(decimal), typeof(nint), typeof(nuint)];
+        var method = typeof(AllocationMeasurementTest).GetMethod(nameof(CreateComparer), BindingFlags.NonPublic | BindingFlags.Static)!;
+        var calls = 0;
+        var failure = Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() =>
+        {
+            var type = typeof(ValueTuple<,,>).MakeGenericType(typeof(EveryMarker), types[calls % types.Length], types[calls / types.Length]);
+            method.MakeGenericMethod(type).Invoke(null, null);
+            calls++;
+        }));
+        Assert.Contains("window 3: a default comparer created on the measuring thread", failure.Message, StringComparison.Ordinal);
+        Assert.Equal(112, calls);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void PropagatesWorkerFailure()
@@ -65,4 +214,26 @@ public class AllocationMeasurementTest
         var failure = new InvalidOperationException("test failure");
         Assert.Same(failure, Assert.Throws<InvalidOperationException>(() => AllocationMeasurement.Measure(() => throw failure)));
     }
+
+    // Compiled at its first call for each value Type, which creates the Type's default comparer there.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static bool CreateComparer<T>()
+        where T : struct
+        => EqualityComparer<T>.Default.Equals(default, default);
+
+    // Compiled at its first call for each value Type, allocating storage without creating a comparer.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void Grow<T>()
+        where T : struct
+        => GC.KeepAlive(new T[64]);
+
+    private readonly struct PoolItem;
+
+    private readonly struct OnceMarker;
+
+    private readonly struct RecurringMarker;
+
+    private readonly struct LateMarker;
+
+    private readonly struct EveryMarker;
 }

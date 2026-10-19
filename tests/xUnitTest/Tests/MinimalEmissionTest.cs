@@ -229,13 +229,15 @@ public class MinimalEmissionTest
     [Fact]
     public void RuntimeLocationEscapesUnicodeAndRetainsOriginalLineAndColumn()
     {
-        var c = Analyze("\n::Kimi.Console.writeLine(\"x\")", "日本\\file.kimi");
+        // IMPL 20.1: the displayed logical name separates directories with `/`.
+        var path = Path.Combine("日本", "file.kimi");
+        var c = Analyze("\n::Kimi.Console.writeLine(\"x\")", path);
         using var writer = new StringWriter(CultureInfo.InvariantCulture);
         Assert.True(c.WriteIr(writer, out var error), error);
-        const string Expected = "\\u{65E5}\\u{672C}\\\\file.kimi:2:1";
+        const string Expected = "\\u{65E5}\\u{672C}/file.kimi:2:1";
         var escaped = string.Concat(Encoding.ASCII.GetBytes(Expected).Select(x => $"\\{x:X2}"));
         Assert.Contains($"@__kimi_location = private unnamed_addr constant [{Expected.Length} x i8] c\"{escaped}\"", writer.ToString());
-        Assert.Equal("日本\\file.kimi", c.Kotonoha.SourceDocuments[0].Path);
+        Assert.Equal(path, c.Kotonoha.SourceDocuments[0].Path);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -321,9 +323,11 @@ public class MinimalEmissionTest
         }
     }
 
-    internal static Compilation Analyze(string source, string path = "Hello.kimi")
+    // A program analyzed for an Application, by the process's code generator unless one is named.
+    internal static Compilation Analyze(string source, string path = "Hello.kimi", CompilerCodegen? codegen = null)
     {
         var c = Compilation.CreateForTest();
+        c.Codegen = codegen ?? c.Codegen;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();

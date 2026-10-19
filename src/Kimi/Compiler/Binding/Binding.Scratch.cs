@@ -13,7 +13,8 @@ public sealed partial class Binding
     // construction fills every slot before publishing a span. Both share the same stack.
     private BoundType[] RentTypes(int count) => (BoundType[])(object)this.typeScratch.Rent(count);
 
-    /// <summary>Binding-owned nested scratch, independent of other compilations' pool traffic.</summary>
+    /// <summary>Binding-owned nested scratch, independent of other compilations' pool traffic. Buffers return in reverse renting
+    /// order; a return out of that order is a broken contract in every configuration.</summary>
     private sealed class ScratchBuffers<T>
     {
         private readonly List<Buffer> buffers = new();
@@ -64,7 +65,11 @@ public sealed partial class Binding
             }
 
             var buffer = this.buffers[--this.depth];
-            System.Diagnostics.Debug.Assert(ReferenceEquals(buffer.Values, values), "Scratch must be returned in nested order.");
+            if (!ReferenceEquals(buffer.Values, values))
+            {
+                throw new InvalidOperationException("Scratch must be returned in nested order.");
+            }
+
             if (clearArray)
             {
                 Array.Clear(values, 0, buffer.Used);

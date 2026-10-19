@@ -100,7 +100,7 @@ public sealed partial class Binding
 
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         var admitted = this.FollowablePair(actual, scope, out var target);
-        if (admitted != SemanticsMask.None && !FitsType(target, pattern.Components[0]))
+        if (admitted != SemanticsMask.None && !IsSubtype(target, pattern.Components[0]))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
@@ -110,7 +110,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (FitsType(target, pattern.Components[0]))
+        if (IsSubtype(target, pattern.Components[0]))
         {
             adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
             kind = ArgumentOperationKind.Borrow;
@@ -174,12 +174,20 @@ public sealed partial class Binding
         return target;
     }
 
-    // SPEC 13.5.5, 15.5, 15.6.3: a reference through a pair layer depends on the operand Place when owner is admitted (Borrow)
-    // and otherwise keeps the dependencies of the stored reference, like a Reborrow: the layer's outer-Origin slot (`o` for the
-    // original pair, the annotation or the application's own slot otherwise), met with the borrows that reach the operand when an
-    // exclusive case is admitted, as that case's follow of its concrete reference is; the Place only for an application without
-    // a slot. The meet over the cases keeps the one judgment as strong as every case's.
+    // The dependency of a reference through a pair layer at a Place (PairSlot): the operand Place, or the slot met with the borrows
+    // on the operand's path.
     private BoundOrigin PairOrigin(Koto node, BoundType? pair, SemanticsMask admitted)
-        => (admitted & SemanticsMask.Owner) != 0 || pair is null || this.OuterOrigin(pair) is not { } slot ? this.PlaceOrigin(node)
-            : (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 ? this.PathReborrowOrigin(node, slot)! : slot;
+        => this.PairSlot(pair, admitted, out var met) is not { } slot ? this.PlaceOrigin(node) : met ? this.PathReborrowOrigin(node, slot)! : slot;
+
+    // SPEC 13.5.5, 15.5, 15.6.3: the one case split of a reference's dependency through a pair layer. It depends on the Place reached
+    // when owner is admitted (Borrow; null here) and otherwise keeps the dependencies of the stored reference, like a Reborrow: the
+    // layer's outer-Origin slot (`o` for the original pair, the annotation or the application's own slot otherwise; null, the Place
+    // reached, for an application without a slot), met (`met`) with the borrows that reach the layer when an exclusive case is
+    // admitted, as that case's follow of its concrete reference is. The meet over the cases keeps the one judgment as strong as
+    // every case's. PairOrigin (a Place) and SelectLayers (a Pattern path) supply the Place reached and the borrows reaching it.
+    private BoundOrigin? PairSlot(BoundType? pair, SemanticsMask admitted, out bool met)
+    {
+        met = (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0;
+        return (admitted & SemanticsMask.Owner) != 0 || pair is null ? null : this.OuterOrigin(pair);
+    }
 }

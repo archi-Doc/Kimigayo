@@ -67,7 +67,7 @@ public class BorrowedFieldUpdateTest
         var source = "func change(pair: uniq/(u8, string))\n    " + expression + "\nvar pair: (u8, string) = (255, \"held\")\ndefer => Console.writeLine(\"bad\")\nchange(pair@uniq)";
         const string Error = "Hello.kimi:2:5: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("BorrowedFieldUpdateOverflow" + name, source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("BorrowedFieldUpdateOverflow" + name, source, ir, string.Empty, "held=0;bad=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("BorrowedFieldUpdateOverflow" + name, ir, string.Empty, "held=0;bad=0", 1, Error);
     }
 
     [Fact]

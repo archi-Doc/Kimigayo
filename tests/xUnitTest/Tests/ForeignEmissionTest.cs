@@ -3,6 +3,7 @@
 using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Xunit;
 
 namespace XunitTest;
@@ -93,8 +94,8 @@ public class ForeignEmissionTest
     [InlineData("é\t", "\"\\C3\\A9\\09\"")]
     public void ExternalNamesRoundTrip(string symbol, string name)
     {
-        Assert.Equal(name, LlvmModuleWriter.ExternalName(symbol));
-        Assert.Equal(symbol, LlvmModuleWriter.SymbolFromName(name));
+        Assert.Equal(name, LlvmModuleText.ExternalName(symbol));
+        Assert.Equal(symbol, LlvmModuleText.SymbolFromName(name));
     }
 
     [Fact]
@@ -115,10 +116,10 @@ public class ForeignEmissionTest
         }
 
         var function = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Native").Members.OfType<Kimi.Compiler.Parsing.FunctionKoto>().Single();
-        Assert.Single(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
+        Assert.Single(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);
         Assert.True(function.RemoveAttribute(function.AttributeChain!));
         c.Bind();
-        Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Function.CodeContext.Kotonoha == c.Kotonoha);
+        Assert.DoesNotContain(c.Binding.LibraryImports, x => x.Decl.Declaration.CodeContext.Kotonoha == c.Kotonoha);
         using (var writer = new StringWriter())
         {
             Assert.False(c.WriteIr(writer, out _));
@@ -305,7 +306,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\nvar v: i32 = 0\nv = *p");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
     }
 
@@ -575,7 +576,7 @@ public class ForeignEmissionTest
         // SPEC 13.7.2: simple and compound assignments run their right-hand side before locating the target.
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerIndex", source, "amount\ntarget\nindex\namount\ntarget\nindex\namount\nindex ok\n");
         Assert.DoesNotContain("getelementptr inbounds i8", ir);
-        Assert.DoesNotContain("call void @__kimi_abort(i32 " + WindowsLowering.IndexBoundsReason, ir);
+        Assert.DoesNotContain("call void @__kimi_abort(i32 " + AbortReasons.IndexBounds, ir);
     }
 
     [Theory]
@@ -612,7 +613,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("let p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
@@ -627,7 +628,7 @@ public class ForeignEmissionTest
     {
         var c = MinimalEmissionTest.Analyze("var p: raw/i32 = null\n" + body);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
+        c.Binding.ReportDiagnostics();
         Assert.Contains(TestDiagnostics.Of(c), static x => x.Code == nameof(DiagnosticCode.UnsafeBlockRequired_Kd));
         using var writer = new StringWriter();
         Assert.False(c.WriteIr(writer, out _));
@@ -1018,7 +1019,7 @@ public class ForeignEmissionTest
         var name = consume ? "ForeignPointerString" : "ForeignPointerStringRetained";
         var stdout = consume ? "second\nthird\ndone\n" : "second\ndone\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
     }
 
     [Theory]
@@ -1068,7 +1069,7 @@ public class ForeignEmissionTest
                 Console.writeLine("done")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerStringCompare", source, "alpha\nbeta\nkept\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", source, ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
+        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
     }
 
     [Fact]
@@ -1122,7 +1123,7 @@ public class ForeignEmissionTest
                 require freed != 0 else => $abort("free")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerEnum", source, "one\nvalue\ntwo\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerEnum", source, ir, "one\nvalue\ntwo\ndone\n", "one=1;two=1;value=1;first=1;second=1;nested=1;done=1");
+        StringEmissionTest.WriteAuditedFixture("ForeignPointerEnum", ir, "one\nvalue\ntwo\ndone\n", "one=1;two=1;value=1;first=1;second=1;nested=1;done=1");
     }
 
     [Fact]

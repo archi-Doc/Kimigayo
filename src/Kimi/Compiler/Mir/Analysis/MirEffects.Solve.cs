@@ -1,17 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Numerics;
+using Kimi.Diagnostics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
 // A4's summaries and verdicts (DECISIONS R4-M22): the least fixed point of the summaries over one worklist, each node re-evaluated when a
-// summary it read grows, then each obligation judged with its remaining atoms resolved by its definition's premises: an owing body per
-// view, a Callable binding as a call through it.
+// summary it read grows, then P5's static keys joined (Spread in MirEffects.Keys, R4-M38), then each obligation judged with its remaining
+// atoms resolved by its definition's premises: an owing body per view, a Callable binding as a call through it.
 internal sealed partial class MirEffects
 {
     private readonly List<EffectObligation> rows = [];
-    private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The parts one evaluation destroyed.
+    private readonly HashSet<BoundType> glued = new(ReferenceEqualityComparer.Instance); // The Types one evaluation's destruction walks met.
     private readonly List<(BindingSymbol Target, BoundType? Declaring)> targets = []; // What requirements on Types that are not abstract run, a stack.
     private byte[] classes = []; // Each node's summary: its classes,
     private int[] atomStarts = []; // and its atoms, a segment of atoms (a node that grows appends a new segment).
@@ -50,6 +51,11 @@ internal sealed partial class MirEffects
         MirDataflow.Grow(ref this.queued, (count + 63) >> 6);
         MirDataflow.Grow(ref this.readers, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
+        var words = ((2 * this.fields.Count) + 63) >> 6;
+        MirDataflow.Grow(ref this.keys, count * words);
+        MirDataflow.Grow(ref this.keyScratch, words);
+        this.keys.AsSpan(0, count * words).Clear();
+        this.keyWords = 0; // No key is composed before Spread solves them.
         this.classes.AsSpan(0, count).Clear();
         this.atomCounts.AsSpan(0, count).Clear();
         this.readers.AsSpan(0, count).Fill(-1);
@@ -78,18 +84,26 @@ internal sealed partial class MirEffects
             }
         }
 
+        this.keyWords = words;
+        if (words > 0)
+        {
+            this.Spread(count);
+        }
+
         this.Obligations(report);
     }
 
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
         if ((found & (Environment | Unknown)) != 0)
         {
-            report.Add(new(row.Code, row.Subject, views));
+            report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if ((found & Limit) != 0)
         {
-            report.Add(new(DiagnosticCode.Unsupported_Kd, row.Subject, views));
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+            report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -101,16 +115,7 @@ internal sealed partial class MirEffects
         cases.Select(body, node - this.bases[this.owners[node]]);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
         this.glued.Clear();
-        for (var i = node == 0 ? 0 : this.itemEnds[node - 1]; i < this.itemEnds[node]; i++)
-        {
-            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
-        }
-
-        for (var e = node == 0 ? 0 : this.edgeEnds[node - 1]; e < this.edgeEnds[node]; e++)
-        {
-            this.Compose(this.edges[e].Body, this.edges[e].Views, this.edges[e].Subst);
-        }
-
+        this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
         if (this.found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
             return false; // The summary only grows, so equal counts are equal sets.
@@ -123,8 +128,22 @@ internal sealed partial class MirEffects
         return true;
     }
 
-    // The summaries of a body's views a call selects, composed through its substitution under the selected view; read nodes record the
-    // reader.
+    // A node's or a site's local inputs, items [item, itemEnd) and edges [edge, edgeEnd), into the current evaluation.
+    private void Inputs(int item, int itemEnd, int edge, int edgeEnd)
+    {
+        for (var i = item; i < itemEnd; i++)
+        {
+            this.Process(this.items[i].Type, this.items[i].Kind, this.items[i].Requirement);
+        }
+
+        for (var e = edge; e < edgeEnd; e++)
+        {
+            this.Compose(this.edges[e].Body, this.edges[e].Views, this.edges[e].Subst);
+        }
+    }
+
+    // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
+    // (P5); read nodes record the reader.
     private void Compose(int body, ulong views, Subst? subst)
     {
         for (var mask = views; mask != 0; mask &= mask - 1)
@@ -139,6 +158,7 @@ internal sealed partial class MirEffects
             }
 
             this.found |= this.classes[node];
+            _ = MirDataflow.Union(this.keyScratch.AsSpan(0, this.keyWords), this.keys.AsSpan(node * this.keyWords, this.keyWords));
             for (var a = this.atomStarts[node]; a < this.atomStarts[node] + this.atomCounts[node]; a++)
             {
                 var atom = this.atoms[a];
@@ -264,16 +284,12 @@ internal sealed partial class MirEffects
         this.targets.RemoveRange(start, this.targets.Count - start);
     }
 
-    // SPEC 16.3, 8.11.4 rule 1: a part a destruction reaches. An abstract part is an atom; a Function value's environment is unknown; an
-    // owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), else any more-derived destructor may run; a struct's
-    // destructor runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
-    private void Destroy(BoundType type)
+    // SPEC 16.3, 8.11.4 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
+    // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), walked on below the handle so
+    // that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any more-derived destructor may run; a struct's destructor
+    // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).
+    private void Destroy(BoundType type, int depth)
     {
-        if (!this.glued.Add(type))
-        {
-            return;
-        }
-
         if (type.IsAbstract)
         {
             this.AddAtom(type, Drop);
@@ -287,7 +303,7 @@ internal sealed partial class MirEffects
             var glue = new Glue(this);
             var proven = types.Sealed(this.definition, type.Components[0]);
             this.found |= proven ? (byte)0 : Unknown;
-            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue);
+            MirTypes.Destruction(proven ? type.Components[0] : null, ref glue, depth + 1);
         }
         else if (AdtDef.DestructorSymbol(type) is { } destructor)
         {
@@ -346,7 +362,7 @@ internal sealed partial class MirEffects
             }
             else if (row.Definition is not { } target)
             {
-                report.Add(new(row.Code, row.Subject, ulong.MaxValue));
+                report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
             }
             else
             {
@@ -385,9 +401,11 @@ internal sealed partial class MirEffects
     // The destruction walk's visitor: each part reached, and past the walk's depth bound a part this implementation does not follow.
     private readonly struct Glue(MirEffects owner) : IMirDestruction
     {
-        public bool Visit(BoundType type)
+        public bool First(BoundType type) => owner.glued.Add(type);
+
+        public bool Visit(BoundType type, int depth)
         {
-            owner.Destroy(type);
+            owner.Destroy(type, depth);
             return false;
         }
 

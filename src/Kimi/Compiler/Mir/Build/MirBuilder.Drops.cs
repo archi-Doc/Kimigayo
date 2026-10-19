@@ -7,10 +7,10 @@ namespace Kimi.Compiler.Mir;
 
 // Scopes and drop trees (SPEC 16, plan 5.6.4). A Var or Temp local lives from its StorageLive to its StorageDead, a value whose Type may
 // need drop (MirTypes.MayNeedDrop) is dropped first, and a defer runs where its scope is left. Each open scope keeps its registrations in
-// order: a block its locals and defers, a statement or a condition its temporaries, the body its parameters, a destructor's self as its
-// layer's parts (SPEC 16.3.2). The normal end of a scope cleans them up in reverse order; a transfer leaves through the drop tree of its
-// target, whose node for a scope's first registrations and the rest of the tree is built once and shared by every exit that reaches it
-// (rustc's drop tree), a defer body included.
+// order: a block its locals and defers, a statement or a condition its temporaries (a guard candidate also its EndBorrow), the body its
+// parameters, a destructor's self as its layer's parts (SPEC 16.3.2). The normal end of a scope cleans them up in reverse order; a
+// transfer leaves through the drop tree of its target, whose node for a scope's first registrations and the rest of the tree is built
+// once and shared by every exit that reaches it (rustc's drop tree), a defer body included.
 internal sealed partial class MirBuilder
 {
     private readonly List<DropScope> scopes = []; // The open scopes, innermost last.
@@ -27,6 +27,7 @@ internal sealed partial class MirBuilder
         Drop,
         Fields,
         Defer,
+        EndBorrow,
     }
 
     // Opens a scope of a block's locals and defers, or of temporaries.
@@ -72,7 +73,7 @@ internal sealed partial class MirBuilder
     {
         this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageLive, new(local), this.body.Locals[local].Source));
         this.Register(Cleanup.StorageDead, local, null, index);
-        if (MirTypes.MayNeedDrop(this.body.Locals[local].Type))
+        if (MirTypes.MayNeedDrop(this.body.Locals[local].Type, this.walked))
         {
             this.Register(Cleanup.Drop, local, null, index);
         }
@@ -126,6 +127,9 @@ internal sealed partial class MirBuilder
             case Cleanup.StorageDead:
                 this.body.Push(this.current, MirStatement.Of(MirStatementKind.StorageDead, new(registration.Local), source));
                 break;
+            case Cleanup.EndBorrow:
+                this.body.Push(this.current, MirStatement.Of(MirStatementKind.EndBorrow, new(registration.Local), source));
+                break;
             case Cleanup.Drop:
                 this.DropAt(new(registration.Local), source);
                 break;
@@ -153,13 +157,13 @@ internal sealed partial class MirBuilder
         var type = this.body.Locals[local].Type;
         for (var i = AdtDef.Count(type) - 1; i >= 0; i--)
         {
-            if (MirTypes.MayNeedDrop(AdtDef.FieldType(type, i)))
+            if (MirTypes.MayNeedDrop(AdtDef.FieldType(type, i), this.walked))
             {
                 this.DropAt(this.body.Project(new(local), MirProjectionKind.Field, i), source);
             }
         }
 
-        if (MirTypes.MayNeedDrop(AdtDef.Base(type)))
+        if (MirTypes.MayNeedDrop(AdtDef.Base(type), this.walked))
         {
             this.DropAt(this.body.Project(new(local), MirProjectionKind.Base, 1), source);
         }
@@ -177,7 +181,7 @@ internal sealed partial class MirBuilder
         var depth = this.scopes.Count;
         var temporaries = this.OpenScope(block: false);
         var result = this.Temp(BoundType.Unit, defer);
-        this.targets.Add(new(defer, result, next, -1, this.arguments.Count, depth, Reached: false));
+        this.targets.Add(new(defer, result, next, -1, new(this.arguments.Count, depth, this.scope), Reached: false));
         this.Block(result, defer.Body, MirScopeKind.Deferred);
         this.targets.RemoveAt(this.targets.Count - 1);
         this.CloseScope(temporaries);

@@ -1,46 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
-    private const string StringComparisons = """
-        declare i32 @memcmp(ptr, ptr, i64)
-        define internal i32 @__kimi_string_equal(ptr %a, i64 %an, ptr %b, i64 %bn) #0 {
-        entry:
-          %sameLength = icmp eq i64 %an, %bn
-          br i1 %sameLength, label %same, label %different
-        same:
-          %empty = icmp eq i64 %an, 0
-          br i1 %empty, label %equal, label %bytes
-        bytes:
-          %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %an)
-          ret i32 %comparison
-        equal:
-          ret i32 0
-        different:
-          ret i32 1
-        }
-        define internal i32 @__kimi_string_compare(ptr %a, i64 %an, ptr %b, i64 %bn) #0 {
-        entry:
-          %shorter = icmp ult i64 %an, %bn
-          %count = select i1 %shorter, i64 %an, i64 %bn
-          %empty = icmp eq i64 %count, 0
-          br i1 %empty, label %lengths, label %bytes
-        bytes:
-          %comparison = call i32 @memcmp(ptr %a, ptr %b, i64 %count)
-          %equal = icmp eq i32 %comparison, 0
-          br i1 %equal, label %lengths, label %different
-        different:
-          ret i32 %comparison
-        lengths:
-          %sameLength = icmp eq i64 %an, %bn
-          %direction = select i1 %shorter, i32 -1, i32 1
-          %result = select i1 %sameLength, i32 0, i32 %direction
-          ret i32 %result
-        }
-        """ + "\n";
-
     private static void WriteStringAddress(TextWriter output, EmissionFunction function, EmissionOperand operand)
     {
         if (operand.Kind == EmissionOperandKind.SlotAddress)

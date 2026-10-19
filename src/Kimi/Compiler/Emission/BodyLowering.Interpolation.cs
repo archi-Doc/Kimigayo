@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -13,11 +14,13 @@ internal sealed partial class BodyLowering
     private static readonly FunctionAbi StatusFormatting = new("__kimi_format_healthy", "i1", [new("ptr", "writer")]);
     private static readonly FunctionAbi FinishFormatting = new("__kimi_format_finish", "void", [new("ptr", "ret"), new("ptr", "buffer"), new("ptr", "writer"), new("ptr", "location"), new("i64", "location_length")]);
     private static readonly FunctionAbi FinishStackFormatting = new("__kimi_format_stack_finish", "void", FinishFormatting.Parameters);
-    private static readonly FunctionAbi LiteralFormatting = new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters, resultSlot: true);
+    private static readonly FunctionAbi LiteralFormatting =
+        new("__kimi_format_literal", "void", WindowsLowering.GetCompilerFunction(CompilerFunctionKind.WriterWrite)!.Parameters) { ResultSlot = true };
+
     private readonly Dictionary<BoundFormatting, FormattingEstimate> formattingEstimates = new(ReferenceEqualityComparer.Instance);
     private readonly List<FormattingEstimate> formattingEstimateStorage = new();
 
-    private bool LowerFormatting(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerFormatting(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -42,7 +45,7 @@ internal sealed partial class BodyLowering
                 var input = Input(body, id, 0);
                 if (ValueType(body, input) is not { Semantics: SemanticsKind.Uniq, Components.Count: 1 } reference ||
                     reference.Components[0].Symbol?.LibraryDeclaration != KimiDeclarationId.Utf8Writer ||
-                    (body.IsReachable(id) && !this.Dominates(input, id)) || !this.TryGetLocation(plan.Root, directory, constants, out var location))
+                    (body.IsReachable(id) && !this.Dominates(input, id)) || !this.TryGetLocation(plan.Root, constants, out var location))
                 {
                     return Fail("Formatting check requires its live exclusive adapter.", out failure);
                 }
@@ -68,7 +71,7 @@ internal sealed partial class BodyLowering
                 if ((uint)buffer >= (uint)body.Places.Count || body.Places[buffer].Type.Symbol?.LibraryDeclaration != KimiDeclarationId.HeapBuffer ||
                     !ReferenceEquals(body.Places[buffer].Source, plan.Heap) ||
                     (body.IsReachable(id) && (body.GetInputState(id, buffer) & PlaceState.MustInit) == 0) ||
-                    !this.TryGetLocation(plan.Root, directory, constants, out var finishLocation))
+                    !this.TryGetLocation(plan.Root, constants, out var finishLocation))
                 {
                     return Fail("Formatting completion requires its initialized private buffer.", out failure);
                 }

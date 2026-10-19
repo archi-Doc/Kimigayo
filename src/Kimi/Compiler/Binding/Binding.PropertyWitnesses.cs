@@ -106,46 +106,50 @@ public sealed partial class Binding
         }
     }
 
-    private CallPlan? InstantiatePropertyRequirementCall(CallPlan call, CallPlan outer, CallPlan? destination)
+    // SPEC 11.9.2: a Property requirement call at the operation ResolveRequirementWitness verified: the accessor a call witness executes,
+    // or the standard bridge.
+    private CallPlan? InstantiatePropertyRequirementCall(CallPlan call, BoundType self, RequirementWitness resolved, CallPlan? destination)
     {
         var requirement = ((FunctionKoto)call.Target.Declaration).Accessor!;
-        if (call.ConformingType is not { } self || this.InstanceReference(call, self, outer) is not { } contract ||
-            this.ResolveConformance(self, contract, outer.Target.Declaration, out var path) != ConstraintProof.Proven ||
-            path is not { IsVerified: true } || !path.PropertyWitnessMap.TryGetValue((new(requirement.Property.Symbol, contract), requirement.Kind), out var witness) ||
-            witness.ObjectCompatibility != ConstraintProof.Proven || this.PropertyWitnessFunction(path, witness) is not { } function ||
-            this.StoredType(witness.ImplementationType, self) is not { } declaring)
+        var witness = resolved.Property;
+        if (this.PropertyWitnessFunction(resolved.Path!, witness) is not { } function)
         {
             return null;
         }
 
         // A standard bridge is a member of the conforming Type itself: its receiver is never projected to a base subobject.
         var storage = witness.Kind != PropertyWitnessKind.AccessorCall;
+        var declaring = resolved.Declaring!;
 
-        var count = witness.Kind == PropertyWitnessKind.AccessorCall ? witness.InputOrigins.Count : call.InputOrigins.Length;
+        var count = storage ? call.InputOrigins.Length : witness.InputOrigins.Count;
         var inputs = this.originScratch.Rent(count);
-        var originCount = witness.Kind == PropertyWitnessKind.AccessorCall ? witness.Origins.Count : call.Origins.Length;
+        var originCount = storage ? call.Origins.Length : witness.Origins.Count;
         var origins = this.originScratch.Rent(originCount);
         try
         {
             for (var i = 0; i < count; i++)
             {
-                inputs[i] = witness.Kind != PropertyWitnessKind.AccessorCall ? call.InputOrigins[i] : witness.InputOrigins[i] is { } origin
-                    ? this.SubstituteStoredOrigin(origin, requirement.Binder, call.Origins, call.InputOrigins) : null!;
+                inputs[i] = storage ? call.InputOrigins[i] : this.WitnessOrigin(witness.InputOrigins[i], requirement.Binder, call.Origins, call.InputOrigins);
             }
 
             for (var i = 0; i < originCount; i++)
             {
-                origins[i] = witness.Kind != PropertyWitnessKind.AccessorCall ? call.Origins[i] : witness.Origins[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement.Binder, call.Origins, call.InputOrigins) : null!;
+                origins[i] = storage ? call.Origins[i] : this.WitnessOrigin(witness.Origins[i], requirement.Binder, call.Origins, call.InputOrigins);
             }
 
             var result = destination ?? new CallPlan();
             result.Set(function.BoundSymbol!, call.ReturnType, call.Receiver, call.ArgumentToParameter, [], declaringType: storage ? self : declaring, origins: origins.AsSpan(0, originCount), inputOrigins: inputs.AsSpan(0, count), operations: call.ArgumentOperations, receiverOperation: call.ReceiverOperation);
-            return storage || this.ProjectWitnessCall(result, witness.BasePath, declaring) ? result : null;
+            if (!storage)
+            {
+                this.ProjectWitnessCall(result, witness.BasePath, declaring);
+            }
+
+            return result;
         }
         finally
         {
-            this.originScratch.Return(inputs, clearArray: true);
             this.originScratch.Return(origins, clearArray: true);
+            this.originScratch.Return(inputs, clearArray: true);
         }
     }
 }

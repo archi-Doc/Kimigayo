@@ -111,7 +111,7 @@ public class ConstraintBindingTest
     {
         const string a = "func f<T>(x: T) -> i32\n    T is string\n    return 0\n";
         const string b = "func f(x: i32) -> i32 => x\n";
-        var c = Parse((reverse ? b + a : a + b) + "let result = f(1)");
+        var c = Parse((reverse ? b + a : a + b) + "let result = f(1@i32)");
         Assert.True(c.Bind().IsComplete, Describe(c));
         var call = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>().Single();
         Assert.Empty(((FunctionKoto)call.SymbolOf()!.Declaration).GenericArguments);
@@ -241,12 +241,16 @@ public class ConstraintBindingTest
     }
 
     // SPEC 8.3, 8.7.1: a primitive's conformances are fixed, so its absence from any other Contract is Refuted; a negative
-    // requirement holds, and a call whose only candidate needs the conformance has no applicable overload.
+    // requirement holds, and a call whose only candidate needs the conformance has no applicable overload. SPEC 3.1.3: Never
+    // conforms to no Contract other than its intrinsic capabilities.
     [Theory]
     [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use() => absent(1)", true, null)]
     [InlineData("contract C\nfunc present<T>(x: T)\n    T is C\n    ()\nfunc use() => present(1)", false, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("func present<T>(x: T)\n    T is Iterable\n    ()\nfunc use() => present(\"text\")", false, DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("func absent<T>(x: T)\n    T is not LendingIterator\n    ()\nfunc use() => absent(true)", true, null)]
+    [InlineData("contract C\nfunc absent<T>(x: T)\n    T is not C\n    ()\nfunc use(n: Never) => absent<Never>(n)", true, null)]
+    [InlineData("contract C\nfunc present<T>(x: T)\n    T is C\n    ()\nfunc use(n: Never) => present<Never>(n)", false, DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("func present<T>(a: T, b: T)\n    T is Equatable\n    ()\nfunc use(n: Never) => present<Never>(n, n)", false, DiagnosticCode.NoApplicableOverload_Kd)]
     public void APrimitiveConformsOnlyToItsFixedContracts(string source, bool complete, DiagnosticCode? code)
     {
         var c = Parse(source);

@@ -264,7 +264,7 @@ public sealed partial class Binding
         // when its bound arguments are Owned.
         if (actual is BoundType { Kind: BoundTypeKind.FunctionItem } item && (item.Components.Count != 0 || item.LengthArguments.Length != 0))
         {
-            return this.FunctionItemSignature(item) is { } itemSignature && CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
+            return this.FunctionItemSignature(item) is { } itemSignature && this.CallableSignatureFits(itemSignature, signature, SignatureOwner(item))
                 ? "Common Function conversion requires Owned bound generic arguments; this Item's arguments are not proven Owned"
                 : null;
         }
@@ -284,7 +284,7 @@ public sealed partial class Binding
         {
             SemanticsKind.Uniq => "This closure requires an Exclusive call; a common Function value permits Shared calls only",
             SemanticsKind.Owner => "This closure requires a Consuming call; a common Function value permits Shared calls only",
-            _ => !CallableSignatureFits(closure.Signature, signature, declaration)
+            _ => !this.CallableSignatureFits(closure.Signature, signature, declaration)
                 ? "The closure's parameter or result contract does not match the expected common Function signature"
                 : "Common Function conversion requires an Owned environment; captured non-static borrows cannot be erased",
         };
@@ -936,54 +936,11 @@ public sealed partial class Binding
             return this.FailExplained(ref this.originContracts, node, BindingFailure.OriginContract, contract);
         }
 
-        if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType))
+        // SPEC 15.6.1: a failed Origin position of matching storage is recorded as such (Binding.OriginFits), never as a Type mismatch.
+        if (actual is BoundType actualType && expected is BoundType expectedType && ReferenceTypes.StorageMatches(expectedType, actualType) &&
+            this.RecordOriginFitFailure(node, at, actualType, expectedType))
         {
-            var all = this.relationScratch;
-            all.Clear();
-            if (this.FailedOriginRelation(actualType, expectedType, node, OriginVariance.Covariant, judged: true, all: all) is { } relation)
-            {
-                if (!relation.Refuted && this.FailedOriginEnvironment(node) is { } cause)
-                {
-                    var refuted = false;
-                    for (var i = 0; i < all.Count; i++)
-                    {
-                        refuted |= all[i].Refuted;
-                    }
-
-                    if (!refuted)
-                    {
-                        all.Clear();
-                        return this.CompleteDependent(node, cause);
-                    }
-                }
-
-                // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
-                var failed = node.BindingFailure == BindingFailure.None;
-                for (var i = 0; i < all.Count && failed; i++)
-                {
-                    if (!all[i].Equals(relation))
-                    {
-                        this.RecordMoreRelation(node, all[i] with { At = at, Destination = expectedType });
-                    }
-                }
-
-                all.Clear();
-                return this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expectedType });
-            }
-
-            if (this.FailedOriginRelation(actualType, expectedType, node, OriginVariance.Covariant) is { } unproven)
-            {
-                if (this.FailedOriginEnvironment(node) is { } cause)
-                {
-                    return this.CompleteDependent(node, cause);
-                }
-
-                // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
-                // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
-                return unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound
-                    ? this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, unproven with { At = at, Destination = expectedType })
-                    : this.Fail(node, BindingFailure.Unsupported);
-            }
+            return null;
         }
 
         return this.FailExplained(ref this.mismatches, node, BindingFailure.TypeMismatch, (at, actual, expected));
@@ -992,202 +949,6 @@ public sealed partial class Binding
     // SPEC 15.6.1: a Refuted Origin relation is UnsatisfiedOriginRelation_Kd, one that is not proven UnprovenOriginRelation_Kd.
     private DiagnosticCode OriginRelationCode(Koto node)
         => this.originRelations?.TryGetValue(node, out var relation) == true ? OriginRelationCode(relation) : DiagnosticCode.UnprovenOriginRelation_Kd;
-
-    // SPEC 15.6.1: the first Origin position of a fit, in the order of the outer borrow layer, the Semantics target, then slots and
-    // Type arguments, whose relation is not proven; `==` at an invariant position. It is Refuted when the longer end is a body-local
-    // finite Origin and the shorter end a fixed one, and Unknown otherwise. With `all`, every failing position, and every failing
-    // operand of a meet at its longer end, is added in that order (SPEC 15.6.1: every failed chain is reported).
-    // With `judged`, only a position that the relation judge fails counts (SPEC 15.6.5), as a body fit judges it; without it, any
-    // unproven position does, as for a fit that judges Origins by proof alone.
-    // `polarity` is the variance of the compared position within the fitted Type, composed as FitsTypeCore and CheckTypeUse compose
-    // it (SPEC 15.3.5): a contravariant position names the reverse relation, and an invariant or unused one an `==`, also for every
-    // position nested in it, such as the slots of a Type argument stored through `uniq/T` or read by `(T) -> i32`.
-    private OriginRelationFact? FailedOriginRelation(BoundType actual, BoundType expected, Koto use, OriginVariance polarity, int depth = 0, bool judged = false, List<OriginRelationFact>? all = null, bool verified = false)
-    {
-        if (depth > 64)
-        {
-            return null;
-        }
-
-        OriginRelationFact? first = null;
-        // SPEC 8.1.2, 15.6.5: the outer Origins as the fit relates them; a pair layer's slot exists only in its binder's borrow cases,
-        // whose premises the relation may use.
-        if (FitOuterOrigins(actual, expected, this, use, out var outer, out var required) == OuterOriginFit.Relation &&
-            this.FailedOriginPart(outer, required, expected, use, polarity, judged, all, verified, SlotCondition(actual, this, use)) is { } layer)
-        {
-            if (all is null)
-            {
-                return layer;
-            }
-
-            first ??= layer;
-        }
-
-        var exclusive = IsInvariantLayer(actual, this);
-        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication; i++)
-        {
-            var target = exclusive ? OriginVariance.Invariant : polarity;
-            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, target, depth + 1, judged, all, verified) is { } failed)
-            {
-                if (all is null)
-                {
-                    return failed;
-                }
-
-                first ??= failed;
-            }
-        }
-
-        for (var i = 0; i < actual.OriginArguments.Count && i < expected.OriginArguments.Count; i++)
-        {
-            var variance = ComposeVariance(polarity, expected.Symbol?.Schema?.Origins[i].Variance ?? OriginVariance.Invariant);
-            if (this.FailedOriginPart(actual.OriginArguments[i], expected.OriginArguments[i], expected, use, variance, judged, all, verified) is { } slot)
-            {
-                if (all is null)
-                {
-                    return slot;
-                }
-
-                first ??= slot;
-            }
-        }
-
-        for (var i = 0; i < actual.Components.Count && i < expected.Components.Count && actual.Kind is not (BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication); i++)
-        {
-            var position = actual.Kind == BoundTypeKind.Constructed && actual.Symbol?.Schema is { } schema && i < schema.GenericSlots.Count ? schema.GenericSlots[i].OriginVariance
-                : actual.Kind == BoundTypeKind.Function && actual.Components.Count == 2 && i == 0 ? OriginVariance.Contravariant
-                : OriginVariance.Covariant;
-            if (this.FailedOriginRelation(actual.Components[i], expected.Components[i], use, ComposeVariance(polarity, position), depth + 1, judged, all, verified) is { } argument)
-            {
-                if (all is null)
-                {
-                    return argument;
-                }
-
-                first ??= argument;
-            }
-        }
-
-        return first;
-    }
-
-    // One Origin position of a fit by its variance: `actual` outlives `expected` at a covariant position, the reverse at a
-    // contravariant one, and both, as `==` with `actual` first, at an invariant one.
-    private OriginRelationFact? FailedOriginPart(BoundOrigin actual, BoundOrigin expected, BoundType type, Koto use, OriginVariance variance, bool judged, List<OriginRelationFact>? all = null, bool verified = false, ulong condition = 0)
-    {
-        if (ReferenceEquals(actual, expected))
-        {
-            return null;
-        }
-
-        if (variance == OriginVariance.Contravariant)
-        {
-            return Fails(expected, actual) ? this.FailedChain(use, expected, actual, type, judged, all, condition) : null;
-        }
-
-        if (variance == OriginVariance.Covariant)
-        {
-            return Fails(actual, expected) ? this.FailedChain(use, actual, expected, type, judged, all, condition) : null;
-        }
-
-        if (!Fails(actual, expected) && !Fails(expected, actual))
-        {
-            return null;
-        }
-
-        OriginRelationFact equality = new(use, actual, expected, true, type, RefutesOriginRelation(actual, expected));
-        all?.Add(equality);
-        return equality;
-
-        bool Fails(BoundOrigin longer, BoundOrigin shorter) => verified
-            ? !this.VerifiedRegionOutlives(longer, shorter, use)
-            : this.OriginPartFails(longer, shorter, use, judged, condition);
-    }
-
-    // SPEC 15.3.6, 15.6.1: a meet at the longer end outlives an Origin exactly when each operand does, so an `outlives` relation names
-    // the chain of one failing operand, never the meet itself, and keeps the whole meet for a result bound. With `all`, the chain of
-    // every failing operand is added in the meet's order (every failed chain is reported).
-    private OriginRelationFact FailedChain(Koto use, BoundOrigin longer, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact>? all = null, ulong condition = 0)
-    {
-        var operand = this.FailingOperand(longer, shorter, use, judged, true, condition) ?? this.FailingOperand(longer, shorter, use, judged, false, condition) ?? longer;
-        OriginRelationFact chain = new(use, operand, shorter, false, type, RefutesOriginRelation(operand, shorter));
-        if (all is not null && (ReferenceEquals(operand, longer) || !this.AddFailingChains(use, longer, shorter, type, judged, all, condition)))
-        {
-            all.Add(chain);
-        }
-
-        return chain;
-    }
-
-    // Adds the chain of each failing operand of `origin`, nested meets flattened in order; whether any was added.
-    private bool AddFailingChains(Koto use, BoundOrigin origin, BoundOrigin shorter, BoundType type, bool judged, List<OriginRelationFact> all, ulong condition = 0)
-    {
-        if (IsLocalRegion(origin))
-        {
-            var found = false;
-            foreach (var source in this.LocalRegionSources(origin))
-            {
-                found |= this.AddFailingChains(use, source, shorter, type, judged, all, condition);
-            }
-
-            return found;
-        }
-
-        if (origin.Kind != OriginKind.Intersection)
-        {
-            if (!this.OriginPartFails(origin, shorter, use, judged, condition))
-            {
-                return false;
-            }
-
-            all.Add(new(use, origin, shorter, false, type, RefutesOriginRelation(origin, shorter)));
-            return true;
-        }
-
-        var added = false;
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            added |= this.AddFailingChains(use, origin.Operands[i], shorter, type, judged, all, condition);
-        }
-
-        return added;
-    }
-
-    private bool OriginPartFails(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, ulong condition = 0)
-        => !this.ProvesOriginOutlives(longer, shorter, use, condition) && (!judged || this.OriginRelationFails(longer, shorter, use, condition));
-
-    // SPEC 15.6.5: the failing operand that the record names follows the judgment, a Refuted chain, which decides the record's code,
-    // before an Unknown one, each first in the meet's order; with `refuted`, only a Refuted chain counts.
-    private BoundOrigin? FailingOperand(BoundOrigin longer, BoundOrigin shorter, Koto use, bool judged, bool refuted, ulong condition = 0)
-    {
-        if (IsLocalRegion(longer))
-        {
-            foreach (var source in this.LocalRegionSources(longer))
-            {
-                if (this.FailingOperand(source, shorter, use, judged, refuted, condition) is { } failed)
-                {
-                    return failed;
-                }
-            }
-
-            return null;
-        }
-
-        if (longer.Kind != OriginKind.Intersection)
-        {
-            return (!refuted || RefutesOriginRelation(longer, shorter)) && this.OriginPartFails(longer, shorter, use, judged, condition) ? longer : null;
-        }
-
-        for (var i = 0; i < longer.Operands.Count; i++)
-        {
-            if (this.FailingOperand(longer.Operands[i], shorter, use, judged, refuted, condition) is { } operand)
-            {
-                return operand;
-            }
-        }
-
-        return null;
-    }
 
     // Fails a node with the facts that explain the failure. A node keeps its first failure only, so the facts are recorded only
     // with that failure: a fact in a publication table always explains the failure of its node, whatever the failure's code.
@@ -1468,11 +1229,13 @@ public sealed partial class Binding
         (this.consultationStart, this.consultationNode) = parent;
     }
 
-    /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite.</summary>
+    /// <summary>Records that the node being bound read the result of another node; one that did not resolve becomes a prerequisite, but for
+    /// a part that waits for the call reading it (SPEC 10.5.1), which depends on that call instead.</summary>
     /// <param name="dependency">The node whose result was read.</param>
     private void Consulted(Koto dependency)
     {
-        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode))
+        if (this.consultationStart >= 0 && dependency.BindingState != BindingState.Resolved && !ReferenceEquals(dependency, this.consultationNode) &&
+            !this.IsWaitingPart(dependency))
         {
             this.consulted.Add(dependency);
         }
@@ -1610,28 +1373,25 @@ public sealed partial class Binding
 
     private bool PushPrerequisites(Koto node, Stack<Koto> pending)
     {
-        var pushed = false;
+        var count = pending.Count;
         if (this.partPrerequisites.TryGetValue(node, out var part) && (part.BindingState != BindingState.Resolved || IsRecovery(part, out _)))
         {
             pending.Push(part);
-            pushed = true;
         }
 
-        if (!this.prerequisites.TryGetValue(node, out var range))
+        if (this.prerequisites.TryGetValue(node, out var range))
         {
-            return pushed;
-        }
-
-        for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
-        {
-            if (this.prerequisiteStore[i].BindingState != BindingState.Resolved || IsRecovery(this.prerequisiteStore[i], out _))
+            for (var i = range.Start + range.Count - 1; i >= range.Start; i--)
             {
-                pending.Push(this.prerequisiteStore[i]);
-                pushed = true;
+                var cause = this.prerequisiteStore[i];
+                if (cause.BindingState != BindingState.Resolved || IsRecovery(cause, out _))
+                {
+                    pending.Push(cause);
+                }
             }
         }
 
-        return pushed;
+        return pending.Count != count;
     }
 
     // A lookup that misses a Name the language defines but the implementation does not yet provide meets an implementation
@@ -1720,8 +1480,8 @@ public sealed partial class Binding
     }
 
     private Koto? ConformanceDiagnosticCause(Koto owner)
-        => owner is StructKoto or EnumKoto && owner.BindingFailure == BindingFailure.InvalidConstraint &&
-            this.constraintDiagnosticCauses?.TryGetValue(owner, out var cause) == true ? cause : null;
+        => owner is StructKoto or EnumKoto && owner.BindingFailure == BindingFailure.InvalidConstraint ?
+            this.constraintDiagnosticCauses?.GetValueOrDefault(owner) : null;
 
     private Koto? FindConformanceDiagnosticCause(Koto owner, BoundConstraint fact)
     {

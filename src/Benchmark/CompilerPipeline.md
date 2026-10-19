@@ -1,14 +1,19 @@
 # Compiler pipeline measurements
 
 `--compiler-pipeline` measures six contiguous stages of each fresh compilation.
-Inputs contain 1, 32 or 128 scalar helper functions, with or without conditional
-returns. Every helper is called from `main`. Source construction is outside timing.
+Each input has a shape and a size of 1, 32, 64 or 128. The `Scalar` and `Branching`
+shapes contain that many scalar helper functions, the second with a conditional
+return, each called from `main`. The generic-heavy `Generic` shape contains that many
+item Types, each instantiating Array, Dictionary, Option, a two-parameter generic
+struct and two generic functions under a Contract bound. Stages 5 and 6 are the
+pre-R5 collect-plus-codegen baseline ([O2Corpus.md](O2Corpus.md)). Source construction
+is outside timing.
 
 | Stage | Report name | Included work |
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
 | 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals) |
+| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); under MIR code generation also the instance collector (R5), which this default configuration does not run |
 | 4 | `ControlFlowAndOwnership` | `Ownership.Analyze` |
 | 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model |
 | 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR |
@@ -47,13 +52,25 @@ Warmups warm the process/runtime; fresh compilation does not mean cold-process s
 IR is serialized to `TextWriter.Null` during timing. Output buffering, file I/O,
 CLI startup, project/dependency discovery, diagnostic presentation, external LLVM
 optimization, linking and native execution are excluded. The inputs are synthetic
-scalar programs, not representative coverage of every language feature.
+programs, not representative coverage of every language feature.
 
 `CompilerPipelineBenchmark.FreshCompileToIr` remains a BenchmarkDotNet entry for
-the same whole pipeline without timestamp/allocation boundary reads. Its six cases
+the same whole pipeline without timestamp/allocation boundary reads. Its twelve cases
 use the existing MediumRun and MemoryDiagnoser configuration. The old mixed
 fresh/reused-state stage entries are removed: their timings cannot describe the
 fraction of a fresh compilation. Other feature-specific benchmarks are unchanged.
+
+## Check cost (`--analyze-cost`)
+
+`--analyze-cost` measures the check of the `Generic` shape (sizes 1, 32, 64 and 128) under three configurations set per
+compilation: `legacy`, `mir` (the MIR built, validated and analyzed beside the old path) and `sel` (`mir` with MIR code
+generation, whose `Analyze` also collects the checked set, R5 K1-K4b). `freshCheck` is one fresh compilation's
+`Bind`, `CheckStartup` and `Analyze` (the stages 2 to 4 above; preparation and parsing are untimed); `warmAnalyze` repeats
+them on one compilation without an edit, as an LSP server does. Four warmups precede seven samples of four operations;
+each result reports mean milliseconds and current-thread allocated bytes, the managed heap the checked compilation retains
+(`retainedBytes`, after full collections) and its growth over the warm Analyzes (`warmRetainedGrowthBytes`) and, under `sel`, the
+collected items. Follow the
+measurement protocol below and save `--analyze-cost` output beside it.
 
 ## Validation
 
@@ -89,7 +106,7 @@ Inspect the six stages and their fractions, for example:
 
 ```powershell
 $report = Get-Content (Join-Path $run 'phases.json') -Raw | ConvertFrom-Json
-$report.results | Where-Object { $_.functions -eq 128 -and $_.branches } |
+$report.results | Where-Object { $_.size -eq 128 -and $_.shape -eq 'Branching' } |
     ForEach-Object { $_.stages } | Format-Table name, meanMilliseconds, percentOfTotal, meanAllocatedBytes
 ```
 

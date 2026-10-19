@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -66,7 +67,7 @@ internal sealed partial class BodyLowering
         };
     }
 
-    private bool LowerGraph(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, Span<byte> marks, out string? failure)
+    private bool LowerGraph(KimiLibrary library, OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, Span<byte> marks, out string? failure)
     {
         failure = null;
         var count = body.Operations.Count;
@@ -302,7 +303,7 @@ internal sealed partial class BodyLowering
                 this.validation.Add(EmissionOpcode.TestPhaseEnter, i);
             }
 
-            if (!this.LowerOperation(library, body, this.validation, constants, directory, i, marks, out failure))
+            if (!this.LowerOperation(library, body, this.validation, constants, i, marks, out failure))
             {
                 return false;
             }
@@ -463,7 +464,7 @@ internal sealed partial class BodyLowering
             Fail("Physical string flags do not match dispatch reachability.", out failure);
     }
 
-    private bool LowerScalar(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerScalar(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -586,12 +587,12 @@ internal sealed partial class BodyLowering
 
         if (value.Kind == OwnershipValueKind.Convert)
         {
-            return this.LowerConversion(body, function, constants, directory, id, out failure);
+            return this.LowerConversion(body, function, constants, id, out failure);
         }
 
         if (value.Kind == OwnershipValueKind.PointerProject)
         {
-            return this.LowerPointerProjection(body, function, constants, directory, id, out failure);
+            return this.LowerPointerProjection(body, function, constants, id, out failure);
         }
 
         if (value.Kind == OwnershipValueKind.ContractComparison)
@@ -609,7 +610,7 @@ internal sealed partial class BodyLowering
         if (ReferenceTypes.IsPointer(operandType) && value.Operator is KotoKind.Plus or KotoKind.Minus)
         {
             // SPEC 5.3: p + n and p - n displace by n * stride(T) with an isize count; a zero stride displaces by zero.
-            var stride = FunctionAbi.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? -1;
+            var stride = FunctionAbiPool.GetValue(operandType.Components[0], this.aggregateLayouts)?.Layout.Stride ?? -1;
             if (value.Kind != OwnershipValueKind.Binary || stride < 0 ||
                 !ReferenceEquals(type, operandType) || !ReferenceEquals(ValueType(body, Input(body, id, 1)), BoundType.ISize))
             {
@@ -676,7 +677,7 @@ internal sealed partial class BodyLowering
         var rightOperand = value.Kind == OwnershipValueKind.Binary ? this.PhysicalOperand(body, Input(body, id, 1)) : value.Operator == KotoKind.PrefixMinus ? this.PhysicalOperand(body, first) : new(EmissionOperandKind.Integer, value.Operator == KotoKind.Not ? 1 : 0);
         var location = -1;
         var check = this.checks[id];
-        if (check != ArithmeticCheckKind.None && !this.TryGetLocation(operation.Source, directory, constants, out location))
+        if (check != ArithmeticCheckKind.None && !this.TryGetLocation(operation.Source, constants, out location))
         {
             return Fail("Arithmetic check has no source location.", out failure);
         }

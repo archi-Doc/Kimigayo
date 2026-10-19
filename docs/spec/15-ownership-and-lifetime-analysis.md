@@ -132,7 +132,7 @@ consume(tasks@move)
 | A bare Place, including a standard projection of a temporary ([§3.4](03-types-and-values.md#34-places-and-storage)) | A shared borrow of the Place; when the Place stores `ref/T` or `uniq/T`, a Reborrow of that reference in its own mode, bounded to Shared by any shared layer on the path |
 | Any other expression (`E@ref`, `E@uniq`, `E@move`, `E@copy`, a temporary, ...) | The value it produces |
 
-The **Subject mode** is the access the Subject Place grants past its safe-reference layers: Shared (`ref`, `objref`), Exclusive (`uniq`, `objuniq`) or ByValue (owned). For a pair layer it is the weakest mode of the admitted cases ([§13.5.5](13-operators-and-assignment.md#1355-follow)), never ByValue. A shared layer anywhere on the path bounds the mode to Shared. The mode never depends on `var`, Copy capability, conformances or the body. An explicit borrow applies to the written slot, so `values@uniq` on `let values: uniq/Array<T>` is an error; write `values` or `values@follow@uniq`. `for` selects its iteration entry from the mode ([§14.6.2](14-control-flow.md#1462-iteration-protocol)); Patterns select Places as in [§14.8.1](14-control-flow.md#1481-patterns).
+The **Subject mode** is the access the Subject Place grants past its safe-reference layers: Shared (`ref`, `objref`), Exclusive (`uniq`, `objuniq`) or ByValue (owned). For a qualifying pair layer it is the weakest mode of the admitted cases ([§13.5.5](13-operators-and-assignment.md#1355-follow)), never ByValue; any other pair layer, such as one admitting Object Semantics, is no safe-reference layer, so a Binding takes its slot by value. A shared layer anywhere on the path bounds the mode to Shared. The mode never depends on `var`, Copy capability, conformances or the body. An explicit borrow applies to the written slot, so `values@uniq` on `let values: uniq/Array<T>` is an error; write `values` or `values@follow@uniq`. `for` selects its iteration entry from the mode ([§14.6.2](14-control-flow.md#1462-iteration-protocol)); Patterns select Places as in [§14.8.1](14-control-flow.md#1481-patterns).
 
 - The Subject Place is initialized before arm selection. A Property with a custom, computed or required `get` is read once, and the Subject Place is that Temporary Place, with the restriction of [§11.5](11-properties.md#115-getter-results).
 - Exclusive mode, also past a pair layer, grants exclusive access only where the lending point can be exclusively acquired ([§15.1.5](#1515-access-operations-and-acquisition)); a binding or `for` entry that needs exclusive access elsewhere is an error, never a shared binding.
@@ -345,7 +345,7 @@ Inference variables are placed only at unresolved positions, constrained by vari
 | Invariant | The proven equality; never a meet |
 | Contravariant | A lower bound proven to outlive every other lower bound |
 
-Variables connected by a cycle of `outlives` relations are equal and solved as one. A variable at both covariant and contravariant positions is solved as invariant. Each remaining variable takes its candidate from its row using only bounds of that row's kind; its other bounds are then checked against the candidate. If its row has no candidate, the variable is a local region in an executable body ([§15.6](#156-borrow-checking)), never replaced by `static`; elsewhere an annotation is needed. Inference is judged after overload selection and never makes a candidate inapplicable.
+Variables connected by a cycle of `outlives` relations are equal and solved as one. A variable at both covariant and contravariant positions is solved as invariant. Each remaining variable takes its candidate from its row using only bounds of that row's kind; its other bounds are then checked against the candidate. A variable's bounds are followed through other variables to fixed or finite Origins ([§15.6.5](#1565-judging-origin-relations)) and `static`. If none is reached, the variable has no candidate. If its row has no candidate, the variable is a local region in an executable body ([§15.6](#156-borrow-checking)), never replaced by `static`; elsewhere an annotation is needed. Inference is judged after overload selection and never makes a candidate inapplicable.
 
 The solver uses exactly these rules: reflexivity; transitivity; `static` outlives every Origin; substitution of `==`; the laws of [§15.2.2](#1522-ordering-and-intersection); `a outlives (a and b)` and `b outlives (a and b)`; and `(a and b) outlives c` exactly when `a outlives c` and `b outlives c`. A meet on the right is never split into separate requirements, but `x outlives a` proves `x outlives (a and b)`. Entailment does not depend on the order or repetition of premises and forms no Origin beyond the queried expressions, the premises and their subexpressions. Unknown is distinct from Refuted and is decided under Finality ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
 
@@ -445,13 +445,14 @@ struct UniqView<T> {source}
 
 ## 15.6. Borrow checking
 
-A **program point** is a position immediately before or after an operation. A static storage key ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) is a Place root like a local; non-standard accessors are call boundaries. Local regions are inferred, signature Origins denote universal regions, and `static` is the maximum region.
+A **program point** is a position immediately before or after an operation. A static Field's storage ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) is a Place root like a local ([§15.6.2](#1562-place-overlap-and-conflicts)); non-standard accessors are call boundaries. Local regions are inferred, signature Origins denote universal regions, and `static` is the maximum region.
 
-**Loans.** A **Loan** is `(place, mode)` with mode `ref` or `uniq`. Its **anchor** is the lending point of the borrow that creates it ([§3.4](03-types-and-values.md#34-places-and-storage)).
+**Loans.** A **Loan** has a Place, named by its access path ([§15.6.2](#1562-place-overlap-and-conflicts)), and a mode, `ref` or `uniq`. It is identified by its Borrow site and Semantics case ([§8.15](08-generics-constraints-and-contracts.md#815-generic-body-checking)): every execution of one site in one case forms the same Loan. Implicit Borrows (Receiver Expressions, argument adaptations, comparison inspections, capture entries) have the site of their operation; a call's caller-side Loans ([§15.6.4](#1564-calls)) have the call's; the Borrows of a default evaluated at a call ([§7.2.3](07-functions-and-callable-values.md#723-default-evaluation)) are identified by that call and the default's operation. The Loans a body receives through its parameters' Origins have no access path in it; they are checked where the body is called, against what the call may reach ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)) and its effects on static storage ([§15.6.4](#1564-calls)). A Loan's **anchor** is the lending point of the borrow that creates it ([§3.4](03-types-and-values.md#34-places-and-storage)).
 
 - The values that carry a Loan are the borrow itself, its Copies, references derived from it, and every aggregate, Closure or storage that holds one of these. After a call, its results and the writable storage its public contract lets it write carry the Loans of the arguments they may retain ([§15.6.4](#1564-calls)).
-- A Loan is **live** at a point P when a value that carries it may be used after P, including an observation by its destruction ([§15.6.6](#1566-destruction-lifetime-checking)).
-- Completely replacing a holder ends the Loans it carried; a partial replacement ends only those of the replaced part. Holders are tracked at Move Path granularity ([§15.1.3](#1513-move-paths-and-partial-move)). A write through a reference, a non-path index or a dynamic container adds the written value's Loans to every Place it may reach and ends none.
+- **Holders** are locals, parameters and temporaries. A holder carries the Loans of the values stored in every part of it. A value read, Copied or Moved from a part carries every Loan the holder carries, and so does a Borrow through a reference stored in a part, as its parent Loans ([§15.6.3](#1563-reborrowing-and-region-splitting)); a destruction of a part that may observe a Loan ([§15.6.6](#1566-destruction-lifetime-checking)) uses the whole holder. A holder that is completely replaced, by `=` to the whole holder or by the start or end of its storage, no longer carries the Loans of its old value. Writing or Moving a part ends none of them, and a written value's Loans are added to the holder. Storage the body does not own (next item) follows the holder as Loans do: a value derives from a reference that reaches such storage when the value is a Copy or Reborrow of one, a value a call may retain from one, a read of a borrowed argument included ([§15.6.4](#1564-calls)), or a value read from a part of a holder that holds one, directly or through a reference to that holder.
+- A write through a reference, a non-path index or a dynamic container adds the written value's Loans to every holder it may reach and ends none. A call writes the storage its contract lets it write the same way, so `replace`, `exchange` and `swap` ([§15.7](#157-whole-value-updates)) completely replace no holder; `replace` ends Loans only as [§15.6.3](#1563-reborrowing-and-region-splitting) states. A reference reaches the holders named by those Loans it carries whose access paths have no dereference ([§15.6.2](#1562-place-overlap-and-conflicts)), its own and those of the references it was Reborrowed through. It also reaches **storage the body does not own** when it comes from a parameter or capture, from static or raw storage, or from a call result that its contract ties to no argument, or derives from such a reference (above); a value stored there may be used after every point. A read through a reference carries the Loans of what it reaches. A compound assignment, increment or decrement writes its destination through its reservation ([§13.7.2](13-operators-and-assignment.md#1372-compound-assignment)), so it ends none of the Loans the destination carried.
+- A Loan is **live** at a point P when a value that carries it may be used after P, including an observation by its destruction ([§15.6.6](#1566-destruction-lifetime-checking)). A value is also used wherever a value that carries a Loan on a Place overlapping the first value's holder is used. An operation at P is checked against the Loans carried before P by the values used after P, other than those P replaces, and by the values P stores into a holder used after P or into storage the body does not own. These values decide, never a Loan's identity: a Borrow is not checked against the Loan it forms, which no value carries before it, but it is checked against an earlier execution of its own site that such a value carries. The activation of a reservation ([§15.6.7](#1567-call-reservations)) is checked against the values live into its call other than its own argument.
 - Liveness is a may-analysis: after a join a Loan is live if it is live on any incoming path, and loops use the least fixed point.
 - Origin regions and `outlives` relations only check that lifetimes are compatible; they never keep a Loan live.
 
@@ -462,6 +463,18 @@ var r = a@ref
 r = b@ref       // r no longer carries the Loan on a.
 a = 3           // Valid.
 inspect(r)
+```
+
+A complete write through a reference ends none of the referent's earlier Loans:
+
+```kimi
+var a = 1
+var b = 2
+var slot: ref/i32 = a@ref
+let r = slot@uniq
+r@follow = b@ref    // A write through r: slot may now carry b's Loan, and a's Loan is not ended.
+// a = 3            // Error: slot may still carry a's Loan and is used below.
+inspect(slot)
 ```
 
 ### 15.6.1. Origin relations and well-formedness
@@ -484,35 +497,87 @@ func get(b: objref/Holder<ref/i32 during c> during o) -> ref/i32 during o
 
 ### 15.6.2. Place overlap and conflicts
 
-Places overlap as [§3.4](03-types-and-values.md#34-places-and-storage) defines; non-overlap is proven only by these rules:
+Places overlap as [§3.4](03-types-and-values.md#34-places-and-storage) defines. Loan checking compares the access paths ([§3.4.1](03-types-and-values.md#341-access-paths-and-value-kinds)) of an operation and a Loan step by step. A path starts at a root (a local, parameter or temporary, the keys of a static Field, or the fresh anchor of a raw Place borrow) and steps through inline parts (Fields, base subobjects, Tuple elements, indices and Case payloads), **own** steps and **dereferences**. A dereference is a step through a `ref`, `uniq`, `objref` or `objuniq` reference, **shared** through `ref` or `objref`; examples write it `.*`, so `r.*.x` is the Field `x` of `r`'s referent. A step into the payload of an `obj`, `rc` or `arc` handle is an own step, not a dereference: the payload's paths extend the handle's, whatever access [§3.4.1](03-types-and-values.md#341-access-paths-and-value-kinds) grants through it. A dereference matches only a dereference, and an own step only an own step. Two paths overlap unless these rules prove them disjoint:
 
-| Places | Result |
+| Paths | Result |
 | --- | --- |
-| Identical Places, or a Place and an inline part of it | Overlap |
-| Distinct roots and their inline parts | Disjoint |
-| Distinct inline Fields, Tuple elements or constant indices of one aggregate, and their parts | Disjoint |
-| Referents of simultaneously live `uniq`/`objuniq` borrows with distinct anchors | Disjoint |
-| Other followed references | Follow Loan provenance, then these rules |
+| Identical paths, or a path and an extension of it | Overlap, reached as stated below |
+| Paths from distinct roots, through dereferences included | Disjoint: the Loans each reference carries cover its aliases ([§15.6](#156-borrow-checking)) |
+| Distinct inline Fields, Tuple elements or constant indices of one aggregate, and their extensions | Disjoint |
+| Payloads of distinct Cases of one enum, and their extensions | Disjoint, although they may share bytes: a Case changes only by a write of the enum, which reaches every Loan on its payloads |
 | A raw Place borrow's fresh anchor ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places)) and a Place not derived from it | Not compared; an unsafe obligation ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)) |
-| Anything else | Unproven: an operation that needs a proof is an error |
+| Anything else, such as indices other than distinct constant ones | Unproven: an operation that needs a proof is an error |
 
-- All paths to one static key are one root. Keys of different Field declarations are distinct; two keys of one Field are distinct only when both are closed after normalization and Origin erasure and are unequal. A Field's open key overlaps every key of that Field ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)).
-- Inline parts exclude referents. Distinct reference variables, runtime comparisons such as `i != j` and integer proofs prove nothing. Array-derived Slices keep the whole-array footprint ([§4.8.1](04-arrays-indexing-and-slices.md#481-slice)). Accessor calls other than standard ones use their whole receiver.
+- All keys of one static Field are one root, whatever the enclosing Type arguments; keys of different Field declarations are distinct roots ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)).
+- A Loan whose path is a prefix of an operation's path is reached by the operation, so an access through a reference reaches a Loan on the Place that holds it. A Loan whose path extends the operation's path is reached by a read, write or destruction only when no dereference lies between them; a Move or Borrow reaches it across dereferences, except the Borrow of a target that the operation destroys in place ([§15.7](#157-whole-value-updates): `replace`), and so does a destruction that may observe a Loan ([§15.6.6](#1566-destruction-lifetime-checking)), up to the first shared dereference.
+- Runtime comparisons such as `i != j` and integer proofs prove nothing. Array-derived Slices keep the whole-array footprint ([§4.8.1](04-arrays-indexing-and-slices.md#481-slice)). Accessor calls other than standard ones use their whole receiver.
 
-Each operation is checked against every live Loan on an overlapping Place:
+Each operation is checked against every Loan it reaches among those checked at its point ([§15.6](#156-borrow-checking)):
 
 | Operation | Live `ref` | Live `uniq` |
 | --- | --- | --- |
 | Read, create `ref` | Allowed | Error |
 | Write, Move, create `uniq`, destroy the Place | Error | Error |
 
-**Shared access grants no mutation.** A Place is written, Moved, exclusively borrowed or destroyed only through a direct path or an exclusive reference ([§3.4](03-types-and-values.md#34-places-and-storage)), or by raw access within its authority ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)). Past a shared layer (`ref`, `objref`, `rc`, `arc`) only reads and shared borrows are reached; reference counts and Weak tables are not Places.
+**Shared access grants no mutation.** A Place is written, Moved, exclusively borrowed or destroyed only through a direct path or an exclusive reference ([§3.4](03-types-and-values.md#34-places-and-storage)), or by raw access within its authority ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)). Past a shared layer (`ref`, `objref`, `rc`, `arc`) only reads and shared borrows are possible; reference counts and Weak tables are not Places.
 
 ### 15.6.3. Reborrowing and region splitting
 
-Borrowing through an exclusive borrow creates a child Loan anchored on the referent; while the child is live, access through the parent is suspended. The child does not depend on the variable that holds the parent, so a Reborrow of a parameter may be returned. It is contained in the Origin of the parent and of each safe borrow through which the parent is reached, such as a receiver ([§15.5](#155-exclusive-origins)) or a Closure's call receiver ([§15.8.2](#1582-closure-dependencies)), up to and including the first shared layer. A shared Borrow through a shared reference is thus contained only in that reference's Origin.
+Borrowing through an exclusive borrow creates a child Loan anchored on the referent; its values also carry the Loans of every reference dereferenced to reach it, its parent Loans. A Borrow past a shared dereference ([§15.6.2](#1562-place-overlap-and-conflicts)) forms no Loan of its own; it derives only from the reference of its last shared dereference and the references it dereferences after that one, and carries their Loans. While the child is live, access through the parent is suspended, and no prefix of the child's access path, such as the Place that holds the parent, can be Moved or borrowed, except shared while the child is shared or as a target that the operation destroys in place ([§15.7](#157-whole-value-updates): `replace`).
 
-**Region splitting** derives several child Loans from one parent the same way. Exclusive children and the parent's remainder must be pairwise non-overlapping, by [§15.6.2](#1562-place-overlap-and-conflicts) or by the unsafe promise of a `uniq` borrow of a raw Place; shared children may overlap. A Reborrow through a child stays within that child. A value descends from the Iterator or remainder it was split from when a call returns it with Origins of that receiver's Type only and no other input's Type names them, as `next` does. Destroying the Iterator or remainder does not end published child Loans. A library splits raw storage in ordinary code: the remainder keeps the parent Loan in a `Loan<uniq/… during source>` Field, each child is a `uniq` borrow of a raw Place returned `during state.source`, and never lending overlapping Places to two live exclusive children is the unsafe obligation.
+Destroying in place a Move Path ([§15.1.3](#1513-move-paths-and-partial-move)) ends every Loan whose access path it exactly prefixes, once the destruction of the old value there is checked ([§15.6.6](#1566-destruction-lifetime-checking)): by `=`, at the end of its storage, or as a `replace` target. The Move Path's steps are compared one by one, so a constant index matches only the same constant and never a runtime index; the access path may continue past it with any steps, dereferences included. No value carries an ended Loan any longer, and the values that carried an ended child keep its parent Loans. So a Reborrow of a parameter may be returned, and replacing an outer reference ends the children formed through its old value, whose parent Loans still protect the old referents. Any other child ends when no value that carries it may be used. The child is contained in the Origin of the parent and of each safe borrow through which the parent is reached, such as a receiver ([§15.5](#155-exclusive-origins)) or a Closure's call receiver ([§15.8.2](#1582-closure-dependencies)), up to and including the first shared layer. A shared Borrow through a shared reference is thus contained only in that reference's Origin.
+
+```kimi
+// Tree has `var value: i32` and `var children: Array<Tree>`.
+func deepest(root: uniq/Tree) -> uniq/Tree during root
+    var cursor = root
+    while cursor.children.length > 0
+        let next = cursor.children[0]@uniq  // Keeps indexUniq's receiver Loan: path cursor.*.children.
+        // cursor.children.clear()          // Error: reaches the Loan that next keeps, and next is used below.
+        cursor = next                       // Assigning cursor ends that Loan; cursor keeps root's Loans.
+    return cursor
+```
+
+Moving or exchanging a prefix of a live child's access path, or borrowing it other than shared while the child is shared, is an error; `replace` ends the child as `=` does:
+
+```kimi
+var x = 1
+var y = 2
+var r = x@uniq
+let c = r@follow@uniq                                       // A child Loan: path r.*.
+// let moved = r@move                                       // Error: Moves r while c is live.
+// let old = Kimi.Intrinsics.exchange(r@uniq, with: y@uniq) // Error: borrows r exclusively while c is live.
+Kimi.Intrinsics.replace(r@uniq, with: y@uniq)               // Valid: destroys r's old value in place, ending c's Loan.
+c@follow = 3                                                // c keeps the parent Loan on x.
+```
+
+Replacing an outer reference ends a child formed through two dereferences in the same way, while its parent Loans protect the old route; a Borrow that would keep the old route beside the child is rejected while the child is live:
+
+```kimi
+var x = 1
+var z = 3
+var slot = x@uniq
+var slot2 = z@uniq
+var rr = slot@uniq
+let c = rr@follow@follow@uniq   // A child Loan: path rr.*.*, with parent Loans on slot and x.
+// let w = rr@follow@ref        // Error: Borrows rr.*, a prefix of c's path, while c is live.
+rr = slot2@uniq                 // Destroys rr's old value in place, ending c's Loan.
+rr@follow@follow = 7            // Valid: writes z through the new value.
+// slot@follow = 2              // Error: c keeps the parent Loan on slot.
+c@follow = 1                    // Writes x.
+```
+
+**Region splitting** derives several child Loans from one parent the same way. Exclusive children and the parent's remainder must be pairwise non-overlapping, by [§15.6.2](#1562-place-overlap-and-conflicts) or by the unsafe promise of a `uniq` borrow of a raw Place; shared children may overlap. A Reborrow through a child stays within that child. A value descends from a call's receiver, such as an Iterator or remainder it was split from, when the call returns it with Origins of that receiver's Type only and no other input's Type names them, as `next` does; it carries every Loan that a read through the receiver carries, whichever of those Origins it names ([§15.6.4](#1564-calls)). When the call is a requirement call without a known concrete callee ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)) or a call through a Callable-constrained value ([§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)), the value also carries every Loan of the receiver argument except the receiver Loan of the call ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)), such as the parent Loans of a Reborrowed receiver. Destroying the Iterator or remainder does not end published child Loans. A library splits raw storage in ordinary code: the remainder keeps the parent Loan in a `Loan<uniq/… during source>` Field, each child is a `uniq` borrow of a raw Place returned `during state.source`, and never lending overlapping Places to two live exclusive children is the unsafe obligation.
+
+```kimi
+// Take is the contract of §8.11.1.
+func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>
+    S is Take
+    var r = h@follow@uniq
+    let first = r.0.take()  // Descends from the receiver r.0 and keeps its parent Loans, r's Loan on h.* among them.
+    // h.1 = 5              // Error: reaches r's Loan on h.* while first is live.
+    return first@move       // Valid: the end of h's storage ends r's Loan.
+```
 
 A result may be kept across later calls on the same receiver when its Type does not depend on its call's receiver Loan and the callee's effects (for `preserves results`, its effect bound, [§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) do not conflict with it.
 
@@ -526,15 +591,15 @@ A call is checked as follows:
 4. collects its dependencies; a result that names a borrowed input's Origin, including a Closure's call receiver ([§7.7.3](07-functions-and-callable-values.md#773-call-receiver)), also depends on every Origin in OwnedOrigins of that input's referent Type;
 5. creates the caller-side Loans, which stay live while the values that carry them are used.
 
-A `uniq` requirement creates an exclusive Loan, and an exclusive Loan stays exclusive while a result depends on it; Origin equalities neither create nor release Loans. Protection begins when a Borrow is formed, in evaluation order (eligible exclusive borrows start as reservations, [§15.6.7](#1567-call-reservations)), and lasts through the whole call, including callee cleanup. Which results and writable storage, including storage reached through a Closure's captures, may retain an argument is determined by the instantiated public contract, for direct and indirect calls alike; an unproven absence of retention never permits access.
+A `uniq` requirement creates an exclusive Loan, and an exclusive Loan stays exclusive while a result depends on it; Origin equalities neither create nor release Loans. Protection begins when a Borrow is formed, in evaluation order (eligible exclusive borrows start as reservations, [§15.6.7](#1567-call-reservations)), and lasts through the whole call, including callee cleanup. Which results and writable storage, including storage reached through a Closure's captures, may retain an argument is determined by the instantiated public contract, for direct and indirect calls alike; an unproven absence of retention never permits access. Retention is decided per argument, never per Origin: a result or storage that may retain an Origin inside a borrowed argument's referent Type, including a Closure's call receiver, carries every Loan that a read through the argument carries ([§15.6](#156-borrow-checking)), whichever of those Origins it names; one that may retain any other Origin of an argument carries the argument's Loans, and those of such a read too when the argument is a borrow. A result that descends from the receiver of a call that [§15.6.3](#1563-reborrowing-and-region-splitting) names also carries the Loans it adds there.
 
-**Effect summaries.** A callable's **effect summary** lists the static storage keys ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) it may access with its reads, borrows, writes, replacements, destructions and first-access initializations, and, for each result, the mutable-static Field anchors it may carry. It includes the effects of its callees, of every implementation in its closed explicit-specialization set ([§12.7.2](12-expressions.md#1272-implementation-families)), and of defaults, accessors, lazy initialization and cleanup. It is computed once per declaration, in terms of its own Type parameters, as the least fixed point over recursive calls. When a static key passes through a recursive call and substitution does not map it to itself, the summary records the open key of its Field instead. Calls through Callable inputs are recorded once per input and receiver mode and composed with the actual arguments at each use. Conformance effect bounds are checked against the completed summaries ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)).
+**Effect summaries.** A callable's **effect summary** lists the static Fields ([§22.4.4](22-core-execution-and-foreign-functions.md#2244-static-storage-keys)) whose storage it may access with its reads, borrows, writes, replacements, destructions and first-access initializations. It includes the effects of its callees, of every implementation in its closed explicit-specialization set ([§12.7.2](12-expressions.md#1272-implementation-families)), and of defaults, accessors, lazy initialization and cleanup. It is computed once per declaration, in terms of its own Type parameters, as the least fixed point over recursive calls. Its **parameter-dependent effects** are those it keeps in terms of a Type parameter or an associated-Type projection: destructions of such a Type not proven Copy ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)), the user-code effects of published operations on such a Type ([§4.9.6](04-arrays-indexing-and-slices.md#496-loans-dependencies-and-call-effects)) and calls through Callable inputs. When a summary would keep one on a projection one of whose bases (its base, that base's base, and so on) the premises of the summary's declaration prove to conform to a recursive Contract ([§8.3.3](08-generics-constraints-and-contracts.md#833-recursion-and-finality)), it has unknown environment effects instead. The other parameter-dependent effects have a bounded projection depth, so the fixed point is finite. Calls through Callable inputs are recorded once per input and receiver mode and composed with the actual arguments at each use. Conformance effect bounds are checked against the completed summaries ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)).
 
 - A call or direct static access that conflicts with a live Loan ([§15.6.2](#1562-place-overlap-and-conflicts)) is an error. A live Loan anchored to a Field proves only that Field initialized.
 - A call with unknown environment effects, or an erased destruction ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)), conflicts with every live Loan anchored in mutable static storage, shared or exclusive, regardless of the Field's visibility. Loans anchored in immutable static storage are never affected. A task call always has unknown environment effects ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
 - Requirement and Callable-constrained calls take their effects from effect bounds ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use), [§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)).
 
-**Mutable-static anchors.** A value that may carry a Loan anchored in mutable static storage (a new Borrow of such storage, or a call result whose callee's summary lists such an anchor for it) may leave the body only through a result bounded by a borrowed input ([§11.8](11-properties.md#118-static-storage)). A relation that carries it to any other fixed Origin, for example by storing it through a parameter or a capture, is Refuted. A callable whose result may carry a mutable-static anchor can only be called with its summary known: by a direct call of the Function Item or of a concrete Closure. It cannot implement a Contract requirement, be the original or an override of a virtual slot, be converted to a common Function Type, or be bound to a Callable-constrained Type parameter; each such use is an error. Calls whose summary is not known therefore take a result's dependencies from the public contract alone.
+**Mutable-static Loans.** A Borrow of mutable static storage is bounded by the body ([§15.6.5](#1565-judging-origin-relations)), so no value that carries its Loan leaves the body, and every call takes its results' dependencies from the public contract alone.
 
 ```kimi
 group State
@@ -543,12 +608,10 @@ group State
     public let limit: i32 = 10
 
 func current(anchor: ref/i32) -> ref/string during anchor
-    return State.text@ref              // Valid: result bounded by a borrowed input.
+    return State.text@ref              // Error: a borrow of mutable static storage never leaves the body.
 
 func leak(anchor: ref/i32, target: uniq/(ref/string during anchor))
-    target@follow = current(anchor)    // Error: a mutable-static anchor leaves only through a result.
-
-let f: (ref/i32) -> ref/string = current // Error: erasure would hide the mutable-static anchor.
+    target@follow = State.text@ref     // Error: nor through a parameter.
 
 func run(g: () -> ())
     let c = State.count@ref
@@ -558,6 +621,36 @@ func run(g: () -> ())
     inspect(l)    // l alone would not conflict.
 ```
 
+A widened effect conflicts as an unknown call does, even where the caller's premises would classify every effect it replaces:
+
+```kimi
+contract Tree
+    associate Child is Tree       // Recursive (§8.3.3).
+    func child(self: ref/Self) -> Option<Self.Child>
+        effect confined
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree // Every U.Child… of a CopyTree U is Copy.
+
+group Trees
+    public func walk<T>(node: T, depth: i32)
+        T is Tree
+        if depth == 0 => return
+        match node.child()
+            .Some(let next) => Trees.walk(next@move, depth - 1)
+            .None => return
+// walk's summary has unknown environment effects: T.Child has the recursive base T.
+
+group Counters
+    public var count: i32 = 0
+
+func visitCopies<U>(node: U)
+    U is CopyTree
+    let c = Counters.count@ref
+    Trees.walk(node, 2)           // Error: walk's environment effects are unknown and conflict with c.
+    inspect(c)
+```
+
 ### 15.6.5. Judging Origin relations
 
 A body must work for every caller of its universally quantified signature. An Origin relation is judged Proven, Refuted or Unknown ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)). Origins are of three kinds:
@@ -565,8 +658,8 @@ A body must work for every caller of its universally quantified signature. An Or
 - A **fixed Origin** is fixed by the body's contract: a universal Origin, a parameter or receiver Origin, a projection of one, or `static`. In a Closure body, the Origins of its captures, of its call receiver and of a whole result inferred from the body ([§15.8.2](#1582-closure-dependencies)) are fixed too. A fixed Origin contains every point of the body.
 - A **finite Origin** belongs to a Borrow with an upper bound; each such Borrow has its own.
   - A **body-local Origin** belongs to a Borrow anchored in a local, parameter or temporary root of the body, reached by Field, element or owning-layer projections, never through a borrow or raw pointer; its bound is the body. Implicit Borrows and capture-entry Borrows ([§7.7.2](07-functions-and-callable-values.md#772-captures)) are included. A Closure's environment bindings are Fields of its call receiver, so borrowing them through a borrowed receiver is not body-local; in a Consuming call it is.
-  - A Borrow of mutable static storage, or a call result carrying such an anchor, is bounded by the body and by results bounded by a borrowed input ([§15.6.4](#1564-calls)).
-- An **inferred region** is any other local Origin, such as a slot of an unannotated local's Type. A Borrow of a raw Place ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places)) has no upper bound, so its Origin is not finite; it is an inferred region.
+  - A Borrow of mutable static storage, including an inline part, is bounded by the body too: a relation that carries it to a fixed Origin, such as returning it or storing it through a parameter or a capture, is Refuted ([§15.6.4](#1564-calls)).
+- An **inferred region** is any other local Origin, such as a slot of an unannotated local's Type. A Borrow of a raw Place ([§5.2.2](05-raw-pointers-and-unsafe-memory.md#522-borrowing-raw-places)) has no upper bound, so its Origin is not finite; it is an inferred region. So is the Origin of a Borrow reached through a borrow: it has no bound of its own, and its containment in the borrows it is reached through follows [§15.6.3](#1563-reborrowing-and-region-splitting).
 
 Every relation the body checks is judged, including unreachable result sources ([§14.9](14-control-flow.md#149-result-validation)) and the assumed-path state of [§14.10.3](14-control-flow.md#14103-unreachable-code); judging uses neither liveness nor reachability. Each relation `a outlives b` is an edge from `a` to `b`, and `a == b` is edges both ways. A **chain** is a path whose ends are fixed or finite Origins and whose inner nodes are inferred regions or finite Origins; it requires its first end to outlive its last. Chains are judged by reachability, not by enumerating paths:
 
@@ -595,12 +688,24 @@ func pick<s/T>(b: ref/Box<s/T during a> during c, x: ref/i32 during a) -> ref/i3
 
 Destruction responsibility and order follow [§16.2](16-scope-exit-and-destruction.md#162-scope-exit) and [§16.3](16-scope-exit-and-destruction.md#163-destruction-declarations). Every Origin and Loan that destruction may observe must be valid there. A user-defined `drop` is assumed to observe all reachable Origins, even if its body uses none, and the check applies recursively to Field destruction; destruction that observes no Origin adds no requirement.
 
+A destruction that may observe a Loan is an exclusive use of the destroyed Place and of the Places reached from it, across `obj`, `rc` and `arc` payloads and exclusive dereferences up to the first shared dereference ([§15.6.2](#1562-place-overlap-and-conflicts)), at `=`, at the end of storage and in a call that destroys a target, such as `replace`; it is checked before it ends any Loan ([§15.6.3](#1563-reborrowing-and-region-splitting)). A destruction that observes nothing accesses only the destroyed Place.
+
 ```kimi
 // Log is a group with observe(value: ref/Writer).
 struct Logger {sink}
     let out: uniq/Writer during sink
     drop
         Log.observe(self.out)    // sink must be valid here, even for an empty drop.
+```
+
+```kimi
+// S has the Field r: uniq/i32 and a drop that writes through it.
+var x = 1
+var y = 2
+var s = S(r: x@uniq)
+let c = s.r@follow@uniq          // A child Loan: path s.r.*.
+s = S(r: y@uniq)                 // Error: the old s's drop may write through s.r while c is live.
+c@follow = 1
 ```
 
 ### 15.6.7. Call reservations
@@ -611,7 +716,7 @@ A **call reservation** delays exclusive access, not evaluation or lifetime prote
 - An assignment target starts no call reservation; compound assignment, increment and decrement protect their destination as [§13.7.2](13-operators-and-assignment.md#1372-compound-assignment) states.
 - No reservation passes through local or aggregate storage, captures, nested invocations, results of control-flow expressions, compound assignment, increment and decrement, or index expressions. A Reborrow saved in storage, including the bare acquisition of a stored exclusive reference, is live when formed.
 
-**Reservation and activation.** The target is evaluated, located and checked once, and its Place, owner and provenance are protected: shared reads and Borrows may coexist; any write, Move, destruction, reallocation or other exclusive operation on it is an error. A child reservation keeps its parent's authority. The receiver is located first, then explicit arguments are evaluated in textual order and defaults in parameter order ([§7.2](07-functions-and-callable-values.md#72-parameters)); defaults may inspect reserved inputs through shared Loans that end before entry. Then every reservation must be able to become live at once, with retained dependencies, captures, mutable-static anchors and cleanup effects; overlapping arguments that are both exclusive, or one shared and one exclusive, are errors even if the callee would not use them. No temporary is destroyed early to make activation possible. A control transfer keeps reservation protection while its operand is evaluated and acquired; then only the reservations of the invocations it abandons end, without activation, before the abandoned preparation's remaining cleanup. A transfer caught inside an argument abandons nothing.
+**Reservation and activation.** The target is evaluated, located and checked once, and its Place, owner and the references it was reached through are protected: shared reads and Borrows may coexist; any write, Move, destruction, reallocation or other exclusive operation on it is an error. A child reservation keeps its parent's authority. The receiver is located first, then explicit arguments are evaluated in textual order and defaults in parameter order ([§7.2](07-functions-and-callable-values.md#72-parameters)); defaults may inspect reserved inputs through shared Loans that end before entry. Then every reservation must be able to become live at once, with retained dependencies, captures, effects on static storage and cleanup effects; overlapping arguments that are both exclusive, or one shared and one exclusive, are errors even if the callee would not use them. Overlap between arguments is judged through the Loans their values carry, against which each activation is checked ([§15.6](#156-borrow-checking)): a Borrow past a shared dereference forms no Loan of its own ([§15.6.3](#1563-reborrowing-and-region-splitting)), so `g(s@uniq, s.r@follow@ref)` with `r: ref/i32` is valid. No temporary is destroyed early to make activation possible. A control transfer keeps reservation protection while its operand is evaluated and acquired; then only the reservations of the invocations it abandons end, without activation, before the abandoned preparation's remaining cleanup. A transfer caught inside an argument abandons nothing.
 
 ```kimi
 // tasks: Array<Task>.

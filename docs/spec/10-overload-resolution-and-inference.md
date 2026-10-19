@@ -198,11 +198,13 @@ g(1@i32)                // g(x): steps 1–3 tie on x; step 4 prefers fewer defa
 
 ### 10.5.1. Argument kinds
 
-Each argument of a call is exactly one of:
+Each argument of a call is exactly one of the following, except a Tuple or array literal argument, which is not classified itself: each of its elements is, one by one and recursively, as an argument at its element position.
 
 - **Literal**: an untyped literal, a literal-only expression ([§12.3](12-expressions.md#123-literal-typing)), or a control-flow expression whose result sources ([§14.9](14-control-flow.md#149-result-validation)) are all such. Each candidate's parameter Type propagates to every source; it is ranked by the Literal fitting row of [§10.2.2](#1022-inference-and-adaptation-classes); it is no evidence for a slot, and its default applies after selection ([§10.2.1](#1021-literals)).
 - **Independently typable**: any other argument whose complete Type is fixed with no expectation from the call and no literal default, such as a typed value or Place (with any explicit `@` operation) or a function reference that does not need `S` ([§10.5.3](#1053-function-references)). A nested call qualifies only when it has exactly one applicable candidate without an expected result. An anonymous function never qualifies. Its Type is evidence for the outer candidate's slots.
 - **Waiting**: every other argument, such as an anonymous function, a function reference that needs `S`, or a nested call that is not independently typable. It is checked only against the expected Type shared by the remaining outer candidates, or that of the selected candidate, and is never evidence for an outer slot.
+
+A Tuple or array literal argument is fitted per candidate ([§4.3.1](04-arrays-indexing-and-slices.md#431-array-literals-and-annotation-holes)): a Literal element fits the Type at its position and is no evidence, an independently typable element is evidence for the slots at its position, and a waiting element is checked there as a waiting argument is. A slot that takes the whole literal is bound from it only when every element is evidence.
 
 Inner calls are never resolved once per outer candidate. Eliminated candidates are not revived. A waiting nested call that neither a shared expectation nor an already selected candidate types requires an annotation, explicit Type arguments or a typed binding; anonymous functions follow [§10.5.4](#1054-anonymous-functions).
 
@@ -215,10 +217,13 @@ func makeBox<T>(value: T) -> Box<T> => Box.init(value@move)  // Box<T>: an appli
 func outer<U>(value: Box<U>) -> () => ()
 func choose(value: i32) -> () => ()
 func choose(value: i64) -> () => ()
+func pair<T>(first: T, rest: (T, T)) -> () => ()
 
 inspect(makeValue())            // Independently typable: T = i64.
 take(identity(1))               // Waiting: the expected i64 fixes the inner T.
 outer(makeBox(1))               // Error: U is unbound; a waiting argument is no evidence. Write makeBox(1@i32).
+pair(1, (makeValue(), identity(2))) // Elements one by one: T = i64 from makeValue(); identity(2) waits.
+take(if ready => 1 else => 2)   // Literal: both sources fit i64.
 choose(if ready => 1 else => 2) // Error: ambiguous; both candidates fit the literals.
 ```
 
@@ -313,7 +318,7 @@ Explicit arguments bind first. Type, Semantics, length ([§4.4](04-arrays-indexi
 
 **Call-signature matching.** Each parameter with a fixed expected call signature `S` ([§10.5.2](#1052-call-signatures)) matches `S` against the known call signature of its argument, or for `F`, `ref/F` or `uniq/F` of the Type the argument binds to `F`. Task-slot presence, structure and Semantics match by normalized identity and Origins by limited inference ([§15.3.6](15-ownership-and-lifetime-analysis.md#1536-origin-inference)), without adaptation or search. Only parts containing an unbound slot are matched this way; other parts must fit as [§10.7](#107-callable-signature-compatibility) requires (erasure at a common Function Type, the Callable Constraint at `F`), so header Types need only be compatible. A per-call Origin never solves an Origin inside a slot: `(T) -> ()` against `(ref/i32) -> ()` gives `T = ref/i32` with its Origin left to other evidence.
 
-**Solving.** A failed match, or conflicting structure or Semantics evidence, makes the candidate inapplicable; Origin evidence never does ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)). An explicit Type argument is kept. Otherwise the slot's solution is its binding at invariant positions: all such bindings must agree in structure and Semantics (a disagreement makes the candidate inapplicable), and their Origins must be equal. Without an invariant binding, the solution is the meet of the covariant bindings. Each argument's Origin fit to the solution is judged after selection. An unresolved associated projection such as `T.Element` is never inverted: an argument of Type `i32` at `value: T.Element` binds no `T`, and another parameter such as `witness: Tag<T>` must bind it. Traversal order, conversion chains, common-base search and Constraint strength never choose a solution. A waiting argument's completed Closure fills no outer slot.
+**Solving.** A failed match, or conflicting structure or Semantics evidence, makes the candidate inapplicable; Origin evidence never does ([§15.6.1](15-ownership-and-lifetime-analysis.md#1561-origin-relations-and-well-formedness)). An explicit Type argument is kept. Otherwise the slot's solution is its binding at invariant positions: all such bindings must agree in structure and Semantics (a disagreement makes the candidate inapplicable), and their Origins must be equal. Without an invariant binding, the solution is the meet of the covariant bindings. Each argument's Origin fit to the solution is judged after selection. An unresolved associated projection such as `T.Element` is never inverted: an argument of Type `i32` at `value: T.Element` binds no `T`, and another parameter such as `witness: Tag<T>` must bind it. Traversal order, conversion chains, common-base search and Constraint strength never choose a solution. A waiting argument's completed Closure fills no outer slot. An argument or element of Type Never supplies no evidence, even for a slot that takes a whole Tuple or array literal holding it, as Never supplies no candidate in [§14.9.2](14-control-flow.md#1492-target-result-type-and-expression-type); it still fits its position ([§3.8](03-types-and-values.md#38-type-relations-and-operations)).
 
 **Semantics.** Under an expected `s/T`, the Literal operand of `n@s` fits `T` (not for object targets, [§13.6.2](13-operators-and-assignment.md#1362-object-creation-clone-and-lifecycle)); a typed operand keeps its Type. An unbound `s` is inferred from the source's outer Semantics with no conversion search: `owner` and `ref` evidence for one `s` conflict. `s is reference` checks the Semantics projection and the pair's `T is C` its target projection; an ordinary `T` keeps its complete Semantics.
 
@@ -327,7 +332,11 @@ func both<T, F, G>(first: ref/F, second: ref/G) -> T
 
 func makeSmall() -> i32 => 1
 func makeLarge() -> i64 => 2
+func identity<T>(value: T) -> T => value@move
+func stop() -> Never => $abort("stop")
 // let mixed = both(makeSmall, makeLarge)  // Error: conflicting evidence for T.
+// let s = identity(stop())                // Error: T is unbound; Never supplies no evidence.
+let t: i32 = identity(stop())              // T = i32 from the expected result.
 ```
 
 ### 10.8.1. Constructor Type inference

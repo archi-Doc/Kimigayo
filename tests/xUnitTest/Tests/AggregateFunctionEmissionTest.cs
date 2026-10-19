@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -47,7 +48,7 @@ public class AggregateFunctionEmissionTest
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
         if (destruction.Length != 0)
         {
-            StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destruction);
+            StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destruction);
         }
     }
 
@@ -60,7 +61,7 @@ public class AggregateFunctionEmissionTest
         var name = "AggregateFunctionOrder" + transfer;
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
         int[] order = transfer ? [0, 1] : [1, 0];
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, "first=1;second=1", order: order);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, "first=1;second=1", order: order);
     }
 
     [Fact]
@@ -68,7 +69,7 @@ public class AggregateFunctionEmissionTest
     {
         const string Source = "func f() -> (string, i32)\n    var value = (\"before\", 1)\n    defer => value = (\"after\", 2)\n    return value@move\nf()";
         var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionSnapshot", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateFunctionSnapshot", Source, ir, string.Empty, "before=1;after=1", order: [1, 0]);
+        StringEmissionTest.WriteAuditedFixture("AggregateFunctionSnapshot", ir, string.Empty, "before=1;after=1", order: [1, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
@@ -89,7 +90,7 @@ public class AggregateFunctionEmissionTest
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         name = "AggregateFunctionAbort" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, "held=0", 1, stderr);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, "held=0", 1, stderr);
     }
 
     [Fact]
@@ -106,8 +107,7 @@ public class AggregateFunctionEmissionTest
         var result = function.GetOperands(call)[0];
         Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[(int)result.Value].Kind);
         var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]
@@ -247,21 +247,23 @@ public class AggregateFunctionEmissionTest
     public void PhysicalSignatureCacheReusesShapesWithoutRetainingSyntax()
     {
         var pool = new FunctionAbiPool();
-        var layouts = new AggregateLayoutPool();
-        var tree = Populate(pool, layouts, out var first);
+        // One pool and Layout across three compilations: their Types are Tuples of primitives, without stored Types that would
+        // follow one compilation's edits (Layout's input contract), so the shared records stay valid.
+        var layout = new Layout();
+        var tree = Populate(pool, layout, out var first);
         GC.Collect();
         GC.WaitForPendingFinalizers();
         GC.Collect();
         Assert.False(tree.IsAlive);
         var c = MinimalEmissionTest.Analyze(Echo.Replace("echo", "renamed") + "()");
         var renamed = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "renamed");
-        Assert.Same(first, pool.Get(0, renamed, layouts));
+        Assert.Same(first, pool.Get(0, renamed, layout));
         var empty = MinimalEmissionTest.Analyze("func f(value: [0 of string]) -> [0 of string] => value@move\n()");
         var f = KotoTree.Walk(empty.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
-        var omitted = pool.Get(0, f, layouts);
+        var omitted = pool.Get(0, f, layout);
         Assert.NotSame(first, omitted);
         Assert.Empty(omitted.Parameters);
-        GC.KeepAlive(layouts);
+        GC.KeepAlive(layout);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -288,12 +290,11 @@ public class AggregateFunctionEmissionTest
     }
 
     [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
-    private static WeakReference Populate(FunctionAbiPool pool, AggregateLayoutPool layouts, out FunctionAbi abi)
+    private static WeakReference Populate(FunctionAbiPool pool, Layout layout, out FunctionAbi abi)
     {
         var c = MinimalEmissionTest.Analyze(Echo + "()");
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "echo");
-        abi = pool.Get(0, function, layouts);
-        layouts.Clear();
+        abi = pool.Get(0, function, layout);
         return new WeakReference(function);
     }
 }

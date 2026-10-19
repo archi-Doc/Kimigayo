@@ -1,0 +1,34 @@
+// O2 timing corpus (O2Corpus.md): Array<T> growth, indexing, shared iteration, swap, pop and clear.
+struct Entry
+    public let key: i64
+    public let weight: i64
+    public init(key: i64, weight: i64)
+        self.key = key
+        self.weight = weight
+
+// One FNV-1a step over a round's sum, then an xorshift so the high bits reach the low ones: each part is invertible, so a wrong
+// value in any round changes the checksum.
+func fold(checksum: i64, value: i64) -> i64
+    let mixed = ((checksum ^ (value & 0xFFFF_FFFF)) * 16777619) & 0xFFFF_FFFF
+    return mixed ^ (mixed >> 16)
+
+public func main()
+    var checksum: i64 = 0
+    for round in 0..131072
+        var values: Array<Entry> = [] // Each round grows a new buffer from empty.
+        for i in 0..1024
+            values.append(Entry.init(i@i64, (round + i)@i64))
+        var sum: i64 = 0
+        for entry in values
+            sum += entry.weight
+        var i: isize = 0
+        while i < values.length
+            sum ^= values[i].key
+            i += 3
+        values.swap(0, ^1)
+        match values.pop()
+            .Some(let last) => sum += last.key
+            .None => $abort("empty")
+        values.clear()
+        checksum = fold(checksum, sum)
+    Console.writeLine("checksum \(checksum)")

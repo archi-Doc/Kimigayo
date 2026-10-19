@@ -9,7 +9,6 @@ public sealed partial class Binding
 {
     // The records of a node beyond the first, published after it with their own conditions (SPEC 15.6.1: every failed chain).
     private readonly List<(Koto Node, OriginRelationFact Fact)> callRelationScratch = new();
-    private readonly List<OriginRelationFact> relationScratch = new();
     private Dictionary<Koto, List<OriginRelationFact>>? callRelations;
 
     private static bool MentionsOrigin(BoundType type, BoundOrigin origin)
@@ -160,22 +159,30 @@ public sealed partial class Binding
             {
                 // SPEC 15.6.1: a substituted clause is located at the first input whose parameter names its longer Origin.
                 var at = this.ClauseInput(selected, operations, argumentCount, relation.Longer) ?? call;
-                var longer = Substitute(relation.Longer);
-                var shorter = Substitute(relation.Shorter);
+                var longer = this.SubstituteClauseOrigin(relation.Longer, selected, origins, inputs, declaringType);
+                var shorter = this.SubstituteClauseOrigin(relation.Shorter, selected, origins, inputs, declaringType);
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
             }
         }
+    }
 
-        BoundOrigin Substitute(BoundOrigin origin)
+    // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the declaring
+    // Type's stored slots, then the callee's own Origins and inputs, as many as the call gives.
+    private BoundOrigin SubstituteClauseOrigin(
+        BoundOrigin origin,
+        FunctionKoto selected,
+        ReadOnlySpan<BoundOrigin> origins,
+        ReadOnlySpan<BoundOrigin> inputs,
+        BoundType? declaringType)
+    {
+        if (declaringType?.Symbol is { } owner)
         {
-            if (declaringType?.Symbol is { } owner)
-            {
-                origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
-            }
-
-            var originCount = selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0;
-            return this.SubstituteStoredOrigin(origin, binder, origins.AsSpan(0, originCount), inputs.AsSpan(0, Math.Min(inputs.Length, InputOriginCount(binder))));
+            origin = this.SubstituteStoredOrigin(origin, owner.Declaration, (BoundOrigin[])declaringType.OriginArguments);
         }
+
+        var binder = selected.Accessor?.Binder ?? selected;
+        var originCount = Math.Min(origins.Length, selected.Accessor?.Declaration?.Origins.Count ?? selected.BoundSymbol?.Schema?.Origins.Count ?? 0);
+        return this.SubstituteStoredOrigin(origin, binder, origins[..originCount], inputs[..Math.Min(inputs.Length, InputOriginCount(binder))]);
     }
 
     // The records of one call node beyond the first, each with its own condition so that it stays an independent problem.

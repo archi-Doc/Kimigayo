@@ -37,7 +37,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         var refused = c.Ownership.FailedInstance;
         Assert.NotNull(refused);
         var issue = Assert.Single(refused.IssueStorage);
-        Assert.Equal(OwnershipFailure.Unsupported, issue.Failure);
+        Assert.Equal(OwnershipRequirement.Unsupported, issue.Failure);
         Assert.True(c.Analysis.IsVerified);
         Assert.Empty(c.Problems);
         c.Emission.ReportFailure(failure);

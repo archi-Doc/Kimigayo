@@ -12,23 +12,20 @@ public static class EmissionArtifacts
     /// <summary>Publishes both files, with the manifest last, or reports a failure without claiming old files.</summary>
     /// <param name="compilation">The analyzed compilation.</param>
     /// <param name="irPath">The published IR path on success.</param>
-    /// <param name="failure">The diagnostic on failure.</param>
+    /// <param name="failure">The publication failure, or null when generation failed: its records are in the Emission partition.</param>
     /// <returns>Whether the complete matched pair was published.</returns>
     public static bool Publish(Compilation compilation, out string? irPath, out string? failure)
         => Publish(compilation, null, out irPath, out failure);
 
+    // The publication inputs are checked first, since the generation entry writes into the temporary IR file (R5 C0a).
     internal static bool Publish(Compilation compilation, ArtifactPaths? paths, out string? irPath, out string? failure)
     {
         irPath = null;
+        failure = null;
         string? tempIr = null;
         string? tempManifest = null;
         try
         {
-            if (!compilation.Emission.TryPrepare(out var module, out failure))
-            {
-                return false;
-            }
-
             var project = compilation.Project;
             var settings = project.ProjectFile;
             if (WindowsProfile.BackendVersion.Length == 0 || WindowsProfile.BackendSha256.Length != 64)
@@ -65,7 +62,10 @@ public static class EmissionArtifacts
             tempManifest = manifest + "." + unique + ".tmp";
             using (var writer = new StreamWriter(new FileStream(tempIr, FileMode.CreateNew, FileAccess.Write, FileShare.None), new UTF8Encoding(false), 16384))
             {
-                module.WriteIr(writer);
+                if (!compilation.Generate(writer))
+                {
+                    return false;
+                }
             }
 
             var hash = Hash(tempIr);
@@ -147,7 +147,7 @@ public static class EmissionArtifacts
                 continue;
             }
 
-            if (!ReferenceEquals(import.Function.CodeContext.Kotonoha, compilation.Kotonoha))
+            if (!ReferenceEquals(import.Decl.Declaration.CodeContext.Kotonoha, compilation.Kotonoha))
             {
                 throw new InvalidDataException("Native supplies required by dependency modules are not linked yet.");
             }

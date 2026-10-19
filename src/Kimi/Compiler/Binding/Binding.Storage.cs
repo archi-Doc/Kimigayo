@@ -15,7 +15,6 @@ public sealed partial class Binding
     private readonly List<bool> inlineLayoutOwnDeclaration = new();
     private readonly List<DeclarationContainerKoto> cyclicInlineLayouts = new();
     private readonly HashSet<BoundType> finiteInlineLayouts = new(ReferenceEqualityComparer.Instance);
-    private readonly List<StructKoto> cLayouts = [];
     private readonly List<(GenericsKoto Syntax, BoundType Type)> cLayoutInstances = [];
     private readonly List<BoundType> enumPayloadTypes = new();
     private bool storagePrepared;
@@ -114,14 +113,15 @@ public sealed partial class Binding
     // SPEC 21.3.2: a struct or enum that contains itself by value (through stored Fields and inline
     // bases, payloads, Tuple/array components and other by-value containers, under the substitution
     // each use supplies) has no finite inline layout; a reference or object Semantics layer is an
-    // indirection. Every declaration on such a cycle is diagnosed once.
+    // indirection. Every declaration on such a cycle is diagnosed once and published as AdtDef.InlineCycle.
     private void ValidateInlineLayouts()
     {
         this.cyclicInlineLayouts.Clear();
         this.finiteInlineLayouts.Clear();
         foreach (var container in this.storageDeclarations)
         {
-            if (container.BoundSymbol?.Type is { } type)
+            container.BoundSymbol!.Adt!.InlineCycle = false;
+            if (container.BoundSymbol.Type is { } type)
             {
                 this.inlineLayoutStack.Clear();
                 this.inlineLayoutOwnDeclaration.Clear();
@@ -131,6 +131,7 @@ public sealed partial class Binding
 
         for (var i = 0; i < this.cyclicInlineLayouts.Count; i++)
         {
+            this.cyclicInlineLayouts[i].BoundSymbol!.Adt!.InlineCycle = true;
             this.Fail(this.cyclicInlineLayouts[i], BindingFailure.InvalidInlineLayout);
         }
     }

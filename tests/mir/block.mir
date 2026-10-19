@@ -12,6 +12,7 @@ fn pick @4
   _4: () temp @16 s1
   _5: bool temp @17 s1
   _6: bool temp @20 s1
+  _7: bool temp @4
   s1: lexical in s0 @7
   bb0:
       StorageLive(_2) @8 s1
@@ -27,20 +28,23 @@ fn pick @4
       StorageDead(_4) @16 s1
       StorageLive(_6) @20 s1
     * _6 = copy _2 @20 s1
-      goto bb4 check bb5 @19 s1
+      goto bb5 check bb6 @19 s1
   bb1:
       return @4
   bb2:
+      _0 = move _7 @19 s1
+      goto bb1 @19 s1
+  bb3:
       StorageDead(_3) @11 s1
       StorageDead(_2) @8 s1
-      goto bb1 @4
-  bb3:
-      StorageDead(_6) @20 s1
       goto bb2 @4
   bb4:
-      _0 = move _6 @19 s1
-      goto bb3 @19 s1
+      StorageDead(_6) @20 s1
+      goto bb3 @4
   bb5:
+      _7 = move _6 @19 s1
+      goto bb4 @19 s1
+  bb6:
       StorageDead(_6) @20 s1
       StorageDead(_3) @11 s1
       StorageDead(_2) @8 s1

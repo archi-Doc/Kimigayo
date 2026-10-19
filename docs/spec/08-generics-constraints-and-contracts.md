@@ -142,7 +142,7 @@ Evidence comes from the declaration's input Constraints, built-in capability rul
 | Concrete judgment | Concrete Type-identity, Semantics, category and built-in capability tests, and the closed-world rule below. |
 | Admitted set | A requirement on a pair binder is decided by [§8.3.4](#834-semantics-admitted-set). |
 | Verified conformance | A verified explicit, conditional ([§8.8](#88-conditional-conformance)) or inherited ([§8.6.2](#862-inherited-conformance)) conformance supplies evidence once its implementations are identified and compatible ([§8.6.3](#863-implementation-matching)); effect bounds are checked separately ([§8.11.4](#8114-checking-and-use)). |
-| Contract refinement | `T is C` supplies each ancestor conformance and inherited Constraint, with `T` for `Self`. |
+| Contract refinement | `T is C` supplies each ancestor conformance and `C`'s own and inherited Constraints, with `T` for `Self`; an associated-Type declaration's requirement is one of them (`associate X is R` in `C` supplies `T.(C).X is R`). |
 | Type and associated-Type identity | Proven when both sides are in one identity class ([§8.2.3](#823-type-identity-and-identity-premises)), after substituting completed associated-Type bindings; Refuted when both are fully bound and differ. Proof never searches members or chooses a Type. |
 | Closed implication | `T is PrimitiveInteger` supplies `T is Position` ([§8.7.4](#874-primitiveinteger)). |
 | Other cases | Unknown. |
@@ -159,7 +159,7 @@ func pick<T>(value: T) -> T
 
 ### 8.3.3. Recursion and Finality
 
-**Recursion.** A conformance cannot use itself as evidence: an obligation revisited while it is being proven supplies no evidence, and no coinduction is assumed. Recursive declarations alone are valid; structural analyses such as Owned use [§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins). When a Contract's associated-Type Constraint leads back to the same Contract, the Contract is valid, but no concrete Type can be proven to conform. The depth of a proof search is limited by an implementation-defined resource limit; a proof that exceeds it is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)), never Unknown or Refuted.
+**Recursion.** A conformance cannot use itself as evidence: an obligation revisited while it is being proven supplies no evidence, and no coinduction is assumed. Recursive declarations alone are valid; structural analyses such as Owned use [§15.3.5](15-ownership-and-lifetime-analysis.md#1535-variance-loan-requirements-and-phantom-origins). A Contract `C` is **recursive** when `T is C` supplies ([§8.3.2](#832-proof-rules): `C`'s own and inherited Constraints, with `T` for `Self`), directly or through the Constraints of the Contracts so supplied, a conformance of a projection of `T` to `C`'s declaration, with any Type arguments, or to a Contract that refines it. A recursive Contract is valid, but no concrete Type can be proven to conform. The depth of a proof search is limited by an implementation-defined resource limit; a proof that exceeds it is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)), never Unknown or Refuted.
 
 **Finality.** A judgment uses every fact of the program that does not depend on that judgment; the order in which an implementation checks declarations never changes the result. A fact that depends on its own judgment, directly or through other declarations, supplies no evidence. Where proof is required, Unknown is an error (unproven requirement); it is never accepted or treated as Refuted. A generic definition is judged under its declared premises when it is checked; instantiation adds no semantic use condition and never repeats lookup or overload selection, and only layout and representation obligations depend on instantiation ([§8.15.3](#8153-concrete-layout-and-representation)).
 
@@ -281,7 +281,7 @@ func readInt<T>(source: ref/T) -> i32
 
 ### 8.5.3. Constraints on inherited associated Types
 
-A child Contract may constrain an inherited associated Type with `Self.(C).Element` for an ancestor `C`, or with a bare name unique among own and inherited declarations; this creates no new Type. It may refine an inherited family with `associate Parent.LentItem(a) is E`, which holds for every `a` in the parent's domain, as `Iterator` does with `associate LendingIterator.LentItem(step) is Item` ([§22.2.1](22-core-execution-and-foreign-functions.md#2221-iterator-contracts)). Loan independence is checked separately ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)).
+A child Contract may constrain an inherited associated Type with `Self.(C).Element` for an ancestor `C`, or with a bare name unique among own and inherited declarations; this creates no new Type. It may refine an inherited family with `associate Parent.LentItem(a) is E`, which holds for every `a` in the parent's domain, as `Iterator` does with `associate LendingIterator.LentItem(step) is Item` ([§22.2.1](22-core-execution-and-foreign-functions.md#2221-iterator-contracts)). A Contract may also constrain a deeper projection of `Self`, such as `Self.(A).X.(B).Y is A` (which makes `A` recursive, [§8.3.3](#833-recursion-and-finality)) in a Contract `A` that declares `associate X is B`: each step needs the conformance evidence of [§8.5.2](#852-projections), and the Constraint, a condition on the conforming Self, is an implementation requirement ([§6.1.4](06-declarations-and-containers.md#614-constraint-roles)) that `T is A` supplies ([§8.3.2](#832-proof-rules)). Loan independence is checked separately ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)).
 
 ```kimi
 contract OrderedSource: Source
@@ -408,7 +408,7 @@ One implementation may satisfy several requirements, including requirements of d
 | Constraints | The Type, conformance and requirement premises prove the implementation's Constraints and conditions. |
 | Inputs | Every input the requirement admits stays valid; a call-local borrow is not narrowed to `static`. |
 | Result Type | Result compatibility ([§10.7](10-overload-resolution-and-inference.md#107-callable-signature-compatibility)). |
-| Result Origins | At least the required guarantees, and no mutable-static anchor ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). |
+| Result Origins | At least the required guarantees. |
 | Access | Usable throughout the conformance's domain ([§9.4.6](09-names-signatures-and-access.md#946-conformance-accessibility)). |
 | Context and Effects | No stronger calling context; a safe requirement never needs unsafe. No effect outside the applicable bounds ([§8.11](#811-effect-bounds)). |
 
@@ -853,7 +853,7 @@ Applicability ([§10.1](10-overload-resolution-and-inference.md#101-candidate-ap
 | Type parameter or projection | A premise on it with the same signature, an equal or stronger receiver (`ref` < `uniq` < `owner`) and the bound. |
 | Common Function Type | None. |
 
-Binding a Function Item or Closure whose result may carry a mutable-static anchor to a Callable-constrained Type is an error ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 to 3 of [§8.11.4](#8114-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
+A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 to 3 of [§8.11.4](#8114-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
 
 ```kimi
 func apply<F>(transform: ref/F, value: i32) -> i32

@@ -6,13 +6,48 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<(FunctionKoto Function, CallPlan Context)> closureContexts = new();
+    // The old generator's CallPlan of each closure an instance closed, by closure and context, kept until an edit (DECISIONS R5-M36).
+    [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
+    private readonly Dictionary<(BindingSymbol Closure, Subst Context), CallPlan> closureCalls = new();
 
     internal BoundType? ClosureSignature(BoundType type)
         => type.Symbol?.Declaration is FunctionKoto { BoundClosure: { } closure }
-            ? type.ClosureContext is { } context ? this.InstantiateStorageType(closure.Signature, context) : closure.Signature : null;
+            ? type.ClosureContext is { } context ? this.types.Apply(closure.Signature, context) : closure.Signature : null;
 
-    private BoundType? CloseClosureTypes(BoundType type, BindingSymbol target, BoundType? declaring, ReadOnlySpan<BoundType?> types, ReadOnlySpan<BoundLength?> lengths, ReadOnlySpan<BoundOrigin> origins, ReadOnlySpan<BoundOrigin> inputs)
+    // The bridge from a closure's context to the CallPlan the old generator keys the closure's instance by (GenericStoragePlan,
+    // BodyLowering): one per closure and context, so two closures of one instance keep two entries (S2-S4 X10), and the same one at
+    // every request until an edit, so warm generation allocates nothing; null for a closure no instance closed.
+    [Transitional("R6-gen", Reason = "G7 deletes the old generator, the bridge's one reader.")]
+    internal CallPlan? ClosureCall(BoundType closure)
+    {
+        if (closure is not { ClosureContext: { } context, Symbol: { Declaration: FunctionKoto { BoundClosure: { } definition } } symbol })
+        {
+            return null;
+        }
+
+        if (!this.closureCalls.TryGetValue((symbol, context), out var call))
+        {
+            var result = this.types.Apply(definition.Signature.Components[1], context)!; // Checked when the instance made the context.
+            call = new();
+            call.Set(
+                context.Target,
+                result,
+                null,
+                [],
+                context.Types,
+                declaringType: context.Declaring,
+                origins: context.Origins,
+                inputOrigins: context.Inputs,
+                lengthArguments: context.Lengths);
+            this.closureCalls.Add((symbol, context), call);
+        }
+
+        return call;
+    }
+
+    // SPEC 8.2: the closures of the instance a substitution makes closed in it: each closure its binder encloses (through anonymous
+    // functions) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36).
+    private BoundType? CloseClosureTypes(BoundType type, Subst instance)
     {
         if (type.ClosureContext is not null || (type.Components.Count == 0 && type.Kind != BoundTypeKind.Closure))
         {
@@ -25,7 +60,7 @@ public sealed partial class Binding
             var changed = false;
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (this.CloseClosureTypes(type.Components[i], target, declaring, types, lengths, origins, inputs) is not { } part)
+                if (this.CloseClosureTypes(type.Components[i], instance) is not { } part)
                 {
                     return null;
                 }
@@ -34,42 +69,25 @@ public sealed partial class Binding
                 changed |= !ReferenceEquals(part, type.Components[i]);
             }
 
-            CallPlan? context = null;
-            if (type.Kind == BoundTypeKind.Closure && type.Symbol?.Declaration is FunctionKoto { RequiresInstantiation: true, BoundClosure: { } closure } function)
+            Subst? context = null;
+            if (type.Kind == BoundTypeKind.Closure && type.Symbol is { Declaration: FunctionKoto { BoundClosure: { } closure } function } symbol &&
+                this.types.Instantiates(symbol))
             {
                 var enclosing = function.BoundSymbol!.Scope.Function;
-                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, target.Declaration))
+                while (enclosing is { IsAnonymous: true } && !ReferenceEquals(enclosing, instance.Binder))
                 {
                     enclosing = enclosing.BoundSymbol?.Scope.Function;
                 }
 
-                if (enclosing is not null && ReferenceEquals(enclosing, target.Declaration))
+                if (enclosing is not null && ReferenceEquals(enclosing, instance.Binder))
                 {
-                    var result = this.InstantiateStorageType(closure.Signature.Components[1], target, declaring, types, lengths, origins, inputs);
-                    if (result is null)
+                    // The closure's result in the instance is the failure check.
+                    if (this.InstantiateStorageType(closure.Signature.Components[1], instance) is null)
                     {
                         return null;
                     }
 
-                    foreach (var candidate in this.closureContexts)
-                    {
-                        var previous = candidate.Context;
-                        if (ReferenceEquals(candidate.Function, function) && ReferenceEquals(previous.Target, target) &&
-                            ReferenceEquals(previous.ReturnType, result) && ReferenceEquals(previous.DeclaringType, declaring) &&
-                            previous.TypeArguments.SequenceEqual(types) && previous.LengthArguments.SequenceEqual(lengths) &&
-                            previous.Origins.SequenceEqual(origins) && previous.InputOrigins.SequenceEqual(inputs))
-                        {
-                            context = previous;
-                            break;
-                        }
-                    }
-
-                    if (context is null)
-                    {
-                        context = new();
-                        context.Set(target, result, null, [], types, declaringType: declaring, origins: origins, inputOrigins: inputs, lengthArguments: lengths);
-                        this.closureContexts.Add((function, context));
-                    }
+                    context = instance;
                 }
             }
 
@@ -81,5 +99,13 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(scratch, clearArray: true);
         }
+    }
+
+    // The call contexts of function items (read by TyCtxt.SubstOfItem and the old generator) and of closures for the old generator, kept
+    // across unchanged passes and revoked by an edit; G7 inlines this with ClosureCall's removal.
+    private void ResetCallContexts()
+    {
+        this.functionItemContexts.Clear();
+        this.closureCalls.Clear();
     }
 }

@@ -71,8 +71,7 @@ public class SharedArcRuntimeTest
         const string Source = "let owner = Kimi.Intrinsics.makeArc(7)\nlet copy = Kimi.Intrinsics.clone(owner@ref)\nConsole.writeLine(\"retained\")";
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
         const string Initial = "store i64 %controlValue, ptr %control, align 8";
-        Assert.Contains(Initial, ir, StringComparison.Ordinal);
-        ir = ir.Replace(Initial, "store i64 " + (maximum ? "-2" : "-4") + ", ptr %control, align 8", StringComparison.Ordinal);
+        ir = NativeAllocationAudit.Instrument(ir, Initial, "store i64 " + (maximum ? "-2" : "-4") + ", ptr %control, align 8");
         ScalarEmissionTest.WriteFixture(
             "SharedArcCount" + (maximum ? "Maximum" : "BelowMaximum"),
             ir,
@@ -119,9 +118,7 @@ public class SharedArcRuntimeTest
     {
         const string Source = "let owner = Kimi.Intrinsics.makeArc(7)\nlet copy = Kimi.Intrinsics.clone(owner@ref)\nConsole.writeLine(\"unreachable\")";
         var ir = CompilationTestHelper.WriteIr(MinimalEmissionTest.Analyze(Source));
-        const string Initial = "store i64 %controlValue, ptr %control, align 8";
-        Assert.Contains(Initial, ir, StringComparison.Ordinal);
-        ir = ir.Replace(Initial, "store i64 -2, ptr %control, align 8", StringComparison.Ordinal);
+        ir = NativeAllocationAudit.Instrument(ir, "store i64 %controlValue, ptr %control, align 8", "store i64 -2, ptr %control, align 8");
         var clone = Function(ir, "__kimi_clone_arc");
         const string Load = "%initial = load atomic i64, ptr %control monotonic, align 8";
         Assert.Contains(Load, clone, StringComparison.Ordinal);

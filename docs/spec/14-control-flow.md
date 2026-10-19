@@ -291,7 +291,7 @@ Patterns occur only in `match` arms.
 
 A nested Case Pattern takes its expected Type from its position; a qualified Case Pattern's qualifier is a plain Container path without binding-set suffixes: its own and inherited Origin slots are bound from the matched Type, and its omitted enum arguments follow the Pattern rule of [§6.5.2](06-declarations-and-containers.md#652-case-references). Names, constants, Properties, calls and other expressions are not Patterns; compare with a value through a guard. Pattern testing calls no constructor, getter, conversion or user operator.
 
-**Structural Patterns** (Case, Tuple, Unit, Literal) on a safe value reference (`ref/T`, `uniq/T` or a qualifying pair layer, [§13.5.5](13-operators-and-assignment.md#1355-follow)) without the needed structure select its referent, repeatedly ([§3.4.3](03-types-and-values.md#343-reference-path-selection)); Wildcard, Binding and grouping never do, and Object Semantics and raw pointers are never selected. Each position selects independently: below `ref` everything is shared, below `uniq` access is exclusive only if the Subject mode and every enclosing layer allow it, and a pair layer gives the weakest access over its cases.
+**Structural Patterns** (Case, Tuple, Unit, Literal) on a safe value reference (`ref/T`, `uniq/T` or a qualifying pair layer, [§13.5.5](13-operators-and-assignment.md#1355-follow)) without the needed structure select its referent, repeatedly ([§3.4.3](03-types-and-values.md#343-reference-path-selection)); Wildcard and grouping never do, a Binding does only as stated below, and Object Semantics and raw pointers are never selected. Each position selects independently: below `ref` everything is shared, below `uniq` access is exclusive only if the Subject mode and every enclosing layer allow it, and a pair layer gives the weakest access over its cases. A Binding reached with by-value access at a qualifying pair layer, which offers no Take ([§13.5.5](13-operators-and-assignment.md#1355-follow)), binds a reference to the layer's selected Place in the mode past it: `ref/T` when `ref` is admitted, else `uniq/T` ([§15.1.6](15-ownership-and-lifetime-analysis.md#1516-match-and-for-subjects)); elsewhere a Binding selects nothing.
 
 Arity and payload count must match exactly. `(P)` groups and `(P,)` is a one-element Tuple: `.Some((let x, let y))` matches one Tuple payload, `.Pair(let x, let y)` two. Testing goes outside in, left to right, stops at the first mismatch and Copies or Moves nothing.
 
@@ -435,7 +435,7 @@ let b = loop
 
 ### 14.9.3. Reachability
 
-**Structural Completion** is conservative: no path is pruned by `bool` literals, condition values, constants, Pattern containment, Type contradictions or callee bodies, and divergence, Never calls and Abort supply no normal candidate.
+**Structural Completion** is conservative: no path is pruned by `bool` literals, condition values, constants, Pattern containment, Type contradictions or callee bodies, and divergence, Never calls, Abort and any other expression of Type Never, such as a read or an explicit acquisition of a Place of Type Never, supply no normal candidate.
 
 | Construct | Paths |
 | --- | --- |
@@ -511,7 +511,7 @@ func insideContradiction(animal: objref/Animal) -> i32
 
 ### 14.10.3. Unreachable code
 
-An item that no Runtime Reachability path reaches is still checked, in a state built from assumed paths. On an assumed path, these Never forms are taken to complete normally: a transfer, `$abort` and a call whose result Type is Never continue after their operands are evaluated and before any cleanup, at their own lexical scope; a `loop` without a self-targeted `exit` continues with its iteration-entry state. Cleanup is checked the same way, so a transfer whose delivery a cleanup blocks is also assumed delivered. An item with at least one real incoming path uses only real paths; otherwise it uses the join of its assumed incoming paths, keeping only what holds on all of them. Loans that only an abandoned comparison needed end before the assumed continuation. All checks apply in this state: reading an uninitialized or Moved value, a second Move and a Loan conflict are errors, and Effective Types and condition facts carry over as on real paths. Assumed paths add no implicit result, no normal completion and no Runtime Reachability edge; explicit result sources in unreachable code still count ([§14.9.1](#1491-result-sources)).
+An item that no Runtime Reachability path reaches is still checked, in a state built from assumed paths. On an assumed path, these Never forms are taken to complete normally: a transfer, `$abort` and a call whose result Type is Never continue after their operands are evaluated and before any cleanup, at their own lexical scope; any other expression of Type Never continues after it is evaluated, its explicit acquisition taking effect (`x@move` Moves `x`); a `loop` without a self-targeted `exit` continues with its iteration-entry state. Such a form still has no value, so its assumed completion initializes nothing it is placed into: after `let y: i32 = fail()`, `y` is uninitialized. Cleanup is checked the same way, so a transfer whose delivery a cleanup blocks is also assumed delivered. An item with at least one real incoming path uses only real paths; otherwise it uses the join of its assumed incoming paths, keeping only what holds on all of them. Loans that only an abandoned comparison needed end before the assumed continuation. All checks apply in this state: reading an uninitialized or Moved value, a second Move and a Loan conflict are errors, and Effective Types and condition facts carry over as on real paths. Assumed paths add no implicit result, no normal completion and no Runtime Reachability edge; explicit result sources in unreachable code still count ([§14.9.1](#1491-result-sources)).
 
 ```kimi
 func scoreInBranch(animal: objref/Animal) -> i32
@@ -533,6 +533,12 @@ use(p)                 // Error: p is uninitialized on the assumed path.
 consume(x@move)
 fail()                 // fail: () -> Never
 consume(x@move)        // Error: x was Moved.
+let y: i32 = fail()
+use(y)                 // Error: y is uninitialized; fail() places no value.
+
+func pass(x: Never, y: Never) => ()
+func absurd(x: Never)
+    pass(x@move, x)    // Error: x was Moved; the read of x is checked on the assumed path.
 ```
 
 ## 14.11. `require`

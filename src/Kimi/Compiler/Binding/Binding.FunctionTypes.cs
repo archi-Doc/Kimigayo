@@ -13,9 +13,6 @@ public sealed partial class Binding
 
     private (int Slot, ReferenceSlotFailure Failure) referenceSlotFailure;
 
-    // SPEC 10.7, 15.3.7: `own` is the declaration whose own per-call inputs the implementation's signature names, if any.
-    internal static bool CallableSignatureFits(BoundType actual, BoundType expected, Koto? own) => FitsTypeCore(actual, expected, null, null, own: own);
-
     // The binder of a Function Type's own per-call inputs: its syntax, which quantifies an outer input Origin at that input's slot.
     internal static Koto? FunctionTypeBinder(BoundType signature)
     {
@@ -747,7 +744,7 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (!(FitsType(written, bound) && FitsType(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound) is not null))
+                if (!(IsSubtype(written, bound) && IsSubtype(bound, written)) && !(commonOrigins && this.CommonOriginType(written, bound) is not null))
                 {
                     return false;
                 }
@@ -977,8 +974,8 @@ public sealed partial class Binding
         }
         finally
         {
-            this.originScratch.Return(origins, clearArray: true);
             this.originScratch.Return(inputs, clearArray: true);
+            this.originScratch.Return(origins, clearArray: true);
             if (arguments is not null && !ReferenceEquals(arguments, boundArguments))
             {
                 this.typeScratch.Return(arguments, clearArray: true);
@@ -1027,7 +1024,7 @@ public sealed partial class Binding
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = Substitute(Bound(function.Parameters[i].Type.BoundType!)!);
-            if (HasUnsubstitutedOrigin(parameter, function) || !this.FitsTypeAt(parameters.Components[i], parameter, use) ||
+            if (HasUnsubstitutedOrigin(parameter, function) || !this.IsSubtypeAt(parameters.Components[i], parameter, use) ||
                 !this.ProvesInputPremises(parameter, parameters.Components[i], use))
             {
                 return false;
@@ -1044,7 +1041,8 @@ public sealed partial class Binding
 
         return this.CheckCallOriginRelations(function, origins, inputs, use, null) &&
             symbol.Type is { } result && Bound(result) is { } boundResult &&
-            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) && this.FitsTypeAt(result, required.Components[1], use) &&
+            !HasUnsubstitutedOrigin(result = Substitute(boundResult), function) &&
+            this.IsSubtypeAt(result, CompatibleResult(result, required.Components[1]), use) &&
             this.ProvesResultPremises(function, result, use);
 
         BoundType? Bound(BoundType type)

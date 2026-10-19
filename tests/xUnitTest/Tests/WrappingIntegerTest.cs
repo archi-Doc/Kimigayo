@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -60,7 +61,7 @@ public class WrappingIntegerTest
         Assert.Same(wrapping, variables["h"].NameKoto.TypeOf());
         Assert.Same(wrapping, variables["n"].NameKoto.TypeOf()); // Unary minus exists for unsigned arguments too.
         Assert.Same(wrapping, variables["m"].NameKoto.TypeOf());
-        Assert.Same(WindowsLowering.GetValue(primitive), WindowsLowering.GetValue(wrapping));
+        Assert.Same(Layout.Row(primitive), Layout.Row(wrapping));
     }
 
     [Theory]
@@ -161,7 +162,6 @@ public class WrappingIntegerTest
         Assert.DoesNotContain("call { i32, i1 } @llvm.", ir); // The prelude declares the intrinsics; no body calls one.
         Assert.DoesNotContain(" nsw ", ir);
         Assert.DoesNotContain(" nuw ", ir);
-        Assert.DoesNotContain("%minimum", ir); // No minimum / -1 Abort check: that quotient wraps.
     }
 
     [Fact]

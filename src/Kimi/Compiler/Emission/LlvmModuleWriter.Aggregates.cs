@@ -1,9 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
+using Kimi.Compiler.Backend;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
 namespace Kimi.Compiler;
 
 internal static partial class LlvmModuleWriter
 {
+    // The longest Sealed payload drop symbol: __kimi_drop_aggregate and an int.
+    private const int PayloadDropLength = 32;
+
     private static void WriteArrayFillHelper(EmissionModule module, TextWriter output)
     {
         for (var f = 0; f < module.FunctionCount; f++)
@@ -161,7 +168,7 @@ internal static partial class LlvmModuleWriter
         {
             if (aggregate.ObjectPayloadDrop is { } payloadDrop)
             {
-                WriteSealedObjectDrop(output, objectHandle, payloadDrop);
+                ObjectRuntime.WriteSealedDrop(output, objectHandle.Counting, PayloadDrop(payloadDrop, stackalloc char[PayloadDropLength]));
                 output.Write("  ret void\n}\n");
                 return;
             }
@@ -246,7 +253,7 @@ internal static partial class LlvmModuleWriter
         {
             for (var i = aggregate.Count - 1; i >= 0; i--)
             {
-                if (!ReferenceEquals(aggregate.Fields[i], WindowsLowering.String) && aggregate.Children[i]?.NeedsDestruction != true)
+                if (!ReferenceEquals(aggregate.Fields[i], RuntimeAbi.String) && aggregate.Children[i]?.NeedsDestruction != true)
                 {
                     continue;
                 }
@@ -266,6 +273,26 @@ internal static partial class LlvmModuleWriter
         }
 
         output.Write("  ret void\n}\n");
+    }
+
+    // The symbol of a Sealed payload's drop (AggregateLayout.ObjectPayloadDrop): none (-1), the string destructor (-2) or the
+    // payload aggregate's drop, formatted into symbol, which holds PayloadDropLength characters.
+    private static ReadOnlySpan<char> PayloadDrop(int drop, Span<char> symbol)
+    {
+        if (drop == -1)
+        {
+            return default;
+        }
+
+        if (drop == -2)
+        {
+            return "__kimi_destroy_string";
+        }
+
+        const string Aggregate = "__kimi_drop_aggregate";
+        Aggregate.CopyTo(symbol);
+        drop.TryFormat(symbol[Aggregate.Length..], out var length, default, CultureInfo.InvariantCulture);
+        return symbol[..(Aggregate.Length + length)];
     }
 
     private static void WriteAggregateFieldDestructor(TextWriter output, AggregateLayout? child, int index)

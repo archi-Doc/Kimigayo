@@ -1,7 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the Semantics-case views of a MIR body.
-// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition and adaptation views.
+// Input: the body's pair binders and TyCtxt. Output: case Types, projection, acquisition and adaptation views; a pair layer's binder and
+// whether a call's input of a Type is reserved.
 // Case order is stable; views share the body and reuse their storage.
 // Must not copy the body per case or re-bind source syntax.
 
@@ -33,6 +34,29 @@ internal sealed class MirCases(TyCtxt types)
     /// <param name="body">The body.</param>
     /// <returns>The number of views, saturated at the largest count.</returns>
     internal static long Count(MirBody body) => PairBinder.CaseProduct(body.Binders);
+
+    /// <summary>Gets the index in a body's <see cref="MirBody.Binders"/> of the binder a pair layer Type names (TyCtxt.Layer).</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="type">The Type.</param>
+    /// <returns>The binder's index; -1 for another Type.</returns>
+    internal static int Binder(MirBody body, BoundType? type)
+    {
+        _ = TyCtxt.Layer(type, out _, out var target);
+        var binder = body.Binders.Count - 1;
+        while (binder >= 0 && !ReferenceEquals(body.Binders[binder].Target, target))
+        {
+            binder--;
+        }
+
+        return binder;
+    }
+
+    /// <summary>Gets whether a call's input of a Type is reserved where it is acquired (SPEC 15.6.7): an exclusive reference, or a pair
+    /// layer of one of the body's binders, exclusive only by its case (A3 E13 (4)).</summary>
+    /// <param name="body">The body.</param>
+    /// <param name="type">The input's Type.</param>
+    /// <returns>Whether the input is reserved.</returns>
+    internal static bool Reserves(MirBody body, BoundType? type) => MirTypes.IsExclusive(type) || Binder(body, type) >= 0;
 
     /// <summary>Selects a view of a body: for each resolved binder, the admitted Semantics its digit of <paramref name="index"/> picks. A
     /// binder without an admitted Semantics (a Binding error) has no case: its entry is empty, so its layers keep their declared Types and
@@ -135,7 +159,8 @@ internal sealed class MirCases(TyCtxt types)
     /// (<see cref="TyCtxt.Adaptation"/>) from the case Type of its source token to the case Type of its target, as that operation's
     /// ordinary rvalue: an Identity or an object creation its operand (a creation also allocates), a pointer conversion or an upcast
     /// keeping a non-exclusive Semantics a Proven Cast of it, any other a borrow of the payload for an object reference, else of the
-    /// operand's Place (a value borrow, an address).</summary>
+    /// operand's Place (a value borrow, an address), two-phase where it is exclusive and produces an invocation's input (its input bit,
+    /// SPEC 15.6.7).</summary>
     /// <param name="adapt">An Adapt of the selected body.</param>
     /// <param name="operation">The operation; None where the case selects none.</param>
     /// <returns>The rvalue, a Cast or a Ref of the case's target Type; the Adapt itself where the case selects none.</returns>
@@ -144,7 +169,7 @@ internal sealed class MirCases(TyCtxt types)
         var operands = this.Body.Operands;
         var source = this.Type(this.Body.Consts[operands[adapt.Start + 1].Arg].Type);
         var target = this.Type(adapt.Type!);
-        operation = TyCtxt.Adaptation(source, target, adapt.Op != 0);
+        operation = TyCtxt.Adaptation(source, target, (adapt.Op & MirRvalue.AdaptShorthand) != 0);
         return operation switch
         {
             ConversionBinding.None => adapt,
@@ -152,7 +177,10 @@ internal sealed class MirCases(TyCtxt types)
             ConversionBinding.Pointer => MirRvalue.Cast(MirTypes.PointerCast(source), adapt.Start, target) with { Proven = true },
             ConversionBinding.ObjectUpcast when source.Semantics == target.Semantics && !MirTypes.IsExclusive(target) =>
                 MirRvalue.Cast(MirCastKind.Upcast, adapt.Start, target) with { Proven = true },
-            _ => MirRvalue.Ref(MirTypes.RefKind(target, input: false), target.IsObjectBorrow ? adapt.Place : operands[adapt.Start].Place, target),
+            _ => MirRvalue.Ref(
+                MirTypes.RefKind(target, (adapt.Op & MirRvalue.AdaptInput) != 0),
+                target.IsObjectBorrow ? adapt.Place : operands[adapt.Start].Place,
+                target),
         };
     }
 }

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 
 namespace Kimi.Compiler;
 
@@ -144,6 +145,15 @@ internal readonly record struct EmissionInstruction(EmissionOpcode Opcode, int O
 // Text is -2 for a scalar test, -1 for an empty string, or a UTF-8 constant index.
 internal readonly record struct PatternTestStep(int Offset, ValueLowering Representation, Int128 Expected, int Text = -2, int DereferenceStart = 0, int DereferenceCount = 0);
 
+// SPEC 4.6.3: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
+internal static class SliceShape
+{
+    internal const long EndOmitted = 1;
+    internal const long StartFromEnd = 2;
+    internal const long EndFromEnd = 4;
+    internal const long Closed = 8;
+}
+
 /// <summary>One physical function definition. Its lists are reused by later preparations.</summary>
 internal sealed class EmissionFunction
 {
@@ -239,40 +249,8 @@ internal sealed class EmissionModule
 
     internal HashSet<AggregateLayout> Aggregates { get; } = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Gets the per-element Array helpers requested by lowered bodies (SPEC 4.9.3).</summary>
-    internal List<ArrayHelper> ArrayHelpers { get; } = new();
-
-    internal List<DictionaryHelper> DictionaryHelpers { get; } = new();
-
-    internal List<FunctionAbi> FunctionReferences { get; } = new();
-
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the Array capacity routines (SPEC 4.9.5).</summary>
-    internal bool NeedsArrayRuntime { get; set; }
-
-    internal bool NeedsDictionaryRuntime { get; set; }
-
-    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
-    internal bool NeedsStorageBytes { get; set; }
-
-    internal FunctionAbi? DictionaryAppendSlot { get; set; }
-
-    internal FunctionAbi? DictionaryRequireAbsent { get; set; }
-
-    internal FunctionAbi? DictionaryReserveStorage { get; set; }
-
-    internal FunctionAbi? DictionaryAppend { get; set; }
-
-    internal FunctionAbi? DictionaryInitialize { get; set; }
-
-    internal FunctionAbi? DictionaryClearLinks { get; set; }
-
-    internal FunctionAbi? DictionaryShrink { get; set; }
-
-    internal bool NeedsFormattingRuntime { get; set; }
-
-    internal List<(FunctionAbi Wrapper, FunctionAbi Implementation)> FormattingWrites { get; } = new();
-
-    internal List<(FunctionAbi Wrapper, FunctionAbi Write, bool Fixed)> FormattingConversions { get; } = new();
+    /// <summary>Gets the Array, Dictionary, formatting and string-comparison helper requests (DECISIONS R5-M16).</summary>
+    internal LegacyRuntimeHelpers RuntimeHelpers { get; } = new();
 
     internal List<ObjectCreation> Objects { get; } = new();
 
@@ -287,8 +265,6 @@ internal sealed class EmissionModule
 
     internal string? TestRuntime { get; set; }
 
-    internal bool NeedsStringComparison { get; set; }
-
     internal int FunctionCount => this.functionCount;
 
     internal EmissionFunction GetFunction(int index)
@@ -298,26 +274,10 @@ internal sealed class EmissionModule
     {
         this.IsComplete = false;
         this.TestRuntime = null;
-        this.NeedsStringComparison = false;
         this.functionCount = 0;
         this.Constants.Clear();
         this.Aggregates.Clear();
-        this.ArrayHelpers.Clear();
-        this.DictionaryHelpers.Clear();
-        this.FunctionReferences.Clear();
-        this.NeedsArrayRuntime = false;
-        this.NeedsDictionaryRuntime = false;
-        this.NeedsStorageBytes = false;
-        this.DictionaryAppendSlot = null;
-        this.DictionaryRequireAbsent = null;
-        this.DictionaryReserveStorage = null;
-        this.DictionaryAppend = null;
-        this.DictionaryInitialize = null;
-        this.DictionaryClearLinks = null;
-        this.DictionaryShrink = null;
-        this.NeedsFormattingRuntime = false;
-        this.FormattingWrites.Clear();
-        this.FormattingConversions.Clear();
+        this.RuntimeHelpers.Clear();
         this.Objects.Clear();
         this.NeedsObjectRuntime = false;
         this.Externals.Clear();
@@ -348,15 +308,10 @@ internal sealed class EmissionModule
     internal bool Complete(out string? failure)
     {
         this.IsComplete = false;
-        foreach (var helper in this.DictionaryHelpers)
+        if (this.RuntimeHelpers.HasUnresolvedReference())
         {
-            if (helper.Related < -1 || helper.Related >= this.FunctionReferences.Count ||
-                (helper.Kind == DictionaryHelperKind.CheckKey && (helper.Related < 0 || this.DictionaryRequireAbsent is null)) ||
-                (helper.Kind == DictionaryHelperKind.Place && this.DictionaryAppend is null))
-            {
-                failure = "Dictionary helper has an unresolved physical function reference.";
-                return false;
-            }
+            failure = "Dictionary helper has an unresolved physical function reference.";
+            return false;
         }
 
         failure = null;
@@ -373,61 +328,4 @@ internal sealed class EmissionModule
 
         LlvmModuleWriter.Write(this, output);
     }
-}
-
-/// <summary>A foreign function declaration; DllImport selects the import-library form (SPEC 20.4).</summary>
-internal readonly record struct ExternalFunction(FunctionAbi Abi, bool DllImport);
-
-internal enum ArrayHelperKind : byte
-{
-    Append,
-    Insert,
-    Pop,
-    Remove,
-    Place,
-    Clear,
-    Drop,
-    Swap,
-
-    // SPEC 22.2: the storage boundary over an Array handle and its remainder records.
-    BorrowStorage,
-    OwnStorage,
-
-    // PLAN G33: a consumed fixed array moves into the inline storage of its owning remainder.
-    OwnFixedStorage,
-}
-
-/// <summary>The layout offsets of a storage remainder record's Fields {storage, position, count, capacity}, addressed by name,
-/// and the size of its storage Field (SPEC 22.2).</summary>
-internal readonly record struct RemainderFields(int Storage, int Position, int Count, int Capacity, int StorageSize);
-
-/// <summary>A generated Array helper for one element representation: its ABI, element lowering, for pop the Option layout, and
-/// for the storage boundary its remainder record.</summary>
-internal sealed record ArrayHelper(ArrayHelperKind Kind, FunctionAbi Abi, ValueLowering Element, AggregateLayout? ElementLayout, bool ElementIsString, AggregateLayout? Option, AggregateLayout? Remainder = null, RemainderFields Fields = default)
-{
-    /// <summary>Gets a value indicating whether the element has no bytes (Unit or a zero-sized aggregate); its helpers take
-    /// no value or result pointer, because zero-sized values have no slot.</summary>
-    internal bool ElementIsZeroSized => this.Element.Layout.Size == 0;
-
-    /// <summary>Gets a value indicating whether the element travels as a scalar value rather than through a slot.</summary>
-    internal bool ElementIsScalar => this.ElementLayout is null && !this.ElementIsString && !this.ElementIsZeroSized;
-}
-
-internal enum DictionaryHelperKind : byte
-{
-    CheckKey,
-    Place,
-    Drop,
-}
-
-/// <summary>Physical Dictionary entry helper; source calls resolve to the ordinary instantiated ABI.</summary>
-internal sealed record DictionaryHelper(DictionaryHelperKind Kind, FunctionAbi Abi, ValueLowering Key, AggregateLayout? KeyLayout, bool KeyIsString, ValueLowering Value, AggregateLayout? ValueLayout, bool ValueIsString, long KeyOffset, long ValueOffset, long Stride, int Related);
-
-// SPEC 4.6.3: the shape flags of a directly applied range slice (the SliceRange operand after its boundaries).
-internal static class SliceShape
-{
-    internal const long EndOmitted = 1;
-    internal const long StartFromEnd = 2;
-    internal const long EndFromEnd = 4;
-    internal const long Closed = 8;
 }

@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -65,7 +66,7 @@ internal sealed partial class GenericStoragePlan
     internal bool ResourceLimitExceeded { get; private set; }
 
     internal static bool IsGeneric(FunctionKoto function)
-        => function.RequiresInstantiation;
+        => function.BoundSymbol is { } symbol && function.CodeContext.Compilation.Types.InstantiatesInLegacy(symbol);
 
     internal void Clear()
     {
@@ -228,9 +229,12 @@ internal sealed partial class GenericStoragePlan
         {
             if (!this.formattingWrites.TryGetValue(abi, out var wrapper))
             {
-                wrapper = new("__kimi_writer_write_user" + this.formattingWrites.Count, "void", [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)], resultSlot: true);
+                wrapper = new(
+                    "__kimi_writer_write_user" + this.formattingWrites.Count,
+                    "void",
+                    [new("ptr", "ret", AbiParameterKind.ResultSlot), new("ptr", "self", LogicalIndex: 0), new("ptr", "value", LogicalIndex: 1)]) { ResultSlot = true };
                 this.formattingWrites.Add(abi, wrapper);
-                module.FormattingWrites.Add(new(wrapper, abi));
+                module.RuntimeHelpers.RequestFormattingWrite(wrapper, abi);
             }
 
             abi = wrapper;
@@ -309,7 +313,7 @@ internal sealed partial class GenericStoragePlan
 
             var declared = body.SubstituteDefaults(environment, body.ContextAt(i));
             var type = declared is null || call is null ? declared : compilation.Binding.InstantiateStorageType(declared, call);
-            if (type?.ClosureContext is not { } context || !this.templates.TryGetValue(closure, out var template) ||
+            if (type is null || compilation.Binding.ClosureCall(type) is not { } context || !this.templates.TryGetValue(closure, out var template) ||
                 !this.PrepareEntry(compilation, module, layouts, context, template, out _, out failure, depth))
             {
                 return Fail(failure ?? "Generic closure requires its enclosing concrete substitution.", out failure);
@@ -410,18 +414,21 @@ internal sealed partial class GenericStoragePlan
         var parameters = this.parameterScratch.AsSpan(0, target.Parameters.Count);
         var result = call.ReturnType;
         var noReturn = ReferenceEquals(result, BoundType.Never);
-        if (FunctionAbi.GetValue(result, layouts) is null && !noReturn)
+        if (FunctionAbiPool.GetValue(result, layouts) is null && !noReturn)
         {
             return Fail("Generic entry result has no concrete representation.", out failure);
         }
 
-        var resultSlot = target.IsConstructor || target.IsDestructor || FunctionAbi.HasResultSlot(result, layouts);
+        // The ordinary function rule (Abi.Of); a generic closure instance has a concrete environment (PrepareClosures).
+        var flags = (target.IsConstructor || target.IsDestructor ? Abi.Flags.ResultSlot : Abi.Flags.None) |
+            (KimiLibraryCatalog.RequiresCallerLocation(target.BoundSymbol) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
+            (target.IsAnonymous ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
         for (var i = 0; i < parameters.Length; i++)
         {
             var type = binding.InstantiateStorageType(target.Parameters[i].Type.BoundType!, call);
             var borrowedStorage = ReferenceTypes.IsStorage(type) || ReferenceTypes.IsString(type);
-            if (type is null || FunctionAbi.GetValue(type, layouts) is null ||
-                (borrowedStorage && FunctionAbi.GetValue(type.Components[0], layouts) is null))
+            if (type is null || FunctionAbiPool.GetValue(type, layouts) is null ||
+                (borrowedStorage && FunctionAbiPool.GetValue(type.Components[0], layouts) is null))
             {
                 return Fail("Generic entry parameter requires a concrete storage representation.", out failure);
             }
@@ -459,10 +466,10 @@ internal sealed partial class GenericStoragePlan
             return Fail("Selected specialization has no verified implementation ABI.", out failure);
         }
 
-        // The entry's physical signature follows the ordinary function rule (FunctionAbiPool), so callers pass every argument alike.
+        // The entry's physical signature follows the ordinary function rule (Abi.Of), so callers pass every argument alike.
         var name = this.destructorNames.TryGetValue(call, out var reserved) ? reserved : this.EntryName(this.entryNames++);
-        entry = this.PreviousEntry(name, template, parameters, result, resultSlot, call, selectedAbi, layouts) ??
-            new(template, FunctionAbiPool.Build(name, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol), function.IsAnonymous), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
+        entry = this.PreviousEntry(name, template, parameters, result, flags, call, selectedAbi, layouts) ??
+            new(template, Abi.Of(layouts.Layout, Abi.Convention.Internal, flags, result, parameters).Named(name), selectedAbi, parameters.ToArray(), result, call.DeclaringType, call.TypeArguments.ToArray(), call.LengthArguments.ToArray(), new CallEntry?[template.DirectCalls.Length])
             {
                 ConcreteCalls = new CallPlan[template.DirectCalls.Length],
             };
@@ -563,22 +570,22 @@ internal sealed partial class GenericStoragePlan
         var location = new AbiParameter("ptr", "location", AbiParameterKind.Location);
         var length = new AbiParameter("i64", "location_length", AbiParameterKind.LocationLength);
         AbiParameter[] parameters = fixedBuffer ? [ret, value, new("ptr", "destination", LogicalIndex: 1), new("i64", "capacity", AbiParameterKind.Context), location, length] : [ret, value, location, length];
-        result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters, resultSlot: true);
+        result = new("__kimi_format_conversion" + this.formattingConversions.Count, "void", parameters) { ResultSlot = true };
         this.formattingConversions.Add((write, kind), result);
-        module.FormattingConversions.Add((result, write, fixedBuffer));
+        module.RuntimeHelpers.RequestFormattingConversion(kind, result, write);
         return result;
     }
 
     /// <summary>A universally verified generic body and the calls its instances forward.</summary>
     // The previous emission's entry of the same name, template and substitution whose physical signature still holds.
-    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, bool resultSlot, CallPlan call, FunctionAbi? selected, AggregateLayoutPool layouts)
+    private CallEntry? PreviousEntry(string name, Template template, ReadOnlySpan<BoundType> parameters, BoundType result, Abi.Flags flags, CallPlan call, FunctionAbi? selected, AggregateLayoutPool layouts)
     {
         foreach (var previous in this.previousEntries)
         {
             if (ReferenceEquals(previous.Abi.Name, name) && ReferenceEquals(previous.Template, template) && ReferenceEquals(previous.Result, result) &&
                 ReferenceEquals(previous.Selected, selected) && ReferenceEquals(previous.DeclaringType, call.DeclaringType) &&
                 previous.Parameters.AsSpan().SequenceEqual(parameters) && previous.Arguments.AsSpan().SequenceEqual(call.TypeArguments) &&
-                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && FunctionAbiPool.Matches(previous.Abi, result, parameters, resultSlot, layouts, KimiLibraryCatalog.RequiresCallerLocation(template.Body.Function.BoundSymbol), template.Body.Function.IsAnonymous))
+                previous.Lengths.AsSpan().SequenceEqual(call.LengthArguments) && Abi.Matches(previous.Abi, layouts.Layout, Abi.Convention.Internal, flags, result, parameters))
             {
                 return previous;
             }

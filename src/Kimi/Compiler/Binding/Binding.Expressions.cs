@@ -6,11 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 6.6, 14.6.1, 14.8.2: var locals, var Pattern bindings and var iteration slots are reassignable.
-    internal static bool IsMutableDeclaration(Koto? declaration)
-        => declaration is VariableKoto { VariableKind: VariableKind.Var } or SyntaxFormKoto { IsMutablePattern: true } ||
-            (declaration is IdentifierNameKoto { Parent: ForKoto loop } slot && loop.IsMutableSlot(slot));
-
     // SPEC 15.1.6: a pattern or for binding on a shared or exclusive path is a reference; a value of its referent Type
     // assigned to it names that mode and the spellings that bind or update a value instead. A binding whose stored Type
     // is itself a reference, on an owned path, gets the ordinary mismatch. A guard candidate is a shared layer that
@@ -97,7 +92,7 @@ public sealed partial class Binding
 
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
             (AdtDef.IsStruct(field.Left.BoundType) || field.Left.BoundType?.HandleMode is not null) &&
-            !IsSpecialField(field, out _) && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
+            Receiver(field.Left) is null && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.
         }
@@ -111,7 +106,7 @@ public sealed partial class Binding
             }
         }
 
-        return node.BoundSymbol?.MutableCapture == true || IsMutableDeclaration(node.BoundSymbol?.Declaration);
+        return node.BoundSymbol is { } symbol && Reassignable(symbol);
     }
 
     // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
@@ -157,12 +152,9 @@ public sealed partial class Binding
                 case GenericsKoto generics when ReferenceEquals(generics.Identifier, target):
                     target = target.Parent!;
                     continue;
-                case MemberAccessKoto:
-                    root = target;
-                    return false;
                 default:
                     root = target;
-                    return true;
+                    return target.Parent is not MemberAccessKoto;
             }
         }
     }
@@ -285,7 +277,7 @@ public sealed partial class Binding
     // operations of its concrete Type.
     // A shared literal argument constructs an owner temporary before acquiring its borrow.
     private static BoundType LiteralInputType(BoundType parameter)
-        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components.Count: 1 } ? parameter.Components[0] : parameter;
+        => parameter is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Components: [var referent] } ? referent : parameter;
 
     private bool IsGenericInteger(BoundType? type, BindingScope scope)
         => type is { Kind: BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection } &&
@@ -354,23 +346,13 @@ public sealed partial class Binding
         return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
     }
 
-    private BoundType? Join(Koto node, BoundType? a, BoundType? b)
-    {
-        if (a is null || ReferenceEquals(a, BoundType.Never))
-        {
-            return b;
-        }
-
-        if (b is null || ReferenceEquals(b, BoundType.Never) || ReferenceEquals(a, b))
-        {
-            return a;
-        }
-
-        return this.FailMismatch(node, node, b, a);
-    }
-
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
+        if (this.WaitsForPosition(node, expected))
+        {
+            return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later.
+        }
+
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
         var parent = this.BeginConsultation(node);
         var type = this.BindAndAdaptNode(node, scope, expected);
@@ -392,8 +374,8 @@ public sealed partial class Binding
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
         => expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
-            (actual.Kind == BoundTypeKind.Closure && actual.Symbol?.Declaration is FunctionKoto { BoundClosure: not null } &&
-            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
+            (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
+            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
@@ -402,7 +384,8 @@ public sealed partial class Binding
             expected = this.SubstituteIdentityPremises(expected, scope);
         }
 
-        var actual = this.BindNodeCore(node, scope, expected);
+        // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies.
+        var actual = this.WaitingResult(node) is { } waiting ? this.DecideWaiting(node, waiting, expected) : this.BindNodeCore(node, scope, expected);
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);
@@ -427,7 +410,7 @@ public sealed partial class Binding
 
         if (actual is null && expected?.Kind != BoundTypeKind.Function && node.BindingState == BindingState.Resolved &&
             node.BoundSymbol is { Kind: BindingSymbolKind.Function } item && IsValueUse(node) &&
-            (expected is not null || !TryNameRoot(node, out var root) || root.Parent is not InvocationKoto))
+            (expected is not null || !this.AtArgumentPosition(node)))
         {
             actual = this.BindFunctionItem(node, item, scope);
         }
@@ -714,7 +697,7 @@ public sealed partial class Binding
                 this.BindNode(loop.Body, scope);
                 return this.FinishResult(loop, loopResult);
             case JumpKoto jump:
-                var target = KotoHelper.ResolveTransferTarget(jump);
+                var target = BindTransferTarget(jump);
                 this.resultContexts.TryGetValue(target ?? jump, out var targetResult);
                 var resultType = targetResult?.Expected;
                 if (target is FunctionKoto f)
@@ -745,7 +728,7 @@ public sealed partial class Binding
                 {
                     if (jump.Parent is not TryKoto)
                     {
-                        targetResult?.Sources.Add(actual);
+                        targetResult?.Add(jump.Expression, actual);
                     }
 
                     if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
@@ -843,8 +826,8 @@ public sealed partial class Binding
     private BoundType? BindReference(Koto node, BindingSymbol symbol, BindingScope scope)
     {
         node.BoundSymbol = symbol;
-        if (symbol.Name == "self" && symbol.Declaration is FunctionKoto special && (special.IsConstructor || special.IsDestructor) &&
-            ((special.BaseInitializer is { } initializer && IsWithin(node, initializer)) || node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))
+        if (Receiver(node) is { } receiver && ((symbol.Declaration is FunctionKoto { BaseInitializer: { } initializer } && IsWithin(node, initializer)) ||
+            (!receiver.Whole && (node.Parent is not MemberAccessKoto access || !ReferenceEquals(access.Left, node)))))
         {
             return this.Fail(node, BindingFailure.InvalidAssignment);
         }
@@ -1401,27 +1384,6 @@ public sealed partial class Binding
         rejected.Candidates.Clear();
         rejected.Sources.Clear();
         return this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
-    }
-
-    private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
-    {
-        var buffer = this.RentTypes(tuple.Elements.Count);
-        try
-        {
-            var complete = true;
-            for (var i = 0; i < tuple.Elements.Count; i++)
-            {
-                var type = this.BindNode(tuple.Elements[i], scope, expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null);
-                buffer[i] = type!;
-                complete &= type is not null;
-            }
-
-            return Complete(tuple, complete ? this.types.Tuple(buffer.AsSpan(0, tuple.Elements.Count)) : null);
-        }
-        finally
-        {
-            this.typeScratch.Return(buffer, clearArray: true);
-        }
     }
 
     private ChildBinder? childBinder;

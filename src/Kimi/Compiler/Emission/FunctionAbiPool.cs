@@ -1,202 +1,88 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Globalization;
+using System.Runtime.InteropServices;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-/// <summary>Reusable ordinal/signature records containing no syntax or Symbol references.</summary>
+/// <summary>The old generator's signatures: its representation gate over the old layout pool, and the signatures of source functions
+/// and imports, which <see cref="Abi"/> builds (DECISIONS R5-M58) and this pool reuses by physical shape, keeping no syntax.</summary>
 internal sealed class FunctionAbiPool
 {
-    private readonly List<Signature> signatures = new();
+    private readonly List<FunctionAbi> signatures = new();
+    private readonly List<BoundType> parameters = new();
 
-    /// <summary>
-    /// Builds the physical signature of a closed entry from its substituted parameter and
-    /// result Types with the same parameter kinds and slot rules as ordinary functions (SPEC 21.3.1:
-    /// generic entries and concrete functions share one ABI rule).
-    /// </summary>
-    /// <param name="name">The unique physical name.</param>
-    /// <param name="result">The closed result Type.</param>
-    /// <param name="parameters">The closed parameter Types in declaration order.</param>
-    /// <param name="resultSlot">Whether the result is returned through a caller-provided slot.</param>
-    /// <param name="layouts">The layout pool for aggregate Types.</param>
-    /// <param name="callerLocation">Whether this standard source entry forwards its caller's diagnostic location.</param>
-    /// <param name="closure">Whether the entry receives a concrete closure environment and call context.</param>
-    /// <returns>The physical signature; zero-sized parameters have no physical slot.</returns>
-    internal static FunctionAbi Build(string name, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false, bool closure = false)
+    // Passing mode and attributes are fixed by the implemented representation in this profile.
+    // The pool caches physical shapes; current call plans separately validate complete Types and Origins.
+    internal static bool Supports(BoundType? type, AggregateLayoutPool? layouts = null) => type is not null && GetValue(type, layouts) is not null;
+
+    internal static ValueLowering? GetValue(BoundType type, AggregateLayoutPool? layouts) => type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Closure or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice || AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.HandleMode is not null
+        ? layouts?.Get(type)?.Value : WindowsLowering.GetValue(type);
+
+    internal static bool HasResultSlot(BoundType type, AggregateLayoutPool? layouts) => GetValue(type, layouts) is { } value && Abi.HasResultSlot(type, value);
+
+    internal static string? ResultType(BoundType type, AggregateLayoutPool? layouts = null) => ReferenceEquals(type, BoundType.Never)
+        ? "void" : GetValue(type, layouts) is { } value ? Abi.ResultType(type, value) : null;
+
+    /// <summary>Gets the signature of a selected source function, the previous one at its ordinal while that is still the same.</summary>
+    /// <param name="ordinal">The function's ordinal, which names it.</param>
+    /// <param name="function">A function whose signature Types the old gate admitted.</param>
+    /// <param name="layout">The compilation's layout.</param>
+    /// <returns>The signature named <c>__kimi_f</c> with the ordinal.</returns>
+    internal FunctionAbi Get(int ordinal, FunctionKoto function, Layout layout)
     {
-        var physical = new List<AbiParameter>(parameters.Length + 1 + (callerLocation ? 2 : 0) + (closure ? 2 : 0));
-        if (closure)
-        {
-            physical.Add(new("ptr", "environment", AbiParameterKind.Environment));
-        }
-
-        if (resultSlot)
-        {
-            physical.Add(new("ptr", "ret", AbiParameterKind.ResultSlot));
-        }
-
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            var shape = Shape(parameters[i], layouts);
-            if (shape.Type is not null)
-            {
-                physical.Add(new(shape.Type, "a" + i.ToString(CultureInfo.InvariantCulture), shape.Kind, i));
-            }
-        }
-
-        if (closure)
-        {
-            physical.Add(new("ptr", "context", AbiParameterKind.Context));
-        }
-
-        if (callerLocation)
-        {
-            physical.Add(new("ptr", "location", AbiParameterKind.Location));
-            physical.Add(new("i64", "location_length", AbiParameterKind.LocationLength));
-        }
-
-        return new FunctionAbi(name, FunctionAbi.ResultType(result, layouts)!, physical.ToArray(), ReferenceEquals(result, BoundType.Never), resultSlot, callerLocation);
-    }
-
-    /// <summary>Whether an ABI made by <see cref="Build"/> still describes the signature under the current layouts.</summary>
-    /// <param name="abi">A previously built ABI.</param>
-    /// <param name="result">The result Type.</param>
-    /// <param name="parameters">The substituted parameter Types.</param>
-    /// <param name="resultSlot">Whether the result is returned through a slot.</param>
-    /// <param name="layouts">The current aggregate layouts.</param>
-    /// <param name="callerLocation">Whether the source entry forwards the caller's location.</param>
-    /// <param name="closure">Whether the entry receives a concrete closure environment and call context.</param>
-    /// <returns>Whether <see cref="Build"/> would produce the same physical signature.</returns>
-    internal static bool Matches(FunctionAbi abi, BoundType result, ReadOnlySpan<BoundType> parameters, bool resultSlot, AggregateLayoutPool? layouts, bool callerLocation = false, bool closure = false)
-    {
-        if (abi.CallerLocation != callerLocation || abi.ResultSlot != resultSlot || abi.NoReturn != ReferenceEquals(result, BoundType.Never) || abi.Result != FunctionAbi.ResultType(result, layouts))
-        {
-            return false;
-        }
-
-        if (closure && (abi.Parameters.Length < 2 || abi.Parameters[0].Kind != AbiParameterKind.Environment || abi.Parameters[^1].Kind != AbiParameterKind.Context))
-        {
-            return false;
-        }
-
-        var physical = (resultSlot ? 1 : 0) + (closure ? 1 : 0);
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            var shape = Shape(parameters[i], layouts);
-            if (shape.Type is null)
-            {
-                continue;
-            }
-
-            if (physical >= abi.Parameters.Length || abi.Parameters[physical].Type != shape.Type || abi.Parameters[physical].Kind != shape.Kind || abi.Parameters[physical].LogicalIndex != i)
-            {
-                return false;
-            }
-
-            physical++;
-        }
-
-        return physical + (callerLocation ? 2 : 0) + (closure ? 1 : 0) == abi.Parameters.Length;
-    }
-
-    internal FunctionAbi Get(int ordinal, FunctionKoto function, AggregateLayoutPool? layouts = null)
-    {
+        // A closure body is the entry of a common Function value: its environment word comes first and the result slot second, as
+        // every common call and erasure adapter passes them (LlvmModuleWriter.WriteValueCall).
+        var environment = function.BoundClosure?.EnvironmentType is null ? Abi.Flags.ErasedClosure : Abi.Flags.ConcreteClosure;
+        var flags = (function.IsAnonymous ? environment : Abi.Flags.None) |
+            (function.IsConstructor || function.IsDestructor ? Abi.Flags.ResultSlot : Abi.Flags.None) |
+            (KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol) ? Abi.Flags.CallerLocation : Abi.Flags.None);
         var result = function.BoundSymbol!.Type!;
-        if (ordinal < this.signatures.Count && this.signatures[ordinal].Matches(function, result, layouts))
-        {
-            return this.signatures[ordinal].Abi;
-        }
-
-        var logical = new ParameterShape[function.Parameters.Count];
-        var resultSlot = FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor;
-        var callerLocation = KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol);
-        var count = (resultSlot ? 1 : 0) + (function.IsAnonymous ? 2 : 0) + (callerLocation ? 2 : 0);
-        for (var i = 0; i < logical.Length; i++)
-        {
-            logical[i] = Shape(function.Parameters[i].Type.BoundType!, layouts);
-            count += logical[i].Type is null ? 0 : 1;
-        }
-
-        var parameters = new AbiParameter[count];
-        var physical = 0;
-
-        // A closure body is the entry of a common Function value: the environment word comes first and the result slot
-        // second, as every common call and erasure adapter passes them (LlvmModuleWriter.WriteValueCall).
-        if (function.IsAnonymous)
-        {
-            parameters[physical++] = new(function.BoundClosure?.EnvironmentType is null ? "i64" : "ptr", "environment", AbiParameterKind.Environment);
-        }
-
-        if (resultSlot)
-        {
-            parameters[physical++] = new("ptr", "ret", AbiParameterKind.ResultSlot);
-        }
-
-        for (var i = 0; i < logical.Length; i++)
-        {
-            if (logical[i].Type is not null)
-            {
-                parameters[physical++] = new(logical[i].Type!, "a" + i.ToString(CultureInfo.InvariantCulture), logical[i].Kind, i);
-            }
-        }
-
-        if (function.IsAnonymous)
-        {
-            parameters[physical++] = new("ptr", "context", AbiParameterKind.Context);
-        }
-
-        var never = ReferenceEquals(result, BoundType.Never);
-        if (callerLocation)
-        {
-            parameters[physical++] = new("ptr", "location", AbiParameterKind.Location);
-            parameters[physical++] = new("i64", "location_length", AbiParameterKind.LocationLength);
-        }
-
-        var abi = new FunctionAbi("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture), FunctionAbi.ResultType(result, layouts)!, parameters, never, resultSlot, callerLocation);
-        var signature = new Signature(FunctionAbi.ResultType(result, layouts)!, resultSlot, never, function.IsAnonymous, function.BoundClosure?.EnvironmentType is not null, logical, abi);
+        var parameters = this.Parameters(function);
+        var abi = ordinal < this.signatures.Count && Abi.Matches(this.signatures[ordinal], layout, Abi.Convention.Internal, flags, result, parameters)
+            ? this.signatures[ordinal]
+            : Abi.Of(layout, Abi.Convention.Internal, flags, result, parameters).Named("__kimi_f" + ordinal.ToString(CultureInfo.InvariantCulture));
+        this.parameters.Clear();
         if (ordinal == this.signatures.Count)
         {
-            this.signatures.Add(signature);
+            this.signatures.Add(abi);
         }
         else
         {
-            this.signatures[ordinal] = signature;
+            this.signatures[ordinal] = abi;
         }
 
         return abi;
     }
 
-    // Only physical facts survive reparse. Complete Types and Origins remain in the current call plans.
-    private static ParameterShape Shape(BoundType type, AggregateLayoutPool? layouts)
+    /// <summary>Gets the C signature of a validated import (SPEC 22.6), the previous one while that is still the same.</summary>
+    /// <param name="previous">The import's previous signature, if any.</param>
+    /// <param name="function">The import's declaration.</param>
+    /// <param name="layout">The compilation's layout.</param>
+    /// <param name="name">The declaration's external name.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Import(FunctionAbi? previous, FunctionKoto function, Layout layout, string name)
     {
-        var value = FunctionAbi.GetValue(type, layouts)!;
-        var kind = ReferenceTypes.IsString(type) ? AbiParameterKind.SharedReference : SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
-        return new(value.Layout.Size == 0 ? null : value.ArgumentType, kind);
+        var result = function.BoundSymbol!.Type!;
+        var parameters = this.Parameters(function);
+        var abi = previous is not null && Abi.Matches(previous, layout, Abi.Convention.C, Abi.Flags.None, result, parameters)
+            ? previous : Abi.Of(layout, Abi.Convention.C, Abi.Flags.None, result, parameters).Named(name);
+        this.parameters.Clear();
+        return abi;
     }
 
-    private readonly record struct ParameterShape(string? Type, AbiParameterKind Kind);
-
-    private sealed record Signature(string Result, bool ResultSlot, bool NoReturn, bool Closure, bool Concrete, ParameterShape[] Parameters, FunctionAbi Abi)
+    // The declared parameter Types in a scratch list that every call reuses and clears after use, so a warm call allocates nothing and
+    // the pool keeps no Type (nor the syntax its declarations hold).
+    private ReadOnlySpan<BoundType> Parameters(FunctionKoto function)
     {
-        internal bool Matches(FunctionKoto function, BoundType result, AggregateLayoutPool? layouts)
+        this.parameters.Clear();
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            if (this.Closure != function.IsAnonymous || this.Concrete != (function.BoundClosure?.EnvironmentType is not null) || this.Result != FunctionAbi.ResultType(result, layouts) || this.ResultSlot != (FunctionAbi.HasResultSlot(result, layouts) || function.IsConstructor || function.IsDestructor) ||
-                this.NoReturn != ReferenceEquals(result, BoundType.Never) || this.Parameters.Length != function.Parameters.Count ||
-                this.Abi.CallerLocation != KimiLibraryCatalog.RequiresCallerLocation(function.BoundSymbol))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < this.Parameters.Length; i++)
-            {
-                if (this.Parameters[i] != Shape(function.Parameters[i].Type.BoundType!, layouts))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            this.parameters.Add(function.Parameters[i].Type.BoundType!);
         }
+
+        return CollectionsMarshal.AsSpan(this.parameters);
     }
 }

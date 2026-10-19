@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -88,7 +89,7 @@ internal sealed partial class BodyLowering
         function.Instructions.Add(new(EmissionOpcode.TransferAggregate, id, Place: place, OperandStart: start, OperandCount: operands.Length, Aggregate: layout, Representation: representation ?? layout!.Value));
     }
 
-    private bool LowerBorrowedUpdate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, string directory, int id, out string? failure)
+    private bool LowerBorrowedUpdate(OwnershipBody body, EmissionFunction function, LlvmConstantPool constants, int id, out string? failure)
     {
         failure = null;
         var operation = body.Operations[id];
@@ -140,7 +141,7 @@ internal sealed partial class BodyLowering
 
         var location = -1;
         if (!exchange && !swap && (layout is not null || ReferenceEquals(type, BoundType.String)) && layout?.NeedsDestruction != false &&
-            !this.TryGetLocation(operation.Source, directory, constants, out location))
+            !this.TryGetLocation(operation.Source, constants, out location))
         {
             return Fail("Payload content destruction requires a location.", out failure);
         }

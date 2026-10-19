@@ -27,7 +27,7 @@ public class SharedMemberCallEmissionTest
         var name = named ? "SharedMemberCallOwnedNamed" : "SharedMemberCallOwned";
         var stdout = named ? "arg\narg\nfirst\n" : "first\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, named ? "first=1;second=1;arg=2" : "first=1;second=1", order: named ? [2, 2, 1, 0] : [1, 0]);
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, named ? "first=1;second=1;arg=2" : "first=1;second=1", order: named ? [2, 2, 1, 0] : [1, 0]);
     }
 
     [Fact]

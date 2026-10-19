@@ -1,0 +1,16 @@
+struct Key
+    Self is Comparable
+    public let value: i32
+    public init(value: i32) => self.value = value
+    public func equals(self: ref/Self, other: ref/Self) -> bool => self.value == other.value
+    public func compare(self: ref/Self, other: ref/Self) -> i32 => self.value - other.value
+// SPEC 13.4: (nan, 1.0) < (nan, 2.0) is false, the unordered first pair deciding; (-0.0, 1.0) < (0.0, 2.0) is true, -0.0 == 0.0.
+func less(a: (f64, f64), b: (f64, f64)) -> bool => a < b
+// ((1.0, nan), k) > ((1.0, 2.0), k) is false: the unordered (nan, 2.0) decides; the Key leaf compares by its witness.
+func nested(a: ((f64, f64), Key), b: ((f64, f64), Key)) -> bool => a > b
+// A string element is inspected through shared borrows.
+func text(a: (string, i32), b: (string, i32)) -> bool => a != b
+// With T = f64, (nan, 1.0) == (nan, 1.0) is true: the T leaf runs Equatable's NaN-reflexive equals, the f64 leaf IEEE ==.
+func generic<T>(a: (T, f64), b: (T, f64)) -> bool
+    T is Equatable
+    return a == b

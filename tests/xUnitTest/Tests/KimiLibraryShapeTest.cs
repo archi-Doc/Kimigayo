@@ -149,6 +149,19 @@ public class KimiLibraryShapeTest
         Assert.Equal([KimiDeclarationId.Downgrade, KimiDeclarationId.Upgrade, KimiDeclarationId.MakeRcCyclic, KimiDeclarationId.MakeArcCyclic, KimiDeclarationId.Weak], unsourced);
     }
 
+    // R5 K package 4.4 (P5, DECISIONS R5-M41): the bundled library collected with every module a root module, so every closed library body
+    // is a root, has no collector record; with no library declaration under a compile-time Condition and one target profile, rooting it in
+    // each compilation would add none.
+    [Fact]
+    public void TheLibraryCollectsWithoutRecords()
+    {
+        var c = Compilation.CreateForTest();
+        Assert.True(c.Bind().IsComplete, string.Join('\n', c.Binding.Issues));
+        var set = new Kimi.Compiler.Backend.InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), c.SourceModules.Length + 1);
+        Assert.Empty(set.Records);
+        Assert.True(set.RootCount > 50 && set.Items.Length > set.RootCount, $"{set.RootCount} roots, {set.Items.Length} items");
+    }
+
     // Recognition finds each cataloged declaration once in its container, at its overload position, with the body kind
     // its role requires.
     [Theory]
@@ -288,6 +301,47 @@ public class KimiLibraryShapeTest
         Assert.Null(library.Function(CompilerFunctionKind.None));
     }
 
+    // F2c (DECISIONS R5-M28): the DictionaryStorage view names each function by the one symbol Binding declares for it, a source
+    // function declared once in the DictionaryStorage group; None names no function.
+    [Fact]
+    public void DictionaryStorageViewNamesTheDeclaredFunctions()
+    {
+        var c = Library.Value;
+        string[] names = ["findEntry", "clearEntries", "requireAbsent", "append", "initialize", "reserve"];
+        Assert.Equal(names.Length + 1, Enum.GetValues<DictionaryCallee>().Length);
+        for (var callee = DictionaryCallee.FindEntry; callee <= DictionaryCallee.Reserve; callee++)
+        {
+            var symbol = c.Library.DictionaryStorage(callee);
+            var container = Container(symbol.Declaration);
+            Assert.Equal("DictionaryStorage", Path(container));
+            Assert.Same(symbol.Declaration, Assert.Single(Declarations(container, names[(int)callee - 1], true)));
+            Assert.Same(symbol, symbol.Declaration.SymbolOf());
+            Assert.True(HasBody(symbol.Declaration));
+        }
+
+        Assert.Throws<InvalidOperationException>(() => c.Library.DictionaryStorage(DictionaryCallee.None));
+    }
+
+    // SPEC 4.9.6, 12.4.3: each published row, as TyCtxt.Published gives it to the MIR: the requirement it runs and the parameter below
+    // which, the parameter below which it destroys (-1: none, so a row without user code destroys nothing), and whether in place,
+    // `replace` only (SPEC 15.6.3, 15.7; design A3 4.1: a `clear` destroys its target's elements and ends no child Loan).
+    [Fact]
+    public void PublishedRowsAreFixed()
+    {
+        var c = Library.Value;
+        var rows = KimiLibraryCatalog.Entries.ToArray().Where(static x => x.Row is not null)
+            .Select(x => (x.Id, Row: c.Types.Published(c.Library.GetSymbol(x.Id)!)!.Value)).Select(static x => $"{x.Id} {x.Row.Runs?.Name} {x.Row.On} {x.Row.Destroys} {x.Row.InPlace}");
+        Assert.Equal(
+            [
+                "Replace  -1 0 True", "ArrayClear  -1 0 False", "ArrayCapacityImplementation  -1 -1 False", "ArrayRepeatingImplementation  -1 -1 False",
+                "TextToString format 0 -1 False", "TextTryFormat format 0 -1 False", "WriterWrite format 1 -1 False", "DictionaryReserve  -1 -1 False",
+                "DictionaryTryInsert equals 1 -1 False", "DictionaryInsertOrReplace equals 1 1 False", "DictionaryRemove equals 1 -1 False",
+                "DictionaryTryGet equals 1 -1 False", "DictionaryClear  -1 0 False", "DictionaryShrinkToFit  -1 -1 False",
+                "DictionaryIndexUniq equals 1 -1 False", "DictionaryStorageFindEntry equals 1 -1 False",
+            ],
+            rows);
+    }
+
     [Theory]
     [MemberData(nameof(CompilerFunctions))]
     public void CompilerFunctionShapesAreFixed(KimiDeclarationId id, string shape)
@@ -384,10 +438,11 @@ public class KimiLibraryShapeTest
     public void ManagedRepresentationsStoreNothing(string path)
         => Assert.DoesNotContain(Record(path).Members, member => member is VariableKoto and not PropertyKoto { DeclarationKind: PropertyDeclarationKind.Computed or PropertyDeclarationKind.Requirement });
 
-    // SPEC 22.1: Case order is the tag (Some/Ok = 0, None/Err = 1) that lowering and the runtime construct and test.
+    // SPEC 22.1: Case order is the tag (Some/Ok = 0, None/Err = 1) that lowering and the runtime construct and test; the
+    // conditional Copy clause is each Type's Copy set.
     [Theory]
     [InlineData(KimiDeclarationId.Option, "public enum Option<T>\nSelf is Copy when T is Copy\nSome(T)\nNone")]
-    [InlineData(KimiDeclarationId.Result, "public enum Result<T, E>\nOk(T)\nErr(E)")]
+    [InlineData(KimiDeclarationId.Result, "public enum Result<T, E>\nSelf is Copy when T is Copy, E is Copy\nOk(T)\nErr(E)")]
     public void OptionAndResultCasesAreFixed(KimiDeclarationId id, string shape)
     {
         var symbol = Library.Value.Library.GetSymbol(id)!;
@@ -542,7 +597,7 @@ public class KimiLibraryShapeTest
     {
         var record = Record(path);
         var type = Library.Value.Binding.SelfType(record.SymbolOf()!);
-        var pool = new AggregateLayoutPool();
+        var pool = new AggregateLayoutPool(Library.Value.Layout);
         if (AdtDef.Destructor(type) is { } destructor)
         {
             pool.RegisterDestructor(destructor, 0);

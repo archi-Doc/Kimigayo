@@ -113,7 +113,7 @@ public class GuardEmissionTest
         var stdout = success ? "selected\n" : "fallback\n";
         var name = "GuardCleanup" + success;
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, success ? "a=2;selected=1;fallback=0" : "a=1;b=1;selected=0;fallback=1");
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, success ? "a=2;selected=1;fallback=0" : "a=1;b=1;selected=0;fallback=1");
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
     }
@@ -181,7 +181,7 @@ public class GuardEmissionTest
     {
         const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
         var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]

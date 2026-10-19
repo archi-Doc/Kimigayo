@@ -25,174 +25,6 @@ public sealed partial class Binding
         return false;
     }
 
-    // SPEC 13.5.4: a direct literal converted at compile time. The literal, its sign and its parentheses take the target Type,
-    // and the conversion carries the folded constant that is produced instead of evaluating the literal.
-    private static BoundType? CompleteFolded(ConversionKoto conversion, NumberLiteralKoto number, BoundType target, Int128 folded, ConversionBinding binding)
-    {
-        conversion.FoldedConstant = folded;
-        for (var node = conversion.Left; ; node = ((UnaryKoto)node).Operand)
-        {
-            Complete(node, target);
-            if (ReferenceEquals(node, number))
-            {
-                break;
-            }
-        }
-
-        conversion.ConversionBinding = binding;
-        return Complete(conversion, target);
-    }
-
-    // SPEC 13.5.4: the explanation of a numeric conversion rejected for a different integer argument.
-    internal const string WrappingConversionNote = "A numeric conversion enters or leaves Wrapping<U> only from U itself, so the range check stays visible (SPEC 13.5.4)";
-
-    // SPEC 13.5.4: E@wrap<U> wraps an integer or wrapping integer value to the integer or wrapping integer Type U, concrete
-    // or generic, without a check. A direct literal is wrapped at compile time; for a generic U only the generic literals fit.
-    private BoundType? BindWrapConversion(ConversionKoto conversion, BindingScope scope, Koto argument, string operation)
-    {
-        var target = this.BindType(argument, scope);
-        var operand = KotoHelper.UnwrapParentheses(conversion.Left);
-        var number = KotoHelper.SignedNumber(operand, out var negative);
-        if (operation != Constants.WrapOperation)
-        {
-            return this.BindBitConversion(conversion, scope, target, number, negative);
-        }
-
-        if (target is not null && number is { IsInteger: true } && this.IsArithmeticInteger(target, scope))
-        {
-            var width = ScalarTypes.Width(target, this.compilation.PointerWidth);
-            if (width == 0)
-            {
-                // A generic U: the literal must fit every instance, so it is an ordinary generic literal and no wrapping happens.
-                conversion.ConversionBinding = ConversionBinding.Literal;
-                Complete(conversion.Right, target);
-                return Complete(conversion, this.BindNode(conversion.Left, scope, target) is null ? null : target);
-            }
-
-            if (!number.TryGetIntegerMagnitude(out var magnitude))
-            {
-                return this.Fail(conversion, BindingFailure.InvalidLiteral);
-            }
-
-            // The exact value modulo 2^N, stored as the sign-extended N-bit payload like every other constant.
-            var payload = negative ? (UInt128)0 - magnitude : magnitude;
-            Complete(conversion.Right, target);
-            return CompleteFolded(conversion, number, target, ScalarTypes.Normalize(unchecked((Int128)payload), width), ConversionBinding.Wrap);
-        }
-
-        var source = this.BindNode(conversion.Left, scope);
-        if (source is null || target is null)
-        {
-            return Complete(conversion, null);
-        }
-
-        if (ReferenceEquals(source, BoundType.Never))
-        {
-            conversion.ConversionBinding = ConversionBinding.Abrupt;
-            return Complete(conversion, BoundType.Never);
-        }
-
-        source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
-        if (!this.IsArithmeticInteger(source, scope) || !this.IsArithmeticInteger(target, scope))
-        {
-            return this.Fail(conversion, BindingFailure.InvalidWrapConversion);
-        }
-
-        conversion.ConversionBinding = ConversionBinding.Wrap;
-        Complete(conversion.Right, target);
-        return Complete(conversion, target);
-    }
-
-    // SPEC 13.5.4: E@bits<U> reinterprets the bits between a floating-point Type and an integer or wrapping integer Type of
-    // the same fixed width, in either direction, without a check; a direct literal is converted at compile time.
-    private BoundType? BindBitConversion(ConversionKoto conversion, BindingScope scope, BoundType? target, NumberLiteralKoto? number, bool negative)
-    {
-        if (target is not null && number is not null)
-        {
-            Int128 folded;
-            if (number.IsInteger && target.IsFloatingPoint)
-            {
-                // The integer literal is wrapped to the unsigned Type of the target's width, and those bits are read as the float.
-                if (!number.TryGetIntegerMagnitude(out var magnitude))
-                {
-                    return this.Fail(conversion, BindingFailure.InvalidLiteral);
-                }
-
-                var width = ReferenceEquals(target, BoundType.F32) ? 32 : 64;
-                var bits = ScalarTypes.Normalize(unchecked((Int128)(negative ? (UInt128)0 - magnitude : magnitude)), width);
-                folded = width == 32 ? (Int128)unchecked((uint)(long)bits) : (Int128)unchecked((long)bits);
-            }
-            else if (!number.IsInteger && BitWidth(target, this.compilation.PointerWidth) is var width && width != 0)
-            {
-                // The floating literal is rounded once to the floating-point Type of the target's width, and its bits are read as U.
-                if (!ScalarTypes.TryFloatLiteral(number.SourceSpelling, width == 32 ? BoundType.F32 : BoundType.F64, negative, out var bits))
-                {
-                    return this.Fail(conversion, BindingFailure.InvalidLiteral);
-                }
-
-                folded = ScalarTypes.Normalize(bits, width);
-            }
-            else
-            {
-                this.BindNode(conversion.Left, scope);
-                return this.Fail(conversion, target.ContainsParameter ? BindingFailure.GenericBitConversion : BindingFailure.InvalidBitConversion);
-            }
-
-            Complete(conversion.Right, target);
-            return CompleteFolded(conversion, number, target, folded, ConversionBinding.Bits);
-        }
-
-        var source = this.BindNode(conversion.Left, scope);
-        if (source is null || target is null)
-        {
-            return Complete(conversion, null);
-        }
-
-        if (ReferenceEquals(source, BoundType.Never))
-        {
-            conversion.ConversionBinding = ConversionBinding.Abrupt;
-            return Complete(conversion, BoundType.Never);
-        }
-
-        source = this.ReadReferent(conversion.Left, source)!; // SPEC 13.5.2: a read position.
-        if (source.ContainsParameter || target.ContainsParameter)
-        {
-            return this.Fail(conversion, BindingFailure.GenericBitConversion);
-        }
-
-        var sourceFloating = source.IsFloatingPoint;
-        var targetFloating = target.IsFloatingPoint;
-        if (sourceFloating == targetFloating || BitWidth(sourceFloating ? target : source, this.compilation.PointerWidth) != (ReferenceEquals(sourceFloating ? source : target, BoundType.F32) ? 32 : 64))
-        {
-            return this.Fail(conversion, BindingFailure.InvalidBitConversion);
-        }
-
-        conversion.ConversionBinding = ConversionBinding.Bits;
-        Complete(conversion.Right, target);
-        return Complete(conversion, target);
-    }
-
-    // SPEC 13.5.4: a direct floating-point literal converted to an integer Type is truncated toward zero from its exact decimal
-    // value and must fit the target's range. The literal never takes an intermediate floating-point Type, so 9007199254740993.0@i64
-    // is exact, and a value outside the range is a compile-time error at the literal rather than a runtime Abort.
-    private BoundType? BindTruncatedLiteral(ConversionKoto conversion, BoundType target, Koto operand)
-    {
-        var number = KotoHelper.SignedNumber(operand, out var negative)!;
-        if (!number.TryGetTruncatedMagnitude(out var magnitude) ||
-            !ScalarTypes.TryLiteral(target, magnitude, negative, this.compilation.PointerWidth, out var bits))
-        {
-            this.Fail(operand, BindingFailure.InvalidLiteral);
-            for (var node = conversion.Left; !ReferenceEquals(node, operand); node = ((UnaryKoto)node).Operand)
-            {
-                Complete(node, null);
-            }
-
-            return Complete(conversion, null);
-        }
-
-        return CompleteFolded(conversion, number, target, bits, ConversionBinding.Literal);
-    }
-
     private BindingScope? conversionEvidenceScope;
     private NumberLiteralKoto? floatingIntegerLiteral;
 
@@ -203,19 +35,6 @@ public sealed partial class Binding
     // SPEC 13.5.3: E@copy is bound as the Identity acquisition of a proven-Copy value.
     internal static bool IsCopyOperation(ConversionKoto conversion)
         => ConversionTargetSyntax(conversion) is TypeSemanticsKoto { Type: null, Identifier: Constants.CopyOperation };
-
-    // The fixed width of an integer or wrapping integer Type that @bits accepts: 32 or 64, never a platform-dependent or
-    // 128-bit one (SPEC 13.5.4).
-    private static int BitWidth(BoundType type, int pointerWidth)
-    {
-        if (!type.HasIntegerArithmetic || type.Underlying.Name is "isize" or "usize")
-        {
-            return 0;
-        }
-
-        var width = ScalarTypes.Width(type, pointerWidth);
-        return width is 32 or 64 ? width : 0;
-    }
 
     // A Kimi position or range Type other than an integer (SPEC 4.6.1, 4.6.2).
     private static bool IsPositionOrRangeType(BoundType type)
@@ -249,10 +68,20 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores.
+    // SPEC 13.5.6: @ref, @uniq and the borrow of @raw (SPEC 5.4) borrow the immediately written slot whatever it stores, Never too.
     private static bool BorrowsWrittenSlot(BoundType type)
         => AdtDef.IsStruct(type) || AdtDef.IsEnum(type) || type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Closure or BoundTypeKind.Function or BoundTypeKind.FunctionItem or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Slice or BoundTypeKind.Parameter or BoundTypeKind.AssociatedProjection or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation ||
-            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
+            ReferenceTypes.IsStorage(type) || ReferenceTypes.IsPointer(type) || ScalarTypes.Supports(type) || IsRuntimeRecordType(type) ||
+            IsBorrow(type.Semantics) || IsObjectSemantics(type.Semantics);
+
+    // Unit, string and Never: the intrinsic Types the runtime's records lay out (IMPL 21.1.3), which ScalarTypes does not cover.
+    private static bool IsRuntimeRecordType(BoundType type)
+        => ReferenceEquals(type, BoundType.Unit) || ReferenceEquals(type, BoundType.String) || ReferenceEquals(type, BoundType.Never);
+
+    // SPEC 14.9.3, 14.10.3 (DECISIONS BU-6): an operand of Type Never that is no Place is a Never value, which a conversion only passes
+    // on (Abrupt); an explicit acquisition of a Place of Type Never (a move, a copy, a borrow) keeps its operation and its effect.
+    private static bool IsNeverValue(Koto operand, BoundType type)
+        => ReferenceEquals(type, BoundType.Never) && !IsBarePlace(operand) && !ElementAccess.IsRawPlace(operand);
 
     // SPEC 3.5: a same-Type acquisition Copies a proven-Copy value and transfers a temporary; a Non-Copy Place needs @move.
     private BoundType? CompleteIdentity(ConversionKoto conversion, BoundType type)
@@ -269,15 +98,17 @@ public sealed partial class Binding
             return this.FailAcquisition(conversion, BindingFailure.TransferRequired, conversion.Left);
         }
 
-        conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
+        conversion.ConversionBinding = ConversionBinding.Identity;
         return Complete(conversion, type);
     }
 
+    // SPEC 13.5.3: @move of a Place of Type Never keeps its Move (IsNeverValue; SPEC 14.10.3: x@move Moves x on an assumed path),
+    // whose Type alone makes it supply no normal completion (SPEC 14.9.3).
     private BoundType? CompleteTransfer(ConversionKoto conversion, BoundType type, BindingScope scope)
     {
-        // SPEC 6.3.4: construction also allows no Non-Copy Move out of its receiver.
+        // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!OffersTake(conversion.Left) ||
-            (IsSpecialField(KotoHelper.UnwrapParentheses(conversion.Left), out var special) && special.IsConstructor && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
+            (ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
             var failure = AccessFailure(conversion.Left, take: true);
             return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
@@ -311,7 +142,7 @@ public sealed partial class Binding
             source = KotoHelper.UnwrapParentheses(projection.Left);
         }
 
-        conversion.ConversionBinding = ReferenceEquals(type, BoundType.Never) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
+        conversion.ConversionBinding = IsNeverValue(conversion.Left, type) ? ConversionBinding.Abrupt : ConversionBinding.Transfer;
         return Complete(conversion, type);
     }
 
@@ -373,7 +204,7 @@ public sealed partial class Binding
     private BoundType? BindConversion(ConversionKoto conversion, BindingScope scope, BoundType? expected = null)
     {
         var syntax = ConversionTargetSyntax(conversion);
-        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.FollowOperation, HasOrigin: false })
+        if (syntax is TypeSemanticsKoto follow && follow.Names(Constants.FollowOperation))
         {
             // SPEC 13.5.5: E@follow selects the referent Place of a ref/uniq value, or the complete payload of a
             // proven Sealed object handle. It reads only the reference and acquires nothing.
@@ -389,11 +220,11 @@ public sealed partial class Binding
                 return Complete(conversion, reference);
             }
 
-            if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
+            if (reference is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components: [var referent] })
             {
-                Complete(conversion.Right, reference.Components[0]);
+                Complete(conversion.Right, referent);
                 conversion.ConversionBinding = ConversionBinding.Follow;
-                return Complete(conversion, reference.Components[0]);
+                return Complete(conversion, referent);
             }
 
             if (IsObjectSemantics(reference.Semantics) && reference.Components.Count == 1 &&
@@ -421,7 +252,7 @@ public sealed partial class Binding
             return this.Fail(conversion, BindingFailure.TypeMismatch);
         }
 
-        if (syntax is TypeSemanticsKoto { Type: null, Identifier: Constants.RawKeyword, HasOrigin: false })
+        if (syntax is TypeSemanticsKoto raw && raw.Names(Constants.RawKeyword))
         {
             // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and
             // converts the borrowed address; the pointer carries no Origin, so it keeps no Loan. The operation's borrow is
@@ -432,7 +263,7 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
-            if (ReferenceEquals(stored, BoundType.Never))
+            if (IsNeverValue(conversion.Left, stored))
             {
                 conversion.ConversionBinding = ConversionBinding.Abrupt;
                 return Complete(conversion, stored);
@@ -464,7 +295,7 @@ public sealed partial class Binding
                 return Complete(conversion, null);
             }
 
-            if (ReferenceEquals(actual, BoundType.Never))
+            if (IsNeverValue(conversion.Left, actual))
             {
                 conversion.ConversionBinding = ConversionBinding.Abrupt;
                 return Complete(conversion, actual);
@@ -515,7 +346,7 @@ public sealed partial class Binding
                 ? this.AdaptObjectBorrow(conversion.Left, pattern, actual, scope, true, out adapted, out _, out _)
                 : this.AdaptInput(conversion.Left, pattern, actual, scope, null, null, out adapted, out _, out _, explicitBorrow: true);
             if (!fits ||
-                !FitsType(adapted.Components[0], pattern.Components[0]) ||
+                !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
             {
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
@@ -550,18 +381,12 @@ public sealed partial class Binding
             }
 
             Complete(conversion.Right, copied);
-            if (ReferenceEquals(copied, BoundType.Never))
-            {
-                conversion.ConversionBinding = ConversionBinding.Abrupt;
-                return Complete(conversion, copied);
-            }
-
             if (this.ProveCopy(copied, conversion) != ConstraintProof.Proven)
             {
                 return this.Fail(conversion, BindingFailure.NonCopyOperand);
             }
 
-            conversion.ConversionBinding = ConversionBinding.Identity;
+            conversion.ConversionBinding = IsNeverValue(conversion.Left, copied) ? ConversionBinding.Abrupt : ConversionBinding.Identity;
             return Complete(conversion, copied);
         }
 
@@ -569,22 +394,26 @@ public sealed partial class Binding
         {
             // SPEC 10.8: an expected borrow of the same Semantics fits an untyped literal operand to its referent
             // Type. A typed operand keeps its own Type: the borrow or reborrow forms from its Place, never from a read.
-            var operandExpectation = semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) && IsUnfittedLiteral(conversion.Left) && expected is { Kind: BoundTypeKind.Semantics, Components.Count: 1 } && expected.Semantics == semantics ? expected.Components[0] : null;
+            var operandExpectation = semantics is not (SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc) &&
+                this.KindOf(conversion.Left) == ArgumentKind.Literal &&
+                expected is { Kind: BoundTypeKind.Semantics, Components: [var referent] } && expected.Semantics == semantics ? referent : null;
             var operandType = this.BindNode(conversion.Left, scope, operandExpectation);
             if (operandType is null)
             {
                 return Complete(conversion, null);
             }
 
+            // SPEC 14.9.3: an object creation of a Never operand and a borrow of a Never value only pass it on (IsNeverValue).
+            if ((semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc && ReferenceEquals(operandType, BoundType.Never)) ||
+                (semantics is SemanticsKind.Ref or SemanticsKind.Uniq && IsNeverValue(conversion.Left, operandType)))
+            {
+                Complete(conversion.Right, operandType);
+                conversion.ConversionBinding = ConversionBinding.Abrupt;
+                return Complete(conversion, operandType);
+            }
+
             if (semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
             {
-                if (ReferenceEquals(operandType, BoundType.Never))
-                {
-                    Complete(conversion.Right, operandType);
-                    conversion.ConversionBinding = ConversionBinding.Abrupt;
-                    return Complete(conversion, operandType);
-                }
-
                 var payload = IsObjectSemantics(operandType.Semantics) ? operandType.Components[0] : operandType;
                 var objectTarget = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [payload]);
                 return this.BindObjectAdaptation(conversion, scope, operandType, objectTarget);
@@ -637,7 +466,7 @@ public sealed partial class Binding
             }
 
             // SPEC 13.5.6: @objref and @objuniq borrow an object payload; another operand has none, as for @objref/T.
-            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !ReferenceEquals(operandType, BoundType.Never))
+            if (semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq && !IsNeverValue(conversion.Left, operandType))
             {
                 Complete(conversion.Right, operandType);
                 return this.Fail(conversion, BindingFailure.InvalidAssignment);
@@ -700,7 +529,8 @@ public sealed partial class Binding
             return Complete(conversion, null);
         }
 
-        if (ReferenceEquals(source, BoundType.Never))
+        // A conversion of a Never operand passes it on (Abrupt); its same-Type acquisition of a Place is an Identity (IsNeverValue).
+        if (ReferenceEquals(source, BoundType.Never) && (!ReferenceEquals(target, source) || IsNeverValue(conversion.Left, source)))
         {
             conversion.ConversionBinding = ConversionBinding.Abrupt;
             return Complete(conversion, BoundType.Never);
