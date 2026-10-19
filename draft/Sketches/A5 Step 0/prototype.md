@@ -34,9 +34,10 @@ dotnet run proto.cs -- -r13      # only round 13's tables
 dotnet run proto.cs -- -r15      # only round 15's tables (PLAN G148's store rules)
 dotnet run proto.cs -- -r16      # only round 16 (route taint, superseded); exit code = its failures
 dotnet run proto.cs -- -r17      # only round 17 (body hold); exit code = its failures
+dotnet run proto.cs -- -r18      # only round 18 (ER-effects, A5-F5); exit code = its failures; -v adds every fact
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 5,903 lines after round 17.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 6,353 lines after round 18.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1471,3 +1472,158 @@ included) is a located `Unsupported_Kd` at its access. `R17PerPart` (W takes no 
 guard's program) is the reference for dependence and cost. Run on 425 cases (the 382 earlier, round 16's 13, its review's 30,
 `R16X`): 0 failures. Rule, results, cost and why it is complete: [body-hold.md](../A5%20Step%202/body-hold.md). The full output
 is unchanged; `-r17` prints the round.
+
+## Round 18 (ER-effects: A5-F5's static effects; unit 2x-P5)
+
+**Input.** The step-2 plan's 2x-P5 row and PD12; the A5-F5 audit's rules R1–R5 and cases e1–e16 (`F5/audit.md` §3–§4 of the step-2
+audits, main checkout `artifacts/handoff/2026-10-18-pause/r4-scratch/step2-audit/`); A3 §5's err(effect) rows, E13 (1)(b), (d) and W6;
+DECISIONS R4-M38 (A4's keys), R4-M72 (the code), R4-M73 (the hold); PLAN G124 and G136; SPEC 8.11.2, 15.2.4, 15.6.4, 15.6.7, 16.3.3 and
+16.4's objects-under-destruction paragraph (S16:220) with 16.3.1.
+
+**Model.** Statics are `#` roots in `Case.Statics`, mutable or not. As in the compiler, a static's Loan names no holder
+(`MirBorrows.Loans`) and its whole write ends none (`MirBorrows.Endings`): G136's two items. A Call, Drop or staticEnsure node carries A4's
+keys (`Node.Key`: Field, write) and classes (`Node.Fx`: Unknown, Limit, Derived). A staticEnsure names its Field and key
+(`Node.StaticEnsure`) and carries its initializer's keys. The round runs on `R17Hold` (rule G, the body hold, R4-M70's default taint).
+`Report`, round 17's reporting rule moved into a method unchanged, gives every effect problem the hold and the taint, as R4-M73 requires
+of err(effect). An explicit static Borrow is Binding's `InvalidAssignment_Kd` until P42 (G100, PD12 (i)), so a case that needs one says
+P42. e1–e5, e8–e9, e15 and their twins use implicit Loans (a writeback, a static receiver) or none.
+
+**Rules (`R18`).**
+
+- **R1, keys and classes.** A key (f, write) meets a Loan on static f in any mode; (f, read) meets only a uniq one. Unknown meets every
+  mutable-static Loan; immutable-static Loans are never met. Limit without Unknown is a located `Unsupported_Kd` at the site where a
+  mutable-static Loan would be met, and nothing where none is. Derived alone reports nothing (R4-M10, R4-M70); keys beside it stay
+  checked.
+- **R2, the sets.** A Call's effects are checked on closure(σ_in of the holders live after ℓ that ℓ does not overwrite ∪ σ_in(E) ∪ every
+  operand's value): E13 (1)(b) with no holder left out. A Drop adds val(X) (E13 (1)(d)). W6: a reservation the Call activates counts as
+  uniq at its effects and cleanup (SPEC 15.6.7).
+- **R3, a destruction's own Loan (PD12 (iii)).** Destroying a static's old value holds an exclusive Loan on it. The destruction's own key
+  on that Field meets it, and so does Unknown when the Field is mutable. Limit makes it the located `Unsupported_Kd`.
+- **R4, staticEnsure (PD12 (ii)).** A live Loan on the ensured Field proves it initialized, so the initializer does not run. Under P5,
+  A5 cannot tell that Loan's key from the ensured one, so a conflict of the initializer's keys that the proof would decide is the located
+  `Unsupported_Kd` at the ensure. Without a live Loan on the Field, the keys are ordinary effects.
+
+**Cases.** The round has 34 cases: the audit's e1–e16 with lettered twins, the two F5 SPEC examples and e17. Each case states its SPEC
+verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
+
+| Case | Program | SPEC | R18 | Checks |
+| --- | --- | --- | --- | --- |
+| e1 | `State.count += g()`, g a common Function value | error | error at g() | Unknown vs the writeback's reservation (shared) |
+| e2 | `State.count += m()`, m reads State.count | valid | valid | a read key vs a reservation in its holder |
+| e3 | `State.count += w()`, w writes State.count | error | error at w() | a write key, any mode |
+| e2u | `var u = State.count@uniq; m(); u@follow = 1` (P42) | error | error at m() | a read key vs a live uniq Loan |
+| e4 | `State.counter.bump()`, bump reads State.counter by name | error | error at the call | W6 |
+| e5 | the same, bump touches no static | valid | valid | |
+| e4m | `writer(s@move)`, s holds `State.count@ref`, writer writes it (P42) | error | error at the call | an operand's value, its holder dead after |
+| e4c | `let c = State.counter@ref; State.counter.add(1); inspect(c)` (P42) | error | error at the call | activation and effect stay apart (facts: UBorrow vs Lc; effect vs Lc and vs Lr) |
+| e6 | s holds `State.count@ref`; s's drop writes State.count (P42) | error | error at the drop | the Drop's val(X) |
+| e7 | the same, the drop reads | valid | valid | |
+| e8 | `State.holder = Holder.init()`, the old value's drop reads State.holder | error | error at the drop | R3 |
+| e8b | the same, the drop touches no static | valid | valid | |
+| e8c | the same, past A4's Limit | valid | U at the drop | R3 with Limit |
+| e9 | `State.action = func [] () => ()`, State.action: `() -> ()` | error | error at the drop | R3 with Unknown (erased destruction) |
+| e9b | `let old = exchange(State.action@uniq, with: …)`, old dropped later | valid | valid | the way out of e9 |
+| e9s | SPEC 16.3.3's example | error | error at the drop | erased destruction vs a live mutable-static Loan |
+| e10a | live `lx = State.x@ref` and `ll = State.log@ref`; ensure x, whose initializer writes State.log (P42) | valid | U at the ensure | R4: the proof decides |
+| e10b | the same without lx | error | error at the ensure | no proof |
+| e10c | the same without ll | valid | valid | nothing to meet |
+| e10d | lx on `Cache<i32>.S.x`, the ensure of `Cache<string>.S.x` (P42) | error | U at the ensure | P5 hides the other key |
+| e11 | SPEC 15.6.4's `run` | error | error at g() | Unknown; l's immutable Loan unaffected |
+| e11b | `run` with l alone | valid | valid | |
+| e12a | `let c = State.count@ref; f(); inspect(c)`, f past A4's Limit, f reads (P42) | valid | U at f() | Limit |
+| e12b | the same with c dead at f() | valid | valid | Limit with nothing to meet |
+| e12c | f: Limit and Unknown | error | error at f() | Unknown decides |
+| e13a | f: Derived only | valid (A5) | valid | R4-M10; the program's error is the Opaque site's |
+| e13b | f: Derived and a write key | error | error at f() | the key stays checked |
+| e14 | c dead at g() | valid | valid | |
+| e15 | `func f<T>(x: T) => State.count += sink(x)` | error | error at sink | 16.3.3: an abstract destruction is Unknown |
+| e15b | the same, T is Copy | valid | valid | |
+| e16a | `var c = State.count@ref; State.count = 5; inspect(c)` (P42) | error | error at the write | G136 |
+| e16b | the same with a second write `State.count = 6` (P42) | error | error at both writes | G136; finding 5 |
+| e16c | c dead at the write (P42) | valid | valid | G136 |
+| e17 | e11's conflict in a held body (round 16's closureRoute prefix; P42) | error | U at g() | R4-M73: the hold covers err(effect) |
+
+**Run.** `-r18` reports 0 failures:
+
+- (i) The 425 earlier cases (382, round 16's 13 and its review's 30) keep R17Hold's outcome under R18.
+- (ii) Every round-18 case meets its expected outcome.
+- (iii) G136: the static's ending changes no verdict.
+- (iv) Every G124 case gets its SPEC verdict.
+
+The full output and the `-v`, `-r13`, `-r15`, `-r16`, `-r17` and `-cases` outputs are byte-equal to round 17's.
+
+| Variant | Cases it changes |
+| --- | --- |
+| `R18NoW6` (a reservation stays `ref` at its own call's effects) | e4 accepted: **UNSOUND** |
+| `R18LiveOnly` (live-after holders and E only) | e4, e4m, e6 accepted: **UNSOUND** |
+| `R18NoR3` | e8, e9 accepted: **UNSOUND**; e8c valid |
+| `R18Merged` (G93's `bool`: Limit and Derived as Unknown) | Language errors at e8c and e12a (SPEC-valid) and at e13a (derived; R4-M10 drops it) |
+| `R18EnsureExact` (P42's key identity) | e10a valid, e10d error: SPEC's verdict in all four ensure cases |
+| `R18EnsureByField` (any live Loan on the Field as the proof) | e10a valid; e10d accepted: **UNSOUND** |
+| `R18EnsureIgnored` (no proof) | e10a error (over-strict); e10d error |
+| `R18StaticEnds` (a static's whole write ends its Loans) | e16b: an error at the first write only |
+
+**G124 (`R18G`).** A confined witness's read of an immutable static is an environment effect unless the static's Type is proven
+Transferable (SPEC 8.11.2; Unknown is unproven). `R18G.Transferable` follows SPEC 15.2.4:
+
+- rc, Weak, raw pointers, common Function Types and base-object or runtime-Contract views refute;
+- a Kimi collection's own raw pointers are exempt, but its elements are visited;
+- an abstract Type is Unknown without a premise;
+- a cycle is visited once and hides nothing.
+
+`HoldsRaw` is the compiler's walk today.
+
+| Case | Static's Type | SPEC Transferable | SPEC | HoldsRaw | today |
+| --- | --- | --- | --- | --- | --- |
+| g1 | `obj/Base` (base-object view) | Refuted | error | valid | **UNSOUND** |
+| g2 | `obj/Shape` (runtime-Contract view) | Refuted | error | valid | **UNSOUND** |
+| g3 | `() -> ()` | Refuted | error | valid | **UNSOUND** |
+| g4 | abstract `T`, no premise | Unknown | error | valid | **UNSOUND** |
+| g5 | `Array<i32>` | Proven | valid | error | over-strict |
+| g6 | `rc/Item` (8.11.2's `Shared.node`) | Refuted | error | error | same |
+| g7 | `i32` (8.11.2's `Shared.limit`) | Proven | valid | valid | same |
+| g8 | `Array<rc/Item>` | Refuted | error | error | same |
+| g9 | `T` where `T is Transferable` | Proven | valid | valid | same |
+| g10 | `Hook {next: Option<obj/Hook>, f: () -> ()}` | Refuted | error | valid | **UNSOUND** |
+| g11 | `Chain {next: Option<obj/Chain>, v: i32}` | Proven | valid | valid | same |
+
+**Findings for 2b-D.**
+
+1. **W6 and R2's operand values are load-bearing.** Without W6, e4 is accepted. With only the live-after holders, e4, e4m and e6 are
+   accepted. Each of these is unsound.
+2. **R3 is load-bearing.** Without it, e8 and e9 are accepted. By the letter, every whole write of a mutable static whose old value's
+   destruction is erased is an error (e9): a common Function Type, or an open-base or runtime-Contract view. `exchange` is the way out
+   (e9b). If 2b-3's census finds such a write in the library or a milestone, OQ7 is triggered.
+3. **G93's classes must stay apart, so 2b-1 lands before 2b-3.** With the merged `bool`, two SPEC-valid programs (e8c, e12a) get
+   Language errors, and e13a reports a derived conflict that R4-M10 drops.
+4. **PD12 (ii) is the only sound choice under P5 that keeps e10a free of a Language error.**
+   - Taking any live Loan on the Field as the proof accepts e10d, which is unsound.
+   - Ignoring the proof rejects e10a, which is over-strict.
+   - P42's key identity (`R18EnsureExact`) gives SPEC's verdict.
+5. **G136's lemma holds for verdicts but not for problems (a decision).** No verdict changes with the ending. But in e16b the compiler's
+   rule (a static's write ends nothing) gives a second `ComparisonLoanConflict_Kd` at `State.count = 6`. `MirBorrows.Reports` takes the
+   access as the subject, so R4-M71's key keeps both records.
+   - SPEC's letter reports no second record if a static Field is a Move Path. SPEC 15.1.3 says "a Field … with its own initialization
+     state and responsibility", and 15.6.3 ends the Loans whose path a destroyed Move Path prefixes. The compiler's `Ending` comment says
+     instead that "a static's [Place] is no Move Path".
+   - Ending is sound under P5 too. A whole write meets every live Loan of the Field's group, so it ends only Loans it has already reported
+     or dead ones.
+   - So the audit's Q5 premise ("no regression can fail before") does not hold: e16b is such a regression.
+   - Option (a): a whole write of a static ends its group, through `Ending` taking `Subtree`'s static range when the Place has no
+     projection. A part write still ends nothing, since a static's group is not split by path.
+   - Option (b): PD12 (iv)'s lemma as planned, with e16b's extra record kept and recorded.
+   - Recommended: (a), once the SPEC reading that a static Field is a Move Path is confirmed (a 2x-S1-style reading).
+6. **G124.** `HoldsRaw` accepts g1–g4 and g10 (unsound) and rejects g5 (over-strict). `R18G.Transferable` is 2b-4's
+   Proven/Refuted/Unknown contract in small.
+7. **A prototype alias.** In `CheckA`, an access with its own term sets `F = baseSet`, so its own terms (a Drop's val(X), a borrow's
+   parents) enter the node's `baseSet` and a later check at the same node sees them. Round 18 builds its own set. With the alias removed,
+   the full, `-r13`, `-r15`, `-r16`, `-r17` and `-cases` outputs are byte-equal (checked), so no recorded result depends on it.
+
+**Not modelled.**
+
+- Requirement and Callable calls' effect bounds (F6's Φ_c, 8.11.4).
+- Open keys (P5 has none).
+- val(static) ∪= {Φ_E}: no case's static holds a value that carries a Loan.
+- G136's "names no holder" half is argued, not run. Static storage holds only Owned values, and the Origin stratum refutes storing a
+  body-bounded Loan there (15.6.5), so no Loan of the body reaches a static.
+- V16's cost: 2b-3's +V16 shape.
