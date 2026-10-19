@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -1133,6 +1134,74 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             MirDump.Write(program, 0, dump);
             return dump.ToString();
         }
+    }
+
+    // SPEC 4.6.1, 4.7.1, 22.5.2 (DECISIONS R5-M84): a position is the isize its selection reads, its value where isize holds it, else -1,
+    // which only the selection's one bounds check rejects. A Type whose range lies within isize's converts proven; another is compared
+    // with isize's extremes in its own Type first, and the Index's local is -1 on the other arm. No position fails by itself (fail-before:
+    // a u64 or usize position wrapped, an i128 one converted checked).
+    [Theory]
+    [InlineData("i8", "")]
+    [InlineData("u32", "")]
+    [InlineData("u64", "Le(copy _2, const 9223372036854775807_u64)")]
+    [InlineData("usize", "Le(copy _2, const 9223372036854775807_usize)")]
+    [InlineData("i128", "Le(const -9223372036854775808_i128, copy _2) Le(copy _2, const 9223372036854775807_i128)")]
+    public void APositionIsItsValueWhereIsizeHoldsItElseMinusOne(string type, string tests)
+    {
+        var program = Compile($"func f(values: [3 of i32], p: {type}) -> i32 => values[p]\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        Assert.Empty(program.Problems.All.ToArray());
+        var text = new StringBuilder();
+        MirDump.Write(program, 0, text);
+        Assert.Equal(tests, string.Join(' ', Regex.Matches(text.ToString(), @"Le\([^)]*\)").Select(static x => x.Value)));
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var index = body.Projections[1..].ToArray().Single(static x => x.Kind == MirProjectionKind.Index).Arg;
+        var writes = body.Statements.ToArray().Where(x => x.Kind == MirStatementKind.Assign && x.Place == new MirPlace(index)).Select(x => x.Rvalue switch
+        {
+            { Kind: MirRvalueKind.Cast, Op: (byte)MirCastKind.Integer, Proven: true } cast => $"cast _{body.Operands[cast.Start].Place.Root}",
+            { Kind: MirRvalueKind.Use } use when body.Operands[use.Start] is { Kind: MirOperandKind.Const } value => $"{body.Consts[value.Arg].Bits}",
+            var other => other.Kind.ToString(),
+        });
+        Assert.Equal(tests.Length == 0 ? "cast _2" : "cast _2 -1", string.Join(' ', writes));
+        Assert.DoesNotContain(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Intrinsic });
+    }
+
+    // SPEC 4.6.1, 23.1.2 (DECISIONS R5-M84, R5-M63): a position of a Type parameter, whose range its instance decides, is one located
+    // Unsupported_Kd at the position. Its value is built already, so the Opaque in its place names that value's root, not the position's
+    // syntax, and a root the value moved is not used again there (fail-before: a MovedPlace_Kd at conv<I>(b@move)).
+    [Theory]
+    [InlineData("values[p]", "p")]
+    [InlineData("values[conv<I>(b@move)]", "conv<I>(b@move)")]
+    [InlineData("values[^conv<I>(b@move)]", "conv<I>(b@move)")]
+    public void APositionOfATypeParameterIsUnsupported(string selection, string position)
+    {
+        var c = Compile("struct Box\n    public var n: i32 = 1\n    public init() => ()\nfunc conv<I>(b: Box) -> I\n    I is PrimitiveInteger\n" +
+            $"    return 1\nfunc f<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let b = Box.init()\n    return {selection}\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var record = Assert.Single(program.Records, static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.Unsupported_Kd, position), (record.Code, c.SyntaxOf(record.Subject).ToString()));
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+    }
+
+    // SPEC 4.6.3, 4.7.4, 22.5.1 (DECISIONS R5-M84): a written ^x that does not resolve is -1, so it fails only in its selection's one
+    // check, after every boundary is evaluated, at the selection: the range's one Fail follows the later boundary's call (fail-before: ^x
+    // failed where it was evaluated, at ^x, before next() was called).
+    [Fact]
+    public void AnUnresolvedFromEndOffsetFailsAtItsSelection()
+    {
+        var c = Compile("func next() -> isize => 2\nfunc f(values: ref/Array<i32>, x: i32) -> Slice<i32> during values => values[^x..next()]\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var fail = Assert.Single(body.Blocks.ToArray(), static x => x.Terminator.Callee is { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.Fail });
+        Assert.Equal("values[^x..next()]", c.SyntaxOf(fail.Terminator.Source.Syntax).ToString());
+        var statements = body.Statements.ToArray();
+        var start = statements.Single(x => x.Rvalue is { Kind: MirRvalueKind.BinaryOp, Op: (byte)MirBinaryOp.Sub } &&
+            c.SyntaxOf(x.Source.Syntax).ToString() == "^x").Place;
+        Assert.Contains(statements, x => x.Place == start && x.Rvalue.Kind == MirRvalueKind.Use);
     }
 
     // SPEC 3.4.3, 4.7.1, 7.3, 13.4 (PLAN G147 (2b)): a receiver or a compared operand below an element storing an exclusive reference

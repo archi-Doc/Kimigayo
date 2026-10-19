@@ -37,7 +37,8 @@ internal sealed partial class MirBuilder
     // An Opaque value of the destination's Type in place of a node, its site naming the locals the node's syntax reads, writes or borrows;
     // where the node cannot complete, its block ends and building continues in a block only the checks reach (SPEC 14.10.3). SPEC 23.1.2
     // (DECISIONS R5-M63): an Error node's kept operands are evaluated first, in syntax order, each as its Place (a value in a temp) and
-    // never acquired, and the site names their roots instead of their syntax's, so a moved operand is not used again there.
+    // never acquired, and the site names their roots instead of their syntax's, so a moved operand is not used again there; so does a part
+    // built already where it is located (Located: an expansion's operand, or a position's value, R5-M84).
     private void Opaque(Koto node, MirPlace destination)
     {
         var start = this.kept.Count;
@@ -94,14 +95,15 @@ internal sealed partial class MirBuilder
     }
 
     // The locals, parameters, environment bindings and statics a replaced node's syntax names (their Res) or a Closure in it captures,
-    // the roots of its Opaque site, but in the operands an Error node keeps, which are evaluated already.
+    // the roots of its Opaque site, but in the operands an Error node keeps, which are evaluated already, and in a part located already,
+    // which is named by its Place's root.
     private sealed class Roots(MirBuilder builder) : KotoVisitor
     {
         private bool operands; // The nodes visited are an Error node's own children, whose kept ones its site names already.
 
         public override void Visit(Koto node)
         {
-            if (this.operands && Kept(node))
+            if ((this.operands && Kept(node)) || this.Located(node))
             {
                 return;
             }
@@ -116,10 +118,27 @@ internal sealed partial class MirBuilder
         // The roots of a node's syntax, collected after its kept operands' (Opaque): an Error node's own children but those it keeps.
         internal void Collect(Koto node)
         {
+            if (this.Located(node))
+            {
+                return;
+            }
+
             this.Named(node);
             this.operands = HirTables.Op(node) == HirOp.Error;
             node.VisitChildren(this);
             this.operands = false;
+        }
+
+        // Whether a part is built already where it is located, whose Place's root the site names instead of its syntax's (R5-M63).
+        private bool Located(Koto node)
+        {
+            if (builder.Located(node) is not { } place)
+            {
+                return false;
+            }
+
+            builder.Root(place.Root);
+            return true;
         }
 
         // The roots a node names: its Res's binding or static, and a Closure's capture sources.
