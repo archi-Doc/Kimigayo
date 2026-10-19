@@ -24,6 +24,9 @@ public sealed class FunctionCodegenTest
     private const string ForLoop =
         "func f(values: ref/Array<i32>) -> i32\n    var total: i32 = 0\n    for value in values\n        total = 1\n    return total\n()";
 
+    private const string Strings =
+        "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n()";
+
     // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels, an explicit startup and unused functions
     // with scalar, string-borrow, zero-sized and Never signatures.
     public static TheoryData<string, string> Frames => new()
@@ -46,10 +49,46 @@ public sealed class FunctionCodegenTest
         },
     };
 
+    // The first programs (R5 C0b2): console output through writeLine, one line, several lines, an empty line and non-ASCII text. MIR code
+    // generation writes their calls and literals; it generates them once the Ref (C2b) and Drop (C4a) rows their string temporaries need
+    // exist (DECISIONS R5-M73).
+    public static TheoryData<string, string, string> Hellos => new()
+    {
+        { "HelloWorld", "Console.writeLine(\"Hello, world!\")\n", "Hello, world!\n" },
+        { "HelloLines", "Console.writeLine(\"one\")\nConsole.writeLine(\"\")\nConsole.writeLine(\"日本語\")\n", "one\n\n日本語\n" },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty);
+
+    [Theory]
+    [MemberData(nameof(Hellos))]
+    public void HelloProgramsRun(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
+    // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
+    // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
+    // local, its bytes a header constant and its release kind Static (SPEC 22.7); the empty string has no bytes.
+    [Fact]
+    public void WriteLineCallsTheConsoleRuntimeRow()
+    {
+        var text = Generate(Strings);
+        var ir = GeneratedIr.Parse(text);
+        var call = Assert.Single(ir.Single("internal void (ptr noundef nonnull align 8 dereferenceable(24))").Instructions, static x => x.Opcode == "call");
+        Assert.Same(ir.Function("__kimi_write_line"), call.Callee);
+        Assert.Equal("call void @(ptr noundef nonnull align 8 dereferenceable(24) %, ptr @, i64 15)", call.Shape);
+        Assert.Equal("load ptr, ptr %, align 8", Assert.Single(call.Operands).Shape);
+        Assert.Contains(Constant("Hello.kimi:1:32"), text);
+        var greeting = ir.Single("internal void (ptr)");
+        var store = Assert.Single(greeting.Instructions, static x => x.Opcode == "store");
+        Assert.Equal(("store %kimi.string { ptr @, i64 2, i8 0 }, ptr %, align 8", greeting.Parameters[0]), (store.Shape, Assert.Single(store.Operands)));
+        Assert.Contains(Constant("Hi"), text);
+        Assert.Equal(
+            "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
+            Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
+    }
 
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
     // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
@@ -119,14 +158,14 @@ public sealed class FunctionCodegenTest
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. The gaps of the library body of Console.writeLine land at the root-module call that required it (K 4.9),
-    // where the call's own record is; the records of a for loop's statement and of the siblings its expansion synthesizes with its span
-    // ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the diagnostics could not order when each was
-    // keyed by its node. A static's initializer is C7b's row, at the static.
+    // its valid counterpart is. Console.writeLine's call is written, and its literal's borrow (C2b) and destruction (C4a, the Drop and the
+    // string's DropGlue item) are one record at the literal (DECISIONS R5-M73); the records of a for loop's statement and of the siblings its
+    // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
+    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
     [Theory]
     [InlineData("func twice(a: i32) -> i32 => a + a\n()", new[] { "a + a" })]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", new[] { "twice(1)" })]
-    [InlineData("Console.writeLine(\"\")\n", new[] { "Console.writeLine(\"\")", "\"\"" })]
+    [InlineData("Console.writeLine(\"\")\n", new[] { "\"\"" })]
     [InlineData(ForLoop, new[] { "for value in values\n        total = 1", "value" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n()", new[] { "let limit: i32 = 4" })]
     [InlineData("func twice(a: i32) -> i32 => a\n()", new string[0])]
@@ -145,11 +184,13 @@ public sealed class FunctionCodegenTest
     }
 
     // I1: the same program gives the same text, in one compilation and in two.
-    [Fact]
-    public void GenerationIsDeterministic()
+    [Theory]
+    [InlineData(Branches)]
+    [InlineData(Strings)]
+    public void GenerationIsDeterministic(string source)
     {
-        var first = Generate(Analyze(Branches));
-        var c = Analyze(Branches);
+        var first = Generate(Analyze(source));
+        var c = Analyze(source);
         Assert.Equal(first, Generate(c));
         Assert.Equal(first, Generate(c));
     }
@@ -176,10 +217,12 @@ public sealed class FunctionCodegenTest
 
     // I11: generating a program again allocates nothing.
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void WarmGenerationAllocatesNothing()
+    [Theory]
+    [InlineData(Branches)]
+    [InlineData(Strings)]
+    public void WarmGenerationAllocatesNothing(string source)
     {
-        var c = Analyze(Branches);
+        var c = Analyze(source);
         var written = true;
         var allocated = AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null));
         Assert.True(written);
@@ -207,6 +250,13 @@ public sealed class FunctionCodegenTest
         using var writer = new StringWriter();
         Assert.True(c.Generate(writer), string.Join(", ", Records(c)));
         return writer.ToString();
+    }
+
+    // The end of the header's definition of a pooled constant: its UTF-8 bytes, each escaped (LlvmConstantPool).
+    private static string Constant(string text)
+    {
+        var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+        return $" = private unnamed_addr constant [{bytes.Length} x i8] c\"{string.Concat(bytes.Select(static x => $"\\{x:X2}"))}\", align 1\n";
     }
 
     private static (string Code, string? Text)[] Records(Compilation c)

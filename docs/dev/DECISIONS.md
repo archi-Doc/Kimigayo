@@ -3308,7 +3308,8 @@ structure is recorded here by the unit that first implements it.
   no-op statements, a `Use` into an unprojected local from an unprojected Copy or Move or a Bool, Integer or Unit constant (zero-sized
   writes nothing, a slot Type's copy is C2b's), Goto, SwitchInt, Return and Unreachable. PD11's coverage rows are the two components'
   dispatch arms (MIR vocabularies; body kinds Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b: a constant initializer folds
-  into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b); a test
+  into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b), Builtin
+  (C8f, C9b) and PropertyWitness (C3c) of R5-M67, K8's ObjectDescriptor and VTable (C6a, C6c); a test
   build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the collector's one rule
   (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation runs over every item and
   then discards the text. A record is a code without facts, `Unsupported_Kd` (location-only, DIAGNOSTICS §2 rule 3) or
@@ -3524,3 +3525,26 @@ structure is recorded here by the unit that first implements it.
   `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
   Move Paths, Binding-rejected Moves, default templates' prepared `ref` inputs). Rejected: the `Arity` row (a count rule); a Type
   requirement on the constant (`StaticInit` reads only its value).
+- **R5-M73 The console `writeLine` row, string constants and the first pending files** (2026-10-19, C lane; plan C0b2, package C §3.2
+  and §7, audit rows WriteLine and Const String; under R5-M18 form 1, R5-M65 and R5-M66) `FunctionCodegen` writes a Call whose Fn
+  callee is a compiler function by its legacy runtime row (the Body disposition, until R8), the console `writeLine` first:
+  `RuntimeAbi.WriteLine` called with the call's operands at its parameters' slots and the call site's location text
+  (`Compilation.Locations`, SPEC 22.5.1, a pooled `Location` constant; a site without text is `InternalInvariant_Kd`). In a
+  caller-location body the row forwards the body's own location, C3b's row; the other kinds are C8b-C8e's and C9a's. A `Use` of a
+  string constant into an unprojected `string` local stores the whole `%kimi.string`: its UTF-8 bytes a pooled `Text` constant, the
+  Static release kind (SPEC 22.7), the empty string `null` and 0. The entry stays C0b1's (R5-M65).
+  - First program: `Console.writeLine("x")` also needs C2b's `Ref` of the literal's temporary and C4a's Keep Drop with the string's
+    DropGlue item, which PD12's gate step 2 guards (R4-M6a's verdicts are exact only for programs A1 accepts; the per-body fact waits
+    for R4's G125). So no console-output program generates under MIR code generation yet: the `Hello*` fixtures of
+    `FunctionCodegenTest` run on the old generator and are pending under sel. Bringing those two rows forward is an open question.
+  - Pending files: one full sel suite's failing cases, each filed under the review group (the plan's §4 Review column without `G:`;
+    a unit reviewed alone by its ID, `C7b.tsv`) of the first unit, in plan order C0a to C10b then K13a to K13c, whose verification
+    column names its class exactly, else of the first whose `X*` family prefixes the class's simple name, else `C-frame.tsv`, the
+    group of the ledger's own units (C0b2 writes it, E10 reports and E11 gates it). A fixture has a row only when it is written and
+    fails natively; a case that fails only under load (PLAN G138) has none. A new row follows the same rule.
+  - `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` asserts the old generator's agreement, so it selects the old generator
+    whatever the process's; `verify.ps1` normalizes `-Mode` as it does `-Pipeline` and `-Codegen`, since `codegen-pending.ps1`
+    compares the spelling.
+  - Rejected: a call writer for `writeLine` alone (the legacy rows share the parameter mapping); grouping by the first coverage
+    record a test meets (no record names its test); a catch-all file named by no group (R5-M66); pending rows for the depth test (the
+    old generator it asserts still runs under sel).
