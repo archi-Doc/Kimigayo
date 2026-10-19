@@ -143,6 +143,9 @@ internal sealed class ModuleCodegen
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // K6's requirement shims: C3b, C8f and C9b write them (R5-M67).
                 return;
+            case MonoKind.ObjectDescriptor or MonoKind.VTable:
+                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C6a writes descriptors, C6c the VTables (R5-M74).
+                return;
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }

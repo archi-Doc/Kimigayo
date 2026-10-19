@@ -3585,3 +3585,44 @@ structure is recorded here by the unit that first implements it.
   predicate beside the builder's); the construct's own result temp moved into the input (its Refs stay a stale `lent`); a temp per
   body for every construct value (MIR changes beyond inputs); a decision at the Call by the argument's HirOp (a consumer deciding by
   syntax); a second flag carrying non-reserving inputs to the bodies (a mode steering them, for no reader).
+- **R5-M74 Object descriptors and VTables of the checked set** (2026-10-19, K lane; plan K8, the K package's §4.3 ObjectDescriptor and
+  VTable rows and §4.5 rows 4, 8 and 12, package F §4.2-§4.3, S2-S4 X5 and X15; under R5-M18, R5-M60 and R5-M62; DEC Q6 form 1;
+  `MonoKind.ObjectDescriptor` and `MonoKind.VTable` are approved with the K package, §11; round 2 after the independent review's B1)
+  Only a creation (`MakeObj`, `MakeRc`, `MakeArc`, the intrinsic rows whose `Target` is Descriptor, and an Item of their functions)
+  targets the `ObjectDescriptor` item of its payload in the item's instance, the substitution's Type argument (`Types[0]`, the one
+  operand form every target row reads, as `LaysOutType` does), keyed by its erasure and admitted with its layout verdict (a
+  type-driven item, R5-M44). A clone and a runtime Type test carry no target: a test acquires nothing (SPEC 13.6.4) and neither use
+  needs a layout (SPEC 8.15.3); a clone is payload-independent (IMPL 21.1.3). A descriptor's targets, at its default site, are its
+  payload's glue (the finalizer's destruction of the actual Type, SPEC 16.3.3, which a non-Sealed handle's glue leaves to it) and,
+  when the payload's struct has a `VTableDef`, its `VTable` item; a VTable's targets, in slot order, are the bodies F4's consumer rule
+  names: `Implementations[slot]` under `TyCtxt.Synthesized(implementation, its owning layer, [])`, through `Implementation` like any
+  callee (limits, growing keys), where `TyCtxt.Applies` of the slot's original at the layer owning it holds; refuted, no target and
+  the override's body stays checked only (a closed root, or a generic body no instance applies; R4-M28, K11); undecided, or a function
+  off the representative's base chain, a broken contract, `InternalInvariant_Kd` at the VTable's site. A Virtual call and a virtual
+  slot's Item have no target (X5). F4's two outcomes of a failed override: slot selection failed, no table, so no VTable item; a later
+  failure, a table naming a definition without a MIR body, so that slot has no target; neither records anything (R4-M18). Same cause
+  found by the search for "what a function runs": an Item of a function without a MIR body reached only its implementation's body,
+  while its call reaches the published or the intrinsic row; `Implementation` falls back to `Bodyless`, which reads both, and the Fn
+  row is a default template (the original's, SPEC 8.13.2) else `Implementation`, so an Item of `makeObj`, `Text.writer` or
+  `Text.toString` targets what its call does. `ModuleCodegen.Item` reports the two kinds as coverage rows (C6a, C6c).
+  - C6a's contract: it numbers the erased payloads of the Generated descriptors and their base chains (`AdtDef.Base`, each base Type
+    under the payload's substitution, generic arguments kept, Origins excluded), one table per module; a descriptor's base map holds
+    its chain's numbers; a type test compares the object's numbers (`__kimi_object_supports`) with its target's,
+    `Erase(TypeOf(item, its token's Type))`, and where no Generated chain holds the target it is the constant false, the operand still
+    evaluated (SPEC 13.6.4: "A test with a statically known result is still valid and evaluates its operand"), since every runtime
+    object comes from a Generated creation; C6a decides whether the module needs the object runtime (a Generated descriptor or a
+    runtime-reached handle operation). C6c pairs slots with a VTable's targets by the implementation's definition.
+  - Departure (for the owner's departures list at R5's group review): the K package's §4.5 row 8 names all five handle operations as
+    descriptor sites; Clone and TypeTest leave it, because the package's §4.5 admission ("admitted only for a Type whose layout verdict is
+    OK") with row 8 put a layout obligation, and the glue and VTable closure of a Type never created, where SPEC 8.15.3 puts none (the
+    review's reproducers: `a is Huge` and a clone of `ref/(rc/Huge)` reported OversizedLayout_Kd; `a is Leaf<i32>` collected Leaf<i32>'s
+    slot bodies). X15's whitelist of target-bearing intrinsics shrinks from eight to six.
+  - Rejected: an identity-only item for a type test (a MonoKind the package does not name, while C6a numbers the chains anyway);
+    descriptors targeting their bases' descriptors (lays out Types never created); a TypeToken operand column on the intrinsic rows
+    (round 1's; nothing reads the token now) or on MirDescriptors with a validator arm; a slot index in `MonoTarget.At`.
+  - Verified (`InstanceCollectorTest`): closed tables of a generic hierarchy (one descriptor per erased payload for obj, rc and arc; slot
+    bodies per owning layer); the factory Item made, called and erased in an instance; Items of Text.writer and Text.toString; a finite
+    cycle reused and a growing key located at the creation; an original a table replaces adds nothing; refuted conditional slots (Block
+    and clause) without a target or the override's instance; both failed-override outcomes without a record; type tests and a clone
+    without a target or record (an oversized never-created struct, a never-created Leaf<i32>); warm collection 0 B. Under sel the
+    library roots and the 44 milestones give no new record.

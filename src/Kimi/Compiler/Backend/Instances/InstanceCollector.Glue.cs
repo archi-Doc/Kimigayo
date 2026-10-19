@@ -8,11 +8,14 @@ namespace Kimi.Compiler.Backend;
 // DropGlue item's targets.
 internal sealed partial class InstanceCollector
 {
-    // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys, keyed by its erased Type, for a Type whose destruction
-    // runs or releases something (MirTypes.MayNeedDrop); A2's verdicts do not narrow the checked set (codegen reads them). -1 for a Type
-    // with nothing to destroy or a refused edge.
-    private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed && MirTypes.MayNeedDrop(closed, this.seen)
-        ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default), closed) : -1;
+    // K 4.5 rows 9 and 10: the DropGlue item of a Type an item's instance destroys (GlueOf). -1 for a Type TyCtxt cannot make there.
+    private int Glue(int item, SourceRef subject, BoundType type) => this.In(item, subject, type) is { } closed ? this.GlueOf(item, subject, closed) : -1;
+
+    // The DropGlue item of a closed Type, keyed by its erased Type, for a Type whose destruction runs or releases something
+    // (MirTypes.MayNeedDrop); A2's verdicts do not narrow the checked set (codegen reads them). -1 for a Type with nothing to destroy or a
+    // refused edge.
+    private int GlueOf(int item, SourceRef subject, BoundType closed)
+        => MirTypes.MayNeedDrop(closed, this.seen) ? this.AdmitType(item, subject, new(MonoKind.DropGlue, default), closed) : -1;
 
     // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10); none is a broken contract, since the builder
     // ensures only the statics whose initializers it builds. A static of a generic container's group, whose storage the MIR keys by its

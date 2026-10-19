@@ -11,7 +11,7 @@ namespace XunitTest;
 
 public class VirtualGenericDispatchTest(ITestOutputHelper output)
 {
-    private const string Hierarchy = """
+    internal const string Hierarchy = """
         open struct Base<T>
             T is Owned
             public init() => ()
@@ -108,6 +108,6 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         Assert.True(valid);
     }
 
-    private static string DependencyProgram(string argument)
+    internal static string DependencyProgram(string argument)
         => "struct Next<T>\n    T is Owned\nopen struct Base<T>\n    T is Owned\n    public init() => ()\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Leaf<T> : Base<T>\n    T is Owned\n    public init() => ()\n    override func read(self: objref/Self) -> i32\n        let child = Leaf<" + argument + ">.init()@obj\n        return 7\nlet a = Leaf<string>.init()@obj\nrequire a.read() == 7 else => $abort(\"cycle\")";
 }
