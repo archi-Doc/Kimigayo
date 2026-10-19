@@ -37,7 +37,7 @@ internal sealed class MirLints(MirReach reach)
             reach.Walk(body, rows[i].Entry, checks: false);
             if (reach[rows[i].End])
             {
-                report.Add(new(DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow, rows[i].Subject, ulong.MaxValue));
+                report.Add(new(DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow, rows[i].Subject, body.Ordinal, ulong.MaxValue));
             }
         }
     }

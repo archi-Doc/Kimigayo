@@ -18,7 +18,7 @@ internal sealed partial class MirBorrows
     private int[] renumbered = []; // By Loan in issue order: its id in group order.
     private int loanCount;
     private int loanStepCount;
-    private bool guarded; // Whether a local is a guard candidate (MirLocalRole.GuardCandidate).
+    private bool guarded; // Whether a local's marker is a guard candidate's γ (MarkerOf).
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
     // an invocation's input), or Raw where it Copies or the statement is none.
@@ -43,7 +43,7 @@ internal sealed partial class MirBorrows
         for (var i = 0; i < locals; i++)
         {
             this.lent[i] = new(i);
-            this.guarded |= this.body.Locals[i].Role == MirLocalRole.GuardCandidate;
+            this.guarded |= this.MarkerOf(i) == Marker.Guard;
         }
 
         (this.loanCount, this.loanStepCount) = (0, 0);

@@ -6,7 +6,9 @@ namespace XunitTest;
 
 /// <summary>The MIR-expressible cases of prototype round 10 (draft/Sketches/A5 Step 0/prototype.md, 246 cases) that the rule tests do not already
 /// spell, each function named by its case, with the verdicts of the adopted design (its PrefixKill mode, A3 E8; the listed losses as listed)
-/// but 75's, an error by SPEC's letter (the owner's decision of 2026-10-18; PLAN G147). Left out: the linked-list walks (30a–30d, 35a–35b,
+/// but 75's, an error by SPEC's letter (the owner's decision of 2026-10-18; PLAN G147). An exclusive Loan that hits a reservation is
+/// reported once, by the reservation's formation, not again at its activation (R4-M68: c8a, c9g, c9h, c9m–c9o, c20b, c20f, c22a, c53, c63
+/// and c64). Left out: the linked-list walks (30a–30d, 35a–35b,
 /// 82–83) and 25c, which bind their payloads through a match (F8); the F6 cases (33a–33e, 36a–36g, `preserves results`); 108, which Binding
 /// rejects (its Origin relation); and 8c and 120b, which have no MIR-problem observable or form.</summary>
 public sealed partial class MirBorrowsTest
@@ -20,11 +22,9 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "c3: data", "c4: data", "c4b: data", "c5: a = 3", "c5b: a = 3", "c5c: a = 3", "c6: x = 3", "c7: a = 3", "c7b: a = 3", "c8a: cursor.children",
-                "c8a: cursor.children.clear() CallActivationConflict_Kd", "c9a: x = 3", "c9b: x = 3", "c9c: x = 3", "c9d: x = 3", "c9e: x = 3",
-                "c9e2: h.link@follow = 7", "c9f: x = 3", "c9g: r@uniq", "c9g: Kimi.Intrinsics.exchange(r@uniq, with: y@uniq) CallActivationConflict_Kd",
-                "c9m: r@uniq", "c9m: Kimi.Intrinsics.exchange(r@uniq, with: y@uniq) CallActivationConflict_Kd", "c9n: r@uniq",
-                "c9n: Kimi.Intrinsics.exchange(r@uniq, with: y@uniq) CallActivationConflict_Kd", "c9o: r@uniq",
-                "c9o: Kimi.Intrinsics.swap(r@uniq, s@uniq) CallActivationConflict_Kd", "c9h: w", "c9h: steal(w, y@uniq) CallActivationConflict_Kd",
+                "c9a: x = 3", "c9b: x = 3", "c9c: x = 3", "c9d: x = 3", "c9e: x = 3",
+                "c9e2: h.link@follow = 7", "c9f: x = 3", "c9g: r@uniq",
+                "c9m: r@uniq", "c9n: r@uniq", "c9o: r@uniq", "c9h: w",
                 "c9i: r@ref", "c9j: x = 3", "c9k: r", "c9l: r@uniq", "c11b: x = 3", "c12a: r", "c12b: r", "c13b: slot = y@uniq", "c13e: slot = y@uniq",
                 "c14: h"
             ],
@@ -379,10 +379,8 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "c16a: r@follow = 5", "c16b: r@follow@uniq", "c16c: r@follow = 5", "c16d: r@follow = 5", "c16e: slot@follow = 5", "c17a: data", "c17b: data",
-                "c18a: a = 3", "c18b: a = 3", "c19b: root.value = 2", "c20a: v@uniq", "c20b: v@uniq", "c20b: retain(v@uniq) CallActivationConflict_Kd",
-                "c20c: v@uniq", "c20d: v@ref", "c20e: r@follow@uniq", "c20f: v@uniq", "c20f: v + 0",
-                "c20f: retainN(v@uniq, v + 0) CallActivationConflict_Kd", "c22a: arr[j]", "c22a: arr[j]@uniq",
-                "c22a: Kimi.Intrinsics.exchange(arr[j]@uniq, with: z@uniq) CallActivationConflict_Kd"
+                "c18a: a = 3", "c18b: a = 3", "c19b: root.value = 2", "c20a: v@uniq", "c20b: v@uniq",
+                "c20c: v@uniq", "c20d: v@ref", "c20e: r@follow@uniq", "c20f: v@uniq", "c20f: v + 0", "c22a: arr[j]", "c22a: arr[j]@uniq"
             ],
             Problems("""
                 func consume(d: Data) => ()
@@ -560,10 +558,9 @@ public sealed partial class MirBorrowsTest
         => Assert.Equal(
             [
                 "c23b: q@follow@follow = 5", "c34b: arr[i]", "c34b: arr[i]@follow@follow = 7", "c50: q.p@follow@uniq", "c51: q", "c52: q.p@follow@uniq",
-                "c53: q", "c53: keepT(q) CallActivationConflict_Kd", "c55: s.pa@follow = 9", "c56: q.pa@follow@uniq", "c57: rr@follow@follow = 7",
-                "c59: slot2@uniq", "c60: rr@follow@follow = 7", "c62: rr", "c63: rr@uniq",
-                "c63: Kimi.Intrinsics.exchange(rr@uniq, with: slot2@uniq) CallActivationConflict_Kd", "c64: rr@uniq",
-                "c64: Kimi.Intrinsics.swap(rr@uniq, rr2@uniq) CallActivationConflict_Kd", "c66: rr@follow@follow = 7", "c68: arr[0]@follow@follow = 7",
+                "c53: q", "c55: s.pa@follow = 9", "c56: q.pa@follow@uniq", "c57: rr@follow@follow = 7",
+                "c59: slot2@uniq", "c60: rr@follow@follow = 7", "c62: rr", "c63: rr@uniq", "c64: rr@uniq",
+                "c66: rr@follow@follow = 7", "c68: arr[0]@follow@follow = 7",
                 "c69: arr[j]", "c69: arr[0]@follow@follow = 7", "c70: arr[j]", "c70: arr[i]", "c70: arr[i]@follow@follow = 7", "c72: m[i]",
                 "c72: m[i][0]@follow@follow = 7", "c74: p.pa@follow@follow = 7", "c75: h@follow.r@follow@follow = 7",
                 "c77: slot@follow = 5", "c79: slot@follow = 5",

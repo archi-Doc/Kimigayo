@@ -289,6 +289,32 @@ public sealed class PipelineSwitchTest
         Assert.Equal((diagnostics, ir), Check(c));
     }
 
+    // R4-M71, PLAN G157 (8) (DIAGNOSTICS §4.1): a MIR record is a code without facts, published keyed by its location, so the records of a
+    // for expansion's synthesized siblings $for.some and $for.none, which share their span, depth and kind, are one problem, not an
+    // undefined order. No form records at them at check today, so the records are added to the analyzed version's program as a
+    // construction rule adds them.
+    [Fact]
+    public void MirRecordsAtOneLocationAreOneProblem()
+    {
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(
+            "Hello.kimi", "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\npublic func main() => ()\n"));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        var loop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single();
+        var program = c.BuildMir();
+        foreach (var arm in loop.Iteration!.Match.Arms)
+        {
+            program.Report(SourceRef.Of(arm.Pattern));
+        }
+
+        Assert.Equal(2, c.Problems.Count);
+        c.ReportAnalysis();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(("Unsupported_Kd", loop.Span), (record.Code, record.Span));
+    }
+
     // R4-M17: on both pipelines, every Analyze raises Compilation.Analyzed once, after the old path's records and, under mir, the MIR's
     // are final: the observer reads the analysis Analyze returns, the MIR's Unsupported record included.
     [Fact]
