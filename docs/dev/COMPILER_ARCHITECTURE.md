@@ -27,7 +27,7 @@ checks. Only completed ledger entries describe the current compiler; the rest is
 | Binding | Syntax tree, its own tables | Mir, Backend |
 | MIR builder (`Mir/Build`) | `HirTables`, Plans, declaration tables, pure `TyCtxt` functions, syntax children, `SourceRef` | Binding internals, semantic slots on Koto, parent-walking inference |
 | MIR analyses | MIR, declaration tables, pure `TyCtxt` functions | Syntax, HIR |
-| Backend | MIR, declaration tables, `TyCtxt`, the root Type predicates `SlotTypes` and `ReferenceTypes` (`Abi`'s parameter kinds; DECISIONS R5-M65), Core's runtime-location text (`Compilation.Locations`), the Testing catalog's symbol column (DECISIONS R5-M18) | HIR, borrow-checker state, syntax |
+| Backend | MIR, declaration tables, `TyCtxt`, the root Type predicates `SlotTypes` and `ReferenceTypes` (`Abi`'s parameter kinds; DECISIONS R5-M65) and `ScalarTypes` (the capability table's operation and static-storage rows; DECISIONS R5-M53, R5-M82), Core's runtime-location text (`Compilation.Locations`), the Testing catalog's symbol column (DECISIONS R5-M18) | HIR, borrow-checker state, syntax |
 | Hover and LSP | `SemanticQuery` | Private Binding state |
 
 Dependency and member restrictions are review obligations after the analyzer retirement (DECISIONS CR-R1).
