@@ -3706,7 +3706,7 @@ structure is recorded here by the unit that first implements it.
   - Checked-only roots (K §4.4, §4.10, R4-M28): `InstanceCollector.Generates(root)` leaves out the body of a closed virtual or override
     whose slot `TyCtxt.Applies` refutes at its struct's layer owning the original, its struct being its receiver's Self; it reads the one
     slot rule K8's VTable targets read (`Applies(type, table, slot)`), and an undecided slot is a broken contract, `InternalInvariant_Kd`
-    at the project. Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
+    at the root's site (as K8 records it at a VTable's). Such a body is accepted at check when its condition is refuted without contradiction (a non-conforming Type under
     `T is Marker`); the old generator skips it too (`IsInapplicableVirtualBody`). An Application or a test build reaches none: a refuted
     slot has no target and a call of it is a Binding error.
   - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked

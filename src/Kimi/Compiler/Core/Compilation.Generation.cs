@@ -14,8 +14,9 @@
 // inputs (LlvmEmitter's CheckInputs).
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
-// catalog Project discovers after acceptance, never discovered again here) or a Library's every root but a closed override body whose slot
-// Applies refutes (InstanceCollector.Generates, checked only, R4-M28); a root without an item or with an undecided slot is a broken contract.
+// catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
+// override whose slot Applies refutes (InstanceCollector.Generates, checked only, R4-M28); a root without an item or with an undecided slot
+// is a broken contract.
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
 // LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
@@ -111,9 +112,14 @@ public partial class Compilation
             return false;
         }
 
-        if (this.mir is not { } program || this.instances is not { } collector || !this.OutputRoots(collector))
+        if (this.mir is not { } program || this.instances is not { } collector)
         {
             this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+            return false;
+        }
+
+        if (!this.OutputRoots(collector))
+        {
             return false;
         }
 
@@ -132,15 +138,22 @@ public partial class Compilation
 
         foreach (var record in generator.Records)
         {
-            var node = this.SyntaxOf(record.Subject);
-            node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.Emission, node.Span, record.Code, node.CodeContext.SourceDocument);
+            this.ReportLocation(record.Code, record.Subject);
         }
 
         return false;
     }
 
+    // A code generation record keyed by its location (DECISIONS R5-M65).
+    private void ReportLocation(DiagnosticCode code, SourceRef subject)
+    {
+        var node = this.SyntaxOf(subject);
+        node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.Emission, node.Span, code, node.CodeContext.SourceDocument);
+    }
+
     // K package 4.10: the items of the output roots, an Application's startup body, a test build's discovered tests or a Library's every
-    // root the collector generates; false when one has no item or its slot is undecided.
+    // root the collector generates; false, recorded, when one has no item (at the project) or its slot is undecided (at the root's site, as
+    // the collector records it at a VTable's).
     private bool OutputRoots(Backend.InstanceCollector collector)
     {
         var (roots, set) = (this.outputRoots, collector.Set);
@@ -159,6 +172,7 @@ public partial class Compilation
             {
                 if (collector.Generates(root) is not { } generates)
                 {
+                    this.ReportLocation(DiagnosticCode.InternalInvariant_Kd, set.Items[root].Site);
                     return false;
                 }
 
@@ -174,7 +188,13 @@ public partial class Compilation
             roots.Add(set.Find(new(Backend.MonoKind.Body, new(body, null))));
         }
 
-        return !roots.Contains(-1);
+        if (roots.Contains(-1))
+        {
+            this.Diagnostics.Report(DiagnosticPartition.Emission, DiagnosticCode.InternalInvariant_Kd, this.Project.FilePath);
+            return false;
+        }
+
+        return true;
     }
 
     // The out-string adapters' text of the gate's step 1.

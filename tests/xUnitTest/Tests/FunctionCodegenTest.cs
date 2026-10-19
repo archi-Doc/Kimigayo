@@ -248,7 +248,7 @@ public sealed class FunctionCodegenTest
             OutputKind.Library);
         Assert.True(c.Accepts, MinimalEmissionTest.Describe(c, null));
         _ = c.Generate(TextWriter.Null);
-        Assert.Contains(("mark", applies), Generated(c.Instances!));
+        Assert.Equal(applies, Assert.Single(Generated(c.Instances!), static x => x.Name == "mark").Generated);
     }
 
     // Every milestone generates under MIR code generation, or records only coverage rows: never a broken contract.
