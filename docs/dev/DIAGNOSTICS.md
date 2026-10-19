@@ -300,6 +300,7 @@ MIR default expansion (R3, published under the mir pipeline) reports `DefaultExp
 | A requirement or Callable-constrained call's effect on a Loan an earlier result keeps (Φ_c, SPEC §8.11.4); not reported on the MIR until A5-F6 (unit 2f) | `CallEffectConflict_Kd` | The later call, also where its receiver's formation meets the Loan |
 | A value keeping a guard candidate's guard-local Origin past its cleanup (err(ended), SPEC §14.8.3) | `ComparisonLoanConflict_Kd` | The candidate's cleanup, anchored at the candidate, as escaped borrows |
 | A conflict whose Loan only sets with a default taint hold (R4-M70, until A5-F9, unit 2e) | `Unsupported_Kd` (`Ownership.Unsupported`, no fact) | The omitting call |
+| A conflict whose Loan only sets with P13's taint hold, a call's store past a holder whose Type passes the guard only by a Type argument, a pair layer or an abstract part (R4-M73, until the guard reads each part) | `Unsupported_Kd` (`Ownership.Unsupported`, no fact) | The conflicting access |
 | A destruction past the destruction walk's bound, at a Drop of a borrowed root or at a destroying call; a call whose retention is `CallRetention.Limit` (R4-M51) | `Unsupported_Kd` (`Ownership.Unsupported`), kept inside an inline copy | The Drop or call |
 | A body whose Loan × point arena passes its limit (R4-M15a) | `OwnershipStorageLimit_Kd` (`Ownership.StorageLimit`) | The body |
 
