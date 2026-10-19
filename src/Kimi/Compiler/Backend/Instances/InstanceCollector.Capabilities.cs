@@ -38,13 +38,14 @@ internal sealed partial class InstanceCollector
         }
     }
 
-    // A3b's declaration row (DECISIONS R5-M82): a root-module static that can be set (its setter present, a group's var; Binding's property
-    // model) is the mutable-static gap at its declaration, its StaticInit body's source, whether or not anything reads it.
+    // A3b's declaration row (DECISIONS R5-M82): a verified root-module static whose storage StaticScalar does not support (the one
+    // predicate of supported static storage) is the static-storage gap at its declaration, its StaticInit body's source, whether or not
+    // anything reads it; an unverified one is Binding's error.
     private void CheckStatic(MirBody body)
     {
-        if (body.Key is { Kind: MirBodyKind.StaticInit, Decl.Property.Setter.IsPresent: true })
+        if (body.Key is { Kind: MirBodyKind.StaticInit, Decl.Property: { IsVerified: true } property } && !StaticScalar.Supports(property))
         {
-            this.Set.Report(Capability.Code(CapabilityGap.MutableStatic), body.Source);
+            this.Set.Report(Capability.Code(CapabilityGap.StaticStorage), body.Source);
         }
     }
 }

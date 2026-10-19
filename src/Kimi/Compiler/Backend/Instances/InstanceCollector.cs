@@ -23,7 +23,7 @@
 // witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
 // glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
-// Types are closed, every block included, once per definition and location, and of a root-module static's declaration (a mutable static,
+// Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage P42 has not brought,
 // DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
 // Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and

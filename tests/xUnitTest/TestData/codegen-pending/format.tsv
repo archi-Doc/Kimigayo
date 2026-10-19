@@ -124,6 +124,8 @@ test	XunitTest.Utf8InterpolationTest.OneUnboundedValueUsesOneAllocationIncluding
 test	XunitTest.Utf8InterpolationTest.OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix	XunitTest.Utf8InterpolationTest.OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix(name: \"String\", value: \"\\\"abc\\\"\", expected: \"prefixabc:42\\n\", capacity: 21)
 test	XunitTest.Utf8InterpolationTest.OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix	XunitTest.Utf8InterpolationTest.OneUnboundedValueUsesOneAllocationIncludingThePendingPrefix(name: \"Utf8\", value: \"Text.utf8(source)\", expected: \"prefix君:42\\n\", capacity: 21)
 test	XunitTest.Utf8InterpolationTest.ValueBorrowEndsBeforeTheNextExpression	XunitTest.Utf8InterpolationTest.ValueBorrowEndsBeforeTheNextExpression
+test	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction(key: False, noisy: False)
+test	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction	XunitTest.Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction(key: True, noisy: False)
 test	XunitTest.Utf8TryWriteTest.BorrowedWriterAndUserFormatterReuseTheSameRoot	XunitTest.Utf8TryWriteTest.BorrowedWriterAndUserFormatterReuseTheSameRoot
 test	XunitTest.Utf8TryWriteTest.BorrowedWriterExpressionEvaluatesOnce	XunitTest.Utf8TryWriteTest.BorrowedWriterExpressionEvaluatesOnce
 test	XunitTest.Utf8TryWriteTest.EmbeddedReturnTargetsTheOriginalFunction	XunitTest.Utf8TryWriteTest.EmbeddedReturnTargetsTheOriginalFunction

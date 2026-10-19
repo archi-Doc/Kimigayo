@@ -1058,20 +1058,23 @@ public sealed class InstanceCollectorTest
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
-    // DECISIONS R5-M82: a root-module static that can be set is the capability table's mutable-static gap, Unsupported_Kd at its declaration,
-    // whether or not anything reads it (K11 generates only what an output requires); an immutable static is none.
+    // DECISIONS R5-M82: a root-module static whose storage StaticScalar does not support (P42's remainder: a var, an aggregate Type) is the
+    // capability table's static-storage gap, Unsupported_Kd at its declaration, whether or not anything reads it (K11 generates only what an
+    // output requires); an immutable group scalar is none, a literal one in a generic container's group included (its accesses are K7's).
     [Theory]
-    [InlineData("group State\n    public var counter: i32 = 0\nlet x = 1\n", true)]
-    [InlineData("group State\n    public var counter: i32 = 0\nlet x = State.counter\n", true)]
-    [InlineData("group State\n    public let counter: i32 = 0\nlet x = State.counter\n", false)]
-    [InlineData("group State\n    public let counter: i32 = 0\nlet x = 1\n", false)]
-    public void AMutableStaticIsAGapAtItsDeclaration(string source, bool gap)
+    [InlineData("group State\n    public var counter: i32 = 0\nlet x = 1\n", "public var counter: i32 = 0")]
+    [InlineData("group State\n    public var counter: i32 = 0\nlet x = State.counter\n", "public var counter: i32 = 0")]
+    [InlineData("group State\n    public let pair: (i32, i32) = (1, 2)\nlet x = 1\n", "public let pair: (i32, i32) = (1, 2)")]
+    [InlineData("group State\n    public let counter: i32 = 0\nlet x = State.counter\n", null)]
+    [InlineData("group State\n    public let counter: i32 = 0\nlet x = 1\n", null)]
+    [InlineData("struct Cache<T>\n    public group Statistics\n        public let count: i32 = 0\nlet x = 1\n", null)]
+    public void UnsupportedStaticStorageIsAGapAtItsDeclaration(string source, string? declaration)
     {
         var c = MirBuildTest.Compile(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         Assert.Equal(
-            gap ? [(DiagnosticCode.Unsupported_Kd, "public var counter: i32 = 0")] : [],
+            declaration is null ? [] : [(DiagnosticCode.Unsupported_Kd, declaration)],
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
@@ -1437,9 +1440,9 @@ public sealed class InstanceCollectorTest
     }
 
     // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
-    // program, which the old analysis rejects at the same accesses), whose mutable statics are the mutable-static gap at their declarations
-    // (DECISIONS R5-M82) and whose accesses of a static of a generic container's group are the generic-static-key gap (X33 (a), DECISIONS
-    // R5-M18, R5-M60).
+    // program, which the old analysis rejects at the same accesses), whose statics of P42's storage (vars and Resource lets, the unused one
+    // included) are the static-storage gap at their declarations (DECISIONS R5-M82) and whose accesses of a static of a generic container's
+    // group are the generic-static-key gap (X33 (a), DECISIONS R5-M18, R5-M60).
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void TheMilestonesHaveNoCollectorRecordUnderMirCodegen(string name)
@@ -1450,7 +1453,10 @@ public sealed class InstanceCollectorTest
         }
 
         string[] statics =
-            ["public var count: i32 = Registry.initialCount()", "public var replaced: Resource = Registry.makeResource(2)", "public var hits: i32 = 0"];
+        [
+            "public var count: i32 = Registry.initialCount()", "public let primary: Resource = Registry.makeResource(1)",
+            "public var replaced: Resource = Registry.makeResource(2)", "public let unused: Resource = Resource.init(9)", "public var hits: i32 = 0",
+        ];
         string[] expected = name != "milestone/Milestone42" ? [] :
             [
                 .. statics.Select(static x => "Unsupported_Kd " + x),
