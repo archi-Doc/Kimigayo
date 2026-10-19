@@ -38,7 +38,7 @@ internal sealed partial class MirBuilder
 
         var place = shape.Kind switch
         {
-            _ when node is ParenthesizedKoto group && shape.Kind != HirPlaceKind.Value => this.Place(group.Operand, input),
+            _ when HirTables.Op(node) == HirOp.Group && shape.Kind != HirPlaceKind.Value => this.Place(Child(node), input),
             HirPlaceKind.Field when node is MemberAccessKoto member => this.Member(member, input),
             HirPlaceKind.Local or HirPlaceKind.Static or HirPlaceKind.Field => this.Named(node),
             HirPlaceKind.Deref or HirPlaceKind.PairLayer => this.Layer(this.Place(Child(node), input), shape.Kind),
@@ -129,7 +129,7 @@ internal sealed partial class MirBuilder
             return prepared ? this.body.Project(new(local), MirProjectionKind.Deref, 0) : new(local);
         }
 
-        var captures = this.receiver > 0 && this.declaration is FunctionKoto { IsAnonymous: true } closure ? BoundClosure.Of(closure)?.Captures : null;
+        var captures = this.receiver > 0 && this.body.Key.Kind == MirBodyKind.Closure ? BoundClosure.Of((FunctionKoto)this.declaration)?.Captures : null;
         var index = (captures?.Count ?? 0) - 1;
         while (index >= 0 && !ReferenceEquals(captures![index].Environment, symbol))
         {
@@ -159,14 +159,15 @@ internal sealed partial class MirBuilder
     private MirPlace StaticRoot(BindingSymbol symbol)
     {
         var type = symbol.Type ?? BoundType.Unit;
-        return this.body.Static(new(symbol, type, symbol.Declaration is PropertyKoto { VariableKind: VariableKind.Var }, MirTypes.HoldsRaw(type, this.walked)));
+        return this.body.Static(new(symbol, type, Binding.Reassignable(symbol), MirTypes.HoldsRaw(type, this.walked)));
     }
 
-    // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow.
+    // SPEC 6.2.2, 3.2: a stored Field or a Tuple element of the receiver's Place, which the receiver's Layers follow; a Tuple element at
+    // the position its own plan row keeps (Folded).
     private MirPlace Member(MemberAccessKoto member, bool input)
     {
         var receiver = this.Place(member.Left, input);
-        return member.Right is NumberLiteralKoto number && number.TryGetIntegerMagnitude(out var element)
+        return HirTables.PlanOf(member).Folded is { } element
             ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
     }
 

@@ -163,7 +163,7 @@ internal sealed partial class MirBuilder
 
     // SPEC 15.1.6: the selected arm's body locals, left to right, from the Places its binding positions selected, each as its Adjust
     // acquires it: Copied, moved, by case, or borrowed in the mode its path grants; a for loop's are its iteration bindings (SPEC 14.6.1).
-    private void Bind(BoundMatch plan, int pattern, int start, ForKoto? loop = null)
+    private void Bind(BoundMatch plan, int pattern, int start)
     {
         for (var i = pattern; i < plan.Positions[pattern].End; i++)
         {
@@ -172,7 +172,7 @@ internal sealed partial class MirBuilder
                 var type = symbol.Type ?? BoundType.Unit;
                 var adjust = HirTables.AdjustOf(binding);
                 var place = this.selected[start + i];
-                var mutable = binding is SyntaxFormKoto { IsMutablePattern: true } || (binding is IdentifierNameKoto name && loop?.IsMutableSlot(name) == true);
+                var mutable = Binding.Reassignable(symbol);
                 var local = this.Live(this.body.AddLocal(new(type, MirLocalKind.Var, this.Info(binding, local: true), mutable, symbol.Name)), this.lexical);
                 this.Use(new(local), this.Acquire(adjust, place, type, input: false, binding, new(local)), binding);
                 this.locals[symbol] = local;

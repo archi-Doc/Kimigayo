@@ -154,7 +154,7 @@ internal sealed partial class MirBuilder
         bool Failed = false,
         ulong Reads = 0);
 
-    // The defaults the calls of a default omit, appended to the edges; a Closure's body is a body of its own.
+    // The defaults the calls of a default omit, appended to the edges; a Closure's body, that of a closure definition, is a body of its own.
     private sealed class Edges(MirBuilder builder) : KotoVisitor
     {
         public override void Visit(Koto node)
@@ -167,7 +167,7 @@ internal sealed partial class MirBuilder
                 }
             }
 
-            if (node is not FunctionKoto { IsAnonymous: true })
+            if (node is not FunctionKoto function || BoundClosure.Of(function) is null)
             {
                 node.VisitChildren(this);
             }

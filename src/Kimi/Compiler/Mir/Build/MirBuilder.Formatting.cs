@@ -11,8 +11,10 @@ internal sealed partial class MirBuilder
 {
     private readonly List<BoundType> formatTypes = []; // The values' Types of the owning interpolations being built, innermost last.
 
-    // The literal bytes a write of an owning interpolation writes (SPEC 22.10.5); -1 for a value, whose bound its instance decides.
-    private static int Bytes(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto text ? Encoding.UTF8.GetByteCount(text.Literal) : -1;
+    // The literal bytes a write of an owning interpolation writes (SPEC 22.10.5): a text's, published a Literal; -1 for a value, whose bound
+    // its instance decides.
+    private static int Bytes(CallPlan write) => write.ArgumentOperations[1].Source is { } source && HirTables.Op(source) == HirOp.Literal &&
+        source is StringLiteralKoto text ? Encoding.UTF8.GetByteCount(text.Literal) : -1;
 
     // SPEC 22.10.3, 22.10.4: the writes of a formatting plan in order (CallPlan.Of), each through an exclusive borrow of its adapter, a failed
     // one leaving them: a $tryWrite's adapter is its writer operand, acquired once and Reborrowed, and a failure goes to its result, the writer's

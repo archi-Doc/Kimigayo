@@ -8,6 +8,14 @@ namespace Kimi.Compiler.Mir;
 // Call assembly (SPEC 7.3): a node's call, its callee, receiver and arguments in their order, and its Call terminator.
 internal sealed partial class MirBuilder
 {
+    // SPEC 7.3: the parameters a function's signature declares, an accessor's self and value included (TyCtxt.Signature's count; a slot
+    // past them asks for no Type).
+    private static int Arity(BindingSymbol function)
+    {
+        _ = TyCtxt.Signature(function, null, int.MaxValue, out var count);
+        return count;
+    }
+
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
     // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1).
     private void Call(MirPlace destination, Koto node)
@@ -38,7 +46,7 @@ internal sealed partial class MirBuilder
     {
         var function = call.Kind == CalleeKind.Value ? null : call.Target;
         var receiver = function is null ? null : call.Receiver;
-        var count = function is null ? call.Signature.Components[0].Components.Count : ((FunctionKoto)function.Declaration).Parameters.Count;
+        var count = function is null ? call.Signature.Components[0].Components.Count : Arity(function);
         var direct = call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true } ? HirTables.Symbol(call.VirtualImplementation!) : function;
         if (call.ArgumentOperations.Length + call.DefaultArguments.Length + (receiver is null ? 0 : 1) != count ||
             (receiver is not null && function!.ReceiverIndex < 0))

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
 using Xunit;
@@ -216,6 +217,23 @@ public sealed class HirFormsTest
             "fixed Local+0 None", "(fixed)[i] Index+0 None", "(fixed) Local+0 None", "fixed Local+0 None", "i Local+0 None",
         ];
         Assert.Equal(expected, places);
+    }
+
+    // SPEC 3.2, 15.1.3 (Q8 package §3.5 V2): a Tuple element and a fixed-array element at a literal position keep their position on their
+    // own plan row (Folded), at which the builder projects; a stored Field keeps none.
+    [Fact]
+    public void ElementPositionsAreOnTheirOwnRows()
+    {
+        const string Source = "struct Point\n    public var x: i32\n    public init(x: i32) => self.x = x\n" +
+            "let t = (1, 3)\nlet fixed: [3 of i32] = [1, 2, 3]\nlet p = Point.init(3)\nrequire t.1 + fixed[2] + p.x + t.0 == 10 else => $abort(\"rows\")\n";
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        HirTables.Publish(c);
+        Assert.Empty(Problems(c.Kotonoha));
+        var start = Source.IndexOf("require", StringComparison.Ordinal);
+        var rows = Reachable(c.Kotonoha).Where(x => x.Span.Start >= start && HirTables.PlaceOf(x).Kind is HirPlaceKind.Field or HirPlaceKind.ConstIndex)
+            .Select(x => $"{Source.Substring(x.Span.Start, x.Span.Length)} {HirTables.PlanOf(x).Folded?.ToString(CultureInfo.InvariantCulture) ?? "-"}");
+        Assert.Equal(["t.1 1", "fixed[2] 2", "p.x -", "t.0 0"], rows);
     }
 
     // SPEC 4.7.1, 11.6, 13.4, SPEC 22.7: a Property update names its getter and its setter, which takes the computed value; a user

@@ -3826,3 +3826,24 @@ structure is recorded here by the unit that first implements it.
     twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
     but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
     next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.
+- **R5-M79 Mir/Build's syntax-class decisions read published facts** (2026-10-19, W1; plan Q16, Q8 package §3.5 and D6; under
+  R5-M10 and R5-M23; DEC Q6 form 1) The 17 sites R5-M10 left, where a Koto type test chose an operation, read the fact that decides
+  it: `HirOp.Continue` (a transfer), `HirOp.Group` (a parenthesized Place), `HirOp.Literal` (an interpolation's text bytes, the text
+  read under it), the Type kind (a FixedArray aggregate, a Tuple's being any other, Unit included), `TyCtxt.Signature`'s count (a
+  call's and a body's parameters), the symbol kind (a definition's body: Function or none, PropertyAccessor, a static Property),
+  `AdtDef.IsConstructor`, and the two views of Q8 D6: `Binding.Reassignable(symbol)` (`Binding/Binding.Reassignable.cs`, which owns
+  the rule with `IsMutableDeclaration`; computed, no state) for every local, Pattern binding, iteration slot and static, replacing three
+  copies in Binding (the package named two; `Binding.Closures`' exclusive capture is the third), and a Tuple element's position on its
+  Field node's own row (`PlanRow.Folded`), which the publisher's `Fold` writes beside a ConstIndex's.
+  - Decided beyond the package: (a) the closure fact in Mir/Build is the published closure definition, `BoundClosure.Of`: the Opaque
+    roots walk and the default-edges walk, the default templates (a closure has none, SPEC 7.2.2) and `Module`'s body kind, which
+    `Body` and `Bound` then read (`MirBodyKind.Closure`). It departs from the syntax flag `IsAnonymous` only for a closure Binding did
+    not define (its header failed, SPEC 23.1.2), whose body is unbound in the pass, so the edges walk enters it and finds no call plan
+    (H). (b) Sites with the same cause, replaced too: `MirBuilder.cs:108` (defaults of a closure), `:222` (a body's parameter count) and
+    `MirBuilder.Blocks.cs:135` (a local's mutability); `Bind`'s loop parameter is gone. (c) A text segment Binding rejected (an Error,
+    no Literal) counts as a value for the capacity estimate (H; programs with that lexical error only).
+  - Not sites (syntax data, R5-M10): `Published`'s value-child switch, a constructor's base call, the literal forms under
+    `HirOp.Literal` (G122).
+  - Rejected: a stored `BindingSymbol.Mutable` (Q8 open point 6: computed); `HirOp.Closure` for the walks (a closure whose creation
+    failed is published Error, and one in a replaced part Syntax, though its body is built, R5-M63); a Type-kind test for Tuple (an
+    empty Tuple literal's Type is Unit); a constructor view (`AdtDef.IsConstructor` exists).

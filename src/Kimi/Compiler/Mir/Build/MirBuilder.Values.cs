@@ -394,7 +394,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            kind = node is TupleLiteralKoto ? MirAggregateKind.Tuple : MirAggregateKind.FixedArray;
+            kind = type.Kind == BoundTypeKind.FixedArray ? MirAggregateKind.FixedArray : MirAggregateKind.Tuple; // A Tuple's may be Unit.
         }
 
         var count = this.arguments.Count - start;

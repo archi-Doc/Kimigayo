@@ -169,7 +169,7 @@ public sealed partial class Binding
 
         // The constant Binding decided that a node's own plan row keeps (Folded): a number literal's value as Binding fits it (SPEC 3.1,
         // 13.5.4), its floating-point Type's bits, else the integer it names; a fixed-array element's literal position, beside its
-        // PlaceShape (SPEC 15.1.3).
+        // PlaceShape (SPEC 15.1.3); a Tuple element's position (SPEC 3.2), the integer its Field names.
         private static void Fold(Koto node, HirOp op)
         {
             if (op == HirOp.Literal && KotoHelper.SignedNumber(node, out var negative) is { } number)
@@ -181,6 +181,10 @@ public sealed partial class Binding
             else if (node is IndexKoto index && HirTables.PlaceOf(node).Kind == HirPlaceKind.ConstIndex)
             {
                 HirTables.PlanFor(node, written: true).Folded = ElementAccess.StaticSelector(index);
+            }
+            else if (op == HirOp.Field && node is MemberAccessKoto { Right: NumberLiteralKoto element } && element.TryGetIntegerMagnitude(out var position))
+            {
+                HirTables.PlanFor(node, written: true).Folded = unchecked((Int128)position);
             }
         }
 
