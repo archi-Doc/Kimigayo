@@ -154,12 +154,14 @@ internal sealed partial class MirBuilder
         bool Failed = false,
         ulong Reads = 0);
 
-    // The defaults the calls of a default omit, appended to the edges; a Closure's body, that of a closure definition, is a body of its own.
+    // The defaults the calls a default's template builds omit, appended to the edges: none at a node the HIR publishes as Syntax (a part
+    // replaced, such as the body of a closure Binding failed to define, or covered), whose evaluated parts lie below it; a closure
+    // definition's body is a body of its own (DECISIONS R5-M79).
     private sealed class Edges(MirBuilder builder) : KotoVisitor
     {
         public override void Visit(Koto node)
         {
-            for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
+            for (var i = 0; HirTables.Op(node) != HirOp.Syntax && CallPlan.Of(node, i) is { } call; i++)
             {
                 foreach (ref readonly var omitted in call.DefaultArguments)
                 {

@@ -32,6 +32,11 @@ public sealed partial class Binding
         Replaced = 8,
     }
 
+    // SPEC 22.10.5: whether a formatting write writes a literal text (a text segment, or a string literal written as a value), whose bytes
+    // are known and which needs no Type argument; the one classification the published formatting facts (HasFacts) and the MIR builder's
+    // capacity estimate read (DECISIONS R5-M79).
+    internal static bool WritesText(CallPlan write) => write.ArgumentOperations[1].Source is StringLiteralKoto;
+
     // Returns the pass the published columns describe (0: none), by which the MIR builder caches its program.
     internal ulong PublishHir()
     {
