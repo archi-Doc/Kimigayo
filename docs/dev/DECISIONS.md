@@ -1795,6 +1795,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
   planning-session decision PD1–PD31 is recorded by the unit that first implements it (plan §7).
+  R4-M83 supersedes only the order of Transferable units 2b-4/2b-5; the other gates remain.
   - OQ1 (a): the plan is R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate (§5.4), which refines the A5
     plan's §8 exit (R4-M35); step 2's design records go to `draft/Sketches/A5 Step 2/`. VERIFICATION names the census (2x-T1)
     for every unit the plan marks +cen.
@@ -1976,6 +1977,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: deferring the due split until after E1; leaving rvalue arity and operand Types in separate files; separate validator
   objects or a context bag (no new semantic owner); a mechanical split of the closed vocabularies. This resolves F1's due-file
   ruling without a new policy or exception.
+- **R4-M83 Transferable units held pending proof-input supply** (owner, 2026-10-20; limited supersession of R4-M74's unit
+  order) Two blocking review rounds found that Transferable's finite structural domain lacks a complete contract for
+  supplying its proof inputs. This shares G170's premise-supply cause: spelling a projection changes the same Type's Copy
+  result from Unknown to Proven. Do not advance the structural fixed point by assuming existing Facts are complete or by
+  adding local cases. Hold only 2b-4 (Binding's canonical Transferable fact) and 2b-5 (its MIR-builder consumption).
+  Resume after resolving proof-input supply and meeting the normal 2b-D prototype, independent review, OQ2 design-approval
+  and applicable O1 gates. Other independently approved R4/F5 work may proceed under its own gates, including the common
+  record, M69 and G136. Effects alone establish neither F5 Landed nor G124 closure; R4/R6 exit obligations are not deferred
+  or waived. A shared proof representation first and a smaller closed whitelist were not chosen here; both remain future
+  options under their own gates. This decision approves no SPEC change, vocabulary, exception or implementation design.
+  All other sequencing and gates under M74, and M79's R5/BU pause, remain unchanged.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
