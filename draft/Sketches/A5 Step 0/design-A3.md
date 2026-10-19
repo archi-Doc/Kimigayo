@@ -741,11 +741,12 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
      the call or the Drop whose effects meet the Loan (`key` and `unknown` are a Call's or a Drop's, §4.2; an erased destruction's are
      unknown, SPEC 16.3.3; unit 2b); `CallEffectConflict_Kd` is F6's requirement-call effect `Φ_c` at the later call (SPEC 8.11.4; unit
      2f), also where the later call's receiver formation meets it (item 1). The `PreparedInput` row has no Loan-stratum producer: in a
-     template the pending slots are its parameters, whose callers' Loans lie outside its body, and a copy reaches them only past the
-     prologue's shared borrows (E3), so `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` are F9's (unit 2e), and A1 codes a
-     Move of the slot or its owned contents `DefaultArgumentMove_Kd` (R4-M69). `ended` on a `GuardCandidate` is
-     `ComparisonLoanConflict_Kd` at the candidate's cleanup, anchored at the candidate (DIAGNOSTICS). A Language problem found inside
-     an inline copy's Inlined scope is its template's and is dropped (R4-M69), and a problem carries its body (R4-M71).
+     template the preceding parameters a default reads are its own parameters, whose callers' Loans lie outside its body, and a copy
+     reaches its pending slots only past the prologue's shared borrows (E3), so `DefaultArgumentAccess_Kd` and
+     `DefaultArgumentBorrow_Kd` are F9's (unit 2e), and A1 codes a Move of the slot or its owned contents `DefaultArgumentMove_Kd`
+     (R4-M69). `ended` on a `GuardCandidate` is `ComparisonLoanConflict_Kd` at the candidate's cleanup, anchored at the candidate
+     (DIAGNOSTICS). A Language problem found inside an inline copy's Inlined scope is its template's and is dropped (R4-M69), and a
+     problem carries its body (R4-M71).
   6. **The view skip (§6.1; unit 1c-3).** A view skips the stratum only when it has no Loan and no guard candidate: E7's `γ_H` needs no
      Loan, so skipping a Loan-free view accepted a guard value escaping there (the design review's r02). The root flags only select the
      accesses checked.

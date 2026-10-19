@@ -1707,12 +1707,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
     unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
     and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both
-    supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet (no static
-    Loan exists while Binding rejects every borrow of group storage, PLAN G100): unit 2b implements the first and 2f the second, under
-    R4-M68's condition for a Φ_c met at a receiver's formation.
-  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a template its pending slots
-    are its parameters, whose callers' Loans lie outside its body, and a copy reaches them only past the prologue's shared borrows,
-    where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as `DefaultArgumentMove_Kd` is A1's (R4-M69).
+    supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet: unit 2b
+    implements the first (none arises while no static Loan exists, since Binding rejects every borrow of group storage, PLAN G100) and
+    2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation.
+  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a template the preceding
+    parameters a default reads are the template's own parameters, whose callers' Loans lie outside its body, and a copy reaches its
+    pending slots only past the prologue's shared borrows, where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as
+    `DefaultArgumentMove_Kd` is A1's (R4-M69).
   - Guard: err(ended) (E7) is `ComparisonLoanConflict_Kd` at the candidate's cleanup, its `EndBorrow`, anchored at the candidate, as
     DIAGNOSTICS' escaped borrows; no guard-local code exists (A3 §9 item 9's DIAGNOSTICS record).
   - Merge: E7's and E12's merge (the `destroy` conflict on a Loan `_0` carries whose Borrow the Origin stratum refuted, and err(ended)
