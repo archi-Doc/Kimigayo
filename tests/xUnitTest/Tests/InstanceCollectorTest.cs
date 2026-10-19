@@ -136,6 +136,9 @@ public sealed class InstanceCollectorTest
         func equal<T>(a: ref/T, b: ref/T) -> bool
             T is Equatable
             return a == b
+        func differ<T>(a: ref/T, b: ref/T) -> bool
+            T is Equatable
+            return a != b
         func less<T>(a: ref/T, b: ref/T) -> bool
             T is Comparable
             return a < b
@@ -144,7 +147,7 @@ public sealed class InstanceCollectorTest
         let pair = (x@ref, 1)
         let nest = ((x@ref, 2), x@ref)
         let ranked = (r@ref, 3)
-        require equal(pair@ref, pair@ref) and equal(nest@ref, nest@ref) else => $abort("equal")
+        require equal(pair@ref, pair@ref) and equal(nest@ref, nest@ref) and not differ(pair@ref, pair@ref) else => $abort("equal")
         require less(ranked@ref, ranked@ref) and same(x@ref, x@ref) else => $abort("order")
 
         """;
@@ -787,8 +790,9 @@ public sealed class InstanceCollectorTest
 
     // K 4.3, F package 4.6: a built-in comparison of a composite Self, a generic instance's comparison over its Type parameter, is its
     // Builtin shim, keyed by its compiler function and the erased Self, whose targets are its leaves' witnesses under the Contract's mapping
-    // (TyCtxt.Comparison), depth first: each user leaf's equals or compare body, none for a built-in leaf. A tuple operator is no shim: its
-    // expansion calls its leaves' witnesses in the instance (F package 4.8, DECISIONS R5-M75).
+    // (TyCtxt.Comparison), depth first: each user leaf's equals or compare body, none for a built-in leaf; two instances comparing one
+    // erased Self share its shim. A tuple operator is no shim: its expansion calls its leaves' witnesses in the instance (F package 4.8,
+    // DECISIONS R5-M75).
     [Fact]
     public void AComparisonShimsTargetsAreItsLeafWitnesses()
     {
@@ -798,6 +802,9 @@ public sealed class InstanceCollectorTest
         Assert.Equal(["Fn equals", "Fn equals"], Targets(program, set, "Builtin ((ref/Box, i32), ref/Box) BuiltinEquals"));
         Assert.Equal(["Fn compare"], Targets(program, set, "Builtin (ref/Rank, i32) BuiltinCompare"));
         Assert.Equal(["Builtin (ref/Box, i32) BuiltinEquals"], Targets(program, set, "Fn equal [(ref/Box, i32)]"));
+        Assert.Equal(
+            set.Targets(Item(program, set, "Fn equal [(ref/Box, i32)]"))[0].Item,
+            set.Targets(Item(program, set, "Fn differ [(ref/Box, i32)]"))[0].Item);
         Assert.Equal(["Fn equals"], Targets(program, set, "Fn same [Box]"));
         Assert.Equal(
             ["struct Box", "struct Box", "struct Box", "struct Rank"],

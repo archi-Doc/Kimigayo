@@ -3692,8 +3692,9 @@ structure is recorded here by the unit that first implements it.
     library roots and the 44 milestones give no new record.
 - **R5-M75 A tuple operator is expanded in MIR over its leaves** (2026-10-19, W1; plan F7, PD15 as package F item 5 and §4.8 refine
   it, S2-S4 row 7; under R5-M68; DEC Q6 form 1) A comparison whose `CallPlan.TupleOperator` is set is built by `MirBuilder.Expand`
-  (`MirBuilder.Calls.Comparisons.cs`, which `==` now reaches too) from `TyCtxt.Comparison(the built-in target's Contract,
-  call.ConformingType, operators: true)` instead of its whole-tuple call (SPEC 13.4, 13.4.1, 12.4.3). Operands: the call's two inputs
+  (`MirBuilder.Calls.Comparisons.cs`, which `==` now reaches too) from `TyCtxt.Comparison(the operator's Contract, call.ConformingType,
+  operators: true)` instead of its whole-tuple call (SPEC 13.4, 13.4.1, 12.4.3), the Contract SPEC 13.4.1's for the operator from the
+  declaration table (`Library.GetSymbol`; no Binding internal or Koto slot, ARCH's dependency table). Operands: the call's two inputs
   as Binding adapted them, the `ref/Self` views, the left pending and secured as a built-in operator's, never moved; the leaves are
   Places below them, depth first (a Tuple part its Field, a `ref` layer its referent; the Never value its own leaf). A Builtin leaf's
   pair is its Places Copied, a string's (the one built-in leaf Type that is not Copy) shared borrows, Copied: a `Binary` as a direct

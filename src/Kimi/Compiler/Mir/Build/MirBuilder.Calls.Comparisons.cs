@@ -43,10 +43,13 @@ internal sealed partial class MirBuilder
     // left to right, in shared views of its operands, the call's inputs as Binding adapted them, the left pending and secured as a built-in
     // operator's (Operands). A leaf but the last decides the result where its pair is unequal (an unordered pair is), by the operator on
     // the pair (for == and !=, the test's bool or its negation), else the next leaf does; the last leaf decides by the operator on its
-    // pair, so each path writes the destination once. A Limit (null) is a located Unsupported (PD30).
+    // pair, so each path writes the destination once. The Contract is SPEC 13.4.1's for the operator, from the declaration table. A Limit
+    // (null) is a located Unsupported (PD30).
     private void Expand(MirPlace destination, CallPlan call, Koto node, MirBinaryOp relation)
     {
-        if (compilation.Types.Comparison(call.Target.Scope.Owner.BoundSymbol!, call.ConformingType!, operators: true) is not { } self)
+        var equality = relation is MirBinaryOp.Eq or MirBinaryOp.Ne;
+        var contract = compilation.Library.GetSymbol(equality ? KimiDeclarationId.Equatable : KimiDeclarationId.Comparable)!;
+        if (compilation.Types.Comparison(contract, call.ConformingType!, operators: true) is not { } self)
         {
             this.Unsupported(node, destination);
             return;
@@ -60,10 +63,10 @@ internal sealed partial class MirBuilder
         var first = this.leaves.Count;
         this.Leaves(self, this.Follow(this.arguments[start].Place, 16, self.Type), this.Follow(view.Place, 16, self.Type));
         this.arguments.RemoveAt(start);
-        var (join, equality) = (this.body.AddBlock(), relation is MirBinaryOp.Eq or MirBinaryOp.Ne);
+        var join = this.body.AddBlock();
         for (var i = first; i < this.leaves.Count; i++)
         {
-            var (x, y, test) = this.Pair(this.leaves[i], call, node, equality);
+            var (x, y, test) = this.Pair(this.leaves[i], contract, call.ReturnType, node, equality);
             var next = -1;
             if (i < this.leaves.Count - 1)
             {
@@ -114,7 +117,8 @@ internal sealed partial class MirBuilder
     // with a derived Opaque result.
     private (MirOperand X, MirOperand Y, MirPlace? Test) Pair(
         (ComparisonNode Node, MirPlace Left, MirPlace Right) leaf,
-        CallPlan call,
+        BindingSymbol contract,
+        BoundType result,
         Koto node,
         bool equality)
     {
@@ -124,7 +128,7 @@ internal sealed partial class MirBuilder
             return (MirOperand.Copy(this.Inspected(leaf.Left, shared, node).Place), MirOperand.Copy(this.Inspected(leaf.Right, shared, node).Place), null);
         }
 
-        var value = this.Temp(call.ReturnType, node);
+        var value = this.Temp(result, node);
         if (leaf.Node.Kind == ComparisonKind.None)
         {
             this.program.Report(SourceRef.Of(node), DiagnosticCode.InternalInvariant_Kd);
@@ -137,12 +141,12 @@ internal sealed partial class MirBuilder
             this.arguments.Add(this.Inspected(leaf.Right, shared: true, node));
             var (target, subst) = (leaf.Node.Target, leaf.Node.Subst);
             var callee = leaf.Node.Kind == ComparisonKind.Witness ? new MirCallee(MirCalleeKind.Fn, target, subst)
-                : new(MirCalleeKind.Requirement, target, subst, Contract: call.Target.Scope.Owner.BoundSymbol);
+                : new(MirCalleeKind.Requirement, target, subst, Contract: contract);
             this.Invoke(value, callee, start, node);
         }
 
         return equality ? (default, default, value)
-            : (MirOperand.Copy(value), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, call.ReturnType))), null);
+            : (MirOperand.Copy(value), MirOperand.Const(this.body.Const(new(MirConstKind.Integer, result))), null);
     }
 
     // A leaf's Place as its comparison inspects it: Copied, or through a shared borrow; the Never value as it is (it fits any operand

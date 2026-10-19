@@ -389,19 +389,22 @@ public sealed class MirEffectsTest(ITestOutputHelper output)
                 "        Console.writeLine(\"format\")\n        return .Ok(())\n" + Witness + body + "        return .Ok(())\n"));
 
     // SPEC 8.11.4, 13.4: a tuple operator runs its leaves' witnesses (its expansion, DECISIONS R5-M75): built-in for i32, Compared's
-    // environment read, also nested; a leaf with an abstract part runs its requirement under the caller's premises, Fixed's confined
-    // equals (fail-before: the first three, a limit; the fourth was a limit until R5-M75).
+    // environment read, also nested; a leaf with an abstract part runs its requirement under the caller's premises: Fixed's confined
+    // equals, and Equatable's, which bounds no effect (fail-before: the first three, a limit; the fourth was a limit until R5-M75).
     [Theory]
     [InlineData("        _ = (value, 1) == (value, 2)\n        _ = value == 2\n", "")]
     [InlineData("        let first = Compared.init()\n        _ = (first@ref, 1) == (first@ref, 2)\n", Failed)]
     [InlineData("        let first = Compared.init()\n        _ = ((first@ref, 1), 3) == ((first@ref, 2), 3)\n", Failed)]
     [InlineData("        let key = Key.init()\n        _ = H.same(key, key)\n", "")]
+    [InlineData("        let key = Key.init()\n        _ = H.loose(key, key)\n", Failed)]
     public void ACompositeComparisonRunsItsPartsWitnesses(string body, string expected)
         => Assert.Equal(
             Expected(expected),
             Problems(Sink + Loud + Fixed + "group State\n    public var value: i32 = 0\nstruct Compared\n    Self is Equatable\n" +
                 "    public func equals(self: ref/Self, other: ref/Self) -> bool\n        _ = State.value\n        return true\n" +
-                "group H\n    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        return (a, 1) == (b, 1)\n" + Witness + body + "        return .Ok(())\n"));
+                "group H\n    public func same<T>(a: ref/T, b: ref/T) -> bool\n        T is Fixed\n        return (a, 1) == (b, 1)\n" +
+                "    public func loose<T>(a: ref/T, b: ref/T) -> bool\n        T is Equatable\n        return (a, 1) == (b, 1)\n" + Witness + body +
+                "        return .Ok(())\n"));
 
     // SPEC 8.11.4: a requirement on an open Type that is not abstract runs the witness its conformance maps it to, entered through the
     // instance (fail-before: the first, judged by the premises).
