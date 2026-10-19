@@ -46,8 +46,7 @@ public sealed partial class Binding
         if (!range && shared is not null)
         {
             this.exclusiveIndexers.Add(source);
-            if (PathAuthority(source.Left) != SemanticsKind.Ref &&
-                (source.Left.BoundType?.Semantics == SemanticsKind.Uniq || Writable(source.Left) || !IsBarePlace(source.Left)))
+            if (ExclusivelyAcquirable(source.Left))
             {
                 this.BindViewCall(source, scope, core, key, false, true);
             }
