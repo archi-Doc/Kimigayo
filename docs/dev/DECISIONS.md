@@ -1865,7 +1865,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - S1-a (2x-S1, the `g5` form): (a). A3's approved P1 is completed in SPEC: storage the body does not own that a part carries
     follows its holder, as Loans do. A5 is unchanged. Until the sentence is integrated in OQ12's SPEC session, A5's Language code
     for the form stands, an exception to PD30 and to R4-M35's interim (a violation of an approved loss is a located
-    `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c).
+    `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c). (Integrated 2026-10-19, INTEGRATED; the exception has ended.)
   - G1 (2f-S1): (ii′). A conformance's earlier result is taken from its body (SPEC 8.11.3's "its results"), and an unclassifiable
     destruction, one in a concrete callee's summary included, conflicts with every Loan the earlier result keeps. Eight test rows
     rejected today become valid; every other rejection stays.
@@ -1941,7 +1941,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - `Component` reads a Fill's element.
   - A5's `val` is the union over the one operand, so a Fill holds v's Loans at every length.
     - A generic body is checked for every instance (SPEC 4.4.2), and the old path keeps one payload, including N = 0.
-    - The SPEC sentence that states Q2 goes to the next SPEC session (PLAN).
+    - SPEC 4.3.3 now states Q2 explicitly (the 2026-10-19 SPEC session); the implementation agrees.
   - Code generation (R5's file, under R4-M79): the Fill row is one counted i64 loop over the instance's closed length, and stores
     nothing at 0.
     - Its text does not grow with L.
@@ -1965,6 +1965,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - unrolled stores or a length threshold in the generator.
   - Open: `FixedArray`'s count 0 means noinit at a fixed-array Type and the empty collection at a handle Type, so the validator
     cannot detect a literal that lost all its operands. Neither design introduced this gap.
+- **R4-M82 Validator responsibilities before 2x-E1** (2026-10-20, R4 planning session; 2x-E1 final review F1,
+  A5 step 2 PD21). One `MirValidator` remains the owner and representation: its main file keeps orchestration and structural
+  traversal; `.Flow.cs` owns body-wide unknown propagation, reachability and divergence; `.Rvalues.cs` owns an rvalue's kind,
+  arity, operands and Types, including aggregate components; `.Types.cs` keeps shared Type agreement, Call signatures and
+  case-view resolution; `.Inputs.cs` keeps Call input temps. Members move unchanged; shared writes stay with orchestration.
+  At the start, Roslyn tokens excluding EOF were 4,640 in the main file, 1,925 in Types and 323 in Vocabulary. Since U7a2,
+  Types changed in U7c, 0e, G92a and N1; Vocabulary in 0e, 1b-4 and N9. Both validator files are split by those responsibilities;
+  Vocabulary stays together: the closed kind declarations have one responsibility. No vocabulary or contract changes.
+  Rejected: deferring the due split until after E1; leaving rvalue arity and operand Types in separate files; separate validator
+  objects or a context bag (no new semantic owner); a mechanical split of the closed vocabularies. This resolves F1's due-file
+  ruling without a new policy or exception.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
