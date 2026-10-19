@@ -112,7 +112,7 @@ public sealed partial class Binding
             var slot = source.IsTupleBinding && tuple?.Kind == BoundTypeKind.Tuple && i < tuple.Components.Count ? tuple.Components[i] : element;
             var slotReach = reach;
             var slotLayers = 0;
-            var selected = decomposition is not null && source.IsTupleBinding && slot is not null
+            var selected = decomposition is not null && source.IsTupleBinding && slot is not null && name.IdentifierName != "_"
                 ? this.SelectLayers(decomposition, slot, structural: false, scope, ref slotReach, out slotLayers) : slot;
             var symbol = name.BoundSymbol!;
             symbol.Type = selected is null ? null : this.BindingTypeOf(selected, slotReach);

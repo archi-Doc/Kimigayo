@@ -363,8 +363,11 @@ public sealed partial class Binding
             return index;
         }
 
-        var structural = syntax is not IdentifierNameKoto { IdentifierName: "_" } and not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
-        var type = this.SelectLayers(plan, matched, structural, outer, ref reach, out var layers);
+        // SPEC 14.8.1: a Wildcard (and a grouping, bound as its operand) selects nothing.
+        var wildcard = syntax is IdentifierNameKoto { IdentifierName: "_" };
+        var structural = !wildcard && syntax is not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
+        var layers = 0;
+        var type = wildcard ? matched : this.SelectLayers(plan, matched, structural, outer, ref reach, out layers);
         var unsupported = false;
 
         if (structural && type.Semantics != SemanticsKind.Owner)

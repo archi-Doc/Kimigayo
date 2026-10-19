@@ -193,7 +193,7 @@ first. IntrinsicId returns to 30 at R8.
   result removal (DECISIONS PR-1), and the owner's exception for G147 (2b): the old paths accept the forms its Binding
   correction makes valid where the old Emission is shown to generate them (the owner's whitelist of receiver paths), and
   a guard in the old analysis reports the others as `Unsupported_Kd` until R6-check (DECISIONS BU-10), and the owner's exception
-  for 2x-E7 (re-approved on its corrected premise): a guard in the old analysis reports `Unsupported_Kd` for a Pattern position
+  for 2x-E7 (re-approved on its corrected premise): a guard in the old analysis reports `Unsupported_Kd` for a Pattern Binding
   that borrows a part of an owned Subject or item past a pair layer admitting owner (`OwnedPart` with access other than Owned) and
   for a Binding that selects a pair layer, including forms dev bound by value or followed structurally and ran, until R6-check
   (DECISIONS BU-14).

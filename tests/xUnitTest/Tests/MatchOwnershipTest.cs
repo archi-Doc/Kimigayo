@@ -339,9 +339,10 @@ public class MatchOwnershipTest
         Assert.Single(decompositions);
     }
 
-    // DECISIONS BU-14 (D5 exception until R6-check): a position that may borrow a part of the owned Subject or item past a pair layer
-    // admitting owner, or a Binding that selects a pair layer, is the old path's located Unsupported_Kd at its match or loop, although
-    // Binding accepts it and the MIR builds it (SPEC 13.5.5, 15.1.6); a borrowed path's pair layer stays judged here.
+    // DECISIONS BU-14 (D5 exception until R6-check): a Binding that may borrow a part of the owned Subject or item past a pair layer
+    // admitting owner, or that selects a pair layer, is the old path's located Unsupported_Kd at its match or loop, although Binding
+    // accepts it and the MIR builds it (SPEC 13.5.5, 15.1.6); a borrowed path's pair layer, a Wildcard (a for slot `_` included, SPEC
+    // 14.8.1) and a structural position that only tests stay judged here.
     [Theory]
     [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is owner or uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
     [InlineData("func f<s/T>(pair: (s/T, i32))\n    s is uniq\n    match pair@move\n        (let x, _) => use(x)", "match pair@move")]
@@ -350,6 +351,12 @@ public class MatchOwnershipTest
     [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items@move => use(x)", "for (x, y) in items@move => use(x)")]
     [InlineData("func f<s/T>(items: Array<s/(i32, i32) during a>, marker: s/T)\n    s is owner or uniq\n    for (x, y) in items => use(x)", null)]
     [InlineData("func f<s/T>(o: s/Option<i32>, marker: s/T)\n    s is uniq\n    match o@move\n        .Some(let n) => n@follow = 5\n        .None => ()", null)]
+    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner or uniq\n    match pair@move\n        (_, let n) => return n", null)]
+    [InlineData("func f<s/T>(pair: (s/T, i32)) -> i32\n    s is owner\n    match pair@move\n        (_, let n) => return n", null)]
+    [InlineData("func f<s/T>(o: s/Option<T>, marker: s/T) -> bool\n    s is owner or uniq\n    match o@move\n        .Some(_) => return true\n        .None => return false", null)]
+    [InlineData("func f<s/T>(value: s/T) -> i32\n    s is owner or uniq\n    match value@move\n        _ => return 3", null)]
+    [InlineData("struct Holder<E>\n    public computed p: (E, i32)\n        get(self: ref/Self) -> (E, i32)\n            $abort(\"p\")\nfunc f<s/T>(holder: ref/Holder<s/T>)\n    s is owner or uniq\n    match holder.p\n        (_, let n) => use(n)", null)]
+    [InlineData("func f<s/T>(arr: Array<(s/T, i32)>) -> i32\n    s is owner or uniq\n    var total: i32 = 0\n    for (_, n) in arr@move => total += n\n    return total", null)]
     public void APairLayerBorrowIntoAnOwnedSubjectIsTheOldPathsLimit(string source, string? at)
     {
         var c = MinimalEmissionTest.Analyze("func use<T>(value: ref/T) => ()\n" + source + "\n");

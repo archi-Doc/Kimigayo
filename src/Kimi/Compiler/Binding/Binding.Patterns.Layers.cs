@@ -13,8 +13,9 @@ namespace Kimi.Compiler;
 //   and whether it extracts a value, SPEC 17.3) and the admitted sets of the pair binders in scope.
 // - Outputs: the selected Type, the number of layers and the reach after them; BindingTypeOf.
 // - Invariants: a structural position selects the referent of every safe value-reference layer that lacks its structure, a
-//   qualifying pair layer included; a Binding selects only a qualifying pair layer it reaches with owned access, which offers no
-//   Take (13.5.5), and then binds a reference to the layer's selected Place in the mode past it; a shared layer bounds every
+//   qualifying pair layer included; a Binding (structural: false) selects only a qualifying pair layer it reaches with owned
+//   access, which offers no Take (13.5.5), and then binds a reference to the layer's selected Place in the mode past it; a
+//   Wildcard, a for slot `_` included, and a grouping select nothing and take no step (14.8.1); a shared layer bounds every
 //   later access to Shared; a ref layer restarts the dependency at its own Origin and a uniq layer meets it; a pair layer's
 //   dependency is PairSlot's, the Place reached being the owned Subject Place at the root of an owned Subject or item; a Place
 //   stays an owned part only through pair layers admitting owner.
@@ -58,8 +59,13 @@ public sealed partial class Binding
             // is the weakest over its admitted cases; its dependency is PairSlot's: the Place reached, which a part of an owned Subject
             // or item reached by no layer has in its Subject Place, or the slot met with the borrows reached so far.
             var slot = this.PairSlot(type, admitted, out var met);
-            var dependency = slot is null ? reach.Origin ?? (reach.OwnedPart ? this.OriginAtom(plan.Syntax, OriginKind.Projection, 0) : null)
-                : met && reach.Origin is { } reached ? this.Meet(reached, slot) : slot;
+            var dependency = (slot, reach.Origin) switch
+            {
+                (null, null) when reach.OwnedPart => this.OriginAtom(plan.Syntax, OriginKind.Projection, 0),
+                (null, var reached) => reached,
+                ({ } stored, { } reached) when met => this.Meet(reached, stored),
+                _ => slot,
+            };
             var shared = (admitted & SemanticsMask.Ref) != 0 || reach.Access == PatternAccessMode.Shared;
             reach = new(shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive, dependency, reach.OwnedPart && (admitted & SemanticsMask.Owner) != 0);
             type = target;

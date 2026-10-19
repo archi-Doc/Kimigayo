@@ -2316,8 +2316,8 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   Pattern position of a match arm or a `for` decomposition reaches its Place by one layer step, `Binding.SelectLayers`
   (`Binding.Patterns.Layers.cs`, a canonical component), which carries SPEC 13.5.5's state as `PatternReach` (the mode reached,
   the dependency, and whether the Place may lie in the owned Subject or item). A structural position selects every safe
-  value-reference layer that lacks its structure; a Binding selects nothing, except the qualifying pair layer of a Place it reaches
-  with owned access, which offers no Take: it binds `ref/T` (ref admitted) or `uniq/T` of the layer's selected Place (13.5.5's mode
+  value-reference layer that lacks its structure; a Wildcard (a `for` slot `_` included) and a grouping select nothing; a Binding
+  selects nothing, except the qualifying pair layer of a Place it reaches with owned access, which offers no Take: it binds `ref/T` (ref admitted) or `uniq/T` of the layer's selected Place (13.5.5's mode
   row; `try` extracts a value, SPEC 17.3: `BoundMatch.ExtractsValue`). The pair step's dependency is `PairSlot`'s, the one case
   split `PairOrigin` also uses: the Place reached (at an owned Subject or item reached by no layer, its Subject Place's atom,
   `OriginAtom(match, Projection, 0)`) or the layer's outer slot met with the borrows reached. `BoundPattern.OwnedPart` publishes
@@ -2332,8 +2332,8 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   binding is a `let` or `var` declaration or a single `for` slot); (d) a pair layer that is not qualifying, such as one admitting
   Object Semantics, binds its slot by value (13.5.5 and 15.1.6 scoped to qualifying layers; no code change); D5 exception until
   R6-check: the old analysis (`OwnershipAnalysis.SupportsMatch`) reports the located `Unsupported_Kd` at the match or loop for a
-  position with `OwnedPart` and access other than Owned (F1: the old analysis has no Place for a borrow into the owned Subject),
-  and for a Binding that selects a pair layer (the old Emission cannot generate it: `GenerationFailed_Kd` for the uniq-only
+  Binding position with `OwnedPart` and access other than Owned (F1: the old analysis has no Place for a borrow into the owned
+  Subject; a structural position only tests, a Wildcard selects nothing), and for a Binding that selects a pair layer (the old Emission cannot generate it: `GenerationFailed_Kd` for the uniq-only
   admitted sets F1's predicate leaves); the guard extends a pre-existing cascade, `UninitializedPlace_Kd` beside the
   `Unsupported_Kd` when every arm returns (N1, PLAN). Second owner decision (2026-10-19, re-approval of the D5 exception on a
   corrected premise): forms the default pipeline accepted and ran on dev become its located `Unsupported_Kd` until R6-check: a
@@ -2341,8 +2341,9 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   `s is owner or uniq` or `s is uniq`; `for (x, _) in arr@move`), and a structural follow from an owned Subject past a layer
   admitting owner (`match o@move` `.Some(let n) => n@follow = 5`, `o: s/Option<i32>`, owner or uniq: dev accepted it and its O0
   build ran correctly in both instances; the design review's statement that dev rejected it was wrong); no library or milestone
-  program has such a form. The guard as built is F1's predicate (`OwnedPart` and access other than Owned) plus a Binding that
-  selects a pair layer; the second part's reproducer: `match pair@move` `(let x, _) => x@follow = value` under `s is uniq` (no
+  program has such a form. The guard as built is F1's predicate at Binding positions (`OwnedPart` and access other than Owned)
+  plus a Binding that selects a pair layer (the final review's correction: a Wildcard at a pair layer and a structural test with
+  no binding below, `(_, let n)`, `.Some(_)`, `_`, `for (_, n)`, stay judged and generated as on dev); the second part's reproducer: `match pair@move` `(let x, _) => x@follow = value` under `s is uniq` (no
   `OwnedPart`), whose old-path build gave `GenerationFailed_Kd` ("Selected composite acquisition does not follow its Pattern
   tree", instance `set<uniq/i32>`) before that part. Why: a Binding at a pair layer took its slot by value, so the SPEC 15.1.6
   example was accepted, an owned Subject's pair step had no Origin (false `NoApplicableOverload_Kd`) and the `for` copy rejected
