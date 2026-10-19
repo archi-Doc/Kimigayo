@@ -17,7 +17,7 @@ internal enum IntrinsicTarget : byte
     None,
     Witness, // The body of the user's writer witness (ErasedWriter, K6b).
     StaticInit, // The initializer body of the static (StaticEnsure, K7).
-    Descriptor, // The object descriptor of the payload (K8).
+    Descriptor, // The object descriptor of the created payload (MakeObj, MakeRc, MakeArc; K8, DECISIONS R5-M74).
     Glue, // The drop glue of the element (DestroyValues, K7).
 }
 
@@ -53,8 +53,8 @@ internal static class IntrinsicRows
         IntrinsicId.MakeObj => new(IntrinsicTarget.Descriptor),
         IntrinsicId.MakeRc => new(IntrinsicTarget.Descriptor),
         IntrinsicId.MakeArc => new(IntrinsicTarget.Descriptor),
-        IntrinsicId.Clone => new(IntrinsicTarget.Descriptor),
-        IntrinsicId.TypeTest => new(IntrinsicTarget.Descriptor),
+        IntrinsicId.Clone => new(IntrinsicTarget.None), // Payload-independent (IMPL 21.1.3).
+        IntrinsicId.TypeTest => new(IntrinsicTarget.None), // Acquires nothing (SPEC 13.6.4); codegen numbers its target (R5-M74).
         IntrinsicId.TestObserve => new(IntrinsicTarget.None),
         IntrinsicId.TestMessage => new(IntrinsicTarget.None),
         IntrinsicId.TestRequireAbort => new(IntrinsicTarget.None),

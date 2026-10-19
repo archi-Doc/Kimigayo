@@ -1,12 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the checked set (SPEC 8.15.3, IMPL 21.3.1; R5 package K 4.3-4.9; DECISIONS R5-M35, R5-M40, R5-M43, R5-M44, R5-M52-55, R5-M60,
-// R5-M67, R5-M70): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its instance-stage
-// records, and the one resolution of each site's target that code generation reads.
+// R5-M67, R5-M70, R5-M74): every body instance, type-driven item and shim a root requires through runtime or check-only edges, its
+// instance-stage records, and the one resolution of each site's target that code generation reads.
 // Input: a built, validated MirProgram; the number of root modules (a range of Source.Module, not a mode); TyCtxt (Instantiates, Erase,
-// Compose, Apply, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure, SubstOfItem, Synthesized);
-// MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; MirProgram.StaticInit; the Target and Layout columns of the
-// intrinsic rows; the capability table; the compilation's Layout, whose outcomes the collector alone maps (R5-M37).
+// Compose, Apply, Implementation, Witness, Comparison, OwnRequirement, Published, Signature, SubstOfClosure, SubstOfItem, Synthesized,
+// Applies); MirCases (Views); MirTypes.MayNeedDrop; DropGlue.Parts; AdtDef.FindField; VTableDef; MirProgram.StaticInit; the Target and
+// Layout columns of the intrinsic rows; the capability table; the compilation's Layout, whose outcomes the collector alone maps (R5-M37).
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
@@ -18,9 +18,10 @@
 // resolves each site's row under the item's representative (InstanceCollector.Edges.cs), a callee's body (InstanceCollector.Callees.cs),
 // and a Requirement call's, a requirement Item's, a bodyless callee's published row's and an erased writer's by the witness there
 // (InstanceCollector.Witnesses.cs: a body, a Builtin or a property-witness shim keyed by its compiler function or Field and the erased
-// Self, or a gap); a type-driven item's targets follow from its representative Type (InstanceCollector.Glue.cs: a DropGlue's direct
-// parts, DropGlue.Parts; an adapter's Item, a comparison shim's leaf witnesses, TyCtxt.Comparison; a property-witness setter's Field
-// glue). K8 adds the object rows.
+// Self, or a gap); a type-driven item's targets follow from its representative Type by its kind's row (Expand: an adapter's Item;
+// InstanceCollector.Glue.cs: a DropGlue's direct parts, DropGlue.Parts; InstanceCollector.Witnesses.cs: a comparison shim's leaf
+// witnesses, TyCtxt.Comparison, a property-witness setter's Field glue; InstanceCollector.Objects.cs: a created payload's descriptor's
+// glue and VTable, a VTable's slot bodies by VTableDef and Applies).
 // Capability (K 4.7, InstanceCollector.Capabilities.cs): the definition-stage check (A3b) of every operation of a root-module body whose
 // Types are closed, every block included, once per definition and location; Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
@@ -149,6 +150,43 @@ internal sealed partial class InstanceCollector
             {
                 set.Target(item, new(target, at, runtime));
             }
+        }
+    }
+
+    // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
+    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
+    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
+    private void Expand(MirProgram program, int item)
+    {
+        var key = this.Set.Items[item].Key;
+        var type = this.Set.Items[item].RepresentativeType!;
+        var site = this.Set.Items[item].Site;
+        switch (key.Kind)
+        {
+            case MonoKind.Builtin or MonoKind.PropertyWitness:
+                this.Shim(program, item, site, key, type);
+                return;
+            case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
+                this.Target(item, this.Callee(program, item, site, type));
+                this.Target(item, key.Kind == MonoKind.ClosureErasure ? this.Glue(item, site, type) : -1);
+                return;
+            case MonoKind.DropGlue:
+                this.DestructionTargets(program, item, site, type);
+                return;
+            case MonoKind.ObjectDescriptor or MonoKind.VTable:
+                this.Object(program, item, site, key.Kind, type);
+                return;
+            default:
+                throw new InvalidOperationException($"The mono item kind {key.Kind} has no target row.");
+        }
+    }
+
+    // A type-driven item's target at the default site, which runs whenever the item does.
+    private void Target(int item, int target)
+    {
+        if (target >= 0)
+        {
+            this.Set.Target(item, new(target, default, Runtime: true));
         }
     }
 

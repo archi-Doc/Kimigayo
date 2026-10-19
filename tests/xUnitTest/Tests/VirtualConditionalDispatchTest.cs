@@ -158,7 +158,7 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         Assert.True(valid);
     }
 
-    private static string Program(bool block)
+    internal static string Program(bool block)
     {
         var conditional = block
             ? "    Self is Marker when T is Copy\n        public virtual func copy(self: objref/Self, value: ref/T) -> T => value@follow\n"

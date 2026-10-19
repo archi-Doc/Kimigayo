@@ -13,7 +13,7 @@ namespace Kimi.Compiler.Backend;
 /// <param name="Erased">The erased substitution, or null for a closed definition.</param>
 internal readonly record struct Instantiation(MirDefKey Def, Subst? Erased);
 
-/// <summary>The kind of a mono item (K package 4.3); the object items come with K8.</summary>
+/// <summary>The kind of a mono item (K package 4.3).</summary>
 internal enum MonoKind : byte
 {
     Body, // A body instance.
@@ -22,6 +22,8 @@ internal enum MonoKind : byte
     DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type.
     Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.4): the function (its kind its CompilerFunction), the erased Self.
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
+    ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.
+    VTable, // The virtual table of a struct with a slot (SPEC 6.4, F package 4.2): its erased struct Type.
 }
 
 /// <summary>The key of a mono item; the checked set holds one item per key.</summary>
@@ -72,7 +74,7 @@ internal record struct MonoItem
 
 /// <summary>An edge of the checked set: the item a site of an item's body names, the site, and whether a runtime path from the body's
 /// entry reaches it (false: only the checks reach it, so the item is checked, never generated through it); a type-driven item's targets
-/// are at the default site and run whenever it does.</summary>
+/// are at the default site and run whenever it does, a VTable's in slot order.</summary>
 /// <param name="Item">The target item.</param>
 /// <param name="At">The site.</param>
 /// <param name="Runtime">Whether a runtime path reaches the site.</param>
