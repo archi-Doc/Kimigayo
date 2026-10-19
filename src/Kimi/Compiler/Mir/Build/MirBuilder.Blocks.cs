@@ -46,9 +46,23 @@ internal sealed partial class MirBuilder
     private void Discard(DiscardKoto discard) => this.Assign(this.Temp(discard.Operand), discard.Operand);
 
     // The value a body or a block's last item leaves in the destination: the item as its consumer takes it, a block's own result, or the
-    // container's Unit after the item as a statement where the container completes (SPEC 7.1, 14.2).
-    private void Result(MirPlace destination, Koto item, Koto container)
+    // container's Unit after the item as a statement where the container completes (SPEC 7.1, 14.2). As a call's input that reserves
+    // (input; MirCases.Reserves), which several bodies and exits write, the value goes through a temp of its own, moved there where the
+    // container completes, as an exit's secured value is, so no Ref writes the input (A5's lent, G136; DECISIONS R5-M72).
+    private void Result(MirPlace destination, Koto item, Koto container, bool input)
     {
+        if (input)
+        {
+            var value = this.Temp(this.body.TypeOf(destination)!, item);
+            this.Result(value, item, container, input: false);
+            if (Completes(container))
+            {
+                this.Use(destination, MirOperand.Move(value), item);
+            }
+
+            return;
+        }
+
         this.statementStart = true;
         if (HirTables.AdjustOf(item).Acquire != HirAcquire.Unset)
         {
@@ -92,7 +106,7 @@ internal sealed partial class MirBuilder
 
         if (items.Count > 0)
         {
-            this.Result(destination, items[^1], block);
+            this.Result(destination, items[^1], block, input: false);
         }
         else
         {

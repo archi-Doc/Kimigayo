@@ -11,8 +11,9 @@ internal sealed partial class MirBuilder
     // Whether a node's evaluation can complete normally (its HIR Completion).
     private static bool Completes(Koto node) => HirTables.CompletionOf(node) != HirCompletion.Diverges;
 
-    // SPEC 14.7: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit.
-    private void If(MirPlace destination, IfKoto conditional)
+    // SPEC 14.7: the conditions in order, the first true clause's body into the destination, else the else body or, omitted, Unit; as a
+    // call's input, each body's value as Result places it (input).
+    private void If(MirPlace destination, IfKoto conditional, bool input)
     {
         var after = this.Open(conditional, destination);
         for (var i = 0; i < conditional.Branches.Count; i++)
@@ -21,13 +22,13 @@ internal sealed partial class MirBuilder
             var next = this.body.AddBlock();
             var test = this.Test(conditional.Branches[i].Condition, next, then);
             this.Enter(then, test);
-            this.Arm(destination, conditional.Branches[i].Body, after);
+            this.Arm(destination, conditional.Branches[i].Body, after, input);
             this.Enter(next, test);
         }
 
         if (conditional.ElseBody is { } other)
         {
-            this.Arm(destination, other, after);
+            this.Arm(destination, other, after, input);
         }
         else
         {
@@ -70,11 +71,12 @@ internal sealed partial class MirBuilder
         this.Close(after);
     }
 
-    // SPEC 14.3: the body once into the destination, where a named exit to the do places its value too.
-    private void Do(MirPlace destination, DoKoto scoped)
+    // SPEC 14.3: the body once into the destination, where a named exit to the do places its value too; as a call's input, the body's
+    // value as Result places it (input).
+    private void Do(MirPlace destination, DoKoto scoped, bool input)
     {
         var after = this.Open(scoped, destination);
-        this.Arm(destination, scoped.Body, after);
+        this.Arm(destination, scoped.Body, after, input);
         this.Close(after);
     }
 
@@ -120,10 +122,10 @@ internal sealed partial class MirBuilder
         this.body.Terminate(this.current, terminator);
     }
 
-    // A body whose value its construct takes, then the join after the construct.
-    private void Arm(MirPlace destination, Koto body, int after)
+    // A body whose value its construct takes, as a call's input as Result places it (input), then the join after the construct.
+    private void Arm(MirPlace destination, Koto body, int after, bool input)
     {
-        this.Result(destination, body, body);
+        this.Result(destination, body, body, input);
         this.Join(after, body);
     }
 

@@ -246,7 +246,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
             }
         }
 
-        this.Result(done, value, value);
+        this.Result(done, value, value, input: false);
         this.CloseScope(temporaries);
         this.CloseScope(parameters);
         // A default's value that does not complete goes on to its return, the call that takes it, for the checks only (SPEC 14.10.3).

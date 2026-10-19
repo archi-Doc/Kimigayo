@@ -40,6 +40,7 @@ internal enum MirViolation : byte
     // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
     // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).
     StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10).
+    Lent, // A Temp a Call takes as an input that reserves (MirCases.Reserves), written by a Ref or an Adapt and by another write (G136).
 }
 
 /// <summary>A validator finding: its rule and the syntax of its statement, terminator or local, else the body's. The build reports it
@@ -50,16 +51,17 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
 /// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
-/// Semantics case view (<see cref="MirCases"/>) and the blocks that read a Temp only diverging Calls write (G131), before any analysis
-/// reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
-/// <remarks>An intrinsic's operands are checked by its row's arity only (its declaration's parameters come first, a fact of the table,
-/// MirValidatorTest), and a Value callee's against its Type's signature where that Type is a Function Type, else by its declared
-/// signature's arity only.</remarks>
+/// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131) and a Call's input temps
+/// (G136), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
+/// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
+/// MirValidatorTest) and staticEnsure's also as its static's slot (DECISIONS R5-M71), a Value callee's against its Type's signature where
+/// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
+/// that reserves and that a Ref or an Adapt writes (DECISIONS R5-M72).</remarks>
 /// <param name="types">The Type context of the bodies, which interns their case Types.</param>
 internal sealed partial class MirValidator(TyCtxt types)
 {
     private const byte DivergingWrite = 1; // A local's writes (G131): a diverging Call's destination, which MirUses does not report,
-    private const byte OtherWrite = 2; // and any write MirUses reports.
+    private const byte OtherWrite = 2; // and any write MirUses reports; G136's bits follow (MirValidator.Inputs.cs).
 
     private readonly MirCases cases = new(types);
     private readonly List<(MirRvalue Adapt, SourceInfo Source)> adapts = []; // The body's Adapts its case views resolve.
@@ -183,7 +185,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         var diverged = false;
         for (var local = 0; local < locals.Length; local++)
         {
-            diverged |= this.writes[local] == DivergingWrite && locals[local].Kind == MirLocalKind.Temp;
+            diverged |= Diverging(this.writes[local]) && locals[local].Kind == MirLocalKind.Temp;
         }
 
         if (!diverged)
@@ -255,6 +257,7 @@ internal sealed partial class MirValidator(TyCtxt types)
             if ((access & MirAccess.Writes) != 0 && place.Root >= 0)
             {
                 writes[place.Root] |= OtherWrite;
+                this.Write(place);
             }
 
             var projections = body.Projections;
@@ -372,7 +375,7 @@ internal sealed partial class MirValidator(TyCtxt types)
             return this.Terminator(new(index, block.Count), block.Terminator) && walked;
         }
 
-        // An Opaque value exactly when the body has Opaque sites.
+        // An Opaque value exactly when the body has Opaque sites, and the writes of the Call inputs (G136).
         internal void Finish()
         {
             this.at = default;
@@ -380,6 +383,8 @@ internal sealed partial class MirValidator(TyCtxt types)
             {
                 this.Report(MirViolation.Opaque);
             }
+
+            this.Lent();
         }
 
         internal readonly void Report(MirViolation rule) => findings.Add(new(rule, body.Subject(this.at)));
@@ -483,6 +488,7 @@ internal sealed partial class MirValidator(TyCtxt types)
                 this.Report(MirViolation.NeverWrite); // R5-M38: the Never value's writers are a whitelist.
             }
 
+            this.Lend(statement);
             this.acquires = statement is
             {
                 Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 },
@@ -635,6 +641,7 @@ internal sealed partial class MirValidator(TyCtxt types)
                     break;
             }
 
+            this.Inputs(call);
             if (call is { Target: < 0, Place: { Projection: 0, Root: >= 0 and var root } } && root < body.Locals.Length)
             {
                 writes[root] |= DivergingWrite; // The destination MirUses does not report.
@@ -662,7 +669,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         public readonly void Place(MirPlace place, MirAccess access, MirRefKind kind)
         {
             if ((access & (MirAccess.Reads | MirAccess.Moves | MirAccess.Borrows)) != 0 &&
-                (uint)place.Root < (uint)body.Locals.Length && writes[place.Root] == DivergingWrite &&
+                (uint)place.Root < (uint)body.Locals.Length && Diverging(writes[place.Root]) &&
                 body.Locals[place.Root].Kind == MirLocalKind.Temp)
             {
                 findings.Add(new(MirViolation.Diverged, body.Subject(this.at)));

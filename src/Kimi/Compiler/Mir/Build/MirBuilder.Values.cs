@@ -38,8 +38,8 @@ internal sealed partial class MirBuilder
     // Whether a consumer takes a node's value as the node builds it (its Adjust): a Temporary or a group's operand, not adapted (Assign).
     private static bool InPlace(HirAdjust adjust) => adjust is { Acquire: HirAcquire.Temporary or HirAcquire.None, Adaptation: HirAdaptation.None };
 
-    // The value a node's own form produces, into the destination; as a call's input (input), a written exclusive borrow, also inside
-    // parentheses, is two-phase (SPEC 15.6.7).
+    // The value a node's own form produces, into the destination; as a call's input that reserves (input), a written exclusive borrow,
+    // also inside parentheses, is two-phase (SPEC 15.6.7), and a selection's or a do's bodies give their values as Result places them.
     [CodeRuleException("KR2006", Limit = 67, Reason = "Flat dispatch over the closed HirOp vocabulary; each row invokes its owning lowering operation.")]
     private void Into(MirPlace destination, Koto node, bool input = false)
     {
@@ -61,10 +61,10 @@ internal sealed partial class MirBuilder
                 this.Call(destination, node);
                 break;
             case HirOp.If:
-                this.If(destination, (IfKoto)node);
+                this.If(destination, (IfKoto)node, input);
                 break;
             case HirOp.Match or HirOp.Try:
-                this.Match(destination, (MatchKoto)node);
+                this.Match(destination, (MatchKoto)node, input);
                 break;
             case HirOp.RuntimeTypeTest:
                 this.TypeTest(destination, (IsKoto)node);
@@ -79,7 +79,7 @@ internal sealed partial class MirBuilder
                 this.While(destination, (WhileKoto)node);
                 break;
             case HirOp.Do:
-                this.Do(destination, (DoKoto)node);
+                this.Do(destination, (DoKoto)node, input);
                 break;
             case HirOp.Require:
                 this.Require((RequireKoto)node);
