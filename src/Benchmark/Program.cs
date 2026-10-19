@@ -9,6 +9,14 @@ public class Program
 {
     public static void Main(string[] args)
     {
+        if (args.Length == 3 && args[0] == "--effect-keys")
+        {
+            EffectKeyMeasurements.Run(
+                int.Parse(args[1], System.Globalization.CultureInfo.InvariantCulture),
+                int.Parse(args[2], System.Globalization.CultureInfo.InvariantCulture));
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--associated-inference")
         {
             AssociatedInferenceMeasurements.Run();
