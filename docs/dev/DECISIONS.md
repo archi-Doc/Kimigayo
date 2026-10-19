@@ -478,9 +478,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `OwnershipRequirement`); R6 unit a derives the published requirement from the code and the facts (this
   derivation clause is superseded by R5-M23: each recording rule names the requirement; revised ask A-5). No
   Related: related sites are facts, and fact rows (pooled, with their own index on the problem) are added by their first
-  producer. The ledger fills its requirement column from the old side only. Rejected: design A's (Code, Subject, Related,
-  Requirement, Views) keyed by (requirement, code, subject); a Requirement through a moved legacy enum; an `int Fact` field
-  before anything produces or reads it.
+  producer. The ledger fills its requirement column from the old side only (superseded by R5-M56: a MIR problem's row names
+  its own requirement). Rejected: design A's (Code, Subject, Related, Requirement, Views) keyed by (requirement, code,
+  subject); a Requirement through a moved legacy enum; an `int Fact` field before anything produces or reads it.
 - **R4-M17** (2026-10-12, planning session; design A of two independent U0b designs) The difference harness.
   `Compilation.BuildMir` builds, validates and analyzes (`MirAnalysis.Run`), once per Binding pass. The Transitional
   internal static event `Compilation.Analyzed`, raised at the end of every `Analyze` on both pipelines when both paths'
@@ -492,13 +492,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
   sha`) and each source go to that directory; one aggregation (fixture disposal, or `MirDifferenceTest.RequestedLedger`
   with `KIMI_MIR_LEDGER`) pairs an unmatched old and new row of one code in one body into a `location` difference, counts
   the rest `missing` or `new`, adds an `acceptance` difference when a comparison's A-owned records are on one side only,
-  and classifies signatures (section, kind, analysis, code, requirement, form) by the tracked table into `ledger.tsv` and
-  `summary.md` (P9: the unclassified signatures). The compared set (R4-M4) is a table in the fixture of requirements, each
-  with every code it reports and the owning analysis: ownership failures except TransferRequired and Internal
-  (A1, A4, A5; U for the Unsupported gates; - for the expansion limit), ControlFlow `RequireFallthrough_Kd` (A3),
-  `Binding.VirtualEffectBound` (A4) and `Binding.OriginRelation` (A5); a MIR problem takes its code's analysis, a MIR
-  construction record is B. `Binding.IncompatibleImplementation` and the effect-limit `Binding.Unsupported` also carry
-  non-effect records and are compared only from U6, which names how the effect subset is identified. The construction
+  and classifies signatures (section, kind, analysis, code, requirement, form; R5-M56 adds `side` after `kind`) by the
+  tracked table into `ledger.tsv` and `summary.md` (P9: the unclassified signatures). The compared set (R4-M4) is a table in
+  the fixture of requirements, each with every code it reports and the owning analysis: ownership failures except
+  TransferRequired and Internal (A1, A4, A5; U for the Unsupported gates; - for the expansion limit), ControlFlow
+  `RequireFallthrough_Kd` (A3), `Binding.VirtualEffectBound` (A4) and `Binding.OriginRelation` (A5); a MIR problem takes its
+  code's analysis (superseded by R5-M56: its pair's analysis in the compared set), a MIR construction record is B.
+  `Binding.IncompatibleImplementation` and the effect-limit `Binding.Unsupported` also carry non-effect records and are
+  compared only from U6, which names how the effect subset is identified. The construction
   records keep their own merge until R6 unit a folds them into `MirReport` (R4-M3a). Tier 1:
   `MirDifferenceTest.RequestedCorpus` checks the diagnostic corpus and every `kimi` block of docs/spec through the check
   entry; tier 2: the Functional suite under mir with the ledger; the Allocation tests run under mir without it, since the
@@ -553,6 +554,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   (`DiagnosticCorpus.SpecSections`), which `ledger.tsv` repeats for its signatures; references keep plan and DEC references only.
   An (a), (c) or (d) row needs a clause, since a row of plan §8's blocking kinds passes the R4 exit only as (a), (c) or (d) with a
   SPEC clause; a (b) or (e) row, which a repair unit resolves, may write `-` where no SPEC rule decides it (a primary location).
+  R5-M56 (Q17, 2026-10-19) adds a `side` column directly after `kind`, the path whose records a difference reports: `old`, `mir`,
+  `both` or `*`, matched by equality or `*` (`mir` does not match `both`), which `ledger.tsv` repeats.
   Rejected: clauses inside `reference` (unchecked, mixed with plan and DEC references); a second table keyed by row id (two tables
   for one row).
 - **R4-M47** (2026-10-17, tooling session; plan §8, R4-M35; replaces PLAN10 §18 P9 in `summary.md`) The ledger's aggregation reports
@@ -3065,6 +3068,42 @@ structure is recorded here by the unit that first implements it.
   a drop tree of its own (one drop tree per target); a result temp for every construct (MIR on every path, not only where a scope
   is left); the delivery block, temp and scope as new Target parameters (the record already has seven; its Destination and Break
   take the first two, an init property the scope).
+- **R5-M56 The difference ledger compares the requirement** (2026-10-18, planning session; plan Q17, Q8 package §3.6, under R5-M23
+  and R4-M67; supersedes R4-M17's "a MIR problem takes its code's analysis" and R4-M3a's `-` requirement on the MIR side) A MIR
+  problem's ledger row carries its own requirement (R4-M67); a MIR construction record or validator finding names none (`-`) until
+  H3. `MirDifferenceLedger.Compared` gains each row's MIR requirement, the one its code's recording rule names: the old requirement,
+  or for the decisions the old path reports under `Binding.*` (VirtualEffectBound, IncompatibleImplementation, the effect limit's
+  Unsupported, OriginRelation) their Ownership requirement (DIAGNOSTICS rule 1, renamed publicly at H5); none for the expansion
+  limit. These MIR pairs are PLAN10 §7's consistency set, each an image of `OwnershipIssue.Code` for its failure or ControlFlow's
+  require fallthrough (tested with R4's program of one problem per recording rule); a MIR problem takes its pair's analysis. Each MIR
+  problem is one ledger row: `MirReport.Add` owns the merge per code and subject (R4-M67), so the ledger merges nothing; R4's 1c-8,
+  which changes that key under G125, adapts the ledger (agreed with R4). MirReport's disagreement record (`Ownership.Internal`) and
+  any pair outside the set are contract-break rows (B), never an exception. A matched pair whose requirements differ is a
+  `requirement` difference, its requirement column `old>mir`; a MIR side that names none agrees.
+  - The side (2026-10-19, the owner's decision, R4's shape; review round 2), verbatim:
+    「Q17 も E10 も (A) で進めてください。Q17 は side 列を加える形（R4 承認の形）、E10 は sel で完全なテスト名を使う形。」
+    Before Q17 a MIR row's `-` requirement was the only mark of its side, so once the MIR names its requirement, old-side rows of
+    kind `*` met MIR rows and old-only and MIR-only `acceptance` rows shared one signature. Each difference carries its side,
+    computed once by `MirDifferenceLedger.Differences` as the signature's third field: `old` for missing, `mir` for new, `both` for
+    location and requirement, and for acceptance the side that holds the event's records; no consumer derives it again. The table
+    gains a `side` column after `kind` (R4-M46), matched by equality or `*` (`mir` does not match `both`).
+  - The table stays R4's. With R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names
+    and take side `mir`, which reproduces their pre-Q17 matches (Q21's `a5-kept-closure` too); the A4 requirement difference is
+    (d) (`a4-requirement`); the dead `a1-result` row goes; `a4-x2` (d) and `a4-preserves` (b) stay two rows, since the side
+    separates them exactly (X2's new and acceptance rows on mir, F6's missing and acceptance rows on old). Every other row takes
+    `*` (R4's migration condition (3)), except the nine U rows, which take `old` with R4's approval as the table owner, amending
+    condition (3) for them ("this reproduces exactly and keeps them from absorbing a future MIR `Unsupported_Kd`"): each matches
+    only old missing and acceptance rows, and with `*` `u-never-loop` would take a MIR-only Unsupported_Kd it never matched (at
+    `let nest = Nest<ref/i32>.init(value: n@ref)`). The other rows of an old cause (`b3`, `a4-callable-preserves`, `a5-old-*`)
+    stay `*`. The classification equals the one before Q17 apart from the `requirement` rows.
+  - Rejected: a code-to-requirement lookup on the MIR side (R5-M23 D7); throwing on a pair outside the set (the ledger would lose the
+    run); comparing requirements in `location` pairs (their subject is the difference); keeping `-` on the MIR side (the comparison
+    the package asks for); the ledger merging problems over bodies itself (a second copy of `MirReport.Add`'s rule, review round 1);
+    one `a4-preserves` row for X2's and F6's rows (review round 2: X2's new rows are (d)); the owner's (B), a whitelist of the
+    signatures each old-side row may meet (a second list beside the table, one more entry per MIR requirement), and (C), holding
+    Q17 with `-` on the MIR side (the comparison waits); splitting `acceptance` into two kinds (the side would hold for one kind
+    only); `mir` also matching `both` (an implicit second value); `*` for the U rows (`u-never-loop` would classify a MIR
+    rejection (a), and the others would meet the next MIR `Unsupported_Kd` of their form).
 - **R5-M53 The capability table's operation rows and the definition-stage check (A3b)** (2026-10-18, planning session; plan K9a, the K
   package's §4.7, §9 row K9a and D-A; implements R4-M8; under R5-M18) `Capability.Of(rvalue, operand)` gives the row of an operation the
   backend does not generate (IMPL 21.3.3's 128-bit subset), or none: `WideDivision`, a `BinaryOp` `Div` or `Rem` of i128 or u128 (a

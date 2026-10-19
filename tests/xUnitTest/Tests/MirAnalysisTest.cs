@@ -16,7 +16,7 @@ namespace XunitTest;
 public sealed class MirAnalysisTest
 {
     // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms).
-    private const string Requirements = """
+    internal const string Requirements = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
                 effect confined
