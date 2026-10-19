@@ -46,7 +46,7 @@ internal sealed partial class MirBuilder
         this.current = none;
         this.Pattern(plan, plan.Arms[1].Pattern, subject, start, tail);
         this.Unit(destination, loop);
-        this.body.Terminate(this.current, MirTerminator.Goto(this.Exit(this.targets[^1].Depth, after), this.Info(loop)));
+        this.body.Terminate(this.current, MirTerminator.Goto(this.Exit(this.targets[^1].At.Depth, after), this.Info(loop)));
         this.body.Terminate(tail, MirTerminator.Unreachable(this.Info(loop)));
         CollectionsMarshal.SetCount(this.selected, start);
         this.CloseScope(iteration, clean: false);

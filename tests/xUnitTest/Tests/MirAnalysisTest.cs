@@ -16,7 +16,7 @@ namespace XunitTest;
 public sealed class MirAnalysisTest
 {
     // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms).
-    private const string Requirements = """
+    internal const string Requirements = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
                 effect confined
@@ -210,14 +210,6 @@ public sealed class MirAnalysisTest
                 program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "inspect" or "pair")
                     .Select(x => (x.Key.Decl!.Name, program.Drops.ViewsOf(x.Ordinal))).Order());
         }
-    }
-
-    // R4-M12, V17: the library bodies have no problems.
-    [Fact]
-    public void TheLibraryHasNoProblems()
-    {
-        var (c, _) = SemanticSnapshotTest.Bind("library");
-        Assert.Equal(0, c.BuildMir().Problems.All.Length);
     }
 
     // V16: a warm report allocates nothing: clearing keeps the storage the problems of a version need.

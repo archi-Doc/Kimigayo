@@ -69,21 +69,8 @@ internal sealed partial class MirBuilder
     // One layer of a Place: a Deref (of a reference, an object handle or, explicitly, a raw pointer), or the PairLayer of the binder its
     // pair layer names (TyCtxt.Layer).
     private MirPlace Layer(MirPlace place, HirPlaceKind kind)
-        => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, this.Binder(this.body.TypeOf(place)))
+        => kind == HirPlaceKind.PairLayer ? this.body.Project(place, MirProjectionKind.PairLayer, MirCases.Binder(this.body, this.body.TypeOf(place)))
             : this.body.Project(place, MirProjectionKind.Deref, 0);
-
-    // The index in the body's binders of the binder a pair layer Type names; -1 for another Type.
-    private int Binder(BoundType? type)
-    {
-        _ = TyCtxt.Layer(type, out _, out var target);
-        var binder = this.body.Binders.Count - 1;
-        while (binder >= 0 && !ReferenceEquals(this.body.Binders[binder].Target, target))
-        {
-            binder--;
-        }
-
-        return binder;
-    }
 
     // SPEC 3.4.3, 13.5.5: up to count of the layers its Type's selection follows implicitly, stopping at a Place of the target Type.
     private MirPlace Follow(MirPlace place, int count, BoundType? target = null)
