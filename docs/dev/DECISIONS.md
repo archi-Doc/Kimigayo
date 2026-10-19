@@ -1686,20 +1686,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - OQ13 (a) (superseded in part by R4-M76): S5 is adopted: an effect atom on an associated projection that grows under
     polymorphic recursion widens to an unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding
     that changes the rule returns to the owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for
-    S2 (planning session). - **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4
-    planning session on 2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one
-    owner-approved design and share one final review before the group merges into dev; each unit is still verified and pushed, and
-    a unit that departs from the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts
-    only with Loans whose mode is shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot
-    or its owned contents `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries
-    `MirFactKind.Inlined` and is dropped while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's
-    evaluation places into its pending slot carries that slot's default taint, a Loan problem found only through tainted sets is a
-    located `Unsupported_Kd` at the omitting call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with
-    the key (code, subject, body) and R4-M11's cross-body merge at publication (R4-M71). Each unit's entry records its decision as
-    implemented; 1c-9 (records) keeps its own review. - **R4-M76 Owner answers on G148 and the step-2 drafts** (owner, 2026-10-19,
-    relayed by the R4 planning session; on G148's completed design review and the reviewed drafts 2x-S1, 2f-S1 and 2x-S5 in
-    `draft/Sketches/A5 Step 2/` and the S5 proposal `draft/Proposals/2026-10-19 Effect Atoms Widen.md` on branch
-    `claude/a5-2x-s5`) Library and milestones count 0 under each answer.
+    S2 (planning session).
+- **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4 planning session on
+  2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one owner-approved design and
+  share one final review before the group merges into dev; each unit is still verified and pushed, and a unit that departs from
+  the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts only with Loans whose mode is
+  shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot or its owned contents
+  `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries `MirFactKind.Inlined` and is dropped
+  while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's evaluation places into its pending slot
+  carries that slot's default taint, a Loan problem found only through tainted sets is a located `Unsupported_Kd` at the omitting
+  call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with the key (code, subject, body) and R4-M11's
+  cross-body merge at publication (R4-M71). Each unit's entry records its decision as implemented; 1c-9 (records) keeps its own
+  review.
+- **R4-M76 Owner answers on G148 and the step-2 drafts** (owner, 2026-10-19, relayed by the R4 planning session; on G148's
+  completed design review and the reviewed drafts 2x-S1, 2f-S1 and 2x-S5 in `draft/Sketches/A5 Step 2/` and the S5 proposal
+  `draft/Proposals/2026-10-19 Effect Atoms Widen.md` on branch `claude/a5-2x-s5`) Library and milestones count 0 under each
+  answer.
   - G148: rule G, no SPEC change (R4-M73 records it with G148's unit). Its loss P13 (the Type guard is per holder, so a store
     follows a shared Loan past a holder whose Type passes the guard only through a Type argument, a pair layer or an abstract
     part) is recovered by a representation, not a SPEC clause (OQ8 (b), for P13 in place of the earlier G148 answer's OQ8 (a)):
@@ -3595,3 +3597,25 @@ structure is recorded here by the unit that first implements it.
   `replace(if c => a@uniq else => b@uniq, with: 3)` gives A5 `lent = b` on both paths) and meet forms other components own (A1's
   Move Paths, Binding-rejected Moves, default templates' prepared `ref` inputs). Rejected: the `Arity` row (a count rule); a Type
   requirement on the constant (`StaticInit` reads only its value).
+- **R5-M72 An input that reserves has one write where a Ref writes it** (2026-10-19, R4 and R5 planning sessions; G136's `lent`
+  validation, R4's step-2 ask AR-8, option (a); redone after its first review's B1) Rule (`MirValidator.Inputs.cs`,
+  `MirViolation.Lent`): A5 reads the Place a Ref lends into a local flow-insensitively (`MirBorrows.lent`) where a Call takes the local
+  as an input, at an in-place target and its destroying reservations, so a Temp a Call takes as a whole as an input (an argument, a
+  Value callee's operand) that reserves and that a Ref or an Adapt writes has no other write; a finding is `InternalInvariant_Kd` at the
+  Temp. "Reserves" is one predicate, `MirCases.Reserves`: an exclusive reference or a pair layer of the body's binders (SPEC 15.6.7, A3
+  E13 (4)), which `MirBuilder.Operand` decides an input's `reserves` by and the rule checks the input temp's Type by. The builder owns
+  the shape: as such an input, each body of an `if`, a `match` or `try` and a `do` gives its value through a temp of its own, moved
+  into the input temp where its container completes (`MirBuilder.Result`), as an exit's secured value already is; before, the bodies'
+  Refs wrote the input temp itself, so `replace(if c => a@uniq else => b@uniq, with: 3)` gave `lent = b` on both paths. A Block reaches
+  `Into` only as a body (a block expression is no argument; Unsafe and Deferred Blocks are statements, `BlockStatementInExpression_Kd`)
+  and gives Unit or nothing (SPEC 14.2.2), so `Into`'s Block and Unsafe rows take no input. A5 keeps its flow-insensitive `lent`. Not
+  checked: an input that does not reserve (a shared reference's two Refs; an `obj/Base` conditional's two Adapts, which the first
+  version counted, B1), whose `lent` no consumer reads, and an Opaque site's roots (a rejected default's prepared slots), whose writes
+  are derived. R4 confirmed (sign-off, 2026-10-19) that the rule covers every read A5 makes today: `MirBorrows.Loans` records `lent`
+  for each non-raw Ref, and A5 reads it only for the in-place-destroying argument through its two-phase reservations. Scope condition
+  (R4): if a later A5 unit reads `lent` for a shared Ref, the rule widens first, and that unit's design names it; candidates are A5-F6's
+  receiver-place relation (2f) and A5-F7's capture stores (2c). The library, the corpus and the mir sweep break the rule nowhere.
+  Rejected: (b) a flow-sensitive `lent` in A5 (the producer owns the shape); counting an Adapt by its case views alone (a second
+  predicate beside the builder's); the construct's own result temp moved into the input (its Refs stay a stale `lent`); a temp per
+  body for every construct value (MIR changes beyond inputs); a decision at the Call by the argument's HirOp (a consumer deciding by
+  syntax); a second flag carrying non-reserving inputs to the bodies (a mode steering them, for no reader).

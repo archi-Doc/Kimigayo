@@ -377,6 +377,73 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [(MirViolation.StaticSlot, body.Subject(ensure.Source))], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // G136 (DECISIONS R5-M72): A5 reads the Place a Ref lends into a Call's input temp flow-insensitively (MirBorrows.lent), so each body
+    // of an if, a match or try and a do builds its value for an input that reserves (MirCases.Reserves) in a temp of its own, moved into
+    // the input temp, as an exit's secured value is: the golden's program is valid (a match, an if and a destroying replace; a do of exits
+    // and a do of an if; a labeled if's yield; a try; a receiver; a Value callee), and with each move into chosen's input temps replaced by
+    // the Ref it moves (the earlier shape) each input temp is a Lent finding at it. A shared input does not reserve, so its two Refs are
+    // not checked.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AnInputThatReservesHasOneWriteWhereARefWritesIt(bool direct)
+    {
+        var program = MirBuildTest.Compile(File.ReadAllText(DiagnosticCorpus.RepositoryPath("tests", "mir", "calls.kimi"))).BuildMir();
+        Assert.Empty(program.Findings);
+        var bodies = program.Bodies.ToArray();
+        var shared = bodies.Single(static x => x.Key.Decl?.Name == "shared");
+        Assert.Equal(2, shared.Statements.ToArray().Count(static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Shared }));
+        var body = bodies.Single(static x => x.Key.Decl?.Name == "chosen");
+        var statements = body.Statements.ToArray();
+        var refs = statements.Where(static x => x.Rvalue.Kind == MirRvalueKind.Ref).ToDictionary(static x => x.Place.Root, static x => x.Rvalue);
+        var inputs = new List<SourceRef>();
+        for (var i = 0; i < statements.Length; i++)
+        {
+            if (statements[i] is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Use } use } statement &&
+                body.Operands[use.Start] is { Kind: MirOperandKind.Move, Place.Projection: 0 } moved && refs.TryGetValue(moved.Place.Root, out var lent))
+            {
+                inputs.Add(body.Subject(body.Locals[statement.Place.Root].Source));
+                Unsafe.AsRef(in body.Statements[i]) = direct ? statement with { Rvalue = lent } : statement;
+            }
+        }
+
+        Assert.Equal(6, inputs.Count); // Two bodies for each of three calls.
+        Assert.Equal(direct ? inputs.Distinct().Select(static x => (MirViolation.Lent, x)) : [], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // R5-M72 (its first review's B1): an input that does not reserve, an obj/Base or an objref/Base, is not checked, though a conditional's
+    // Adapts of a pair layer write it twice; the objref/Base program's only records are Binding's.
+    [Theory]
+    [InlineData("obj")]
+    [InlineData("objref")]
+    public void AnInputThatDoesNotReserveIsNotChecked(string semantics)
+    {
+        var c = MirBuildTest.Compile("open struct Base\n    public let value: i32 = 9\nstruct Derived: Base\n    public init() => ()\n" +
+            $"func own(x: {semantics}/Base) -> () => ()\nfunc probe<s/T>(flag: bool, a: s/Derived, b: s/Derived) -> ()\n    s is obj\n" +
+            $"    own(if flag => a@move@{semantics}/Base else => b@move@{semantics}/Base)\n");
+        Assert.Equal(semantics == "obj" ? [] : [Kimi.DiagnosticCode.MissingOriginBinding_Kd], c.Binding.Issues.Select(static x => x.Code).Distinct());
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "probe");
+        Assert.Equal(2, body.Statements.ToArray().Count(static x => x.Rvalue.Kind == MirRvalueKind.Adapt));
+        Assert.Empty(program.Findings);
+    }
+
+    // R5-M72: a default whose template Binding rejected (here a call beyond the case bound, OwnershipCaseLimit_Kd) is an Opaque value over
+    // the prepared slots before it, whose writes are derived, so the slot an exclusive Ref writes and the call takes is not checked.
+    [Fact]
+    public void AnOpaqueSitesRootIsNotALentFinding()
+    {
+        var binders = string.Concat("abcdegh".Select(static x => $"    {x} is owner or uniq\n"));
+        var c = MirBuildTest.Compile("func f<a/A, b/B, c/C, d/D, e/E, g/G, h/H>(pa: a/A, pb: b/B, pc: c/C, pd: d/D, pe: e/E, pg: g/G, ph: h/H, " +
+            "k: i32 = 1) -> i32\n" + binders + "    return k\nfunc main()\n    var n: i32 = 1\n    _ = f(n, n@uniq, n, n, n, n, n)\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Code == Kimi.DiagnosticCode.OwnershipCaseLimit_Kd);
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "main");
+        var slot = body.Statements.ToArray().Single(static x => x.Rvalue is { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.TwoPhaseUniq }).Place.Root;
+        Assert.Contains(slot, body.OpaqueRoots.ToArray());
+        Assert.Empty(program.Findings);
+    }
+
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
@@ -525,7 +592,9 @@ public sealed class MirValidatorTest
         var shape = MirModelTest.Local(body, types.Shape);
         var array = MirModelTest.Local(body, types.Array);
         var reference = MirModelTest.Local(body, c.Types.Reference(SemanticsKind.Ref, BoundType.I32));
-        var function = MirModelTest.Local(body, c.Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [c.Types.Tuple([BoundType.I32]), BoundType.I32]));
+        var exclusive = c.Types.Reference(SemanticsKind.Uniq, BoundType.I32);
+        var parameter = broken == MirViolation.Lent ? exclusive : BoundType.I32;
+        var function = MirModelTest.Local(body, c.Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [c.Types.Tuple([parameter]), BoundType.I32]));
         var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
         if (broken == MirViolation.Local)
         {
@@ -550,6 +619,7 @@ public sealed class MirValidatorTest
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
         MirOperand Const(MirConstKind kind, BoundType type, Int128 bits = default, object? value = null) => MirOperand.Const(body.Const(new(kind, type, bits, value)));
         var one = Const(MirConstKind.Integer, BoundType.I32, 1);
+        var input = MirOperand.Copy(x); // The Value call's argument.
 
         Push(MirStatementKind.StorageLive, point, new(default, scope, true));
         Assign(index, MirRvalue.Use(Operands(Const(MirConstKind.Integer, BoundType.ISize, 2))));
@@ -623,6 +693,11 @@ public sealed class MirValidatorTest
                 var never = MirModelTest.Local(body, BoundType.Never, MirLocalKind.Temp);
                 Assign(never, MirRvalue.Unary(MirUnaryOp.Neg, Operands(MirOperand.Copy(never)), false), Broken);
                 break;
+            case MirViolation.Lent: // G136: the Value call's input, a Temp of an exclusive Type that a Ref writes, written again.
+                input = MirOperand.Move(new(body.AddLocal(new(exclusive, MirLocalKind.Temp, Broken))));
+                Assign(input.Place, MirRvalue.Ref(MirRefKind.Uniq, x, exclusive));
+                Assign(input.Place, MirRvalue.Ref(MirRefKind.Uniq, x, exclusive));
+                break;
         }
 
         body.AddCase(0, abort);
@@ -636,7 +711,7 @@ public sealed class MirValidatorTest
         var signature = new MirCallee(MirCalleeKind.Value, Arg: body.Const(new(MirConstKind.TypeToken, body.TypeOf(function)!)));
         var called = broken == MirViolation.StaticSlot // F10: a staticEnsure of a slot past the body's one static.
             ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(Const(MirConstKind.Integer, BoundType.ISize, 1)), 1, result, drop, Broken)
-            : MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) };
+            : MirTerminator.Call(signature, Operands(input), 1, result, drop, At) with { Operand = MirOperand.Copy(function) };
         body.Terminate(call, called);
         body.Terminate(drop, broken == MirViolation.CheckTarget ? new(MirTerminatorKind.Drop, Broken, exit, check, Place: point) : MirTerminator.Drop(point, exit, At));
         body.Push(exit, MirStatement.Of(MirStatementKind.StorageDead, point, At));
