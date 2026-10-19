@@ -15,8 +15,9 @@ internal sealed partial class MirValidator
                 ReferenceEquals(type, BoundType.String);
 
         // The operands an rvalue has: one or two, as many as its Type's elements, Fields (the base first) or Case payload, or captures; -1
-        // when an aggregate's kind and Type disagree. A fixed array of a generic length is counted by its instance, and one built from no
-        // operand stores no element (SPEC 4.3.4 noinit); an Array or a Dictionary is built from none, the empty collection (SPEC 12.4.1).
+        // when an aggregate's kind and Type disagree. A fixed array built from no operand stores no element (SPEC 4.3.4 noinit), the only
+        // count at a generic length, and a Fill has its one value (SPEC 4.3.3, DECISIONS R4-M81); an Array or a Dictionary is built from
+        // none, the empty collection (SPEC 12.4.1).
         private static int Arity(in MirRvalue rvalue)
         {
             var type = rvalue.Type;
@@ -28,9 +29,10 @@ internal sealed partial class MirValidator
                 {
                     MirAggregateKind.Tuple when type?.Kind == BoundTypeKind.Tuple => type.Components.Count,
                     MirAggregateKind.Closure when type?.Kind == BoundTypeKind.Closure => type.Components.Count,
-                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => type.LengthExpression is null && type.Length >= 0 &&
-                        rvalue.Count > 0 ? (int)type.Length : rvalue.Count,
+                    MirAggregateKind.FixedArray when type?.Kind == BoundTypeKind.FixedArray => rvalue.Count == 0 || type.LengthExpression is not null
+                        ? 0 : (int)type.Length,
                     MirAggregateKind.FixedArray when type?.Kind is BoundTypeKind.Array or BoundTypeKind.Dictionary => 0,
+                    MirAggregateKind.Fill when type?.Kind == BoundTypeKind.FixedArray => 1,
                     MirAggregateKind.Adt when AdtDef.IsStruct(type) => AdtDef.Count(type!) + (AdtDef.Base(type!) is null ? 0 : 1),
                     MirAggregateKind.Adt when type is not null && AdtDef.CaseTypes(type) is { } cases => (uint)rvalue.Arg < (uint)cases.Length
                         ? cases[rvalue.Arg].Components.Count : -1,
@@ -64,10 +66,10 @@ internal sealed partial class MirValidator
                 this.IsValid(operand.Place) && ReferenceEquals(body.TypeOf(operand.Place), BoundType.Never));
 
         // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
-        // then its own Fields, a Case's payload, a fixed array's element.
+        // then its own Fields, a Case's payload, a fixed array's or a Fill's element.
         private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
         {
-            MirAggregateKind.FixedArray => rvalue.Type!.Components[0],
+            MirAggregateKind.FixedArray or MirAggregateKind.Fill => rvalue.Type!.Components[0],
             MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
                 body.ProjectedType(
                     rvalue.Type,

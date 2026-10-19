@@ -1925,6 +1925,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
   G169), which a ledger mapping would hide. Rejected: a `sites` column in the raw row (an R4-M17 row-shape change PD18 avoids,
   and a fresh ledger run; it tests the holder or reservation against the MIR's sites, not the same Loan); a Place-identity
   reading by start offset or containment (not PD18's predicate, and unsound as above).
+- **R4-M81 2x-E1: `MirAggregateKind.Fill`, every fill literal one aggregate of its value** (owner, 2026-10-19, relayed by the R4
+  planning session, verbatim: O1 「承認する (推奨)」 to the new member (DEC O1); Q2 「持つ (推奨)」 to a constant zero-length fill
+  carrying its value's Loans. Full process: two independent designs and a design review, which took design B with its
+  corrections; PLAN G103 E9a) SPEC 4.3.3: `[L of v]` acquires v once, also for L = 0, and copies it into every element.
+  - The new member `MirAggregateKind.Fill` has exactly one operand, v's acquisition.
+    - Its length is its Type's (`[N of T]`, `[(N + 1) of T]`), which an instance closes (`InstanceCollector.TypeOf`,
+      `FunctionCodegen.InstanceType`).
+    - Every fill literal, constant or generic, is one Fill (`MirBuilder.Aggregate`).
+  - `FixedArray` keeps one operand per element, or none (noinit; an Array's or a Dictionary's empty collection).
+  - The validator's Arity:
+    - a Fill is 1, at a fixed-array Type;
+    - a `FixedArray` is its constant length L, or 0;
+    - at a generic length only 0, which replaces the rule that let an instance count it, where any count passed;
+    - `Component` reads a Fill's element.
+  - A5's `val` is the union over the one operand, so a Fill holds v's Loans at every length.
+    - A generic body is checked for every instance (SPEC 4.4.2), and the old path keeps one payload, including N = 0.
+    - SPEC 4.3.3 now states Q2 explicitly (the 2026-10-19 SPEC session); the implementation agrees.
+  - Code generation (R5's file, under R4-M79): the Fill row is one counted i64 loop over the instance's closed length, and stores
+    nothing at 0.
+    - Its text does not grow with L.
+    - At O2 a byte fill becomes one `memset`, a 4096-element i32 fill vectorized stores, and a 4-element one a single vector store.
+    - Any other aggregate kind keeps its located `Unsupported_Kd`.
+  - Deleted:
+    - the builder's exclusion of generic lengths;
+    - its `once` temp and its L-fold operand loop, with an `int` counter against a `long` length;
+    - the O(L) MIR of a constant fill (`[1048576 of 0@u8]`: 1,048,580 operands, now as many as `[4 of 0@u8]`; about 100 bytes
+      of analysis allocation per element), which a valid `[2147483647 of 0@u8]` would have exhausted (not run).
+  - The tests that used the generic fill as the unbuilt form use PLAN G167's position of a Type parameter until G167 lands:
+    `PipelineSwitchTest.Source`, `UnsupportedFormsAreOpaqueAtOneRecord` and `tests/mir/opaque.kimi`.
+  - Rejected:
+    - a `FixedArray` with one operand as a fill. This adds one more case to an open family, which every consumer decodes by
+      shape; an unaware generator writes silent wrong code; and the validator cannot tell a fill from a literal left with one
+      operand.
+    - the builder's loop over noinit, `Len` and `Index`. This gives an Abort effect per `Index` with no source check, needs `Len`
+      and `Index` generation, which is not written yet, and adds a loop per fill.
+    - a length operand. It duplicates the length the Type carries and needs a `MirConstKind` member.
+    - the new form for generic lengths only, which makes two forms for one concept.
+    - unrolled stores or a length threshold in the generator.
+  - Open: `FixedArray`'s count 0 means noinit at a fixed-array Type and the empty collection at a handle Type, so the validator
+    cannot detect a literal that lost all its operands. Neither design introduced this gap.
 - **R4-M82 Validator responsibilities before 2x-E1** (2026-10-20, R4 planning session; 2x-E1 final review F1,
   A5 step 2 PD21). One `MirValidator` remains the owner and representation: its main file keeps orchestration and structural
   traversal; `.Flow.cs` owns body-wide unknown propagation, reachability and divergence; `.Rvalues.cs` owns an rvalue's kind,
