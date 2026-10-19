@@ -2335,7 +2335,16 @@ R5 on the owner's request of 2026-10-18; paused by R4-M77 and resumed by R4-M78 
   position with `OwnedPart` and access other than Owned (F1: the old analysis has no Place for a borrow into the owned Subject),
   and for a Binding that selects a pair layer (the old Emission cannot generate it: `GenerationFailed_Kd` for the uniq-only
   admitted sets F1's predicate leaves); the guard extends a pre-existing cascade, `UninitializedPlace_Kd` beside the
-  `Unsupported_Kd` when every arm returns (N1, PLAN). Why: a Binding at a pair layer took its slot by value, so the SPEC 15.1.6
+  `Unsupported_Kd` when every arm returns (N1, PLAN). Second owner decision (2026-10-19, re-approval of the D5 exception on a
+  corrected premise): forms the default pipeline accepted and ran on dev become its located `Unsupported_Kd` until R6-check: a
+  Binding at a pair-layer slot of an owned Subject or item, which dev bound by value (`match pair@move` `(let x, _) => use(x)`,
+  `s is owner or uniq` or `s is uniq`; `for (x, _) in arr@move`), and a structural follow from an owned Subject past a layer
+  admitting owner (`match o@move` `.Some(let n) => n@follow = 5`, `o: s/Option<i32>`, owner or uniq: dev accepted it and its O0
+  build ran correctly in both instances; the design review's statement that dev rejected it was wrong); no library or milestone
+  program has such a form. The guard as built is F1's predicate (`OwnedPart` and access other than Owned) plus a Binding that
+  selects a pair layer; the second part's reproducer: `match pair@move` `(let x, _) => x@follow = value` under `s is uniq` (no
+  `OwnedPart`), whose old-path build gave `GenerationFailed_Kd` ("Selected composite acquisition does not follow its Pattern
+  tree", instance `set<uniq/i32>`) before that part. Why: a Binding at a pair layer took its slot by value, so the SPEC 15.1.6
   example was accepted, an owned Subject's pair step had no Origin (false `NoApplicableOverload_Kd`) and the `for` copy rejected
   pair-layer Tuple items (false `TypeMismatch_Kd`). Rejected: design 1 (a builder follow beside `Lent` in held files, a shared
   column's contract changed across phases, the getter check through `BorrowableTemporary`'s `spelled`); binding the slot
