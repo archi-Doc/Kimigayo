@@ -239,13 +239,15 @@ public sealed partial class Binding
     };
 
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
-    // exclusive reference grants Read and Write but not Take, and otherwise the binding itself forbids the access, also through a
-    // selection whose receiver it cannot exclusively acquire.
+    // exclusive reference grants Read and Write but not Take, a writable part of a special receiver that SPEC lends exclusively
+    // but its row does not yet is unsupported (Receiver, SPEC 6.3.4), and otherwise the binding itself forbids the access, also
+    // through a selection whose receiver it cannot exclusively acquire.
     private static BindingFailure AccessFailure(Koto target, bool take = false)
         => PathAuthority(target, out _) switch
         {
             SemanticsKind.Ref => BindingFailure.SharedPathAccess,
             SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
+            SemanticsKind.Owner when !take && ReceiverOfPart(target) is { LendsFields: false } && Writable(target) => BindingFailure.Unsupported,
             _ => BindingFailure.InvalidAssignment,
         };
 
@@ -508,11 +510,11 @@ public sealed partial class Binding
 
             if (source is MemberAccessKoto access)
             {
-                // SPEC 15.1.5: a special receiver is an exclusively writable root for its own initialized Fields, although the
-                // receiver itself is not an assignable binding (Receiver).
-                if (Receiver(access.Left) is not null)
+                // SPEC 15.1.5: a special receiver lends its own initialized Fields as its row says, although the receiver itself is
+                // not an assignable binding (Receiver).
+                if (Receiver(access.Left) is { } special)
                 {
-                    return true;
+                    return !exclusive || special.LendsFields;
                 }
 
                 if (access.Left.BoundType?.HandleMode is { } handle)

@@ -8,6 +8,17 @@ namespace XunitTest;
 
 public class InheritedStorageTest
 {
+    // A constructor of Tally whose body continues once its Fields are initialized; Buffer is Non-Copy.
+    private const string Tally =
+        "struct Buffer\n    public var n: i32 = 0\n    public init() => ()\ngroup Audit\n    public func change(value: uniq/Buffer) => value.n += 10\n" +
+        "    public func read(value: ref/Buffer) -> i32 => value.n\n    public func pass(value: uniq/Buffer) -> uniq/Buffer => value\n" +
+        "struct Tally\n    var total: i32\n    var buffer: Buffer\n    public init(start: i32)\n        self.total = 0\n        self.buffer = Buffer.init()\n";
+
+    // A constructor of Holder, whose view Field stores a shared reference during a, once its Fields are initialized.
+    private const string Holder =
+        "struct Buffer\n    public var n: i32 = 0\n    public init() => ()\nstruct Holder {a}\n    var buffer: Buffer\n    public var view: ref/Buffer during a\n" +
+        "    public init(other: ref/Buffer during a)\n        self.buffer = Buffer.init()\n        self.view = other\n";
+
     [Fact]
     public void InheritedStandardStorageKeepsItsDeclaringLayer()
     {
@@ -60,46 +71,32 @@ public class InheritedStorageTest
         Assert.Equal((nameof(DiagnosticCode.InvalidAssignment_Kd), source.LastIndexOf(at, StringComparison.Ordinal), at.Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
     }
 
-    // SPEC 6.3.4, 15.1.5, 16.3.1: a special receiver is an exclusively writable root for its initialized own Fields (DECISIONS BU-15):
-    // the constructor lends them exclusively to an intrinsic, an argument and a receiver, as the destructor does.
-    [Fact]
-    public void SpecialReceiversLendTheirInitializedFieldsExclusively()
+    // SPEC 6.3.4, 15.1.5: a constructor's writable Fields are lent exclusively, but no analysis models those Loans yet ("Field borrows end
+    // before completion"; PLAN G166), so each exclusive borrow is one located Unsupported_Kd and the body reaches no analysis: no
+    // conflict is accepted, no read of `start` is a conflict and no check faults (DECISIONS BU-15). The rows are a write, a second
+    // borrow, a read, `exchange` and early exits while a borrow lives, and a stored reference Field lent to `exchange`.
+    [Theory]
+    [InlineData(Tally + "        Kimi.Intrinsics.replace(self.total@uniq, with: 5)\n", "self.total@uniq")]
+    [InlineData(Tally + "        let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        Audit.change(self.buffer@uniq)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        self.buffer = Buffer.init()\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        let s = self.buffer@uniq\n        Audit.change(r)\n        Audit.change(s)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = Audit.pass(self.buffer@uniq)\n        let n = Audit.read(self.buffer@ref)\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        if start > 0\n            return\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Tally + "        let r = self.buffer@uniq\n        let k = start + 1\n        Audit.change(r)\n", "self.buffer@uniq")]
+    [InlineData(Holder + "        let old = Kimi.Intrinsics.exchange(self.view@uniq, with: self.buffer@ref)\n", "self.view@uniq")]
+    [InlineData(Holder + "        var local = Buffer.init()\n        let old = Kimi.Intrinsics.exchange(self.view@uniq, with: local@ref)\n", "self.view@uniq")]
+    public void AConstructorsExclusiveFieldBorrowIsUnsupported(string declarations, string at)
     {
-        const string Source = """
-            struct Buffer
-                public var n: i32 = 0
-                public init() => ()
-                public func bump(self: uniq/Self) => self.n += 1
-            group Audit
-                public func change(value: uniq/Buffer) => value.n += 10
-                public func read(value: ref/Buffer) -> i32 => value.n
-            struct Tally
-                public var count: i32
-                public var total: i32
-                public var buffer: Buffer
-                public var spare: Buffer
-                public init(start: i32)
-                    self.count = start
-                    self.total = 0
-                    self.buffer = Buffer.init()
-                    self.spare = Buffer.init()
-                    self.count = self.count + 1
-                    Kimi.Intrinsics.replace(self.total@uniq, with: 5)
-                    self.buffer.bump()
-                    Audit.change(self.buffer@uniq)
-                    let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())
-                    Kimi.Intrinsics.replace(self.spare@uniq, with: old@move)
-                drop
-                    let k = self.count
-                    self.buffer.bump()
-                    Audit.change(self.spare@uniq)
-                    let b = Audit.read(self.buffer@ref)
-                    let s = Audit.read(self.spare@ref)
-                    Console.writeLine("drop \(k) \(self.total) \(b) \(s)")
-            let t = Tally.init(3)
-            Console.writeLine("\(t.count) \(t.total) \(t.buffer.n) \(t.spare.n)")
-            """;
-        ScalarEmissionTest.EmitFixture("ConstructionReceiverFields", Source, "4 5 0 11\ndrop 4 5 1 21\n");
+        var source = declarations + "public func main() => ()\n";
+        var expected = new List<(string, int, int)>();
+        for (var i = source.IndexOf(at, StringComparison.Ordinal); i >= 0; i = source.IndexOf(at, i + 1, StringComparison.Ordinal))
+        {
+            expected.Add((nameof(DiagnosticCode.Unsupported_Kd), i, at.Length));
+        }
+
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
     }
 
     [Trait("Purpose", "Allocation")]

@@ -108,8 +108,7 @@ public sealed partial class Binding
     {
         // SPEC 6.3.4: a special receiver's part may give up no Non-Copy value (Receiver).
         if (!OffersTake(conversion.Left) ||
-            (KotoHelper.UnwrapParentheses(conversion.Left) is BinaryKoto part && Receiver(ElementAccess.OwnedPathRoot(part)) is { NonCopyTake: false } &&
-            this.ProveCopy(type, conversion) != ConstraintProof.Proven))
+            (ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
             var failure = AccessFailure(conversion.Left, take: true);
             return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
