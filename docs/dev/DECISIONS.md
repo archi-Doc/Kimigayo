@@ -2113,8 +2113,9 @@ R5 on the owner's request of 2026-10-18.
   both take the join's Type. This supersedes the @move and @copy clauses of BU-4's U3 and U4 entries.
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
-  refuses an instance whose stored Types nest more than 64 levels, A5 plan PD30's storage-nesting gap) is a property of each
-  instance. `StorageHeight(type, budget)` (`Binding.Structs.cs`) gives the levels the storage walk reaches below a Type (0 for a
+  refuses an instance whose stored Types nest more than 64 levels, R4-M51's located `Unsupported_Kd`, the capability row
+  StorageNesting) is a property of each instance. `StorageHeight(type, budget)` (`Binding.Structs.cs`) gives the levels the
+  storage walk reaches below a Type (0 for a
   scalar; 1 + its highest base, Field, Case payload Tuple or Type component), or -1 when a part does not substitute or the height
   exceeds the budget; `PrepareTypeStorage` admits a height of at most 64 and is the one entry. New state:
   `AdtDef.InstanceStorage.Height`, valid while `Prepared` is the current pass. A struct or enum is stamped at height 0 when the
@@ -2131,7 +2132,39 @@ R5 on the owner's request of 2026-10-18.
   `Option<rc/…>` is refused. Rejected: clearing the stamp when a Type component fails, alone (the memo still ignores depth); no
   memo below the root (exponential over shared parts, `Pair^25`); not keeping cycle members (exponential over mutually recursive
   Types); heights shared per strongly connected component with a growth cap on the walk (A2) and inline-only preparation (B),
-  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7).
+  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7). Superseded by BU-12 in its
+  representation (`InstanceStorage.Height`, `Prepared`) and its residual; its rule for acyclic storage stands.
+- **BU-12** (2026-10-19; the BU planning session; PLAN G153 (2); design A2 (BU6b), whose direction, cap, reporting and residual
+  the owner chose on 2026-10-19, approved with changes by its design review; supersedes BU-11's representation and residual, whose
+  rule for acyclic storage stands; R5-M37's memo is the precedent) Binding's storage preparation (PLAN G128) decides a Type by the
+  strongly connected components of its storage. The nodes are the Types a storage walk meets (a struct's or enum's base, Fields and
+  Case payload Tuples, every Type's components); an edge between two members of a component counts 0, an edge to a non-member
+  1 + its height, and every member has its component's height, its largest exit. `PrepareTypeStorage` admits a Type whose height is
+  at most 64 and every Type it reaches substitutes, so the verdict depends on the Type alone: the failed-entry case
+  (`R<T> { x: X<T>, y: Box^200<T> }`, `X<T> { r: Option<rc/R<T>> }`) is refused in every order, `Option<rc/L<Box^61>>` is decided
+  with `L<Box^61>` (height 62), and a ring of structs linked by `Option<rc/…>` has height 1. A growing Type never closes a
+  component, so the walk's path holds at most 256 Types, the root included (the owner's value); a query that passes it is refused.
+  A capped walk and a height over 64 are G128's implementation limits: `TyCtxt.Apply` gives no Type, which is R4-M51's located
+  `Unsupported_Kd` (the capability row StorageNesting) at the requesting site by R5-M40's rule (the R5/R6 plan's PD30 for the
+  collector's mapping) and R5-M67's Limit (K6, K6b) when `PrepareTypeStorage(Self)` fails. IMPL 21.3.2 makes an exceeded limit
+  Resource: `Unsupported_Kd` is the owner's interim choice until R7 removes storage preparation from `Apply`. The walk
+  (`Binding.Structs.cs`, Tarjan): one per-pass table of marks by Type (`storageMarks`: a finished Type's height or Refused, an open
+  Type's stack position), cleared in `ResetPass`, and one stack, empty at every query's entry (a query during a walk is a broken
+  contract: `Instance` substitution never queries storage); structural Types are marked too, so the walk is linear in the distinct
+  Types it meets; a refusal marks every open Type Refused (each reaches the refusing part), a capped walk unmarks them. Corpus (the
+  suite with the library and the 44 milestones; 5.1 M default and 22.6 M mir queries): no verdict differs from BU-11's; the largest
+  cyclic component holds 4 Types. Rings of 17–42 structs build; from 43 the collector's glue-depth limit gives
+  `GenerationResourceLimit_Kd` at the destroyed value (BU-11 also gave the gap at the call). Cost: warm Bind unchanged with 0 B;
+  without a growing Type, cold +4 KB (Bind) to +44 KB (mir check) for the table; a growing Type's first walk retains about 230 KB of
+  interned Types for the compilation (BU-11 about 22 KB) in 0.65–0.84 ms, a re-walk takes 0.07 ms in the same pass and 0.45 ms in
+  the next. Residual (accepted by the owner): past the cap the verdict can depend on which other Types the program prepares, a pure
+  ring too: a 63-ring behind `h<Box^4<S1>>` is refused alone and twice, and admitted when `h<S1>` or `h<Option<rc/S1>>` appears
+  anywhere. Rejected: Tarjan over struct and enum instances only (a growing Type's Tuple arguments walked as trees within the cap);
+  a cap on the Types one query meets, or on a component's size (order-dependent; growth never closes); keeping a capped walk's
+  Types refused (order-dependent); counting hops inside a cycle (BU-11); a component height counting its internal distance (the
+  longest simple path); a declaration-level expansive-cycle check (it cannot see growth through associated projections);
+  inline-only preparation (B: changes G128 and breaks R4-M58, whose growing composed atom `Apply` still refuses). Deleted:
+  `InstanceStorage.Prepared` and `Height`. Not temporary (G128's limits go at R7).
 
 ## R5 and R6 (adopted 2026-10-18)
 

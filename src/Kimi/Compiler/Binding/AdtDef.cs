@@ -190,13 +190,7 @@ internal sealed class AdtDef
 
         internal BoundType[]? Cases { get; set; }
 
-        // The pass that substituted these Types and the pass whose preparation validated them; neither is current otherwise.
+        // The pass that substituted these Types; not current otherwise.
         internal ulong Version { get; set; }
-
-        internal ulong Prepared { get; set; }
-
-        // The levels Binding's storage walk reaches below the instance (Binding.StorageHeight), valid while Prepared is current; 0
-        // while the walk is inside the instance (DECISIONS BU-11).
-        internal int Height { get; set; }
     }
 }
