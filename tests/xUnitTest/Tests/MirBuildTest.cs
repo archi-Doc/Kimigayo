@@ -336,6 +336,58 @@ public sealed class MirBuildTest(ITestOutputHelper output)
             .Select(static x => $"{x.Terminator.Callee.Symbol!.Name}#{x.Terminator.Callee.Arg - 1}").ToArray();
     }
 
+    // Plan 5.6.2, SPEC 7.2.3: each statement and terminator of a copy is its template's, folded: at its template's location, in the
+    // copy's scopes under the one Inlined at the omitting call; a PairAcquire too, which the instance's case acquires again (R4-M66):
+    // Copied (concrete), Reborrowed (exclusive, a default the analysis rejects: DefaultArgumentBorrow_Kd in its uniq case), by the
+    // caller's binder (generic) and as the input of a call in the template (called). A template's own copy (outer's of pick) is copied
+    // into its nested Inlined scope (nested, nestedGeneric). Only the slots and the prologue's borrows are the caller's.
+    [Theory]
+    [InlineData("concrete", "pick")]
+    [InlineData("exclusive", "grab")]
+    [InlineData("generic", "pick")]
+    [InlineData("called", "via")]
+    [InlineData("nested", "outer pick")]
+    [InlineData("nestedGeneric", "outer pick")]
+    public void ACopyLiesInItsInlinedScopeAtItsTemplatesLocations(string caller, string templates)
+    {
+        var program = Compile("func pick<s/T>(a: s/T, b: s/T = a) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\nfunc id<s/T>(x: s/T) -> s/T\n    s is owner or ref\n" +
+            "    T is Copy\n    return x\nfunc via<s/T>(a: s/T, b: s/T = id(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return 0\n" +
+            "func outer<s/T>(a: s/T, c: i32 = pick(a)) -> i32\n    s is owner or ref\n    T is Copy\n    return c\n" +
+            "func concrete(r: ref/i32) -> i32 => pick(r)\nfunc generic<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return pick(x)\n" +
+            "func exclusive(u: uniq/i32) -> i32 => grab(u)\nfunc called(r: ref/i32) -> i32 => via(r)\nfunc nested(r: ref/i32) -> i32 => outer(r)\n" +
+            "func nestedGeneric<s/T>(x: s/T) -> i32\n    s is owner or ref\n    T is Copy\n    return outer(x)\n").BuildMir();
+        Assert.Empty(program.Findings);
+        var bodies = program.Bodies.ToArray();
+        var body = bodies.Single(x => x.Key.Kind == MirBodyKind.Fn && x.Key.Decl?.Name == caller);
+        foreach (var callee in templates.Split(' '))
+        {
+            // The body's first copy, of the template given, then the template's own copy of the next.
+            var template = bodies.Single(x => x.Key.Kind == MirBodyKind.DefaultTemplate && x.Key.Decl?.Name == callee);
+            var inlined = Enumerable.Range(0, body.Scopes.Length).First(x => body.Scopes[x].Kind == MirScopeKind.Inlined);
+            Assert.Equal(Sources(template, 0), Sources(body, inlined));
+            body = template;
+        }
+
+        // The statements' kinds and the statements' and terminators' syntax and statement starts under a root scope, each after the kinds
+        // of the scopes from the root to its own.
+        static string[] Sources(MirBody body, int root) => body.Statements.ToArray().Select(static x => (x.Source, Kind: x.Kind.ToString()))
+            .Concat(body.Blocks.ToArray().Select(static x => (x.Terminator.Source, Kind: "end")))
+            .Select(x => (Path: Path(body, x.Source.Scope, root), x.Source, x.Kind)).Where(static x => x.Path is not null)
+            .Select(static x => $"{x.Path}{x.Kind} {x.Source.Syntax} {x.Source.StatementStart}").Order(StringComparer.Ordinal).ToArray();
+
+        static string? Path(MirBody body, int scope, int root)
+        {
+            var path = string.Empty;
+            for (; scope > root; scope = body.Scopes[scope].Outer)
+            {
+                path = $"{body.Scopes[scope].Kind}/{path}";
+            }
+
+            return scope == root ? path : null;
+        }
+    }
+
     // IMPL 21.3.2, plan 5.6.2: a copy that would take a body past 65,536 MIR statements is not made. Defaults that copy the one below
     // twice at each level report DefaultExpansionLimit_Kd once, at the omitting call where the limit is met; that template fails, so the
     // calls that omit it take an Opaque value without another record.
