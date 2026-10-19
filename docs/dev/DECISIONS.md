@@ -3696,11 +3696,14 @@ structure is recorded here by the unit that first implements it.
   structure removed by C4a" over (b) "keep the package order"; under R5-M18 form 1, R5-M65 and R5-M73) Brought forward, each a whole
   row of its table: C2b's `Ref` over the place writer (`FunctionCodegen.Rvalues.cs`; every `MirRefKind` is one pointer, IMPL 21.1.3;
   the place writer's one covered Place is a local without projection that has storage, its home); C4a's Drop verdict rows
-  (`FunctionCodegen.Drops.cs`): Keep calls the dropped Type's DropGlue item, the collector's target at the Drop, on the Place's address
-  with the Drop's location text, and a Keep without a target, a Type parameter whose instance needs no drop (the collector targets
-  exactly the instance Types that may need one), destroys nothing; Elide writes nothing; PD18's string row of the glue table
-  (`DropGlue.Write`, in the file K7 created): `__kimi_drop<item>` `void (ptr value, ptr location, i64 length)` calls the runtime
-  release, and every other Type is that table's located `Unsupported_Kd` (C4a).
+  (`FunctionCodegen.Drops.cs`): a Keep destroys exactly when `MirTypes.MayNeedDrop(TypeOf(item, body.TypeOf(place)))` holds, the rule
+  the collector targets a Drop's glue by: refuted (a Type parameter instanced at a Type that owns nothing), nothing is written; else it
+  calls the collector's target, the Type's DropGlue item, on the Place's address with the Drop's location text, and a missing target is
+  `InternalInvariant_Kd` (package C 3.2 I8); Elide writes nothing. PD18's string row of the glue table: `DropGlue.Release` (the file K7
+  created) gives a Type's routine, the runtime release for a string, and every other Type is that table's located `Unsupported_Kd`
+  (C4a); ModuleCodegen names and signs the item (`__kimi_drop<item>`, `void (ptr, ptr, i64)`, `DropGlue.Parameters`, package C 3.3),
+  and `FunctionCodegen.WriteGlue` writes its function, the routine called with its own parameters through the call writer the
+  `writeLine` row uses (PD3).
   - Why a stand-in: under sel `Accepts` reads the old analysis (`MirRecords` holds construction, validator and collector records
     only), so the MIR analyses' A1 and A2 problems refuse nothing. Ledger row a1-whole-incomplete's `let a: [2 of string] = ["a",
     "b"]` / `_ = a[0]@move` / `a.indices` is accepted with A1's `MovedPlace_Kd` at `a.indices` and a Keep row in its body. R4-M6a

@@ -2,11 +2,11 @@
 
 // Owns the drop glue of a Type (SPEC 16.3, 16.4; R5 package K 4.5 "DropGlue", S2-S4 X3, X23, X27; DECISIONS R5-M60): what destroying a
 // value of a closed Type destroys directly, in destruction order, the one enumeration (Parts) the instance collector's DropGlue items target
-// and C4a's glue bodies are written from, so the two cannot disagree; and the glue function of a DropGlue item by its Type's row (package C
-// 3.6; DECISIONS R5-M78): a string's calls the runtime release (PD18's string row, brought forward by C0c), every other Type's row is C4a's,
-// which writes glue from Parts.
-// Input: a closed Type of a compilation and its TyCtxt (Sealed); for a glue function, its signature. Output: the glue function's text, or
-// false for a row not written yet, which the caller records; the Type's direct parts in destruction order: a declared destructor
+// and C4a's glue bodies are written from, so the two cannot disagree; and the rows of glue functions by Type (package C 3.6; DECISIONS
+// R5-M78), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string row, brought
+// forward by C0c), every other Type's row is C4a's, written from Parts.
+// Input: a closed Type of a compilation and its TyCtxt (Sealed). Output: a glue function's parameters and its Type's routine, or none for a
+// row not written yet; the Type's direct parts in destruction order: a declared destructor
 // alone for a struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical
 // declaration order, then its base; a Tuple's elements in decreasing index; a fixed array's element (each element, from the last); an enum's
 // Case payload elements, each Case's in reverse declaration order; a Closure environment's captures in reverse initialization order (X23);
@@ -16,8 +16,8 @@
 // destroys its contents, have none.
 // Invariants: deterministic; the parts are the components MirTypes.Destruction descends into, in destruction order, and a Sealed handle's
 // payload, which that walk visits without descending.
-// Must not: decide whether a part needs a drop (MirTypes.MayNeedDrop, the consumer's), read syntax or proofs other than Sealed, or name a
-// glue function (ModuleCodegen's items are named by FunctionCodegen.Glue).
+// Must not: decide whether a part needs a drop (MirTypes.MayNeedDrop, the consumer's), read syntax or proofs other than Sealed, name a glue
+// function (ModuleCodegen names its items) or write text.
 
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
@@ -40,39 +40,16 @@ internal readonly record struct DropPart(DropPartKind Kind, BoundType Type);
 /// <summary>The drop glue of the Backend (SPEC 16.3.2).</summary>
 internal static class DropGlue
 {
-    /// <summary>The parameters of a glue function (package C 3.6, as the old generator's glue): the value's address, then the location a
-    /// failure inside a release reports (SPEC 22.5.1).</summary>
-    internal static readonly AbiParameter[] Parameters = [new("ptr", "value", AbiParameterKind.OwnedSlot, 0), RuntimeAbi.Location, RuntimeAbi.LocationLength];
+    /// <summary>The parameters of a glue function (package C 3.6, as the old generator's glue), named as a function's arguments
+    /// (<c>%a</c> and the position): the value's address, then the location a failure inside a release reports (SPEC 22.5.1).</summary>
+    internal static readonly AbiParameter[] Parameters =
+        [new("ptr", "a0", AbiParameterKind.OwnedSlot, 0), new("ptr", "a1", AbiParameterKind.Location), new("i64", "a2", AbiParameterKind.LocationLength)];
 
-    /// <summary>Writes the glue function of a DropGlue item by its Type's row: a string's calls the runtime release with its own parameters
+    /// <summary>Gets the runtime routine a glue function calls with its own parameters, by its Type's row: a string's is the runtime release
     /// (the string representation and its release kind, IMPL 21.1.3; PD18).</summary>
-    /// <param name="glue">The item's signature, with <see cref="Parameters"/>.</param>
-    /// <param name="type">The item's closed Type.</param>
-    /// <param name="output">The module's buffer.</param>
-    /// <returns>False for a Type whose row is not written yet (C4a), which the caller records at the item's site.</returns>
-    internal static bool Write(FunctionAbi glue, BoundType type, TextWriter output)
-    {
-        if (!ReferenceEquals(type, BoundType.String))
-        {
-            return false;
-        }
-
-        var release = RuntimeAbi.DestroyString;
-        output.Write(glue.GetDefinition(exported: false));
-        output.Write("entry:\n  call void @");
-        output.Write(release.Name);
-        output.Write('(');
-        for (var i = 0; i < release.Parameters.Length; i++)
-        {
-            output.Write(i == 0 ? string.Empty : ", ");
-            output.Write(release.Parameters[i].Type);
-            output.Write(" %");
-            output.Write(glue.Parameters[i].Name);
-        }
-
-        output.Write(")\n  ret void\n}\n");
-        return true;
-    }
+    /// <param name="type">The glue item's closed Type.</param>
+    /// <returns>The routine, or null for a Type whose row is not written yet (C4a writes them from <see cref="Parts"/>).</returns>
+    internal static FunctionAbi? Release(BoundType type) => ReferenceEquals(type, BoundType.String) ? RuntimeAbi.DestroyString : null;
 
     /// <summary>Appends the direct parts destroying a value of a closed Type destroys, in destruction order (SPEC 16.3.2, 16.4).</summary>
     /// <param name="types">The Type context, whose Sealed proofs decide an owning handle's payload.</param>

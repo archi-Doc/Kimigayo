@@ -5,7 +5,8 @@
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), the output form around them (IMPL 21.4.2: an
 // Application's __kimi_start calls its startup body and exits with 0, a Library has no entry) and the module frame through LlvmModuleText
 // in the old generator's order (header with the pooled constants, runtime, overflow declarations, functions, entry, footer); the coverage
-// rows (PD11) of the item kinds and output forms: DropGlue (its string row DropGlue.Write's, R5-M78; C4a the others), ClosureErasure and
+// rows (PD11) of the item kinds and output forms: DropGlue (__kimi_drop<item>, written by FunctionCodegen for a Type DropGlue has a row for,
+// the string's, R5-M78; C4a the others), ClosureErasure and
 // ItemAdapter (C5b), the Builtin shims (C8f, C9b), the
 // property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, TypeOf and
@@ -112,6 +113,25 @@ internal sealed class ModuleCodegen
         return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, parameters).Named(name);
     }
 
+    /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is
+    /// a glue signature (its parameters <see cref="DropGlue.Parameters"/>).</summary>
+    /// <param name="item">The item.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Glue(int item)
+    {
+        if (item >= this.signatures.Length)
+        {
+            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
+        }
+
+        if (this.signatures[item] is { } previous && ReferenceEquals(previous.Parameters, DropGlue.Parameters))
+        {
+            return previous;
+        }
+
+        return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
+    }
+
     /// <summary>Records a coverage row not written yet or a broken input contract at its subject, once per code and subject.</summary>
     /// <param name="code">Unsupported_Kd or InternalInvariant_Kd.</param>
     /// <param name="subject">The located subject.</param>
@@ -147,11 +167,7 @@ internal sealed class ModuleCodegen
                 this.bodies.Write(program, collector, item, this.functions);
                 return;
             case MonoKind.DropGlue:
-                if (!DropGlue.Write(this.bodies.Glue(item), entry.RepresentativeType!, this.functions))
-                {
-                    this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C4a writes the glue of the other Types (R5-M78).
-                }
-
+                this.bodies.WriteGlue(collector, item, this.functions);
                 return;
             case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C5b writes the erasure and item adapters.

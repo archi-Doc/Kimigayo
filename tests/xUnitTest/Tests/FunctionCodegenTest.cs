@@ -138,6 +138,21 @@ public sealed class FunctionCodegenTest
         Assert.Equal(written ? [] : [("Unsupported_Kd", (string?)"\"a\"")], Records(c));
     }
 
+    // PD12: in a program the stand-in passes, A1 and A2 judged every runtime Drop, so one without a verdict group is a broken contract
+    // (InternalInvariant_Kd at the Drop); the program's one drop row is moved to another block to make it so.
+    [Fact]
+    public void ARuntimeDropWithoutAVerdictIsABrokenContract()
+    {
+        var c = Analyze("Console.writeLine(\"a\")\n");
+        var program = c.BuildMir();
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
+        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
+        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
+        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
+    }
+
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
     // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
     // entry and the profile attributes for both generators).
@@ -207,13 +222,15 @@ public sealed class FunctionCodegenTest
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
     // its valid counterpart is. A string's Move into another local copies a slot Type (C2b's row), at the source; a callee's call is C3a's,
-    // at that call; the Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and
-    // of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS
-    // R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
+    // at that call, while a generic callee's instance whose Keep of a T instanced at i32 needs no drop records nothing (R5-M78); the
+    // Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings
+    // its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
+    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
     [Theory]
     [InlineData("func twice(a: i32) -> i32 => a + a\n()", new[] { "a + a" })]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", new[] { "twice(1)" })]
     [InlineData("let t = \"x\"\nlet u = t@move\n", new[] { "t" })]
+    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", new[] { "keep(1)" })]
     [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n()", new[] { "name()" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n()", new[] { "Console.writeLine(text)" })]
     [InlineData(ForLoop, new[] { "for value in values\n        total = 1", "value" })]

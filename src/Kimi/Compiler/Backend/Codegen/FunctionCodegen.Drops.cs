@@ -1,37 +1,53 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using Kimi.Compiler.Mir;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Backend;
 
-// The Drop terminator of FunctionCodegen (R5 package C 3.6, plan C4a; C0c brings the Keep and Elide verdicts forward, DECISIONS R5-M78): A2's
-// verdict for the item's view (R4-M6a), Keep calling the dropped Type's DropGlue item, the collector's target at the Drop, with the
-// Place's address and the Drop's location text, Elide writing nothing; Flag (C4b) and Open (C4c) are rows not written yet.
+// The Drop terminator of FunctionCodegen and the DropGlue items' functions (R5 package C 3.6, plan C4a; C0c brings the Keep and Elide
+// verdicts and the string glue forward, DECISIONS R5-M78): A2's verdict for the item's view (R4-M6a), Keep destroying exactly when the
+// dropped value's instance Type may need a drop, by calling its DropGlue item, the collector's target at the Drop, with the Place's address
+// and the Drop's location text, Elide writing nothing; Flag (C4b) and Open (C4c) are rows not written yet. A glue function calls its Type's
+// routine (DropGlue.Release) with its own parameters through the call writer (PD3); ModuleCodegen names and signs the item.
 // Gate step 2's stand-in (R5-M78, removed by C4a's per-body step 2, package C 3.8, once R4 publishes MirProblem.Body, G125): under sel the
 // old analysis decides acceptance, so the MIR analyses' problems refuse nothing, and A2's verdicts are exact only for programs A1 accepts
 // (R4-M6a); a Drop is written only for a program whose MIR analyses recorded no Ownership problem (A1 with its arena record, A2, and
 // conservatively A4 and A5; A3's do not gate, PD12), else it is one located Unsupported_Kd.
 internal sealed partial class FunctionCodegen
 {
-    private FunctionAbi?[] glues = []; // Each DropGlue item's signature, by item.
+    private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
     private MirProgram program = null!;
     private ulong exactVersion; // The program version whose exactness is known (0: none).
     private bool exact;
     private int at; // The block being written.
 
-    /// <summary>Gets the signature of a DropGlue item (package C 3.6: <c>__kimi_drop</c> and the item, <see cref="DropGlue.Parameters"/>).</summary>
-    /// <param name="item">The item.</param>
-    /// <returns>The signature, kept per item.</returns>
-    internal FunctionAbi Glue(int item)
+    /// <summary>Writes the function of a DropGlue item by its Type's row (<see cref="DropGlue.Release"/>): the routine called with the
+    /// function's own parameters, in order; a Type without a row is C4a's, one located <c>Unsupported_Kd</c> at the item's site.</summary>
+    /// <param name="collector">The collector of the checked set.</param>
+    /// <param name="item">The DropGlue item.</param>
+    /// <param name="output">The module's buffer.</param>
+    internal void WriteGlue(InstanceCollector collector, int item, TextWriter output)
     {
-        if (item >= this.glues.Length)
+        var entry = collector.Set.Items[item];
+        if (DropGlue.Release(entry.RepresentativeType!) is not { } release)
         {
-            Array.Resize(ref this.glues, Math.Max(item + 1, 2 * this.glues.Length));
+            this.module.Report(DiagnosticCode.Unsupported_Kd, entry.Site);
+            return;
         }
 
-        return this.glues[item] ??= new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
+        var parameters = release.Parameters.Length;
+        this.arguments = this.arguments.Length < parameters ? new Value[parameters] : this.arguments;
+        for (var i = 0; i < parameters; i++)
+        {
+            this.arguments[i] = new('a', i);
+        }
+
+        this.output = output;
+        output.Write(this.module.Glue(item).GetDefinition(exported: false));
+        output.Write("entry:\n");
+        this.WriteCall(release, this.arguments.AsSpan(0, parameters));
+        output.Write("  ret void\n}\n");
     }
 
     private void Drop(in MirTerminator drop)
@@ -73,15 +89,27 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
-    // Keep: the dropped Type's DropGlue item called on the Place's address with the Drop's location; false after a record. The collector
-    // targets the glue of exactly the instance Types that may need a drop (K package 4.5 row 9), so a Keep of the body's view without a
-    // target, a Type parameter whose instance needs none, destroys nothing.
+    // Keep destroys exactly when the dropped value's instance Type may need a drop (MirTypes.MayNeedDrop, the rule the collector targets a
+    // Drop's glue by, K package 4.5 row 9): refuted, nothing is written; else the collector's target, the Type's DropGlue item, is called on
+    // the Place's address with the Drop's location, and a missing target is a broken contract (package C 3.2 I8). False after a record.
     private bool Keep(in MirTerminator drop)
     {
+        if (this.body.TypeOf(drop.Place) is not { } dropped || this.collector.TypeOf(this.item, dropped) is not { } type)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, drop.Source); // The collector made every Type of an admitted item.
+            return false;
+        }
+
+        if (!MirTypes.MayNeedDrop(type, this.seen))
+        {
+            return true;
+        }
+
         var glue = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (glue < 0)
         {
-            return true;
+            this.Report(DiagnosticCode.InternalInvariant_Kd, drop.Source);
+            return false;
         }
 
         if (!this.Address(drop.Place, out var address))
@@ -98,7 +126,7 @@ internal sealed partial class FunctionCodegen
 
         this.arguments = this.arguments.Length < 3 ? new Value[3] : this.arguments;
         (this.arguments[0], this.arguments[1], this.arguments[2]) = (address, new('@', location), new('\0', this.module.Constants[location].ByteLength));
-        this.WriteCall(this.Glue(glue), this.arguments.AsSpan(0, 3));
+        this.WriteCall(this.module.Glue(glue), this.arguments.AsSpan(0, 3));
         return true;
     }
 
