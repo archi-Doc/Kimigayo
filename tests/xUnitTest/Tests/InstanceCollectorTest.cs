@@ -253,6 +253,31 @@ public sealed class InstanceCollectorTest
         Assert.All(set.Targets(Item(program, set, "Fn top")).ToArray(), static x => Assert.True(x.Runtime));
     }
 
+    // K 4.10 (DECISIONS R5-M77): the Generated column holds exactly the roots Mark is given and the items their runtime targets reach,
+    // transitively; a callee only the checks reach stays checked only, a mark replaces the previous one and a new collection has none.
+    [Fact]
+    public void TheMarkIsTheRuntimeClosureOfItsRoots()
+    {
+        var c = MirBuildTest.Compile(Source);
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        set.Mark([Item(program, set, "Fn top")]);
+        Assert.Equal(["Fn later", "library Fn init in struct Duration"], Marked(false));
+        set.Mark([Item(program, set, "Fn after")]);
+        Assert.Equal(["Fn after"], Marked(true));
+        set.Mark([]);
+        Assert.Empty(Marked(true));
+        set.Mark([0]);
+        program.Version++;
+        Assert.DoesNotContain(Enumerable.Range(0, collector.Run(program, 1).Items.Length), set.IsGenerated);
+
+        // The labels of the items whose Generated mark is the given one.
+        string[] Marked(bool generated)
+            => [.. Enumerable.Range(0, set.Items.Length).Where(x => set.IsGenerated(x) == generated).Select(x => Label(program, set.Items[x]))
+                .Order(StringComparer.Ordinal)];
+    }
+
     // K 4.3: a repeated run of a program version keeps its set, and a program with validator findings has an empty one.
     [Fact]
     public void AVersionIsCollectedOnceAndFindingsEmptyTheSet()

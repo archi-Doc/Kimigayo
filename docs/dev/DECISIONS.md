@@ -3690,3 +3690,27 @@ structure is recorded here by the unit that first implements it.
     and clause) without a target or the override's instance; both failed-override outcomes without a record; type tests and a clone
     without a target or record (an oversized never-created struct, a never-created Leaf<i32>); warm collection 0 B. Under sel the
     library roots and the 44 milestones give no new record.
+- **R5-M77 The Generated mark at emit** (2026-10-19, K lane; plan K11, the K package's §4.4 and §4.10, package C §3.3 and §3.8, design 2
+  §2.9; under R5-M18, R5-M35, R5-M64 and R5-M65; DEC Q6 form 1) MIR code generation writes exactly the items of the checked set the
+  output requires (IMPL 21.3.1), the closure of its output roots over runtime targets. The generation entry
+  (`Compilation.Generation.cs`), after gate step 1 and acceptance, names the roots: an Application's startup body (`Binding.Startup`,
+  `main`'s Fn body, else the root module's top-level statements), a test build's tests (the Test body of each `Tests.Cases` entry's
+  `TestCase.Symbol`: the catalog `Project` discovers after acceptance, which the entry reads and never discovers again) and a Library's
+  every root (a `public` declaration is no export, the plan's "public roots" being the package's "every root"); a root without an item
+  is `InternalInvariant_Kd` at the project. `CheckedSet.Mark(roots)` sets the set's Generated column, one bool per item: the roots and,
+  transitively, every item a runtime target of a Generated item names, so an item only the checks reach is checked and never generated
+  through that target; a mark replaces the previous one, a new collection has none (`IsGenerated` reads it), and a warm mark allocates
+  nothing (a pooled worklist). `ModuleCodegen` writes the Generated items in admission order (names stay item-indexed) and the output
+  form around the roots it is given (an Application's entry calls its startup root; a test build's TestEntry row is at each test root);
+  `Signature`, the one request that names an item, records `InternalInvariant_Kd` at the item's site for an item outside Generated.
+  - R4-M28's exception (K §4.4, §4.10: a closed root body of an override `TyCtxt.Applies` refutes) is empty in an accepted program: a
+    closed override or virtual of a refuted slot is a Language error at check (`InvalidConstraint_Kd`), a generic body is no root and
+    K8 gives refuted slots no target, so a Library's roots need no applicability test.
+  - Rejected: a Generated field on `MonoItem`, the collector's row (the mark is emit state, replaced per mark); a side table of marked
+    items; discovering tests in the entry, as the old generator's `TryPrepare` does (a second discovery per generation; `Project` owns
+    it after acceptance); TestEntry roots from the root module's Test bodies (a second copy of discovery's selection); the mark in
+    `ModuleCodegen`, which decides no generation (package C §3.3).
+  - Verified: an Application generates its startup closure only (an unused function is neither written nor recorded; its Library
+    twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root;
+    the mark follows runtime targets only and is replaced by the next mark and cleared by a new collection; writing an unmarked body
+    records `InternalInvariant_Kd` at its site; the closed refuted override is rejected at check; warm generation 0 B.

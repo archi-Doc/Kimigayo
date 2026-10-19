@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -9,11 +11,11 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The frame of MIR code generation (R5 C0b1; package C 3.2, 3.3 and 3.9; DECISIONS R5-M65): <c>ModuleCodegen</c> writes every
-/// item of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue, slots, runtime-reached blocks and the forms
-/// the frame covers, and a form not covered yet is one located <c>Unsupported_Kd</c> with no module. The <c>Frame*</c> fixtures run under
-/// the process's generators (the old one by default, MIR code generation under <c>-Pipeline mir -Codegen mir</c>); the other tests select
-/// MIR code generation themselves.</summary>
+/// <summary>The frame of MIR code generation (R5 C0b1, K11; package C 3.2, 3.3 and 3.9; DECISIONS R5-M65, R5-M77): <c>ModuleCodegen</c>
+/// writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue, slots, runtime-reached
+/// blocks and the forms the frame covers, and a form not covered yet is one located <c>Unsupported_Kd</c> with no module. The
+/// <c>Frame*</c> fixtures run under the process's generators (the old one by default, MIR code generation under <c>-Pipeline mir -Codegen
+/// mir</c>); the other tests select MIR code generation themselves.</summary>
 public sealed class FunctionCodegenTest
 {
     private const string Branches =
@@ -21,11 +23,14 @@ public sealed class FunctionCodegenTest
         "    if first\n        if second => return 'a'\n        return 'b'\n    return 'c'\nlet flag = false\nlet other = true\n" +
         "let x: i32 = if flag => 1 else => 2\nlet y: char = if flag => 'x' else if other => 'y' else => 'z'\n";
 
+    // Library programs (K11: a Library generates every root, an Application only what its startup body reaches).
     private const string ForLoop =
-        "func f(values: ref/Array<i32>) -> i32\n    var total: i32 = 0\n    for value in values\n        total = 1\n    return total\n()";
+        "func f(values: ref/Array<i32>) -> i32\n    var total: i32 = 0\n    for value in values\n        total = 1\n    return total\n";
 
     private const string Strings =
-        "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n()";
+        "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n";
+
+    private const string Unused = "func unused(n: i64) -> i64 => n\n";
 
     // Programs of the frame's forms only: scalar locals and constants, branches, loops and labels, an explicit startup and unused functions
     // with scalar, string-borrow, zero-sized and Never signatures.
@@ -74,7 +79,7 @@ public sealed class FunctionCodegenTest
     [Fact]
     public void WriteLineCallsTheConsoleRuntimeRow()
     {
-        var text = Generate(Strings);
+        var text = Generate(Analyze(Strings, OutputKind.Library));
         var ir = GeneratedIr.Parse(text);
         var call = Assert.Single(ir.Single("internal void (ptr noundef nonnull align 8 dereferenceable(24))").Instructions, static x => x.Opcode == "call");
         Assert.Same(ir.Function("__kimi_write_line"), call.Callee);
@@ -119,7 +124,8 @@ public sealed class FunctionCodegenTest
     [Fact]
     public void ArgumentsLiveInTheirLocalsHomes()
     {
-        var text = Generate("func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\n()");
+        var source = "func f(flag: bool, n: i64, text: ref/string, unit: ()) -> bool => flag\nfunc g(pair: (i32, i64)) => ()\n";
+        var text = Generate(Analyze(source, OutputKind.Library));
         Assert.Contains("  %t0 = zext i1 %a0 to i8\n  store i8 %t0, ptr %l1, align 1\n  store i64 %a1, ptr %l2, align 8\n", text);
         var ir = GeneratedIr.Parse(text);
         var f = ir.Single("internal i1 (i1, i64, ptr noundef nonnull align 8 dereferenceable(24))");
@@ -145,7 +151,7 @@ public sealed class FunctionCodegenTest
     [Fact]
     public void OnlyRuntimeReachedBlocksAreGenerated()
     {
-        var c = Analyze("func f(flag: bool) -> i32\n    if flag\n        return 1\n    return 2\n()");
+        var c = Analyze("func f(flag: bool) -> i32\n    if flag\n        return 1\n    return 2\n", OutputKind.Library);
         var ir = Generate(c);
         var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var body = c.BuildMir()[new(function.SymbolOf(), MirBodyKind.Fn)]!;
@@ -162,19 +168,21 @@ public sealed class FunctionCodegenTest
     // string's DropGlue item) are one record at the literal (DECISIONS R5-M73), as a callee's result's are at that call (C3a); the Utf8Slice
     // overload is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings its
     // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
-    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static.
+    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. K11: an
+    // Application's function nothing calls is not generated, so its form records nothing.
     [Theory]
-    [InlineData("func twice(a: i32) -> i32 => a + a\n()", new[] { "a + a" })]
-    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", new[] { "twice(1)" })]
-    [InlineData("Console.writeLine(\"\")\n", new[] { "\"\"" })]
-    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n()", new[] { "name()" })]
-    [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n()", new[] { "Console.writeLine(text)" })]
-    [InlineData(ForLoop, new[] { "for value in values\n        total = 1", "value" })]
-    [InlineData("group Registry\n    public let limit: i32 = 4\n()", new[] { "let limit: i32 = 4" })]
-    [InlineData("func twice(a: i32) -> i32 => a\n()", new string[0])]
-    public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, string[] sites)
+    [InlineData("func twice(a: i32) -> i32 => a + a\n", OutputKind.Library, new[] { "a + a" })]
+    [InlineData("func twice(a: i32) -> i32 => a + a\n()", OutputKind.Application, new string[0])]
+    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new[] { "twice(1)" })]
+    [InlineData("Console.writeLine(\"\")\n", OutputKind.Application, new[] { "\"\"" })]
+    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new[] { "name()" })]
+    [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
+    [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1", "value" })]
+    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
+    [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
+    public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, OutputKind output, string[] sites)
     {
-        var c = Analyze(source);
+        var c = Analyze(source, output);
         using var writer = new StringWriter();
         var written = sites.Length == 0;
         Assert.Equal(written, c.Generate(writer));
@@ -188,14 +196,54 @@ public sealed class FunctionCodegenTest
 
     // I1: the same program gives the same text, in one compilation and in two.
     [Theory]
-    [InlineData(Branches)]
-    [InlineData(Strings)]
-    public void GenerationIsDeterministic(string source)
+    [InlineData(Branches, OutputKind.Application)]
+    [InlineData(Strings, OutputKind.Library)]
+    public void GenerationIsDeterministic(string source, OutputKind output)
     {
-        var first = Generate(Analyze(source));
-        var c = Analyze(source);
+        var first = Generate(Analyze(source, output));
+        var c = Analyze(source, output);
         Assert.Equal(first, Generate(c));
         Assert.Equal(first, Generate(c));
+    }
+
+    // K11 (K package 4.10, DECISIONS R5-M77): only the Generated items are written, the closure of the output roots over runtime targets: an
+    // Application's startup body without the function nothing calls, a Library's every root. A request for an item outside Generated,
+    // here writing the unused body, is a broken contract at the item's site.
+    [Fact]
+    public void OnlyTheGeneratedItemsAreWritten()
+    {
+        var c = Analyze(Unused + "let x = 1\n");
+        var text = Generate(c);
+        Assert.Equal([(null, true), ("unused", false)], Generated(c.Instances!));
+        Assert.Single(Regex.Matches(text, @"define internal \S+ @__kimi_f\d+\("));
+        Assert.DoesNotContain(GeneratedIr.Parse(text).Functions, static x => x.Signature == "internal i64 (i64)");
+        Assert.Single(GeneratedIr.Parse(Generate(Analyze(Unused, OutputKind.Library))).Functions, static x => x.Signature == "internal i64 (i64)");
+
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        var (start, unused) = (Of(set, null), Of(set, "unused"));
+        set.Mark([start]);
+        var module = new ModuleCodegen(c.Layout, c.Locations);
+        Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
+        new FunctionCodegen(module).Write(collector, unused, program.Bodies[set.Items[unused].BodyOrdinal], TextWriter.Null);
+        Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
+
+        static int Of(CheckedSet set, string? name) => Enumerable.Range(0, set.Items.Length).Single(x => set.Items[x].Key.Body.Def.Decl?.Name == name);
+    }
+
+    // K11: a Library's roots are all its roots. R4-M28's exception, a closed body of an override no instance applies, never occurs in an
+    // accepted program: a closed override of a slot Applies refutes is a Language error at check.
+    [Fact]
+    public void AClosedOverrideOfARefutedSlotIsRejectedAtCheck()
+    {
+        var c = Analyze(
+            "struct NonCopy\n    public init() => ()\n    drop => ()\nopen struct Base<T>\n    T is Owned\n    public init() => ()\n" +
+            "    public virtual func copy(self: objref/Self, value: ref/T) -> i32\n        T is Copy\n        return 5\n" +
+            "struct Plain : Base<NonCopy>\n    public init() => ()\n    override func copy(self: objref/Self, value: ref/NonCopy) -> i32 => 7\n",
+            OutputKind.Library);
+        Assert.Equal(DiagnosticCode.InvalidConstraint_Kd, Assert.Single(c.Binding.Issues).Code);
+        Assert.False(c.Generate(TextWriter.Null));
     }
 
     // Every milestone generates under MIR code generation, or records only coverage rows: never a broken contract.
@@ -221,19 +269,19 @@ public sealed class FunctionCodegenTest
     // I11: generating a program again allocates nothing.
     [Trait("Purpose", "Allocation")]
     [Theory]
-    [InlineData(Branches)]
-    [InlineData(Strings)]
-    public void WarmGenerationAllocatesNothing(string source)
+    [InlineData(Branches, OutputKind.Application)]
+    [InlineData(Strings, OutputKind.Library)]
+    public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
-        var c = Analyze(source);
+        var c = Analyze(source, output);
         var written = true;
         var allocated = AllocationMeasurement.Measure(() => written &= c.Generate(TextWriter.Null));
         Assert.True(written);
         Assert.Equal(0, allocated);
     }
 
-    // A program analyzed under MIR code generation (sel).
-    private static Compilation Analyze(string source)
+    // A program analyzed under MIR code generation (sel) for an output form.
+    private static Compilation Analyze(string source, OutputKind output = OutputKind.Application)
     {
         var c = Compilation.CreateForTest();
         c.Pipeline = CompilerPipeline.Mir;
@@ -241,7 +289,7 @@ public sealed class FunctionCodegenTest
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", source));
         c.Bind();
-        c.Binding.CheckStartup(OutputKind.Application);
+        c.Binding.CheckStartup(output);
         c.Analyze();
         return c;
     }
@@ -261,6 +309,11 @@ public sealed class FunctionCodegenTest
         var bytes = System.Text.Encoding.UTF8.GetBytes(text);
         return $" = private unnamed_addr constant [{bytes.Length} x i8] c\"{string.Concat(bytes.Select(static x => $"\\{x:X2}"))}\", align 1\n";
     }
+
+    // Each body item's definition name (null: top-level statements) and Generated mark, by name.
+    private static (string? Name, bool Generated)[] Generated(CheckedSet set)
+        => [.. Enumerable.Range(0, set.Items.Length).Select(x => (set.Items[x].Key.Body.Def.Decl?.Name, set.IsGenerated(x)))
+            .OrderBy(static x => x.Name, StringComparer.Ordinal)];
 
     private static (string Code, string? Text)[] Records(Compilation c)
         => [.. TestDiagnostics.Of(c).Where(static x => x.Severity == DiagnosticSeverity.Error).Select(static x => (x.Code, x.Text))];
