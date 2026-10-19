@@ -1,6 +1,7 @@
 # Route taint: prototype round 16 (PLAN G148's final review, B1)
 
-Status (2026-10-19): prototype round run, awaiting its independent review before implementation. Working record, not authority.
+Status (2026-10-19): **superseded by the owner's body hold (2026-10-19)**, [body-hold.md](body-hold.md): round 16's independent
+review found writes through a reference and E5's seed passing no taint (its B1). Kept as record. Working record, not authority.
 
 ## The defect and the owner's decision
 

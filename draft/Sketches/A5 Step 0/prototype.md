@@ -32,10 +32,11 @@ dotnet run proto.cs -- -cases Round11 NoOwnValue  # one tab-separated row per ca
 dotnet run proto.cs -- -cases None+PK NoDestroyValue+PK  # +PK runs a variant on the design (round 13)
 dotnet run proto.cs -- -r13      # only round 13's tables
 dotnet run proto.cs -- -r15      # only round 15's tables (PLAN G148's store rules)
-dotnet run proto.cs -- -r16      # only round 16 (route taint); exit code = its failures
+dotnet run proto.cs -- -r16      # only round 16 (route taint, superseded); exit code = its failures
+dotnet run proto.cs -- -r17      # only round 17 (body hold); exit code = its failures
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 5,426 lines after round 16.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 5,903 lines after round 17.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1445,14 +1446,28 @@ The G148 design reviews' union prototype (round 14 in their records, `artifacts/
 main checkout), merged into this file unchanged and renumbered (2026-10-19, unit G148 round 2): both designers' cases (r14A-…,
 r14B-…) and the review's (r14V-…), 382 cases with the earlier ones, every store-row rule a variant (`-r15`). `R14G` is the decided
 rule G (DECISIONS R4-M73, A3 E16): no unsound acceptance; its listed losses and letter-consistent rejections are the review's.
-On round 14's design the listed-loss, unlisted and unsound columns of every variant equal the review's run; 4 cases (33e, 53, 88,
-r13s2), and r14B-r under the G variants, move their error to the formation, R4-M68's effect. The G148 cases join `Cases.All()`,
+On round 14's design the listed-loss, unlisted and unsound columns of every variant equal the review's run. R4-M68 moves the
+error of 4 cases (33e, 53, 88, r13s2) to the formation under every variant, and that of r14B-r under every walking variant (all 16
+R14* rows); r14B-i1, r14B-i2 and r14V-w also lose their activation location, their class unchanged (round 16's review N6). The
+G148 cases join `Cases.All()`,
 so the earlier rounds' tables run them under the one-layer store rule (806110fc), and round 13's table lists their 22 unsound
 acceptances there.
 
-## Round 16 (PLAN G148's final review B1: route taint)
+## Round 16 (PLAN G148's final review B1: route taint; superseded)
+
+Superseded by the owner's body hold (2026-10-19, round 17): its independent review found writes through a reference and E5's
+seed passing no taint (B1). Kept as record.
 
 On `R14G`, P13's interim taint (DECISIONS R4-M73, ruling (B)) and R4-M70's default taint are markers (`τ13`, `τD:D`), and a
 conflict whose Loan only tainted sets hold is a located `Unsupported_Kd`. `R16Set` is the unit as reviewed; `R16Route` the
 owner's route taint (2026-10-19). Rule, cases, results and cost: [route-taint.md](../A5%20Step%202/route-taint.md). The full
 output is unchanged; `-r16` prints the round (0 failures).
+
+## Round 17 (round 16's review B1: the owner's body hold)
+
+On `R14G` with R4-M70's default taint unchanged and no P13 marker (`R17Hold`): a body is held where some store row puts a
+non-empty value into a target reached only past a `ByArgument` holder, and every Loan problem of a held body (err(ended)
+included) is a located `Unsupported_Kd` at its access. `R17PerPart` (W takes no step from a `ByArgument` holder, the per-part
+guard's program) is the reference for dependence and cost. Run on 425 cases (the 382 earlier, round 16's 13, its review's 30,
+`R16X`): 0 failures. Rule, results, cost and why it is complete: [body-hold.md](../A5%20Step%202/body-hold.md). The full output
+is unchanged; `-r17` prints the round.

@@ -78,6 +78,13 @@
 //               carries no taint; err(ended) unchecked); R16Route the owner's rule (a holder the closure reaches only through tainted
 //               sets is tainted, with its route's first taint, and err(ended)'s γ is checked the same way); R16RouteNoGamma and
 //               R16GammaOnly drop one half each. -r16 prints the round; draft/Sketches/A5 Step 2/route-taint.md records it.
+//               Superseded by round 17 (its review found writes through a reference and E5's seed passing no taint).
+//        Round 17 (round 16's review B1; the owner's body hold, 2026-10-19): on R14G, R4-M70's default taint as in round 16 (markers, the
+//               set rule) and no P13 marker. R17Hold: a body is held where, at the fixpoint, some store row puts a non-empty value into a
+//               target reached only past a Case.ByArgument holder, and every Loan problem of a held body (err(ended) included) is a
+//               located Unsupported_Kd at its access; one the default taint already makes Unsupported_Kd keeps the omitting call.
+//               R17PerPart: W takes no step from a ByArgument holder (the per-part guard's program), the reference for dependence and
+//               cost. The review's cases (R16X, rv-r16/work/rx) join the round. -r17 prints it; A5 Step 2/body-hold.md records it.
 using System.Text;
 using Fact = (string H, string L);
 
@@ -217,6 +224,67 @@ int Round16()
     return fails;
 }
 if (args.Contains("-r16")) return Round16();
+// Round 17 (round 16's independent review B1, the third round on P13's interim; the owner's body hold, 2026-10-19). R17Hold: rule G with
+// R4-M70's default taint unchanged and no P13 marker; a body where some store row puts a non-empty value into a target reached only past
+// a ByArgument holder is held, and each of its Loan problems (err(ended) included) is a located Unsupported_Kd at its access. Run on the
+// 382 earlier cases, round 16's 13 and its review's 31 (rx-…), against R14G (rule G), R16Set, R16Route and R17PerPart (W stops at
+// ByArgument holders: the per-part guard's program). Checks: (i) a conflict that depends on a by-argument store (R14G finds it and
+// R17PerPart does not) is no Language problem; (ii) a body that is not held keeps R16Set's outcome; (iii) every (Loan, access) R14G
+// reports is reported once under every mode, as a Language problem or a located Unsupported_Kd; (iv) the cost: each Language problem of
+// R17PerPart (independent of the store) that R17Hold makes Unsupported_Kd only because its body is held. -r17 prints only this; its exit
+// code counts the failures of (i)-(iii).
+var round17Variants = new[] { Abl.R17Hold, Abl.R17PerPart };
+int Round17()
+{
+    string O(Analysis a) => a.Errors.Count == 0 && a.Unsupported.Count == 0 ? "valid"
+        : string.Join("; ", new[] { a.Errors.Count > 0 ? "error at `" + string.Join("`, `", a.ErrorNodes()) + "`" : null,
+            a.Unsupported.Count > 0 ? "U at `" + string.Join("`, `", a.UnsupportedNodes()) + "`" : null }.Where(x => x != null));
+    IEnumerable<(string, int, string)> Found(Analysis a) => a.Errors.Concat(a.Reclassified);
+    bool SameMultiset(IEnumerable<(string, int, string)> x, IEnumerable<(string, int, string)> y)
+        => x.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count()) is var dx && y.GroupBy(t => t).ToDictionary(g => g.Key, g => g.Count()) is var dy
+            && dx.Count == dy.Count && dx.All(kv => dy.TryGetValue(kv.Key, out var n) && n == kv.Value);
+    var all = Cases.All().Concat(R16.All()).Concat(R16X.All()).ToList();
+    var modes = new[] { Abl.R16Set, Abl.R16Route, Abl.R16RouteNoGamma, Abl.R16GammaOnly, Abl.R17Hold };
+    int fails = 0;
+    var notKept = new List<string>(); var lost = new List<string>(); var cost = new List<string>(); var rows = new List<string>(); var heldIds = new List<string>();
+    var defaultOnly = new List<string>();
+    foreach (var c in all)
+    {
+        var g = Design(c, Abl.R14G); var set = Design(c, Abl.R16Set); var route = Design(c, Abl.R16Route);
+        var hold = Design(c, Abl.R17Hold); var part = Design(c, Abl.R17PerPart);
+        if (hold.Held) heldIds.Add(c.Id);
+        // (i) a conflict R14G finds and the per-part guard's program does not depends on the by-argument store.
+        var dependent = g.Errors.Where(e => !Found(part).Contains(e)).ToList();
+        var asError = dependent.Where(e => hold.Errors.Contains(e)).ToList();
+        if (asError.Count > 0) { fails++; lost.Add($"{c.Id}: " + string.Join(", ", asError.Select(e => $"{e.L} at `{g.LabelAt(e.P)}`"))); }
+        // (ii) a body that is not held keeps R16Set's outcome.
+        if (!hold.Held && O(hold) != O(set)) { fails++; notKept.Add($"{c.Id}: R16Set {O(set)}; R17Hold {O(hold)}"); }
+        // (iii) per (Loan, access), every mode reports what R14G reports, each once.
+        foreach (var m in modes)
+            if (!SameMultiset(g.Errors, Found(Design(c, m)))) { fails++; lost.Add($"{c.Id}: {m} drops or duplicates a (Loan, access)"); }
+        // (iv) the cost: a Language problem of the per-part program that the hold, not the default taint, makes Unsupported_Kd.
+        var held = hold.Reclassified.Where(e => hold.Unsupported.Contains(e) && part.Errors.Contains(e)).ToList();
+        if (held.Count > 0) cost.Add($"{c.Id}: " + string.Join(", ", held.Select(e => $"`{hold.LabelAt(e.P)}` ({e.L} vs {e.What})")));
+        // The default taint's own limits, unchanged by the hold: a default store's dependent conflict R16Route reclassifies and R17Hold keeps.
+        if (!hold.Held && c.Nodes.Any(n => n.Taints.Count > 0) && route.Errors.Count < hold.Errors.Count) defaultOnly.Add($"{c.Id}: R16Route {O(route)}; R17Hold {O(hold)}");
+        if (c.Id.StartsWith("r16") || c.Id.StartsWith("rx") || hold.Held || O(hold) != O(g))
+            rows.Add($"| {c.Id} | {(hold.Held ? "held" : "")} | {O(g)} | {O(set)} | {O(route)} | {O(hold)} | {O(part)} |");
+    }
+    Console.WriteLine($"\nRound 17, body hold (PLAN G148, round 16's review B1; {all.Count} cases: 382 earlier, {R16.All().Count()} of round 16, {R16X.All().Count()} of its review):");
+    Console.WriteLine($"Held bodies: {heldIds.Count} ({string.Join(", ", heldIds)})");
+    Console.WriteLine($"(i) dependent conflicts left a Language problem: {(lost.Count(x => !x.Contains("drops")) == 0 ? "none" : string.Join("; ", lost.Where(x => !x.Contains("drops"))))}");
+    Console.WriteLine($"(ii) bodies not held whose outcome differs from R16Set's: {(notKept.Count == 0 ? "none" : string.Join("; ", notKept))}");
+    Console.WriteLine($"(iii) a mode dropping or duplicating a (Loan, access) rule G reports: {(lost.Count(x => x.Contains("drops")) == 0 ? "none" : string.Join("; ", lost.Where(x => x.Contains("drops"))))}");
+    Console.WriteLine($"(iv) cost, Language problems of the per-part program the hold makes Unsupported_Kd ({cost.Count} cases):");
+    foreach (var x in cost) Console.WriteLine("  " + x);
+    Console.WriteLine($"The default taint's limits, unchanged (R4-M70; route taint would reclassify): {(defaultOnly.Count == 0 ? "none" : "")}");
+    foreach (var x in defaultOnly) Console.WriteLine("  " + x);
+    Console.WriteLine("\n| Case | body | R14G | R16Set | R16Route | R17Hold | R17PerPart |\n| --- | --- | --- | --- | --- | --- | --- |");
+    foreach (var r in rows) Console.WriteLine(r);
+    Console.WriteLine($"\nRound 17 failures: {fails}");
+    return fails;
+}
+if (args.Contains("-r17")) return Round17();
 var table3 = new StringBuilder("| Case | SPEC | S1′ | design A | Class |\n| --- | --- | --- | --- | --- |\n");
 string V(Analysis a) => a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
 void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact; round 11: SA = SecureAcquire's encoding;
@@ -395,7 +463,7 @@ foreach (var (ab, fd) in new[] { (Abl.None, false), (Abl.FirstDerefBase, false),
         .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab, fd)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
         .Select(g => $"{g.Count()} {g.Key}" + (g.Key != "same" ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
 Console.WriteLine();
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x) && !round17Variants.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Where(c => !Cases.NoS1P(c)).Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -489,7 +557,13 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     R16Set,           // the unit as reviewed (b335393b): a Loan is clean where a set without a taint holds it; err(ended) has no taint check
     R16Route,         // the owner's route taint: a holder the closure reaches only through tainted sets is tainted, err(ended)'s γ too
     R16RouteNoGamma,  // ablation: the route rule for Loans only, err(ended) unchecked
-    R16GammaOnly }    // ablation: the set rule for Loans and for γ (err(ended) checked on the found set only)
+    R16GammaOnly,     // ablation: the set rule for Loans and for γ (err(ended) checked on the found set only)
+    // Round 17 (round 16's review B1; the owner's body hold, 2026-10-19): on rule G with R4-M70's default taint as before (markers, the
+    // set rule) and no P13 marker:
+    R17Hold,          // the decided rule: a body where some store row puts a non-empty value into a target reached only past a ByArgument
+                      // holder is held, and every Loan problem of a held body (err(ended) included) is a located Unsupported_Kd at its access
+    R17PerPart }      // the reference for dependence and cost: rule G whose W takes no step from a ByArgument holder (the per-part guard's
+                      // program, R4-M76), with the default taint as R17Hold
 
 record StoreRow(string Arg, string Src, bool Content, int Depth, int Hidden, bool Raw); // round 15 (G148)
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
@@ -633,6 +707,7 @@ class Analysis
     HashSet<Fact>[] In; HashSet<string>[] liveIn; List<int>[] succ;
     public readonly List<(string L, int P, string What)> Errors = new();
     public readonly List<(string L, int P, string What)> Unsupported = new(); // round 16: located Unsupported_Kd, a conflict only taints carry
+    public readonly List<(string L, int P, string What)> Reclassified = new(); // round 17: each Unsupported_Kd's conflict, by its access
     public readonly Case Enc; // round 12: the MIR form analysed (the case itself, or one of its other forms)
 
     public Analysis(Case c, Mode m, Abl x = Abl.None, bool firstDeref = false, bool prefixKill = false)
@@ -668,13 +743,17 @@ class Analysis
             { gamma.Add(h); issue["γ" + h] = new("γ" + h, "γ" + h, false, h, false, false, Marker: true); places["γ" + h] = ["γ" + h]; }
         // Round 16: P13's marker and each pending slot's default taint, carried like γ (with the values that hold them), never ended, never
         // conflicting.
-        if (Tainting)
+        if (Defaults)
             foreach (var t in ns.SelectMany(n => n.Taints).Select(d => "τD:" + d).Prepend("τ13").Distinct())
             { issue[t] = new(t, t, false, t, false, false, Marker: true); places[t] = [t]; }
         excusedAt = ns.Select(n => n.Excuses.ToHashSet()).ToArray();
         if (m == Mode.A && x != Abl.ExcuseAtCallOnly)
             foreach (var n in ns) foreach (var r in n.Activates) excusedAt[issueAt[r]].UnionWith(n.Excuses);
         BuildEdges(); Carries();
+        // Round 17: a body is held where, at the fixpoint, some store row puts a non-empty value into a target reached only past a ByArgument
+        // holder (the first P13 target the compiler's Writes returns; an empty value holds nothing).
+        if (X == Abl.R17Hold)
+            held = ns.Any(n => n.Stores.Any(r => P13Store(In[n.Ix].Where(t => !EndedBy(t.L, n.Defs)).ToList(), r)));
         if (m == Mode.A) { LivenessA(); CheckA(); } else { Liveness(); Check(); }
     }
 
@@ -704,6 +783,10 @@ class Analysis
     bool ActivationRefOnly => Pk && X is not (Abl.ActivationEveryMode or Abl.NoFormationReport);
     // Round 16: the taint modes, and which of them follow a taint along the closure's route and check err(ended)'s γ.
     bool Tainting => X is Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly;
+    // Round 17: the default taint's markers and the set rule without P13's marker; R17Hold holds a body, R17PerPart stops W at ByArgument.
+    bool Defaults => Tainting || X is Abl.R17Hold or Abl.R17PerPart;
+    bool held; // round 17: the body is held (R17Hold)
+    public bool Held => held;
     bool RouteTaint => X is Abl.R16Route or Abl.R16RouteNoGamma;
     bool GammaTaint => X is Abl.R16Route or Abl.R16GammaOnly;
     static bool IsTaint(string l) => l.StartsWith('τ');
@@ -952,7 +1035,7 @@ class Analysis
         Abl.R14GX => (true, true, true, Excl.Self, false),
         Abl.R14GXS or Abl.R14GXSTransitA => (true, true, true, Excl.SelfRef, false),
         Abl.R14GDom => (true, true, true, Excl.Dom, true),
-        Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly => (true, true, true, Excl.None, false), // round 16: rule G
+        Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly or Abl.R17Hold or Abl.R17PerPart => (true, true, true, Excl.None, false), // rounds 16, 17: rule G
         _ => (false, false, false, Excl.None, false),
     };
     // Designer a's transit (a Content row's value read from the source's referents), corrected from its argument's to its source's.
@@ -970,7 +1053,7 @@ class Analysis
         while (queue.Count > 0)
         {
             var h = queue.Dequeue();
-            if (h == "E" || rule.Guard && Enc.SharedOnly.Contains(h) || !byArgument && Enc.ByArgument.Contains(h)) continue;
+            if (h == "E" || rule.Guard && Enc.SharedOnly.Contains(h) || (!byArgument || X == Abl.R17PerPart) && Enc.ByArgument.Contains(h)) continue;
             foreach (var l in Sigma(s, h))
             {
                 string t = null;
@@ -1009,7 +1092,7 @@ class Analysis
         bool applies = !rule.ContentOnly || r.Content;
         // Round 16 (R4-M73, ruling (B)): a target reached only past a ByArgument holder receives the value with P13's marker; an empty value
         // stores nothing, so no marker (the final review's N1).
-        var clean = Tainting ? StoreTargets(s, r, byArgument: false).Keys.ToHashSet() : null;
+        var clean = Tainting ? StoreTargets(s, r, byArgument: false).Keys.ToHashSet() : null; // round 17: no P13 marker
         foreach (var (t, (layer, dom)) in T)
         {
             if (clean != null && !clean.Contains(t) && ret.Count > 0) o.Add((t, "τ13"));
@@ -1032,6 +1115,12 @@ class Analysis
         return o;
     }
     HashSet<string> Content(IEnumerable<Fact> s, HashSet<string> S) => Refs(S).SelectMany(t => Sigma(s, t)).ToHashSet();
+    // Round 17: whether a store row puts a non-empty value into a target reached only past a ByArgument holder.
+    bool P13Store(IEnumerable<Fact> s, StoreRow r)
+    {
+        var v = Sigma(s, Root(r.Src)); var ret = Content(s, v); if (!r.Content) ret.UnionWith(v);
+        return ret.Count > 0 && StoreTargets(s, r).Keys.Except(StoreTargets(s, r, byArgument: false).Keys).Any();
+    }
 
     HashSet<Fact> TransferA(int i)
     {
@@ -1041,7 +1130,7 @@ class Analysis
         foreach (var t in inn) if (!whole.Contains(t.H)) o.Add(t);   // P1: only a whole-root write, Move or storage end ends carrying
         HashSet<string> Val(string x) { var S = Sigma(inn, Root(x)); for (int k = Steps(x); k > 0; k--) S = Content(inn, S); return S; }
         foreach (var (from, to) in n.Flows) { foreach (var l in Val(from)) o.Add((Root(to), l)); if (gamma.Contains(Root(to))) o.Add((Root(to), "γ" + Root(to))); }
-        if (Tainting) foreach (var d in n.Taints) o.Add((Root(d), "τD:" + d)); // round 16 (R4-M70): the default's value placed into D
+        if (Defaults) foreach (var d in n.Taints) o.Add((Root(d), "τD:" + d)); // round 16 (R4-M70): the default's value placed into D
         foreach (var (place, src) in n.Throughs)                    // P10: every holder the carried direct Loans name
         {
             var S = Sigma(inn, Root(place)); for (int k = Steps(place); k > 1; k--) S = Content(inn, S);
@@ -1257,8 +1346,8 @@ class Analysis
                     // Round 16 (the owner's route taint): γ only tainted sets hold is the located Unsupported_Kd, as a Loan's conflict is.
                     var (cleanH, taintOf) = GammaTaint ? Taints(F0, entries0, X == Abl.R16Route) : (null, null);
                     var holding = F0.Where(t => t.L == "γ" + h0).Select(t => t.H).ToList();
-                    if (cleanH == null || holding.Any(cleanH.Contains)) Err("γ" + h0, i, "ended " + h0);
-                    else Unsupp("γ" + h0, Located(holding, taintOf, i), "ended " + h0);
+                    if (cleanH == null || holding.Any(cleanH.Contains)) { if (held) Unsupp("γ" + h0, i, "ended " + h0, i); else Err("γ" + h0, i, "ended " + h0); }
+                    else Unsupp("γ" + h0, Located(holding, taintOf, i), "ended " + h0, i);
                 }
             }
             foreach (var a in accs)
@@ -1348,10 +1437,12 @@ class Analysis
                 }
                 // Round 16 (R4-M70, R4-M73; the owner's route taint): a Loan some clean holder of the check set holds is the Language problem;
                 // one only tainted holders hold is the located Unsupported_Kd. Without a taint mode every holder is clean.
-                var (clean, taint) = Tainting ? Taints(F, entries, RouteTaint) : (null, null);
+                // Round 17: in a held body every Loan problem is the located Unsupported_Kd at its access; one the default taint already makes
+                // Unsupported_Kd keeps the omitting call (one record per problem).
+                var (clean, taint) = Defaults ? Taints(F, entries, RouteTaint) : (null, null);
                 foreach (var g in hits.GroupBy(x => x.L))
-                    if (clean == null || g.Any(x => clean.Contains(x.H))) Err(g.Key, i, $"{a.Kind} {a.Place}");
-                    else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), $"{a.Kind} {a.Place}");
+                    if (clean == null || g.Any(x => clean.Contains(x.H))) { if (held) Unsupp(g.Key, i, $"{a.Kind} {a.Place}", i); else Err(g.Key, i, $"{a.Kind} {a.Place}"); }
+                    else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), $"{a.Kind} {a.Place}", i);
             }
         }
     }
@@ -1364,7 +1455,7 @@ class Analysis
     bool PendingHolder(string h, int i) => issue.Values.Any(r => r.Reserve && r.Into == h && InWindow(h, r.Id, i));
 
     void Err(string l, int i, string what) { if (!Errors.Contains((l, i, what))) Errors.Add((l, i, what)); }
-    void Unsupp(string l, int i, string what) { if (!Unsupported.Contains((l, i, what))) Unsupported.Add((l, i, what)); }
+    void Unsupp(string l, int i, string what, int access) { if (!Unsupported.Contains((l, i, what))) Unsupported.Add((l, i, what)); if (!Reclassified.Contains((l, access, what))) Reclassified.Add((l, access, what)); }
 
     // Round 16: the holders of a check set the check reads clean, and each tainted one's taint (R4-M70, R4-M73). The set rule (the unit
     // as reviewed): a holder whose own set carries no taint marker. The route rule (the owner's): a root of the check set without one, or a
@@ -5422,5 +5513,391 @@ static class R16
         c.ByArgument.UnionWith(["it", "xs"]);
         c.UnsuppAt = ["StorageDead xs"];
         return c.Error(append);
+    }
+}
+
+// ---- Review of round 16 (its independent review's cases, rv-r16/work/rx, copied unchanged for round 17): the reviewer's counterexamples
+// (R4-M76: a conflict that depends on a store past a ByArgument holder is a located Unsupported_Kd; its clean twin a Language problem; its
+// no-store twin, the per-part guard's program, valid). UnsuppAt is round 16's decided outcome (route taint), which round 17 supersedes.
+static class R16X
+{
+    const bool Uniq = true, Ref = false;
+    public static IEnumerable<Case> All() => [
+        Chain("rx-chain", clean: false), Chain("rx-chainClean", clean: true),
+        Loop("rx-loop", clean: false), Loop("rx-loopClean", clean: true),
+        JoinCfg("rx-joinCfg"), JoinClosure("rx-joinClosure"),
+        ERoute("rx-E", clean: false), ERoute("rx-EClean", clean: true),
+        GuardRoute("rx-guardRoute", clean: false, loop: false), GuardRoute("rx-guardRouteClean", clean: true, loop: false),
+        GuardRoute("rx-guardLoop", clean: false, loop: true),
+        WriteThrough("rx-write", store: true, clean: false), WriteThrough("rx-writeNoStore", store: false, clean: false),
+        StoreThrough("rx-storeThrough", store: true), StoreThrough("rx-storeThroughNoStore", store: false),
+        ReadThrough("rx-read", store: true), ReadThrough("rx-readNoStore", store: false),
+        DChain("rx-dChain", clean: false), DChain("rx-dChainClean", clean: true),
+        DLoop("rx-dLoop"), DGuardRoute("rx-dGuardRoute", loop: true),
+        DWrite("rx-dWriteOnly"),
+        Mixed("rx-mixed"),
+        Seed("rx-seed", perPart: false), Seed("rx-seedPerPart", perPart: true),
+        WriteLv("rx-writeLv", perPart: false), WriteLv("rx-writeLvPerPart", perPart: true),
+        EJoin("rx-eJoin", perPart: false), EJoin("rx-eJoinPerPart", perPart: true), WritePerPart("rx-writePerPart")];
+
+    static void Prefix(Case c, bool uniqW = false, bool lh = true)
+    {
+        c.N("var x = 1").Def("#x"); c.N("var y = 2").Def("#y");
+        c.N("var z = x@ref").Def("z").Borrow("Lx", "#x", Ref, "z");
+        c.N(uniqW ? "var w = z@uniq" : "var w = z@ref").Def("w").Borrow("Lz", "z", uniqW, "w");
+        if (lh) Lh(c);
+    }
+
+    static void Lh(Case c)
+    {
+        c.N("$1 = &uniq two-phase w").Def("$1").Borrow("Lw", "w", Uniq, "$1", reserve: true);
+        c.N("var lh = Loan.init(move $1)").Def("lh").Input(K.Move, "$1").Activate("Lw").Flow("$1", "lh").Flow("$1.*", "lh");
+    }
+
+    static Node StoreL(Case c, string src, bool store = true)
+    {
+        c.N("$p = &uniq two-phase lh").Def("$p").Borrow("Lp", "lh", Uniq, "$p", reserve: true);
+        var call = c.N($"storeL(move $p, move {src})").Input(K.Move, "$p").Input(K.Move, src).Activate("Lp");
+        if (store) call.Store("$p", "$p", true, 1).Store("$p", src, false, 1);
+        return call;
+    }
+
+    // Two closure steps past the tainted set: w holds Lb and Lc2 (the stored value and its content), c2 names c3, whose own set holds Ly.
+    static Case Chain(string id, bool clean)
+    {
+        var c = new Case(id, "closureRoute with b = c2@ref, c2 = c3@ref, c3 = y@ref: `storeL(lh@uniq, b@ref); y = 5; inspect(w)`" + (clean ? "; inspect(c3)" : ""));
+        Prefix(c);
+        c.N("var c3 = y@ref").Def("c3").Borrow("Ly", "#y", Ref, "c3");
+        c.N("var c2 = c3@ref").Def("c2").Borrow("Lc3", "c3", Ref, "c2");
+        c.N("var b = c2@ref").Def("b").Borrow("Lc2", "c2", Ref, "b");
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        StoreL(c, "$v");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(w)").Input(K.Read, "w");
+        if (clean) c.N("inspect(c3)").Input(K.Read, "c3");
+        c.SharedOnly.UnionWith(["z", "w", "b", "c2", "c3"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = clean ? ["inspect(w)"] : ["y = 5", "inspect(w)"];
+        return clean ? c.Error("y = 5") : c.Valid();
+    }
+
+    // The store inside a loop; the conflict at the head of the next iteration, reached across the back edge (lh and b fresh each turn).
+    static Case Loop(string id, bool clean)
+    {
+        var c = new Case(id, "`loop { y = 5; var b = y@ref; var lh = Loan.init(w@uniq); storeL(lh@uniq, b@ref); inspect(w) }`" + (clean ? " with keep = b@ref used after the head" : ""));
+        Prefix(c, lh: false);
+        const string head = "loop head: y = 5";
+        c.N(head).Assign("#y");
+        if (clean) c.N("inspect(keep)").Input(K.Read, "keep");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        if (clean) c.N("var keep = b@ref").Def("keep").Borrow("Lk", "b", Ref, "keep");
+        Lh(c);
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        StoreL(c, "$v");
+        c.N("inspect(w)").Input(K.Read, "w").Goto(head, "end");
+        c.N("end");
+        c.SharedOnly.UnionWith(["z", "w", "b", "keep"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = clean ? ["inspect(w)"] : [head, "inspect(w)"];
+        return clean ? c.Error(head) : c.Valid();
+    }
+
+    // A CFG join of a tainted and a clean value in w (T2: w's set carries the taint, so the clean branch's genuine error is Unsupported_Kd).
+    static Case JoinCfg(string id)
+    {
+        var c = new Case(id, "`if c { storeL(lh@uniq, b@ref) } else { w = b@ref }; y = 5; inspect(w)` (T2 join: accepted cost)");
+        Prefix(c);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("if c").Goto("$p = &uniq two-phase lh", "w = b@ref");
+        StoreL(c, "$v0");
+        c.Nodes[^2].Def("$v0").Borrow("Lb", "b", Ref, "$v0"); // $v0 = b@ref formed with $p (one node)
+        c.Nodes[^1].Goto("y = 5");
+        c.N("w = b@ref").Assign("w").Borrow("Lb2", "b", Ref, "w");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(w)").Input(K.Read, "w");
+        c.SharedOnly.UnionWith(["z", "w", "b"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = ["y = 5", "inspect(w)"];
+        return c.Valid();
+    }
+
+    // A closure-level join: a clean live holder also names b, so b is read clean and `y = 5` stays the Language problem.
+    static Case JoinClosure(string id)
+    {
+        var c = new Case(id, "closureRoute with `var keep = b@ref` used after `y = 5`");
+        Prefix(c);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("var keep = b@ref").Def("keep").Borrow("Lk", "b", Ref, "keep");
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        StoreL(c, "$v");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(w)").Input(K.Read, "w");
+        c.N("inspect(keep)").Input(K.Read, "keep");
+        c.SharedOnly.UnionWith(["z", "w", "b", "keep"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = ["inspect(w)"];
+        return c.Error("y = 5");
+    }
+
+    // Through E: lh is a parameter (its set holds Φ_E), so the store past lh reaches E, which is tainted and names b.
+    static Case ERoute(string id, bool clean)
+    {
+        var c = new Case(id, "`func f(lh: uniq/Loan<uniq/(ref/(ref/i32))>) { var b = y@ref; storeL(lh@uniq, b@ref); y = 5 }`" + (clean ? "; inspect(b)" : ""));
+        c.N("entry (lh: uniq/Loan<…>)").Param("Lpa", "lh");
+        c.N("var y = 2").Def("#y");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        StoreL(c, "$v");
+        c.N("y = 5").Assign("#y");
+        if (clean) c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["b"]); c.ByArgument.Add("lh");
+        if (clean) return c.Error("y = 5");
+        c.UnsuppAt = ["y = 5"];
+        return c.Valid();
+    }
+
+    // γ_d two closure steps past the tainted saved: storeD stores qq@ref (its content Lq), q = copy d holds γ_d.
+    static Case GuardRoute(string id, bool clean, bool loop)
+    {
+        var c = new Case(id, "`match packet .Data(let d) if { let q = d; let qq = q@ref; storeD(lh@uniq, qq@ref) } => ()" + (clean ? "; inspect(q)" : "") + "; inspect(saved)`" + (loop ? " in a loop" : ""));
+        c.N("var other = Data(); var packet: Packet = .Data(Data())").Def("#other", "packet");
+        c.N("var saved = other@ref").Def("saved").Borrow("Lo", "#other", Ref, "saved");
+        const string head = "$1 = &uniq two-phase saved";
+        c.N(head).Def("$1").Borrow("Ls", "saved", Uniq, "$1", reserve: true);
+        c.N("var lh = Loan.init(move $1)").Def("lh").Input(K.Move, "$1").Activate("Ls").Flow("$1", "lh").Flow("$1.*", "lh");
+        c.N("$s = packet@ref (Subject, shared mode)").Def("$s").Borrow("Lsub", "packet", Ref, "$s");
+        c.N("d = $s.data (candidate)").Def("d").Borrow("Ld", "$s.*.data", Ref, "d", sharedAt: 1);
+        c.N("let q = copy d").Def("q").Input(K.Read, "d").Flow("d", "q");
+        c.N("let qq = q@ref").Def("qq").Borrow("Lq", "q", Ref, "qq");
+        c.N("$v = qq@ref").Def("$v").Borrow("Lqq", "qq", Ref, "$v");
+        c.N("$p = &uniq two-phase lh").Def("$p").Borrow("Lp", "lh", Uniq, "$p", reserve: true);
+        c.N("storeD(move $p, move $v)").Input(K.Move, "$p").Input(K.Move, "$v").Activate("Lp").Store("$p", "$p", true, 1).Store("$p", "$v", false, 1);
+        const string end = "guard cleanup: EndBorrow d";
+        c.N(end).EndBorrow("d");
+        if (clean) c.N("inspect(q)").Input(K.Read, "q");
+        var last = c.N("inspect(saved)").Input(K.Read, "saved");
+        if (loop) { last.Goto(head, "after"); c.N("after"); }
+        c.SharedOnly.UnionWith(["saved", "d", "q", "qq"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = clean ? ["inspect(saved)"] : loop ? [end, "inspect(saved)", head] : [end, "inspect(saved)"];
+        return clean ? c.Error(end) : c.Valid();
+    }
+
+    // A write through the tainted w (`w@follow = c@ref`): its targets are refs(σ(w)), so b, which w names only through the stored Lbu,
+    // receives Lc in a clean set; `c = 5` with b used later. Without the store (the per-part guard's program) the write reaches only z.
+    static Case WriteThrough(string id, bool store, bool clean)
+    {
+        var c = new Case(id, "`var w = z@uniq; var lh = Loan<uniq/(uniq/(ref/i32))>.init(w@uniq); var b = y@ref; storeU(lh@uniq, b@uniq); w@follow = c@ref; c = 5; inspect(b)`" + (store ? "" : " (no store row past lh)"));
+        Prefix(c, uniqW: true);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$v = b@uniq").Def("$v").Borrow("Lbu", "b", Uniq, "$v");
+        StoreL(c, "$v", store);
+        c.N("var c = 3").Def("#c");
+        c.N("$c = c@ref").Def("$c").Borrow("Lc", "#c", Ref, "$c");
+        c.N("w@follow = move $c").Input(K.Move, "$c").Through("w.*", "$c");
+        c.N("c = 5").Assign("#c");
+        c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["z", "b"]); c.ByArgument.Add("lh");
+        if (!store) return c.Valid();
+        c.UnsuppAt = ["w@follow = move $c", "c = 5"];
+        return c.Valid();
+    }
+
+    // A second call's store row through the tainted w: rule G's W steps from w (Through) along the stored Lbu into b, clean.
+    static Case StoreThrough(string id, bool store)
+    {
+        var c = new Case(id, "`… storeU(lh@uniq, b@uniq); put(w@uniq, c@ref); c = 5; inspect(b)` (put stores p@follow@follow = v)" + (store ? "" : " (no store row past lh)"));
+        Prefix(c, uniqW: true);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$v = b@uniq").Def("$v").Borrow("Lbu", "b", Uniq, "$v");
+        StoreL(c, "$v", store);
+        c.N("var c = 3").Def("#c");
+        c.N("$s = &uniq two-phase w").Def("$s").Borrow("Ls2", "w", Uniq, "$s", reserve: true);
+        c.N("$c = c@ref").Def("$c").Borrow("Lc", "#c", Ref, "$c");
+        c.N("put(move $s, move $c)").Input(K.Move, "$s").Input(K.Move, "$c").Activate("Ls2").Store("$s", "$c", false, 2);
+        c.N("c = 5").Assign("#c");
+        c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["z", "b"]); c.ByArgument.Add("lh");
+        if (!store) return c.Valid();
+        c.UnsuppAt = ["put(move $s, move $c)", "c = 5"];
+        return c.Valid();
+    }
+
+    // A read through the tainted w: `let v = w@follow` reads content(σ(w)).
+    static Case ReadThrough(string id, bool store)
+    {
+        var c = new Case(id, "closureRoute, then `let v = w@follow; y = 5; inspect(v)`" + (store ? "" : " (no store row past lh)"));
+        Prefix(c);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        StoreL(c, "$v", store);
+        c.N("let v = w@follow").Def("v").Input(K.Read, "w.*").Flow("w.*", "v");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(v)").Input(K.Read, "v");
+        c.SharedOnly.UnionWith(["z", "w", "b", "v"]); c.ByArgument.Add("lh");
+        if (!store) return c.Valid();
+        c.UnsuppAt = ["let v = w@follow", "y = 5"];
+        return c.Valid();
+    }
+
+    // The default taint's analogs (the compiler's join form: r keeps x's and the default's values).
+    static Case DChain(string id, bool clean)
+    {
+        var c = new Case(id, "`var c3 = y@ref; var c2 = c3@ref; var b = c2@ref; let r = viaD(b@ref); y = 5; inspect(r)`" + (clean ? "; inspect(c3)" : ""));
+        c.N("var y = 2").Def("#y");
+        c.N("var c3 = y@ref").Def("c3").Borrow("Ly", "#y", Ref, "c3");
+        c.N("var c2 = c3@ref").Def("c2").Borrow("Lc3", "c3", Ref, "c2");
+        c.N("var b = c2@ref").Def("b").Borrow("Lc2", "c2", Ref, "b");
+        c.N("$x = b@ref").Def("$x").Borrow("Lb", "b", Ref, "$x");
+        const string omit = "viaD omits y: its default copies x into $d";
+        c.N(omit).Def("$d").Flow("$x", "$d").DefaultTaint("$d");
+        c.N("let r = viaD(move $x, move $d)").Def("r").Input(K.Move, "$x").Input(K.Move, "$d").Flow("$d", "r").Flow("$d.*", "r").Flow("$x", "r").Flow("$x.*", "r");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(r)").Input(K.Read, "r");
+        if (clean) c.N("inspect(c3)").Input(K.Read, "c3");
+        c.SharedOnly.UnionWith(["b", "r", "c2", "c3"]);
+        if (clean) return c.Error("y = 5");
+        c.UnsuppAt = [omit];
+        return c.Valid();
+    }
+
+    static Case DLoop(string id)
+    {
+        var c = new Case(id, "`loop { y = 5; var b = y@ref; r = viaD(b@ref); inspect(r) }`");
+        c.N("var y = 2").Def("#y");
+        const string head = "loop head: y = 5";
+        c.N(head).Assign("#y");
+        c.N("inspect(r) (the previous turn's)").Input(K.Read, "r");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$x = b@ref").Def("$x").Borrow("Lb", "b", Ref, "$x");
+        const string omit = "viaD omits y: its default copies x into $d";
+        c.N(omit).Def("$d").Flow("$x", "$d").DefaultTaint("$d");
+        c.N("r = viaD(move $x, move $d)").Def("r").Input(K.Move, "$x").Input(K.Move, "$d").Flow("$d", "r").Flow("$d.*", "r").Flow("$x", "r").Flow("$x.*", "r");
+        c.N("inspect(r)").Input(K.Read, "r").Goto(head, "end");
+        c.N("end");
+        c.SharedOnly.UnionWith(["b", "r"]);
+        c.UnsuppAt = [omit];
+        return c.Valid();
+    }
+
+    // guardDefault with γ_d two steps past saved, in a loop.
+    static Case DGuardRoute(string id, bool loop)
+    {
+        var c = new Case(id, "`match packet .Data(let d) if { let q = d; let qq = q@ref; saveDef(saved@uniq, qq@ref) } => (); inspect(saved)`" + (loop ? " in a loop" : ""));
+        c.N("var other = Data(); var packet: Packet = .Data(Data())").Def("#other", "packet");
+        c.N("var saved = other@ref").Def("saved").Borrow("Lo", "#other", Ref, "saved");
+        const string head = "$s = packet@ref (Subject, shared mode)";
+        c.N(head).Def("$s").Borrow("Lsub", "packet", Ref, "$s");
+        c.N("d = $s.data (candidate)").Def("d").Borrow("Ld", "$s.*.data", Ref, "d", sharedAt: 1);
+        c.N("let q = copy d").Def("q").Input(K.Read, "d").Flow("d", "q");
+        c.N("let qq = q@ref").Def("qq").Borrow("Lq", "q", Ref, "qq");
+        c.N("$x = qq@ref").Def("$x").Borrow("Lqq", "qq", Ref, "$x");
+        c.N("$a = &uniq two-phase saved").Def("$a").Borrow("La", "saved", Uniq, "$a", reserve: true);
+        const string omit = "saveDef omits v: its default copies x into $v";
+        c.N(omit).Def("$v").Flow("$x", "$v").DefaultTaint("$v");
+        c.N("saveDef(move $a, move $x, move $v)").Input(K.Move, "$a").Input(K.Move, "$x").Input(K.Move, "$v").Activate("La").Through("$a.*", "$v").Through("$a.*", "$x");
+        const string end = "guard cleanup: EndBorrow d";
+        c.N(end).EndBorrow("d");
+        var last = c.N("inspect(saved)").Input(K.Read, "saved");
+        if (loop) { last.Goto(head, "after"); c.N("after"); }
+        c.SharedOnly.UnionWith(["saved", "d", "q", "qq"]);
+        c.UnsuppAt = [omit];
+        return c.Valid();
+    }
+
+    // The default's "only" form (not expressible in the compiler): r keeps only the default's value; a write through r reaches b.
+    static Case DWrite(string id)
+    {
+        var c = new Case(id, "`var b = y@ref; let r = viaU(b@uniq) (r keeps only the default's value); r@follow = c@ref; c = 5; inspect(b)`");
+        c.N("var y = 2").Def("#y");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$x = b@uniq").Def("$x").Borrow("Lbu", "b", Uniq, "$x");
+        const string omit = "viaU omits y: its default moves x into $d";
+        c.N(omit).Def("$d").Flow("$x", "$d").DefaultTaint("$d");
+        c.N("let r = viaU(move $d)").Def("r").Input(K.Move, "$d").Flow("$d", "r").Flow("$d.*", "r");
+        c.N("var c = 3").Def("#c");
+        c.N("$c = c@ref").Def("$c").Borrow("Lc", "#c", Ref, "$c");
+        c.N("r@follow = move $c").Input(K.Move, "$c").Through("r.*", "$c");
+        c.N("c = 5").Assign("#c");
+        c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["b"]);
+        c.UnsuppAt = [omit];
+        return c.Valid();
+    }
+
+    // Two kinds on one route: w (P13's τ13 only) names rr, which names r (its own set carries the default's τD), which names b (Ly).
+    static Case Mixed(string id)
+    {
+        var c = new Case(id, "`var b = y@ref; let r = viaD(b@ref); var rr = r@ref; storeL(lh@uniq, rr@ref); y = 5; inspect(w)`");
+        Prefix(c);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$x = b@ref").Def("$x").Borrow("Lb", "b", Ref, "$x");
+        const string omit = "viaD omits y: its default copies x into $d";
+        c.N(omit).Def("$d").Flow("$x", "$d").DefaultTaint("$d");
+        c.N("let r = viaD(move $x, move $d)").Def("r").Input(K.Move, "$x").Input(K.Move, "$d").Flow("$d", "r").Flow("$d.*", "r").Flow("$x", "r").Flow("$x.*", "r");
+        c.N("var rr = r@ref").Def("rr").Borrow("Lr", "r", Ref, "rr");
+        c.N("$v = rr@ref").Def("$v").Borrow("Lrr", "rr", Ref, "$v");
+        StoreL(c, "$v");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(w)").Input(K.Read, "w");
+        c.SharedOnly.UnionWith(["z", "w", "b", "r", "rr"]); c.ByArgument.Add("lh");
+        c.UnsuppAt = [omit, "inspect(w)"];
+        return c.Valid();
+    }
+    // E5's seed (the compiler's seed.kimi): storeU's l → v row (E14, layer 1) puts lh's Lw into b; the P13 row makes w name b (Lbu, tainted);
+    // `let r = w@follow@follow@ref` borrows through w, so b is a seed holder of the stored r, read clean, and the borrow meets Lw there.
+    // perPart: the per-part guard's program (W stops at lh), every row kept.
+    static Case Seed(string id, bool perPart)
+    {
+        var c = new Case(id, "`var w = z@uniq; var lh = Loan.init(w@uniq); var b = y@ref; storeU(lh@uniq, b@uniq); let r = w@follow@follow@ref; inspect(r)`" + (perPart ? " (per-part guard)" : ""));
+        Prefix(c, uniqW: true);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$v = b@uniq").Def("$v").Borrow("Lbu", "b", Uniq, "$v");
+        StoreL(c, "$v").Store("$v", "$p", true, 1).Store("$v", "$v", true, 1);
+        c.N("let r = w@follow@follow@ref").Def("r").Borrow("Lr", "w.*.*", Ref, "r", sharedAt: 2);
+        c.N("inspect(r)").Input(K.Read, "r");
+        c.SharedOnly.UnionWith(["z", "b", "r"]);
+        if (perPart) { c.SharedOnly.Add("lh"); return c.Valid(); }
+        c.ByArgument.Add("lh");
+        c.UnsuppAt = ["let r = w@follow@follow@ref"];
+        return c.Valid();
+    }
+
+    // The compiler's writeRoute (write.kimi) with storeU's l → v and v → v rows; perPart: the per-part guard's program.
+    static Case WriteLv(string id, bool perPart)
+    {
+        var c = new Case(id, "`… storeU(lh@uniq, b@uniq); w@follow = c@ref; c = 5; inspect(b)` with storeU's rows into v" + (perPart ? " (per-part guard)" : ""));
+        Prefix(c, uniqW: true);
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$v = b@uniq").Def("$v").Borrow("Lbu", "b", Uniq, "$v");
+        StoreL(c, "$v").Store("$v", "$p", true, 1).Store("$v", "$v", true, 1);
+        c.N("var c = 3").Def("#c");
+        c.N("$c = c@ref").Def("$c").Borrow("Lc", "#c", Ref, "$c");
+        c.N("w@follow = move $c").Input(K.Move, "$c").Through("w.*", "$c");
+        c.N("c = 5").Assign("#c");
+        c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["z", "b"]);
+        if (perPart) { c.SharedOnly.Add("lh"); return c.Valid(); }
+        c.ByArgument.Add("lh");
+        c.UnsuppAt = ["c = 5"];
+        return c.Valid();
+    }
+    // E's T2 join through the route: b's reference escaped into raw storage (E, clean); an unrelated store past lh (a parameter) taints E.
+    static Case EJoin(string id, bool perPart)
+    {
+        var c = new Case(id, "`func f(lh: uniq/Loan<…>, p: raw) { var b = y@ref; Raw.initialize(p, b@ref); storeL(lh@uniq, u@ref); y = 5 }`" + (perPart ? " (per-part guard)" : ""));
+        c.N("entry (lh: uniq/Loan<…>, p)").Param("Lpa", "lh");
+        c.N("var y = 2; var u = 3").Def("#y", "#u");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$r = b@ref").Def("$r").Borrow("Lb", "b", Ref, "$r");
+        c.N("Raw.initialize(p, move $r)").Input(K.Move, "$r").RawStore("%p", "$r");
+        c.N("$v = u@ref").Def("$v").Borrow("Lu", "#u", Ref, "$v");
+        StoreL(c, "$v");
+        c.N("y = 5").Assign("#y");
+        c.SharedOnly.UnionWith(["b"]);
+        if (perPart) c.SharedOnly.Add("lh"); else c.ByArgument.Add("lh");
+        return c.Error("y = 5");
+    }
+    // rx-write's per-part twin: every row kept, W stops at lh (the per-part guard takes no step past Loan<T>).
+    static Case WritePerPart(string id)
+    {
+        var c = WriteThrough(id, store: true, clean: false);
+        c.ByArgument.Clear(); c.SharedOnly.Add("lh"); c.UnsuppAt = [];
+        return c.Valid();
     }
 }
