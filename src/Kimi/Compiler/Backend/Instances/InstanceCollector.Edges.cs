@@ -1,10 +1,21 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Owns a site's edge row in an item's instance (R5 package K 4.5 rows 1-3, 5-7 and 9-13, K 4.7, K 4.8): for a call, a Drop or a
+// statement of the item's body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a
+// Value callee's body, an intrinsic's target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's)
+// and its target under the item's representative.
+// Input: a site of a body from its template (InstanceCollector.Templates.cs) and the item; TyCtxt (Compose, Implementation, Witness,
+// OwnRequirement); the intrinsic rows.
+// Output: the admitted target item, or -1 for a site without one or a refused edge; on the way the site's by-value uses take their
+// layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
+// Invariants: at most one target per site; a substitution TyCtxt cannot compose is the storage-nesting gap at the site.
+// Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
+// (InstanceCollector.Witnesses.cs) itself.
+
 using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The edge rows (K package 4.5) of a site of an item's body and the targets of a type-driven item.
 internal sealed partial class InstanceCollector
 {
     // What a Value callee calls: its operand's Type below a reference, a Closure being called through a borrow in its call's mode (SPEC
@@ -106,59 +117,5 @@ internal sealed partial class InstanceCollector
 
         return rvalue.Kind != MirRvalueKind.Cast ? this.Callee(program, item, subject, closed)
             : this.AdmitType(item, subject, new(closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter, default), closed);
-    }
-
-    // The body a Closure or function item Type of an item's instance runs: a Closure's under its context, the substitution of the instance
-    // that closed it (TyCtxt.SubstOfClosure, R5-M36); an ordinary item's function under the item's substitution (TyCtxt.SubstOfItem); a
-    // requirement Item's witness there (TyCtxt.Witness(item), DECISIONS R5-M70), as a requirement call's. -1 for a virtual slot's Item (K8),
-    // a Function Type value, whose erasure made its adapter (row 13), or a refused edge.
-    private int Callee(MirProgram program, int item, SourceRef subject, BoundType callable)
-    {
-        if (callable is { Kind: BoundTypeKind.Closure, Symbol: { } closure })
-        {
-            return program[new(closure, MirBodyKind.Closure)] is { } body ? this.Admit(item, subject, body, this.types.SubstOfClosure(callable)) : -1;
-        }
-
-        if (callable is not { Kind: BoundTypeKind.FunctionItem, Symbol: { } symbol })
-        {
-            return -1;
-        }
-
-        if (!this.types.Dispatches(symbol))
-        {
-            return this.Implementation(program, item, subject, symbol, this.types.SubstOfItem(callable));
-        }
-
-        return this.types.Witness(callable) is { } target ? this.Requirement(program, item, subject, symbol, target) : -1;
-    }
-
-    // SPEC 8.13.3: the body of the implementation a function's substitution selects, admitted for a site of an item's body; -1 without one.
-    private int Implementation(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
-        => program.Callee(new(MirCalleeKind.Fn, this.types.Implementation(function, subst, 0))) is { } body ? this.Admit(item, subject, body, subst) : -1;
-
-    // K 4.5 row 2 (DECISIONS R5-M30): a callee without a MIR body whose published row runs a requirement on the Type below a parameter
-    // (Utf8Format's format, for Text.toString, Text.tryFormat and Utf8Writer.write), that requirement's witness on that Type under the
-    // composed substitution; -1 for another (a legacy row's callees and needs, C8*; a foreign function).
-    private int Bodyless(MirProgram program, int item, SourceRef subject, BindingSymbol function, Subst? subst)
-    {
-        if (this.types.Published(function) is not { Runs: { } requirement, On: var on })
-        {
-            return -1;
-        }
-
-        _ = TyCtxt.Layer(TyCtxt.Signature(function, subst, on, out _), out var below, out _);
-        return this.Runs(program, item, subject, requirement, below);
-    }
-
-    // A Type of an item's body in the item's instance (TypeOf); null, with the storage-nesting gap at the site, when TyCtxt cannot make it.
-    private BoundType? In(int item, SourceRef subject, BoundType type)
-    {
-        var closed = this.TypeOf(item, type);
-        if (closed is null)
-        {
-            this.Set.Report(Capability.Code(CapabilityGap.StorageNesting), subject);
-        }
-
-        return closed;
     }
 }

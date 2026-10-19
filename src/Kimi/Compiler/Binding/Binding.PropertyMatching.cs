@@ -107,12 +107,14 @@ public sealed partial class Binding
             if (!getter)
             {
                 kind = PropertyWitnessKind.StorageSet;
-                proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var && SignatureEquals(input, field, requirement.Binder, implementation.Binder) && FitsType(input, field) && SameType(result, BoundType.Unit) ? ConstraintProof.Proven : ConstraintProof.Refuted;
+                proof = input is not null && implementation.Property.Declaration.DeclarationKind == PropertyDeclarationKind.Var &&
+                    SignatureEquals(input, field, requirement.Binder, implementation.Binder) && IsSubtype(input, field) && SameType(result, BoundType.Unit) ?
+                    ConstraintProof.Proven : ConstraintProof.Refuted;
             }
             else if (SignatureEquals(field, result, implementation.Binder, requirement.Binder))
             {
                 kind = PropertyWitnessKind.StorageCopy;
-                proof = FitsType(field, result) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
+                proof = IsSubtype(field, result) ? this.ProveCopy(field, scope) : ConstraintProof.Refuted;
             }
             else if (result is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref, Origin: { } resultOrigin } && SameType(result.Components[0], field) && receiver.Origin is { } receiverOrigin && OriginOutlives(receiverOrigin, resultOrigin))
             {

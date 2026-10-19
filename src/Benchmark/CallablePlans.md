@@ -6,7 +6,7 @@ After a whole-solution Release build, run in isolation:
 dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --callable-plans > artifacts/benchmarks/callable-plans.json
 ```
 
-Use a fresh filename for each report. Four inputs cover fixed Callable reference selection, parameter-subtype ranking,
+Use a fresh filename for each report. Four inputs cover fixed Callable reference selection, non-generic-over-generic ranking (SPEC 10.4 step 3),
 ranking with substituted per-call Origins, and nested inference with universal-Origin Item erasure. They are the exact inputs
 of the strict allocation regressions in `ContextualFunctionReferenceTest`, `FunctionReferenceRankingTest` and
 `ApplicabilityChainRegressionTest`, shared through `VerificationWorkloads`.
