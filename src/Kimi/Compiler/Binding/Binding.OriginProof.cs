@@ -391,6 +391,10 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
+    // their owner's part: a local's (a VariableKoto that is not a PropertyKoto, always a Local symbol) by the local part,
+    // JudgeLocalClause, which A5 judges from rows after R6, and any other owner's, a Field's, Case's or alias's, by the declaration
+    // part, JudgeDeclaredRelation, which stays Binding's (OJ1).
     private void ValidateOriginRelations()
     {
         foreach (var declaration in this.originDeclarations.Values)
@@ -405,18 +409,23 @@ public sealed partial class Binding
                 if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
                     (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
                 {
-                    this.JudgeDeclaredRelation(declaration, relation);
+                    if (declaration.Owner is VariableKoto and not PropertyKoto)
+                    {
+                        this.JudgeLocalClause(declaration, relation);
+                    }
+                    else
+                    {
+                        this.JudgeDeclaredRelation(relation);
+                    }
                 }
             }
         }
     }
 
-    // SPEC 15.3.3, 15.6.1, 15.6.5: a local's, Field's, Case's or alias's clause is checked against established evidence and assumes no
-    // new facts. A Refuted or Unknown relation is an Origin relation record with the source `declared` and the clause related; it is
-    // located at the initializer when the initializer supplies one of its ends, an Origin the local's Type omits, as the value that
-    // does not fit, and otherwise at the clause. A chain the judge leaves to region inference is an obligation, which ownership
-    // reports as a located limit.
-    private void JudgeDeclaredRelation(OriginDeclaration declaration, OriginRelation relation)
+    // SPEC 15.3.3, 15.6.1, 15.6.5: a declared clause is checked against established evidence and assumes no new facts. A chain the judge
+    // leaves to region inference is an obligation, which ownership reports as a located limit; a Refuted or Unknown relation is the
+    // Origin relation record returned, with the source `declared` and the clause related, located at the clause.
+    private OriginRelationFact? FailedDeclaredRelation(OriginRelation relation)
     {
         var use = relation.Syntax;
         var obligation = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, relation.Longer, relation.Shorter, Equality: relation.Equality);
@@ -425,39 +434,63 @@ public sealed partial class Binding
         if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter) || !FixedOrigin(resolvedShorter))
         {
             this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
-            return;
+            return null;
         }
 
         var judgment = this.JudgeOriginObligation(obligation, out var reversed);
         if (judgment == OriginJudgment.Proven)
         {
-            return;
+            return null;
         }
 
         if (judgment == OriginJudgment.Unrepresentable)
         {
             this.AddObligation(obligation);
+            return null;
+        }
+
+        var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
+        var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
+        return new OriginRelationFact(use, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter), use);
+    }
+
+    // The declaration part (OJ1): a Field's, Case's or alias's clause is recorded at the clause.
+    private void JudgeDeclaredRelation(OriginRelation relation)
+    {
+        if (this.FailedDeclaredRelation(relation) is { } failed)
+        {
+            this.FailExplained(ref this.originRelations, relation.Syntax, BindingFailure.OriginRelation, failed);
+        }
+    }
+
+    // The local part (SPEC 15.3.6): a local's clause is judged as declared, then by its omitted Origins: a failed bound of one solved to
+    // its lower candidate is no principal candidate, and a relation is located at the initializer when the initializer supplies one of
+    // its ends, an Origin the local's Type omits, as the value that does not fit.
+    private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
+    {
+        if (this.FailedDeclaredRelation(relation) is not { } failed)
+        {
             return;
         }
 
         // The solved lower candidate still fails a bound: no principal candidate is proven. The local needs an
         // annotation, not a feature-limit diagnostic; all clauses depending on the same unsolved local share this cause.
+        var use = relation.Syntax;
         if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
         {
-            this.FailExplained(ref this.principalOriginFailures, declaration.Owner, BindingFailure.MissingOrigin, (resolvedLonger, resolvedShorter, use));
+            var ends = (this.OriginAtUse(relation.Longer, use), this.OriginAtUse(relation.Shorter, use), use);
+            this.FailExplained(ref this.principalOriginFailures, local.Owner, BindingFailure.MissingOrigin, ends);
             return;
         }
 
-        var longer = this.OriginAtUse(reversed ? relation.Shorter : relation.Longer, use);
-        var shorter = this.OriginAtUse(reversed ? relation.Longer : relation.Shorter, use);
         var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
-        var at = supplied && declaration.Owner is VariableKoto { InitializerKoto: { } initializer } ? initializer : use;
-        this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, new OriginRelationFact(at, longer, shorter, relation.Equality, null, RefutesOriginRelation(longer, shorter), use));
+        var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
+        this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);
 
         // The variance of an Origin the local's Type omits and its initializer supplies, or null for any other end.
         OriginVariance? InferredEnd(BoundOrigin end)
         {
-            if (declaration.Inferred is not { } slots)
+            if (local.Inferred is not { } slots)
             {
                 return null;
             }
