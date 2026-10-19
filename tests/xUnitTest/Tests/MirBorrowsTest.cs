@@ -1550,6 +1550,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // copy's store (p15, whose copy keeps the slot of x borrowed in y's). A conflict whose Loan only sets with a taint hold is one located
     // Unsupported_Kd per omitting call, never a Language problem; a Loan a holder without a taint also keeps stays one (`both`), as does an
     // explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean value: unsupported too.
+    // A copy's store into its slot that acquires again by case, a PairAcquire (R5's F18 probe shapes), lies in the copy and taints: from a
+    // concrete caller (`copied`), a generic one (`copiedGeneric`) and a uniq argument's reborrow (`reborrowed`, whose template the old
+    // analysis rejects with DefaultArgumentBorrow_Kd in its uniq case), as does a template call's result into the slot (`called`). A clean
+    // route stays the Language problem, witnessed by its clean holder (`copiedClean`).
     [Fact]
     public void ADefaultsTaintMakesItsConflictsUnsupported()
     {
@@ -1586,13 +1590,66 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 let r = first(k@ref)
                 k = 2
                 inspect(r)
+            func pick<s/T>(a: s/T, b: s/T = a) -> s/T
+                s is owner or ref
+                T is Copy
+                return b
+            func grab<s/T>(a: s/T, b: s/T = a) -> i32
+                s is ref or uniq
+                return 0
+            func id<s/T>(x: s/T) -> s/T
+                s is owner or ref
+                T is Copy
+                return x
+            func via<s/T>(a: s/T, b: s/T = id(a)) -> s/T
+                s is owner or ref
+                T is Copy
+                return b
+            func copied()
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(y)
+            func copiedClean()
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(r)
+                inspect(y)
+            func copiedGeneric<s/T>(z: s/T)
+                s is owner or ref
+                T is Copy
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(y)
+            func reborrowed(u: uniq/i32) -> i32 => grab(u)
+            func called()
+                var k = 1
+                let r = k@ref
+                let y = via(r)
+                k = 2
+                inspect(y)
             """);
+        var program = Analyze(c);
         Assert.Equal(
             [
                 "f: f(n - 1, x) Unsupported_Kd", "g: g(n - 1) Unsupported_Kd", "p06: f(3, k@ref) Unsupported_Kd", "p06: g(3) Unsupported_Kd",
                 "p15: fc(n@uniq) Unsupported_Kd", "both: k = 2", "joined: same(k@ref) Unsupported_Kd", "given: k = 2",
+                "copied: pick(r) Unsupported_Kd", "copiedClean: k = 2", "copiedGeneric: pick(r) Unsupported_Kd",
+                "reborrowed: grab(u) Unsupported_Kd", "called: via(r) Unsupported_Kd",
             ],
-            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+            Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        var clean = Array.FindIndex(program.Problems.All.ToArray(), x => program.Bodies[x.Body].Key.Decl?.Name == "copiedClean");
+        Assert.Contains(program.Problems.Facts(clean).ToArray(), x => x.Kind == MirFactKind.Use && Line(c, x.Site) == "inspect(r)");
+
+        // The old analysis rejects fc's and grab's defaults (DefaultArgumentBorrow_Kd), which the MIR leaves to A5-F9.
+        c.Analyze();
+        var borrows = c.Problems.Where(static x => x.Code == DiagnosticCode.DefaultArgumentBorrow_Kd);
+        Assert.Equal(["x", "a"], borrows.Select(x => Line(c, x.Subject)));
     }
 
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
