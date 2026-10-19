@@ -126,7 +126,7 @@ public class AggregateResultEmissionTest
         Assert.False(c.Ownership.Bodies[0].IsReachable(result.Join));
         Assert.DoesNotContain(module.GetFunction(0).Instructions, x => x.Opcode == EmissionOpcode.DestroyAggregate);
         var ir = ScalarEmissionTest.EmitFixture("AggregateSelectionDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Theory]

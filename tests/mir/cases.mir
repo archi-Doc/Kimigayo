@@ -21,7 +21,7 @@ fn keep @4
   _6: () temp @29 s1
   _7: T temp @30 s1
   _8: T temp @35 s1
-  _9: T temp @4 s1
+  _9: T temp @4
   s1: lexical in s0 @18
   b0: T Value, Uniq
   bb0:
@@ -103,7 +103,7 @@ fn both @38
   _9: t/U temp @79 s1
   _10: U temp @85 s1
   _11: ref/closure () -> U temp @86 s1
-  _12: U temp @38 s1
+  _12: U temp @38
   s1: lexical in s0 @63
   b0: T Value, Uniq
   b1: U Value, Ref
@@ -203,7 +203,7 @@ fn peek @87
   _1: t/U arg value @87
   _2: U arg seen @87
   _3: U temp @106 s1
-  _4: U temp @87 s1
+  _4: U temp @87
   s1: lexical in s0 @104
   b0: U Value, Uniq
   bb0:
@@ -245,7 +245,7 @@ fn caller @107
   _3: s/T temp (PendingSlot) @124 s1
   _4: T temp seen (PendingSlot) @122 s1
   _5: ref/s/T temp @122 s1
-  _6: T temp @107 s1
+  _6: T temp @107
   s1: lexical in s0 @120
   s2: inlined in s1 @122
   b0: T Value, Uniq

@@ -112,29 +112,29 @@ public sealed partial class Binding
     {
         var requirement = ((FunctionKoto)call.Target.Declaration).Accessor!;
         var witness = resolved.Property;
-        if (this.PropertyWitnessFunction(resolved.Path!, witness) is not { } function || this.StoredType(witness.ImplementationType, self) is not { } declaring)
+        if (this.PropertyWitnessFunction(resolved.Path!, witness) is not { } function)
         {
             return null;
         }
 
         // A standard bridge is a member of the conforming Type itself: its receiver is never projected to a base subobject.
         var storage = witness.Kind != PropertyWitnessKind.AccessorCall;
+        var declaring = resolved.Declaring!;
 
-        var count = witness.Kind == PropertyWitnessKind.AccessorCall ? witness.InputOrigins.Count : call.InputOrigins.Length;
+        var count = storage ? call.InputOrigins.Length : witness.InputOrigins.Count;
         var inputs = this.originScratch.Rent(count);
-        var originCount = witness.Kind == PropertyWitnessKind.AccessorCall ? witness.Origins.Count : call.Origins.Length;
+        var originCount = storage ? call.Origins.Length : witness.Origins.Count;
         var origins = this.originScratch.Rent(originCount);
         try
         {
             for (var i = 0; i < count; i++)
             {
-                inputs[i] = witness.Kind != PropertyWitnessKind.AccessorCall ? call.InputOrigins[i] : witness.InputOrigins[i] is { } origin
-                    ? this.SubstituteStoredOrigin(origin, requirement.Binder, call.Origins, call.InputOrigins) : null!;
+                inputs[i] = storage ? call.InputOrigins[i] : this.WitnessOrigin(witness.InputOrigins[i], requirement.Binder, call.Origins, call.InputOrigins);
             }
 
             for (var i = 0; i < originCount; i++)
             {
-                origins[i] = witness.Kind != PropertyWitnessKind.AccessorCall ? call.Origins[i] : witness.Origins[i] is { } origin ? this.SubstituteStoredOrigin(origin, requirement.Binder, call.Origins, call.InputOrigins) : null!;
+                origins[i] = storage ? call.Origins[i] : this.WitnessOrigin(witness.Origins[i], requirement.Binder, call.Origins, call.InputOrigins);
             }
 
             var result = destination ?? new CallPlan();

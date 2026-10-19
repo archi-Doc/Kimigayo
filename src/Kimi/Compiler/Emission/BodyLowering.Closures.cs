@@ -92,16 +92,16 @@ internal sealed partial class BodyLowering
     private FunctionAbi ValueCallAbi(BoundType signature, BoundType result)
     {
         ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
-        var resultSlot = FunctionAbiPool.HasResultSlot(result, this.aggregateLayouts);
+        var layout = this.aggregateLayouts.Layout;
         foreach (var candidate in this.valueCallAbis)
         {
-            if (FunctionAbiPool.Matches(candidate, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true))
+            if (Abi.Matches(candidate, layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs))
             {
                 return candidate;
             }
         }
 
-        var abi = FunctionAbiPool.Build(string.Empty, result, inputs, resultSlot, this.aggregateLayouts, callerLocation: true);
+        var abi = Abi.Of(layout, Abi.Convention.Internal, Abi.Flags.CallerLocation, result, inputs);
         this.valueCallAbis.Add(abi);
         return abi;
     }
@@ -146,7 +146,7 @@ internal sealed partial class BodyLowering
             source.Symbol?.Declaration is not FunctionKoto { BoundClosure: { Receiver: SemanticsKind.Ref } closure } definition ||
             !ReferenceEquals(body.Resolve(operation.Source.ErasedFunctionType, body.ContextAt(id)), body.Places[operation.Place].Type) ||
             operation.Source.CodeContext.Compilation.Binding.ClosureSignature(source) is not { } signature ||
-            !Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
+            !operation.Source.CodeContext.Compilation.Binding.CallableSignatureFits(signature, body.Places[operation.Place].Type, definition) ||
             this.aggregateLayouts.Get(source) is not { } layout ||
             this.ClosureEntry(source, definition) is not { } entry ||
             (body.IsReachable(id) && !this.Dominates(input, id)))
@@ -387,7 +387,7 @@ internal sealed partial class BodyLowering
 
         var abi = concreteEntry ?? this.ValueCallAbi(signature, returnType);
 
-        // A concrete closure body takes its environment before the result slot (FunctionAbiPool.Get); a common value call
+        // A concrete closure body takes its environment before the result slot (Abi.Of); a common value call
         // receives the environment from the value itself, whose address leads the operands when a reference holds it.
         var borrowed = !itemCall && body.Places[operation.Input].Type.Kind == BoundTypeKind.Semantics;
         if (!itemCall && (concreteEntry is not null || borrowed))

@@ -208,7 +208,7 @@ public class MatchEmissionTest
     public void DivergenceHasNoResultDelivery(string name, string source)
     {
         var ir = ScalarEmissionTest.EmitFixture("MatchDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]

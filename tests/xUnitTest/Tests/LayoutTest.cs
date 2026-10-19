@@ -5,6 +5,7 @@ using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
+using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -17,6 +18,9 @@ namespace XunitTest;
 public class LayoutTest
 {
     private const string CLayoutGeneric = "#Layout(\"C\")\nstruct P<T>\n    var n: i32\n    var value: T\n";
+
+    // Exactly 2^63 - 1 bytes (649657 * 92737 * 153092023), every count within 2^31 - 1.
+    private const string M = "[649657 of [92737 of [153092023 of u8]]]";
 
     [Theory]
     [InlineData("i8", "i8", "i8", 1)]
@@ -68,6 +72,20 @@ public class LayoutTest
         Assert.Equal(("{ i32, { [0 x i8], [0 x i8] } }", 4, 4, 4, "{ i32, { [0 x i8], [0 x i8] } }", "ptr"), Row(value));
         Assert.Equal(new[] { 0, 4 }, value.Layout.FieldOffsets.ToArray());
         Assert.Null(new AggregateLayoutPool(c.Layout).Get(option));
+    }
+
+    [Fact]
+    public void EveryLocalOfTheNeverExampleIsLaidOut()
+    {
+        // SPEC 3.1.3's example through MIR construction: each local of its body, Option<Never> and Result<i32, Never> included, is laid
+        // out (X31).
+        var c = MirBuildTest.Compile("func use(v: i32) => ()\nfunc f(r: Result<i32, Never>)\n    let a: Option<Never> = .None\n    let b = a\n" +
+            "    match r\n        .Ok(let v) => use(v)\n        .Err(_) => ()\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.Contains(body.Locals.ToArray(), static x => x.Type.Kind == BoundTypeKind.Constructed && ReferenceEquals(x.Type.Components[0], BoundType.Never));
+        Assert.All(body.Locals.ToArray(), x => Assert.Equal(Layout.Outcome.Ok, c.Layout.Of(x.Type).Outcome));
     }
 
     [Theory]
@@ -168,11 +186,14 @@ public class LayoutTest
     [InlineData("", "[1073741824 of i32]")]
     [InlineData("", "(bool, [2147483647 of u8])")]
     [InlineData("enum Big\n    A([2147483647 of u8])\n    B\n", "Big")]
+    [InlineData("", M)]
+    [InlineData("", "[2 of [1073741824 of u8]]")]
     public void LimitsNameTheirBound(string declarations, string type)
     {
-        // IMPL 21.3.2: sizes and offsets are bounded by 2^31 - 1, a SizeLimit with neither a record nor an instance (R5-M37).
+        // IMPL 21.3.2: sizes and offsets are bounded by 2^31 - 1, a SizeLimit with neither a record nor an instance (R5-M37); M, exactly
+        // 2^63 - 1 bytes, is a limit, not Oversized (R5-M52).
         var c = CompilationTestHelper.BindSuccess(declarations + "func probe(value: " + type + ") => ()");
-        Assert.Equal(new Layout.Result(Layout.Outcome.SizeLimit, null, null), c.Layout.Of(Parameters(c)[0]));
+        Assert.Equal(new Layout.Result(Layout.Outcome.SizeLimit, null, null, false), c.Layout.Of(Parameters(c)[0]));
     }
 
     [Theory]
@@ -193,7 +214,7 @@ public class LayoutTest
         // SPEC 23.1, IMPL 21.3.2: a limit never hides a C-layout failure; Rejected storage yields to an independent limit or CLayout.
         var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "func probe(value: [1073741824 of i32]) => ()");
         var p = P(c, BoundType.Unit);
-        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p), c.Layout.Of(c.Types.Tuple([Parameters(c)[0], p])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, false), c.Layout.Of(c.Types.Tuple([Parameters(c)[0], p])));
 
         var failed = CompilationTestHelper.Parse(
             CLayoutGeneric + "struct Node\n    let value: i32\n    let next: Node\nfunc probe(value: [2147483648 of u8]) => ()");
@@ -201,8 +222,8 @@ public class LayoutTest
         var node = Declared(failed, "Node");
         p = P(failed, BoundType.Unit);
         Assert.Equal(Layout.Outcome.CountLimit, failed.Layout.Of(failed.Types.Tuple([node, Parameters(failed)[0]])).Outcome);
-        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, node), failed.Layout.Of(failed.Types.Tuple([node, BoundType.I32])));
-        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p), failed.Layout.Of(failed.Types.Tuple([node, p])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, node, false), failed.Layout.Of(failed.Types.Tuple([node, BoundType.I32])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, false), failed.Layout.Of(failed.Types.Tuple([node, p])));
     }
 
     [Theory]
@@ -227,7 +248,7 @@ public class LayoutTest
             _ => Declared(c, probe),
         };
         var expected = instance.Length == 0 ? type : Declared(c, instance);
-        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, expected), c.Layout.Of(type));
+        Assert.Equal(new Layout.Result(Layout.Outcome.Rejected, null, expected, false), c.Layout.Of(type));
     }
 
     [Fact]
@@ -303,11 +324,106 @@ public class LayoutTest
 
                 verdicts[order] = c.Layout.Of(whole);
                 Assert.Equal(Layout.Outcome.DepthLimit, c.Layout.Of(deep).Outcome);
-                Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p), c.Layout.Of(placed));
+                Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, false), c.Layout.Of(placed));
                 Assert.Equal((expected, expected == Layout.Outcome.CLayout ? p : null), (verdicts[order].Outcome, verdicts[order].Instance));
             }
 
             Assert.Equal(verdicts[0].Outcome, verdicts[1].Outcome);
+        }
+    }
+
+    // IMPL 21.1.1, DECISIONS R5-M52: a size, stride or Field offset over 2^63 - 1 is Oversized, measured exactly: one byte over M, an
+    // array product, padding that rounds 2^63 - 1 up (Kimigayo grouping; C written order), a limited part's size, an enum's tag, a
+    // zero-length array of an oversized element; at or below the bound a count or size limit stays.
+    [Theory]
+    [InlineData("", "(" + M + ", u8)", "Oversized")]
+    [InlineData("", "[9223372036854775807 of u8]", "CountLimit")]
+    [InlineData("", "[9223372036854775807 of u16]", "Oversized")]
+    [InlineData("", "[4611686018427387903 of u16]", "CountLimit")]
+    [InlineData("", "(u16, [9223372036854775805 of u8])", "Oversized")]
+    [InlineData("#Layout(\"C\")\nstruct W\n    var a: u8\n    var b: [1152921504606846974 of u64]\n    var c: u8\n", "W", "Oversized")]
+    [InlineData("struct W\n    var a: u8\n    var b: [1152921504606846974 of u64]\n    var c: u8\n", "W", "CountLimit")]
+    [InlineData("", "[4 of [4611686018427387904 of u8]]", "Oversized")]
+    [InlineData("enum Big\n    A(" + M + ")\n    B\n", "Big", "Oversized")]
+    [InlineData("", "[0 of (" + M + ", u8)]", "Oversized")]
+    public void TheLayoutBoundIsTwoToTheSixtyThreeMinusOne(string declarations, string type, string outcome)
+    {
+        var c = CompilationTestHelper.BindSuccess(declarations + "func probe(value: " + type + ") => ()");
+        var result = c.Layout.Of(Parameters(c)[0]);
+        var expected = Enum.Parse<Layout.Outcome>(outcome);
+        Assert.Equal(new Layout.Result(expected, null, null, expected == Layout.Outcome.Oversized), result);
+    }
+
+    // DECISIONS R5-M52: a CLayout outranks Oversized and both hold at once (Result.Oversized), in either part order, while beside a part
+    // that brings the Tuple to 2^63 - 4 bytes it is not oversized; Oversized outranks limits and Rejected parts, a lower bound sufficing; a
+    // C-layout instance storing an exactly zero-sized, count-limited Field is CLayout (KC7), one storing an exactly zero-sized CLayout
+    // instance names that inner instance, and one whose Field's size is not exact (a Rejected part) is a limit.
+    [Fact]
+    public void CLayoutAndOversizedOutrankTheRest()
+    {
+        var c = CompilationTestHelper.BindSuccess(CLayoutGeneric + "#Layout(\"C\")\nstruct Z<T>\n    var value: T\n" +
+            "func probe(over: (" + M + ", u8), wide: [9223372036854775800 of u8], zeros: [2147483648 of ()]) => ()");
+        var (over, wide, zeros) = (Parameters(c)[0], Parameters(c)[1], Parameters(c)[2]);
+        var p = P(c, BoundType.Unit);
+        var inner = c.Types.Intern(BoundTypeKind.Constructed, Declared(c, "Z").Symbol, SemanticsKind.Owner, [BoundType.Unit]);
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, true), c.Layout.Of(c.Types.Tuple([p, over])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, true), c.Layout.Of(c.Types.Tuple([over, p])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, p, false), c.Layout.Of(c.Types.Tuple([p, wide])));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, P(c, zeros), false), c.Layout.Of(P(c, zeros)));
+        Assert.Equal(new Layout.Result(Layout.Outcome.CLayout, null, inner, false), c.Layout.Of(P(c, inner)));
+
+        var failed = CompilationTestHelper.Parse(CLayoutGeneric + "struct Node\n    let value: i32\n    let next: Node\n" +
+            "func probe(a: [9223372036854775807 of u16], b: [4611686018427387904 of u8], z: [2147483648 of ()]) => ()");
+        Assert.False(failed.Bind().IsComplete);
+        var node = Declared(failed, "Node");
+        var (a, b, z) = (Parameters(failed)[0], Parameters(failed)[1], Parameters(failed)[2]);
+        Assert.Equal(Layout.Outcome.Oversized, failed.Layout.Of(failed.Types.Tuple([node, a])).Outcome);
+        Assert.Equal(Layout.Outcome.Oversized, failed.Layout.Of(failed.Types.Tuple([node, b, b])).Outcome);
+        Assert.Equal(Layout.Outcome.CountLimit, failed.Layout.Of(failed.Types.Tuple([node, b])).Outcome);
+        Assert.Equal(Layout.Outcome.CountLimit, failed.Layout.Of(P(failed, failed.Types.Tuple([node, z]))).Outcome);
+    }
+
+    // DECISIONS R5-M52 (R5-M37's window, extended): an oversize the walk sees within the 64-level window outranks DepthLimit, in either
+    // part order and either query order (the parts first, or the whole first in a fresh compilation); one that needs bytes placed past
+    // the window stays behind DepthLimit. An oversized array placed at level 63 beside a Type 65 high is seen, at 64 not; two arrays of
+    // 2^62 bytes beside it are over by a lower bound, one is not.
+    [Theory]
+    [InlineData("array", 63, "Oversized")]
+    [InlineData("array", 64, "DepthLimit")]
+    [InlineData("pair", 0, "Oversized")]
+    [InlineData("single", 0, "DepthLimit")]
+    public void DepthLimitHidesNoVisibleOversize(string shape, int level, string outcome)
+    {
+        var expected = Enum.Parse<Layout.Outcome>(outcome);
+        for (var first = 0; first < 2; first++)
+        {
+            for (var order = 0; order < 2; order++)
+            {
+                var c = CompilationTestHelper.BindSuccess("func probe(a: [9223372036854775807 of u16], b: [4611686018427387904 of u8]) => ()");
+                var (array, half) = (Parameters(c)[0], Parameters(c)[1]);
+                var deep = Wrap(c, BoundType.I32, 65);
+                BoundType[] parts = shape switch
+                {
+                    "array" => [Wrap(c, array, level - 1), deep],
+                    "pair" => [half, half, deep],
+                    _ => [half, deep],
+                };
+                if (first == 1)
+                {
+                    Array.Reverse(parts);
+                }
+
+                if (order == 0)
+                {
+                    foreach (var part in parts)
+                    {
+                        c.Layout.Of(part);
+                    }
+                }
+
+                var whole = c.Layout.Of(c.Types.Tuple(parts));
+                Assert.Equal((expected, expected == Layout.Outcome.Oversized), (whole.Outcome, whole.Oversized));
+            }
         }
     }
 
@@ -451,7 +567,8 @@ public class LayoutTest
         // and give the same records. Rejected comes from a failed Binding, which is not rebound.
         var c = CompilationTestHelper.BindSuccess(
             CLayoutGeneric + "open struct B\n    var a: i64\n    var b: u8\nstruct D: B\n    var c: u16\n" +
-            "func probe(d: D, p: P<u8>, o: Option<(i32, [3 of bool])>, l: [2147483648 of u8], m: [1073741824 of i32]) => ()");
+            "func probe(d: D, p: P<u8>, o: Option<(i32, [3 of bool])>, l: [2147483648 of u8], m: [1073741824 of i32], v: (" + M + ", u8), " +
+            "h: [4611686018427387904 of u8]) => ()");
         var failed = CompilationTestHelper.Parse("struct Node\n    let value: i32\n    let next: Node\nlet y = 1");
         Assert.False(failed.Bind().IsComplete);
         var node = Declared(failed, "Node");
@@ -464,13 +581,14 @@ public class LayoutTest
             new("s", BoundTypeKind.Dictionary, components: [BoundType.String, BoundType.I32]),
             .. Parameters(c), P(c, BoundType.Unit), Wrap(c, BoundType.I32, 65),
         ];
+        types = [.. types, c.Types.Tuple([Parameters(c)[6], Parameters(c)[6], types[^1]])];
         var outcomes = new HashSet<Layout.Outcome> { failed.Layout.Of(node).Outcome };
         foreach (var type in types)
         {
             outcomes.Add(c.Layout.Of(type).Outcome);
         }
 
-        Assert.Equal(6, outcomes.Count);
+        Assert.Equal(7, outcomes.Count);
         var record = c.Layout.Of(Parameters(c)[0]).Value;
         var size = 0L;
         var allocated = AllocationMeasurement.Measure(() =>

@@ -7,37 +7,6 @@ namespace Kimi.Compiler;
 
 #pragma warning disable SA1402, CS1591 // Retained closure conversion and capture vocabulary.
 
-public readonly record struct BoundCapture(BindingSymbol Source, BindingSymbol Environment)
-{
-    // How the entry initializes its environment binding (SPEC 7.7.2), as the HIR Adjust column states acquisitions.
-    internal HirAdjust Adjust => HirAdjust.Of(this.Environment.CaptureAcquisition);
-}
-
-/// <summary>A retained capture environment, signature and minimum call receiver.</summary>
-public sealed class BoundClosure
-{
-    public IReadOnlyList<BoundCapture> Captures => this.Storage;
-
-    public BoundType Signature { get; internal set; } = null!;
-
-    public BoundType? EnvironmentType { get; internal set; }
-
-    public SemanticsKind Receiver { get; internal set; } = SemanticsKind.Ref;
-
-    // The first capture use that made the call Exclusive, and whether it Reborrows a captured exclusive reference (SPEC 7.7.3).
-    internal Koto? ExclusiveUse { get; set; }
-
-    internal bool ExclusiveReborrow { get; set; }
-
-    internal List<BoundCapture> Storage { get; } = new();
-
-    internal List<BindingSymbol> SymbolPool { get; } = new();
-
-    // The closure definition (ClosureDef, plan 5.3) of an anonymous function Binding resolved; its substitution is TyCtxt.SubstOfClosure of
-    // its Type.
-    internal static BoundClosure? Of(FunctionKoto function) => function.BoundClosure;
-}
-
 // A capture name repeated by a later entry or by a parameter (Parameter), at Later, and the entry it repeats, at Earlier (SPEC 7.7.2).
 internal readonly record struct CaptureRepeat(SourceSpan Later, SourceSpan Earlier, string Name, bool Parameter);
 
@@ -400,6 +369,11 @@ public sealed partial class Binding
 
     private BoundType? BindClosure(FunctionKoto function, BindingScope scope, BoundType? expected, bool openResult = false)
     {
+        if (function.ClosureStorage is { } previous)
+        {
+            previous.Signature = null!; // BoundClosure.Of is this binding's definition, set once it is bound.
+        }
+
         if (expected is not null && !this.ClosureSignatureFits(function, expected, openResult))
         {
             // SPEC 10.5, 23.1.2: the written header disagrees with the fixed signature; the omitted parameter Types that
@@ -608,25 +582,21 @@ public sealed partial class Binding
             }
         }
 
-        if (function.Body is { } block)
+        if ((function.Body ?? function.ExpressionBody) is { } body)
         {
             if (symbol.Type is null)
             {
-                // The function owns its result context; nested functions and defer bodies keep their own boundaries.
-                // Survey independent return evidence before binding, then include structural end Unit in the same join.
+                // SPEC 14.9: the function owns its result context; nested functions and defer bodies keep their own boundaries.
+                // Survey independent evidence before binding, then join the return operands with the single-item body's value,
+                // which takes the surveyed Type as an if branch does, or with the indented body's structural end Unit.
                 var context = this.BeginResult(function, scope, null);
-                this.BindNode(block, scope);
+                this.BindNode(body, scope, function.Body is null ? context.Expected : null);
                 symbol.Type = this.FinishResult(function, context);
             }
             else
             {
-                this.BindNode(block, scope);
+                this.RequireType(body, scope, function.Body is null ? symbol.Type : null); // A single-item body has the written result.
             }
-        }
-        else if (function.ExpressionBody is { } expression)
-        {
-            var result = this.RequireType(expression, scope, symbol.Type);
-            symbol.Type ??= result;
         }
 
         if (symbol.Type is null)

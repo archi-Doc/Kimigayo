@@ -161,7 +161,8 @@ public sealed class MirValidatorTest
     // a compiler function it serves (A3 E14); a Value callee whose signature is no TypeToken constant (C8), and a Closure callee given more
     // arguments than its declared signature has inputs. A local an Opaque value defines has an unknown Type (the replaced syntax may have
     // none), which any use admits; the same use of a local a Unit constant defines is a finding. So is the Never value's at every operand
-    // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32.
+    // position (a Use, an operator, an aggregate; SPEC 3.8, DECISIONS R4-M62), but a ref/Never is no ref/i32. A returning Value call of a
+    // `(i32) -> Never` callable into a Temp of Type Never agrees in Type but is no writer R5-M38 admits.
     [Theory]
     [InlineData("assign", "Type")]
     [InlineData("component", "Type")]
@@ -189,6 +190,7 @@ public sealed class MirValidatorTest
     [InlineData("adapt", "Operation")]
     [InlineData("payload", "Operation")]
     [InlineData("shorthand", "UnknownKind")]
+    [InlineData("returning", "NeverWrite")]
     public void TypeTierRejectsEachForm(string form, string rule)
     {
         var findings = Validate(Typed(form));
@@ -317,6 +319,64 @@ public sealed class MirValidatorTest
         Assert.Equal(broken is null ? [] : [(MirViolation.Operation, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // G154 (K 4.8): MIR holds a function item constant only as the operand of an Assign's Use, where the collector finds its edge
+    // (InstanceCollector.IsSite); the built body is valid, and the constant moved into the Value call that calls the item or into the Tuple
+    // that holds it is an Operation finding there.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("callee")]
+    [InlineData("aggregate")]
+    public void AFunctionItemConstantIsTheOperandOfAUse(string? broken)
+    {
+        var c = MirBuildTest.Compile("func g(a: i32) -> i32 => a\nfunc f() -> i32\n    let pair = (g, 1)\n    let item = g\n    return item(1)\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f");
+        var item = MirOperand.Const(Array.FindIndex(body.Consts.ToArray(), static x => x.Kind == MirConstKind.FnItem));
+        var call = Array.FindIndex(body.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+        var tuple = body.Statements.ToArray().Single(static x => x.Rvalue.Kind == MirRvalueKind.Aggregate);
+        if (broken == "callee")
+        {
+            Unsafe.AsRef(in body.Blocks[call]).Terminator = body.Blocks[call].Terminator with { Operand = item };
+        }
+        else if (broken == "aggregate")
+        {
+            Unsafe.AsRef(in body.Operands[tuple.Rvalue.Start]) = item;
+        }
+
+        var subject = broken == "callee" ? body.Blocks[call].Terminator.Source.Syntax : tuple.Source.Syntax;
+        Assert.Equal(broken is null ? [] : [(MirViolation.Operation, subject)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // F10 (plan 5.6.6, DECISIONS R5-M71): a staticEnsure names its static by an Integer constant indexing the calling body's statics, the
+    // form MirProgram.StaticInit decodes; the built body is valid, and a slot past the statics, a Bool constant or a local's Copy as the
+    // operand is a StaticSlot finding at the access.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("range")]
+    [InlineData("kind")]
+    [InlineData("place")]
+    public void AStaticEnsureNamesItsStaticsSlot(string? broken)
+    {
+        var c = MirBuildTest.Compile("group Registry\n    public let total: i32 = 5\nfunc use() -> i32 => Registry.total\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var body = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "use");
+        var block = Enumerable.Range(0, body.Blocks.Length).Single(b => body.Blocks[b].Terminator is
+            { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } });
+        var ensure = body.Blocks[block].Terminator;
+        Assert.NotNull(program.StaticInit(body, body.Operands[ensure.Start]));
+        var operand = broken switch
+        {
+            "range" => MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.ISize, body.Statics.Length))),
+            "kind" => MirOperand.Const(body.Const(new(MirConstKind.Bool, BoundType.Boolean, 0))),
+            "place" => MirOperand.Copy(ensure.Place),
+            _ => body.Operands[ensure.Start],
+        };
+        body.Terminate(block, ensure with { Start = body.AddOperand(operand) });
+        Assert.Equal(broken is null ? [] : [(MirViolation.StaticSlot, body.Subject(ensure.Source))], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // SPEC 8.15, 23.1.1: Binding publishes no part of a definition beyond PairBinder.CaseBound views (Binding.CaseLimits), so a body with more
     // views is a Binder finding at the body, which is not checked further: six binders of two cases, 64 views, are valid but for an Adapt no
     // view resolves (T to bool); a seventh gives the one Binder finding, the Adapt's views unresolved.
@@ -387,7 +447,8 @@ public sealed class MirValidatorTest
         var (tuple, meter) = (c.Types.Tuple([BoundType.I32, BoundType.Boolean]), c.Semantics.SelfType(c.Kotonoha.RootKoto.NestedContainers.Single(static x => x.Name == "Meter").SymbolOf()!));
         var (pair, parent, point, shape, array, gauge) = (Local(tuple), Local(types.Base), Local(types.Point), Local(types.Shape), Local(types.Array), Local(c.Types.Reference(SemanticsKind.Ref, meter)));
         var (handle, upcast) = (Local(c.Types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Obj, [types.Point])), Local(c.Types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Obj, [types.Base])));
-        var callable = Local(c.Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [c.Types.Tuple([BoundType.I32]), BoundType.Boolean]));
+        var result = broken == "returning" ? BoundType.Never : BoundType.Boolean;
+        var callable = Local(c.Types.Intern(BoundTypeKind.Function, null, SemanticsKind.Owner, [c.Types.Tuple([BoundType.I32]), result]));
         var (adapted, borrowed) = (broken == "adapt" ? real : a, Local(c.Types.Reference(SemanticsKind.ObjRef, types.Point)));
         var blocks = new[] { body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock() };
         int Operands(params MirOperand[] operands) => AddOperands(body, operands);
@@ -440,8 +501,9 @@ public sealed class MirValidatorTest
         var (callee, arguments) = broken == "arity"
             ? (Local(c.Types.Intern(BoundTypeKind.Closure, types.Function, SemanticsKind.Owner, [])), Operands(MirOperand.Copy(a), MirOperand.Copy(a)))
             : (callable, Operands(MirOperand.Copy(broken == "value" ? flag : a)));
-        var at = Where(broken is "signature" or "arity" ? broken : "value");
-        var value = MirTerminator.Call(new(MirCalleeKind.Value, Arg: signature), arguments, broken == "arity" ? 2 : 1, flag, blocks[3], at);
+        var at = Where(broken is "signature" or "arity" or "returning" ? broken : "value");
+        var into = broken == "returning" ? MirModelTest.Local(body, BoundType.Never, MirLocalKind.Temp) : flag;
+        var value = MirTerminator.Call(new(MirCalleeKind.Value, Arg: signature), arguments, broken == "arity" ? 2 : 1, into, blocks[3], at);
         body.Terminate(blocks[2], value with { Operand = MirOperand.Copy(callee) });
         body.Terminate(blocks[3], MirTerminator.Call(new(MirCalleeKind.Fn, Function("d"), Arg: 2), Operands(broken == "template" ? MirOperand.Copy(a) : MirOperand.Copy(view)), 1, flag, blocks[4], Where("template")));
         var (receiver, by) = (MirOperand.Copy(gauge), MirOperand.Copy(a));
@@ -572,7 +634,10 @@ public sealed class MirValidatorTest
             : MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.Abort), text, 1, stopped, -1, At) with { CheckTarget = call };
         body.Terminate(abort, abortCall);
         var signature = new MirCallee(MirCalleeKind.Value, Arg: body.Const(new(MirConstKind.TypeToken, body.TypeOf(function)!)));
-        body.Terminate(call, MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) });
+        var called = broken == MirViolation.StaticSlot // F10: a staticEnsure of a slot past the body's one static.
+            ? MirTerminator.Call(MirCallee.Intrinsic(IntrinsicId.StaticEnsure), Operands(Const(MirConstKind.Integer, BoundType.ISize, 1)), 1, result, drop, Broken)
+            : MirTerminator.Call(signature, Operands(MirOperand.Copy(x)), 1, result, drop, At) with { Operand = MirOperand.Copy(function) };
+        body.Terminate(call, called);
         body.Terminate(drop, broken == MirViolation.CheckTarget ? new(MirTerminatorKind.Drop, Broken, exit, check, Place: point) : MirTerminator.Drop(point, exit, At));
         body.Push(exit, MirStatement.Of(MirStatementKind.StorageDead, point, At));
         if (broken == MirViolation.Diverged)

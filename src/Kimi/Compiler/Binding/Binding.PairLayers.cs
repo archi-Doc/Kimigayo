@@ -100,7 +100,7 @@ public sealed partial class Binding
 
         var exclusive = pattern.Semantics == SemanticsKind.Uniq;
         var admitted = this.FollowablePair(actual, scope, out var target);
-        if (admitted != SemanticsMask.None && !FitsType(target, pattern.Components[0]))
+        if (admitted != SemanticsMask.None && !IsSubtype(target, pattern.Components[0]))
         {
             target = this.PairTerminal(target, scope, exclusive); // A receiver is also selected below further layers (s/(t/U)).
         }
@@ -110,7 +110,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if (FitsType(target, pattern.Components[0]))
+        if (IsSubtype(target, pattern.Components[0]))
         {
             adapted = this.types.Reference(pattern.Semantics, target, this.PairOrigin(source, actual, admitted));
             kind = ArgumentOperationKind.Borrow;

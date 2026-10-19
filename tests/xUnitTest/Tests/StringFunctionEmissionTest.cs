@@ -86,8 +86,7 @@ public class StringFunctionEmissionTest
         var result = function.GetOperands(call)[0];
         Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[(int)result.Value].Kind);
         var ir = ScalarEmissionTest.EmitFixture("StringFunctionDivergent", Source, string.Empty, timeoutMilliseconds: 300);
-        Assert.DoesNotContain("mustprogress", ir);
-        Assert.DoesNotContain("willreturn", ir);
+        GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 
     [Fact]

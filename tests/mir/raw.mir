@@ -45,7 +45,7 @@ fn addresses @25
   _7: raw/Point temp @49 s2
   _8: raw/i32 var field @53 s2
   _9: i32 temp @63 s2
-  _10: i32 temp @25 s2
+  _10: i32 temp @25
   s1: lexical in s0 @29
   s2: unsafe in s1 @38
   bb0:

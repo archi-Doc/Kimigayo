@@ -6,8 +6,8 @@
 // Input: LLVM type text, sizes, alignments, offsets, parameter names and kinds, signature flags.
 // Output: immutable records; a FunctionAbi's `define ... {` line, created once per linkage and cached.
 // Invariants: a FunctionAbi is identified by reference, and its definition and every call to it use the same parameters.
-// Must not take BoundType, a layout pool, EmissionModule, syntax or MIR types: deciding a Type's record belongs to the
-// generator's layout and ABI components (old: WindowsLowering, FunctionAbiPool, AggregateLayoutPool).
+// Must not take BoundType, a layout pool, EmissionModule, syntax or MIR types: deciding a Type's record belongs to Layout and a
+// signature's to Abi (DECISIONS R5-M19, R5-M58); the old gate stays in WindowsLowering, FunctionAbiPool and AggregateLayoutPool.
 
 #pragma warning disable SA1402 // The physical representation records form one vocabulary.
 
@@ -56,6 +56,14 @@ internal sealed class FunctionAbi(string name, string result, AbiParameter[] par
     internal bool ResultSlot { get; init; }
 
     internal bool CallerLocation { get; init; }
+
+    /// <summary>Gets this signature under a name, for its definition and calls (<see cref="Abi.Of"/> gives none).</summary>
+    /// <param name="name">The physical name.</param>
+    /// <returns>A signature with the same parameters, result and flags.</returns>
+    internal FunctionAbi Named(string name) => new(name, this.Result, this.Parameters)
+    {
+        NoReturn = this.NoReturn, ResultSlot = this.ResultSlot, CallerLocation = this.CallerLocation,
+    };
 
     /// <summary>Gets the cached <c>define ... {</c> line, including the profile attribute group.</summary>
     /// <param name="exported">Whether the definition has external linkage instead of internal.</param>

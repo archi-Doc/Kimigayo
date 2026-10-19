@@ -251,10 +251,7 @@ internal sealed class VirtualGenerationPlan
         }
         else
         {
-            entry = new("__kimi_virtual_item" + ordinal.ToString(CultureInfo.InvariantCulture), body.Result, body.Parameters)
-            {
-                NoReturn = body.NoReturn, ResultSlot = body.ResultSlot, CallerLocation = body.CallerLocation,
-            };
+            entry = body.Named("__kimi_virtual_item" + ordinal.ToString(CultureInfo.InvariantCulture));
             if (ordinal == this.entries.Count)
             {
                 this.entries.Add((body, entry));

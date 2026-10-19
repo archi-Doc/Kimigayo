@@ -138,14 +138,11 @@ public sealed partial class LlvmEmitter
                 }
 
                 var source = body.Function;
-                var abi = source.IsGenerated ? RuntimeAbi.Entry : this.signatures.Get(ordinal++, source, this.lowering.AggregateLayouts);
+                var abi = source.IsGenerated ? RuntimeAbi.Entry : this.signatures.Get(ordinal++, source, c.Layout);
                 this.functions.Add(source, abi);
             }
 
-            if (!this.RegisterImports(c.Binding.LibraryImports, module, this.functions, out failure))
-            {
-                return false;
-            }
+            this.RegisterImports(c.Binding.LibraryImports, module, this.functions);
 
             for (var i = 0; i < c.Ownership.Bodies.Count; i++)
             {
@@ -316,18 +313,18 @@ public sealed partial class LlvmEmitter
         }
     }
 
-    // SPEC 22.6: a direct import calls its external symbol with the Windows x64 C ABI, whose scalar
-    // arguments need no extension attributes. Binding already made same-named imports agree on one
-    // physical signature and supply kind (SPEC 21.2), so they share one declaration.
-    private bool RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions, out string? failure)
+    // SPEC 22.6: a direct import calls its external symbol with the Windows x64 C ABI (Abi's C convention), whose scalar arguments
+    // need no extension attributes. Binding already made same-named imports agree on one physical signature and supply kind
+    // (SPEC 21.2), so they share one declaration.
+    private void RegisterImports(IReadOnlyList<LibraryImport> imports, EmissionModule module, Dictionary<FunctionKoto, FunctionAbi> functions)
     {
-        failure = null;
         var ordinal = 0;
         for (var i = 0; i < imports.Count; i++)
         {
             var import = imports[i];
-            if (ReferenceEquals(import.Function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
-                !this.compilation.Ownership.UsesImport(import.Function))
+            var function = (FunctionKoto)import.Decl.Declaration;
+            if (ReferenceEquals(function.CodeContext.Kotonoha, this.compilation.Library.Kotonoha) &&
+                !this.compilation.Ownership.UsesImport(function))
             {
                 continue;
             }
@@ -345,13 +342,7 @@ public sealed partial class LlvmEmitter
 
             if (abi is null)
             {
-                abi = Matches(cached, import.Function) ? cached : CreateImportAbi(import, name);
-                if (abi is null)
-                {
-                    failure = "A foreign import needs an unsupported parameter or result representation.";
-                    return false;
-                }
-
+                abi = this.signatures.Import(cached, function, this.compilation.Layout, name);
                 module.Externals.Add(new(abi, import.Kind == "import"));
             }
 
@@ -365,52 +356,8 @@ public sealed partial class LlvmEmitter
             }
 
             ordinal++;
-            functions.Add(import.Function, abi);
+            functions.Add(function, abi);
         }
-
-        return true;
-
-        static bool Matches(FunctionAbi? abi, FunctionKoto function)
-        {
-            if (abi is null || abi.Result != (ReferenceEquals(function.BoundSymbol!.Type, BoundType.Unit) ? "void" : ImportType(function.BoundSymbol.Type!)) || abi.Parameters.Length != function.Parameters.Count)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < abi.Parameters.Length; i++)
-            {
-                if (abi.Parameters[i].Type != ImportType(function.Parameters[i].Type.BoundType!))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        static FunctionAbi? CreateImportAbi(LibraryImport import, string name)
-        {
-            var function = import.Function;
-            var result = function.BoundSymbol!.Type!;
-            var resultType = ReferenceEquals(result, BoundType.Unit) ? RuntimeAbi.Unit.ComputationType : ImportType(result);
-            var parameters = new AbiParameter[function.Parameters.Count];
-            for (var i = 0; i < parameters.Length; i++)
-            {
-                if (ImportType(function.Parameters[i].Type.BoundType!) is not { } type)
-                {
-                    return null;
-                }
-
-                parameters[i] = new(type, "a" + i.ToString(System.Globalization.CultureInfo.InvariantCulture), AbiParameterKind.Value, i);
-            }
-
-            return resultType is null ? null : new(name, resultType, parameters);
-        }
-
-        // Binding admits fixed-width integers, f32/f64, raw pointers and ref/uniq borrows of C-exchangeable referents, which pass
-        // the referent's address (SPEC 22.6); no Scalar borrow is passed by value.
-        static string? ImportType(BoundType type)
-            => ReferenceTypes.IsPointer(type) || ReferenceTypes.IsReference(type) ? "ptr" : type.Kind == BoundTypeKind.Primitive ? WindowsLowering.GetValue(type)?.ArgumentType : null;
     }
 
     // Only the selected implicit Application body executes. Other source-module

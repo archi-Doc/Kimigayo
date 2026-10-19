@@ -37,8 +37,9 @@ internal enum MirViolation : byte
     Opaque, // An Opaque site or root out of range, or Opaque sites without an Opaque value.
     Type, // An rvalue, an aggregate's operand, a call's argument or result, or _0 at a Return that disagrees with the Type it goes to.
     Operation, // An operator's, a Cast's, a SwitchInt's or an Adapt's operand, a Ref's Type or an Adapt's case operation, that its kind does not admit;
-    // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), or a
-    // marked Use of another operand.
+    // a PairAcquire other than the operand of a Use assigned to a local's whole Place with the Uniq or TwoPhaseUniq it marks (A3 E13 (4)), a
+    // marked Use of another operand, or a function item constant other than the operand of an Assign's Use, the collector's site (G154).
+    StaticSlot, // A staticEnsure's operand other than an Integer constant indexing the body's statics, which MirProgram.StaticInit decodes (F10).
 }
 
 /// <summary>A validator finding: its rule and the syntax of its statement, terminator or local, else the body's. The build reports it
@@ -214,6 +215,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         private SourceInfo at;
         private int opaqueValues;
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
+        private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
 
         public void Operand(in MirOperand operand)
         {
@@ -228,6 +230,10 @@ internal sealed partial class MirValidator(TyCtxt types)
             else if (operand.Kind == MirOperandKind.PairAcquire && !this.acquires)
             {
                 this.Report(MirViolation.Operation); // A3 E13 (4): always the whole rvalue of an Assign to a local, marked.
+            }
+            else if (operand.Kind == MirOperandKind.Const && body.Consts[operand.Arg].Kind == MirConstKind.FnItem && !this.used)
+            {
+                this.Report(MirViolation.Operation); // G154: the collector finds a function item's edge only at a Use (K 4.8).
             }
             else if (operand.Kind == MirOperandKind.PairAcquire && this.IsValid(operand.Place) && !body.Binds(
                 operand.Arg,
@@ -441,6 +447,11 @@ internal sealed partial class MirValidator(TyCtxt types)
             row.Type,
             body.ProjectedType(type, row.Kind, row.Arg));
 
+        // F10 (plan 5.6.6): a staticEnsure names its static by an Integer constant indexing the body's statics, the form
+        // MirProgram.StaticInit decodes; a constant id out of range is the walk's Const finding.
+        private readonly bool Ensures(in MirOperand operand) => operand.Kind == MirOperandKind.Const && ((uint)operand.Arg >= (uint)body.Consts.Length ||
+            (body.Consts[operand.Arg] is { Kind: MirConstKind.Integer, Bits: var slot } && slot >= 0 && slot < body.Statics.Length));
+
         // False when MirUses cannot walk it.
         private bool Statement(MirLocation location, in MirStatement statement)
         {
@@ -477,8 +488,9 @@ internal sealed partial class MirValidator(TyCtxt types)
                 Kind: MirStatementKind.Assign, Place: { Projection: 0, Root: >= 0 },
                 Rvalue: { Kind: MirRvalueKind.Use, Op: (byte)MirRefKind.Uniq or (byte)MirRefKind.TwoPhaseUniq },
             };
+            this.used = statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use };
             MirUses.ForEach(body, location, ref this);
-            this.acquires = false;
+            (this.acquires, this.used) = (false, false);
             return true;
         }
 
@@ -617,6 +629,9 @@ internal sealed partial class MirValidator(TyCtxt types)
                     break;
                 case MirCalleeKind.Intrinsic when row.Diverges && call.Target >= 0:
                     this.Report(MirViolation.Callee);
+                    break;
+                case MirCalleeKind.Intrinsic when (IntrinsicId)callee.Arg == IntrinsicId.StaticEnsure && !this.Ensures(body.Operands[call.Start]):
+                    this.Report(MirViolation.StaticSlot); // DECISIONS R5-M71.
                     break;
             }
 

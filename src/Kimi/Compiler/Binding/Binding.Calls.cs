@@ -704,33 +704,7 @@ public sealed partial class Binding
                 }
             }
 
-            var erasureFailed = false;
-            for (var i = 0; i < argumentCount; i++)
-            {
-                if (call.ArgumentNodes[i].BoundType is null)
-                {
-                    // The argument is an expression of the caller's context, not of the selected requirement.
-                    var selectedContract = this.activeRequirementContract;
-                    this.activeRequirementContract = null;
-                    this.RequireType(call.ArgumentNodes[i], scope, selectedOperations[i].SourceType ?? selectedOperations[i].ParameterType);
-                    this.activeRequirementContract = selectedContract;
-                    if (call.ArgumentNodes[i].BindingState != BindingState.Resolved)
-                    {
-                        return Complete(call, null);
-                    }
-
-                    selectedOperations[i] = selectedOperations[i] with { SourceType = call.ArgumentNodes[i].BoundType };
-                }
-                else if (call.ArgumentNodes[i].BoundType is { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } closureType && selectedOperations[i].ParameterType is { Kind: BoundTypeKind.Function } erased &&
-                    selectedOperations[i].Adaptation == ArgumentAdaptation.Erasure)
-                {
-                    // SPEC 10.5: the call rests on a failed erasure and another candidate is never selected; every failing argument is reported.
-                    erasureFailed |= !this.ErasePart(call.ArgumentNodes[i], closureType, erased);
-                    selectedOperations[i] = selectedOperations[i] with { SourceType = erased };
-                }
-            }
-
-            if (erasureFailed)
+            if (!this.CompleteArguments(call, scope, selectedOperations))
             {
                 return Complete(call, null);
             }
@@ -1580,7 +1554,7 @@ public sealed partial class Binding
             {
                 // An incomplete annotation cannot become a generic argument. Established argument evidence is checked
                 // against it at the ordinary result fit; without such evidence the slot remains unsolved.
-                return arguments[slot] is not { } establishedArray || FitsStructurally(establishedArray, actual);
+                return arguments[slot] is not { } establishedArray || IsStructuralSubtype(establishedArray, actual);
             }
 
             // SPEC 10.2.2: a parameter constrained to Position, PositionRange or PrimitiveInteger binds the referent; the
@@ -1614,7 +1588,8 @@ public sealed partial class Binding
                     actual = this.FillOpenOrigins(actual, previous, true);
                 }
 
-                if (relateLater && !structural && !ReferenceEquals(previous, actual) && FitsStructurally(actual, previous) && FitsStructurally(previous, actual))
+                if (relateLater && !structural && !ReferenceEquals(previous, actual) &&
+                    IsStructuralSubtype(actual, previous) && IsStructuralSubtype(previous, actual))
                 {
                     // SPEC 10.8, 15.3.6: Origin evidence for a slot never makes the candidate inapplicable; each argument's relation to
                     // the solution is judged after selection (SPEC 15.6.1). An explicit Type argument is kept, an invariant binding is
@@ -1631,7 +1606,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        arguments[slot] = FitsType(actual, previous) ? previous : this.CommonOriginType(previous, actual) ?? previous;
+                        arguments[slot] = IsSubtype(actual, previous) ? previous : this.CommonOriginType(previous, actual) ?? previous;
                     }
 
                     return true;
@@ -1639,8 +1614,9 @@ public sealed partial class Binding
 
                 // SPEC 10.8: structural matching compares normalized Types, so two spellings of one Function Type, whose per-call
                 // inputs have distinct binders, are one binding.
-                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && FitsType(actual, previous)) ||
-                    (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function && FitsType(actual, previous) && FitsType(previous, actual)))
+                if (ReferenceEquals(previous, actual) || (!structural && inferOrigins && IsSubtype(actual, previous)) ||
+                    (structural && previous.Kind == BoundTypeKind.Function && actual.Kind == BoundTypeKind.Function &&
+                    IsSubtype(actual, previous) && IsSubtype(previous, actual)))
                 {
                     arguments[slot] = previous;
                     return true;

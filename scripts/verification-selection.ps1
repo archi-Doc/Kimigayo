@@ -23,6 +23,12 @@ function Get-KimiTestAlternatives([string] $Pattern, [switch] $Method) {
     }
 }
 
+# The compiler configuration of a run (R5 PD4, until G4): MIR code generation needs the mir pipeline, as KIMI_CODEGEN does, so the
+# combination is rejected before building rather than by every compiler process.
+function Assert-KimiCompilerConfiguration([string] $Pipeline, [string] $Codegen) {
+    if ($Codegen -eq 'mir' -and $Pipeline -ne 'mir') { throw '-Codegen mir needs -Pipeline mir (MIR code generation runs on the mir pipeline only, R5 PD4).' }
+}
+
 # The common compiler checks every Unit test selection includes (docs/dev/VERIFICATION.md, verification scope).
 $KimiCommonTestClasses = @('XunitTest.ArchitectureRulesTest')
 
@@ -37,11 +43,16 @@ function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) 
     }
 }
 
-# The tests a run executed, as Class.Method, from its per-test results (-result-xml). xUnit reports Explicit tests not
+# The cases a run executed, the test nodes of its per-test results (-result-xml). xUnit reports Explicit tests not
 # requested as Not Run; a run without a result file executed none.
-function Get-KimiExecutedTests([string] $ResultXml) {
+function Get-KimiExecutedCases([string] $ResultXml) {
     if (-not (Test-Path -LiteralPath $ResultXml)) { return }
-    Select-Xml -LiteralPath $ResultXml -XPath '//test[@result!="NotRun"]' | ForEach-Object { "$($_.Node.type).$($_.Node.method)" }
+    Select-Xml -LiteralPath $ResultXml -XPath '//test[@result!="NotRun"]' | ForEach-Object { $_.Node }
+}
+
+# The tests a run executed, as Class.Method.
+function Get-KimiExecutedTests([string] $ResultXml) {
+    Get-KimiExecutedCases $ResultXml | ForEach-Object { "$($_.type).$($_.method)" }
 }
 
 # Every class and method selection matches one of the tests, Class.Method: the methods discovered in the freshly built
