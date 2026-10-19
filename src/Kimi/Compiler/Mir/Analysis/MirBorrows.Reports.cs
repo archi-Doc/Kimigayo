@@ -60,7 +60,7 @@ internal sealed partial class MirBorrows
         }
 
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict); // The four Loan codes' requirement.
-        this.program.Problems.Add(new(code, requirement, subject, this.views), this.facts.AsSpan(0, count));
+        this.program.Problems.Add(new(code, requirement, subject, this.body.Ordinal, this.views), this.facts.AsSpan(0, count));
     }
 
     // A located Unsupported_Kd at a location whose access or call the stratum does not classify; a limit record, which depends on the
@@ -71,7 +71,7 @@ internal sealed partial class MirBorrows
     private void Unsupported(SourceRef subject)
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-        this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.views));
+        this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.body.Ordinal, this.views));
     }
 
     // A location's subject: its statement's or terminator's.

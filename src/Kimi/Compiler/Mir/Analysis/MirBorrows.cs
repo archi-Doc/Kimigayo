@@ -103,7 +103,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         if (state is null)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, all)); // R4-M15a.
+            program.Problems.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, all)); // R4-M15a.
             return;
         }
 

@@ -307,7 +307,7 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
                 var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
                 var inlined = this.body.Inlining(drop.Terminator.Source.Scope);
                 this.report.Add(
-                    new(DiagnosticCode.MovedPlace_Kd, requirement, this.body.Subject(drop.Terminator.Source), views),
+                    new(DiagnosticCode.MovedPlace_Kd, requirement, this.body.Subject(drop.Terminator.Source), this.body.Ordinal, views),
                     inlined < 0 ? default : [new(MirFactKind.Inlined, this.body.Scopes[inlined].Source)]);
             }
 

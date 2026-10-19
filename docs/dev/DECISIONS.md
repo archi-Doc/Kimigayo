@@ -446,7 +446,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded, and its Inlined rule amended, by R4-M69.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
-  as the case fact. Views are never collapsed. The key is R4-M3a's until U11.
+  as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
+  places the merge across bodies at publication.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
   except an (a) row whose library fix lands in the same unit. Suspended until the joint core lands (R4-M35).
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
@@ -468,7 +469,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   landing with the first analysis unit (parallel units would invent the same files). R4-M35 moves the restructuring to before the R5
   split.
 - **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields; its fields amended by
-  R4-M67: the requirement each recording rule names).
+  R4-M67: the requirement each recording rule names, and by R4-M71: the body; its key superseded by R4-M71: (code, subject, body)).
   `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
   (code, subject, Reason)); a merge keeps the first problem's facts. Construction records keep their own merge in
@@ -1611,11 +1612,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `(Code, Requirement, Subject, Views)`. Each recording rule names its requirement: A1, A2 and A3 a constant each; A4 the obligation
   row's, which Binding's `EffectObligation` carries beside its code (`EffectBound`, `VirtualEffectBound`, `CallableEffectBound`; the
   analysis limit `Unsupported`); A5 `ComparisonLoanConflict` for its four Loan codes, `Unsupported` and `StorageLimit`.
-  `MirReport.Add` keeps the key (code, subject). A merge that names another requirement is a recording-rule defect, a contract break
-  as in R4-M3a: it adds one `InternalInvariant_Kd` (`Ownership.Internal`) at the subject. There is no code-to-requirement table; this
-  supersedes R4-M3a's naming clause, as R5-M23 records. `MirDropTable.ViewsOf(body)` gives the views A1 and A2 completed (R4-M15a): 0
-  past A1's arena limit or for a body not analyzed. A5's driver step reads it, and R5's C4a will. It replaces the driver's private
-  `completed` array and amends R4-M6a's drop table. Rejected: the code-to-requirement table of the plan row (R5-M23's departure D7).
+  `MirReport.Add` keeps the key (code, subject) (superseded by R4-M71). A merge that names another requirement is a recording-rule
+  defect, a contract break as in R4-M3a: it adds one `InternalInvariant_Kd` (`Ownership.Internal`) at the subject. There is no
+  code-to-requirement table; this supersedes R4-M3a's naming clause, as R5-M23 records. `MirDropTable.ViewsOf(body)` gives the views
+  A1 and A2 completed (R4-M15a): 0 past A1's arena limit or for a body not analyzed. A5's driver step reads it, and R5's C4a will. It
+  replaces the driver's private `completed` array and amends R4-M6a's drop table. Rejected: the code-to-requirement table of the plan
+  row (R5-M23's departure D7).
 - **R4-M68** (2026-10-18; planning session after group 1c's two designs and their design review; A3 §5 err(activate), R4-M57 1b-3).
   An activation conflicts only with Loans whose mode is shared in the holder where it is found; an exclusive Loan that hits the
   reservation was met where the later Borrow was formed or activated: at the reservation's formation (`ComparisonLoanConflict_Kd`) or
@@ -1670,6 +1672,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Limits: err(ended) reads γ_H without the taint check (the rule names Loan problems); err(destroy)'s candidate loop
     (`MirBorrows.Activations.cs`, due for restructuring) keeps its first conflicting candidate, so a tainted Loan there can stand
     before a clean one.
+- **R4-M71** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-8; PLAN G125
+  and G157 (8)). It supersedes R4-M3a's and R4-M67's key (code, subject) and places R4-M11's merge across bodies at publication.
+  - Representation: `MirProblem(Code, Requirement, Subject, Body, Views)`. `Body` is the ordinal of the body whose case views `Views`
+    numbers, `MirProblem.NoBody` (−1) where no body describes the problem: A4's obligation rows, which lie at Binding's rows (a row an
+    owing definition's own body judges per view keeps that body's view bits; A4's codes take no case fact). `MirReport` keys a problem
+    by (code, subject, body), so a subject built into several bodies (a Field initializer in each constructor, the design review's
+    r05; a limit record of an inline default copy and of its template) is one problem per body, each with its own body's views. Every
+    recording rule sets it: A1, A2, A3 and A5 the body they analyze, A4 `NoBody`, and `MirReport`'s disagreement record its problem's.
+    The ledger reads each problem (R5-M56), so such a subject has one MIR row per body. `MirProblem` grows from 24 to 32 bytes.
+  - Publication: R4-M11's merge by (code, subject, Reason) happens across bodies where the problems are published, one record per
+    (code, subject, Reason), a problem with facts at its subject; R4 publishes none (R4-M1), R5's H3, their first publisher, does it.
+  - Location-only records (PLAN G157 (8); R5-M65's rule at R4's site): `Compilation.ReportAnalysis` publishes the MIR's records,
+    codes without facts (construction records, validator findings and the checked set's records), keyed by their location through
+    `DiagnosticCollection.ReportLocation`, so the records of a `for` expansion's synthesized siblings (one span, depth and kind) are one
+    problem by the owner's merge of equal keys instead of an `UndefinedOrder` fault. No construction rule records at those siblings at
+    check today; the fault was latent (R5's C0b1 review).
+  - Reason: views number one body's case enumeration, so OR-ing two bodies' views loses which body's case a bit names (r05: G's two
+    constructors, of two and nine cases, gave one problem with `0x1FF`).
+  - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
+    same facts).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each

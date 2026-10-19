@@ -102,19 +102,21 @@ public sealed class MirAnalysisTest
     private static readonly DiagnosticRequirement Moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
     private static readonly DiagnosticRequirement Uninitialized = DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse);
 
-    // R4-M3a: a problem of a code and subject added again ORs its views into the first; another code or subject is its own problem.
+    // R4-M3a, R4-M71: a problem of a code, subject and body added again ORs its views into the first; another code, subject or body is its
+    // own problem, so the views of one body's cases are never ORed into another's.
     [Fact]
     public void ARepeatedProblemMergesItsViews()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b10));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b10));
         Assert.Equal(
             [
-                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0b01),
-                new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0b01),
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b11), new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, 5), 0, 0b01),
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 6), 0, 0b01), new MirProblem(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 1, 0b100),
             ],
             report.All.ToArray());
         report.Clear();
@@ -127,13 +129,13 @@ public sealed class MirAnalysisTest
     public void AMergeNamesOneRequirement()
     {
         var report = new MirReport();
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b01));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0b10));
-        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0b100));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b10));
+        report.Add(new(DiagnosticCode.MovedPlace_Kd, Uninitialized, new(0, 5), 0, 0b100));
         Assert.Equal(
             [
-                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0b01),
-                new MirProblem(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), new(0, 5), 0b110),
+                new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, 5), 0, 0b01),
+                new MirProblem(DiagnosticCode.InternalInvariant_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Internal), new(0, 5), 0, 0b110),
             ],
             report.All.ToArray());
     }
@@ -144,8 +146,8 @@ public sealed class MirAnalysisTest
     public void AnInlinedProblemIsDropped()
     {
         var report = new MirReport();
-        var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0b10);
-        var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0b10);
+        var loan = new MirProblem(DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict), new(0, 5), 0, 0b10);
+        var limit = new MirProblem(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), new(0, 5), 0, 0b10);
         report.Add(loan, [new(MirFactKind.Anchor, new(0, 4)), new(MirFactKind.Inlined, new(0, 9))]);
         report.Add(limit);
         report.Add(loan with { Views = 0b01 }, [new(MirFactKind.Anchor, new(0, 4))]);
@@ -155,7 +157,8 @@ public sealed class MirAnalysisTest
 
     // R4-M69 (G125): the Language problems of a default's inline copies are its template's: A5's conflict in the default of the 1c design's
     // p11 and A1's and A2's in another keep the template's one view, though a caller of two views and another caller call both; a limit
-    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, which the two-view copy joins.
+    // record a copy finds stays (SPEC 23.1.1): A5's at a call whose contract Binding does not instantiate, one problem in the template and
+    // one with the two-view copy's views (R4-M71).
     [Fact]
     public void ADefaultsProblemsAreItsTemplates()
     {
@@ -208,10 +211,53 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             [
                 "ComparisonLoanConflict_Kd a = 2 1", "MovedPlace_Kd s 1", "MovedPlace_Kd var box = Box.init(make()) 1",
-                "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 3",
+                "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 1", "Unsupported_Kd Nest<ref/i32>.init(value: z@ref) 3",
             ],
             c.BuildMir().Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
                 .Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}").Order(StringComparer.Ordinal));
+    }
+
+    // R4-M71 (G125, the 1c design review's r05): a Field initializer is built into each constructor, so its conflict is one problem per
+    // constructor body with that body's views: S's two constructors have one view each, G's two enumerate two and nine cases. One problem
+    // with the bodies' views ORed (0x1FF for G) loses which constructor's case a bit names.
+    [Fact]
+    public void AFieldInitializersProblemIsEachConstructors()
+    {
+        var c = MirBuildTest.Compile("""
+            struct S
+                public var v: i32 = label w: do
+                    var a = 1
+                    let r = a@ref
+                    a = 2
+                    exit to w r@follow
+                public var k: i32
+                public init(k: i32) => self.k = k
+                public init(k: i32, extra: i32) => self.k = k + extra
+            struct G<s/T>
+                public var v: i32 = label w: do
+                    var a = 1
+                    let r = a@ref
+                    a = 2
+                    exit to w r@follow
+                public var t: s/T
+                public init(t: s/T)
+                    s is ref or uniq
+                    self.t = t
+                public init(t: s/T, n: i32)
+                    self.t = t
+
+            """);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        var problems = program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).ToArray();
+        Assert.Equal(
+            [
+                "ComparisonLoanConflict_Kd a = 2 in public init(k: i32) => self.k = k: 1",
+                "ComparisonLoanConflict_Kd a = 2 in public init(k: i32, extra: i32) => self.k = k + extra: 1",
+                "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T): 3", "ComparisonLoanConflict_Kd a = 2 in public init(t: s/T, n: i32): 511",
+            ],
+            problems.Select(x => $"{x.Code} {Line(c, x.Subject)} in {Line(c, program.Bodies[x.Body].Source)}: {x.Views}"));
+        Assert.All(problems, x => Assert.Equal(0UL, x.Views >> (int)MirCases.Count(program.Bodies[x.Body])));
     }
 
     // R5-M23, DIAGNOSTICS rule 1: each recording rule names the requirement it judged, beside its code: A1's uses, Moves without a Move
@@ -237,6 +283,26 @@ public sealed class MirAnalysisTest
                 .Select(x => $"{x.Requirement} {x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()}").Order(StringComparer.Ordinal));
     }
 
+    // R4-M71: each recording rule names the body whose views number its problem's views: A1's, A2's, A3's and A5's the body they analyze,
+    // and A4's obligation rows (a conformance, a virtual function, a Callable binding and its limit) none, since they lie at Binding's rows.
+    [Fact]
+    public void EachRecordingRuleNamesItsBody()
+    {
+        var c = MirBuildTest.Compile(Requirements);
+        var program = c.BuildMir();
+        Assert.Equal(
+            [
+                "ComparisonLoanConflict_Kd x = 2 conflict", "IncompatibleContractImplementation_Kd Self is Sink -", "MovedPlace_Kd r moved",
+                "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
+                "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",
+                "UnsatisfiedEffectBound_Kd override func read(self: objref/Self) -> i32 -", "Unsupported_Kd Self is Store -",
+                "Unsupported_Kd func deep(n: Nest<ref/i32 during a>) deep",
+            ],
+            program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)
+                .Select(x => $"{x.Code} {Line(c, x.Subject)} {(x.Body == MirProblem.NoBody ? "-" : program.Bodies[x.Body].Key.Decl!.Name)}")
+                .Order(StringComparer.Ordinal));
+    }
+
     // R4-M1: the analyses run once per program version: building an unchanged version again keeps its problems, and a new Binding pass
     // starts without any.
     [Fact]
@@ -244,7 +310,7 @@ public sealed class MirAnalysisTest
     {
         var (c, _) = SemanticSnapshotTest.Bind("milestone/Milestone1");
         var program = c.BuildMir();
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, Moved, program.Bodies[0].Source, 0, 1));
         Assert.Equal(1, c.BuildMir().Problems.All.Length);
         c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, c.BuildMir().Problems.All.Length);
@@ -299,8 +365,8 @@ public sealed class MirAnalysisTest
             report.Clear();
             for (var i = 0; i < 64; i++)
             {
-                report.Add(i % 2 == 0 ? new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 48) + 1), 1UL << (i % 3))
-                    : new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 48) + 1), 1UL << (i % 3)));
+                report.Add(i % 2 == 0 ? new(DiagnosticCode.MovedPlace_Kd, Moved, new(0, (i % 48) + 1), 0, 1UL << (i % 3))
+                    : new(DiagnosticCode.UninitializedPlace_Kd, Uninitialized, new(0, (i % 48) + 1), 0, 1UL << (i % 3)));
             }
         }));
         Assert.Equal(64 - 16, report.All.Length);
@@ -363,4 +429,7 @@ public sealed class MirAnalysisTest
 
         return text.Append(' ', 4 * (n + 1)).Append("()\n").ToString();
     }
+
+    // The first line of a syntax's text.
+    private static string Line(Compilation c, SourceRef syntax) => c.SyntaxOf(syntax).ToString().Split('\n')[0].Trim();
 }

@@ -63,7 +63,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         if (state is null)
         {
             var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
-            report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, all)); // R4-M15a: the driver stops the body's views.
+            report.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, body.Source, body.Ordinal, all)); // R4-M15a: the driver stops the body's views.
             return false;
         }
 
@@ -328,7 +328,7 @@ internal sealed class MirInit(MirDataflow flow, MirMoveData moves, MirCases case
         // A problem at the location, with the call of the inline default copy it lies in, whose template's check it is (R4-M69).
         private readonly void Add(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject)
         {
-            var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, this.Views);
+            var problem = new MirProblem(code, DiagnosticRequirement.Ownership(requirement), subject, body.Ordinal, this.Views);
             var inlined = body.Inlining(this.scope);
             this.Report.Add(problem, inlined < 0 ? default : [new(MirFactKind.Inlined, body.Scopes[inlined].Source)]);
         }

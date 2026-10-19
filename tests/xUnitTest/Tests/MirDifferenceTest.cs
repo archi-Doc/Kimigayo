@@ -39,18 +39,18 @@ public sealed class MirDifferenceTest
         Assert.Equal([("both", old[0]), ("old", old[1]), ("old", old[2]), ("both", renamed), ("both", old[4]), ("new", mir[1])], rows);
     }
 
-    // R4-M67: a MIR problem is one entry, as MirReport.Add keeps one per code and subject, with its own requirement and its pair's
+    // R4-M67: a MIR problem is one entry, as MirReport.Add keeps one per code, subject and body, with its own requirement and its pair's
     // analysis in the compared set; MirReport's disagreement record and a pair outside the set are contract-break rows (B), never a throw.
     [Fact]
     public void MirProblemsTakeTheirPairsAnalysisAndADefectIsARow()
     {
         var c = MirBuildTest.Compile("func f(a: i32) -> i32 => a\n");
         var program = c.BuildMir();
-        var subject = program.Bodies[^1].Source;
+        var (subject, body) = (program.Bodies[^1].Source, program.Bodies[^1].Ordinal);
         var moved = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, moved, subject, 1));
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse), subject, 2));
-        program.Problems.Add(new(DiagnosticCode.UninitializedPlace_Kd, moved, subject, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, moved, subject, body, 1));
+        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.UninitializedUse), subject, body, 2));
+        program.Problems.Add(new(DiagnosticCode.UninitializedPlace_Kd, moved, subject, body, 1));
         var node = c.SyntaxOf(subject);
         MirDifferenceLedger.Entry[] expected =
         [
