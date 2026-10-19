@@ -230,9 +230,15 @@ internal sealed partial class MirBuilder
         var target = expected?.Components is [var referent] ? referent : null;
         switch (adaptation)
         {
-            case HirAdaptation.None when adjust.Acquire == HirAcquire.ByCase: // A PairAcquire only into the whole Place of a local.
-                return this.ByCase(place, type, input) is not { } formed ? MirOperand.Copy(place)
-                    : this.Temporary(type, formed, node, formed.Kind == MirRvalueKind.Ref || into is { Projection: 0, Root: >= 0 } ? into : null);
+            case HirAdaptation.None when adjust.Acquire == HirAcquire.ByCase:
+                if (this.ByCase(place, type, input) is not { } formed)
+                {
+                    return MirOperand.Copy(place);
+                }
+
+                // A PairAcquire, a marked Use, goes only into the whole Place of a local; a Reborrow into any place of its Type.
+                var destination = formed.Kind == MirRvalueKind.Use && into is not { Projection: 0, Root: >= 0 } ? null : into;
+                return this.Temporary(type, formed, node, destination);
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
