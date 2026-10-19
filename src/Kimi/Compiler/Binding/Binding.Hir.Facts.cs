@@ -13,7 +13,8 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: every call the builder builds for it complete (each
-    /// argument with its Source, a direct base call with its implementation's symbol), and per Op: a call its plan (an index's selected call), a
+    /// argument with its Source, a direct base call with its implementation's symbol), and per Op: a call its plan (an index's selected call; a
+    /// tuple operator's with its conforming Type and its two arguments, which its expansion reads, DECISIONS R5-M75), a
     /// key resolution its Evaluated argument, an assignment or update of a Property its accessors' plans (an update's setter with its
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
     /// adapter (or a <c>$tryWrite</c>'s status) and writes, each with its two arguments and a value's Type; a for loop its Type and a
@@ -32,7 +33,8 @@ public sealed partial class Binding
                 var selected = op == HirOp.Index || (Planned(this.SelectedIndexCall(index, exclusive: false), out var shared) && shared is not null);
                 return keyed && selected && Planned(this.IndexerCall(index, exclusive: true), out _); // indexUniq, bound only beside index.
             case HirOp.Call:
-                return CallPlan.Of(node) is { } call && Complete(call);
+                return CallPlan.Of(node) is { } call && Complete(call) &&
+                    (!call.TupleOperator || call is { ConformingType: not null, ArgumentOperations.Length: 2 });
             case HirOp.Assign or HirOp.CompoundAssign:
                 var target = KotoHelper.UnwrapParentheses(node is BinaryKoto update ? update.Left : ((UnaryKoto)node).Operand);
                 if (!Planned(this.PropertyCall(target, PropertyAccessorKind.Get), out var getter) ||

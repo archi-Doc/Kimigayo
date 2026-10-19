@@ -50,7 +50,7 @@ internal sealed partial class FunctionCodegen
         output.Write("  ret void\n}\n");
     }
 
-    private void Drop(in MirTerminator drop)
+    private void Drop(in MirTerminator drop, FunctionAbi abi)
     {
         if (!this.Exact())
         {
@@ -69,7 +69,7 @@ internal sealed partial class FunctionCodegen
         switch (table.RowsOf(this.body.Ordinal)[group].Verdict)
         {
             case MirDropVerdict.Keep:
-                if (!this.Keep(drop))
+                if (!this.Keep(drop, abi))
                 {
                     return;
                 }
@@ -92,7 +92,7 @@ internal sealed partial class FunctionCodegen
     // Keep destroys exactly when the dropped value's instance Type may need a drop (MirTypes.MayNeedDrop, the rule the collector targets a
     // Drop's glue by, K package 4.5 row 9): refuted, nothing is written; else the collector's target, the Type's DropGlue item, is called on
     // the Place's address with the Drop's location, and a missing target is a broken contract (package C 3.2 I8). False after a record.
-    private bool Keep(in MirTerminator drop)
+    private bool Keep(in MirTerminator drop, FunctionAbi abi)
     {
         if (this.body.TypeOf(drop.Place) is not { } dropped || this.collector.TypeOf(this.item, dropped) is not { } type)
         {
@@ -118,7 +118,7 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        var location = this.Location(drop.Source);
+        var location = this.Location(drop.Source, abi);
         if (location < 0)
         {
             return false;
