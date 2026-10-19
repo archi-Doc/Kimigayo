@@ -51,7 +51,7 @@ internal sealed partial class FunctionCodegen
     private Slot[] slots = []; // By local.
     private BoundType[] types = []; // By local, in the item's instance.
     private BoundType[] parameters = []; // The argument Types in slot order.
-    private Value[] arguments = []; // A runtime call's arguments in parameter order.
+    private Value[] arguments = []; // A runtime call's arguments in parameter order, or a fixed-array aggregate's element values.
     private InstanceCollector collector = null!;
     private FunctionAbi abi = null!; // The item's signature.
     private MirBody body = null!;

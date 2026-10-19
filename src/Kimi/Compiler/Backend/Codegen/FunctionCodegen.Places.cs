@@ -63,8 +63,11 @@ internal sealed partial class FunctionCodegen
                 return true;
             case MirProjectionKind.Index:
                 return this.Element(row, prefix, start, out address);
+            case MirProjectionKind.Deref when this.InstanceType(prefix) is { } pointer:
+                return this.Referent(pointer, start, out address);
             case MirProjectionKind.Deref:
-                return this.Referent(this.InstanceType(prefix), start, out address);
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // The collector made every Type of an admitted item.
+                return true;
             case MirProjectionKind.PairLayer:
                 return this.cases.Layer(place) is not { } layer || this.Referent(layer, start, out address);
             default:
@@ -77,7 +80,7 @@ internal sealed partial class FunctionCodegen
         => this.LoweringOf(place) is { } whole ? this.Offset(start, whole.Layout.FieldOffsets.Span[index]) : start;
 
     // A Deref by its Type: a reference or raw pointer stores its referent's address; an object handle's or borrow's payload is C6a's row.
-    private bool Referent(BoundType? pointer, Value start, out Value address)
+    private bool Referent(BoundType pointer, Value start, out Value address)
     {
         address = start;
         if (pointer is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.Raw })

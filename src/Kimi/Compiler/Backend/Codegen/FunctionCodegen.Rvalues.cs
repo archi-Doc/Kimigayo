@@ -99,11 +99,17 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        if (Abi.HasResultSlot(type.Components[0], element))
+        {
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // An element of a slot Type is copied by C2b's row.
+            return;
+        }
+
         var operands = this.body.Operands.Slice(rvalue.Start, rvalue.Count);
         this.arguments = this.arguments.Length < operands.Length ? new Value[operands.Length] : this.arguments;
         for (var i = 0; i < operands.Length; i++)
         {
-            if (Abi.HasResultSlot(type.Components[0], element) || !this.Operand(operands[i], out this.arguments[i]))
+            if (!this.Operand(operands[i], out this.arguments[i]))
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
                 return;
