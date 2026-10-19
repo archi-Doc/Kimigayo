@@ -66,6 +66,18 @@
 //               met where the later Borrow was formed or activated, so each (Loan, reservation) is reported once (SPEC 15.6.7);
 //               a destroying call's destroy keeps every mode. Variants: ActivationEveryMode (round 13's err(activate)) and
 //               NoFormationReport (rejected: the formation reports nothing, the activation every mode).
+//        Round 15 (PLAN G148; round 14 of its design reviews, merged from their union prototype unchanged): a Call's store row
+//               retains(c, i, κ, store j) into the holders W reaches (Node.Store, Analysis.StoreTargets), every designer's rule a
+//               variant; R14G is the decided rule G (DECISIONS R4-M73, A3 E16). Its cases (r14A-…, r14B-…, r14V-…) join Cases.All(),
+//               so the earlier rounds' tables run them under their own store rule, the one-layer refs(val(a_j)) (806110fc), and
+//               round 13's table lists their 22 unsound acceptances there. -r15 prints the round.
+//        Round 16 (PLAN G148's final review B1; the owner's route taint, 2026-10-19): on R14G, P13's interim (a value a call stores
+//               only past a Case.ByArgument holder carries the marker τ13; ruling (B)) and R4-M70's default taint (Node.DefaultTaint:
+//               τD:D on the value a default places into its pending slot D), with a located Unsupported_Kd (Analysis.Unsupported) for
+//               a conflict whose Loan only tainted sets hold. R16Set is the unit as reviewed (a holder is clean where its own set
+//               carries no taint; err(ended) unchecked); R16Route the owner's rule (a holder the closure reaches only through tainted
+//               sets is tainted, with its route's first taint, and err(ended)'s γ is checked the same way); R16RouteNoGamma and
+//               R16GammaOnly drop one half each. -r16 prints the round; draft/Sketches/A5 Step 2/route-taint.md records it.
 using System.Text;
 using Fact = (string H, string L);
 
@@ -114,6 +126,97 @@ void Round13()
             Console.WriteLine($"{c.Id,-8} D   : " + (Design(c) is var a && a.Errors.Count == 0 ? "no errors" : string.Join("; ", a.Errors.Select(e => $"{e.L} live at `{a.LabelAt(e.P)}` vs {e.What}"))));
 }
 if (args.Contains("-r13")) { Round13(); return 0; }
+// Round 15 (PLAN G148; round 14 of its design reviews), the design review's union: designer a's cases (r14A-…), designer b's (r14B-…) and the review's (r14V-…), every
+// case under every store-row rule: 806110fc (Abl.None: refs(val(a_j)), one layer); designer a's A, A + X, exclusive-mode + X and route
+// exclusion; designer b's A′ (R14B) and its variants; the review's G (any mode, designer b's Type guard, no exclusion: SPEC's letter
+// bounded by 15.6.2), GX (G + X), GXS (G + X only where the target's Type cannot hold a reference into its own storage or into storage
+// it reaches exclusively) and GDom (G + designer b's dominator exclusion). -r15 prints only this.
+var round15Variants = new[] { Abl.R14A, Abl.R14AX, Abl.R14AUniqX, Abl.R14ARoute, Abl.R14B, Abl.R14BLiteral, Abl.R14BAllModes, Abl.R14BNoGuard, Abl.R14BTarget, Abl.R14BAllRoutes, Abl.R14BValueRows, Abl.R14G, Abl.R14GX, Abl.R14GXS, Abl.R14GXSTransitA, Abl.R14GDom };
+var round15Main = new[] { Abl.R14A, Abl.R14AX, Abl.R14B, Abl.R14BLiteral, Abl.R14G, Abl.R14GX, Abl.R14GXS };
+void Round15()
+{
+    string Group(Analysis a, Case c) => Cls(c, a) is var s && s.StartsWith("(a)") ? "listed loss" : s;
+    string Row(string name, Func<Case, Analysis> run)
+    {
+        var g = Cases.All().GroupBy(c => Group(run(c), c)).ToDictionary(x => x.Key, x => x.Select(c => c.Id).ToList());
+        string N(string k, bool list) => g.TryGetValue(k, out var v) ? v.Count + (list ? " (" + string.Join(", ", v) + ")" : "") : "0";
+        return $"| {name} | {N("same", false)} | {N("same verdict, error moves", true)} | {N("listed loss", true)} | {N("**(b) unlisted loss**", true)} | {N("**(c) UNSOUND**", true)} |";
+    }
+    Console.WriteLine($"\nRound 15, review union (G148; {Cases.All().Count} cases):\n| Mode | Same | Earlier or moved error | Listed loss | Unlisted rejection | Unsound |\n| --- | ---: | ---: | ---: | ---: | ---: |");
+    Console.WriteLine(Row("806110fc (refs(val(a_j)), one layer)", c => Design(c)));
+    foreach (var ab in round15Variants) Console.WriteLine(Row("`" + ab + "`", c => Design(c, ab)));
+    foreach (var ab in round15Variants)
+    {
+        var ch = Cases.All().Where(c => !c.Id.StartsWith("r14")).Where(c => !Design(c, ab).ErrorNodes().SequenceEqual(Design(c).ErrorNodes())).Select(c => c.Id).ToList();
+        Console.WriteLine($"{ab}: earlier cases changed: " + (ch.Count == 0 ? "none" : string.Join(", ", ch)));
+    }
+    string W(Case c, Analysis a)
+    {
+        var v = a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
+        if (c.Err && a.Errors.Count == 0) v += " **UNSOUND**";
+        else if (!c.Err && a.Errors.Count > 0) v += c.LetterErr == true ? " (letter)" : c.ALoss != null ? " (listed)" : " (over-strict)";
+        return v;
+    }
+    void Table(Abl[] vs)
+    {
+        Console.WriteLine("\n| Case | Program | verdict | SPEC letter | 806110fc | " + string.Join(" | ", vs) + " |\n|" + string.Concat(Enumerable.Repeat(" --- |", vs.Length + 5)));
+        foreach (var c in Cases.All().Where(c => c.Id.StartsWith("r14")))
+        {
+            var spec = c.Err ? "error" + (c.At.Length > 0 ? " at `" + string.Join("`, `", c.At) + "`" : "") : "valid";
+            var letter = (c.LetterErr ?? c.Err) ? "error" : "valid";
+            Console.WriteLine($"| {c.Id} | {c.Title} | {spec} | {letter} | {W(c, Design(c))} | {string.Join(" | ", vs.Select(x => W(c, Design(c, x))))} |");
+        }
+    }
+    Table(round15Main);
+    Table(round15Variants.Except(round15Main).ToArray());
+    if (verbose)
+        foreach (var c in Cases.All().Where(c => c.Id.StartsWith("r14")))
+            foreach (var x in round15Variants.Prepend(Abl.None))
+                Console.WriteLine($"{c.Id,-9} {x,-16}: " + (Design(c, x) is var a && a.Errors.Count == 0 ? "no errors" : string.Join("; ", a.Errors.Select(e => $"{e.L} live at `{a.LabelAt(e.P)}` vs {e.What}"))));
+}
+if (args.Contains("-r15")) { Round15(); return 0; }
+// Round 16 (PLAN G148's final review B1; the owner's route taint, 2026-10-19). On rule G (R14G) with P13's interim and R4-M70's default
+// taint as markers, a conflict only tainted sets carry is a located Unsupported_Kd. R16Set is the unit as reviewed (a Loan is clean where
+// a set without a taint holds it; err(ended) unchecked); R16Route the owner's rule (a holder the closure reaches only through tainted sets
+// is tainted, and γ is checked so too); R16RouteNoGamma and R16GammaOnly each drop one half. Printed: the earlier rounds' cases under R14G
+// and each taint mode (every outcome but r14B-u's, which marks P13's ByArgument iterator, must agree, and no mode may accept what R14G
+// rejects), then the round's cases. -r16 prints only this; its exit code counts the round's failures.
+var round16Variants = new[] { Abl.R16Set, Abl.R16Route, Abl.R16RouteNoGamma, Abl.R16GammaOnly };
+int Round16()
+{
+    string O(Analysis a) => a.Errors.Count == 0 && a.Unsupported.Count == 0 ? "valid"
+        : string.Join("; ", new[] { a.Errors.Count > 0 ? "error at `" + string.Join("`, `", a.ErrorNodes()) + "`" : null,
+            a.Unsupported.Count > 0 ? "Unsupported_Kd at `" + string.Join("`, `", a.UnsupportedNodes()) + "`" : null }.Where(x => x != null));
+    string Expected(Case c) => c.At.Length == 0 && c.UnsuppAt.Length == 0 ? "valid"
+        : string.Join("; ", new[] { c.At.Length > 0 ? "error at `" + string.Join("`, `", c.At) + "`" : null,
+            c.UnsuppAt.Length > 0 ? "Unsupported_Kd at `" + string.Join("`, `", c.UnsuppAt) + "`" : null }.Where(x => x != null));
+    bool Meets(Case c, Analysis a) => a.ErrorNodes().ToHashSet().SetEquals(c.Err ? c.At : []) && a.UnsupportedNodes().ToHashSet().SetEquals(c.UnsuppAt);
+    // Never an acceptance: every Loan (or γ) rule G reports is reported under the mode, as a Language problem or a located Unsupported_Kd.
+    bool Keeps(Analysis g, Analysis a) => g.Errors.Select(e => e.L).ToHashSet().IsSubsetOf(a.Errors.Concat(a.Unsupported).Select(e => e.L));
+    var earlier = Cases.All();
+    var differ = earlier.Where(c => round16Variants.Any(v => O(Design(c, v)) != O(Design(c, Abl.R14G)))).ToList();
+    var dropped = earlier.Where(c => round16Variants.Any(v => !Keeps(Design(c, Abl.R14G), Design(c, v)))).Select(c => c.Id).ToList();
+    Console.WriteLine($"\nRound 16, route taint (PLAN G148 B1; {earlier.Count} earlier cases, {R16.All().Count()} new):");
+    Console.WriteLine($"Earlier cases whose outcome under a taint mode differs from R14G's: {(differ.Count == 0 ? "none" : string.Join(", ", differ.Select(c => c.Id)))}");
+    foreach (var c in differ) Console.WriteLine($"  {c.Id}: R14G {O(Design(c, Abl.R14G))}; " + string.Join("; ", round16Variants.Select(v => $"{v} {O(Design(c, v))}")));
+    Console.WriteLine($"Earlier cases where a taint mode drops a Loan R14G reports: {(dropped.Count == 0 ? "none" : string.Join(", ", dropped))}");
+    Console.WriteLine("\n| Case | Program | decided rule (R16Route) | R14G | " + string.Join(" | ", round16Variants) + " | meets |\n|" + string.Concat(Enumerable.Repeat(" --- |", round16Variants.Length + 5)));
+    int fails = 0;
+    foreach (var c in R16.All().Append(earlier.Single(x => x.Id == "r14B-u")))
+    {
+        var g = Design(c, Abl.R14G); var route = Design(c, Abl.R16Route);
+        bool ok = Meets(c, route) && round16Variants.All(v => Keeps(g, Design(c, v)));
+        fails += ok ? 0 : 1;
+        Console.WriteLine($"| {c.Id} | {c.Title} | {Expected(c)} | {O(g)} | {string.Join(" | ", round16Variants.Select(v => O(Design(c, v))))} | {(ok ? "yes" : "**NO**")} |");
+    }
+    if (verbose)
+        foreach (var c in R16.All())
+            foreach (var x in round16Variants.Prepend(Abl.R14G))
+                Console.WriteLine($"{c.Id,-24} {x,-16}: " + string.Join("; ", Design(c, x) is var a ? a.Errors.Select(e => $"{e.L} at `{a.LabelAt(e.P)}` vs {e.What}").Concat(a.Unsupported.Select(e => $"Unsupported {e.L} at `{a.LabelAt(e.P)}` vs {e.What}")) : []));
+    Console.WriteLine($"\nRound 16 failures: {fails}");
+    return fails;
+}
+if (args.Contains("-r16")) return Round16();
 var table3 = new StringBuilder("| Case | SPEC | S1′ | design A | Class |\n| --- | --- | --- | --- | --- |\n");
 string V(Analysis a) => a.Errors.Count == 0 ? "valid" : "error at `" + string.Join("`, `", a.ErrorNodes()) + "`";
 void VerboseA(Case c, Analysis am) // design A and its first-Deref base (AF), every error fact; round 11: SA = SecureAcquire's encoding;
@@ -292,7 +395,7 @@ foreach (var (ab, fd) in new[] { (Abl.None, false), (Abl.FirstDerefBase, false),
         .GroupBy(c => Cls(c, new Analysis(c, Mode.A, ab, fd)) is var s && s.StartsWith("(a)") ? "listed loss" : s).OrderBy(g => g.Key)
         .Select(g => $"{g.Count()} {g.Key}" + (g.Key != "same" ? " (" + string.Join(", ", g.Select(c => c.Id)) + ")" : ""))));
 Console.WriteLine();
-foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x)))
+foreach (var ab in Enum.GetValues<Abl>().Skip(1).Where(x => x is not (Abl.AIssueNotEnded or Abl.IdExclusion or Abl.AText or Abl.LastDerefBase or Abl.FirstDerefBase) && !phantomVariants.Contains(x) && !round10Variants.Contains(x) && !reviewMutations.Contains(x) && !round11Variants.Contains(x) && !round12Variants.Contains(x) && !round13Variants.Contains(x) && !round14Variants.Contains(x) && !round15Variants.Contains(x) && !round16Variants.Contains(x)))
 {
     string At(Analysis a) => "`" + string.Join("`, `", a.ErrorNodes()) + "`";
     var changed = Cases.All().Where(c => !Cases.NoS1P(c)).Select(c => (c, a: new Analysis(c, Mode.S1P, ab), b: new Analysis(c, Mode.S1P)))
@@ -373,8 +476,22 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     OnePointDrop,       // the one-point encodings of 24c, 29b and 91 (Case.OnePoint): a drop and a store at one location
     // Round 14 (1c's 26b, DECISIONS R4-M68): the design's activation meets only `ref` Loans in the holder found.
     ActivationEveryMode, // round 13's err(activate): an activation conflicts with a Loan of any mode
-    NoFormationReport } // rejected (the old path's choice): a reservation's formation reports nothing, its activation every mode
+    NoFormationReport,  // rejected (the old path's choice): a reservation's formation reports nothing, its activation every mode
+    // Round 15 (PLAN G148; round 14 of its design reviews), the review's union of both designers' store-row rules (Analysis.Rule). Abl.None is A5 at 806110fc.
+    R14A, R14AX, R14AUniqX, R14ARoute,            // designer a: A (any mode, no guard), A + X, exclusive kind + X, route exclusion past layer 1
+    R14B, R14BLiteral, R14BAllModes, R14BNoGuard, // designer b: A′ (exclusive kind, Type guard, dominator exclusion on Content rows), no exclusion,
+    R14BTarget, R14BAllRoutes, R14BValueRows,     //   any mode, no guard, target's own route only, every route, Value rows too
+    R14G, R14GX, R14GXS, R14GXSTransitA, R14GDom, // the review: any mode + guard; + X; + X where ¬SelfRef (also with a's transit); + dominators
+    // Round 16 (PLAN G148's final review B1; the owner's route taint, 2026-10-19): rule G (R14G) with P13's interim (DECISIONS R4-M73, the
+    // planning session's ruling (B): a value a call stores only past a holder in Case.ByArgument carries P13's marker τ13) and R4-M70's
+    // default taint (Node.DefaultTaint: the value a default places into its pending slot D carries τD:D); a conflict whose Loan only tainted
+    // sets hold is a located Unsupported_Kd (Analysis.Unsupported). Each runs the check one way:
+    R16Set,           // the unit as reviewed (b335393b): a Loan is clean where a set without a taint holds it; err(ended) has no taint check
+    R16Route,         // the owner's route taint: a holder the closure reaches only through tainted sets is tainted, err(ended)'s γ too
+    R16RouteNoGamma,  // ablation: the route rule for Loans only, err(ended) unchecked
+    R16GammaOnly }    // ablation: the set rule for Loans and for γ (err(ended) checked on the found set only)
 
+record StoreRow(string Arg, string Src, bool Content, int Depth, int Hidden, bool Raw); // round 15 (G148)
 enum K { Read, Write, Move, SBorrow, UBorrow, Destroy }
 enum Mode { PROV, S1, S1P, A }
 // SharedAt (round 10, G110): the number of borrow Derefs of Place up to and including its last shared one (ref, objref,
@@ -461,6 +578,19 @@ class Node
     // stores it into E, the referent of a raw pointer (A3 §5: val(raw-derived Place) ∪= {Φ_E}; SPEC 15.6).
     public readonly List<(string Ptr, string Src)> RawStores = new();
     public Node RawStore(string ptr, string src) { RawStores.Add((ptr, src)); return Use(ptr, src); }
+    // Round 15 (G148): a store row of a Call: its value ret(i, κ) (Content: content(σ(src)); Value: σ(src) ∪ content(σ(src)), src a
+    // reference) into the writable storage of the reference argument held in `arg` (a_j). Depth: the layers of that storage its
+    // Type positions show (1: the referent; int.MaxValue: unknown, an abstract carrier or an unknown callee); Hidden: the layers when
+    // nominal Types' fields are walked (0: as Depth); Raw: a raw pointee is among them. Names: '#' a local holding no Loan, '%' a
+    // raw-pointer local (no holder either); neither is a store target (A5: no slot).
+    public readonly List<StoreRow> Stores = new();
+    // Round 16 (R4-M70): a default's evaluation places the value it stores into its pending slot D, which carries D's default taint.
+    public readonly List<string> Taints = new();
+    public Node DefaultTaint(string slot) { Taints.Add(slot); return this; }
+    public Node Store(string arg, string src, bool content, int depth, int hidden = 0, bool raw = false)
+    { Stores.Add(new(arg, src, content, depth, hidden, raw)); return Use(arg, src); }
+    // Review (G148 union): designer b's encoding of the same row (its depths served only option B).
+    public Node Retain(string arg, string src, bool content, params int[] depths) => Store(arg, src, content, depths.Length == 0 ? 1 : depths.Max());
     public Node Goto(params string[] labels) { Succ = labels.ToList(); return this; }
     public Node Assume(string label) { Assumed.Add(label); return this; }                        // assumed edge (§14.10.3)
 }
@@ -478,6 +608,13 @@ class Case
     public Case IntrinsicRow; // round 12: the same program with A3 §4's intrinsic row, every operand → result (IntrinsicAllOperands)
     public Case Built;        // round 13: the MIR today's builder makes where E13 (2) prescribes another order (CurrentBuilder)
     public Case OnePoint;     // round 13: rounds 5-12's encoding with a drop and a store at one location (OnePointDrop)
+    // Review (G148 union): holder facts the store-row variants read: designer b's SharedOnly and RawRoots; NonHolders, locals that hold
+    // no Loan (designer a's '#'); SelfRef, holders whose Type may hold a reference into their own storage or into storage they reach
+    // through exclusive references (the review's guard); LetterErr, SPEC 15.6.4's per-argument letter where it departs from Err.
+    public readonly HashSet<string> SharedOnly = new(), RawRoots = new(), NonHolders = new(), SelfRef = new(); public bool? LetterErr; public string Rust;
+    // Round 16: holders whose Type passes rule G's guard only through a Type argument, a pair layer or an abstract part (MirWrites
+    // .ThroughArgument), and the nodes the round's decided rule reports a located Unsupported_Kd at.
+    public readonly HashSet<string> ByArgument = new(); public string[] UnsuppAt = [];
     public Case(string id, string title) { Id = id; Title = title; }
     public Node N(string label) { var n = new Node(label, Nodes.Count); Nodes.Add(n); return n; }
     public Case Error(params string[] at) { Err = true; At = at; return this; }
@@ -495,6 +632,7 @@ class Analysis
     readonly HashSet<string> gamma = new(); // the holders with a region marker
     HashSet<Fact>[] In; HashSet<string>[] liveIn; List<int>[] succ;
     public readonly List<(string L, int P, string What)> Errors = new();
+    public readonly List<(string L, int P, string What)> Unsupported = new(); // round 16: located Unsupported_Kd, a conflict only taints carry
     public readonly Case Enc; // round 12: the MIR form analysed (the case itself, or one of its other forms)
 
     public Analysis(Case c, Mode m, Abl x = Abl.None, bool firstDeref = false, bool prefixKill = false)
@@ -528,6 +666,11 @@ class Analysis
         if (m == Mode.A && x != Abl.EndedByLoan)
             foreach (var h in ns.SelectMany(n => n.GuardEnds).Select(Root).Distinct())
             { gamma.Add(h); issue["γ" + h] = new("γ" + h, "γ" + h, false, h, false, false, Marker: true); places["γ" + h] = ["γ" + h]; }
+        // Round 16: P13's marker and each pending slot's default taint, carried like γ (with the values that hold them), never ended, never
+        // conflicting.
+        if (Tainting)
+            foreach (var t in ns.SelectMany(n => n.Taints).Select(d => "τD:" + d).Prepend("τ13").Distinct())
+            { issue[t] = new(t, t, false, t, false, false, Marker: true); places[t] = [t]; }
         excusedAt = ns.Select(n => n.Excuses.ToHashSet()).ToArray();
         if (m == Mode.A && x != Abl.ExcuseAtCallOnly)
             foreach (var n in ns) foreach (var r in n.Activates) excusedAt[issueAt[r]].UnionWith(n.Excuses);
@@ -559,6 +702,11 @@ class Analysis
     // Round 14 (R4-M68): the design's activation conflicts only with a Loan `ref` in the holder found. Off in the runs of earlier
     // rounds (no prefixKill) and in the variants that restore the activation's every mode.
     bool ActivationRefOnly => Pk && X is not (Abl.ActivationEveryMode or Abl.NoFormationReport);
+    // Round 16: the taint modes, and which of them follow a taint along the closure's route and check err(ended)'s γ.
+    bool Tainting => X is Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly;
+    bool RouteTaint => X is Abl.R16Route or Abl.R16RouteNoGamma;
+    bool GammaTaint => X is Abl.R16Route or Abl.R16GammaOnly;
+    static bool IsTaint(string l) => l.StartsWith('τ');
 
     int IxOf(string l) { int i = ns.FindIndex(n => n.Label == l); return i >= 0 ? i : throw new Exception("no label " + l); }
 
@@ -775,9 +923,113 @@ class Analysis
     static HashSet<string> Sigma(IEnumerable<Fact> s, string h) => s.Where(t => t.H == h).Select(t => t.L).ToHashSet();
     HashSet<string> Refs(HashSet<string> S)
     {
-        var r = S.Where(Direct).Select(l => Root(issue[l].Place)).ToHashSet();
+        var r = S.Where(Direct).Select(l => Root(issue[l].Place)).Where(Holds).ToHashSet(); // round 14: '#', '%' locals hold no Loan
         if (S.Any(l => issue[l].Param) || !S.Any(Direct)) r.Add("E"); // Φ_E, or no direct Loan
         return r;
+    }
+    static bool Holds(string h) => !h.StartsWith('#') && !h.StartsWith('%');
+
+    // Round 15 (PLAN G148), the review's union of both designers' rules. A store row's targets W from val(a_j), each with its BFS layer
+    // and its dominators (the holders every route of W from layer 1 to it passes, itself included). Layer 1: refs(val(a_j)) without raw
+    // roots and non-holders (a raw root there reaches E). Past it, from each reached holder h other than E (under Guard, not a SharedOnly
+    // h): E for Φ_E (an entry Loan), E for a direct Loan naming a raw root, the holder each direct Loan names (Any; else exclusive kind
+    // only), non-holders skipped. Abl.None: refs(val(a_j)) as is (806110fc).
+    enum Excl { None, Self, SelfRef, Dom, Target, AllRoutes, AllRoutesPast1 }
+    (bool Walk, bool Any, bool Guard, Excl Ex, bool ContentOnly) Rule => X switch
+    {
+        Abl.R14A => (true, true, false, Excl.None, false),
+        Abl.R14AX => (true, true, false, Excl.Self, false),
+        Abl.R14AUniqX => (true, false, false, Excl.Self, false),
+        Abl.R14ARoute => (true, true, false, Excl.AllRoutesPast1, false),
+        Abl.R14B => (true, false, true, Excl.Dom, true),
+        Abl.R14BLiteral => (true, false, true, Excl.None, true),
+        Abl.R14BAllModes => (true, true, true, Excl.Dom, true),
+        Abl.R14BNoGuard => (true, false, false, Excl.Dom, true),
+        Abl.R14BTarget => (true, false, true, Excl.Target, true),
+        Abl.R14BAllRoutes => (true, false, true, Excl.AllRoutes, true),
+        Abl.R14BValueRows => (true, false, true, Excl.Dom, false),
+        Abl.R14G => (true, true, true, Excl.None, false),
+        Abl.R14GX => (true, true, true, Excl.Self, false),
+        Abl.R14GXS or Abl.R14GXSTransitA => (true, true, true, Excl.SelfRef, false),
+        Abl.R14GDom => (true, true, true, Excl.Dom, true),
+        Abl.R16Set or Abl.R16Route or Abl.R16RouteNoGamma or Abl.R16GammaOnly => (true, true, true, Excl.None, false), // round 16: rule G
+        _ => (false, false, false, Excl.None, false),
+    };
+    // Designer a's transit (a Content row's value read from the source's referents), corrected from its argument's to its source's.
+    bool TransitA => X is Abl.R14A or Abl.R14AX or Abl.R14AUniqX or Abl.R14ARoute or Abl.R14GXSTransitA;
+    bool RawRoot(string h) => h.StartsWith('%') || Enc.RawRoots.Contains(h);
+    bool NonHolder(string h) => h.StartsWith('#') || Enc.NonHolders.Contains(h);
+    Dictionary<string, (int Layer, HashSet<string> Dom)> StoreTargets(IEnumerable<Fact> s, StoreRow r, bool byArgument = true) // round 16: byArgument false steps from no ByArgument holder
+    {
+        var rule = Rule; var S = Sigma(s, Root(r.Arg));
+        if (!rule.Walk) return Refs(S).ToDictionary(t => t, t => (1, new HashSet<string> { t }));
+        var layer = new Dictionary<string, int>(); var edges = new List<(string From, string To)>(); var queue = new Queue<string>();
+        foreach (var t in Refs(S)) if (!RawRoot(t) && !NonHolder(t)) { layer[t] = 1; queue.Enqueue(t); }
+        var first = layer.Keys.ToHashSet();
+        foreach (var l in S) if (Direct(l) && RawRoot(Root(issue[l].Place))) layer.TryAdd("E", 2);
+        while (queue.Count > 0)
+        {
+            var h = queue.Dequeue();
+            if (h == "E" || rule.Guard && Enc.SharedOnly.Contains(h) || !byArgument && Enc.ByArgument.Contains(h)) continue;
+            foreach (var l in Sigma(s, h))
+            {
+                string t = null;
+                if (issue[l].Param) t = "E";
+                else if (Direct(l))
+                {
+                    var root = Root(issue[l].Place);
+                    if (RawRoot(root)) t = "E";
+                    else if (!NonHolder(root) && (rule.Any || issue[l].Uniq)) t = root;
+                }
+                if (t == null) continue;
+                edges.Add((h, t));
+                if (layer.TryAdd(t, layer[h] + 1)) queue.Enqueue(t);
+            }
+        }
+        var all = layer.Keys.ToHashSet();
+        var dom = layer.Keys.ToDictionary(t => t, t => first.Contains(t) ? new HashSet<string> { t } : new HashSet<string>(all));
+        for (bool changed = true; changed;)
+        {
+            changed = false;
+            foreach (var t in layer.Keys.Where(t => !first.Contains(t)).ToList())
+            {
+                HashSet<string> d = null;
+                foreach (var (from, to) in edges.Where(e => e.To == t)) { var via = new HashSet<string>(dom[from]) { t }; if (d == null) d = via; else d.IntersectWith(via); }
+                d ??= new HashSet<string> { t }; // reached without a holder edge (a raw root at layer 1)
+                if (!d.SetEquals(dom[t])) { dom[t] = d; changed = true; }
+            }
+        }
+        return layer.ToDictionary(x => x.Key, x => (x.Value, dom[x.Key]));
+    }
+    // ret(i, κ) of a store row (A3 5) into each target, without the direct Loans the variant's exclusion names.
+    HashSet<Fact> StoreFacts(IEnumerable<Fact> s, StoreRow r)
+    {
+        var v = Sigma(s, Root(r.Src)); var ret = Content(s, v); if (!r.Content) ret.UnionWith(v);
+        var T = StoreTargets(s, r); var rule = Rule; var o = new HashSet<Fact>();
+        bool applies = !rule.ContentOnly || r.Content;
+        // Round 16 (R4-M73, ruling (B)): a target reached only past a ByArgument holder receives the value with P13's marker; an empty value
+        // stores nothing, so no marker (the final review's N1).
+        var clean = Tainting ? StoreTargets(s, r, byArgument: false).Keys.ToHashSet() : null;
+        foreach (var (t, (layer, dom)) in T)
+        {
+            if (clean != null && !clean.Contains(t) && ret.Count > 0) o.Add((t, "τ13"));
+            foreach (var l in ret)
+            {
+                var named = Direct(l) ? Root(issue[l].Place) : null;
+                bool drop = applies && named != null && rule.Ex switch
+                {
+                    Excl.Self => layer > 1 && named == t,
+                    Excl.SelfRef => layer > 1 && named == t && !Enc.SelfRef.Contains(t),
+                    Excl.Dom => dom.Contains(named),
+                    Excl.Target => named == t,
+                    Excl.AllRoutes => T.ContainsKey(named),
+                    Excl.AllRoutesPast1 => layer > 1 && T.ContainsKey(named),
+                    _ => false,
+                };
+                if (!drop) o.Add((t, l));
+            }
+        }
+        return o;
     }
     HashSet<string> Content(IEnumerable<Fact> s, HashSet<string> S) => Refs(S).SelectMany(t => Sigma(s, t)).ToHashSet();
 
@@ -789,6 +1041,7 @@ class Analysis
         foreach (var t in inn) if (!whole.Contains(t.H)) o.Add(t);   // P1: only a whole-root write, Move or storage end ends carrying
         HashSet<string> Val(string x) { var S = Sigma(inn, Root(x)); for (int k = Steps(x); k > 0; k--) S = Content(inn, S); return S; }
         foreach (var (from, to) in n.Flows) { foreach (var l in Val(from)) o.Add((Root(to), l)); if (gamma.Contains(Root(to))) o.Add((Root(to), "γ" + Root(to))); }
+        if (Tainting) foreach (var d in n.Taints) o.Add((Root(d), "τD:" + d)); // round 16 (R4-M70): the default's value placed into D
         foreach (var (place, src) in n.Throughs)                    // P10: every holder the carried direct Loans name
         {
             var S = Sigma(inn, Root(place)); for (int k = Steps(place); k > 1; k--) S = Content(inn, S);
@@ -799,6 +1052,7 @@ class Analysis
         // cases' values are references; content is empty there). NoRawStore: the intrinsic stores nothing (B4).
         if (!NoRawStore)
             foreach (var (_, src) in n.RawStores) { var v = Sigma(inn, Root(src)); v.UnionWith(Content(inn, v)); foreach (var l in v) o.Add(("E", l)); }
+        foreach (var r in n.Stores) o.UnionWith(StoreFacts(inn, r)); // round 15 (G148, the review's union): a Call's store rows
         foreach (var s in n.Issues)                                 // issue + parents of every followed layer
         {
             if (gamma.Contains(Root(s.Into))) o.Add((Root(s.Into), "γ" + Root(s.Into))); // finding 1: besides its Loan, if any
@@ -882,7 +1136,11 @@ class Analysis
             var transit = X == Abl.NoTransit ? [] : n.Flows.Where(f => after.Contains(Root(f.To)) || Esc(Root(f.To)))
                 .SelectMany(f => SrcHolders(f.From))
                 .Concat(n.Throughs.Where(t => Targets(t.Place).Any(h => after.Contains(h) || Esc(h))).Select(t => Root(t.Src)))
-                .Concat(NoRawStore ? [] : n.RawStores.Select(t => Root(t.Src))).ToHashSet(); // round 11 (E14): a store into E
+                .Concat(NoRawStore ? [] : n.RawStores.Select(t => Root(t.Src))) // round 11 (E14): a store into E
+                // Round 15 (G148): a store row whose output reaches a holder live after ℓ or E: its value's holders (Content: the
+                // holders the argument's referent content is read from).
+                .Concat(n.Stores.Where(r => StoreTargets(In[i], r).Keys.Any(h => after.Contains(h) || Esc(h)))
+                    .SelectMany(r => TransitA && r.Content ? Refs(Sigma(In[i], Root(r.Src))) : new HashSet<string> { Root(r.Src) })).ToHashSet();
             // Round 13: ParentsAsTransit, the review's other fix: the stored value seeds whatever its destination's liveness (ROS),
             // and the Ref's parent holders are in transit (RefParentsInTransit, RPT).
             var stored = n.Issues.Where(s => !s.Param && !s.Phantom && (after.Contains(Root(s.Into)) || Esc(Root(s.Into)) || X == Abl.ParentsAsTransit)).ToList();
@@ -987,13 +1245,21 @@ class Analysis
                 bool byMarker = gamma.Contains(h0);
                 if (!byMarker && X is not (Abl.GammaGuardsOnly or Abl.EndedByLoan)) continue;
                 var F0 = In[i].Where(t => t.H != h0 && (Esc(t.H) || after.Contains(t.H) || byMarker && transit.Contains(t.H))).ToHashSet();
+                var entries0 = F0.Select(t => t.H).ToHashSet(); // round 16: the check set's roots, before its closure
                 for (var work = new Queue<Fact>(F0); work.Count > 0;)
                 {
                     var l0 = work.Dequeue().L; var T = issue[l0].Param ? "E" : Direct(l0) ? Root(issue[l0].Place) : null;
                     if (T != null) foreach (var t in In[i].Where(t => t.H == T)) if (F0.Add(t)) work.Enqueue(t);
                 }
                 if (!byMarker) { foreach (var (_, l) in F0) if (!issue[l].Param && !issue[l].Marker && Root(issue[l].Into) == h0) Err(l, i, "ended " + h0); }
-                else if (F0.Any(t => t.L == "γ" + h0)) Err("γ" + h0, i, "ended " + h0);
+                else if (F0.Any(t => t.L == "γ" + h0))
+                {
+                    // Round 16 (the owner's route taint): γ only tainted sets hold is the located Unsupported_Kd, as a Loan's conflict is.
+                    var (cleanH, taintOf) = GammaTaint ? Taints(F0, entries0, X == Abl.R16Route) : (null, null);
+                    var holding = F0.Where(t => t.L == "γ" + h0).Select(t => t.H).ToList();
+                    if (cleanH == null || holding.Any(cleanH.Contains)) Err("γ" + h0, i, "ended " + h0);
+                    else Unsupp("γ" + h0, Located(holding, taintOf, i), "ended " + h0);
+                }
             }
             foreach (var a in accs)
             {
@@ -1043,6 +1309,7 @@ class Analysis
                 if (BorrowParents && a.From != null) foreach (var l in Parents(a.Place, a.From.SharedAt)) F.Add((Root(a.Place), l));
                 IEnumerable<Fact> basis = X == Abl.AText && a.Except == null ? outSet : In[i];
                 var seed = Seed(a); F.UnionWith(basis.Where(t => seed.Contains(t.H)));
+                var entries = F.Select(t => t.H).ToHashSet(); // round 16: the check set's roots, before its closure
                 for (var work = new Queue<Fact>(F); work.Count > 0;) // a live direct Loan naming T makes σ(T) live
                 {
                     var l0 = work.Dequeue().L; var T = issue[l0].Param ? "E" : Direct(l0) ? Root(issue[l0].Place) : null;
@@ -1054,6 +1321,7 @@ class Analysis
                 // write"; `replace(cur@uniq, …)` destroys cur's old value in place). RouteWriteOnly drops the last (B's letter).
                 bool shallowExclusive = a.Kind is K.Write or K.Destroy || a.Except != null && a.InPlace && X != Abl.RouteWriteOnly;
                 bool byId = X is Abl.IdExclusion or Abl.AText;
+                var hits = new List<(string H, string L)>(); // round 16: the (holder, Loan) pairs that conflict, decided below
                 foreach (var (h, l) in F)
                 {
                     if ((byId && l == a.Except) || issue[l].Param || issue[l].Marker || excusedAt[i].Contains(l)) continue;
@@ -1076,8 +1344,14 @@ class Analysis
                     // or destruction of a prefix of the reserved Loan's Place, across borrow Derefs, reaches that Loan in its
                     // reservation holder. Checked here on σ_in, so before any `ended` the access causes.
                     if (X != Abl.NoRouteReach && shallowExclusive && (InWindow(h, l, i) || X == Abl.RouteAllParents && PendingHolder(h, i))) reach = true;
-                    if (Path.Within(a.Place, p) || (Path.Within(p, a.Place) && (reach || !Path.DerefBelow(p, a.Place)))) Err(l, i, $"{a.Kind} {a.Place}");
+                    if (Path.Within(a.Place, p) || (Path.Within(p, a.Place) && (reach || !Path.DerefBelow(p, a.Place)))) hits.Add((h, l));
                 }
+                // Round 16 (R4-M70, R4-M73; the owner's route taint): a Loan some clean holder of the check set holds is the Language problem;
+                // one only tainted holders hold is the located Unsupported_Kd. Without a taint mode every holder is clean.
+                var (clean, taint) = Tainting ? Taints(F, entries, RouteTaint) : (null, null);
+                foreach (var g in hits.GroupBy(x => x.L))
+                    if (clean == null || g.Any(x => clean.Contains(x.H))) Err(g.Key, i, $"{a.Kind} {a.Place}");
+                    else Unsupp(g.Key, Located(g.Select(x => x.H), taint, i), $"{a.Kind} {a.Place}");
             }
         }
     }
@@ -1090,6 +1364,35 @@ class Analysis
     bool PendingHolder(string h, int i) => issue.Values.Any(r => r.Reserve && r.Into == h && InWindow(h, r.Id, i));
 
     void Err(string l, int i, string what) { if (!Errors.Contains((l, i, what))) Errors.Add((l, i, what)); }
+    void Unsupp(string l, int i, string what) { if (!Unsupported.Contains((l, i, what))) Unsupported.Add((l, i, what)); }
+
+    // Round 16: the holders of a check set the check reads clean, and each tainted one's taint (R4-M70, R4-M73). The set rule (the unit
+    // as reviewed): a holder whose own set carries no taint marker. The route rule (the owner's): a root of the check set without one, or a
+    // holder a clean holder's direct Loan (or Φ_E) names and whose own set carries none; a holder reached only through tainted sets is
+    // tainted with the first taint on its route. A default's taint sorts before P13's, as the per-local markers precede P13's element.
+    (HashSet<string> Clean, Dictionary<string, string> Taint) Taints(HashSet<Fact> F, HashSet<string> roots, bool route)
+    {
+        var taint = F.Where(t => IsTaint(t.L)).GroupBy(t => t.H)
+            .ToDictionary(g => g.Key, g => g.Select(t => t.L).OrderBy(x => x == "τ13" ? 1 : 0).ThenBy(x => x, StringComparer.Ordinal).First());
+        var holders = F.Select(t => t.H).ToHashSet();
+        if (!route) return (holders.Where(h => !taint.ContainsKey(h)).ToHashSet(), taint);
+        IEnumerable<string> Named(string h) => F.Where(t => t.H == h).Select(t => issue[t.L].Param ? "E" : Direct(t.L) ? Root(issue[t.L].Place) : null).Where(x => x != null);
+        var clean = new HashSet<string>(); var queue = new Queue<string>();
+        foreach (var h in roots) if (!taint.ContainsKey(h) && clean.Add(h)) queue.Enqueue(h);
+        while (queue.Count > 0) foreach (var t in Named(queue.Dequeue())) if (!taint.ContainsKey(t) && clean.Add(t)) queue.Enqueue(t);
+        var tainted = new Queue<string>(taint.Keys);
+        while (tainted.Count > 0) { var h = tainted.Dequeue(); foreach (var t in Named(h)) if (!clean.Contains(t) && taint.TryAdd(t, taint[h])) tainted.Enqueue(t); }
+        return (clean, taint);
+    }
+
+    // Round 16: an Unsupported_Kd's location by its first taint's kind (Reports.cs): a default's at the node that places into its pending
+    // slot (the omitting call), P13's at the conflicting access.
+    int Located(IEnumerable<string> holders, Dictionary<string, string> taint, int at)
+    {
+        var first = holders.Where(taint.ContainsKey).Select(h => taint[h]).OrderBy(x => x == "τ13" ? 1 : 0).ThenBy(x => x, StringComparer.Ordinal).FirstOrDefault();
+        return first != null && first.StartsWith("τD:") ? ns.First(n => n.Taints.Contains(first[3..])).Ix : at;
+    }
+    public IEnumerable<string> UnsupportedNodes() => Unsupported.Select(e => ns[e.P].Label).Distinct();
 
     // disturbed at ℓ ⇒ Φ_c is replaced by Φ_c^dist in every σ (by holder, like ended).
     static HashSet<Fact> Disturbed(Node n, HashSet<Fact> o) =>
@@ -1174,7 +1477,9 @@ static class Cases
         // Round 12 (A3 E13, the owner's option R1: operand evaluation order)
         .. Round12.All(),
         // Round 13 (A3 E13 rewritten): the second design review's cases and this round's (ids r13…, family 141)
-        .. R13.All()];
+        .. R13.All(),
+        // Round 15 (PLAN G148): call store rows past the argument's first layer (ids r14…, family 142)
+        .. R14A.All(), .. R14B.All(), .. R14V.All()];
 
     // ---- Round 11 (A3 E13, E14; the core lane's group review B1, B2, B4) ----
     // E13: a Call's inputs are its argument operands and a Value callee's operand. Input: an access the MIR leaves AT the Call
@@ -1646,7 +1951,7 @@ static class Cases
         return c.Error("x = 5");
     }
 
-    static int Num(Case c) => c.Id.StartsWith("r13") ? 141 : char.IsDigit(c.Id[0]) ? int.Parse(new string(c.Id.TakeWhile(char.IsDigit).ToArray())) : 0; // round 13: r13… is family 141
+    static int Num(Case c) => c.Id.StartsWith("r14") ? 142 : c.Id.StartsWith("r13") ? 141 : char.IsDigit(c.Id[0]) ? int.Parse(new string(c.Id.TakeWhile(char.IsDigit).ToArray())) : 0; // round 13: r13… is family 141
     public static bool NoS1P(Case c) => Num(c) >= 50 || c.Nodes.Any(n => n.EndBorrows.Count > 0); // reviews' cases: design A only
     public static bool Review23a(Case c) => Num(c) is >= 50 and < 100;
     public static bool Review1b(Case c) => Num(c) is >= 100 and < 130;
@@ -4239,5 +4544,883 @@ static class R13
         if (!used) return c.Valid();
         c.N("inspect(r)").A(K.Read, "r");
         return c.Error("$5 = &uniq two-phase g (receiver)", "level.Set(move $5, move $1)");
+    }
+}
+
+// ---- Round 15 (PLAN G148, designer a): a Call's store row retains(c, i, κ, store j) stores ret(i, κ) into the writable storage of
+// input j, which TyCtxt.Retains defines as every invariant position below the input's first writable one, past any layer (DECISIONS
+// BU-1), so storage behind several exclusive layers. A5 at 806110fc stores into refs(val(a_j)) only (the design here). Callees:
+// put2(p: uniq/(uniq/(ref/i32 during a) during c), y: ref/i32 during a) writes y at **p, rows `0 Content store 0, 1 Value store 0`;
+// put3 one layer more; put(slot: uniq/(ref/i32 during a), value: ref/i32 during a) writes *slot; putS(p: uniq/(ref/(ref/i32 during
+// a) during c), y: ref/i32 during a) (its rows by its contract; past the shared layer nothing is writable); mkU(r: ref/(ref/i32 during
+// a) during c) -> uniq/(ref/i32 during a) during c (retains r, Value); WQ2 {a, c} {q: uniq/(ref/i32 during a) during c}, setW(wv:
+// uniq/WQ2{k}, y: ref/i32 during k.a) writes wv.q@follow, touchW(wv: uniq/WQ2) (its self-row only); putR(p: uniq/(raw/(ref/i32 during
+// a)), y: ref/i32 during a) initializes p's pointee with y; get2/get3 return the value at the bottom (a Content result row). '#' locals
+// hold no Loan, '%' is a raw-pointer local; neither is a holder. SPEC verdicts: SPEC 15.6 (a call writes the storage its contract
+// lets it write like a write through a reference: every holder that layer's reference reaches), 15.6.2 (past a shared layer only
+// reads), 7.2.3 (a default only inspects a preceding exclusive slot).
+static class R14A
+{
+    const bool Uniq = true, Ref = false;
+    public static IEnumerable<Case> All() => Raw().Select(R14Ann.A);
+    static IEnumerable<Case> Raw() => [Repro("r14a"), Repro("r14b"), Repro("r14c"), Repro("r14d"), Repro("r14e"), Shared("r14f"), Shared("r14g"),
+        Shared("r14h"), Hidden("r14i"), Hidden("r14j"), RawPointee("r14k"), Unknown("r14l"), Input("r14m"), Input("r14n"), Input("r14o"), Within("r14p"), Within("r14q")];
+
+    // a: the reproducer; b: its direct twin; c: put3 (depth 3); d: put (depth 1, the control); e: a without `b = 5` (option X's probe).
+    static Case Repro(string id)
+    {
+        var c = new Case("r14A-" + id[3..], id switch
+        {
+            "r14a" => "G148: `var w = x@ref; var s1 = w@uniq; put2(s1@uniq, b@ref); b = 5; inspect(w)`",
+            "r14b" => "direct twin: `…; var s2 = s1@uniq; s2@follow@follow = b@ref; b = 5; inspect(w)`",
+            "r14c" => "depth 3: `…; var s2 = s1@uniq; put3(s2@uniq, b@ref); b = 5; inspect(w)`",
+            "r14d" => "depth 1 (control): `var w = x@ref; put(w@uniq, b@ref); b = 5; inspect(w)`",
+            _ => "r14a without the write: `put2(s1@uniq, b@ref); inspect(w); w = x@ref; inspect(w)` (SPEC's per-argument letter would make w carry s1's Loan on w)",
+        });
+        c.N("var x = 1").Def("#x"); c.N("var b = 2").Def("#b");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "#x", Ref, "w");
+        if (id == "r14d")
+        {
+            c.N("$p = &uniq two-phase w").Def("$p").Borrow("Lp", "w", Uniq, "$p", reserve: true);
+            c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+            c.N("put(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", true, 1).Store("$p", "$y", false, 1);
+        }
+        else
+        {
+            c.N("var s1 = w@uniq").Def("s1").Borrow("Lw", "w", Uniq, "s1");
+            if (id is "r14b" or "r14c") c.N("var s2 = s1@uniq").Def("s2").Borrow("Ls2", "s1", Uniq, "s2");
+            if (id == "r14b")
+            {
+                c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+                c.N("s2@follow@follow = move $y").Through("s2.*.*", "$y");
+            }
+            else
+            {
+                var (arg, depth, f) = id == "r14c" ? ("s2", 3, "put3") : ("s1", 2, "put2");
+                c.N($"$p = &uniq two-phase {arg}").Def("$p").Borrow("Lp", arg, Uniq, "$p", reserve: true);
+                c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+                c.N($"{f}(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", true, depth).Store("$p", "$y", false, depth);
+            }
+        }
+        if (id == "r14e")
+        {
+            c.N("inspect(copy w)").Input(K.Read, "w");
+            c.N("w = x@ref").Assign("w").Borrow("Lx2", "#x", Ref, "w");
+            c.N("inspect(copy w) (again)").Input(K.Read, "w");
+            return c.Valid();
+        }
+        c.N("b = 5").Assign("#b");
+        c.N("inspect(copy w)").Input(K.Read, "w");
+        return c.Error("b = 5");
+    }
+
+    // f: putS through a shared layer (option A's over-strictness probe); g: the same with a shared reborrow through a uniq (its parent
+    // Loan is exclusive: the mode gate's over-strictness); h: put2 on a uniq whose only direct Loan is shared (mkU), which reaches w
+    // by SPEC 15.6's rule (the mode gate's unsound acceptance).
+    static Case Shared(string id)
+    {
+        var c = new Case("r14A-" + id[3..], id switch
+        {
+            "r14f" => "shared layer: `var w = x@ref; var s = w@ref; putS(s@uniq, b@ref); b = 5; inspect(w)` (w lies past a shared layer)",
+            "r14g" => "shared reborrow: `var u = w@uniq; var s = u@follow@ref; putS(s@uniq, b@ref); b = 5; inspect(w)` (s carries u's uniq Loan on w)",
+            _ => "uniq from shared: `var u = mkU(w@ref); put2(u@uniq, b@ref); b = 5; inspect(w)` (u's only direct Loan is shared and names w)",
+        });
+        c.N("var x = 1").Def("#x"); c.N("var b = 2").Def("#b");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "#x", Ref, "w");
+        string arg;
+        if (id == "r14f") { c.N("var s = w@ref").Def("s").Borrow("Ls", "w", Ref, "s"); arg = "s"; }
+        else if (id == "r14g")
+        {
+            c.N("var u = w@uniq").Def("u").Borrow("Lu", "w", Uniq, "u");
+            c.N("var s = u@follow@ref").Def("s").Borrow("Lsc", "u.*", Ref, "s"); arg = "s";
+        }
+        else
+        {
+            c.N("$r = w@ref").Def("$r").Borrow("Lr", "w", Ref, "$r");
+            c.N("var u = mkU(move $r) (retains r)").Def("u").Input(K.Move, "$r").Flow("$r", "u").Flow("$r.*", "u"); arg = "u";
+        }
+        c.N($"$p = &uniq two-phase {arg}").Def("$p").Borrow("Lp", arg, Uniq, "$p", reserve: true);
+        c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+        var depth = id == "r14h" ? 2 : 1;
+        c.N((id == "r14h" ? "put2" : "putS") + "(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", true, depth).Store("$p", "$y", false, depth);
+        c.N("b = 5").Assign("#b");
+        c.N("inspect(copy w)").Input(K.Read, "w");
+        return id == "r14h" ? c.Error("b = 5") : c.Valid();
+    }
+
+    // i: a nominal Type hides the second exclusive layer (WQ2's field q); j: its self-row alone (touchW), then w is read.
+    static Case Hidden(string id)
+    {
+        var c = new Case("r14A-" + id[3..], id == "r14i"
+            ? "hidden layer: `var hw = WQ2.init(q: w@uniq); setW(hw@uniq, b@ref); b = 5; inspect(w)` (setW writes wv.q@follow)"
+            : "hidden self-row: `var hw = WQ2.init(q: w@uniq); touchW(hw@uniq); inspect(w)` (SPEC's per-argument letter would make w carry hw's Loan on w)");
+        c.N("var x = 1").Def("#x"); c.N("var b = 2").Def("#b");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "#x", Ref, "w");
+        c.N("var hw = WQ2.init(q: w@uniq)").Def("hw").Borrow("Lw", "w", Uniq, "hw");
+        c.N("$p = &uniq two-phase hw").Def("$p").Borrow("Lp", "hw", Uniq, "$p", reserve: true);
+        if (id == "r14j")
+        {
+            c.N("touchW(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 1, hidden: 2);
+            c.N("inspect(copy w)").Input(K.Read, "w");
+            return c.Valid();
+        }
+        c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+        c.N("setW(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", true, 1, hidden: 2).Store("$p", "$y", false, 1, hidden: 2);
+        c.N("b = 5").Assign("#b");
+        c.N("inspect(copy w)").Input(K.Read, "w");
+        return c.Error("b = 5");
+    }
+
+    // k: the writable storage behind the exclusive layer is a raw pointee (E, SPEC 15.6), the pointer a local that holds no Loan.
+    static Case RawPointee(string id)
+    {
+        var c = new Case("r14A-" + id[3..], "raw pointee: `var rp: raw/(ref/i32) = Raw.allocate(1); putR(rp@uniq, b@ref); b = 5; let q = rp[0]; inspect(q)`");
+        c.N("var b = 2").Def("#b");
+        c.N("var rp = Raw.allocate(1)").Def("%rp");
+        c.N("$p = &uniq two-phase rp").Def("$p").Borrow("Lp", "%rp", Uniq, "$p", reserve: true);
+        c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+        c.N("putR(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", true, 1, raw: true).Store("$p", "$y", false, 1, raw: true);
+        c.N("b = 5").Assign("#b");
+        c.N("let q = rp[0]").Def("q").Flow("%rp.*.0", "q");
+        c.N("inspect(copy q)").Input(K.Read, "q");
+        return c.Error("b = 5");
+    }
+
+    // l: a default template's call (until F9): A5's unknown-callee rows, every input → result and → each exclusive input's referents,
+    // Value, at no Type depth. SPEC 7.2.3: the template only inspects the preceding exclusive slot, so it writes nothing there.
+    static Case Unknown(string id)
+    {
+        var c = new Case("r14A-" + id[3..], "unknown callee: `var s1 = w@uniq; rf#0(s1@uniq, b@ref)` (a recursive default's template, unknown rows); `b = 5; inspect(w)`");
+        c.N("var x = 1").Def("#x"); c.N("var b = 2").Def("#b");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "#x", Ref, "w");
+        c.N("var s1 = w@uniq").Def("s1").Borrow("Lw", "w", Uniq, "s1");
+        c.N("$p = &uniq two-phase s1").Def("$p").Borrow("Lp", "s1", Uniq, "$p", reserve: true);
+        c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+        c.N("rf#0(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", false, int.MaxValue).Store("$p", "$y", false, int.MaxValue);
+        c.N("b = 5").Assign("#b");
+        c.N("inspect(copy w)").Input(K.Read, "w");
+        return c.Valid();
+    }
+
+    // m, o: a result retaining an input's referent content two or three layers down (Content, ret = content(val(a_0)): the first
+    // layer's state only); the closure from the result reaches the deeper states. n: a link of that chain is replaced while the result
+    // lives: the Loan naming it is in the closure, so the replacement conflicts first (SPEC's per-argument letter; Rust reports `x = 5`).
+    static Case Input(string id)
+    {
+        var c = new Case("r14A-" + id[3..], id switch
+        {
+            "r14m" => "input side: `let r = get2(s1@uniq); x = 5; inspect(r)`",
+            "r14n" => "input side, a link replaced: `let r = get3(s2@uniq); w = z@ref; x = 5; inspect(r)`",
+            _ => "input side, depth 3: `let r = get3(s2@uniq); x = 5; inspect(r)`",
+        });
+        c.N("var x = 1").Def("#x"); c.N("var z = 3").Def("#z");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "#x", Ref, "w");
+        c.N("var s1 = w@uniq").Def("s1").Borrow("Lw", "w", Uniq, "s1");
+        var arg = "s1";
+        if (id != "r14m") { c.N("var s2 = s1@uniq").Def("s2").Borrow("Ls2", "s1", Uniq, "s2"); arg = "s2"; }
+        c.N($"$p = &uniq two-phase {arg}").Def("$p").Borrow("Lp", arg, Uniq, "$p", reserve: true);
+        c.N((id == "r14m" ? "let r = get2" : "let r = get3") + "(move $p) (Content)").Def("r").Input(K.Move, "$p").Activate("Lp").Flow("$p.*", "r");
+        if (id == "r14n") c.N("w = z@ref").Assign("w").Borrow("Lz", "#z", Ref, "w");
+        c.N("x = 5").Assign("#x");
+        c.N("inspect(copy r)").Input(K.Read, "r");
+        return id == "r14n" ? c.Error("w = z@ref") : c.Error("x = 5");
+    }
+
+    // p: the callee moves a value within the argument's own chain (f(p: uniq/(ref/i32 during a, uniq/(ref/i32 during a) during c))
+    // writes `p.1@follow = p.0`): only the self-row (`0 Content store 0`) at layer 2 carries x's Loan into w. q: a rotation of a
+    // linked chain (rot(p: uniq/(uniq/Node)) moves n2's link into *p and n1's reference into n2.next, Node {next: Option<uniq/Node>}):
+    // n2 then holds a uniq reference to n1, so the Loan naming n1 it receives is real (the route exclusion's unsound acceptance).
+    static Case Within(string id)
+    {
+        if (id == "r14p")
+        {
+            var c = new Case("r14A-" + id[3..], "move within the chain: `var w = z@ref; var t = (x@ref, w@uniq); f(t@uniq); x = 5; inspect(w)` (f writes p.1@follow = p.0)");
+            c.N("var x = 1").Def("#x"); c.N("var z = 3").Def("#z");
+            c.N("var w = z@ref").Def("w").Borrow("Lz", "#z", Ref, "w");
+            c.N("var t = (x@ref, w@uniq)").Def("t").Borrow("Lx", "#x", Ref, "t").Borrow("Lw", "w", Uniq, "t");
+            c.N("$p = &uniq two-phase t").Def("$p").Borrow("Lp", "t", Uniq, "$p", reserve: true);
+            c.N("f(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 2);
+            c.N("x = 5").Assign("#x");
+            c.N("inspect(copy w)").Input(K.Read, "w");
+            return c.Error("x = 5");
+        }
+        var q = new Case("r14A-" + id[3..], "rotation: `var n1 = Node(next: n2@uniq); var s1 = n1@uniq; rot(s1@uniq); n1.value = 5; inspect(n2)` (n2.next now refers to n1)");
+        q.N("var n2 = Node()").Def("n2");
+        q.N("var n1 = Node(next: n2@uniq)").Def("n1").Borrow("Ln2", "n2", Uniq, "n1");
+        q.N("var s1 = n1@uniq").Def("s1").Borrow("Ln1", "n1", Uniq, "s1");
+        q.N("$p = &uniq two-phase s1").Def("$p").Borrow("Lp", "s1", Uniq, "$p", reserve: true);
+        q.N("rot(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 2, hidden: int.MaxValue);
+        q.N("n1.value = 5").Assign("n1.value");
+        q.N("inspect(copy n2)").Input(K.Read, "n2");
+        return q.Error("n1.value = 5");
+    }
+}
+
+// ---- Round 15 (PLAN G148: a Call's store rows into writable storage past the first layer) ----
+// Binding's retention row retains(c, i, κ, store j) names the writable storage of input j, which TyCtxt.Retention's contract defines
+// past every exclusive or raw layer (and behind a nominal Type's hidden fields); A3 5 and A5 at 806110fc store ret(i, κ) into
+// refs(val(a_j)) only. Node.Retain encodes each row of the callee's TyCtxt.Retains (probed on the a5-1b5 build for put, put1, put3,
+// putW, putR, take, get, next); its depths are the Type-walk depths option B would publish. Callees (Kimigayo):
+//   put(p: uniq/(uniq/(ref/i32 during a) during c), y: ref/i32 during a) => p@follow@follow = y          rows (0 C 0) (1 V 0)
+//   put1(p: uniq/(ref/i32 during a), y: ref/i32 during a) => p@follow = y                              rows (0 C 0) (1 V 0)
+//   put3(p: uniq/(uniq/(uniq/(ref/i32 during a) during c) during d), y) => p@follow@follow@follow = y   rows (0 C 0) (1 V 0)
+//   putW(p: uniq/(W<ref/i32 during a> during c), y), W<T>{c} has r: uniq/T during c => p.r@follow = y   rows (0 C 0) (1 V 0)
+//   putR(p: uniq/(raw/(ref/i32 during a)), y) => unsafe p@follow[0] = y                                rows (0 C 0) (1 V 0)
+//   put4(p: uniq/(ref/(ref/i32 during a) during c), y: ref/i32 during a) (can write only p's referent)   rows (0 C 0) (1 V 0)
+//   mv(p: uniq/((uniq/(ref/i32 during a) during c), ref/i32 during a)) => p@follow.0@follow = p@follow.1 rows (0 C 0)
+//   next(self: uniq/ArrayUniqIterator<E>{source}) or next(self: uniq/ArrayIterator<E>{source})          rows (0 C result) (0 C 0)
+//   swap<T>(first: uniq/T, second: uniq/T), T = uniq/(ref/i32 during a) during c                       rows (0 C 0) (1 C 0) (0 C 1) (1 C 1)
+//   mk(p: uniq/(S during a) during a) => p@follow.r = p@follow.n@ref (S {a}: r: ref/i32 during a, n)     rows (0 V 0)
+//   rot(p: uniq/(Option<uniq/N during c>, Option<uniq/N during c>)) moves .1 into (*.0).next, N {c}     rows (0 C 0)
+//   f(p: uniq/Two{c}) moves p.a into (*p.b), a: uniq/Array<i32> during c, b: uniq/(uniq/Array<i32> during c)  rows (0 C 0)
+static class R14B
+{
+    const bool Uniq = true, Ref = false;
+    public static IEnumerable<Case> All() => Raw().Select(R14Ann.B);
+    static IEnumerable<Case> Raw() => [Repro("r14a1", true), Repro("r14a2", false), Direct(), Depth3(), Depth1("r14d1", true), Depth1("r14d2", false),
+        Nominal(), RawPointee(), Unknown(), Move("r14m1", true), Move("r14m2", false), LocalIter(), ParamIter("r14i1", false), ParamIter("r14i2", true), SharedIter(), SharedParent(),
+        SharedHolder(), SwapRefs(), ParamRoute(), ValueSelf(), Rotation(), TwoForeign(), LoanFreeReferent(), SharedViewIntoE(), LocalEscape()];
+
+    // The measurement build's full-suite ledger (2 signatures, 3 rows): a shared iterator whose Type may hold exclusive references only
+    // through a Type argument or an abstract Type carries Φ_E (a parameter-derived element), so W reaches E, and the self-row's Content
+    // there keeps the iterator's shared route La to the local arr: arr's storage end errs. Listed (proposed P14). NoLocalIntoE accepts
+    // it, and LocalEscape shows what it gives up.
+    static Case SharedViewIntoE()
+    {
+        var c = new Case("r14B-u", "shared view into E: `func f(value: uniq/i32) { var child = value; var arr = [child@move]; for e in arr => () }`, arr's end (the ledger's q1 shape)");
+        c.N("entry (value: uniq/i32 during a)").Param("Lv", "value");
+        c.N("var child = value (Reborrow)").Def("child").Borrow("Lc", "value.*", Uniq, "child");
+        c.N("var arr = [child@move]").Def("arr").A(K.Move, "child").Flow("child", "arr");
+        c.N("$1 = &arr").Def("$1").Borrow("La", "arr", Ref, "$1");
+        c.N("it = iterate(move $1)").Def("it").Input(K.Move, "$1").Flow("$1", "it").Flow("$1.*", "it");
+        c.N("$2 = &uniq two-phase it").Def("$2").Borrow("Lt", "it", Uniq, "$2", reserve: true);
+        c.N("next(move $2)").Input(K.Move, "$2").Activate("Lt").Retain("$2", "$2", true, 1);
+        c.N("StorageDead it").A(K.Write, "it").Def("it");
+        c.N("StorageDead arr").A(K.Write, "arr").Def("arr");
+        c.ALoss = "E keeps a self-row's local Loans (proposed P14)";
+        return c.Valid();
+    }
+
+    // A self-row moving a local borrow into storage the body does not own (mv2 moves p.1 into *p.0): b's borrow escapes, so b's storage
+    // end errs (the Origin stratum also refutes the relation, SPEC 15.6.5). NoLocalIntoE leaves Lb out of E: UNSOUND in the Loan stratum.
+    static Case LocalEscape()
+    {
+        var c = new Case("r14B-v", "local escape by a self-row: `func g(q: uniq/(ref/i32 during a)) { var b = 2; var t = (q@move, b@ref); mv2(t@uniq) }`, b's end");
+        c.N("entry (q: uniq/(ref/i32 during a))").Param("Lq", "q");
+        c.N("var b = 2").Def("b");
+        c.N("var t = (q@move, b@ref)").Def("t").A(K.Move, "q").Flow("q", "t").Borrow("Lb", "b", Ref, "t.1");
+        c.N("$1 = &uniq two-phase t").Def("$1").Borrow("L1", "t", Uniq, "$1", reserve: true);
+        c.N("mv2(move $1)").Input(K.Move, "$1").Activate("L1").Retain("$1", "$1", true, 1, 2);
+        c.N("StorageDead b").A(K.Write, "b").Def("b");
+        return c.Error("StorageDead b");
+    }
+
+    // x, b, w = x@ref, s1 = w@uniq: the reproducer's prefix.
+    static void Prefix(Case c, bool s1 = true)
+    {
+        c.N("var x = 1; var b = 2").Def("x", "b");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "x", Ref, "w");
+        c.SharedOnly.Add("w"); // w: ref/i32
+        if (s1) c.N("var s1 = w@uniq").Def("s1").Borrow("Lw", "w", Uniq, "s1");
+    }
+
+    // The arguments `$1 = &uniq two-phase arg; $2 = &b`, then the call; its rows follow.
+    static Node Call(Case c, string arg, string label)
+    {
+        c.N("$1 = &uniq two-phase " + arg).Def("$1").Borrow("L1", arg, Uniq, "$1", reserve: true);
+        c.N("$2 = &b").Def("$2").Borrow("Lb", "b", Ref, "$2");
+        return c.N(label + "(move $1, move $2)").Input(K.Move, "$1").Input(K.Move, "$2").Activate("L1");
+    }
+
+    // a1 (the G148 reproducer), a2 (its control without `b = 5`: SPEC 15.6.4 read literally gives w the route Loan Lw through the
+    // row (0 C 0), so its reads err; Rust and the old path accept it).
+    static Case Repro(string id, bool write)
+    {
+        var c = new Case("r14B-" + id[3..], (write ? "G148 reproducer" : "control") + ": `var s1 = w@uniq; put(s1@uniq, b@ref);" + (write ? " b = 5;" : "") + " inspect(w@follow)` twice (old path: valid; A5 806110fc: valid)");
+        Prefix(c);
+        Call(c, "s1", "put").Retain("$1", "$1", true, 1, 2).Retain("$1", "$2", false, 1, 2);
+        if (write) c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        c.N("inspect(copy (*w)) again").Input(K.Read, "w.*");
+        return write ? c.Error("b = 5") : c.Valid();
+    }
+
+    // The direct twin: the place walk follows every layer (refs^2).
+    static Case Direct()
+    {
+        var c = new Case("r14B-b", "direct twin: `var s2 = s1@uniq; s2@follow@follow = b@ref; b = 5; inspect(w@follow)` (old path and A5: error)");
+        Prefix(c);
+        c.N("var s2 = s1@uniq").Def("s2").Borrow("Ls1", "s1", Uniq, "s2");
+        c.N("$2 = &b").Def("$2").Borrow("Lb", "b", Ref, "$2");
+        c.N("(*(*s2)) = move $2").Through("s2.*.*", "$2").A(K.Move, "$2");
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return c.Error("b = 5");
+    }
+
+    static Case Depth3()
+    {
+        var c = new Case("r14B-c", "depth 3: `var s2 = s1@uniq; put3(s2@uniq, b@ref); b = 5; inspect(w@follow)` (old path and A5 806110fc: valid)");
+        Prefix(c);
+        c.N("var s2 = s1@uniq").Def("s2").Borrow("Ls1", "s1", Uniq, "s2");
+        Call(c, "s2", "put3").Retain("$1", "$1", true, 1, 2, 3).Retain("$1", "$2", false, 1, 2, 3);
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return c.Error("b = 5");
+    }
+
+    static Case Depth1(string id, bool write)
+    {
+        var c = new Case("r14B-" + id[3..], "depth-1 control: `put1(w@uniq, b@ref);" + (write ? " b = 5;" : "") + " inspect(w@follow)` (old path and A5: " + (write ? "error" : "valid") + ")");
+        Prefix(c, s1: false);
+        Call(c, "w", "put1").Retain("$1", "$1", true, 1).Retain("$1", "$2", false, 1);
+        if (write) c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return write ? c.Error("b = 5") : c.Valid();
+    }
+
+    // A nominal Type hides the layer: Binding's walk sees a only as W's Type argument (depth 1), so option B stores into h alone.
+    static Case Nominal()
+    {
+        var c = new Case("r14B-e", "nominal hidden layer: `var h = W(r: w@uniq); putW(h@uniq, b@ref); b = 5; inspect(w@follow)`, W<T>{c} with r: uniq/T during c");
+        Prefix(c, s1: false);
+        c.N("var h = W(r: w@uniq)").Def("h").Borrow("Lw", "w", Uniq, "h.r");
+        Call(c, "h", "putW").Retain("$1", "$1", true, 1).Retain("$1", "$2", false, 1);
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return c.Error("b = 5");
+    }
+
+    // A raw pointee past an exclusive layer: rp holds no Loan (a raw pointer), so refs(val(a_0)) = {rp} reaches nothing; its pointee is
+    // storage the body does not own (SPEC 15.6, E14). Probed: A5 806110fc accepts; its direct twin `s@follow[0] = b@ref` errs at b = 5.
+    static Case RawPointee()
+    {
+        var c = new Case("r14B-f", "raw pointee at depth 2: `var rp = w@raw; putR(rp@uniq, b@ref); b = 5; inspect(w@follow)` (old path and A5 806110fc: valid)");
+        Prefix(c, s1: false);
+        c.N("var rp = w@raw").Def("rp");
+        c.RawRoots.Add("rp");
+        Call(c, "rp", "putR").Retain("$1", "$1", true, 1, 2).Retain("$1", "$2", false, 2);
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return c.Error("b = 5");
+    }
+
+    // A5's unknown-callee rows (a default template, until F9): every input into each exclusive input's storage, Value. The builder never
+    // passes an exclusive input to a template (its inputs are `ref/…` PreparedInputs, SPEC 7.2.3; probe p08c), so this is the row set's
+    // behavior, not a reachable program; its Value self-row makes w carry Lw and L1, so w's read errs too.
+    static Case Unknown()
+    {
+        var c = new Case("r14B-g", "unknown-callee rows on the reproducer's arguments: `tmpl(s1@uniq, b@ref); b = 5; inspect(w@follow)` (rows: every input, Value, into input 0)");
+        Prefix(c);
+        Call(c, "s1", "tmpl").Retain("$1", "$1", false, 1).Retain("$1", "$2", false, 1);
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return c.Error("b = 5");
+    }
+
+    // A self-row that moves a value from depth 1 to depth 2: w must carry Lz, never its route Lw.
+    static Case Move(string id, bool write)
+    {
+        var c = new Case("r14B-" + id[3..], "self-row across depths: `var t = (w@uniq, z@ref); mv(t@uniq);" + (write ? " z = 5;" : "") + " inspect(w@follow)` twice (mv: p@follow.0@follow = p@follow.1)");
+        c.N("var x = 1; var z = 3").Def("x", "z");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "x", Ref, "w");
+        c.SharedOnly.Add("w");
+        c.N("var t = (w@uniq, z@ref)").Def("t").Borrow("Lw", "w", Uniq, "t.0").Borrow("Lz", "z", Ref, "t.1");
+        c.N("$1 = &uniq two-phase t").Def("$1").Borrow("L1", "t", Uniq, "$1", reserve: true);
+        c.N("mv(move $1)").Input(K.Move, "$1").Activate("L1").Retain("$1", "$1", true, 1, 2);
+        if (write) c.N("z = 5").Assign("z");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        c.N("inspect(copy (*w)) again").Input(K.Read, "w.*");
+        return write ? c.Error("z = 5") : c.Valid();
+    }
+
+    // Exclusive iteration over a local Array of references: next's self-row (0 C 0) reaches arr through the iterator's Loan La.
+    static Case LocalIter()
+    {
+        var c = new Case("r14B-h", "local exclusive iteration: `var arr: Array<ref/i32> = [x@ref]; for e in arr@uniq => (); inspect(arr@ref)` (old path, A5 806110fc: valid)");
+        c.N("var x = 1").Def("x");
+        c.N("var arr = [x@ref]").Def("arr").Borrow("Lx", "x", Ref, "arr");
+        c.SharedOnly.Add("arr"); // Array<ref/i32>
+        c.N("$1 = &uniq two-phase arr").Def("$1").Borrow("La", "arr", Uniq, "$1", reserve: true);
+        c.N("it = iterateUniq(move $1)").Def("it").Input(K.Move, "$1").Activate("La").Flow("$1", "it").Flow("$1.*", "it");
+        c.N("$2 = &uniq two-phase it").Def("$2").Borrow("Lt", "it", Uniq, "$2", reserve: true);
+        c.N("next(move $2)").Input(K.Move, "$2").Activate("Lt").Retain("$2", "$2", true, 1);
+        c.N("$3 = &arr").Def("$3").Borrow("L3", "arr", Ref, "$3");
+        c.N("inspect(move $3)").Input(K.Move, "$3");
+        return c.Valid();
+    }
+
+    // Exclusive iteration over a uniq parameter, then a use of it. With Loan-free elements (i1, values: uniq/Array<i32>) the iterator's
+    // Type holds an exclusive reference only to Loan-free storage (UniqRemainder<i32>'s Loan<uniq/i32>), so W does not descend from it.
+    // With elements that may hold Loans (i2, Array<ref/i32>) the iterator carries Lc (values.*) and Φ_E, so W holds E, which keeps the
+    // whole value (E is one target): a listed loss. RouteIntoE accepts i2, and TwoForeign shows that unsound.
+    static Case ParamIter(string id, bool loans)
+    {
+        var c = new Case("r14B-" + id[3..], "exclusive iteration over a uniq parameter, then a use: `func bump(values: uniq/Array<" + (loans ? "ref/i32" : "i32") + ">) { for v in values => (); values.append(…) }` (old path, A5 806110fc, Rust: valid)");
+        c.N("entry (values: uniq/Array<" + (loans ? "ref/i32" : "i32") + ">)").Param("Lv", "values");
+        c.N("$1 = &uniq two-phase (*values)").Def("$1").Borrow("Lc", "values.*", Uniq, "$1", reserve: true);
+        c.N("it = iterateUniq(move $1)").Def("it").Input(K.Move, "$1").Activate("Lc").Flow("$1", "it").Flow("$1.*", "it");
+        if (!loans) c.SharedOnly.Add("it"); // ArrayUniqIterator<i32>
+        c.N("$2 = &uniq two-phase it").Def("$2").Borrow("Lt", "it", Uniq, "$2", reserve: true);
+        c.N("next(move $2)").Input(K.Move, "$2").Activate("Lt").Retain("$2", "$2", true, 1);
+        c.N("$3 = &uniq two-phase (*values)").Def("$3").Borrow("L3", "values.*", Uniq, "$3", reserve: true);
+        c.N("append(move $3, …)").Input(K.Move, "$3").Activate("L3");
+        if (loans) c.ALoss = "E is one target (proposed P13)";
+        return c.Valid();
+    }
+
+    // c73 of MirBorrowsTest (found by the measurement build): a constructor's Value rows into the storage past a parameter's reborrow
+    // t1: uniq/i32, whose referent holds no Loan. The design does not descend from t1 (SharedOnly); NoTypeGuard reaches E through t1's
+    // Φ_E and keeps L2 there, so t2's storage end errs.
+    static Case LoanFreeReferent()
+    {
+        var c = new Case("r14B-t", "Loan-free referent: `func f(s1, s2: uniq/i32 during a) { var t1 = s1; var t2 = s2; var p = PA(pa: t1@uniq, pb: t2@uniq) }`, scope end (c73's prefix)");
+        c.N("entry (s1, s2: uniq/i32 during a)").Param("Ls1", "s1").Param("Ls2", "s2");
+        c.N("var t1 = s1 (Reborrow)").Def("t1").Borrow("Lt1", "s1.*", Uniq, "t1");
+        c.N("var t2 = s2 (Reborrow)").Def("t2").Borrow("Lt2", "s2.*", Uniq, "t2");
+        c.SharedOnly.UnionWith(["t1", "t2"]); // uniq/i32: an exclusive reference to Loan-free storage
+        c.N("$1 = &uniq two-phase t1").Def("$1").Borrow("L1", "t1", Uniq, "$1", reserve: true);
+        c.N("$2 = &uniq two-phase t2").Def("$2").Borrow("L2", "t2", Uniq, "$2", reserve: true);
+        c.N("p = PA.init(move $1, move $2)").Def("p").Input(K.Move, "$1").Input(K.Move, "$2").Activate("L1").Activate("L2")
+            .Retain("$1", "$1", false, 1).Retain("$1", "$2", false, 1).Retain("$2", "$1", false, 1).Retain("$2", "$2", false, 1).Flow("$1", "p").Flow("$2", "p");
+        c.N("StorageDead t2").A(K.Write, "t2").Def("t2");
+        c.N("StorageDead t1").A(K.Write, "t1").Def("t1");
+        return c.Valid();
+    }
+
+    // Shared iteration over a field of a uniq parameter, then a write of it: ArrayIterator holds no exclusive reference (SharedOnly), so
+    // its Φ_E reaches no E. NoTypeGuard puts Lc into E and rejects it.
+    static Case SharedIter()
+    {
+        var c = new Case("r14B-j", "shared iteration, then a write: `func bump(self: uniq/Bag) { for v in self.items => (); self.items.append(0) }` (old path, A5 806110fc: valid)");
+        c.N("entry (self: uniq/Bag)").Param("Ls", "self");
+        c.N("$1 = &(*self).items").Def("$1").Borrow("Lc", "self.*.items", Ref, "$1");
+        c.N("it = iterate(move $1)").Def("it").Input(K.Move, "$1").Flow("$1", "it").Flow("$1.*", "it");
+        c.SharedOnly.Add("it");
+        c.N("$2 = &uniq two-phase it").Def("$2").Borrow("Lt", "it", Uniq, "$2", reserve: true);
+        c.N("next(move $2)").Input(K.Move, "$2").Activate("Lt").Retain("$2", "$2", true, 1);
+        c.N("$3 = &uniq two-phase (*self).items").Def("$3").Borrow("L3", "self.*.items", Uniq, "$3", reserve: true);
+        c.N("append(move $3, const 0)").Input(K.Move, "$3").Activate("L3");
+        return c.Valid();
+    }
+
+    // A shared Reborrow carries its exclusive parent Lw (R2): r's Type holds no exclusive reference, so W does not descend from it;
+    // NoTypeGuard follows Lw and rejects `b = 5`.
+    static Case SharedParent()
+    {
+        var c = new Case("r14B-k", "shared Reborrow's parent: `var s = w@uniq; var r = s@follow@ref; put4(r@uniq, b@ref); b = 5; inspect(w@follow)` (put4 can write only r's storage)");
+        Prefix(c, s1: false);
+        c.N("var s = w@uniq").Def("s").Borrow("Lw", "w", Uniq, "s");
+        c.N("var r = s@follow@ref").Def("r").Borrow("Lr", "s.*", Ref, "r");
+        c.SharedOnly.Add("r"); // r: ref/(ref/i32)
+        Call(c, "r", "put4").Retain("$1", "$1", true, 1).Retain("$1", "$2", false, 1);
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*w))").Input(K.Read, "w.*");
+        return c.Valid();
+    }
+
+    // A holder behind a shared layer: W stops at w's shared Loan; AllModes follows it into xr and rejects `b = 5`.
+    static Case SharedHolder()
+    {
+        var c = new Case("r14B-l", "behind a shared layer: `var xr = z@ref; var w = xr@ref; var s1 = w@uniq; put(s1@uniq, b@ref); b = 5; inspect(xr@follow)` (w dead)");
+        c.N("var z = 1; var b = 2").Def("z", "b");
+        c.N("var xr = z@ref").Def("xr").Borrow("Lz", "z", Ref, "xr");
+        c.N("var w = xr@ref").Def("w").Borrow("Lxr", "xr", Ref, "w");
+        c.SharedOnly.UnionWith(["xr", "w"]); // ref/i32, ref/(ref/i32)
+        c.N("var s1 = w@uniq").Def("s1").Borrow("Lw", "w", Uniq, "s1");
+        Call(c, "s1", "put").Retain("$1", "$1", true, 1, 2).Retain("$1", "$2", false, 1, 2);
+        c.N("b = 5").Assign("b");
+        c.N("inspect(copy (*xr))").Input(K.Read, "xr.*");
+        return c.Valid();
+    }
+
+    // swap of two exclusive references: per argument (SPEC 15.6.4) w1, storage of `first` past its referent, retains `second`'s
+    // Content, σ(s2) = {Lw2}; route exclusion does not remove it (Lw2 is not w1's route). Rust accepts (by reasoning).
+    static Case SwapRefs()
+    {
+        var c = new Case("r14B-n", "swap of references: `s1 = w1@uniq; s2 = w2@uniq; swap(s1@uniq, s2@uniq); w2 = x1@ref; inspect(w1@follow)` (SPEC per argument: error; Rust: valid)");
+        c.N("var x1 = 1; var x2 = 2").Def("x1", "x2");
+        c.N("var w1 = x1@ref").Def("w1").Borrow("L1x", "x1", Ref, "w1");
+        c.N("var w2 = x2@ref").Def("w2").Borrow("L2x", "x2", Ref, "w2");
+        c.SharedOnly.UnionWith(["w1", "w2"]);
+        c.N("var s1 = w1@uniq").Def("s1").Borrow("Lw1", "w1", Uniq, "s1");
+        c.N("var s2 = w2@uniq").Def("s2").Borrow("Lw2", "w2", Uniq, "s2");
+        c.N("$1 = &uniq two-phase s1").Def("$1").Borrow("La", "s1", Uniq, "$1", reserve: true);
+        c.N("$2 = &uniq two-phase s2").Def("$2").Borrow("Lc", "s2", Uniq, "$2", reserve: true);
+        c.N("swap(move $1, move $2)").Input(K.Move, "$1").Input(K.Move, "$2").Activate("La").Activate("Lc")
+            .Retain("$1", "$1", true, 1, 2).Retain("$1", "$2", true, 1, 2).Retain("$2", "$1", true, 1, 2).Retain("$2", "$2", true, 1, 2);
+        c.N("w2 = x1@ref").Assign("w2").Borrow("Lq", "x1", Ref, "w2");
+        c.N("inspect(copy (*w1))").Input(K.Read, "w1.*");
+        return c.Error("w2 = x1@ref");
+    }
+
+    // A parameter's exclusive reference moved into a local: its referent is storage the body does not own (E).
+    static Case ParamRoute()
+    {
+        var c = new Case("r14B-o", "parameter route: `func g(q: uniq/(ref/i32 during a)) { var b = 2; var s1 = q@move; put(s1@uniq, b@ref); b = 5 }`");
+        c.N("entry (q: uniq/(ref/i32 during a))").Param("Lq", "q");
+        c.N("var b = 2").Def("b");
+        c.N("var s1 = q@move").Def("s1").A(K.Move, "q").Flow("q", "s1");
+        Call(c, "s1", "put").Retain("$1", "$1", true, 1, 2).Retain("$1", "$2", false, 1, 2);
+        c.N("b = 5").Assign("b");
+        return c.Error("b = 5");
+    }
+
+    // A genuine self-reference through the argument's own route: mk's outer Origin is a, so the row is (0 V 0) and s keeps L1.
+    static Case ValueSelf()
+    {
+        var c = new Case("r14B-p", "Value self-row: `var s = S(r: z@ref, n: 1); mk(s@uniq); s.n = 5; inspect(s.r@follow)` (mk: p@follow.r = p@follow.n@ref, p: uniq/(S during a) during a)");
+        c.N("var z = 0").Def("z");
+        c.N("var s = S(r: z@ref, n: 1)").Def("s").Borrow("Lz", "z", Ref, "s.r");
+        c.SharedOnly.Add("s"); // S {a}: r: ref/i32 during a, n: i32
+        c.N("$1 = &uniq two-phase s").Def("$1").Borrow("L1", "s", Uniq, "$1", reserve: true);
+        c.N("mk(move $1)").Input(K.Move, "$1").Activate("L1").Retain("$1", "$1", false, 1);
+        c.N("s.n = 5").Assign("s.n");
+        c.N("inspect(copy (*s.r))").Input(K.Read, "s.r.*");
+        return c.Error("s.n = 5", "inspect(copy (*s.r))"); // s keeps L1, as Rust's `&'a mut S<'a>` keeps s borrowed
+    }
+
+    // A route moved into another target: x1 must keep Lx2 (only a target's own route is left out).
+    static Case Rotation()
+    {
+        var c = new Case("r14B-q", "route into another target: `var t = (.Some(x1@uniq), .Some(x2@uniq)); rot(t@uniq); x2.v = 5; inspect(x1)` (rot moves t.1 into (*t.0).next)");
+        c.N("var x1 = N(); var x2 = N()").Def("x1", "x2");
+        c.N("var t = (x1@uniq, x2@uniq)").Def("t").Borrow("Lx1", "x1", Uniq, "t.0").Borrow("Lx2", "x2", Uniq, "t.1");
+        c.N("$1 = &uniq two-phase t").Def("$1").Borrow("L1", "t", Uniq, "$1", reserve: true);
+        c.N("rot(move $1)").Input(K.Move, "$1").Activate("L1").Retain("$1", "$1", true, 1, 2);
+        c.N("x2.v = 5").Assign("x2.v");
+        c.N("inspect(x1)").A(K.Read, "x1");
+        return c.Error("x2.v = 5");
+    }
+
+    // Two references into storage the body does not own, one moved into the other's referent (a premise `origin values outlives o`
+    // lets the caller form both): E must keep Lc, so values' later use errs. RouteIntoE leaves Lc out of E: UNSOUND.
+    static Case TwoForeign()
+    {
+        var c = new Case("r14B-r", "two foreign routes: `var both = Two(a: values (reborrow), b: other@follow@uniq); f(both@uniq); values.append(0)` (f moves both.a into *both.b)");
+        c.N("entry (values: uniq/Array<i32>, other: uniq/(uniq/Array<i32> during o))").Param("Lv", "values").Param("Lo", "other");
+        c.N("var both = Two(a: values, b: other@follow@uniq)").Def("both").Borrow("Lc", "values.*", Uniq, "both.a").Borrow("Lq", "other.*", Uniq, "both.b");
+        c.N("$1 = &uniq two-phase both").Def("$1").Borrow("L1", "both", Uniq, "$1", reserve: true);
+        c.N("f(move $1)").Input(K.Move, "$1").Activate("L1").Retain("$1", "$1", true, 1, 2);
+        c.N("$3 = &uniq two-phase (*values)").Def("$3").Borrow("L3", "values.*", Uniq, "$3", reserve: true);
+        c.N("append(move $3, const 0)").Input(K.Move, "$3").Activate("L3");
+        return c.Error("$3 = &uniq two-phase (*values)", "append(move $3, const 0)");
+    }
+}
+
+// ---- Round 14 review (PLAN G148): annotations of both designers' cases for the union, and the review's cases (ids r14V-…) ----
+static class R14Ann
+{
+    // Designer a's cases ('#' locals hold no Loan, '%' are raw roots, its encoding): designer b's Type-guard facts (w: ref/i32, and
+    // s: ref/(ref/i32) in f and g, hold no exclusive reference), SelfRef (n1, n2: Node holds uniq/Node), and the letter where a's
+    // verdict departs from it (its †: e and j).
+    public static Case A(Case c)
+    {
+        c.SharedOnly.Add("w");
+        if (c.Id is "r14A-f" or "r14A-g") c.SharedOnly.Add("s");
+        if (c.Id == "r14A-q") c.SelfRef.UnionWith(["n1", "n2"]);
+        if (c.Id is "r14A-e" or "r14A-j") { c.LetterErr = true; c.Rust = "valid"; }
+        return c;
+    }
+
+    // Designer b's cases: its i32 locals hold no Loan (NonHolders, for the any-mode walks), SelfRef (S {r: ref/i32, n: i32}; N holds
+    // uniq/N; Array<uniq/i32> holds two exclusive element slots), and its "SPEC as written" column where it departs from its verdict.
+    public static Case B(Case c)
+    {
+        string[] nh = c.Id switch
+        {
+            "r14B-a1" or "r14B-a2" or "r14B-b" or "r14B-c" or "r14B-d1" or "r14B-d2" or "r14B-e" or "r14B-f" or "r14B-g" or "r14B-k" => ["x", "b"],
+            "r14B-m1" or "r14B-m2" => ["x", "z"],
+            "r14B-h" => ["x"],
+            "r14B-l" => ["z", "b"],
+            "r14B-n" => ["x1", "x2"],
+            "r14B-o" or "r14B-v" => ["b"],
+            "r14B-p" => ["z"],
+            _ => [],
+        };
+        c.NonHolders.UnionWith(nh);
+        if (c.Id == "r14B-p") c.SelfRef.Add("s");
+        if (c.Id == "r14B-q") c.SelfRef.UnionWith(["x1", "x2"]);
+        if (c.Id == "r14B-u") { c.SelfRef.Add("arr"); c.ByArgument.Add("it"); c.UnsuppAt = ["StorageDead arr"]; } // round 16: P13 (ArrayIterator<T>)
+        if (c.Id is "r14B-a2" or "r14B-h" or "r14B-i2" or "r14B-m2") { c.LetterErr = true; c.Rust = "valid"; }
+        return c;
+    }
+}
+
+// The review's cases. Callees (Kimigayo; s1, s1c and s2 probed on the a5-1b5 build and designer b's measurement build, rv-g148/probes):
+//   mk3(p: uniq/(Option<uniq/(S during a) during a>) during d): takes *p out (exchange with .None) and stores q.r = q.n@ref, S {a} with
+//     r: ref/i32 during a, n: i32; row (0 C 0). mk0: the same contract, an empty body.
+//   mvsib(p: uniq/(uniq/(uniq/(ref/i32 during a) during c, uniq/(ref/i32 during a) during c) during e) during f): copies *(**p).1 into
+//     *(**p).0 (probed through a helper mv1); row (0 C 0).
+//   kid(p: uniq/(uniq/(T during a) during a, ref/i32 during a)): stores p@follow.1 into (*p.0).r, T {a} with n: i32, r: ref/i32 during a.
+//   cross(p: uniq/(Option<uniq/i32 during o>, uniq/(ref/i32 during q) during c)) with `origin o outlives q`: takes *p.0 out and stores a
+//     shared reborrow through it into *p.1.
+//   tryWrite(writer: uniq/Utf8Writer): Milestone24's write through a writer that holds buffer@uniq; FixedBuffer holds bytes@uniq.
+static class R14V
+{
+    const bool Uniq = true, Ref = false;
+    public static IEnumerable<Case> All() => [SelfRef("r14V-s1", true), SelfRef("r14V-s1c", false), Sibling("r14V-s2", true), Sibling("r14V-s2c", false),
+        Kid(), Cross(), Depth3Control(), Writer()];
+
+    // s1: a genuine self-reference past layer 1 through a Content self-row (X and the dominator exclusion drop Ls at s). s1c: the same
+    // contract with an empty body; no rule that reads only the contract can tell them apart (Rust: error too, `&'a mut S<'a>`).
+    static Case SelfRef(string id, bool body)
+    {
+        var c = new Case(id, body ? "self-reference past layer 1: `var s = S(r: z@ref, n: 1); var s1 = .Some(s@uniq); mk3(s1@uniq); s.n = 5; inspect(s.r@follow)` (mk3 takes *p out, then q.r = q.n@ref)"
+            : "the same contract, empty body: `…; mk0(s1@uniq); s.n = 5; inspect(s.r@follow)` (Rust: error, `&'a mut S<'a>`)");
+        c.N("var z = 0").Def("#z");
+        c.N("var s = S(r: z@ref, n: 1)").Def("s").Borrow("Lz", "#z", Ref, "s");
+        c.N("var s1 = .Some(s@uniq)").Def("s1").Borrow("Ls", "s", Uniq, "s1");
+        c.N("$p = &uniq two-phase s1").Def("$p").Borrow("Lp", "s1", Uniq, "$p", reserve: true);
+        c.N((body ? "mk3" : "mk0") + "(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 2);
+        c.N("s.n = 5").Assign("s.n");
+        c.N("inspect(copy (*s.r))").Input(K.Read, "s.r.*");
+        c.SharedOnly.Add("s"); c.SelfRef.Add("s");
+        if (!body) c.Rust = "error";
+        return c.Error("s.n = 5");
+    }
+
+    // s2: a value moved between siblings at depth 3; w1's only path to x2's Loan is u's state, through Lu, which names w1's dominator u
+    // (the dominator exclusion drops it). s2c: its control (Rust: valid; SPEC's letter: the route cycle w1 → Lu → σ(u) ∋ Lw1).
+    static Case Sibling(string id, bool write)
+    {
+        var c = new Case(id, "depth-3 sibling copy: `var u = (w1@uniq, w2@uniq); var s = u@uniq; mvsib(s@uniq);" + (write ? " x2 = 5;" : "") + " inspect(w1@follow)` (mvsib copies *(**p).1 into *(**p).0)");
+        c.N("var x1 = 1; var x2 = 2").Def("#x1", "#x2");
+        c.N("var w1 = x1@ref").Def("w1").Borrow("Lx1", "#x1", Ref, "w1");
+        c.N("var w2 = x2@ref").Def("w2").Borrow("Lx2", "#x2", Ref, "w2");
+        c.N("var u = (w1@uniq, w2@uniq)").Def("u").Borrow("Lw1", "w1", Uniq, "u").Borrow("Lw2", "w2", Uniq, "u");
+        c.N("var s = u@uniq").Def("s").Borrow("Lu", "u", Uniq, "s");
+        c.N("$p = &uniq two-phase s").Def("$p").Borrow("Lp", "s", Uniq, "$p", reserve: true);
+        c.N("mvsib(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 3);
+        if (write) c.N("x2 = 5").Assign("#x2");
+        c.N("inspect(copy (*w1))").Input(K.Read, "w1.*");
+        c.SharedOnly.UnionWith(["w1", "w2"]); c.SelfRef.Add("u");
+        if (!write) { c.LetterErr = true; c.Rust = "valid"; }
+        return write ? c.Error("x2 = 5") : c.Valid();
+    }
+
+    // s3: the caller places a child of p2.0 (a shared reborrow of t.n through t's reference) in the sibling slot p2.1; the callee moves it
+    // into (*p2.0).r. t must keep Lt (the child's parent; the child Loan itself is rooted at p2), which X drops at t.
+    static Case Kid()
+    {
+        var c = new Case("r14V-s3", "a caller's child moved into its parent's referent: `var p2 = (t@uniq, z@ref); p2.1 = p2.0@follow.n@ref; kid(p2@uniq); t.n = 5; inspect(t.r@follow)` (kid stores p.1 into (*p.0).r)");
+        c.N("var z = 0").Def("#z");
+        c.N("var t = T(n: 1, r: z@ref)").Def("t").Borrow("Lz", "#z", Ref, "t");
+        c.N("var p2 = (t@uniq, z@ref)").Def("p2").Borrow("Lt", "t", Uniq, "p2").Borrow("Lz2", "#z", Ref, "p2");
+        c.N("p2.1 = p2.0@follow.n@ref").Assign("p2.1").Borrow("Lc", "p2.0.*.n", Ref, "p2.1");
+        c.N("$p = &uniq two-phase p2").Def("$p").Borrow("Lp", "p2", Uniq, "$p", reserve: true);
+        c.N("kid(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 2);
+        c.N("t.n = 5").Assign("t.n");
+        c.N("inspect(copy (*t.r))").Input(K.Read, "t.r.*");
+        c.SharedOnly.Add("t"); c.SelfRef.Add("t");
+        return c.Error("t.n = 5");
+    }
+
+    // s4: two parts of one holder reached through two sibling references; the callee stores a reborrow of one into the other. Both
+    // Loans name t, so X drops both.
+    static Case Cross()
+    {
+        var c = new Case("r14V-s4", "parts of one holder through two references: `var u = (.Some(t.f@uniq), t.g@uniq); cross(u@uniq); t.f = 5; inspect(t.g@follow)` (cross stores a reborrow of *u.0 into *u.1)");
+        c.N("var z = 0").Def("#z");
+        c.N("var t = T2(f: 1, g: z@ref)").Def("t").Borrow("Lz", "#z", Ref, "t");
+        c.N("var u = (.Some(t.f@uniq), t.g@uniq)").Def("u").Borrow("Lf", "t.f", Uniq, "u").Borrow("Lg", "t.g", Uniq, "u");
+        c.N("$p = &uniq two-phase u").Def("$p").Borrow("Lp", "u", Uniq, "$p", reserve: true);
+        c.N("cross(move $p)").Input(K.Move, "$p").Activate("Lp").Store("$p", "$p", true, 2);
+        c.N("t.f = 5").Assign("t.f");
+        c.N("inspect(copy (*t.g))").Input(K.Read, "t.g.*");
+        c.SharedOnly.Add("t"); c.SelfRef.Add("t");
+        return c.Error("t.f = 5");
+    }
+
+    // c3: designer a's r14c without `b = 5` (Rust: valid; SPEC's letter and X: the route cycle at w).
+    static Case Depth3Control()
+    {
+        var c = new Case("r14V-c3", "depth-3 control: `var s1 = w@uniq; var s2 = s1@uniq; put3(s2@uniq, b@ref); inspect(w)` (r14A-c without `b = 5`)");
+        c.N("var x = 1").Def("#x"); c.N("var b = 2").Def("#b");
+        c.N("var w = x@ref").Def("w").Borrow("Lx", "#x", Ref, "w");
+        c.N("var s1 = w@uniq").Def("s1").Borrow("Lw", "w", Uniq, "s1");
+        c.N("var s2 = s1@uniq").Def("s2").Borrow("Ls2", "s1", Uniq, "s2");
+        c.N("$p = &uniq two-phase s2").Def("$p").Borrow("Lp", "s2", Uniq, "$p", reserve: true);
+        c.N("$y = b@ref").Def("$y").Borrow("Lb", "#b", Ref, "$y");
+        c.N("put3(move $p, move $y)").Input(K.Move, "$p").Input(K.Move, "$y").Activate("Lp").Store("$p", "$p", true, 3).Store("$p", "$y", false, 3);
+        c.N("inspect(copy w)").Input(K.Read, "w");
+        c.SharedOnly.Add("w"); c.LetterErr = true; c.Rust = "valid";
+        return c.Valid();
+    }
+
+    // w: Milestone24's shape. The writer's self-row reaches buffer through Lbu; with no exclusion buffer carries Lbu and its later
+    // borrows err (designer b's corpus: Milestone24, 6 problems).
+    static Case Writer()
+    {
+        var c = new Case("r14V-w", "Milestone24's writer: `var buffer = Text.fixed(bytes@uniq); var writer = Text.writer(buffer@uniq); tryWrite(writer@uniq); buffer.text(); buffer.clear()`");
+        c.N("var bytes = [64 of 0]").Def("#bytes");
+        c.N("var buffer = Text.fixed(bytes@uniq)").Def("buffer").Borrow("Lby", "#bytes", Uniq, "buffer");
+        c.N("$1 = &uniq two-phase buffer").Def("$1").Borrow("Lbu", "buffer", Uniq, "$1", reserve: true);
+        c.N("var writer = Text.writer(move $1)").Def("writer").Input(K.Move, "$1").Activate("Lbu").Flow("$1", "writer").Flow("$1.*", "writer");
+        c.N("$2 = &uniq two-phase writer").Def("$2").Borrow("Lw", "writer", Uniq, "$2", reserve: true);
+        c.N("tryWrite(move $2)").Input(K.Move, "$2").Activate("Lw").Store("$2", "$2", true, 1);
+        c.N("$3 = &buffer").Def("$3").Borrow("L3", "buffer", Ref, "$3");
+        c.N("text(move $3)").Input(K.Move, "$3");
+        c.N("$4 = &uniq two-phase buffer").Def("$4").Borrow("L4", "buffer", Uniq, "$4", reserve: true);
+        c.N("clear(move $4)").Input(K.Move, "$4").Activate("L4");
+        c.SharedOnly.Add("buffer");
+        c.LetterErr = true; c.Rust = "valid";
+        return c.Valid();
+    }
+}
+
+// ---- Round 16 (PLAN G148's final review B1: P13's taint read only on the found set; the owner's route taint, 2026-10-19) ----
+// Callees (Kimigayo; compiler probes at b335393b in g148p/r2, the review's rv-g148f/probes):
+//   storeL(l: uniq/Loan<uniq/(ref/(ref/i32 during p) during q) during a>, v: ref/(ref/i32 during p) during q) => (): rows v → l and l's
+//     self-row (Content). Loan<T> is a library marker of a held borrow: its Type argument is the only exclusive reference, so a holder of
+//     it passes rule G's guard only by argument (MirWrites.ThroughArgument, MirTypesTest's `loan` row).
+//   storeD(l: uniq/Loan<uniq/(ref/Data during q) during a>, v: ref/Data during q) -> bool: the same with Data.
+//   viaD(x: ref/(ref/i32 during p) during q, y: ref/(ref/i32 during p) during q = x) -> …: y's default copies x into its pending slot.
+//   saveDef(slot: uniq/(ref/Data during s), x: ref/Data during s, v: ref/Data during s = x) -> bool: rows x → slot and v → slot.
+static class R16
+{
+    const bool Uniq = true, Ref = false;
+    public static IEnumerable<Case> All() => [ClosureRoute("r16-closureRoute", Tail.Write), ClosureRoute("r16-closureRouteB", Tail.WriteB),
+        ClosureRoute("r16-closureRouteClean", Tail.Live), GuardP13("r16-guardP13", live: true, clean: false), GuardP13("r16-guardP13Dead", live: false, clean: false),
+        GuardP13("r16-guardP13Clean", live: true, clean: true), DefaultRoute("r16-closureRouteD", join: false, live: false),
+        DefaultRoute("r16-closureRouteDJoin", join: true, live: false), DefaultRoute("r16-closureRouteDLive", join: true, live: true),
+        GuardDefault("r16-guardDefault", join: true, live: true), GuardDefault("r16-guardDefaultOnly", join: false, live: true),
+        GuardDefault("r16-guardDefaultDead", join: true, live: false), CleanRoute()];
+
+    enum Tail { Write, WriteB, Live }
+
+    // B1 (1), the review's closure3: lh holds w@uniq in a Loan<…>, so storeL's stores reach w and z only past lh (P13's taint); w is live
+    // and holds the stored Lb, whose closure reaches b, whose own set is clean and holds Ly. `y = 5` conflicts with Ly only along that
+    // tainted route (closureRoute); `b = x@ref` with Lb in tainted sets only (closureRouteB); with b used later, b is a root of the check
+    // set and clean, so `y = 5` stays the Language problem (closureRouteClean). `inspect(w)` meets w's own Lw, which the self-row stored
+    // into w past lh: Unsupported_Kd in every taint mode.
+    static Case ClosureRoute(string id, Tail tail)
+    {
+        var c = new Case(id, "`var w = z@ref; var lh = Loan<uniq/(ref/(ref/i32))>.init(w@uniq); var b = y@ref; storeL(lh@uniq, b@ref); "
+            + (tail == Tail.WriteB ? "b = x@ref" : "y = 5") + "; inspect(w)" + (tail == Tail.Live ? "; inspect(b)" : "") + "`");
+        c.N("var x = 1").Def("#x"); c.N("var y = 2").Def("#y");
+        c.N("var z = x@ref").Def("z").Borrow("Lx", "#x", Ref, "z");
+        c.N("var w = z@ref").Def("w").Borrow("Lz", "z", Ref, "w");
+        c.N("$1 = &uniq two-phase w").Def("$1").Borrow("Lw", "w", Uniq, "$1", reserve: true);
+        c.N("var lh = Loan.init(move $1)").Def("lh").Input(K.Move, "$1").Activate("Lw").Flow("$1", "lh").Flow("$1.*", "lh");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$p = &uniq two-phase lh").Def("$p").Borrow("Lp", "lh", Uniq, "$p", reserve: true);
+        c.N("$v = b@ref").Def("$v").Borrow("Lb", "b", Ref, "$v");
+        c.N("storeL(move $p, move $v)").Input(K.Move, "$p").Input(K.Move, "$v").Activate("Lp").Store("$p", "$p", true, 1).Store("$p", "$v", false, 1);
+        var at = tail == Tail.WriteB ? "b = x@ref" : "y = 5";
+        if (tail == Tail.WriteB) c.N(at).Assign("b").Borrow("Lx2", "#x", Ref, "b"); else c.N(at).Assign("#y");
+        c.N("inspect(w)").Input(K.Read, "w");
+        if (tail == Tail.Live) c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["z", "w", "b"]); c.ByArgument.Add("lh");
+        if (tail == Tail.Live) { c.UnsuppAt = ["inspect(w)"]; return c.Error("y = 5"); }
+        c.UnsuppAt = [at, "inspect(w)"];
+        return c.Valid();
+    }
+
+    // B1 (2), the review's guard: inside a match guard, storeD stores the candidate d past lh (a Loan<uniq/(ref/Data)>) into saved, which
+    // is used after the match, so γ_d reaches saved only along P13's taint: err(ended) at d's cleanup is the located Unsupported_Kd
+    // (guardP13); with saved dead, nothing escapes (guardP13Dead); a concrete store of d into a live `direct` keeps the Language problem
+    // (guardP13Clean). `inspect(saved)` meets saved's own Ls, which the self-row stored past lh.
+    static Case GuardP13(string id, bool live, bool clean)
+    {
+        var c = new Case(id, "`var saved = other@ref; var lh = Loan<uniq/(ref/Data)>.init(saved@uniq); match packet .Data(let d) if storeD(lh@uniq, d)"
+            + (clean ? " and keep(direct@uniq, d)" : "") + " => ()" + (live ? "; inspect(saved)" : "") + (clean ? "; inspect(direct)" : "") + "`");
+        c.N("var other = Data(); var packet: Packet = .Data(Data())").Def("#other", "packet");
+        c.N("var saved = other@ref").Def("saved").Borrow("Lo", "#other", Ref, "saved");
+        if (clean) c.N("var direct = other@ref").Def("direct").Borrow("Lo2", "#other", Ref, "direct");
+        c.N("$1 = &uniq two-phase saved").Def("$1").Borrow("Ls", "saved", Uniq, "$1", reserve: true);
+        c.N("var lh = Loan.init(move $1)").Def("lh").Input(K.Move, "$1").Activate("Ls").Flow("$1", "lh").Flow("$1.*", "lh");
+        c.N("$s = packet@ref (Subject, shared mode)").Def("$s").Borrow("Lsub", "packet", Ref, "$s");
+        c.N("d = $s.data (candidate)").Def("d").Borrow("Ld", "$s.*.data", Ref, "d", sharedAt: 1);
+        c.N("$p = &uniq two-phase lh").Def("$p").Borrow("Lp", "lh", Uniq, "$p", reserve: true);
+        c.N("storeD(move $p, copy d)").Input(K.Move, "$p").Input(K.Read, "d").Activate("Lp").Store("$p", "$p", true, 1).Store("$p", "d", false, 1);
+        if (clean)
+        {
+            c.N("$q = &uniq two-phase direct").Def("$q").Borrow("Lq", "direct", Uniq, "$q", reserve: true);
+            c.N("keep(move $q, copy d) (stores d into direct)").Input(K.Move, "$q").Input(K.Read, "d").Activate("Lq").Through("$q.*", "d");
+        }
+        const string end = "guard cleanup: EndBorrow d";
+        c.N(end).EndBorrow("d");
+        if (live) c.N("inspect(saved)").Input(K.Read, "saved");
+        if (clean) c.N("inspect(direct)").Input(K.Read, "direct");
+        c.SharedOnly.UnionWith(["saved", "d", "direct"]); c.ByArgument.Add("lh");
+        if (!live) return c.Valid();
+        c.UnsuppAt = clean ? ["inspect(saved)"] : [end, "inspect(saved)"];
+        return clean ? c.Error(end) : c.Valid();
+    }
+
+    // The default taint's analog of B1 (1) (R4-M70): y's default copies x into its pending slot $d, which carries $d's taint, and the
+    // result r keeps $d's value (closureRouteD; the compiler's retention also keeps x's, so r joins a clean and a tainted value,
+    // closureRouteDJoin, the T2 join R4-M70 accepts: one set, tainted). `y = 5` conflicts with Ly in b's clean set, reached only from r:
+    // R16Set gives the Language problem, the route rule the located Unsupported_Kd at the omitting call; with b used later
+    // (closureRouteDLive) b is a clean root. The compiler (g148p/r2/d1.kimi) gives the Language problem today in all three.
+    static Case DefaultRoute(string id, bool join, bool live)
+    {
+        var c = new Case(id, "`var b = y@ref; let r = viaD(b@ref); y = 5; inspect(r)" + (live ? "; inspect(b)" : "") + "`" + (join ? "" : " (r keeps only y's value)"));
+        c.N("var y = 2").Def("#y");
+        c.N("var b = y@ref").Def("b").Borrow("Ly", "#y", Ref, "b");
+        c.N("$x = b@ref").Def("$x").Borrow("Lb", "b", Ref, "$x");
+        const string omit = "viaD omits y: its default copies x into $d";
+        c.N(omit).Def("$d").Flow("$x", "$d").DefaultTaint("$d");
+        var call = c.N("let r = viaD(move $x, move $d)").Def("r").Input(K.Move, "$x").Input(K.Move, "$d").Flow("$d", "r").Flow("$d.*", "r");
+        if (join) call.Flow("$x", "r").Flow("$x.*", "r");
+        c.N("y = 5").Assign("#y");
+        c.N("inspect(r)").Input(K.Read, "r");
+        if (live) c.N("inspect(b)").Input(K.Read, "b");
+        c.SharedOnly.UnionWith(["b", "r"]);
+        if (live) return c.Error("y = 5");
+        c.UnsuppAt = [omit];
+        return c.Valid();
+    }
+
+    // The default taint's analog of B1 (2): saveDef(saved@uniq, d) omits v, whose default copies x = d into $v, and stores x and v into
+    // saved (guardDefault: saved joins the clean and the tainted value, T2) or v only (guardDefaultOnly); used after the match, saved
+    // keeps γ_d only in a tainted set: err(ended) is the located Unsupported_Kd at the omitting call under the route rule (R4-M70 recorded
+    // it as a limit); with saved dead, nothing escapes (guardDefaultDead).
+    static Case GuardDefault(string id, bool join, bool live)
+    {
+        var c = new Case(id, "`var saved = other@ref; match packet .Data(let d) if saveDef(saved@uniq, d) => ()" + (live ? "; inspect(saved)" : "") + "`"
+            + (join ? "" : " (saveDef stores only v)"));
+        c.N("var other = Data(); var packet: Packet = .Data(Data())").Def("#other", "packet");
+        c.N("var saved = other@ref").Def("saved").Borrow("Lo", "#other", Ref, "saved");
+        c.N("$s = packet@ref (Subject, shared mode)").Def("$s").Borrow("Lsub", "packet", Ref, "$s");
+        c.N("d = $s.data (candidate)").Def("d").Borrow("Ld", "$s.*.data", Ref, "d", sharedAt: 1);
+        c.N("$a = &uniq two-phase saved").Def("$a").Borrow("La", "saved", Uniq, "$a", reserve: true);
+        const string omit = "saveDef omits v: its default copies x = d into $v";
+        c.N(omit).Def("$v").Flow("d", "$v").DefaultTaint("$v");
+        var call = c.N("saveDef(move $a, copy d, move $v)").Input(K.Move, "$a").Input(K.Read, "d").Input(K.Move, "$v").Activate("La").Through("$a.*", "$v");
+        if (join) call.Through("$a.*", "d");
+        const string end = "guard cleanup: EndBorrow d";
+        c.N(end).EndBorrow("d");
+        if (live) c.N("inspect(saved)").Input(K.Read, "saved");
+        c.SharedOnly.UnionWith(["saved", "d"]);
+        if (live) c.UnsuppAt = [omit];
+        return c.Valid();
+    }
+
+    // MirBorrowsTest's cleanRoute (unchanged by the round): a generic iterator over a local Array<T>, both by-argument holders; next's
+    // self-row stores the iterator's shared Lxs into xs and, by the Φ_E it read through Lxs, into E, past it (tainted), while it keeps
+    // its own value (clean): the append's activation meets Lxs in the live iterator, a Language problem; xs's end meets it only in E.
+    static Case CleanRoute()
+    {
+        var c = new Case("r16-cleanRoute", "`func f<T>(a: T, b: T) { var xs: Array<T> = []; xs.append(a); var it = xs.iterate(); _ = it.next(); xs.append(b); _ = it.next() }`");
+        c.N("entry (a: T, b: T)").Param("Lpa", "a").Param("Lpb", "b");
+        c.N("var xs: Array<T> = []").Def("xs");
+        c.N("$1 = &uniq two-phase xs").Def("$1").Borrow("L1", "xs", Uniq, "$1", reserve: true);
+        c.N("xs.append(move $1, copy a)").Input(K.Move, "$1").Input(K.Read, "a").Activate("L1").Store("$1", "a", false, 1);
+        c.N("$2 = &xs").Def("$2").Borrow("Lxs", "xs", Ref, "$2");
+        c.N("var it = xs.iterate(move $2)").Def("it").Input(K.Move, "$2").Flow("$2", "it").Flow("$2.*", "it");
+        c.N("$3 = &uniq two-phase it").Def("$3").Borrow("L3", "it", Uniq, "$3", reserve: true);
+        c.N("_ = it.next(move $3)").Input(K.Move, "$3").Activate("L3").Store("$3", "$3", true, 1);
+        c.N("$4 = &uniq two-phase xs").Def("$4").Borrow("L4", "xs", Uniq, "$4", reserve: true);
+        const string append = "xs.append(move $4, copy b)";
+        c.N(append).Input(K.Move, "$4").Input(K.Read, "b").Activate("L4").Store("$4", "b", false, 1);
+        c.N("$5 = &uniq two-phase it").Def("$5").Borrow("L5", "it", Uniq, "$5", reserve: true);
+        c.N("_ = it.next(move $5)").Input(K.Move, "$5").Activate("L5").Store("$5", "$5", true, 1);
+        c.N("StorageDead it").A(K.Write, "it").Def("it");
+        c.N("StorageDead xs").A(K.Write, "xs").Def("xs");
+        c.ByArgument.UnionWith(["it", "xs"]);
+        c.UnsuppAt = ["StorageDead xs"];
+        return c.Error(append);
     }
 }

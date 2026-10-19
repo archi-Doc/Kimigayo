@@ -31,9 +31,11 @@ dotnet run proto.cs -- -dump 9n  # per-point carries, liveness and Loan places f
 dotnet run proto.cs -- -cases Round11 NoOwnValue  # one tab-separated row per case and named variant (round 12)
 dotnet run proto.cs -- -cases None+PK NoDestroyValue+PK  # +PK runs a variant on the design (round 13)
 dotnet run proto.cs -- -r13      # only round 13's tables
+dotnet run proto.cs -- -r15      # only round 15's tables (PLAN G148's store rules)
+dotnet run proto.cs -- -r16      # only round 16 (route taint); exit code = its failures
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 4,243 lines after round 14.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 5,426 lines after round 16.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1436,3 +1438,21 @@ output against round 13's:
 - Open for 2f: a Φ_c of a shared-receiver abstract descending call issued inside a reservation window. If 2f makes it
   uniq, no access meets the reservation. 2f gives it the receiver's mode, or reruns `ActivationEveryMode` against the
   design with that case.
+
+## Round 15 (PLAN G148: a call's stores past the first layer)
+
+The G148 design reviews' union prototype (round 14 in their records, `artifacts/handoff/2026-10-18-pause/r4-scratch/rv-g148/`,
+main checkout), merged into this file unchanged and renumbered (2026-10-19, unit G148 round 2): both designers' cases (r14A-…,
+r14B-…) and the review's (r14V-…), 382 cases with the earlier ones, every store-row rule a variant (`-r15`). `R14G` is the decided
+rule G (DECISIONS R4-M73, A3 E16): no unsound acceptance; its listed losses and letter-consistent rejections are the review's.
+On round 14's design the listed-loss, unlisted and unsound columns of every variant equal the review's run; 4 cases (33e, 53, 88,
+r13s2), and r14B-r under the G variants, move their error to the formation, R4-M68's effect. The G148 cases join `Cases.All()`,
+so the earlier rounds' tables run them under the one-layer store rule (806110fc), and round 13's table lists their 22 unsound
+acceptances there.
+
+## Round 16 (PLAN G148's final review B1: route taint)
+
+On `R14G`, P13's interim taint (DECISIONS R4-M73, ruling (B)) and R4-M70's default taint are markers (`τ13`, `τD:D`), and a
+conflict whose Loan only tainted sets hold is a located `Unsupported_Kd`. `R16Set` is the unit as reviewed; `R16Route` the
+owner's route taint (2026-10-19). Rule, cases, results and cost: [route-taint.md](../A5%20Step%202/route-taint.md). The full
+output is unchanged; `-r16` prints the round (0 failures).
