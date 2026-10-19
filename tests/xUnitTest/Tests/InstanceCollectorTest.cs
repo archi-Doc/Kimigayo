@@ -1078,7 +1078,7 @@ public sealed class InstanceCollectorTest
 
     // DECISIONS R5-M44 (P7c's Q6, R5-M6): the depth bound counts placed levels (R5-M37), and the old generator, whose pool takes Layout's
     // verdict, agrees for a struct chain and a one-component Tuple chain, read down to the scalar leaf, at 64 and 65 levels; the height-64
-    // difference R5-M37 anticipated does not arise.
+    // difference R5-M37 anticipated does not arise. The old generator is selected whatever the process's code generator (R5-M73).
     [Theory]
     [InlineData("Struct", 64, false)]
     [InlineData("Struct", 65, true)]
@@ -1110,7 +1110,7 @@ public sealed class InstanceCollectorTest
         var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
         var records = set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString().Split('\n')[0]));
         Assert.Equal(limited ? [(DiagnosticCode.GenerationResourceLimit_Kd, $"func f(value: {type}) -> i32 => value{leaf}")] : [], records);
-        var legacy = MinimalEmissionTest.Analyze(source.ToString());
+        var legacy = MinimalEmissionTest.Analyze(source.ToString(), codegen: CompilerCodegen.Legacy);
         Assert.Equal(!limited, legacy.Validate(out var error));
         Assert.True(limited == (error is { } text && text.Contains("generation depth limit of 64 levels", StringComparison.Ordinal)), error);
     }

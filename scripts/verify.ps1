@@ -70,6 +70,7 @@ $requestedClass = @($Class | ForEach-Object { ConvertTo-KimiTestPattern $_ })
 $requestedMethod = @($Method | ForEach-Object { ConvertTo-KimiTestPattern $_ -Method })
 $Class = @(Join-KimiCommonTestSelections $requestedClass)
 $Method = @(Join-KimiCommonTestSelections $requestedMethod -Method)
+$Mode = if ($Mode -eq 'Session') { 'Session' } else { 'Unit' } # The steps and codegen-pending.ps1 compare the canonical spelling.
 $Pipeline = $Pipeline.ToLowerInvariant()
 $Codegen = $Codegen.ToLowerInvariant()
 Assert-KimiCompilerConfiguration $Pipeline $Codegen
