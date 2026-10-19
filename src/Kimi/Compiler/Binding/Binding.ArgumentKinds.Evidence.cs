@@ -38,7 +38,17 @@ public sealed partial class Binding
                         binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
                         this.InferAdapted(pattern, literalDefault, node);
                 default:
-                    return late || node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never) || this.InferAdapted(pattern, actual, part);
+                    if (node.BoundType is not { } actual || ReferenceEquals(actual, BoundType.Never))
+                    {
+                        return true;
+                    }
+
+                    // SPEC 14.9.2 step 3: a part that awaits its position is evidence as a Literal's default is, only for slots no other
+                    // evidence binds, in the late pass.
+                    return binding.AwaitsPosition(node)
+                        ? !late || binding.SubstituteType(pattern, this.SlotOwner, this.Types, this.Lengths) is not null ||
+                            this.InferAdapted(pattern, actual, part)
+                        : late || this.InferAdapted(pattern, actual, part);
             }
         }
 

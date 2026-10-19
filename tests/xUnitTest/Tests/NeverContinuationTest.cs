@@ -11,6 +11,32 @@ public class NeverContinuationTest
 {
     private const string Stop = "func stop() -> Never => $abort(\"stop\")\n";
 
+    private const string Joins = "struct P\n    public var x: i64 = 5\nfunc g(t: (i64, i64)) => ()\nfunc id<T>(value: T) -> T => value@move\n" +
+        "func f(c: bool, d: bool, a: i64, p: P) -> i64\n    ";
+
+    // The program of JoinedLiteralsRunAtTheirJoinsType.
+    private const string JoinedLiterals =
+        "struct P\n    public var x: i64 = 5\n" +
+        "func tuple(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, (return 7))\n    return t.0 + t.1\n" +
+        "func nested(c: bool, d: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (if d => (a, (return 8)) else => (a, (return 9)))\n    return t.1\n" +
+        "func array(c: bool, a: i64) -> i64\n    let x = if c => [(a, a)] else => [(a, a), (a, (return 6))]\n    return x[0].0\n" +
+        "func dictionary(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, a), \"j\": (a, (return 4))]\n    return x[\"k\"].1\n" +
+        "func entries(c: bool, a: i64) -> i64\n    let x = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 3))]\n    return x[\"k\"].1\n" +
+        "func values(c: bool, p: P) -> i64\n    let x = if c => [\"k\": p.x] else => [\"k\": 4000000000]\n    return x[\"k\"]\n" +
+        "func grouped(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => ((a, (return 5)))\n    return t.1\n" +
+        "func literal(c: bool, p: P) -> i64\n    let t = if c => p.x else => 4000000000\n    return t\n" +
+        "func leaf(c: bool, a: i64) -> i64\n    let t = if c => (a, a) else => (a, 3000000000)\n    return t.1\n" +
+        "func elements(c: bool, p: P) -> i64\n    let x = if c => [p.x] else => [1, 4000000000]\n    return x[1]\n" +
+        "func deep(c: bool, d: bool, p: P) -> i64\n    let t = if c => p.x else => (if d => 4000000000 else => 3 * 1000000000)\n    return t\n" +
+        "require tuple(true, 2) == 4 and tuple(false, 2) == 7 else => $abort(\"tuple\")\n" +
+        "require nested(true, true, 3) == 3 and nested(false, true, 3) == 8 and nested(false, false, 3) == 9 else => $abort(\"nested\")\n" +
+        "require array(true, 2) == 2 and array(false, 2) == 6 and dictionary(true, 2) == 2 and dictionary(false, 2) == 4 else => $abort(\"array\")\n" +
+        "require grouped(true, 2) == 2 and grouped(false, 2) == 5 else => $abort(\"grouped\")\n" +
+        "require entries(true, 2) == 2 and entries(false, 2) == 3 and values(false, P.init()) == 4000000000 else => $abort(\"entries\")\n" +
+        "require literal(true, P.init()) == 5 and literal(false, P.init()) == 4000000000 and leaf(false, 2) == 3000000000 else => $abort(\"literal\")\n" +
+        "require elements(false, P.init()) == 4000000000 and deep(false, true, P.init()) == 4000000000 and deep(false, false, P.init()) == 3000000000 else => $abort(\"deep\")\n" +
+        "Console.writeLine(\"ok\")";
+
     [Theory]
     [InlineData("Nested", "var n: i32 = do => do => loop => continue\nConsole.writeLine(\"after\")")]
     [InlineData("Default", "func f(y: i32 = (do => loop => continue)) -> i32 => y\nvar n: i32 = f()\nConsole.writeLine(\"after\")")]
@@ -43,6 +69,111 @@ public class NeverContinuationTest
         Assert.Equal("(i32, i32)", TyCtxt.Name((BoundType)HirTables.Meaning(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single())!));
     }
 
+    // SPEC 14.9.2 step 3, 3.8: a literal whose element is Never awaits its position: beside a source that supplies a candidate it supplies
+    // none, and it takes the Target Result Type once the join selects it, nested, in parentheses, as an array element, a dictionary value,
+    // a part of a Tuple, array or dictionary literal source and a call argument too, which its published Type shows; one holding only
+    // Never parts takes the Type a literal source's default supplies; MIR builds it at that Type with no record and no finding.
+    [Theory]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, (return 1)) else => (a, a)", "(a, (return 1))")]
+    [InlineData("let t = match c\n        true => (a, a)\n        false => (a, (return 1))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, (return 2)))", "(a, (return 2))")]
+    [InlineData("let t = loop\n        if c => exit (a, (return 1))\n        exit (a, a)", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => ((a, (return 1)))", "(a, (return 1))")]
+    [InlineData("let t = if c => (p.x, p.x) else => (p.x, (return 1))", "(p.x, (return 1))")]
+    [InlineData("let x = [(a, a), (a, (return 1))]", "(a, (return 1))")]
+    [InlineData("let x = [\"k\": (a, a), \"j\": (a, (return 1))]", "(a, (return 1))")]
+    [InlineData("g(if c => (a, (return 1)) else => (a, (return 2)))", "(a, (return 2))")]
+    [InlineData("let r: (i64, i64) = id(if c => (a, (return 1)) else => (a, (return 2)))", "(a, (return 1))")]
+    [InlineData("let t = if c => ((a, a), a) else => ((a, (return 1)), a)", "(a, (return 1))")]
+    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1))]", "(a, (return 1))")]
+    [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1))]", "(a, (return 1))")]
+    [InlineData("let t = if c => [\"k\": a] else => [\"k\": (return 1)]", "[\"k\": (return 1)]", "Dictionary<string, i64>")]
+    [InlineData("let t = if c => (a, [\"k\": a]) else => (a, [\"k\": (return 1)])", "[\"k\": (return 1)]", "Dictionary<string, i64>")]
+    [InlineData("let t = if c => [1, 2] else => [(return 1)]", "[(return 1)]", "Array<i32>")]
+    public void ANeverElementLiteralTakesItsJoinsType(string statement, string literal, string type = "(i64, i64)")
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto && x.ToString() == literal);
+        Assert.Equal(type, TyCtxt.Name((BoundType)HirTables.Meaning(node)!));
+        BuildsWithoutRecords(c);
+    }
+
+    // SPEC 14.9.2 step 3: the literals a join types late run at its Type: a Never element diverges where it is evaluated, and a literal
+    // source or leaf, nested or an array element, holds a value only its join's Type has.
+    [Fact]
+    public void JoinedLiteralsRunAtTheirJoinsType()
+        => ScalarEmissionTest.EmitFixture("NeverContinuation" + Configuration + "Joins", JoinedLiterals, "ok\n");
+
+    // The counterparts: such a literal takes the Target Result Type only when its parts fit it, an array literal's elements included
+    // (SPEC 4.3); otherwise the join is a Type mismatch. An @move operand takes no Type from its position, so it keeps its own (SPEC
+    // 12.3.1, 13.5.2; the owner, 2026-10-19).
+    [Theory]
+    [InlineData("let t = if c => (d, d) else => (a, (return 1))")]
+    [InlineData("let t = if c => [(a, a)] else => [(a, (return 1)), (a, true)]")]
+    [InlineData("let t = if c => [\"k\": (a, a)] else => [\"k\": (a, (return 1)), \"j\": (a, true)]")]
+    [InlineData("let t = if c => (a, a) else => (a, (return 1))@move")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))@move")]
+    public void ANeverElementLiteralThatDoesNotFitItsJoinIsAMismatch(string statement)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Node is IfKoto && x.Failure == BindingFailure.TypeMismatch);
+    }
+
+    // SPEC 3.8: Never is a subtype of no other Type, at any depth: a Type holding Never relates only by identity, a Function Type's result
+    // and input included (the section's own example), and through a Type argument in either direction; Never fitting is the judgment of
+    // a Never expression alone.
+    [Theory]
+    [InlineData("struct Sink<T>\n    public var f: (T) -> ()\nfunc g(s: Sink<i32>)\n    let t: Sink<Never> = s@move\n")]
+    [InlineData("struct Sink<T>\n    public var f: (T) -> ()\nfunc g(s: Option<Sink<i32>>)\n    let t: Option<Sink<Never>> = s@move\n")]
+    [InlineData("func f(handler: (i32) -> Never) -> ()\n    let g: (i32) -> i32 = handler@move\n")]
+    [InlineData("func f(handler: (i32) -> ()) -> ()\n    let g: (Never) -> () = handler@move\n")]
+    [InlineData("func f(a: i64) -> i64\n    let u = (a, (return 1))\n    let t: (i64, i64) = u\n    return 0\n")]
+    [InlineData("func take(t: (i64, i64)) => ()\nfunc f(a: i64, u: (i64, Never))\n    take(u)\n")]
+    public void ATypeHoldingNeverRelatesOnlyByIdentity(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Contains(c.Binding.Issues, static x => x.Failure is BindingFailure.TypeMismatch or BindingFailure.NoApplicableCandidate);
+    }
+
+    // SPEC 3.8, 10.7: Never fitting at a value position, and 10.7's result compatibility (R <: Q or R is Never) at an implementation's
+    // result: a Function Item and a contract implementation whose result is Never.
+    [Theory]
+    [InlineData("func stop() -> Never => $abort(\"stop\")\nfunc f()\n    let x: i64 = stop()\n    let t: (i64, i64) = (1, stop())\n")]
+    [InlineData("func h(x: i32) -> Never => $abort(\"x\")\nlet g: (i32) -> i32 = h\n")]
+    [InlineData("contract Empty\n    func empty() -> Self\nstruct Impossible\n    Self is Empty\n    public func empty() -> Never => $abort(\"no value\")\n")]
+    public void NeverFittingIsAValueAndResultJudgment(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 10.4 step 2: parameter Types rank no candidates, Never's included: `f(x: Never)` and `f(x: i32)` both take `stop()`, by
+    // Never fitting, and are incomparable.
+    [Fact]
+    public void ANeverParameterRanksNoCandidate()
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + "func f(x: Never) -> i32 => 1\nfunc f(x: i32) -> i32 => 2\nlet r = f(stop())\n");
+        Assert.Contains(c.Binding.Issues, static x => x.Failure == BindingFailure.Ambiguous);
+    }
+
+    // SPEC 14.9.2 step 3: a literal holding Never that a join types late fits a Target Result Type fixed by an outer expectation through
+    // its late Type, not by Never fitting, also in parentheses and when a nested join waited for it.
+    [Theory]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => ((a, (return 1)))", "(a, (return 1))")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
+    [InlineData("let t = if c => (a, a) else => (if d => (a, (return 1)) else => (a, 4000000000))", "(a, (return 1))")]
+    [InlineData("let t: (i64, i64) = if c => (a, a) else => (a, (return 1))", "(a, (return 1))")]
+    public void ANeverElementLiteralFitsAnExpectedJoinByItsLateType(string statement, string literal)
+    {
+        var c = MirBuildTest.Compile(Joins + statement + "\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var tuple = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<TupleLiteralKoto>().Single(x => x.ToString() == literal);
+        Assert.Equal("(i64, i64)", TyCtxt.Name((BoundType)HirTables.Meaning(tuple)!));
+        BuildsWithoutRecords(c);
+    }
+
     // SPEC 3.1.3: Never is Copy and Owned, so a Type storing it is Copy and Owned by its structure, and a bare read of a Place of such
     // a Type is a Copy. The old path's Unsupported_Kd for every Place of a Type holding Never stays its only record until R6-check.
     [Theory]
@@ -60,6 +191,55 @@ public class NeverContinuationTest
         var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x.ToString() == place && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset).ToArray();
         Assert.Equal(copies, reads.Length);
         Assert.All(reads, static x => Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(x).Acquire));
+    }
+
+    // SPEC 14.9.3, 14.10.3, 13.5.3: an explicit acquisition of a Place of Type Never supplies no normal completion and keeps its effect:
+    // `x@move` Moves x, and the later bare read is a Copy checked on the assumed path; `x@copy` and `x@Never` stay an Identity.
+    [Theory]
+    [InlineData("x@move", true)]
+    [InlineData("x@copy", false)]
+    [InlineData("x@Never", false)]
+    public void AnExplicitAcquisitionOfANeverPlaceKeepsItsOperation(string acquisition, bool moves)
+    {
+        var operand = moves ? HirAcquire.Move : HirAcquire.Copy;
+        var c = MinimalEmissionTest.Analyze("func pass(x: Never, y: Never) => ()\nfunc absurd(x: Never) => pass(" + acquisition + ", x)\n");
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(moves, LegacyRecords.Of(c).Any(static x => x.Code == DiagnosticCode.MovedPlace_Kd));
+        HirTables.Publish(c);
+        var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single();
+        Assert.Equal((HirOp.Group, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
+        Assert.Equal(operand, HirTables.AdjustOf(conversion.Left).Acquire);
+        var read = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto), x => x.ToString() == "x" && !ReferenceEquals(x, conversion.Left) && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset);
+        Assert.Equal(HirAcquire.Copy, HirTables.AdjustOf(read).Acquire);
+    }
+
+    // SPEC 14.9.3, 14.10.3, 13.5.6: an explicit borrow of a Place of Type Never forms its Loan like any explicit borrow and supplies no
+    // normal completion, so a later Move of the Place is a Loan conflict on the assumed path.
+    [Theory]
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@(ref/Never), x@move)\n", "x@(ref/Never)", true)]
+    [InlineData("func pass(a: ref/Never, b: Never) => ()\nfunc absurd(x: Never) => pass(x@ref, x@move)\n", "x@ref", true)]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@(uniq/Never))\n", "y@(uniq/Never)", false)]
+    [InlineData("func pass(a: uniq/Never) => ()\nfunc absurd(x: Never)\n    var y = x\n    pass(y@uniq)\n", "y@uniq", false)]
+    public void AnExplicitBorrowOfANeverPlaceFormsItsLoan(string source, string borrow, bool conflict)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.Empty(c.Binding.Issues);
+        Assert.Equal(conflict, LegacyRecords.Of(c).Any(static x => x.Code.IsLoanConflict()));
+        HirTables.Publish(c);
+        var conversion = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Single(x => x.ToString() == borrow);
+        Assert.Equal((HirOp.Borrow, HirCompletion.Diverges), (HirTables.Op(conversion), HirTables.CompletionOf(conversion)));
+        var type = conversion.TypeOf()!;
+        Assert.Equal((borrow.Contains("uniq", StringComparison.Ordinal) ? SemanticsKind.Uniq : SemanticsKind.Ref, BoundType.Never), (type.Semantics, type.Components[0]));
+    }
+
+    // SPEC 14.9.3: a borrow of a Never value, which is no Place, only diverges.
+    [Fact]
+    public void ABorrowOfANeverValueOnlyDiverges()
+    {
+        var c = MinimalEmissionTest.Analyze(Stop + "func pass(a: ref/Never) => ()\nfunc f() => pass(stop()@ref)\nfunc g() => pass(stop()@(ref/Never))\n");
+        Assert.Empty(c.Binding.Issues);
+        HirTables.Publish(c);
+        Assert.All(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>(), static x => Assert.Equal(HirOp.Convert, HirTables.Op(x)));
     }
 
     // The counterpart: a Type storing a Non-Copy part beside Never is Non-Copy, so a bare read of its Place is a Move that needs @move
@@ -96,4 +276,12 @@ public class NeverContinuationTest
 #else
     private const string Configuration = "Release";
 #endif
+
+    // MIR builds the program with no record and no validator finding.
+    private static void BuildsWithoutRecords(Compilation c)
+    {
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+    }
 }

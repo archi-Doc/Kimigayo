@@ -351,26 +351,11 @@ public sealed partial class Binding
         return node is not NullLiteralKoto || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
     }
 
-    private BoundType? Join(Koto node, BoundType? a, BoundType? b)
-    {
-        if (a is null || ReferenceEquals(a, BoundType.Never))
-        {
-            return b;
-        }
-
-        if (b is null || ReferenceEquals(b, BoundType.Never) || ReferenceEquals(a, b))
-        {
-            return a;
-        }
-
-        return this.FailMismatch(node, node, b, a);
-    }
-
     private BoundType? BindNode(Koto node, BindingScope scope, BoundType? expected = null)
     {
-        if (this.WaitsUnderProbe(node, expected))
+        if (this.WaitsForPosition(node, expected))
         {
-            return null; // SPEC 10.5.1: a literal source of a control-flow part under the argument probe waits for its expectation.
+            return null; // SPEC 10.5.1, 14.9.2, 4.3: a literal waits for the Type its position decides later.
         }
 
         // The caller consulted this node: its failure becomes the caller's prerequisite (SPEC 23.1.2).
@@ -394,8 +379,8 @@ public sealed partial class Binding
     private bool ErasureSignatureFits(BoundType actual, BoundType expected, Koto use)
         => expected.Kind == BoundTypeKind.Function &&
             ((actual.Kind == BoundTypeKind.FunctionItem && this.FunctionItemSignature(actual) is { } signature && this.ItemContractFits(actual, signature, expected, use)) ||
-            (actual.Kind == BoundTypeKind.Closure && actual.Symbol?.Declaration is FunctionKoto { BoundClosure: not null } &&
-            this.ClosureSignature(actual) is { } closureSignature && CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
+            (actual.Kind == BoundTypeKind.Closure && this.ClosureSignature(actual) is { } closureSignature &&
+            this.CallableSignatureFits(closureSignature, expected, SignatureOwner(actual))));
 
     private BoundType? BindAndAdaptNode(Koto node, BindingScope scope, BoundType? expected)
     {
@@ -404,7 +389,8 @@ public sealed partial class Binding
             expected = this.SubstituteIdentityPremises(expected, scope);
         }
 
-        var actual = this.BindNodeCore(node, scope, expected);
+        // SPEC 14.9.2: a result target that waited for its position takes the Type that position supplies.
+        var actual = this.WaitingResult(node) is { } waiting ? this.DecideWaiting(node, waiting, expected) : this.BindNodeCore(node, scope, expected);
         if (expected is not null && actual is not null && HasArrayLengthHole(expected))
         {
             expected = this.CompleteArrayExpectation(expected, actual);
@@ -747,7 +733,7 @@ public sealed partial class Binding
                 {
                     if (jump.Parent is not TryKoto)
                     {
-                        targetResult?.Sources.Add(actual);
+                        targetResult?.Add(jump.Expression, actual);
                     }
 
                     if (actual is not null && resultType is not null && !this.FitsTypeAt(actual, resultType, node) && !this.CheckLocalTypeUse(actual, resultType, jump.Expression ?? jump))
@@ -1403,28 +1389,6 @@ public sealed partial class Binding
         rejected.Candidates.Clear();
         rejected.Sources.Clear();
         return this.FailExplained(ref this.arithmeticSelectionFailures, binary, BindingFailure.ArithmeticSelection, new(rejected, left, right, ArithmeticContract(operation), "No proven conformance fits the counterpart structure"));
-    }
-
-    private BoundType? BindTuple(TupleLiteralKoto tuple, BindingScope scope, BoundType? expected)
-    {
-        var buffer = this.RentTypes(tuple.Elements.Count);
-        try
-        {
-            var complete = true;
-            for (var i = 0; i < tuple.Elements.Count; i++)
-            {
-                var element = expected is { Kind: BoundTypeKind.Tuple } && expected.Components.Count == tuple.Elements.Count ? expected.Components[i] : null;
-                var type = this.BindNode(tuple.Elements[i], scope, element);
-                buffer[i] = ReferenceEquals(type, BoundType.Never) && element is not null ? element : type!; // SPEC 3.8: Never fits its expected element.
-                complete &= type is not null;
-            }
-
-            return Complete(tuple, complete ? this.types.Tuple(buffer.AsSpan(0, tuple.Elements.Count)) : null);
-        }
-        finally
-        {
-            this.typeScratch.Return(buffer, clearArray: true);
-        }
     }
 
     private ChildBinder? childBinder;

@@ -1463,7 +1463,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   lane until G130 (B); the validator copying Binding's Never leniency (a second copy of a rule); the builder re-typing the aggregate
   at its consumer (a consumer deciding a fact Binding publishes); a walk of every component with a test of the HIR completion
   (the planning session: the published Type alone decides, through the positions a literal builds). (G130 U5 removed its
-  Case-payload cause, BU-2: a payload literal is completed at its decided payload Type.)
+  Case-payload cause, BU-2: a payload literal is completed at its decided payload Type.) Superseded by BU-9 (G129 U5).
 - **R4-M62** (2026-10-17; PLAN G92, implementing R4-M52's G92a (owner) as `draft/Sketches/A5 Step 1/choice-1b.md` §2 and A3 E9
   state it, with design review r1's B2 and r2's F3 and F4, on the planning session's instruction of the same day; amends R4-M37
   G6) Assumed completion in MIR construction (SPEC 14.10.3, 3.8, 3.1.3). On a check-only continuation every node is built and
@@ -1640,7 +1640,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     under OQ11 (a)), takes SPEC's letter with a re-spelling of the program (R4-M64's pattern).
   - OQ8 (a): a new loss from a prototype round, or a reading that needs a SPEC revision, is approved as a SPEC clause,
     integrated in one SPEC session per family before the unit that reports its Language code; until then PD30 applies. The
-    owner's G148 answer (PLAN G148) applies it to losses with no library or milestone use; any other is O3.
+    owner's G148 answer (PLAN G148) applies it to losses with no library or milestone use; any other is O3 (P13: R4-M76).
   - OQ9 (a): at X-2 the SPEC rules left as a located `Unsupported_Kd` at R4's exit and the removal stage of each remaining MIR
     `Unsupported_Kd` producer go to the owner as one list (O4).
   - OQ10 (b) preferred: a G106 signature still mixed after X-1's re-triage is classified whole with per-row notes; the D5 exception
@@ -1650,20 +1650,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     compares each record with A5's problem.
   - OQ12 (a): S3's clarification of SPEC 15.3.6 ("A variable's bounds are followed through other variables to fixed or finite
     Origins and `static`. If none is reached, the variable has no candidate") is made as a SPEC revision before 2a0-3b.
-  - OQ13 (a): S5 is adopted: an effect atom on an associated projection that grows under polymorphic recursion widens to an
-    unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding that changes the rule returns to the
-    owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for S2 (planning session).
-- **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4 planning session on
-  2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one owner-approved design and
-  share one final review before the group merges into dev; each unit is still verified and pushed, and a unit that departs
-  from the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts only with Loans whose
-  mode is shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot or its owned contents
-  `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries `MirFactKind.Inlined` and is dropped
-  while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's evaluation places into its pending slot
-  carries that slot's default taint, a Loan problem found only through tainted sets is a located `Unsupported_Kd` at the
-  omitting call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with the key (code, subject, body) and
-  R4-M11's cross-body merge at publication (R4-M71). Each unit's entry records its decision as implemented; 1c-9 (records)
-  keeps its own review.
+  - OQ13 (a) (superseded in part by R4-M76): S5 is adopted: an effect atom on an associated projection that grows under
+    polymorphic recursion widens to an unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding
+    that changes the rule returns to the owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for
+    S2 (planning session). - **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4
+    planning session on 2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one
+    owner-approved design and share one final review before the group merges into dev; each unit is still verified and pushed, and
+    a unit that departs from the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts
+    only with Loans whose mode is shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot
+    or its owned contents `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries
+    `MirFactKind.Inlined` and is dropped while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's
+    evaluation places into its pending slot carries that slot's default taint, a Loan problem found only through tainted sets is a
+    located `Unsupported_Kd` at the omitting call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with
+    the key (code, subject, body) and R4-M11's cross-body merge at publication (R4-M71). Each unit's entry records its decision as
+    implemented; 1c-9 (records) keeps its own review. - **R4-M76 Owner answers on G148 and the step-2 drafts** (owner, 2026-10-19,
+    relayed by the R4 planning session; on G148's completed design review and the reviewed drafts 2x-S1, 2f-S1 and 2x-S5 in
+    `draft/Sketches/A5 Step 2/` and the S5 proposal `draft/Proposals/2026-10-19 Effect Atoms Widen.md` on branch
+    `claude/a5-2x-s5`) Library and milestones count 0 under each answer.
+  - G148: rule G, no SPEC change (R4-M73 records it with G148's unit). Its loss P13 (the Type guard is per holder, so a store
+    follows a shared Loan past a holder whose Type passes the guard only through a Type argument, a pair layer or an abstract
+    part) is recovered by a representation, not a SPEC clause (OQ8 (b), for P13 in place of the earlier G148 answer's OQ8 (a)):
+    until a step-2 unit makes the guard per part (it reads a generic Type's Fields and takes no Type argument as an exclusive
+    reference), before R4's exit (else OQ9's list), a conflict that depends on such a store is a located `Unsupported_Kd` (PD30).
+    A precision refinement such as GXS stays an unscheduled candidate, as G127.
+  - S5 (OQ13 made precise, superseding its "grows"; 2x-S5's question Q1): form (c). A parameter-dependent effect on a projection
+    one of whose bases the premises of the summary's declaration prove to conform to a recursive Contract widens to unknown
+    environment effects (a destruction counts only when its Type is not proven Copy). A Contract `C` is recursive when `T is C`
+    supplies (SPEC 8.3.2), directly or through the Constraints of the Contracts so supplied, a conformance of a projection of `T`
+    to `C`'s declaration, with any Type arguments, or to a Contract that refines it. This departs from OQ13's "grows": it also
+    widens effects that do not grow, only in code no concrete Type can instantiate. Rejected: form (a) (it needs a SPEC definition
+    of summary dependencies, their cycles and a self-map rule); a list of Constraint forms (two blocking rounds on that
+    definition, the review's B2 and B5); a hold. Its SPEC session follows the proposal's review.
+  - S1-a (2x-S1, the `g5` form): (a). A3's approved P1 is completed in SPEC: storage the body does not own that a part carries
+    follows its holder, as Loans do. A5 is unchanged. Until the sentence is integrated in OQ12's SPEC session, A5's Language code
+    for the form stands, an exception to PD30 and to R4-M35's interim (a violation of an approved loss is a located
+    `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c).
+  - G1 (2f-S1): (ii′). A conformance's earlier result is taken from its body (SPEC 8.11.3's "its results"), and an unclassifiable
+    destruction, one in a concrete callee's summary included, conflicts with every Loan the earlier result keeps. Eight test rows
+    rejected today become valid; every other rejection stays.
+  - G2 (2f-S1): (a). Values of one abstract Type share its Origin atoms for rule 1 (SPEC 8.11.4, 8.11.5's `Merge`), and c24's
+    answer also sets the conformance carrier granularity, one rule for callers and conformances. `EffectBoundCallerTest`'s rows
+    `zip` and `both`, valid today, become errors; their unit cites this answer. c24's own verdict stays open (the sketch's §9).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -1899,6 +1926,117 @@ R5 on the owner's request of 2026-10-18.
   pass Binding under `T is Copy` (`let r = id<Never>`, `f<Option<Never>>(o)` with `o: ref/Option<Never>`) stop at the old
   Emission's existing `GenerationFailed_Kd` rather than a located `Unsupported_Kd`, as the same programs without the
   Constraint already did, until R6. Not temporary.
+  - U2, the components of G129's chosen design (E1, E3; restructuring, behavior unchanged): `Binding.ValueFits` owns the
+    value-fit entries (`FitsType`, `FitsTypeAt`, `FitsStructurally(At)`, `FitsStructuralPart`, `FitsVerifiedTypeAt`) and the
+    use-site fit `CheckTypeUse` with `AddOriginFit`, whose recursion is `CheckTypeUseCore`; the Type relation `FitsTypeCore`
+    stays in `Binding.TypeRelations`. `Binding.ResultPropagation` owns a literal's Type at its position's Type, so far α's
+    `FittedTupleType`, which `BindTuple` reads. The 14.9.2 survey (`SurveyResult`, `InferResultExpected`, `ResultEvidence`
+    and its walks) moves from `Binding.ControlFlow`, which keeps the join, to `Binding.ResultSurvey`, and SPEC 13.5.4's explicit
+    numeric conversions from `Binding.Conversions` to `Binding.NumericConversions`, so the late fit and E5's survey rule fit
+    the structure limits. Deleted: the unused `Join`.
+  - U3, the late fit (E3 with S2 and S5; E13, decided at the pause: a literal result is not fixed before outer constraints, SPEC
+    14.9.2 step 3). `Binding.ResultPropagation` owns the Type an expression takes at its position once that is decided. An
+    expression awaits its position (`AwaitsPosition`) when it is a numeric literal-only expression, a Tuple or array literal holding
+    a part of Type Never or one that awaits, or a result target every value source of which awaits or is Never, through
+    parentheses, labels, expression bodies and an Identity or Transfer `@move`/`@copy` (the `@move`/`@copy` clause superseded by
+    BU-9). Such a source is no candidate of a 14.9.2
+    join (`ResultCandidates`; when none supplies one, the sources' own Types compete), no element evidence of an array or
+    Dictionary literal beside an element that is (alone, the awaiting elements' common Type), and at a call evidence only as a
+    Literal's default is (late pass, for slots no other evidence binds); it takes the decided Type by its late Type (`LateTypeOf`:
+    an array literal its target's element Type only when every element fits it, S2, every other part its own Type; a literal
+    waits instead, BU-9), written only when that fits (`TryPropagate`), at the join's decision (`DecideResult`, `PropagateSources`),
+    `BindTuple`, the array and Dictionary literals, a call's `CompleteArguments` (S5) and `CompletePayloads`. While a join collects
+    its sources after its survey without a Target Result Type (`ResultContext.Collecting`), a numeric literal-only source, directly
+    or as a part of a Tuple or array literal source, is not bound (`WaitsForPosition`, BU-9), nor is an array literal source no element of
+    which establishes a Type; a selection, `do` or `loop` all of whose sources await, one of them unbound, waits when it is itself
+    such a source (`ResultContext.Waiting`; a function's value is itself, not its result) and is decided when its position binds
+    it (`DecideWaiting`); otherwise the join binds each waiting source once, at its decided Type, so a misfit is the literal's own
+    record (`if c => p.y else => 300` with `p.y: i8`: `InvalidNumericLiteral_Kd` at `300`), or, without a candidate, at its default.
+    The completion of a body the parser supplied decides no inferred Target Result Type (a guess, DIAGNOSTICS §4.4).
+    `ResultContext.SourceNodes` records each source's node. Effect: R4-M59's joins (`if`, `match`, `loop`, nested, `@move`-wrapped (superseded by BU-9),
+    array elements, Dictionary values, S5's call argument) publish their decided Type, and `if c => p.x else => 4000000000`,
+    `if c => (a, a) else => (a, 3000000000)` and `let x = if c => identity(a) else => 2` are valid. Rejected: re-typing a literal
+    bound at its default (a literal only the join's Type fits is rejected first, and a literal-only operation keeps its default's
+    operation); a survey that binds its sources (step 2 compares the independently typable ones). Open: a Dictionary literal source
+    of a join takes no late Type (`if c => ["k": (a, a)] else => ["k": (a, (return 4))]`: mir `InternalInvariant_Kd`, as on dev); a
+    join under `@move` (superseded by BU-9) or a label does not wait for an outer join, so its literals take their defaults first; a
+    control-flow
+    argument whose literals sit beside an unknown typed source still waits (PLAN G152).
+  - U4, the relation (E1, E2 with S4, S1, S3, E8 with S9). `FitsTypeCore` relates Never only to itself (SPEC 3.8: a Type holding
+    Never is an ordinary Type). Never fitting is decided once, at the root of the value-fit entries (`Binding.ValueFits`: `FitsType`,
+    `FitsStructurally(At)`, `FitsTypeAt`, `FitsVerifiedTypeAt` and `CheckTypeUse` read `NeverFits`), and `CheckTypeUseCore`'s
+    recursion calls only the relation (S1: `let t: Sink<Never> = s@move` with `s: Sink<i32>`, `struct Sink<T>` holding `(T) -> ()`,
+    also through `Option<…>`, and SPEC 3.8's `let g: (i32) -> i32 = handler@move` are `TypeMismatch_Kd` on both pipelines).
+    Type-to-Type comparisons call the relation's entries (`Binding.TypeRelations`: `IsSubtype`, `IsStructuralSubtype`, `IsSubtypeAt`
+    and `FitsStructuralPart`, now relation-only), sorted by contract (S3): slot unification (`Calls`), ranking (`CandidateEvaluation`:
+    SPEC 10.4 step 2 is structural identity, so the subtyping `better` branch is deleted and `f(x: Never)` beside `f(x: i32)` for
+    `f(stop())` is ambiguous), identity tests (`CompleteTypeIdentity`, `ConstructorValidation`, `FunctionTypes`' written and bound
+    Types, `ShapeEvidence`, `CallableSelection`'s signature equality), `CommonOriginType`, `SelectCommonType`, `PropertyMatching`,
+    `PairLayers`, `Elements`' key and `Conversions`' borrowed referent; every other caller is a value position and keeps the value
+    entries. SPEC 10.7 has one judgment (S4): an implementation is related by subtyping to the required signature whose result is
+    Never when the implementation's is (`CompatibleResult`, `CompatibleSignature`; `CallableSignatureFits`, now a `Binding` member
+    beside the relation), read by erasure, Callable proofs, a Function Item's contract (`ItemContractFits`, whose inputs now relate
+    by subtyping alone) and contract implementation matching (`CallableContracts`). The 14.9.2 join checks an awaiting source by its
+    late Type with or without a fixed Target Result Type (no Never fitting below the root); a literal or join waits through @move,
+    @copy and labels as through parentheses (`DeliveredOperand`, read from the syntax, is the one walk) and is bound at the decided
+    Type operand first (`BindWaiting`) (the @move and @copy clauses superseded by BU-9); without a candidate, the defaulted literal sources supply the candidates
+    (`if c => (a, (return 1)) else => (a, 5)` is `(i64, i32)`). E8 (the owner is told): the FunctionReference tests premised on `(i32) -> Never <:
+    (i32) -> i32`, which SPEC 3.8 excludes, take premises SPEC 10.4 supports: a generic reference ranks below a non-generic one
+    (step 3), an ambiguity between two generic references with identical parameters (steps 2 and 3 tie), an unknown condition of
+    the non-generic best reference. Open: `let u: (i64, i64) = (a, (return 2))@move` is `TypeMismatch_Kd`, since @move binds its
+    operand without an expected Type (`Binding.Conversions`), so α does not reach the literal (superseded by BU-9: the SPEC verdict); a Callable bound over a Function Item
+    whose result is Never stays `NoApplicableOverload_Kd` (E10(3), as on dev); a join whose every source holds Never compares their
+    own Types (E10(2)); a Dictionary literal source of a join takes no late Type (U5 decides its MIR side).
+- **BU-5** (2026-10-18; the BU planning session; G129 E5, before R4-M59's removal) An anonymous function's result sources
+  (SPEC 14.9.1, 14.9.2) and the survey of an operator's result (SPEC 13.3.4). (1) Without a declared or expected result, an
+  anonymous function with a single-item body is a result target exactly as one with an indented body: `BeginResult`
+  surveys the body's value and every self-targeted `return` operand, the body takes the surveyed Type as an `if` branch
+  does, and `FinishResult` joins the operands with the body's value (an indented body: its structural end Unit) and checks
+  each. A declared or expected result stays the Target Result Type. (2) The 14.9.2 survey (`ResultEvidence`) gives binary
+  `+ - * / %` and unary `-` their operands' terminal Type only on the built-in route, selected when every operand is
+  literal-only or has a surveyed Type ending, past safe reference layers, in a built-in numeric Type; a user provider (its
+  result is its conformance's Output) or an unknown operand gives no evidence. Comparisons, logical operators and
+  assignments are route-independent; bitwise, shift and unary `+` are built-in only and keep their operands' Type. Why: (1)
+  the single-item path only bound its body, so a `return` operand was no evidence, no source and unchecked (`func [] (c:
+  bool, a: i64) => if c => a else => (return 1)` kept an i32 `1` in an i64 function: `GenerationFailed_Kd`, mir
+  `InternalInvariant_Kd`; `(return true)` was accepted; `func [] () => (return 1)` was Never; `try` in a single-item body
+  was `InvalidTryReturn_Kd`); (2) the survey typed these operators by `Left ?? Right`, so `return x - y` (Value's
+  `Subtractable<Value>.Output is i32`) or `if c => x - x else => -x` took Value and `s * v` (Vec2's
+  `LeftMultipliable<f64>`) f64, and (1) would have exposed every single-item body to it. Census (both pipelines, Session
+  default and mir, MilestoneSourcesTest, library unchanged): those forms valid; an open-result closure argument also
+  reports its own sources' conflict beside `UnboundTypeArgument_Kd` (SPEC 23.1.2). Rejected: a separate return check for
+  single-item bodies (a second copy of 14.9); keeping `Left ?? Right` for unknown operands (wrong evidence for an unknown
+  user provider). Open: (N1) closed for joins by G129 U3, with which (1) and (2) land (BU-4: a join's literal sources and
+  leaves wait for its decided Type, the single-item body included as its function's source):
+  `if c => (a, a) else => (1, 2)`, `(return (1, 2))` beside `(a, a)`, `if c => p.x else => 1` and `if c => p.x + n else => 1`
+  are valid; a control-flow argument whose literals sit beside an unknown typed source still waits (PLAN G152).
+  (N3) `if c => a else => true` as a result source reports `TypeMismatch_Kd` twice, at the `if` and at its target (one per
+  cause required); pre-existing in indented bodies, and (1) extends it to single-item bodies. Not temporary.
+- **BU-6** (2026-10-18; owner decision, 「推奨の通りでお願いします」, on the BU planning session's question from R5's F12 finding;
+  an explicitly authorized SPEC revision of 14.9.3 and 14.10.3, not of SPECJ, GUIDE or history) Every expression of Type
+  Never, a read or an explicit acquisition of a Place of Type Never included, supplies no normal completion (SPEC 14.9.3),
+  and on an assumed path it continues after it is evaluated with its explicit acquisition taking effect (SPEC 14.10.3:
+  `x@move` Moves `x`, so `pass(x@move, x)` with `x: Never` is an error; the new example lines). Binding: StructuralCompletion
+  already reads completion from the node's Type, so the HIR Completion of `x@move` is Diverges. One rule (`IsNeverValue`,
+  Binding.Conversions): a conversion is Abrupt for a Never value, an operand of Type Never that is no Place, and for a
+  conversion that converts the value (`@follow`, `x@i32`, an object creation, `@wrap`, `@bits`); an explicit acquisition of
+  a Place of Type Never keeps its operation and its effect: `@move` a Transfer, `@copy` and `x@Never` an Identity (Never is
+  Copy, BU-4), `x@ref`, `x@uniq`, `x@(ref/Never)`, `x@(uniq/Never)` and `x@raw` a Borrow or Address of the slot, which
+  `@ref`, `@uniq` and `@raw` take whatever it stores, Never included (`BorrowsWrittenSlot`); `AdaptInput`'s shortcut, a
+  noncompleting argument forms no borrow, is for implicit adaptations only. So the HIR publishes the inner Place of `x@move`
+  acquired by Move and a later bare read as a Copy, and `pass(x@(ref/Never), x@move)` is a Loan conflict on the assumed path.
+  The old analysis reports `MovedPlace_Kd` and the Loan conflict where it analyzes the body; MIR's A1 does too since R5's F12
+  (PLAN G139, DECISIONS R5-M38). Why: Never has no values, so no
+  expression of that Type completes at run time; one rule read from the expression's Type replaces a list of forms, and
+  explicit acquisitions stay checked where code cannot run. Principles: one canonical form (one completion rule for every
+  Never expression, one acquisition rule for every Place), local reasoning (completion follows from the expression's own
+  Type), explicit semantics (`@move` and the borrows keep their meaning on assumed paths). Rejected: SPEC as written (option
+  1: a read or explicit acquisition of a Never Place completes structurally, 14.9.3 listing only divergence, Never calls and
+  Abort), which would need a second, form-based completion rule beside the Type's and would leave the read after `x@move`
+  reachable only by that list. Open: the old analysis has no route for an exclusive reference argument whose referent is
+  Never (`ReferenceTypes.IsStorage` excludes Never), so `pass(y@(uniq/Never))` on a `var y` gives its `InternalInvariant_Kd`
+  beside its `Unsupported_Kd`, as a `uniq/Never` parameter passed on already did (`h(p: uniq/Never) => g(p)`), on both
+  pipelines until R6-check (frozen path; STATUS). Not temporary.
 - **BU-8** (2026-10-18; the BU planning session; PLAN G147 (2), design A approved by the planning session the same day, its
   predicate redone after its review) A user index's choice between `index` and `indexUniq` (SPEC 4.7.1) is decided once, by the HIR
   publisher, from the capability of the element Place's use. `ExclusiveUse` (`Binding.Hir.Adjust.cs`) holds exactly when the
@@ -1933,6 +2071,43 @@ R5 on the owner's request of 2026-10-18.
   `entries[1].inner.mutate()` with `uniq/Outer` elements copies `inner` into a temporary before its `&uniq` on the MIR (that
   receiver is published as a Temporary), so the mutation is lost, while `entries[1]@follow.inner.mutate()` builds correctly, and
   the default pipeline faults there (`CheckFaulted_Kd`, `OwnershipAnalysis.Borrows.cs` 409); both are R4's and R5's. Not temporary.
+- **BU-9** (2026-10-19; the BU planning session; PLAN G129 design E7, unit U5; supersedes R4-M59, whose removal condition holds)
+  MIR builds a literal whose Type holds a Never element at the Type Binding publishes, with no record (`MirBuilder.Aggregate`;
+  `HoldsNeverElement`, its branch and its header clause are deleted). Binding publishes that Type through G129's three components:
+  the relation (E1, `Binding.TypeRelations`: `FitsTypeCore` relates Never only to itself, SPEC 3.8; Type-to-Type comparisons call
+  `IsSubtype`, `IsStructuralSubtype`, `IsSubtypeAt` and `FitsStructuralPart`; SPEC 10.7's one result rule, `CallableSignatureFits`
+  with `CompatibleResult`), value fitting (E2, `Binding.ValueFits`: Never fitting only at a value position's root, `NeverFits`), and
+  the late fit (E3, `Binding.ResultPropagation`: an expression that awaits its position, `AwaitsPosition`, takes the Type its join,
+  its literal's element evidence or its selected call decides, `LateType`, `TryPropagate`, `PropagateSources`; a literal waits
+  for it, `WaitsForPosition`, `BindWaiting`). A literal that no position types keeps its own Type, which holds Never only
+  where the literal is a fresh value (`let t = (a, (return 1))` is `(i64, Never)`); such a literal never completes at run time. U5
+  closes E3's family of aggregate literals: a dictionary literal awaits as Tuple and array literals do (`EntriesAwait`,
+  `LateDictionaryType`), and one whose keys or values only literals type waits for its join (`IndependentDictionaryType`), so
+  `if c => ["k": a] else => ["k": (return 1)]`, `["k": (a, (return 1))]` beside `["k": (a, a)]` and `["k": 4000000000]` beside
+  `["k": p.x]` take the join's Type (before: `UnresolvedBinding_Kd`, `TypeMismatch_Kd`, `InvalidNumericLiteral_Kd`; Ua's mir:
+  `InternalInvariant_Kd`). Why: R4-M59 was temporary until Binding published these Types; MIR builds what Binding publishes.
+  Rejected: keeping the record for a fresh literal (a valid program, SPEC 3.1.3); `Unsupported_Kd` for a dictionary literal source
+  (a third aggregate literal under the same late-fit rule, one row each in `AwaitsPosition` and `LateType`). Open (PLAN G159): a
+  join whose every source awaits compares their own Types; 10.7 for a closure declaring `-> Never` and a `Callable` bound over a
+  Never-result item; Never-holding Places on the old analysis.
+  Final review r1 (2026-10-19; redone, not patched): a literal is bound once. It waits, unbound, wherever its position's Type is
+  decided later, found by one walk (`DecidedLater`: through the forms that deliver it and the Tuple, array and dictionary literals
+  it is a part of, to an array or dictionary literal collecting its element evidence, `collectingElements`, a join collecting
+  without a Target Result Type, or the call deciding a Literal or waiting control-flow argument, `WaitsForCall`); one predicate,
+  `WaitsForPosition`, replaces `WaitsForJoin` and `WaitsUnderProbe` (BU-2). Once bound it is decided: `AwaitsPosition` holds only
+  while it waits, so the late fit writes no literal (`LateLiteralType` deleted) and a source bound at its default is never
+  propagated or checked again (`if c => [1, 4000000000] else => [2]`: the literal's record only, as on dev). `Awaiting` tells a
+  part holding a literal, which supplies a default, from one holding only Never parts, which takes the Type the defaults supply
+  (`if c => [1, 2] else => [(return 1)]`, rejected on dev, is valid). So `[(a, a), (a, 2000000000 + 2000000000)]`,
+  `[(a, a), (a, 4000000000)]`, `[[a], [4000000000]]` and `[a, if c => 1 else => 4000000000]` take the element Type (SPEC 4.3,
+  12.3; dev rejects them), and `g(1@move)` with `g(t: i64)` is `NoApplicableOverload_Kd` again, as on dev.
+  B1 (the owner, 2026-10-19, choosing the SPEC as written over a SPEC clarification: 12.3.1 propagates expected Types into
+  collection elements and selection branches, 13.5.2 lets only a target guide literals): an `@move` or `@copy` operand takes no
+  Type from its position, neither an expected Type nor one decided later. @move and @copy are not delivered operands
+  (`DeliveredOperand`: parentheses, labels, expression bodies), so neither the late fit nor the deferral passes them, and
+  `BindWaiting` binds the source alone. So `if c => (a, a) else => (a, (return 1))@move` is `TypeMismatch_Kd`, with or without
+  an expected `(i64, i64)`, and `if c => p.x else => (4000000000)@copy` is `InvalidNumericLiteral_Kd`; written in parentheses
+  both take the join's Type. This supersedes the @move and @copy clauses of BU-4's U3 and U4 entries.
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
   refuses an instance whose stored Types nest more than 64 levels, A5 plan PD30's storage-nesting gap) is a property of each
