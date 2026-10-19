@@ -41,10 +41,11 @@ internal sealed class ModuleCodegen
     /// <summary>Initializes a new instance of the <see cref="ModuleCodegen"/> class.</summary>
     /// <param name="layout">The layout of the compilation's Types.</param>
     /// <param name="locations">The compilation's runtime location texts.</param>
-    internal ModuleCodegen(Layout layout, SourceLocationTable locations)
+    /// <param name="types">The compilation's Type context, which FunctionCodegen's case views read.</param>
+    internal ModuleCodegen(Layout layout, SourceLocationTable locations, TyCtxt types)
     {
         (this.Layout, this.Locations) = (layout, locations);
-        this.bodies = new(this);
+        this.bodies = new(this, types);
     }
 
     /// <summary>Gets the layout of the compilation's Types.</summary>

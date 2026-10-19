@@ -5,7 +5,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler.Backend;
 
-// The conversion rows (R5 plan C1b, package C 3.2 I5, I7 and I9; DECISIONS R5-M80): a Cast into an unprojected local through
+// The conversion rows (R5 plan C1b, package C 3.2 I5, I7 and I9; DECISIONS R5-M80): a Cast into its Place through
 // LlvmScalarText's conversions (P4b), by one table keyed by the cast kind, its source's and target's Type classes and their widths. A
 // Proven Cast (MirRvalue.Proven, the builder's IMPL 21.3.3 fact) writes no check; any other check Aborts at the statement's location text
 // (SPEC 22.5.1-22.5.2). Upcasts (C6a) and erasures (C5b) have no row yet.
@@ -142,28 +142,27 @@ internal sealed partial class FunctionCodegen
         return ((ulong)(single >> 31) << 63) | (0x7FFUL << 52) | ((ulong)(single & 0x7FFFFF) << 29);
     }
 
-    // A Cast into an unprojected local: its operand in its computation representation, its row's cast and, unless Proven, its check, which
-    // Aborts at the statement's location and names its temporaries by the cast's number; the result stored into the local's storage. Each
+    // A Cast into its Place: its operand in its computation representation, its row's cast and, unless Proven, its check, which Aborts at
+    // the statement's location and names its temporaries by the cast's number; the result stored into the Place's storage. Each
     // check is one rule here, its tests and its LlvmScalarText writer: a Range without a side writes the cast alone, and a Narrowing's
     // ordered tests let NaN and the infinities convert.
-    private void Cast(in MirStatement statement, FunctionAbi abi)
+    private void Cast(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
-        var local = statement.Place.Root;
         if (!this.Compute(this.body.Operands[rvalue.Start], out var input))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A projected Place (C2a), a static (C7b) or a raw pointer's null (C8a).
+            // A Place of a later row (a static, C7b; an object's payload, C6a) or a raw pointer's null (C8a).
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
             return;
         }
 
-        if (input.Lowering is not { } source)
+        if (input.Lowering is not { } source || this.LoweringOf(statement.Place) is not { } target)
         {
             return; // A broken contract, recorded.
         }
 
         var from = ClassOf(input.Type);
-        var to = ClassOf(this.types[local]);
-        var target = this.slots[local].Value;
+        var to = ClassOf(this.InstanceType(statement.Place)!);
         if (ConversionOf((MirCastKind)rvalue.Op, from, to, target.Layout.Size.CompareTo(source.Layout.Size)) is not { } row)
         {
             this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
@@ -195,7 +194,7 @@ internal sealed partial class FunctionCodegen
                     break;
                 }
 
-                if (!this.FailureAt(id, statement.Source, abi, failures, out var outside))
+                if (!this.FailureAt(id, statement.Source, failures, out var outside))
                 {
                     return; // Recorded.
                 }
@@ -203,7 +202,7 @@ internal sealed partial class FunctionCodegen
                 LlvmScalarText.WriteCheckedConversion(this.output, Tested(conversion, range), outside);
                 break;
             case Bound.Truncation:
-                if (!this.FailureAt(id, statement.Source, abi, failures, out var truncated))
+                if (!this.FailureAt(id, statement.Source, failures, out var truncated))
                 {
                     return; // Recorded.
                 }
@@ -211,7 +210,7 @@ internal sealed partial class FunctionCodegen
                 LlvmScalarText.WriteCheckedConversion(this.output, Tested(conversion, Truncation(source, to, target, bounds)), truncated);
                 break;
             case Bound.Narrowing:
-                if (!this.FailureAt(id, statement.Source, abi, failures, out var overflow))
+                if (!this.FailureAt(id, statement.Source, failures, out var overflow))
                 {
                     return; // Recorded.
                 }
@@ -223,13 +222,13 @@ internal sealed partial class FunctionCodegen
                 throw new InvalidOperationException($"The check {row.Bound} has no writer.");
         }
 
-        this.Store(local, result);
+        this.Store(statement, result);
     }
 
     // The failure of the check named by id, Aborting at a site's location (C1a's Location rule), spelled into text; false after a record.
-    private bool FailureAt(int id, in SourceInfo source, FunctionAbi abi, Span<char> text, out ScalarCheck failure)
+    private bool FailureAt(int id, in SourceInfo source, Span<char> text, out ScalarCheck failure)
     {
-        var location = this.Location(source, abi);
+        var location = this.Location(source);
         failure = location < 0 ? default : this.Failure(id, location, text);
         return location >= 0;
     }
