@@ -43,12 +43,14 @@ function Join-KimiCommonTestSelections([string[]] $Selection, [switch] $Method) 
     }
 }
 
-# The cases a run executed, the test nodes of its per-test results (-result-xml). xUnit reports Explicit tests not
-# requested as Not Run; a run without a result file executed none.
-function Get-KimiExecutedCases([string] $ResultXml) {
+# The cases a run recorded, the test nodes of its per-test results (-result-xml); a run without a result file recorded none.
+function Get-KimiRecordedCases([string] $ResultXml) {
     if (-not (Test-Path -LiteralPath $ResultXml)) { return }
-    Select-Xml -LiteralPath $ResultXml -XPath '//test[@result!="NotRun"]' | ForEach-Object { $_.Node }
+    Select-Xml -LiteralPath $ResultXml -XPath '//test' | ForEach-Object { $_.Node }
 }
+
+# The cases a run executed: xUnit reports Explicit tests not requested as Not Run.
+function Get-KimiExecutedCases([string] $ResultXml) { Get-KimiRecordedCases $ResultXml | Where-Object result -CNE 'NotRun' }
 
 # The tests a run executed, as Class.Method.
 function Get-KimiExecutedTests([string] $ResultXml) {

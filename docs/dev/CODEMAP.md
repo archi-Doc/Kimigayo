@@ -12,7 +12,7 @@ The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live 
 [`verification-inputs.ps1`](../../scripts/verification-inputs.ps1) owns source/NuGet manifests and Git-normalized matching;
 [`verify-commit.ps1`](../../scripts/verify-commit.ps1) associates successful evidence with exact committed inputs;
 [`compare-fixtures.ps1`](../../scripts/compare-fixtures.ps1) compares two runs' fixture evidence (behavior-preserving commits);
-[`codegen-pending.ps1`](../../scripts/codegen-pending.ps1) owns the R5 pending ledger (`tests/xUnitTest/TestData/codegen-pending/`) and its sel report (DECISIONS R5-M66, until G4).
+[`codegen-pending.ps1`](../../scripts/codegen-pending.ps1) owns the R5 pending ledger (`tests/xUnitTest/TestData/codegen-pending/`), its sel report and gate, its write (`-UpdatePending`) and R5-M73's filing rule (`Get-KimiCodegenGroup`) (DECISIONS R5-M66, R5-M81, until G4).
 The matching script regressions are VerificationSelectionTest.ps1, VerificationInputsTest.ps1, FixtureComparisonTest.ps1 and CodegenPendingTest.ps1.
 MirBuilder.Formatting owns formatting expansion with Test, Guard and Observe condition operations.
 

@@ -87,13 +87,15 @@ Reject { Read-KimiCodegenLedger (Join-Path $work 'other') } 'holds only <group>.
 $null = [IO.Directory]::CreateDirectory((Join-Path $work 'nested/G'))
 Reject { Read-KimiCodegenLedger (Join-Path $work 'nested') } 'holds only <group>.tsv files'
 
-# A Session runs every test. Each case is keyed by its full name, so a deleted failing case (Theory x: 2) is no longer executed,
-# a fixed case beside a new failing one (Mixed) passes now beside an added entry, and a renamed case (Renamed) is no longer
-# executed beside an added entry. A non-Pass result fails; a fixture fails in one of two native steps or at one level only.
+# A Session selects every method it discovers. Each case is keyed by its full name, so a deleted failing case (Theory x: 2)
+# is no longer executed, a fixed case beside a new failing one (Mixed) passes now beside an added entry, and a renamed case
+# (Renamed) is no longer executed beside an added entry. A non-Pass result fails; a fixture fails in one of two native steps
+# or at one level only.
 $tests = @('A.Same(x: 1)=Fail', 'A.Same(x: 2)=Fail', 'A.Fixed=Pass', 'A.Theory(x: 1)=Fail', 'A.Theory(x: 3)=Pass', 'A.Mixed(x: 1)=Pass',
     'A.Mixed(x: 2)=Fail', 'A.Renamed(x: 2)=Fail', "$text=Fail", 'A.Explicit=NotRun', 'A+AllocationTests.Warm=Skip', 'A.New=Fail', 'B.Ok=Pass')
 $native = @(@{ 'MainSame.ll' = '!O0'; 'MainFixed.ll' = 'O0,O2'; 'MainHalf.ll' = 'O0'; 'Twice.ll' = '!O0,O2' }, @{ 'Twice.ll' = 'O0,O2' })
-$session = New-Run 'session' $tests $native
+$all = @($tests | ForEach-Object { Method $_.Substring(0, $_.LastIndexOf('=')) } | Sort-Object -Unique)
+$session = New-Run 'session' $tests $native $all $all
 $summary = Write-KimiCodegenPending $session 'Session' 'Release' @('Main*.ll', 'Twice*.ll') $ledger
 $report = Read-Report $session
 States $report 'test' @('A+AllocationTests.Warm=pending', 'A.Explicit=noLongerExecuted', 'A.Fixed=passesNow', 'A.Gone=noLongerExecuted',
@@ -114,17 +116,69 @@ Expect ($null -eq $added.group -and $added.key -ceq 'XunitTest.A.Mixed') 'An unl
 Expect ($report.executed.tests -eq 12 -and $report.executed.fixtures -eq 4 -and $report.run.mode -ceq 'Session') 'The executed cases exclude Not Run tests.'
 Expect ($summary.report -ceq (Join-Path $session 'codegen-pending.json') -and $summary.totals.failing.tests -eq 8 -and $summary.executed.tests -eq 12) `
     'The summary field repeats the totals.'
+# The gate: the run passes when no entry passes now, is no longer executed or was added.
+Expect ($summary.differences -eq 13) "The Session differs from the ledger in 13 entries, not $($summary.differences)."
 
 # A Unit run covers its selected methods and the methods its assembly no longer has; without native results no fixture is covered.
-$unit = New-Run 'unit' @('A.Same(x: 1)=Fail', 'A.Same(x: 2)=Fail', 'A.Explicit=NotRun') @() @('A.Same', 'A.Explicit', 'A.Theory') `
+$unit = New-Run 'unit' @('A.Same(x: 1)=Fail', 'A.Same(x: 2)=Fail', 'A.Theory(x: 3)=Pass', 'A.Explicit=NotRun') @() @('A.Same', 'A.Explicit', 'A.Theory') `
     @('A.Same', 'A.Explicit', 'A.Theory', 'A.Fixed', 'A.Mixed', 'A.Renamed', 'A.Text', 'A+AllocationTests.Warm')
-$null = Write-KimiCodegenPending $unit 'Unit' 'Release' @('Main*.ll') $ledger
+$summary = Write-KimiCodegenPending $unit 'Unit' 'Release' @('Main*.ll') $ledger
 $report = Read-Report $unit
 States $report 'test' @('A+AllocationTests.Warm=outOfScope', 'A.Explicit=noLongerExecuted', 'A.Fixed=outOfScope', 'A.Gone=noLongerExecuted',
     'A.Mixed(x: 1)=outOfScope', 'A.Renamed(x: 1)=outOfScope', 'A.Same(x: 1)=pending', 'A.Same(x: 2)=pending', "$text=outOfScope",
     'A.Theory(x: 1)=noLongerExecuted', 'A.Theory(x: 2)=noLongerExecuted')
 States $report 'fixture' @('MainFixed.ll=outOfScope', 'MainGone.ll=outOfScope', 'MainSame.ll=outOfScope', 'Other.ll=outOfScope')
 Totals $report.totals 'tests' @(11, 2, 0, 4, 5, 0) 'Unit'
+Expect ($summary.differences -eq 4) 'Out-of-scope rows do not differ.'
+# A selected method whose results record no case (a partial run) hides its rows, so the report refuses it; Not Run is recorded.
+$partial = New-Run 'partial' @('A.Same(x: 1)=Fail', 'A.Explicit=NotRun') @() @('A.Same', 'A.Explicit', 'A.Fixed') @('A.Same', 'A.Explicit', 'A.Fixed')
+Reject { Write-KimiCodegenPending $partial 'Unit' 'Release' @() $ledger } 'record no case of 1 selected methods (a partial run): XunitTest.A.Fixed'
+
+# DECISIONS R5-M73's filing rule: an exact class before any family, the first unit in plan order, K13a's class from its Change
+# column, the outermost class, a family by ordinal prefix, a fixture by its stem, else C-frame.
+$filing = [ordered]@{
+    'GenericGenerationDiagnosticTest.M' = 'K-edges'; 'GenericDestructorEmissionTest.M' = 'C-drop'; 'GenericFooTest.M' = 'call'
+    'GenericGenerationDiagnosticTest+AllocationTests.M' = 'K-edges'; 'OwnershipStorageLimitTest.M' = 'C-drop'
+    'FunctionCodegenTest.M(x: 1)' = 'call'; 'PipelineObjectTest.M' = 'object'
+    'StaticFooTest.M' = 'C7b'; 'Utf8ConsoleTest.M' = 'format'; 'TestProtocolTest.M' = 'test'; 'scalarTest.M' = 'C-frame'; 'OtherTest.M' = 'C-frame'
+}
+foreach ($name in $filing.Keys) { Expect ((Get-KimiCodegenGroup (Row $name)) -ceq $filing[$name]) "$name is filed under $($filing[$name])." }
+Expect ((Get-KimiCodegenGroup "fixture`tScalarAdd.ll`t1") -ceq 'C-scalar' -and (Get-KimiCodegenGroup "fixture`tFrameLocals.ll") -ceq 'C-frame') 'A fixture is filed by its stem.'
+# Every tracked row lies where the rule files it.
+$tracked = Read-KimiCodegenLedger (Join-Path $repo 'tests/xUnitTest/TestData/codegen-pending')
+$misfiled = @($tracked.rows.Keys | Where-Object { (Get-KimiCodegenGroup $_) -cne $tracked.rows[$_] })
+Expect ($misfiled.Count -eq 0) "The filing rule moves $($misfiled.Count) tracked rows: $(($misfiled | Select-Object -First 3) -join ' | ')"
+
+# -UpdatePending's write: pending and out-of-scope rows stay in their files, rows that pass now or are no longer executed
+# leave (an emptied file is removed), added rows are filed by the rule; each file is sorted with LF ends, and an unchanged
+# file is not written. On the written ledger the run has no difference, and writing again changes nothing.
+$update = Join-Path $work 'update'
+Put (Join-Path $update 'C-frame.tsv') ((@((Row 'A.Keep(x: 1)'), (Row 'A.Pass'), "fixture`tGone.ll`t1") -join "`n") + "`n")
+Put (Join-Path $update 'C-scalar.tsv') "$(Row 'ScalarTest.Fixed')`r`n"
+Put (Join-Path $update 'call.tsv') "$(Row 'FunctionCodegenTest.Out')`n"
+$old = [datetime]::new(2020, 1, 1, 0, 0, 0, [DateTimeKind]::Utc)
+[IO.File]::SetLastWriteTimeUtc((Join-Path $update 'call.tsv'), $old)
+$methods = @('A.Keep', 'A.Pass', 'A.New', 'ScalarTest.Fixed', 'OwnershipStorageLimitTest+AllocationTests.Warm')
+$changes = New-Run 'update-run' @('A.New(s: "b")=Fail', 'A.Keep(x: 1)=Fail', 'A.Pass=Pass', 'ScalarTest.Fixed=Pass', 'OwnershipStorageLimitTest+AllocationTests.Warm=Fail') `
+    @(@{ 'DictionaryNew.ll' = '!O0' }) $methods ($methods + 'FunctionCodegenTest.Out')
+$summary = Write-KimiCodegenPending $changes 'Unit' 'Release' @('*.ll') $update
+$written = @(Update-KimiCodegenLedger $update $summary.report)
+Expect ($summary.differences -eq 6 -and ($written -join ' | ') -ceq 'C-drop.tsv +1 -0, 1 rows | C-frame.tsv +1 -2, 2 rows | C-scalar.tsv +0 -1, removed | library-2.tsv +1 -0, 1 rows') `
+    "Unexpected update: $($written -join ' | ')"
+function Text([string] $file) { [IO.File]::ReadAllText((Join-Path $update $file)) }
+Expect ((Text 'C-frame.tsv') -ceq "$(Row 'A.Keep(x: 1)')`n$(Row 'A.New(s: "b")')`n") 'Kept and added rows are sorted with LF ends.'
+Expect ((Text 'C-drop.tsv') -ceq "$(Row 'OwnershipStorageLimitTest+AllocationTests.Warm')`n" -and (Text 'library-2.tsv') -ceq "fixture`tDictionaryNew.ll`t1`n") `
+    'Added rows are filed by the rule.'
+Expect (-not (Test-Path -LiteralPath (Join-Path $update 'C-scalar.tsv')) -and [IO.File]::GetLastWriteTimeUtc((Join-Path $update 'call.tsv')) -eq $old) `
+    'An emptied file is removed and an unchanged one is not written.'
+$hashes = (Get-ChildItem -LiteralPath $update | Get-FileHash | ForEach-Object { "$($_.Path)=$($_.Hash)" }) -join ' '
+$summary = Write-KimiCodegenPending $changes 'Unit' 'Release' @('*.ll') $update
+Expect ($summary.differences -eq 0 -and $summary.totals.outOfScope.tests -eq 1) 'The written ledger equals the run.'
+Expect (@(Update-KimiCodegenLedger $update $summary.report).Count -eq 0 -and
+    ((Get-ChildItem -LiteralPath $update | Get-FileHash | ForEach-Object { "$($_.Path)=$($_.Hash)" }) -join ' ') -ceq $hashes) 'Writing an equal ledger changes nothing.'
+# A case name that is not its type.method cannot become a row.
+Put (Join-Path $work 'custom/codegen-pending.json') (ConvertTo-Json -Depth 3 @{ entries = @(@{ kind = 'test'; key = 'XunitTest.A.B'; name = 'Custom'; state = 'added' }) })
+Reject { Update-KimiCodegenLedger (Join-Path $work 'custom-ledger') (Join-Path $work 'custom/codegen-pending.json') } 'cannot be a pending row'
 
 # A name executed twice cannot identify a row; without a ledger every failure is added; missing evidence throws.
 $twice = New-Run 'twice-run' @('A.Same(x: 1)=Fail', 'A.Same(x: 1)=Pass')
