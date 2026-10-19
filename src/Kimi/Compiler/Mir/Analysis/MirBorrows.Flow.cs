@@ -2,11 +2,11 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's carrying (A3 5, Carrying, with E3 and E8): each holder's set forward over the dataflow's chains, joined by node union. A location's
-// effect is planned on the state before it as entries (a Call's by MirBorrows.Calls), which the checks replay reads, then committed; at a
-// destruction in place the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its
-// destroyed target). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H
-// (E7), and a pending slot's default taint to the value a default's evaluation places into it (Placed, R4-M70).
+// A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
+// checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
+// its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, and a Call's are MirBorrows.Calls'. A store adds the
+// markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7), and a pending slot's default
+// taint to the value a default's evaluation places into it (Placed, R4-M70).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -15,71 +15,6 @@ internal sealed partial class MirBorrows
 
     private Entry[] entries = [];
     private int entryCount;
-    private int chainHead = -1; // The checks replay's chain: its head and first block.
-    private int chainFirst;
-
-    // σ at the entry: a Loan-capable argument refers to storage the body does not own (Φ_E); the forward solve starts with the view not
-    // held (R4-M73).
-    private void Initial(ulong[] state)
-    {
-        state.AsSpan(0, this.holderCount).Clear();
-        this.held = false;
-        for (var i = 1; i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
-        {
-            if (this.slots[i] >= 0)
-            {
-                state[this.slots[i]] = (ulong)this.escapedSet;
-            }
-        }
-    }
-
-    // A block's locations: in the checks replay, the live holders after each, its plan on the state before it and its checks first.
-    private void Carry(ulong[] state, int block, bool checks)
-    {
-        if (checks && flow.Head(block) != this.chainHead)
-        {
-            (this.chainHead, this.chainFirst) = (flow.Head(block), block);
-            this.Enter(this.chainHead);
-        }
-
-        for (var i = 0; i <= this.body.Blocks[block].Count; i++)
-        {
-            var location = this.Location(block, i);
-            this.Work++;
-            this.Plan(state, block, i, checks);
-            if (checks)
-            {
-                this.Advance(location);
-                this.Check(state, block, i, location);
-            }
-
-            this.Commit(state);
-            if (this.ended[location] != 0)
-            {
-                for (var s = 0; s < this.holderCount; s++)
-                {
-                    state[s] = (ulong)this.sets.Remove((int)state[s], this.ended[location]);
-                }
-
-                this.Work += this.holderCount;
-            }
-        }
-    }
-
-    // The node-union join (R4-M34).
-    private bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming)
-    {
-        var grew = false;
-        for (var s = 0; s < target.Length; s++)
-        {
-            var union = (ulong)this.sets.Union((int)target[s], (int)incoming[s]);
-            grew |= union != target[s];
-            target[s] = union;
-        }
-
-        this.Work += target.Length;
-        return grew;
-    }
 
     // The entries of a location on the state: a statement's storage end, or its rvalue's value stored into its Place after the Moves it
     // makes; a Call's.
@@ -227,16 +162,4 @@ internal sealed partial class MirBorrows
     /// <summary>A planned change of a holder's state: cleared, replaced or joined with a value and the Loans issued with it (born at the
     /// location, so in no state before it), from a Ref (Issue) or a flow.</summary>
     private readonly record struct Entry(int Slot, int Value, int Own, byte Op, bool Issue);
-
-    // The forward problem over holder slots: E and the flow holders stored at heads, each slot a set.
-    private struct Carrying(MirBorrows owner, ulong[] state) : IMirFlow
-    {
-        internal bool Checks { get; set; }
-
-        public readonly void Entry() => owner.Initial(state);
-
-        public readonly void Block(int block) => owner.Carry(state, block, this.Checks);
-
-        public readonly bool Join(Span<ulong> target, ReadOnlySpan<ulong> incoming) => owner.Join(target, incoming);
-    }
 }
