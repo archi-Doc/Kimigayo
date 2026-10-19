@@ -131,6 +131,11 @@ A difference means the commit changes behavior: split it, or treat it as a behav
 compare `Kimi.dll` bytes instead: its informational version embeds the commit id (`0.1.1+<commit>`) and its PDB path
 depends on the worktree, so the DLL changes between commits even when behavior does not.
 
+`-O2Metrics` also writes `o2-metrics.json`: instructions and blocks per `define` of each natively run fixture's optimized
+IR (`<work>/native*/<name>.O2.ll`, so both runs' `temp/verify` work directories must remain), the fixtures measured in
+both runs ranked by candidate/baseline instruction growth, and those without an O2 file in a run. The metrics are
+information, not part of the result; R5 measures MIR code generation against a legacy run with them (DECISIONS R5-M3).
+
 ## Specification acceptance and support boundaries
 
 Derive expected acceptance and rejection from the owning SPEC rules before selecting an implementation path. A specification-valid form that currently reports Unsupported is an implementation boundary, not a language rejection. Name and record that boundary with its PLAN owner. When implementing it, replace the temporary rejection with native acceptance and retain the independently invalid counterpart; a passing Milestone Program alone does not close neighboring implementation work.
