@@ -1497,8 +1497,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Place of Type Never goes into a fresh Never temp, which every consumer takes as it is (the placement rule unchanged), and an
   adapted one is built as Binding publishes it.
 - **R4-M63** (2026-10-18; A3 §12 E14, decided by the planning session on the core lane's group review B4 and N2 and its design review
-  of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result")
-  A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
+  of 2026-10-18; supersedes R4-M57's intrinsic rule and its separate unknown-callee loop, and R4-M40's "every operand to the result";
+  its store target refs(val(a_j)) superseded by R4-M73's W) A Call retains as its callee's contract says (SPEC 15.6, 15.6.4).
   - An Intrinsic `MirCallee`'s `Symbol` is the library declaration of the compiler function it serves, under its Subst, whose
     parameters its first operands pass (a written call's target, `Serve`'s function); it is null for an intrinsic without one,
     those the builder synthesizes and the compiler-only `$abort` (SPEC 17.4), whose results hold no Loan. `MirValidator` reports
@@ -1676,7 +1676,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     let the first holder decide, is deleted (group 1c's final review, B1).
   - Rejected: the first-found witness set (it hides o7); T2 for τ_s (it hides j1); one taint per template Call (no element for a
     copy); a taint by role alone (it would taint an explicit argument's slot).
-  - Limit: err(ended) reads γ_H without the taint check (the rule names Loan problems).
+  - Limit: err(ended) reads γ_H without the taint check (the rule names Loan problems); the closure reads a holder a tainted set names
+    clean too (R4-M73's default-taint records: right per value for an inline copy).
 - **R4-M71** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-8; PLAN G125
   and G157 (8)). It supersedes R4-M3a's and R4-M67's key (code, subject) and places R4-M11's merge across bodies at publication.
   - Representation: `MirProblem(Code, Requirement, Subject, Body, Views)`. `Body` is the ordinal of the body whose case views `Views`
@@ -1724,6 +1725,72 @@ and migration obligations remain in force; no numeric cap changes are authorized
     unsound acceptance). The root flags only select the accesses checked.
   - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
     so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
+- **R4-M73** (2026-10-19; owner, on the independent review of two designs and its completion, PLAN G148, R4-M76; P13's interim by the
+  owner after three review rounds, below; A3 §12 E16). A Call's store row reaches every holder its argument reaches: ret(i, κ) joins
+  every holder of W(val(a_j)) (A3 E16, rule G: SPEC 15.6.4's letter, no SPEC change), with no exclusion. It supersedes R4-M63's store
+  target, refs(val(a_j)) (A3 E14), and A3 §5's Calls line.
+  - Representation: `MirTypes.HoldsLoans`' one walk, each Type once per mode, also gives what a call may write past a value
+    (`MirWrites`): the guard, passed concretely (`Through`; a callable and a part past the bound count so) or only through a struct's or
+    enum's Type argument, a pair layer or an abstract part (`ThroughArgument`), and for a value that holds no Loan whether a raw pointer
+    past no reference leads to storage that may (`Raw`); no vocabulary entry. One function, `MirBorrows.Writes` beside `Refs`, serves
+    Binding's rows, an intrinsic's declared rows and the unknown-callee rows, one W per output, its first pass from the holders that
+    pass the guard concretely, its second from the ThroughArgument ones and what only they reach. A5-F7's capture stores (2c) and
+    A5-F6's desc(c) stores (2f, G113) call it, and no refs-only store path remains.
+  - P13's interim (owner R4-M76, PD30; until a step-2 unit makes the guard read each part, before R4's exit, else OQ9's list), the
+    owner's body hold: a (body, view) is held when a Call's W stores a non-empty value into a target reached only past a ThroughArgument
+    holder, and every Loan problem the held view owns (the four Loan codes, err(destroy), err(ended)) is A5's located `Unsupported_Kd` at
+    its access (`Ownership.Unsupported`), never a Language problem. Complete by construction: A5 is intraprocedural, so a conflict that
+    depends on such a store is found in the view whose Call makes it. It never accepts: it reclassifies problems already found.
+    - The fact has one owner: it is set wherever `Writes` returns a target past its clean count with a non-empty value, for every store
+      path (a Call's rows today; 2c's capture stores and 2f's desc(c) stores inherit it). It is set in the forward solve, never in the
+      checks replay, reset per run, on the σ_in a Call plans with: the solve applies each reached chain last at its converged state, so
+      the fact is a may-fact that includes the fixpoint's, and the replay reports with it known.
+    - The grain is (body, view): a view's store changes only that view's states, `MirReport` keys a problem by (code, subject, body)
+      so a Language problem and an `Unsupported_Kd` never merge, and the stratum runs each view's solve and replay before the next.
+    - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via, at, reservation)`
+      (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and err(destroy)), so the hold is one rule there,
+      and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c) must report through it too.
+    - R4-M69 governs inline default copies: a Loan problem inside an Inlined scope is its template's and dropped whatever the hold
+      says; the hold reclassifies only problems the held view owns. R4-M70's default taint is unchanged: a Loan only default-tainted
+      sets hold stays the `Unsupported_Kd` at the omitting call, also in a held view (one record per problem).
+    - Cost, accepted by the owner: a held view's Language problems that do not depend on the store become `Unsupported_Kd` too
+      (MirBorrowsTest's cleanRoute append, g1's array end, hold<C>, p139d), in E and every holder alike, until the per-part guard.
+      On the mir Functional ledger at the unit's merge (`b57ae7dc`, against dev `1a50cb79`), 82 (body, view)s in 77 sources are held
+      and 10 library bodies in every compilation (view 0: Array's appendAll and initRepeating, Dictionary's indexUniq, tryInsert,
+      insertOrReplace and tryGet, DictionaryStorage's removeEntry and findEntry, Slice's toArray and contains), none with a Loan
+      problem. The hold makes 10 records `Unsupported_Kd`: 4 depend on the store (B6-for's `var arr` in its two variants, `count<S>`,
+      MemberThroughLayersTest's `exclusive`) and 6, the cost, depend on none (W without the by-argument step reports them): B6-for's
+      `v@follow = x` twice (G147 (8i)'s wrong record), MemberThroughLayersTest's `views = [a@uniq]` and `a@uniq`, and
+      BlockEscapeLoanTest's two `show<C>` `let n` (classification a5-p13, a5-old-loans).
+  - The owner's answers on the interim (verbatim): after the final review's B1 (the check's closure and err(ended) read no taint),
+    「汚染を経路で追跡 (推奨)」 (route taint); after that round's review (a write through a reference and E5's seed pass none),
+    「本体単位で保留 (推奨)」 (the body hold). Before them the planning session ruled (B) on the implementer's finding (taint every
+    store past a ThroughArgument holder, not only a step along a shared Loan). Rejected: a taint per marker on shared steps only, on
+    shared steps and Φ_E, or on every store (B), each leaving Language errors on routes the check does not follow; route taint
+    (prototype round 16) and its every-step form (round 16's review's R16RouteT), the third round in one family; the per-part guard now
+    (R4-M76 places it in step 2); accepting the missed routes as limits (a conservative Language error on a P13 program, which AGENTS'
+    Diagnostics rule forbids). Prototype round 17: 425 cases, every conflict that depends on a by-argument store `Unsupported_Kd`, every
+    view not held unchanged, every (Loan, access) rule G reports reported once; 26 held, 11 of them losing an independent Language
+    error (draft/Sketches/A5 Step 2/body-hold.md).
+  - Default-taint records (R17-N3): R4-M70's closure route is of the same class as its recorded err(ended) limit. An inline copy is
+    precise and its result or slot is tied to the explicit argument by Origin, so its Language errors through that route are right per
+    value (SPEC 15.6.4); template calls (recursive defaults) over-approximate, and every attempt to make a conservative error through one
+    was rejected by Binding (unverified for an accepted recursive default).
+  - Why rule G: `TyCtxt.Retention`'s Output j is input j's writable storage past every exclusive or raw layer and behind nominal
+    Fields, which only A5's holders can map; SPEC 15.6.4 decides per argument, with 15.6.2's shared-layer cut read off the holder's Type.
+    Rejected: Binding publishing a depth (unsound behind nominal and abstract Types, no contract for the unknown rows, a second storage
+    walk); exclusive-mode descent (r14A-h: a `uniq` made from a shared input reaches its holder); designer a's self-exclusion X and
+    designer b's route (dominator) exclusion, each with its SPEC sentence (unsound: s1, s1c, s4; r14A-q, s2e); no guard (Milestone13
+    and Milestone29 err; R4-M12); GXS (X where the target's Type cannot refer into itself: sound in the prototype, recovers nothing of
+    the library, milestones or goldens; PLAN candidate).
+  - Losses: P13 (listed, A3 §2). The letter-consistent rejections (SPEC 15.6.4 per argument and E's "used after every point"; rustc
+    and the old path accept) are no loss: a self-row that returns a route's Loan to its holder (twoLayersRead, p03), an exclusive
+    iteration over Loan-holding elements, E as one node (L3r), route cycles at depth ≥ 3 (s2f).
+  - Evidence (the review at `8a7632d9`; the unit): no A5 problem in the library, the 44 milestones or the 31 goldens (MirCensusTest;
+    R4-M12 holds); corpus work +0.11 % and set bytes +0 % (review); N calls through a four-layer chain are dense, the walk the same
+    order as A5's access scans on the states it reads (V16; MirBorrowsTest's shape: work 121596, 204840, 513216 at N = 32, 64, 128); a
+    warm run allocates nothing.
+  - Found, not this unit: rule G's raw clause misses Loans stored through raw pointers that W does not name (PLAN G160).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each

@@ -45,6 +45,7 @@ r2 finding 3's row is not needed, because the shared-layer cut is taken (§5).
 | P10 | §15.6 writes through references | Reads and writes through a reference reach every holder its carried direct Loans name, including holders of the references it was reborrowed through. | A Loan-carrying write through `r@follow@follow@uniq`, then a conflict on the intermediate holder | 0 (no `@follow =` in lib) / 0 (the ms writes store owned or Copy values) / small | **Needed** (layer-blind provenance) |
 | P11 | §13.7.2, §15.6 | A compound assignment, increment or decrement writes through its two-phase reservation, so it ends none of the destination's earlier Loans. | A compound assignment to a Loan-capable destination, then a conflict with a Loan its old value carried | 0 (39 compound lines: integers, plus one raw pointer `slot += layout.1` at `DictionaryStorage.kimi:41`; raw pointers are not Loan-capable) / 0 (20 lines, all numeric) / 0 (H) | **Needed** by the writeback activation |
 | P12 | §15.6.3 descent, §15.6.4 retention per argument | A result that descends from an abstract call's receiver keeps the receiver's parent Loans, as a Reborrow of the receiver does (`desc(c)`, F6; erratum, prototype round 9). | While the result is live and the receiver's holder is dead, an access that conflicts with that holder's Loan: `var r = h@uniq; let first = r.inner.take(); h.other = 5; return first` (36f), or `h.inner = src2` (rustc accepts both). A later `h.inner.take()` is rejected by S2 anyway (another receiver Place) | 0 (abstract descending calls reach their receiver through `self`: `Iteration.kimi:32, 59`) / 0 (`cursor.next()` is concrete) / 0 (grep proxy: abstract receivers in literals are parameters) | **Needed** (follows from P3); approved 2026-10-17 (§9 item 10) |
+| P13 | §15.6 writes through references, §15.6.2 "past a shared layer only reads", §15.6.4 | A call's writable storage (E16) reaches past a holder whose Type may hold an exclusive reference to Loan-capable storage in any part, a Type argument, a pair slot or an abstract part counting, through everything the holder carries, a shared Loan and what it read through one included. | A shared iteration over a local collection or an abstract Iterable whose Type argument or iterator Type may be an exclusive reference, then an access the stored route conflicts with: `func g<T>(a: T, b: T) { var xs: Array<T> = []; xs.append(a); for e in xs => (); xs.append(b) }`; `func count<S>(items: S) -> i32 { for _ in items => … }` (items' end); a pair `f<s/T>` iterating `Array<s/T>`; a shared loop over a local `Array<uniq/(ref/i32)>`, then a use of the element's referent. rustc accepts all | 0 / 0 / 3 programs (pair-cases.json B6-for, IntegerRangeTest's `count<S>`, MirBorrowsTest's `hold<C>`, which errs already) | Listed; recovered by a representation, the guard per part, before R4's exit (owner, DECISIONS R4-M76); until then a view whose call makes such a store is held, its Loan problems a located `Unsupported_Kd` (E16, R4-M73) |
 | P5 | §15.6.2 key bullet, §22.4.4 | All keys of one static Field are one root. | A live Loan on `Cache<i32>.S.x` against an access to `Cache<string>.S.x` | 0 / 0 (Milestone42: whole reads and writes only) / 0 | Optional (no key Substs, no open-key composition in A4) |
 | P6 | §15.6.4 anchors, §15.6.5, §11.8 | A Borrow of mutable static storage is finite, bounded by the body; a value carrying it never leaves the body. | §15.6.4's `current` becomes an error; `leak`, `f = current` and `run` keep their verdicts; §11.8 is unchanged | 0 / 0 / 0 | Optional (no A4 per-result anchors; dissolves c2) |
 | P9 | §7.2.3, §15.6.4 | A call of a default template (recursive default SCCs only) retains every prepared input into its result. | A template default holding references that keeps no input, with a reserved input accessed while the callee's result lives | 0 / 0 / corpus ≤6 (H) | Optional (no inter-body `default_retains`) |
@@ -259,7 +260,7 @@ join               :  per-slot union; P1/P2 as MirDataflow; prune(head): σ(H) =
 // ---- Calls (F3): c at ℓ, arguments a_i, destination D
 ret(i, Value)      =  val(a_i) ∪ (content(val(a_i)) if a_i is a reference);   ret(i, Content) = content(val(a_i))
 out                =  ⋃{ret(i,κ) | retains(c,i,κ,result)} ∪ ({Φ_E} if untied(c)) ∪ (desc(c) if abstract(c), descent)
-                   ⇒  assign D := out;   ∀ retains(c,i,κ,store j), ∀T∈refs(val(a_j)): σ_out(T) ∪= ret(i,κ)
+                   ⇒  assign D := out;   ∀ retains(c,i,κ,store j), ∀T∈refs(val(a_j)): σ_out(T) ∪= ret(i,κ)   // E16: ∀T∈W(val(a_j))
                    // a retained TwoPhaseUniq Loan has left its reservation holder, so it counts as activated
 desc(c)            =  {Φ_c} ∪ (val(a_r) \ {R_c})   // a_r: the receiver operand; R_c: the Loan of the Ref producing it, if any
                    // erratum (prototype round 9, PLAN G113): val(a_r) is R_c plus its R2 parents, so Φ_c's values carry
@@ -753,6 +754,26 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   7. **E7's and E12's merge (unit 2a).** The merge moves from unit 1c to 2a (2a-2, completed by 2g-5; the step-2 plan's PD11): the
      Refuted relations it reads come from the Origin stratum (A5-F4).
 
+- **E16, a call's stores reach every holder its argument reaches (PLAN G148; SPEC 15.6, 15.6.2, 15.6.4; prototype round 14; owner
+  2026-10-19, DECISIONS R4-M73, R4-M76).** A row `retains(c, i, κ, store j)` joins ret(i, κ) into every holder of W(val(a_j)), the least
+  set that holds refs(val(a_j)) (layer 1; E14 unchanged), E for a direct Loan of val(a_j) naming a local that holds no Loan but a raw
+  pointer whose pointee may hold one, and, from each holder h ≠ E of W whose Type may hold an exclusive reference to storage that may
+  hold a Loan (MirTypes; past no shared layer or raw pointer; a Type argument, a pair layer, a callable and an abstract part count, as
+  in HoldsLoans): the holder each direct Loan of σ_in(h) names, in any mode; E where σ_in(h) carries Φ_E; and E for a direct Loan naming
+  such a raw-only local. Nothing is left out of ret(i, κ) at any target. Binding's rows, an intrinsic's declared rows and the
+  unknown-callee rows (§5, until F9) take the same W; one W serves every row into output j. This replaces §5's `∀T∈refs(val(a_j))`.
+  Store's refs^k and the input side are unchanged: the check-time closure from a result reaches every layer its first-layer content
+  names (probes p10, p13). Listed loss P13 (§2), until the guard reads each part (a representation, owner R4-M76; before R4's exit),
+  under the owner's body hold: a (body, view) whose Call's W stores a non-empty value into a target reached only past a holder whose
+  Type passes the guard only through a Type argument, a pair layer or an abstract part is held, and every Loan problem it owns (err(ended)
+  included) is a located `Unsupported_Kd` at its access (PD30), never a Language problem. Routes are not tracked: a conflict that depends
+  on such a store is found in the view whose Call makes it (A5 is intraprocedural), so the hold is complete by construction; it never
+  accepts. The cost is every independent Language problem of a held view (E and every holder alike) until the per-part guard. A taint
+  on the stored values (rounds of the final review and of prototype round 16) missed routes the check does not follow: the closure,
+  err(ended), a later write through a reference and E5's seed. An inline default copy's problems stay its template's (R4-M69); R4-M70's
+  default taint is unchanged. Cost: Σ calls Σ store outputs Σ_{T∈W} |σ_in(T)| plus Σ rows × |W| entries (V16 Dense; measured in the
+  review and MirBorrowsTest's scaling shape); the hold adds one bit per view.
+
 ## Revision history
 
 - **A** (step 0): per-root holders, Loan-set nodes, base-named Loans, syntactic access with deep borrows.
@@ -784,3 +805,6 @@ above disagrees, these errata govern; the lines they replace are marked "(E…)"
   conflicts row, Opaque values `{Φ_E}`, the default taint, the A6 table's effect, default and guard rows, the view skip, E7's and
   E12's merge in unit 2a and E13's Opaque accesses (the design review of 1c's two designs; group 1c's final review B1; DECISIONS
   R4-M68, R4-M70, R4-M72).
+- **E16** (2026-10-19, §12; unit G148): a call's stores reach every holder its argument reaches, with MirTypes' guard; listed loss P13
+  and its interim taint (the completed G148 design review; DECISIONS R4-M73, R4-M76). Revised the same day: P13's interim is the
+  owner's body hold, after the final review's B1 and prototype rounds 16 and 17 (draft/Sketches/A5 Step 2/body-hold.md).

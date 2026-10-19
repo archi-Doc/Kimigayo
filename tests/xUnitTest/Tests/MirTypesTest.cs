@@ -7,8 +7,9 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36): which values may hold a Loan (<see cref="MirTypes.HoldsLoans"/>) and
-/// which destructions may observe what they hold (<see cref="MirTypes.Observes"/>), over the parameter Types of one function.</summary>
+/// <summary>The Type facts A5 reads (docs/dev/DECISIONS.md R4-M36, R4-M73): which values may hold a Loan and what a call may write past them
+/// (<see cref="MirTypes.HoldsLoans"/>), and which destructions may observe what they hold (<see cref="MirTypes.Observes"/>), over the
+/// parameter Types of one function.</summary>
 public sealed class MirTypesTest(ITestOutputHelper output)
 {
     private const string Types = "struct Plain\n    var n: i32\nstruct Holder {a}\n    let r: ref/i32 during a\n" +
@@ -32,14 +33,47 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             "handle: obj/Holder, slice: Slice<i32>, view: UniqSlice<i32>, loan: Loan<ref/i32 during a>, " +
             "iterator: ArrayOwningIterator<ref/i32 during a>, action: () -> (), layer: s/T, nest: Nest<i32>)\n    s is owner or ref\n" +
             "    return\n").Body;
-        var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         Assert.Equal(
             [("scalar", false), ("text", false), ("numbers", false), ("plain", false), ("raw", false), ("chain", false), ("tree", false),
                 ("forest", true), ("rows", false),
                 ("borrow", true), ("borrows", true), ("tuple", true), ("fixed", true), ("table", true), ("option", true),
                 ("holder", true), ("handle", true), ("slice", true), ("view", true), ("loan", true), ("iterator", true), ("action", true),
                 ("layer", true), ("nest", true)],
-            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, seen))).ToArray());
+            Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, seen, out _))).ToArray());
+    }
+
+    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4; DECISIONS R4-M73): a call may write past a value that may hold, past no shared layer or raw
+    // pointer, an exclusive reference to storage that may hold a Loan or a raw pointer whose pointee may: an exclusive reference, in an
+    // Array, a payload or a Field, a UniqSlice's elements, a Function value (the guard); only through a Type argument, a pair layer or an
+    // abstract part, which may be one (P13's interim, R4-M76); not past a shared reference, through an exclusive reference to Loan-free
+    // storage (a scalar, Utf8Writer's Loan<uniq/u8>) or a raw pointer. A value that holds no Loan but a raw pointer whose pointee may is
+    // raw-only: a call writing it writes storage the body does not own.
+    [Fact]
+    public void TheGuardSaysWhatACallMayWritePastAValue()
+    {
+        var body = Probe(
+            "struct Slot {a}\n    var r: uniq/(ref/i32 during a) during a\n" +
+            "func probe<s/T>(borrow: ref/i32, scalar: uniq/i32, writer: Utf8Writer, shared: ref/(uniq/(ref/i32 during a) during a), " +
+            "unique: uniq/(ref/i32 during a), array: Array<uniq/(ref/i32 during a) during a>, " +
+            "option: Option<uniq/(ref/i32 during a) during a>, slot: Slot, view: UniqSlice<ref/i32 during a>, scalars: UniqSlice<i32>, " +
+            "action: () -> (), toRaw: uniq/(raw/(ref/i32 during a)), value: T, layer: s/T, iterator: ArrayIterator<T>, " +
+            "loan: Loan<uniq/(ref/i32 during a) during a>, raw: raw/(ref/i32 during a), rawScalar: raw/i32, number: i32)\n" +
+            "    s is owner or uniq\n    return\n").Body;
+        var seen = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
+        Assert.Equal(
+            [("borrow", MirWrites.None), ("scalar", MirWrites.None), ("writer", MirWrites.None), ("shared", MirWrites.None),
+                ("unique", MirWrites.Through), ("array", MirWrites.Through), ("option", MirWrites.Through), ("slot", MirWrites.Through),
+                ("view", MirWrites.Through), ("scalars", MirWrites.None), ("action", MirWrites.Through), ("toRaw", MirWrites.Through),
+                ("value", MirWrites.ThroughArgument), ("layer", MirWrites.ThroughArgument), ("iterator", MirWrites.ThroughArgument),
+                ("loan", MirWrites.ThroughArgument), ("raw", MirWrites.Raw), ("rawScalar", MirWrites.None), ("number", MirWrites.None)],
+            Parameters(body).Select(x => (x.Name, Writes(x.Type))).ToArray());
+
+        MirWrites Writes(BoundType type)
+        {
+            _ = MirTypes.HoldsLoans(type, seen, out var writes);
+            return writes;
+        }
     }
 
     // SPEC 15.6.6, 16.3.3: destroying a value observes what it holds where its destruction runs a user drop (Logger, also as an element
@@ -94,7 +128,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
         Assert.Equal((26, 51), (seen.Count, walk.Met)); // P24..P0 and i32; each struct's two Fields met once each.
         Assert.False(MirTypes.MayNeedDrop(pairs, seen));
         Assert.False(MirTypes.Observes(pairs, c.Types, body.Key.Decl, seen, out var deep) || deep);
-        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, seen));
+        Assert.False(MirTypes.HoldsRaw(pairs, seen) || MirTypes.HoldsLoans(pairs, new(ReferenceEqualityComparer.Instance), out _));
     }
 
     // R4-M36: every local Type of every library body is classified and none is deep; a borrow layer always holds a Loan and a raw pointer
@@ -104,12 +138,13 @@ public sealed class MirTypesTest(ITestOutputHelper output)
     {
         var c = MirBuildTest.Compile("public func main() => ()\n");
         var seen = new HashSet<BoundType>(ReferenceEqualityComparer.Instance);
+        var walked = new Dictionary<BoundType, byte>(ReferenceEqualityComparer.Instance);
         var (locals, holding, observing) = (0, 0, 0);
         foreach (var body in c.BuildMir().Bodies)
         {
             foreach (var local in body.Locals.ToArray())
             {
-                var holds = MirTypes.HoldsLoans(local.Type, seen);
+                var holds = MirTypes.HoldsLoans(local.Type, walked, out _);
                 var raw = local.Type.Semantics == Kimi.Compiler.Parsing.SemanticsKind.Raw;
                 Assert.True(raw ? !holds : holds || !MirTypes.IsReference(local.Type), $"{body.Key.Decl?.Name}: {local.Name}");
                 var observes = MirTypes.Observes(local.Type, c.Types, body.Key.Decl, seen, out var deep);

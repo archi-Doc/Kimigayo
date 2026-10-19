@@ -11,7 +11,8 @@
 // anchor, its witness's next use or the store that carries it, an activation's reservation and an inline default copy's call (R4-M69) as
 // facts, and Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound, CallRetention.Limit), a
 // limit record without that fact, or at a default's omitting call for a conflict whose Loan only sets with its default taint hold (R4-M70),
-// through MirReport; and Work, the steps it took (A3 6.2).
+// and in a view a Call holds (its W stored a value past a holder that passes the guard only by argument, P13's interim, R4-M73) every other
+// Loan problem as Unsupported_Kd at its access, through MirReport; and Work, the steps it took (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
 // state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, and the per-local markers of the role
 // table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A
@@ -149,7 +150,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.holderCount = 1;
         for (var i = 0; i < locals.Length; i++)
         {
-            this.slots[i] = MirTypes.HoldsLoans(cases.Type(locals[i].Type), this.seen) ? -2 : -1;
+            this.slots[i] = this.Holding(i) ? -2 : -1;
         }
 
         for (var pass = 0; pass < 2; pass++)

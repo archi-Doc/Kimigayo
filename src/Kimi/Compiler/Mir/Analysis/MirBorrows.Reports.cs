@@ -7,8 +7,10 @@ namespace Kimi.Compiler.Mir;
 // A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23): a conflict's code (a Loan found in its reservation holder is a reservation
 // conflict) and each problem recorded through MirReport under its requirement with its facts: the Loan's or candidate's anchor, its witness
 // (a holder's next use in its chain, the location for a value an access takes, a transit value's or E's store), an activation's
-// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, and at
-// the source of the pending slot whose default taint every set holding a conflict's Loan carries (R4-M70, until A5-F9).
+// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, at the
+// source of the pending slot whose default taint every set holding a conflict's Loan carries (R4-M70, until A5-F9), and in a held view at
+// every Loan problem's access (P13's interim, R4-M73, until the guard reads each part). Every Loan-problem producer reports through
+// Report(code, anchor, via, at, reservation), so the hold is one rule there.
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -37,9 +39,18 @@ internal sealed partial class MirBorrows
 
     // A Loan problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
     // when that lies in a later chain), from the location itself for a reservation's check set, the location for a value it takes, or a
-    // transit value's or E's store; the reservation's anchor; and the call of the inline default copy the location lies in (R4-M69).
+    // transit value's or E's store; the reservation's anchor; and the call of the inline default copy the location lies in (R4-M69). In a
+    // held view (R4-M73) it is the located Unsupported_Kd at its access, except inside an inline default copy, whose Language problem is its
+    // template's and dropped (R4-M69).
     private void Report(DiagnosticCode code, SourceRef anchor, int via, MirLocation at, int reservation)
     {
+        var inlined = this.body.Inlining(this.Source(at).Scope);
+        if (this.held && inlined < 0)
+        {
+            this.Unsupported(at);
+            return;
+        }
+
         var (subject, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
         var witness = via > Escaped ? this.NextUse(via, from) : subject;
         var count = 0;
@@ -54,7 +65,7 @@ internal sealed partial class MirBorrows
             this.facts[count++] = new(MirFactKind.Reservation, this.loans[reservation].Site);
         }
 
-        if (this.body.Inlining(this.Source(at).Scope) is >= 0 and var inlined)
+        if (inlined >= 0)
         {
             this.facts[count++] = new(MirFactKind.Inlined, this.body.Scopes[inlined].Source);
         }

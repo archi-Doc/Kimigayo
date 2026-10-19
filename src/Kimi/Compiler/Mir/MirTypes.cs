@@ -2,7 +2,8 @@
 
 // Owns the Type facts needed by MIR construction and analyses.
 // Input: published Types, their stored shapes and Binding's Copy and Sealed proofs. Output: the destruction walk and the drop, observation,
-// Loan-holding, raw, exclusivity, selection, agreement, borrow-kind and pointer-cast facts.
+// Loan-holding with what a call may write past a value (its guard), raw, exclusivity, selection, agreement, borrow-kind and pointer-cast
+// facts.
 // Inline storage is traversed under each fact's documented bounds and Type rules; what destroying a value does is the one Destruction walk.
 // Must not inspect source syntax or substitute new Binding decisions.
 // Its concerns: the destruction walk and the facts over it (MirTypes.Destruction.cs), what a value may hold (MirTypes.Holding.cs), and
