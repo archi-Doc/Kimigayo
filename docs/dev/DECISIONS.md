@@ -3971,6 +3971,36 @@ structure is recorded here by the unit that first implements it.
     needs G125 and byte facts A1's arena record does not keep. Glue bodies are written by `FunctionCodegen.WriteGlue` through the one call writer and
     named by ModuleCodegen, so `Backend/DropGlue.cs` keeps the glue table (`DropGlue.Release`), not package 3.6's glue writing;
     C4a extends that table (round-2 review note).
+- **R5-M79 Mir/Build's syntax-class decisions read published facts** (2026-10-19, W1; plan Q16, Q8 package §3.5 and D6; under
+  R5-M10 and R5-M23; DEC Q6 form 1) The 17 sites R5-M10 left, where a Koto type test chose an operation, read the fact that decides
+  it: `HirOp.Continue` (a transfer), `HirOp.Group` (a parenthesized Place), `Binding.WritesText` (an interpolation's text bytes, the
+  text read from its literal), `BoundFormatting.Acquisition` (an owning interpolation's calls before its writes), the Type kind (a
+  FixedArray aggregate, a Tuple's being any other, Unit included), `TyCtxt.Signature`'s count (a call's and a body's parameters), the
+  symbol kind (a definition's body: Function or none, PropertyAccessor, a static Property), `AdtDef.IsConstructor`, and the two views
+  of Q8 D6: `Binding.Reassignable(symbol)` (`Binding/Binding.Reassignable.cs`, which owns the rule with `IsMutableDeclaration`;
+  computed, no state) for every local, Pattern binding, iteration slot and static, replacing three copies in Binding (the package named
+  two; `Binding.Closures`' exclusive capture is the third), and a Tuple element's position on its Field node's own row
+  (`PlanRow.Folded`), which the publisher's `Fold` writes beside a ConstIndex's. ElementAccess.cs, due by AGENTS' three-units rule,
+  gets no split: its one change replaces a copy of the expression by a call to its owner, no logic added (by analogy with the
+  propagation form DECISIONS Q7 exempts); its old-path members leave at R6.
+  - Decided beyond the package: (a) the closure fact in Mir/Build is the published closure definition, `BoundClosure.Of`: the Opaque
+    roots walk and the default-edges walk, the default templates (a closure has none, SPEC 7.2.2) and `Module`'s body kind, which
+    `Body` and `Bound` then read (`MirBodyKind.Closure`). The default-edges walk reads the call plans of the calls the template builds
+    only: none at a node published `HirOp.Syntax` (a replaced or covered part; it goes on to the parts below, which may be evaluated),
+    `Error` or `Unset` (an Opaque value, no call built), so a closure Binding did not define, published Error with its body replaced
+    even where Binding bound that body first (a concrete closure without an expected Type, SPEC 23.1.2), adds no edge, and the call
+    that omits the default takes an Opaque value built at the call (review rounds 1 and 2, B1; `MirBuildTest.AFailedClosureInADefaultIsNoEdge`). (b) Sites with the same cause, replaced too:
+    `MirBuilder.cs:108` (defaults of a closure), `:222` (a body's parameter count), `MirBuilder.Blocks.cs:135` (a local's mutability)
+    and `MirBuilder.Formatting.cs:31` (an interpolation's form); `Bind`'s loop parameter is gone. (c) `Binding.WritesText` is the one
+    classification of a text write, which `Binding.HasFacts` (an interpolation's write needs a Type argument unless it writes text) and
+    the builder's estimate read.
+  - Not sites (syntax data, R5-M10): `Published`'s value-child switch, a constructor's base call, the literal forms under
+    `HirOp.Literal` (G122).
+  - Rejected: a stored `BindingSymbol.Mutable` (Q8 open point 6: computed); `HirOp.Closure` for the walks (a closure whose creation
+    failed is published Error, and one in a replaced part Syntax, though its body is built, R5-M63); a Type-kind test for Tuple (an
+    empty Tuple literal's Type is Unit); a constructor view (`AdtDef.IsConstructor` exists); `HirOp.Literal` for a text write (the
+    interpolation's facts are judged before its parts are published); stopping the edges walk at a Syntax node (a covered callee's
+    receiver and a `$tryWrite` text's values lie below one).
 - **R5-M81 The pending ledger's gate** (2026-10-19, E lane; plan E11, PD10, OQ9; under R5-M8, R5-M66 and R5-M73; removed with the
   ledger at G4, OQ9) Under `-Codegen mir` a run passes only when its failing set equals the ledger within its scope (R5-M66's
   coverage): an entry that passes now, is no longer executed or is added fails it. The verdict is the `codegen pending` step's, after

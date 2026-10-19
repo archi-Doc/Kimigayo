@@ -132,7 +132,7 @@ internal sealed partial class MirBuilder
                 symbol.Type ?? BoundType.Unit,
                 MirLocalKind.Var,
                 this.Info(variable, local: true),
-                variable.VariableKind == VariableKind.Var,
+                Binding.Reassignable(symbol),
                 symbol.Name)),
             this.lexical);
         if (variable.InitializerKoto is { } initializer)

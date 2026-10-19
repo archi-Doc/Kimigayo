@@ -93,7 +93,7 @@ internal sealed partial class MirBuilder
         var bindings = this.OpenScope(block: true);
         if (plan is not null)
         {
-            this.Bind(plan, plan.Arms[0].Pattern, start, loop);
+            this.Bind(plan, plan.Arms[0].Pattern, start);
         }
 
         for (var i = 0; plan is null && i < loop.Bindings.Count; i++)
@@ -106,7 +106,7 @@ internal sealed partial class MirBuilder
                     BoundType.ISize,
                     MirLocalKind.Var,
                     this.Info(name, local: true),
-                    loop.IsMutableSlot(i),
+                    Binding.Reassignable(symbol),
                     symbol.Name)),
                 this.lexical);
             this.Use(new(this.locals[symbol]), MirOperand.Copy(position), name);

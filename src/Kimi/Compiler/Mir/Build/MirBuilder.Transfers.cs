@@ -50,7 +50,7 @@ internal sealed partial class MirBuilder
             return;
         }
 
-        var continues = jump is ContinueKoto;
+        var continues = HirTables.Op(jump) == HirOp.Continue;
         MirOperand value = default;
         if (!continues)
         {

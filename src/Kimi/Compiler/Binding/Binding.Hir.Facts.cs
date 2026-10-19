@@ -119,7 +119,7 @@ public sealed partial class Binding
             for (var i = 0; i < format.Writes.Count; i++)
             {
                 if (CallPlan.Of(node, first + i) is not { ArgumentOperations.Length: 2 } write || !Complete(write) ||
-                    (write.ArgumentOperations[1].Source is not StringLiteralKoto && write.TypeArguments is not [not null, ..]))
+                    (!WritesText(write) && write.TypeArguments is not [not null, ..]))
                 {
                     return false;
                 }
