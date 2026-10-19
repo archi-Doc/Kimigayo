@@ -3962,9 +3962,9 @@ structure is recorded here by the unit that first implements it.
     roots walk and the default-edges walk, the default templates (a closure has none, SPEC 7.2.2) and `Module`'s body kind, which
     `Body` and `Bound` then read (`MirBodyKind.Closure`). The default-edges walk reads the call plans of the calls the template builds
     only: none at a node published `HirOp.Syntax` (a replaced or covered part; it goes on to the parts below, which may be evaluated),
-    so a closure Binding did not define, published Error with its body replaced even where Binding bound that body first (a concrete
-    closure without an expected Type, SPEC 23.1.2), adds no edge and the default stays a copy of the failed template's Opaque value
-    (review round 1, B1; `MirBuildTest.AFailedClosureInADefaultIsNoEdge`). (b) Sites with the same cause, replaced too:
+    `Error` or `Unset` (an Opaque value, no call built), so a closure Binding did not define, published Error with its body replaced
+    even where Binding bound that body first (a concrete closure without an expected Type, SPEC 23.1.2), adds no edge, and the call
+    that omits the default takes an Opaque value built at the call (review rounds 1 and 2, B1; `MirBuildTest.AFailedClosureInADefaultIsNoEdge`). (b) Sites with the same cause, replaced too:
     `MirBuilder.cs:108` (defaults of a closure), `:222` (a body's parameter count), `MirBuilder.Blocks.cs:135` (a local's mutability)
     and `MirBuilder.Formatting.cs:31` (an interpolation's form); `Bind`'s loop parameter is gone. (c) `Binding.WritesText` is the one
     classification of a text write, which `Binding.HasFacts` (an interpolation's write needs a Type argument unless it writes text) and

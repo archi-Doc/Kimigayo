@@ -338,7 +338,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
 
     // Plan 5.6.2, SPEC 23.1.2 (DECISIONS R5-M79): the defaults a template omits are those of the calls it builds. A closure Binding failed
     // to define, here after binding its body, is published Error and its body replaced (Syntax), so the call in that body is no edge: the
-    // default is no call of its own template, and the call that omits it takes the failed template's Opaque value.
+    // default is no call of its own template, and the call that omits it takes an Opaque value built at the call.
     [Fact]
     public void AFailedClosureInADefaultIsNoEdge()
     {
