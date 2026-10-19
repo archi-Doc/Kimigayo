@@ -190,10 +190,41 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredPaths", Source, string.Empty);
     }
 
-    // DECISIONS BU-10 (until R6-check): the old paths reach the referent of the reference an element stores only one layer deep, and
-    // exclusively only on the whitelisted receiver paths (a built-in element and a local's Tuple element are not), so the old analysis
-    // reports any other read through an element's stored layers, a comparison's included, as the located Unsupported_Kd at the
-    // element, although Binding accepts it and the MIR builds it in place.
+    // DECISIONS BU-10 (the owner's whitelist, until R6-check): a shared read of a part below a built-in element storing one reference
+    // layer generates on the default pipeline where the sequence is a local or a parameter: a for loop over a part's Array and a
+    // comparison of a nested part through a `ref/Array` parameter.
+    [Fact]
+    public void SharedReadsBelowANamedSequenceReachTheReferent()
+    {
+        const string Source = """
+            struct Inner
+                public var name: string = "z"
+                public init() => ()
+            struct Point
+                public var inner: Inner = Inner.init()
+                public var items: Array<i32> = [1, 2]
+                public init() => ()
+            func total(value: uniq/Point during a) -> i32
+                var vals: Array<uniq/Point during a> = [value@move]
+                var sum: i32 = 0
+                for x in vals[0].items
+                    sum += x
+                return sum
+            func named(vals: ref/Array<uniq/Point during a>) -> bool
+                return vals[0].inner.name == "z"
+            func compare(value: uniq/Point during a) -> bool
+                var vals: Array<uniq/Point during a> = [value@move]
+                return named(vals@ref)
+            var p = Point.init()
+            require total(p@uniq) == 3 and compare(p@uniq) else => $abort("shared")
+            """;
+        ScalarEmissionTest.EmitFixture("PublishedPlaceStoredShared", Source, string.Empty);
+    }
+
+    // DECISIONS BU-10 (until R6-check): the old paths reach the referent of the reference an element stores only one layer deep and
+    // only on the whitelisted paths (exclusively: not below a built-in element or a local's Tuple element; shared below a built-in
+    // element: only on a named sequence), so the old analysis reports any other read through an element's stored layers, a
+    // comparison's included, as the located Unsupported_Kd at the element, although Binding accepts it and the MIR builds it in place.
     [Theory]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b)\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    entries[1].inner.mutate()", "entries[1]")]
     [InlineData("func f(value: uniq/(uniq/Point during a) during b) -> i32\n    var entries: Dictionary<i32, uniq/(uniq/Point during a) during b> = [1: value@move]\n    return entries[1].n", "entries[1]")]
@@ -211,6 +242,10 @@ public class PublishedPlaceProjectionTest
     [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].n = 5", "t.0[1]")]
     [InlineData("func f(value: uniq/Point during a)\n    var t = (0, [1: value@move])\n    t.1[1].n = 5", "t.1[1]")]
     [InlineData("func f(value: uniq/Point during a)\n    var t = ([1: value@move], 0)\n    t.0[1].inner.mutate()", "t.0[1]")]
+    [InlineData("func f(value: uniq/Point during a) -> i32\n    var t = ([value@move], 0)\n    return t.0[0].n", "t.0[0]")]
+    [InlineData("func g(t: uniq/(Array<uniq/Point during a>, i32)) -> i32\n    return t.0[0].n", "t.0[0]")]
+    [InlineData("func f(value: uniq/Point during a) -> i32\n    var vals: Array<Array<uniq/Point during a>> = [[value@move]]\n    return vals[0][0].n", "vals[0][0]")]
+    [InlineData("struct Holder {a}\n    public var vals: Array<uniq/Point during a>\n    public init(vals: Array<uniq/Point during a>) => self.vals = vals@move\nfunc f(value: uniq/Point during a) -> i32\n    var vals: Array<uniq/Point during a> = [value@move]\n    var h = Holder.init(vals@move)\n    return h.vals[0].n", "h.vals[0]")]
     public void TheOldEmissionReborrowLimitIsUnsupported(string function, string element)
     {
         var c = MinimalEmissionTest.Analyze("struct Inner\n    public var x: i32 = 0\n    public init() => ()\n    public func mutate(self: uniq/Self) => self.x = 7\n" +

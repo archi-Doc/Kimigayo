@@ -7,28 +7,46 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    // DECISIONS BU-10 (the owner's whitelist; removed with the old path at R6-check): whether the old paths lower an exclusive read
-    // of a user index's element through the reference it stores: only on the receiver paths shown to generate, a local, parameter or
-    // capture, a stored Field of such a path, a Tuple element reached through a reference (the referent of a `uniq/` parameter) and
-    // another user index's element on such a path. A built-in element, a local's Tuple element or any other path is not lowered.
-    private static bool LowersExclusiveElementRead(Koto element)
+    // DECISIONS BU-10 (the owner's whitelist; removed with the old path at R6-check): whether the old paths lower a read of an
+    // element through the one reference it stores, on the paths shown to generate: below a built-in element, only a shared read
+    // whose sequence is a name (IsName); below a user index's element, a shared read on any receiver path, and an exclusive one when
+    // the receiver path is a name, a stored Field of such a path, a Tuple element reached through a reference (the referent of a
+    // `uniq/` parameter) or another user index's element on such a path.
+    private static bool LowersElementRead(Koto element, bool exclusive)
     {
-        for (var node = KotoHelper.UnwrapParentheses(element); ;)
+        var node = KotoHelper.UnwrapParentheses(element);
+        if (node is not IndexKoto userIndex || !ElementAccess.IsUserIndex(userIndex))
+        {
+            return !exclusive && node is IndexKoto builtIn && IsName(builtIn.Left);
+        }
+
+        if (!exclusive)
+        {
+            return true;
+        }
+
+        for (; ; node = KotoHelper.UnwrapParentheses(((BinaryKoto)node).Left))
         {
             switch (node)
             {
-                case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture }:
+                case IdentifierNameKoto when IsName(node):
                     return true;
                 case IndexKoto index when ElementAccess.IsUserIndex(index):
                 case MemberAccessKoto { BoundSymbol.Property.IsStored: true }:
                 case MemberAccessKoto { Right: NumberLiteralKoto } tuple when ReferenceTypes.IsTuple(tuple.Left.BoundType):
-                    node = KotoHelper.UnwrapParentheses(((BinaryKoto)node).Left);
                     break;
                 default:
                     return false;
             }
         }
     }
+
+    // A local, parameter or capture: a receiver path the old paths read an element's stored reference through (DECISIONS BU-10).
+    private static bool IsName(Koto node)
+        => KotoHelper.UnwrapParentheses(node) is IdentifierNameKoto
+        {
+            BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture,
+        };
 
     // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
     // remains unchecked is its own record, reported without adding constraints, so an unchecked obligation leaves the analysis
@@ -437,11 +455,11 @@ public sealed partial class OwnershipAnalysis
         if (this.compilation.Binding.TryGetAdaptation(root, out var adaptation) && adaptation.Kind == ExpectedAdaptationKind.SharedBorrow)
         {
             // DECISIONS BU-10 (removed with the old path at R6-check): the old paths reach the referent of the reference an element
-            // stores only one layer deep, shared on every path shown and exclusively only on the whitelisted ones; any other read through
-            // an element's stored layers has no matching reference source there.
+            // stores only one layer deep, and only on the whitelisted paths (LowersElementRead); any other read through an
+            // element's stored layers has no matching reference source there.
             var read = adaptation.Type.Components[0];
             if (root.BoundType is { Kind: BoundTypeKind.Semantics, Components: [var stored] } element && !ReferenceEquals(read, element) &&
-                (!ReferenceEquals(read, stored) || (exclusive && !LowersExclusiveElementRead(root))))
+                (!ReferenceEquals(read, stored) || !LowersElementRead(root, exclusive)))
             {
                 this.Unsupported(root);
                 return -1;
