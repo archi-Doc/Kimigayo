@@ -43,7 +43,6 @@ test	XunitTest.StringDiagnosticTest.ClosingTheStringRestoresAcceptance	XunitTest
 test	XunitTest.StringEmissionTest.AbortDoesNotContinueDestruction	XunitTest.StringEmissionTest.AbortDoesNotContinueDestruction(name: \"StringAbortDefer\", source: \"var text = \\\"old\\\"\\ndefer\\n    var other = \\\"inner\\\"\\n    var x = 2147483647\\n    x += 1\", line: 5, column: 5, destructions: \"old=0;inner=0\")
 test	XunitTest.StringEmissionTest.AbortDoesNotContinueDestruction	XunitTest.StringEmissionTest.AbortDoesNotContinueDestruction(name: \"StringAbortRhs\", source: \"func fail() -> Never\\n    var x = 2147483647\\n    x += 1\\n    loop => ()\\nvar text = \\\"old\\\"\\ntext = fail()\", line: 3, column: 5, destructions: \"old=0\")
 test	XunitTest.StringEmissionTest.AuditDetectsDoubleDestructionAndMissingDestruction	XunitTest.StringEmissionTest.AuditDetectsDoubleDestructionAndMissingDestruction
-test	XunitTest.StringEmissionTest.DivergentDeferPreventsStringDestructionAndDelivery	XunitTest.StringEmissionTest.DivergentDeferPreventsStringDestructionAndDelivery
 test	XunitTest.StringEmissionTest.InvalidStringPlansFailBeforeWritingAndRecover	XunitTest.StringEmissionTest.InvalidStringPlansFailBeforeWritingAndRecover(defect: \"action\")
 test	XunitTest.StringEmissionTest.InvalidStringPlansFailBeforeWritingAndRecover	XunitTest.StringEmissionTest.InvalidStringPlansFailBeforeWritingAndRecover(defect: \"input\")
 test	XunitTest.StringEmissionTest.InvalidStringPlansFailBeforeWritingAndRecover	XunitTest.StringEmissionTest.InvalidStringPlansFailBeforeWritingAndRecover(defect: \"temporary\")
@@ -147,7 +146,6 @@ test	XunitTest.StringGuardEmissionTest.InvalidLoanPlansAreRejected	XunitTest.Str
 test	XunitTest.StringGuardEmissionTest.InvalidLoanPlansAreRejected	XunitTest.StringGuardEmissionTest.InvalidLoanPlansAreRejected(defect: \"read_move\")
 test	XunitTest.StringGuardEmissionTest.WarmCandidateBindingAndEmissionAllocateNothing	XunitTest.StringGuardEmissionTest.WarmCandidateBindingAndEmissionAllocateNothing
 test	XunitTest.StringResultEmissionTest.AbortBeforeAcquisitionDoesNotInitializeAResult	XunitTest.StringResultEmissionTest.AbortBeforeAcquisitionDoesNotInitializeAResult
-test	XunitTest.StringResultEmissionTest.DivergentCleanupHasNoArrivalOrResultDestruction	XunitTest.StringResultEmissionTest.DivergentCleanupHasNoArrivalOrResultDestruction
 test	XunitTest.StringResultEmissionTest.MalformedResultPlansAreRejectedAndRecover	XunitTest.StringResultEmissionTest.MalformedResultPlansAreRejectedAndRecover(defect: \"arrival\")
 test	XunitTest.StringResultEmissionTest.MalformedResultPlansAreRejectedAndRecover	XunitTest.StringResultEmissionTest.MalformedResultPlansAreRejectedAndRecover(defect: \"branch_place\")
 test	XunitTest.StringResultEmissionTest.MalformedResultPlansAreRejectedAndRecover	XunitTest.StringResultEmissionTest.MalformedResultPlansAreRejectedAndRecover(defect: \"declaration\")

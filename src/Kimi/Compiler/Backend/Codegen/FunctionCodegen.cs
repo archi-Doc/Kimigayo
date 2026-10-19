@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1, C0b2, C1a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76), MIR code generation:
-// the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance, and the coverage
-// rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
+// FunctionCodegen (R5 plan C0b1, C0b2, C1a, C1b, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76, R5-M80), MIR code
+// generation: the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance, and the
+// coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf) and its records' location rule (InstanceCollector.Subject, K package
 // 4.9); the compilation's Layout and runtime location texts; ModuleCodegen's signature table (Abi.Of under the internal convention, IMPL
 // 21.3.1), constant pool and record list.
@@ -13,17 +13,18 @@
 // checks: false) reaches, in index order, so code only the checks reach is never generated (SPEC 14.10.3); I4 an operand is loaded at
 // each use; I5 a check not Proven Aborts at its site's location text (SPEC 22.5.1); I7 every Type is Layout.Of(TypeOf(item, t)); I9 no
 // nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign to a
-// local without projection of a Use, from a Copy or Move of such a local or a Bool, Integer or Unit constant (a zero-sized value writes
-// nothing, a scalar is loaded and stored in its storage representation), or of a string constant to a string local (its UTF-8 bytes a
-// pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, bool, char and Unit operands by the
-// operator table (FunctionCodegen.Arithmetic); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler
-// function's legacy runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1). Rows not written yet: Closure
-// (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and statics (C7b); Cast (C1b), Ref, Aggregate, Discriminant,
-// Len and Adapt, PairAcquire and copies of slot Types (C2b); operators on floating-point (C1b) and raw-pointer (C8a) operands and string
-// operations (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); Float (C1b), FnItem (C5a), Location (C3b),
-// TypeToken (C3a) and raw-pointer constants (C8a); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot
-// (C6c), an intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own
-// (C3b); Drop (C4a). A warm write allocates nothing.
+// local without projection of a Use, from a Copy or Move of such a local or a Bool, Integer, Float or Unit constant (a zero-sized value
+// writes nothing, a scalar is loaded and stored in its storage representation), or of a string constant to a string local (its UTF-8
+// bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and
+// Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw pointer Cast by the conversion
+// table (FunctionCodegen.Casts); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy
+// runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1). Rows not written yet: Closure (C5a),
+// DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and statics (C7b); Ref, Aggregate, Discriminant, Len and Adapt,
+// PairAcquire and copies of slot Types (C2b); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string
+// operations (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a)
+// and raw-pointer constants (C8a); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot (C6c), an
+// intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); Drop
+// (C4a). A warm write allocates nothing.
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact, compose a Subst or a
 // Type (TypeOf does), resolve a callee, select a Semantics view before a covered form depends on it (C2a), or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -237,8 +238,11 @@ internal sealed partial class FunctionCodegen
             case MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp when IsLocal(statement.Place):
                 this.Operator(statement, abi);
                 return;
+            case MirRvalueKind.Cast when IsLocal(statement.Place):
+                this.Cast(statement, abi);
+                return;
             default:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // Cast (C1b), Ref, Aggregate, Discriminant, Len and Adapt (C2b).
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // Ref, Aggregate, Discriminant, Len and Adapt (C2b).
                 return;
         }
     }
@@ -315,18 +319,24 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type, Unit (zero-sized).
+    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type, Float (its IEEE bits), Unit (zero-sized).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Unit))
+        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit))
         {
-            return false; // Float (C1b), String other than into a string local (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a).
+            return false; // String other than into a string local (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
         {
             return true; // A broken contract, recorded.
+        }
+
+        if (constant.Kind == MirConstKind.Float)
+        {
+            value = new('x', Hexadecimal(constant.Bits, lowering.Layout.Size));
+            return true;
         }
 
         var type = this.collector.TypeOf(this.item, constant.Type)!;
@@ -645,13 +655,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (value.Prefix != '\0')
-        {
-            this.output.Write('%');
-            this.output.Write(value.Prefix);
-        }
-
-        WriteNumber(this.output, value.Number);
+        this.output.Write(Spell(value, stackalloc char[SpellingLength]));
     }
 
     private void WriteHome(int local)
@@ -681,7 +685,7 @@ internal sealed partial class FunctionCodegen
     // A local's home and representation: Index is a pointer-passed argument's slot.
     private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
 
-    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @) or the
-    // literal integer Number (Prefix NUL).
+    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @), the
+    // floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling) or the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 }

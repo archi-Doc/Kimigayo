@@ -33,6 +33,9 @@ public sealed class FunctionCodegenTest
     private const string Arithmetic =
         "func f(a: i32, b: i32) -> i32 => a / b + a % b - (a << b) * 3\nfunc g(a: Wrapping<u8>, c: char) -> bool => -a > 3 and not (c < 'z')\n";
 
+    private const string Conversions =
+        "func f(a: f64, b: i32) -> i64 => (a * b@f64)@i64\nfunc g(a: u64, c: f32) -> bool => a@f32 < -c and a@wrap<u8>@f64@f32 != 0.5\n";
+
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
 
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
@@ -103,6 +106,19 @@ public sealed class FunctionCodegenTest
             "if yes == no or not yes or no != false => bad = 1\nif not (unit == ()) or unit != () => bad = 1\nlet check = 1 / (1 - bad)\n",
             string.Empty
         },
+        {
+            "OperatorFloating",
+            "let zero = 0.0\nlet one = 1.0\nlet nan = zero / zero\nlet infinity = one / zero\nlet negative = -zero\nlet tenth = 0.1\nlet fifth = 0.2\n" +
+            "let big: f32 = 16777216.0\nlet unit: f32 = 1.0\nlet three: f32 = 3.0\nvar bad: i32 = 0\n" +
+            "if not (nan != nan) or nan == nan or nan < one or nan <= one or nan > one or nan >= one => bad = 1\n" +
+            "if negative != zero or not (negative == zero and negative <= zero and negative >= zero) or negative < zero => bad = 1\n" +
+            "if negative@bits<u64> != 9223372036854775808 or one / negative != -infinity or not (infinity > one) => bad = 1\n" +
+            "if (tenth + fifth)@bits<u64> != 4599075939470750516 or tenth + fifth == 0.3 or fifth - tenth != tenth => bad = 1\n" +
+            "if (infinity - infinity) == (infinity - infinity) or tenth * 10.0 != one or one / three@f64 == 0.0 => bad = 1\n" +
+            "if big + unit != big or (unit / three)@bits<u32> != 1051372203 or -unit != unit - 2.0 or (-(zero@f32))@bits<u32> != 2147483648 => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
         { "OperatorOverflowAbort", "let a: u8 = 255\nlet b = a + 1\n", "Hello.kimi:2:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n" },
         {
             "OperatorQuotientAbort",
@@ -121,6 +137,57 @@ public sealed class FunctionCodegenTest
         },
     };
 
+    // The conversion rows' programs (R5 C1b; DECISIONS R5-M80), self-checking as the operator rows' are: SPEC 13.5.4's checked integer,
+    // wrapping, floating, numeric and bit conversions (truncation toward zero, ties to even, the sign of a zero, NaN and infinities kept)
+    // and SPEC 5.4-5.5's address conversions; each Abort program stops with its code at its conversion (SPEC 22.5.2).
+    public static TheoryData<string, string, string> Casts => new()
+    {
+        {
+            "CastInteger",
+            "let a: i32 = 300\nlet n: i32 = -1\nlet b: u8 = 200\nlet m: i8 = -56\nlet max: u64 = 18446744073709551615\n" +
+            "let w: Wrapping<u32> = 4294967295\nvar bad: i32 = 0\n" +
+            "if a@wrap<u8> != 44 or n@wrap<u64> != max or b@wrap<i8> != m or m@wrap<u32> != 4294967240 or m@wrap<i64> != -56 => bad = 1\n" +
+            "if b@i32 != 200 or m@i64 != -56 or a@i16 != 300 or (a - 45)@u8 != 255 or n@i8 != -1 or b@u64 != 200 => bad = 1\n" +
+            "if w@u32 != 4294967295 or (max - 1)@wrap<u32> != 4294967294 or (b@Wrapping<u8> + b@Wrapping<u8>)@u8 != 144 => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "CastFloating",
+            "let zero = 0.0\nlet down = -2.9\nlet up = 2.9\nlet edge = -128.9\nlet tiny = -1e-300\nlet nan = zero / zero\nlet infinity = 1.0 / zero\n" +
+            "let odd: i32 = 16777219\nlet even: i32 = 16777217\nlet big: u64 = 18446744073709551615\nlet half: f32 = 1.5\nlet raw: u32 = 1069547520\n" +
+            "let integerZero: i64 = 0\nvar bad: i32 = 0\n" +
+            "if down@i32 != -2 or up@i32 != 2 or edge@i8 != -128 or (-0.9)@u8 != 0 or 255.9@u8 != 255 => bad = 1\n" +
+            "if odd@f32 != 16777220.0 or even@f32 != 16777216.0 or big@f64 != 18446744073709551616.0 or integerZero@f64@bits<u64> != 0 => bad = 1\n" +
+            "if tiny@f32@bits<u32> != 2147483648 or not (nan@f32 != nan@f32) or infinity@f32 != infinity@f32 or (-infinity)@f32@f64 != -infinity => bad = 1\n" +
+            "if half@bits<u32> != raw or raw@bits<f32> != half or half@f64 != 1.5 or (3.4028234663852886e38)@f32@f64 != 3.4028234663852886e38 => bad = 1\n" +
+            "if up@f32@f64 == up or down@f32@bits<u32> != 3225000346 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "CastPointer",
+            "let address: usize = 4096\nlet p = address@raw/i32\nlet q = p@raw/u8\nvar bad: i32 = 0\nif p@usize != 4096 or q@usize != address => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        { "CastRangeAbort", "let a: i32 = 300\nlet b = a@u8\n", "Hello.kimi:2:9: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n" },
+        {
+            "CastTruncationAbort",
+            "let big = 2147483648.0\nlet i = big@i32\n",
+            "Hello.kimi:2:9: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n"
+        },
+        {
+            "CastNaNAbort",
+            "let zero = 0.0\nlet n = (zero / zero)@i64\n",
+            "Hello.kimi:2:9: abort KIMI_E_INT_CONVERSION: Integer conversion out of range\n"
+        },
+        {
+            "CastNarrowingAbort",
+            "let big = 3.5e38\nlet f = big@f32\n",
+            "Hello.kimi:2:9: abort KIMI_E_FLOAT_CONVERSION: Floating conversion out of range\n"
+        },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
@@ -129,6 +196,11 @@ public sealed class FunctionCodegenTest
     [Theory]
     [MemberData(nameof(Operators))]
     public void OperatorProgramsRun(string name, string source, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
+
+    [Theory]
+    [MemberData(nameof(Casts))]
+    public void CastProgramsRun(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
     [Theory]
@@ -225,7 +297,9 @@ public sealed class FunctionCodegenTest
     // IMPL 21.3.3: a Proven operation writes no check, and a wrapping integer operation (SPEC 3.1.1), a bitwise operation and a
     // comparison check nothing: each is one instruction, a literal divisor of -1 dividing as the negation (wrapping) or a remainder as 1.
     // Comparisons are icmp predicates by the operands' signedness (char a Unicode scalar value's, SPEC 13.4) whose i1 result is stored
-    // widened; not is xor with -1; Unit's one value is equal to itself.
+    // widened; not is xor with -1; Unit's one value is equal to itself. Floating point (R5 C1b, SPEC 13.3.1) checks nothing, a division by
+    // zero included, negation is fneg, which keeps the sign of zero, and its comparisons are ordered fcmp predicates but for !=, which is
+    // unordered (SPEC 13.4: with a NaN operand, != is true and the others false).
     [Theory]
     [InlineData("func f(a: Wrapping<i32>, b: Wrapping<i32>) -> Wrapping<i32> => a + b", "internal i32 (i32, i32)", "add i32 %, %")]
     [InlineData("func f(a: Wrapping<u8>) -> Wrapping<u8> => -a", "internal i8 (i8)", "sub i8 0, %")]
@@ -249,6 +323,17 @@ public sealed class FunctionCodegenTest
     [InlineData("func f(a: bool) -> bool => not a", "internal i1 (i1)", "xor i1 %, -1")]
     [InlineData("func f(a: (), b: ()) -> bool => a == b", "internal i1 ()", "zext i1 1 to i8")]
     [InlineData("func f(a: (), b: ()) -> bool => a != b", "internal i1 ()", "zext i1 0 to i8")]
+    [InlineData("func f(a: f64, b: f64) -> f64 => a + b", "internal double (double, double)", "fadd double %, %")]
+    [InlineData("func f(a: f32, b: f32) -> f32 => a - b", "internal float (float, float)", "fsub float %, %")]
+    [InlineData("func f(a: f64) -> f64 => a * 0.5", "internal double (double)", "fmul double %, 0x3FE0000000000000")]
+    [InlineData("func f(a: f32, b: f32) -> f32 => a / b", "internal float (float, float)", "fdiv float %, %")]
+    [InlineData("func f(a: f64) -> f64 => -a", "internal double (double)", "fneg double %")]
+    [InlineData("func f(a: f64, b: f64) -> bool => a == b", "internal i1 (double, double)", "fcmp oeq double %, %")]
+    [InlineData("func f(a: f32, b: f32) -> bool => a != b", "internal i1 (float, float)", "fcmp une float %, %")]
+    [InlineData("func f(a: f64, b: f64) -> bool => a < b", "internal i1 (double, double)", "fcmp olt double %, %")]
+    [InlineData("func f(a: f32) -> bool => a <= 1.5", "internal i1 (float)", "fcmp ole float %, 0x3FF8000000000000")]
+    [InlineData("func f(a: f64, b: f64) -> bool => a > b", "internal i1 (double, double)", "fcmp ogt double %, %")]
+    [InlineData("func f(a: f32, b: f32) -> bool => a >= b", "internal i1 (float, float)", "fcmp oge float %, %")]
     public void UncheckedOperatorsAreOneInstruction(string source, string signature, string shape)
     {
         var (ir, text) = Parse(source);
@@ -263,6 +348,110 @@ public sealed class FunctionCodegenTest
 
         Assert.DoesNotMatch(@"\b(nsw|nuw)\b", text);
     }
+
+    // The conversion rows (R5 C1b; DECISIONS R5-M80; SPEC 13.5.4, 5.4-5.5, IMPL 21.3.3): a conversion that cannot fail (a wrapping, an
+    // integer widening within the target's range, a floating widening, an integer to floating-point, a bit or an address conversion) is its
+    // row's one cast of the loaded argument, by the width and the operand's signedness, and nothing Aborts; one that keeps the
+    // representation (U and Wrapping<U>, raw pointer Types) stores the loaded argument itself.
+    [Theory]
+    [InlineData("func f(a: i32) -> i64 => a@i64", "internal i64 (i32)", "sext i32 % to i64")]
+    [InlineData("func f(a: u8) -> i32 => a@i32", "internal i32 (i8)", "zext i8 % to i32")]
+    [InlineData("func f(a: i32) -> u8 => a@wrap<u8>", "internal i8 (i32)", "trunc i32 % to i8")]
+    [InlineData("func f(a: i8) -> u32 => a@wrap<u32>", "internal i32 (i8)", "sext i8 % to i32")]
+    [InlineData("func f(a: Wrapping<u16>) -> i64 => a@wrap<i64>", "internal i64 (i16)", "zext i16 % to i64")]
+    [InlineData("func f(a: f32) -> f64 => a@f64", "internal double (float)", "fpext float % to double")]
+    [InlineData("func f(a: i64) -> f64 => a@f64", "internal double (i64)", "sitofp i64 % to double")]
+    [InlineData("func f(a: u64) -> f32 => a@f32", "internal float (i64)", "uitofp i64 % to float")]
+    [InlineData("func f(a: f32) -> u32 => a@bits<u32>", "internal i32 (float)", "bitcast float % to i32")]
+    [InlineData("func f(a: Wrapping<i64>) -> f64 => a@bits<f64>", "internal double (i64)", "bitcast i64 % to double")]
+    [InlineData("func f(p: raw/i32) -> usize => p@usize", "internal i64 (ptr)", "ptrtoint ptr % to i64")]
+    [InlineData("func f(a: usize) -> raw/i32 => a@raw/i32", "internal ptr (i64)", "inttoptr i64 % to ptr")]
+    [InlineData("func f(w: Wrapping<u32>) -> u32 => w@u32", "internal i32 (i32)", null)]
+    [InlineData("func f(a: i64) -> Wrapping<i64> => a@Wrapping<i64>", "internal i64 (i64)", null)]
+    [InlineData("func f(p: raw/i32) -> raw/u8 => p@raw/u8", "internal ptr (ptr)", null)]
+    public void UncheckedConversionsAreTheirCast(string source, string signature, string? cast)
+    {
+        var (ir, _) = Parse(source);
+        var f = ir.Single(signature);
+        Assert.DoesNotContain(f.Instructions, x => x.Callee == ir.Function("__kimi_abort"));
+        var stored = Assert.Single(f.Blocks[1].Instructions, static x => x.Opcode == "store").Operands[0];
+        var input = cast is null ? stored : Assert.Single(stored.Operands);
+        Assert.Equal((cast ?? input.Shape, "load"), (stored.Shape, input.Opcode));
+        Assert.Contains(f.Blocks[0].Instructions, x => x.Opcode == "store" && x.Operands.SequenceEqual([f.Parameters[0], input.Operands[0]]));
+    }
+
+    // SPEC 13.5.4, 22.5.2 (R5 C1b; DECISIONS R5-M80): a conversion that can fail tests its loaded operand, in the source Type, against each
+    // side of the target's range the source exceeds: an integer against the target's extremes (KIMI_E_INT_CONVERSION, 9); a floating-point
+    // value against the bounds its truncation toward zero must lie within, the minimum's predecessor where the significand holds it, with
+    // unordered predicates, so NaN and the infinities fail (9); a narrowing to f32 against the overflow threshold, ordered, and a finite input
+    // only, so NaN and the infinities convert (KIMI_E_FLOAT_CONVERSION, 11). The failure Aborts at the conversion's location text; the success
+    // block converts, or stores the operand where the representation is kept.
+    [Theory]
+    [InlineData("func f(a: i32) -> u8 => a@u8", "internal i8 (i32)", "trunc i32 % to i8", "icmp slt i32 %, 0", "icmp sgt i32 %, 255", 9)]
+    [InlineData("func f(a: u64) -> i64 => a@i64", "internal i64 (i64)", null, null, "icmp ugt i64 %, 9223372036854775807", 9)]
+    [InlineData("func f(a: i8) -> u16 => a@u16", "internal i16 (i8)", "sext i8 % to i16", "icmp slt i8 %, 0", null, 9)]
+    [InlineData("func f(a: i128) -> u64 => a@u64", "internal i64 (i128)", "trunc i128 % to i64", "icmp slt i128 %, 0", "icmp sgt i128 %, 18446744073709551615", 9)]
+    [InlineData("func f(a: u128) -> i128 => a@i128", "internal i128 (i128)", null, null, "icmp ugt i128 %, 170141183460469231731687303715884105727", 9)]
+    [InlineData("func f(a: f64) -> i32 => a@i32", "internal i32 (double)", "fptosi double % to i32", "fcmp ule double %, 0xC1E0000000200000", "fcmp uge double %, 0x41E0000000000000", 9)]
+    [InlineData("func f(a: f32) -> i32 => a@i32", "internal i32 (float)", "fptosi float % to i32", "fcmp ult float %, 0xC1E0000000000000", "fcmp uge float %, 0x41E0000000000000", 9)]
+    [InlineData("func f(a: f64) -> i64 => a@i64", "internal i64 (double)", "fptosi double % to i64", "fcmp ult double %, 0xC3E0000000000000", "fcmp uge double %, 0x43E0000000000000", 9)]
+    [InlineData("func f(a: f32) -> u8 => a@u8", "internal i8 (float)", "fptoui float % to i8", "fcmp ule float %, 0xBFF0000000000000", "fcmp uge float %, 0x4070000000000000", 9)]
+    [InlineData("func f(a: f64) -> u64 => a@u64", "internal i64 (double)", "fptoui double % to i64", "fcmp ule double %, 0xBFF0000000000000", "fcmp uge double %, 0x43F0000000000000", 9)]
+    [InlineData("func f(a: f64) -> f32 => a@f32", "internal float (double)", "fptrunc double % to float", "fcmp ole double %, 0xC7EFFFFFF0000000", "fcmp oge double %, 0x47EFFFFFF0000000", 11)]
+    public void CheckedConversionsAbortOutsideTheirTarget(string source, string signature, string? cast, string? lower, string? upper, int reason)
+    {
+        var (ir, text) = Parse(source);
+        var f = ir.Single(signature);
+        var check = Assert.Single(f.Blocks, static x => x.Successors.Count == 2);
+        var input = Assert.Single(check.Instructions, static x => x.Opcode == "load");
+        string?[] tests = reason == AbortReasons.FloatingConversion
+            ? [lower, upper, "fcmp one double %, 0x7FF0000000000000", "fcmp one double %, 0xFFF0000000000000"] : [lower, upper];
+        Assert.Equal(
+            tests.OfType<string>().Order(StringComparer.Ordinal),
+            check.Instructions.Where(static x => x.Opcode is "icmp" or "fcmp").Select(static x => x.Shape).Order(StringComparer.Ordinal));
+        Assert.All(check.Instructions.Where(static x => x.Opcode is "icmp" or "fcmp"), x => Assert.Equal([input], x.Operands));
+        AssertAbort(ir, text, check.Successors[0], reason, source, source[(source.IndexOf("=> ", StringComparison.Ordinal) + 3)..]);
+        var stored = Assert.Single(check.Successors[1].Instructions, static x => x.Opcode == "store").Operands[0];
+        Assert.Same(input, cast is null ? stored : Assert.Single(stored.Operands));
+        Assert.Equal(cast ?? input.Shape, stored.Shape);
+    }
+
+    // DECISIONS R5-M80: an instance of a generic conversion (SPEC 8.7.4), whose check the builder cannot prove, converts its closed Types:
+    // where the target holds every source value, its Range has no side and only the cast is written; where not, the instance checks. The
+    // instances are written directly, since the calls naming them are C3a's row.
+    [Fact]
+    public void AGenericConversionChecksItsInstancesRange()
+    {
+        var c = Analyze("func widen<T>(value: T) -> i64\n    T is PrimitiveInteger\n    return value@i64\nlet a = widen(5@i32)\nlet b = widen(5@u64)\n");
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        var start = Enumerable.Range(0, set.Items.Length).Single(x => set.Items[x].Key.Body.Def.Decl is null);
+        set.Mark([start]);
+        var module = new ModuleCodegen(c.Layout, c.Locations);
+        _ = module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null);
+        var texts = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Body.Def.Decl?.Name == "widen").Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module).Write(collector, x, program.Bodies[set.Items[x].BodyOrdinal], writer);
+            return writer.ToString();
+        }).ToArray();
+        Assert.Equal(2, texts.Length);
+        Assert.Single(texts, static x => x.Contains("sext i32 %t0 to i64\n", StringComparison.Ordinal) && !x.Contains("__kimi_abort", StringComparison.Ordinal));
+        Assert.Single(texts, static x => x.Contains("icmp ugt i64 %t0, 9223372036854775807\n", StringComparison.Ordinal) && x.Contains("__kimi_abort", StringComparison.Ordinal));
+    }
+
+    // A floating constant is LLVM's hexadecimal double (R5 C1b; DECISIONS R5-M80): an f32's value widened exactly, so the sign of a zero, a
+    // subnormal and a NaN's sign, payload and signaling bit are kept (SPEC 13.5.4's bit conversion).
+    [Theory]
+    [InlineData("func f() -> f64 => -0.0", "store double 0x8000000000000000, ptr %, align 8")]
+    [InlineData("func f() -> f32 => 1.5", "store float 0x3FF8000000000000, ptr %, align 4")]
+    [InlineData("func f() -> f32 => 1@bits<f32>", "store float 0x36A0000000000000, ptr %, align 4")]
+    [InlineData("func f() -> f32 => 2139095040@bits<f32>", "store float 0x7FF0000000000000, ptr %, align 4")]
+    [InlineData("func f() -> f32 => 2139095041@bits<f32>", "store float 0x7FF0000020000000, ptr %, align 4")]
+    [InlineData("func f() -> f32 => 4290772993@bits<f32>", "store float 0xFFF8000020000000, ptr %, align 4")]
+    public void FloatingConstantsAreHexadecimalDoubles(string source, string store)
+        => Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == store);
 
     // I2 (IMPL 21.1.3): one aligned slot per local of nonzero size, in local order, bool stored as i8 and never as i1, none for a zero-sized
     // local; an integer constant is its value's two's complement at its width, stored into its local's slot (GeneratedIrTest covers the
@@ -338,13 +527,16 @@ public sealed class FunctionCodegenTest
     // overload is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings its
     // expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
     // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. The operator rows
-    // (DECISIONS R5-M76) leave floating-point operands to C1b, raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide
-    // overflow declarations; a compound update writes through a borrow (C2b) of its target. K11: an Application's function nothing calls is
-    // not generated, so its form records nothing; a Library generates it.
+    // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
+    // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; a compound
+    // update writes through a borrow (C2b) of its target. K11: an Application's function nothing calls is not generated, so its form records
+    // nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
-    [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new[] { "a + a" })]
+    [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
+    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new[] { "id" })]
+    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new[] { "null@raw/i32" })]
     [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new[] { "p == q" })]
     [InlineData("var x: i32 = 1\nx += 1\n", OutputKind.Application, new[] { "x += 1" })]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
@@ -375,6 +567,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Branches, OutputKind.Application)]
     [InlineData(Strings, OutputKind.Library)]
     [InlineData(Arithmetic, OutputKind.Library)]
+    [InlineData(Conversions, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -452,6 +645,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Branches, OutputKind.Application)]
     [InlineData(Strings, OutputKind.Library)]
     [InlineData(Arithmetic, OutputKind.Library)]
+    [InlineData(Conversions, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
