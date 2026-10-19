@@ -34,6 +34,9 @@ public class IndexableContractTest
     private const string FirstUniq =
         "func firstUniq<S>(items: uniq/S) -> uniq/S.Element during items\n    S is UniqIndexable<isize>\n    return items[0]@uniq\n";
 
+    // A Point whose part an element storing a reference to it reaches (SPEC 3.4.3, 10.2; PLAN G147 (2b)).
+    private const string Stored = "struct Inner\n    public var x: i32 = 0\n    public init() => ()\nstruct Point\n    public var inner: Inner = Inner.init()\n    public init() => ()\n";
+
     public static TheoryData<string, string, string> Fixtures => new()
     {
         { "CopyRead", Pair + "var pair = Pair<i32>.init(1, 2)\nlet second = pair[1]\nlet key: isize = 0\nrequire second == 2 and pair[key] == 1 else => $abort(\"read\")\npair[key] = 5\nrequire pair[0] == 5 else => $abort(\"write\")\nConsole.writeLine(\"ok\")", "ok\n" },
@@ -67,11 +70,26 @@ public class IndexableContractTest
     [InlineData("struct Bare\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value", DiagnosticCode.TypeMismatch_Kd)]
     [InlineData("struct Two\n    Self is UniqIndexable<isize>\n    var value: i32 = 0\n    public init() => ()\n    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i64 during self => $abort(\"two\")", DiagnosticCode.AssociatedTypeInferenceFailed_Kd)]
     [InlineData(Pair + "var pair = Pair<i32>.init(1, 2)\nlet n: i32 = 7\npair.indexUniq(0) = n", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Stored + "func f(entries: ref/Dictionary<i32, uniq/Point during a>) -> ref/Inner during a\n    return entries[1].inner@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData(Stored + "func f(entries: ref/Dictionary<i32, uniq/Point during a>) -> ref/Inner during a\n    return entries[1]@follow.inner@ref", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData(Stored + "func f(entries: uniq/Dictionary<i32, uniq/Point during a>) -> uniq/Inner during a\n    return entries[1].inner@uniq", DiagnosticCode.UnprovenOriginRelation_Kd)]
+    [InlineData(Stored + "func f(entries: uniq/Dictionary<i32, uniq/Point during a>) -> uniq/Inner during a\n    return entries[1]@follow.inner@uniq", DiagnosticCode.UnprovenOriginRelation_Kd)]
     public void RejectsAtBinding(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.False(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
+    }
+
+    // SPEC 3.4.3, 10.2 (PLAN G147 (2b)): a part below an element storing a shared reference is read through one shared reference, which
+    // restarts the dependency at that stored reference, so it depends on the stored reference's Origin, not on the selection.
+    [Theory]
+    [InlineData("ref")]
+    [InlineData("uniq")]
+    public void APartBelowAStoredSharedReferenceKeepsItsOrigin(string receiver)
+    {
+        var c = MinimalEmissionTest.Analyze(Stored + $"func f(entries: {receiver}/Dictionary<i32, ref/Point during a>) -> ref/Inner during a\n    return entries[1].inner@ref");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
