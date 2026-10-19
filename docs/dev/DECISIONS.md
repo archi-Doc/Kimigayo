@@ -1925,6 +1925,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
   G169), which a ledger mapping would hide. Rejected: a `sites` column in the raw row (an R4-M17 row-shape change PD18 avoids,
   and a fresh ledger run; it tests the holder or reservation against the MIR's sites, not the same Loan); a Place-identity
   reading by start offset or containment (not PD18's predicate, and unsound as above).
+- **R4-M82 Validator responsibilities before 2x-E1** (2026-10-20, R4 planning session; 2x-E1 final review F1,
+  A5 step 2 PD21). One `MirValidator` remains the owner and representation: its main file keeps orchestration and structural
+  traversal; `.Flow.cs` owns body-wide unknown propagation, reachability and divergence; `.Rvalues.cs` owns an rvalue's kind,
+  arity, operands and Types, including aggregate components; `.Types.cs` keeps shared Type agreement, Call signatures and
+  case-view resolution; `.Inputs.cs` keeps Call input temps. Members move unchanged; shared writes stay with orchestration.
+  At the start, Roslyn tokens excluding EOF were 4,640 in the main file, 1,925 in Types and 323 in Vocabulary. Since U7a2,
+  Types changed in U7c, 0e, G92a and N1; Vocabulary in 0e, 1b-4 and N9. Both validator files are split by those responsibilities;
+  Vocabulary stays together: the closed kind declarations have one responsibility. No vocabulary or contract changes.
+  Rejected: deferring the due split until after E1; leaving rvalue arity and operand Types in separate files; separate validator
+  objects or a context bag (no new semantic owner); a mechanical split of the closed vocabularies. This resolves F1's due-file
+  ruling without a new policy or exception.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
