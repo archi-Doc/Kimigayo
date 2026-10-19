@@ -26,7 +26,7 @@ public class OwnedPatternVerificationTest
         const string Fixture = "VerificationOwnedPatternDirectAbort";
         const string Error = "Hello.kimi:2:19: abort KIMI_E_ABORT: die\n";
         var ir = ScalarEmissionTest.EmitFixture(Fixture, Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture(Fixture, Source, ir, string.Empty, "held=0;die=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture(Fixture, ir, string.Empty, "held=0;die=0", 1, Error);
     }
 
     [Theory]
@@ -40,7 +40,7 @@ public class OwnedPatternVerificationTest
             "\n    return result@move\nConsole.writeLine(run())";
         var fixture = "VerificationOwnedPattern" + name;
         var ir = ScalarEmissionTest.EmitFixture(fixture, source, "result\n");
-        StringEmissionTest.WriteAuditedFixture(fixture, source, ir, "result\n", "outer=1;inner=1;subject=1;result=1", order: [2, 1, 0, 3]);
+        StringEmissionTest.WriteAuditedFixture(fixture, ir, "result\n", "outer=1;inner=1;subject=1;result=1", order: [2, 1, 0, 3]);
     }
 
     [Fact]
@@ -68,7 +68,7 @@ public class OwnedPatternVerificationTest
         const string Output = "third\nfourth\n";
         var ir = ScalarEmissionTest.EmitFixture(Fixture, Source, Output);
         // writeLine borrows a and b (SPEC 22.1); the arm destroys them in reverse acquisition order.
-        StringEmissionTest.WriteAuditedFixture(Fixture, Source, ir, Output, "first=2;second=2;third=2;fourth=2;remaining=2", order: [3, 2, 1, 0, 4, 1, 0, 3, 2, 4]);
+        StringEmissionTest.WriteAuditedFixture(Fixture, ir, Output, "first=2;second=2;third=2;fourth=2;remaining=2", order: [3, 2, 1, 0, 4, 1, 0, 3, 2, 4]);
     }
 
     [Fact]
@@ -95,7 +95,7 @@ public class OwnedPatternVerificationTest
             """;
         const string Fixture = "VerificationOwnedPatternLengths";
         var ir = ScalarEmissionTest.EmitFixture(Fixture, Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture(Fixture, Source, ir, string.Empty, "a=1;a\0=1;a\0b=1;=1;ab=1");
+        StringEmissionTest.WriteAuditedFixture(Fixture, ir, string.Empty, "a=1;a\0=1;a\0b=1;=1;ab=1");
     }
 
     [Theory]

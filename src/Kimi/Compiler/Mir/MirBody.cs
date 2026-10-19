@@ -89,6 +89,20 @@ internal sealed class MirBody
     /// <returns>The syntax.</returns>
     internal SourceRef Subject(in SourceInfo source) => source.Syntax.Id != 0 ? source.Syntax : this.Source;
 
+    /// <summary>Gets the Inlined scope a scope lies in, itself included: the inline default copy whose source is its call (DECISIONS
+    /// R4-M69).</summary>
+    /// <param name="scope">A scope of the body.</param>
+    /// <returns>The innermost Inlined scope enclosing it, or -1 when it lies in none.</returns>
+    internal int Inlining(int scope)
+    {
+        while (scope >= 0 && this.scopes[scope].Kind != MirScopeKind.Inlined)
+        {
+            scope = this.scopes[scope].Outer;
+        }
+
+        return scope;
+    }
+
     /// <summary>Gets the Type of a Place: its last projection's, or its root's.</summary>
     /// <param name="place">A Place of the body.</param>
     /// <returns>The Type, or null when a projection is not admitted.</returns>

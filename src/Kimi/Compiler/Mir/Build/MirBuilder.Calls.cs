@@ -9,11 +9,11 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBuilder
 {
     // A node's call (CallPlan.Of; a Property read's getter; a user or view index's selected call, SPEC 4.7.1); a constructor's builds its
-    // object in the destination (SPEC 6.3.2); a comparison operator's relation is Compare's (SPEC 13.4.1).
+    // object in the destination (SPEC 6.3.2); a comparison operator's is Compare's (SPEC 13.4, 13.4.1).
     private void Call(MirPlace destination, Koto node)
     {
         var call = (ExpansionPlan.Of(node) is { } plan ? plan.Second : CallPlan.Of(node))!;
-        if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (> MirBinaryOp.Eq and MirBinaryOp relation))
+        if (node is not BinaryKoto binary || BinaryOp(binary.Akind) is not (>= MirBinaryOp.Eq and MirBinaryOp relation))
         {
             this.Call(destination, call, node, first: null);
             return;

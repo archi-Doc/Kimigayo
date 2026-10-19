@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Backend;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
 using Xunit;
@@ -78,11 +79,13 @@ public sealed class PipelineSwitchTest
     // its coverage rows cover, an Application's (with its entry) or a Library's, and otherwise writes nothing and records one Unsupported_Kd
     // in the Emission partition at each subject of a row not written yet, here a call (C3a) and a test build's TestEntry at each test
     // (C10a); never the old generator's module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does.
+    // R5 K11 (DECISIONS R5-M77): it generates the closure of the output roots, an Application's startup body, a test build's discovered
+    // tests (not its top-level statements and their instance) and a Library's every root.
     [Theory]
-    [InlineData(OutputKind.Application, false, new[] { "first()" })]
-    [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" })]
-    [InlineData(OutputKind.Library, false, new string[0])]
-    public void MirCodegenWritesEachCoveredOutputForm(OutputKind output, bool test, string[] records)
+    [InlineData(OutputKind.Application, false, new[] { "first()" }, new[] { "first", "top" })]
+    [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" }, new[] { "first", "second" })]
+    [InlineData(OutputKind.Library, false, new string[0], new[] { "first", "second", "top" })]
+    public void MirCodegenWritesEachCoveredOutputForm(OutputKind output, bool test, string[] records, string[] generated)
     {
         var c = Compilation.CreateForTest();
         c.IsTestBuild = test;
@@ -90,7 +93,7 @@ public sealed class PipelineSwitchTest
         c.Codegen = CompilerCodegen.Legacy;
         Assert.True(c.Prepare(WindowsProfile.Target));
         var functions = test ? "#Test\nfunc first() => ()\n#Test\nfunc second() => ()\n" : "public func first() => ()\npublic func second() => ()\n";
-        var statements = output == OutputKind.Application && !test ? "first()\n" : string.Empty;
+        var statements = output == OutputKind.Library ? string.Empty : test ? "let x = pick(1)\n" : "first()\n";
         c.Kotonoha.AddSource(new SourceDocument("Hello.kimi", functions + "func pick<T>(value: T) -> T => value@move\n" + statements));
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
         Assert.Null(c.Instances);
@@ -102,7 +105,12 @@ public sealed class PipelineSwitchTest
 
         c.Codegen = CompilerCodegen.Mir;
         Assert.True(Analyze(c, output), MinimalEmissionTest.Describe(c, null));
-        Assert.NotNull(c.Instances);
+        if (test)
+        {
+            c.Tests.Discover(c); // As Project does after acceptance.
+        }
+
+        var set = Assert.IsType<CheckedSet>(c.Instances);
         var written = records.Length == 0;
         using (var writer = new StringWriter())
         {
@@ -110,6 +118,9 @@ public sealed class PipelineSwitchTest
             Assert.Equal(written, writer.ToString().Length != 0);
             Assert.Equal(written && output == OutputKind.Application, writer.ToString().Contains("define void @__kimi_start()", StringComparison.Ordinal));
         }
+
+        var items = set.Items.ToArray();
+        Assert.Equal(generated, Enumerable.Range(0, items.Length).Where(set.IsGenerated).Select(x => items[x].Key.Body.Def.Decl?.Name ?? "top").Order());
 
         Assert.Equal(written, c.WriteIr(TextWriter.Null, out var failure));
         Assert.Equal(written, failure is null);
@@ -276,6 +287,32 @@ public sealed class PipelineSwitchTest
 
         c.Pipeline = CompilerPipeline.Legacy;
         Assert.Equal((diagnostics, ir), Check(c));
+    }
+
+    // R4-M71, PLAN G157 (8) (DIAGNOSTICS §4.1): a MIR record is a code without facts, published keyed by its location, so the records of a
+    // for expansion's synthesized siblings $for.some and $for.none, which share their span, depth and kind, are one problem, not an
+    // undefined order. No form records at them at check today, so the records are added to the analyzed version's program as a
+    // construction rule adds them.
+    [Fact]
+    public void MirRecordsAtOneLocationAreOneProblem()
+    {
+        var c = Compilation.CreateForTest();
+        c.Pipeline = CompilerPipeline.Mir;
+        Assert.True(c.Prepare(WindowsProfile.Target));
+        c.Kotonoha.AddSource(new SourceDocument(
+            "Hello.kimi", "func sum(values: ref/Array<i32>) -> i32\n    var total = 0\n    for value in values\n        total += value\n    return total\npublic func main() => ()\n"));
+        Assert.True(Analyze(c, OutputKind.Application), MinimalEmissionTest.Describe(c, null));
+        var loop = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>().Single();
+        var program = c.BuildMir();
+        foreach (var arm in loop.Iteration!.Match.Arms)
+        {
+            program.Report(SourceRef.Of(arm.Pattern));
+        }
+
+        Assert.Equal(2, c.Problems.Count);
+        c.ReportAnalysis();
+        var record = Assert.Single(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
+        Assert.Equal(("Unsupported_Kd", loop.Span), (record.Code, record.Span));
     }
 
     // R4-M17: on both pipelines, every Analyze raises Compilation.Analyzed once, after the old path's records and, under mir, the MIR's

@@ -221,12 +221,7 @@ internal sealed partial class MirBorrows
             return;
         }
 
-        this.Work += this.sets.Count(value);
-        foreach (var element in this.sets.Elements(value))
-        {
-            this.Consider(element, via);
-        }
-
+        this.Scan(value, via);
         this.Drain(state);
     }
 
@@ -298,12 +293,8 @@ internal sealed partial class MirBorrows
         {
             var slot = this.scanning[^1];
             this.scanning.RemoveAt(this.scanning.Count - 1);
-            foreach (var element in this.sets.Elements((int)state[slot]))
-            {
-                this.Consider(element, slot);
-            }
-
-            this.Work += this.sets.Count((int)state[slot]) + 1;
+            this.Scan((int)state[slot], slot);
+            this.Work++;
         }
     }
 
@@ -327,11 +318,7 @@ internal sealed partial class MirBorrows
     {
         if (!entry.Issue && !this.Took(entry.Value, -1))
         {
-            this.Work += this.sets.Count(entry.Value);
-            foreach (var element in this.sets.Elements(entry.Value))
-            {
-                this.Consider(element, -1);
-            }
+            this.Scan(entry.Value, -1);
         }
 
         this.Seed(entry.Issue ? this.sets.Union(entry.Value, entry.Own) : entry.Own);

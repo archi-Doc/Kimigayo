@@ -44,7 +44,7 @@ public class ElementParameterMoveEmissionTest
     public void ParametersTransferOnlyTheSelectedResponsibility(string name, string source, string stdout, string destructions, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("ElementParameterMove" + name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture("ElementParameterMove" + name, source, ir, stdout, destructions, order: order);
+        StringEmissionTest.WriteAuditedFixture("ElementParameterMove" + name, ir, stdout, destructions, order: order);
     }
 
     [Theory]
@@ -171,7 +171,7 @@ public class ElementParameterMoveEmissionTest
         const string Source = "func f(a: (string, string))\n    let moved = a.0@move\n    let empty: [0 of i32] = []\n    let n = empty[0]\nf((\"first\", \"last\"))";
         const string Error = "Hello.kimi:4:13: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementParameterMoveBounds", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementParameterMoveBounds", Source, ir, string.Empty, "first=0;last=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementParameterMoveBounds", ir, string.Empty, "first=0;last=0", 1, Error);
     }
 
     [Fact]
@@ -180,7 +180,7 @@ public class ElementParameterMoveEmissionTest
         const string Source = "func f(a: (string, string)) -> string\n    defer\n        var n = 2147483647\n        n += 1\n    return a.0@move\nConsole.writeLine(f((\"first\", \"last\")))";
         const string Error = "Hello.kimi:4:9: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("ElementParameterMoveCleanupAbort", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("ElementParameterMoveCleanupAbort", Source, ir, string.Empty, "first=0;last=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("ElementParameterMoveCleanupAbort", ir, string.Empty, "first=0;last=0", 1, Error);
     }
 
     [Fact]

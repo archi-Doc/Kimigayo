@@ -5,7 +5,8 @@ namespace Kimi.Compiler.Mir;
 // A5's carrying (A3 5, Carrying, with E3 and E8): each holder's set forward over the dataflow's chains, joined by node union. A location's
 // effect is planned on the state before it as entries (a Call's by MirBorrows.Calls), which the checks replay reads, then committed; at a
 // destruction in place the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its
-// destroyed target).
+// destroyed target). A store adds the markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H
+// (E7), and a pending slot's default taint to the value a default's evaluation places into it (Placed, R4-M70).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -94,7 +95,7 @@ internal sealed partial class MirBorrows
         {
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Call(state, data.Terminator);
+                this.Call(state, new(block, index), data.Terminator);
             }
 
             return;
@@ -111,14 +112,33 @@ internal sealed partial class MirBorrows
             var (value, own) = this.Reborrowing(statement) != MirRefKind.Raw
                 ? this.Issued(state, this.body.Operands[rvalue.Start].Place, reborrow: true, this.loanAt[data.Start + index])
                 : this.Value(state, rvalue, data.Start + index);
-            if (statement.Place is { Projection: 0, Root: >= 0 } into && this.body.Locals[into.Root].Role == MirLocalRole.GuardCandidate)
+            if (statement.Place is { Projection: 0, Root: >= 0 } into && this.MarkerOf(into.Root) == Marker.Guard)
             {
-                own = this.sets.Add(own, this.guardBase + into.Root); // E7: a value issued into a guard candidate H carries γ_H.
+                own = this.sets.Add(own, Markers + into.Root); // E7: a value issued into a guard candidate H carries γ_H.
             }
 
             this.Moves(rvalue.Start, rvalue.Count);
-            this.Store(state, statement.Place, value, own, rvalue.Kind == MirRvalueKind.Ref || this.Reborrowing(statement) != MirRefKind.Raw);
+            var issue = rvalue.Kind == MirRvalueKind.Ref || this.Reborrowing(statement) != MirRefKind.Raw;
+            this.Store(state, statement.Place, this.Placed(value, statement.Place, new(block, index)), own, issue);
         }
+    }
+
+    // A value a location places into a Place, with the default taint of the pending slot D it fills where the location is a default's
+    // evaluation (R4-M70, until A5-F9, unit 2e): a default template's Call into D, or a store into D from inside an inline default copy,
+    // D lying outside the copy's Inlined scope (the slots of a call inside the copy lie inside it).
+    private int Placed(int value, MirPlace place, MirLocation at)
+    {
+        if (place is not { Projection: 0, Root: >= 0 } || this.MarkerOf(place.Root) != Marker.Taint)
+        {
+            return value;
+        }
+
+        ref readonly var data = ref this.body.Blocks[at.Block];
+        this.Work += 2; // The two scope walks (A3 6.2).
+        var copy = this.body.Inlining(this.Source(at).Scope);
+        var evaluates = (at.Index == data.Count && data.Terminator.Callee is { Kind: MirCalleeKind.Fn, Arg: > 0 }) ||
+            (copy >= 0 && copy != this.body.Inlining(this.body.Locals[place.Root].Source.Scope));
+        return evaluates ? this.sets.Add(value, Markers + place.Root) : value;
     }
 
     private void Commit(ulong[] state)
