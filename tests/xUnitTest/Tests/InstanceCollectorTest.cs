@@ -1058,6 +1058,23 @@ public sealed class InstanceCollectorTest
             set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
     }
 
+    // DECISIONS R5-M82: a root-module static that can be set is the capability table's mutable-static gap, Unsupported_Kd at its declaration,
+    // whether or not anything reads it (K11 generates only what an output requires); an immutable static is none.
+    [Theory]
+    [InlineData("group State\n    public var counter: i32 = 0\nlet x = 1\n", true)]
+    [InlineData("group State\n    public var counter: i32 = 0\nlet x = State.counter\n", true)]
+    [InlineData("group State\n    public let counter: i32 = 0\nlet x = State.counter\n", false)]
+    [InlineData("group State\n    public let counter: i32 = 0\nlet x = 1\n", false)]
+    public void AMutableStaticIsAGapAtItsDeclaration(string source, bool gap)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        Assert.Equal(
+            gap ? [(DiagnosticCode.Unsupported_Kd, "public var counter: i32 = 0")] : [],
+            set.Records.Select(x => (x.Code, c.SyntaxOf(x.Subject).ToString())));
+    }
+
     // F10's contract: the builder ensures only the statics whose initializers it builds, so a staticEnsure that names a static without one is
     // a broken contract, InternalInvariant_Kd at the access and no target. Binding never gives one, so the test points the ensure at a
     // function's symbol.
@@ -1420,8 +1437,9 @@ public sealed class InstanceCollectorTest
     }
 
     // K4b, K7: every milestone analyzed under MIR code generation has a checked set without a record, but Milestone 42 (P42's completion
-    // program, which the old analysis rejects at the same accesses), whose accesses of a static of a generic container's group are the
-    // generic-static-key gap (X33 (a), DECISIONS R5-M18, R5-M60).
+    // program, which the old analysis rejects at the same accesses), whose mutable statics are the mutable-static gap at their declarations
+    // (DECISIONS R5-M82) and whose accesses of a static of a generic container's group are the generic-static-key gap (X33 (a), DECISIONS
+    // R5-M18, R5-M60).
     [Theory]
     [MemberData(nameof(HirColumnsTest.Corpus), MemberType = typeof(HirColumnsTest))]
     public void TheMilestonesHaveNoCollectorRecordUnderMirCodegen(string name)
@@ -1431,8 +1449,13 @@ public sealed class InstanceCollectorTest
             return;
         }
 
+        string[] statics =
+            ["public var count: i32 = Registry.initialCount()", "public var replaced: Resource = Registry.makeResource(2)", "public var hits: i32 = 0"];
         string[] expected = name != "milestone/Milestone42" ? [] :
-            [.. new[] { "i32", "i32", "string", "string", "i32", "string" }.Select(static x => $"Unsupported_Kd Cache<{x}>.Statistics.hits")];
+            [
+                .. statics.Select(static x => "Unsupported_Kd " + x),
+                .. new[] { "i32", "i32", "string", "string", "i32", "string" }.Select(static x => $"Unsupported_Kd Cache<{x}>.Statistics.hits"),
+            ];
 
         var c = Compilation.CreateForTest();
         c.Pipeline = CompilerPipeline.Mir;

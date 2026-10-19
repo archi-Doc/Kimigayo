@@ -3909,3 +3909,21 @@ structure is recorded here by the unit that first implements it.
     twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
     but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
     next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.
+- **R5-M82 A mutable static is a capability row at its declaration** (2026-10-19, K lane; unit K11b, the planning session's decision on
+  R4's sel pending check; under R5-M18, R5-M40, R5-M53 and R5-M77; the capability rows approved with the K package, §11) Since K11 MIR
+  code generation reaches only what an output requires, so a form a codegen coverage row refused only when every item was written is
+  accepted when nothing reaches it; for a form no common rule covers, that accepts a narrow subset of it (AGENTS Diagnostics). A static
+  `var` of a root module (a group's static whose setter Binding's property model presents) is therefore the capability table's
+  `MutableStatic` row: `Unsupported_Kd` at its declaration (its StaticInit body's source), used or not, from the collector's
+  definition-stage scan of root-module bodies (A3b), so under MIR code generation it rejects at check (R5-M41), as the old generator's
+  container check refuses the group. Its removal condition is P42, which brings mutable static storage (STATUS "Static members"), not
+  C7b. An immutable static is no record.
+  - Search for other forms that relied on every item being written: immutable statics of aggregate, borrowed or drop-needing Types
+    (STATUS "Static members": P42's storage; package C §3.7's D2 rows), which the old generator also refuses, are accepted under MIR
+    code generation when unused (reported as an open point, not covered by this row); the remaining coverage rows (Closure,
+    DefaultTemplate and StaticInit bodies, MIR forms, mono-item kinds, TestEntry) name forms the frame will write, so an unreached one
+    is no accepted subset.
+  - Rejected: a pending row (it would ledger the unsound acceptance); every StaticInit as a row (refuses statics C7b supports); coverage
+    records for items outside Generated (codegen requests only Generated items, R5-M77).
+  - Verified: the unused and the read static `var` are the gap at the declaration, the immutable twins none; Milestone 42's three
+    mutable statics added to its collector records; `ModuleEmissionTest`'s unused-dependency `var` is refused under both pipelines.

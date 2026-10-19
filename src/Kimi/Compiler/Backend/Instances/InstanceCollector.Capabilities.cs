@@ -4,8 +4,8 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The capability check of operations (K package 4.7; DECISIONS R4-M8, R5-M53, R5-M54): the capability table read for the operations of a
-// body, at the definition stage (A3b) and in each instance.
+// The capability check of operations and declarations (K package 4.7; DECISIONS R4-M8, R5-M53, R5-M54, R5-M82): the capability table read
+// for the operations of a body, at the definition stage (A3b) and in each instance, and for a root-module static's declaration.
 internal sealed partial class InstanceCollector
 {
     // Whether an operation's Types depend on slots: its first operand's or its result's.
@@ -35,6 +35,16 @@ internal sealed partial class InstanceCollector
         if (operand is not null && (rvalue.Type is null || result is not null) && Capability.Of(rvalue with { Type = result }, operand) is { } gap)
         {
             this.Set.Report(Capability.Code(gap), subject);
+        }
+    }
+
+    // A3b's declaration row (DECISIONS R5-M82): a root-module static that can be set (its setter present, a group's var; Binding's property
+    // model) is the mutable-static gap at its declaration, its StaticInit body's source, whether or not anything reads it.
+    private void CheckStatic(MirBody body)
+    {
+        if (body.Key is { Kind: MirBodyKind.StaticInit, Decl.Property.Setter.IsPresent: true })
+        {
+            this.Set.Report(Capability.Code(CapabilityGap.MutableStatic), body.Source);
         }
     }
 }
