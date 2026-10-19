@@ -76,39 +76,41 @@ internal sealed partial class FunctionCodegen
         return type.Semantics == SemanticsKind.Raw ? Scalar.Pointer : Scalar.None;
     }
 
-    // A check's tests in the source Type, spelled into text (2 * SpellingLength characters), SPEC 13.5.4: a Range tests each side where the
-    // source holds a value the target cannot, against the target's extreme at the source's width (none in an instance whose Types the target
-    // holds); a Truncation the minimum's predecessor where the source's significand holds it, else the minimum, and 2^(N - sign), unordered
-    // so NaN fails; a Narrowing the f32 overflow threshold, ordered so NaN converts.
-    private static ScalarBounds Bounds(Bound bound, Scalar from, ValueLowering source, Scalar to, ValueLowering target, Span<char> text)
+    // A Range's tests in the source Type (SPEC 13.5.4), spelled into text (2 * SpellingLength characters): each side where the source holds
+    // a value the target cannot, against the target's extreme at the source's width; none in an instance whose Types the target holds.
+    private static ScalarBounds Range(Scalar from, ValueLowering source, Scalar to, ValueLowering target, Span<char> text)
     {
-        var (width, signed, targetWidth, targetSigned) = (8 * source.Layout.Size, from == Scalar.Signed, 8 * target.Layout.Size, to == Scalar.Signed);
-        if (bound == Bound.Range)
+        var width = 8 * source.Layout.Size;
+        var signed = from == Scalar.Signed;
+        var minimum = Minimum(8 * target.Layout.Size, to == Scalar.Signed);
+        var maximum = Maximum(8 * target.Layout.Size, to == Scalar.Signed);
+        string? upper = null;
+        if (Maximum(width, signed) > maximum)
         {
-            var (minimum, maximum) = (Minimum(targetWidth, targetSigned), Maximum(targetWidth, targetSigned));
-            string? upper = null;
-            if (Maximum(width, signed) > maximum)
-            {
-                upper = signed ? "sgt" : "ugt";
-            }
-
-            return new(
-                Minimum(width, signed) < minimum ? "slt" : null,
-                Spell(new('\0', Signed(minimum, width)), text[..SpellingLength]),
-                upper,
-                Spell(new('\0', Signed(unchecked((Int128)maximum), width)), text[SpellingLength..]));
+            upper = signed ? "sgt" : "ugt";
         }
 
-        if (bound == Bound.Truncation)
-        {
-            var exponent = targetWidth - (targetSigned ? 1 : 0);
-            var exact = !targetSigned || exponent < (width == 32 ? 24 : 53);
-            var limit = Math.ScaleB(1.0, exponent);
-            return Floating(exact ? "ule" : "ult", (targetSigned ? -limit : 0.0) - (exact ? 1.0 : 0.0), "uge", limit, text);
-        }
-
-        return bound == Bound.Narrowing ? Floating("ole", -FloatOverflow, "oge", FloatOverflow, text) : default;
+        return new(
+            Minimum(width, signed) < minimum ? "slt" : null,
+            Spell(new('\0', Signed(minimum, width)), text[..SpellingLength]),
+            upper,
+            Spell(new('\0', Signed(unchecked((Int128)maximum), width)), text[SpellingLength..]));
     }
+
+    // A Truncation's tests (SPEC 13.5.4): the minimum's predecessor where the source's significand holds it, else the minimum, and
+    // 2^(N - sign), unordered so NaN and the infinities fail.
+    private static ScalarBounds Truncation(ValueLowering source, Scalar to, ValueLowering target, Span<char> text)
+    {
+        var signed = to == Scalar.Signed;
+        var exponent = (8 * target.Layout.Size) - (signed ? 1 : 0);
+        var exact = !signed || exponent < (source.Layout.Size == 4 ? 24 : 53);
+        var limit = Math.ScaleB(1.0, exponent);
+        return Floating(exact ? "ule" : "ult", (signed ? -limit : 0.0) - (exact ? 1.0 : 0.0), "uge", limit, text);
+    }
+
+    // A conversion with its tests.
+    private static ScalarConversion Tested(in ScalarConversion conversion, in ScalarBounds bounds)
+        => new(conversion.Cast, conversion.Source, conversion.Target, conversion.Input, conversion.Result, bounds);
 
     // Floating-point bounds in their hexadecimal double spelling.
     private static ScalarBounds Floating(string lowerPredicate, double lower, string upperPredicate, double upper, Span<char> text) => new(
@@ -141,10 +143,13 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Cast into an unprojected local: its operand in its computation representation, its row's cast and, unless Proven, its check, which
-    // Aborts at the statement's location and names its temporaries by the cast's number; the result stored into the local's storage.
+    // Aborts at the statement's location and names its temporaries by the cast's number; the result stored into the local's storage. Each
+    // check is one rule here, its tests and its LlvmScalarText writer: a Range without a side writes the cast alone, and a Narrowing's
+    // ordered tests let NaN and the infinities convert.
     private void Cast(in MirStatement statement, FunctionAbi abi)
     {
-        var (rvalue, local) = (statement.Rvalue, statement.Place.Root);
+        var rvalue = statement.Rvalue;
+        var local = statement.Place.Root;
         if (!this.Compute(this.body.Operands[rvalue.Start], out var input))
         {
             this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A projected Place (C2a), a static (C7b) or a raw pointer's null (C8a).
@@ -156,47 +161,77 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded.
         }
 
-        var (from, to, target) = (ClassOf(input.Type), ClassOf(this.types[local]), this.slots[local].Value);
+        var from = ClassOf(input.Type);
+        var to = ClassOf(this.types[local]);
+        var target = this.slots[local].Value;
         if (ConversionOf((MirCastKind)rvalue.Op, from, to, target.Layout.Size.CompareTo(source.Layout.Size)) is not { } row)
         {
             this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
             return;
         }
 
-        Span<char> text = stackalloc char[4 * SpellingLength];
-        var bounds = Bounds(rvalue.Proven ? Bound.None : row.Bound, from, source, to, target, text[..(2 * SpellingLength)]);
-        var bound = bounds.LowerPredicate is null && bounds.UpperPredicate is null ? Bound.None : row.Bound;
-        var location = bound == Bound.None ? -1 : this.Location(statement.Source, abi);
-        if (bound != Bound.None && location < 0)
-        {
-            return; // Recorded.
-        }
-
         var id = this.next++;
         var result = row.Cast is null ? input.Value : new Value('t', id);
+        Span<char> text = stackalloc char[7 * SpellingLength]; // The operand, the result, two bounds and a failure's three operands.
         var conversion = new ScalarConversion(
             row.Cast,
             source.ComputationType,
             target.ComputationType,
-            Spell(input.Value, text.Slice(2 * SpellingLength, SpellingLength)),
-            Spell(result, text[(3 * SpellingLength)..]),
-            bounds);
-        switch (bound)
+            Spell(input.Value, text[..SpellingLength]),
+            Spell(result, text.Slice(SpellingLength, SpellingLength)),
+            default);
+        var bounds = text.Slice(2 * SpellingLength, 2 * SpellingLength);
+        var failures = text[(4 * SpellingLength)..];
+        switch (rvalue.Proven ? Bound.None : row.Bound)
         {
             case Bound.None:
                 LlvmScalarText.WriteConversion(this.output, conversion);
                 break;
-            case Bound.Range or Bound.Truncation:
-                LlvmScalarText.WriteCheckedConversion(this.output, conversion, this.Failure(id, location, stackalloc char[3 * SpellingLength]));
+            case Bound.Range:
+                var range = Range(from, source, to, target, bounds);
+                if (range.LowerPredicate is null && range.UpperPredicate is null)
+                {
+                    LlvmScalarText.WriteConversion(this.output, conversion);
+                    break;
+                }
+
+                if (!this.FailureAt(id, statement.Source, abi, failures, out var outside))
+                {
+                    return; // Recorded.
+                }
+
+                LlvmScalarText.WriteCheckedConversion(this.output, Tested(conversion, range), outside);
+                break;
+            case Bound.Truncation:
+                if (!this.FailureAt(id, statement.Source, abi, failures, out var truncated))
+                {
+                    return; // Recorded.
+                }
+
+                LlvmScalarText.WriteCheckedConversion(this.output, Tested(conversion, Truncation(source, to, target, bounds)), truncated);
                 break;
             case Bound.Narrowing:
-                LlvmScalarText.WriteFloatingNarrowing(this.output, conversion, this.Failure(id, location, stackalloc char[3 * SpellingLength]));
+                if (!this.FailureAt(id, statement.Source, abi, failures, out var overflow))
+                {
+                    return; // Recorded.
+                }
+
+                var threshold = Floating("ole", -FloatOverflow, "oge", FloatOverflow, bounds);
+                LlvmScalarText.WriteFloatingNarrowing(this.output, Tested(conversion, threshold), overflow);
                 break;
             default:
-                throw new InvalidOperationException($"The check {bound} has no writer.");
+                throw new InvalidOperationException($"The check {row.Bound} has no writer.");
         }
 
         this.Store(local, result);
+    }
+
+    // The failure of the check named by id, Aborting at a site's location (C1a's Location rule), spelled into text; false after a record.
+    private bool FailureAt(int id, in SourceInfo source, FunctionAbi abi, Span<char> text, out ScalarCheck failure)
+    {
+        var location = this.Location(source, abi);
+        failure = location < 0 ? default : this.Failure(id, location, text);
+        return location >= 0;
     }
 
     // A row of the conversion table: the LLVM cast (null: the representation is kept) and the check.
