@@ -90,8 +90,9 @@ body is held. This happens in 11 of the 26 held bodies:
 - rx-writeLv (two conflicts).
 
 Route taint kept 9 of them (rx-joinCfg and rx-eJoin were already its T2 losses). Each is still a rejection, never an acceptance.
-The compiler's cost is the ledger's held bodies: `count<S>`, B6-for, MemberThroughLayersTest's `[1 of uniq/P]` and any other body
-whose P13 store holds it. Unit step 3 measures it.
+The compiler's cost, measured by unit step 3 (DECISIONS R4-M73): 82 held (body, view)s in 77 sources of the mir Functional ledger
+and 10 library bodies, none with a Loan problem; of the 10 records the hold makes `Unsupported_Kd`, 6 depend on no by-argument store
+(B6-for's `v@follow = x` twice, MemberThroughLayersTest's `views = [a@uniq]` and `a@uniq`, BlockEscapeLoanTest's two `show<C>`).
 
 **Unchanged default-taint limits.** R4-M70 is unchanged, so the default taint's analogs keep the Language errors they have today:
 closureRouteD, closureRouteDJoin, guardDefault, guardDefaultOnly, rx-dChain, rx-dLoop and rx-dGuardRoute. Route taint would have
