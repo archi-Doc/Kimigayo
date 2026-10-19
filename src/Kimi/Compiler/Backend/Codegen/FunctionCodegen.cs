@@ -1,11 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1, C0b2, C1a, C1b, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76, R5-M80), MIR code
-// generation: the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance, and the
-// coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76, R5-M78, R5-M80), MIR
+// code generation: the LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance,
+// and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf) and its records' location rule (InstanceCollector.Subject, K package
-// 4.9); the compilation's Layout and runtime location texts; ModuleCodegen's signature table (Abi.Of under the internal convention, IMPL
-// 21.3.1), constant pool and record list.
+// 4.9) and targets; the program's drop table and analysis problems (A2, R4-M6a); the compilation's Layout and runtime location texts;
+// ModuleCodegen's signature table (Abi.Of under the internal convention, IMPL 21.3.1), constant pool and record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored
@@ -18,13 +18,14 @@
 // bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and
 // Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw pointer Cast by the conversion
 // table (FunctionCodegen.Casts); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy
-// runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1). Rows not written yet: Closure (C5a),
-// DefaultTemplate (C3a) and StaticInit (C7b) bodies; projections (C2a) and statics (C7b); Ref, Aggregate, Discriminant, Len and Adapt,
-// PairAcquire and copies of slot Types (C2b); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string
-// operations (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a)
-// and raw-pointer constants (C8a); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot (C6c), an
-// intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); Drop
-// (C4a). A warm write allocates nothing.
+// runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1); a Ref and a Drop's Keep and Elide verdicts
+// (FunctionCodegen.Rvalues.cs, FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a), DefaultTemplate (C3a) and
+// StaticInit (C7b) bodies; projections (C2a) and statics (C7b); Aggregate, Discriminant, Len and Adapt, PairAcquire, copies of slot Types
+// and zero-sized addresses (C2b); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string operations (C8c),
+// checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a) and raw-pointer
+// constants (C8a); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot (C6c), an intrinsic (C8a,
+// C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag (C4b)
+// and Open (C4c) verdicts. A warm write allocates nothing.
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact, compose a Subst or a
 // Type (TypeOf does), resolve a callee, select a Semantics view before a covered form depends on it (C2a), or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -64,13 +65,14 @@ internal sealed partial class FunctionCodegen
     }
 
     /// <summary>Writes the definition of a body item, or records why not.</summary>
+    /// <param name="program">The program, whose body the item replays and whose drop table and problems its drops read.</param>
     /// <param name="collector">The collector of the checked set.</param>
     /// <param name="item">The item.</param>
-    /// <param name="body">Its MIR body.</param>
     /// <param name="output">The module's buffer.</param>
-    internal void Write(InstanceCollector collector, int item, MirBody body, TextWriter output)
+    internal void Write(MirProgram program, InstanceCollector collector, int item, TextWriter output)
     {
-        (this.collector, this.item, this.body, this.output, this.next) = (collector, item, body, output, 0);
+        var body = program.Bodies[collector.Set.Items[item].BodyOrdinal];
+        (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
         switch (body.Key.Kind)
         {
             case MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test:
@@ -198,7 +200,7 @@ internal sealed partial class FunctionCodegen
 
     private void Block(int index, FunctionAbi abi)
     {
-        var block = this.body.Blocks[index];
+        var block = this.body.Blocks[this.at = index];
         this.output.Write('b');
         WriteNumber(this.output, index);
         this.output.Write(":\n");
@@ -238,11 +240,14 @@ internal sealed partial class FunctionCodegen
             case MirRvalueKind.BinaryOp or MirRvalueKind.UnaryOp when IsLocal(statement.Place):
                 this.Operator(statement, abi);
                 return;
+            case MirRvalueKind.Ref when IsLocal(statement.Place):
+                this.Ref(statement.Place.Root, statement.Rvalue.Place, statement.Source);
+                return;
             case MirRvalueKind.Cast when IsLocal(statement.Place):
                 this.Cast(statement, abi);
                 return;
             default:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // Ref, Aggregate, Discriminant, Len and Adapt (C2b).
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // Aggregate, Discriminant, Len and Adapt (C2b).
                 return;
         }
     }
@@ -388,7 +393,7 @@ internal sealed partial class FunctionCodegen
                 this.Call(terminator, abi);
                 return;
             case MirTerminatorKind.Drop:
-                this.Report(DiagnosticCode.Unsupported_Kd, terminator.Source); // C4a writes drops.
+                this.Drop(terminator, abi);
                 return;
             default:
                 throw new InvalidOperationException($"The MIR terminator kind {terminator.Kind} has no code generation row.");
@@ -655,6 +660,12 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        if (value.Prefix == 'h')
+        {
+            this.WriteHome((int)value.Number);
+            return;
+        }
+
         this.output.Write(Spell(value, stackalloc char[SpellingLength]));
     }
 
@@ -685,7 +696,8 @@ internal sealed partial class FunctionCodegen
     // A local's home and representation: Index is a pointer-passed argument's slot.
     private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
 
-    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @), the
-    // floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling) or the literal integer Number (Prefix NUL).
+    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @), the home
+    // of local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling) or
+    // the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 }

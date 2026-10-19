@@ -135,7 +135,9 @@ public partial class Compilation
     }
 
     /// <summary>Records the diagnostics of the latest <see cref="Analyze"/>: control flow, the MIR's records in the control-flow
-    /// partition, each merged by location (plan 6.2), then ownership.</summary>
+    /// partition, then ownership. A MIR record is a code without facts, so it is keyed by its location (plan 6.2, DIAGNOSTICS §4.1,
+    /// DECISIONS R4-M71): the records of two nodes at one location, such as the siblings a <c>for</c> expansion synthesizes with its span,
+    /// are one problem.</summary>
     public void ReportAnalysis()
     {
         this.Ownership.ControlFlow!.ReportDiagnostics();
@@ -143,7 +145,8 @@ public partial class Compilation
         this.MirRecords(this.problems);
         foreach (var problem in this.problems)
         {
-            this.SyntaxOf(problem.Subject).Report(DiagnosticRequirement.ControlFlow, problem.Code);
+            var node = this.SyntaxOf(problem.Subject);
+            node.DiagnosticCollection?.ReportLocation(DiagnosticRequirement.ControlFlow, node.Span, problem.Code, node.CodeContext.SourceDocument);
         }
 
         this.Ownership.ReportDiagnostics();

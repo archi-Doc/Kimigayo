@@ -32,7 +32,7 @@ public class AggregateValueCallTest
             var ir = ScalarEmissionTest.EmitFixture(fixture, source, stdout);
             if (destruction.Length != 0)
             {
-                StringEmissionTest.WriteAuditedFixture(fixture, source, ir, stdout, destruction);
+                StringEmissionTest.WriteAuditedFixture(fixture, ir, stdout, destruction);
             }
         }
     }
@@ -45,7 +45,7 @@ public class AggregateValueCallTest
             "let f: ((string, i32)) -> (string, i32) = callback\n" +
             "let result = apply(f@move, (\"generic\", 42))\nConsole.writeLine(result.0)\nrequire result.1 == 42 else => $abort(\"result\")";
         var ir = ScalarEmissionTest.EmitFixture("AggregateValueCallGeneric", Source, "generic\n");
-        StringEmissionTest.WriteAuditedFixture("AggregateValueCallGeneric", Source, ir, "generic\n", "generic=1");
+        StringEmissionTest.WriteAuditedFixture("AggregateValueCallGeneric", ir, "generic\n", "generic=1");
     }
 
     [Fact]
@@ -66,7 +66,7 @@ public class AggregateValueCallTest
             "    let f: ((string, i32), ()) -> () = callback\n" +
             "    f((\"abandoned\", 42), (return))\nrun()";
         var ir = ScalarEmissionTest.EmitFixture("AggregateValueCallAbandoned", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateValueCallAbandoned", Source, ir, string.Empty, "abandoned=1;unreachable=0");
+        StringEmissionTest.WriteAuditedFixture("AggregateValueCallAbandoned", ir, string.Empty, "abandoned=1;unreachable=0");
     }
 
     [Theory]

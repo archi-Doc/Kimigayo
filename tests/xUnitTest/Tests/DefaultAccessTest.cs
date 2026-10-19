@@ -38,6 +38,17 @@ public class DefaultAccessTest
         Assert.Single(error.Related!);
     }
 
+    // SPEC 7.2.3, 8.15: a default of a pair-bound parameter is checked per Semantics case, so `b = a` borrows the prepared argument
+    // exclusively in s = uniq and is rejected there, the case's binding related beside the prepared parameter (R5's F18 probe shape grab).
+    [Fact]
+    public void AGenericDefaultIsRejectedInTheCaseThatBorrowsExclusively()
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check("func grab<s/T>(a: s/T, b: s/T = a) -> i32\n    s is ref or uniq\n    return 0\npublic func main() => ()").Diagnostics);
+        Assert.Equal("DefaultArgumentBorrow_Kd", error.Code);
+        Assert.Contains("prepared argument", error.Message, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(["the Semantics binding s", "preceding prepared parameter"], error.Related!.Select(static x => x.Label));
+    }
+
     [Fact]
     public void EqualOriginNamesDoNotTurnAStoredReferenceCopyIntoAReborrow()
     {

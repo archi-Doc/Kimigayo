@@ -61,7 +61,8 @@ internal sealed partial class MirBorrows
     }
 
     // Each reservation activated (A3 5's err(activate)) as an exclusive borrow of its Place, the destroying one as a write of its target
-    // (shallow, and by E1 a destruction of the reservations it prefixes), whose call then destroys the old value there (Destroyed).
+    // (shallow, and by E1 a destruction of the reservations it prefixes), each meeting only Loans shared in the holder found (R4-M68), whose
+    // call then destroys the old value there (Destroyed, every mode).
     private void Activations(MirLocation at)
     {
         foreach (var (local, reservation, code) in this.reserving)
@@ -69,7 +70,7 @@ internal sealed partial class MirBorrows
             var loan = this.loans[reservation];
             var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
             var taking = Activation(this.slots[local]);
-            if (this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.Write : AccessKind.UniqueBorrow, taking) is var c and not None)
+            if (this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate, taking) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], code), c, taking, at, reservation);
             }
@@ -84,8 +85,8 @@ internal sealed partial class MirBorrows
     }
 
     // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the
-    // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending; past the
-    // destruction walk's bound it is unclassified.
+    // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending: the
+    // conflicts relation's ObservePast, so a clean Loan is reported first (R4-M70); past the destruction walk's bound it is unclassified.
     private void Destroyed(int reservation, BoundType target, int taking, MirLocation at)
     {
         var kind = this.Destruction(target);
@@ -97,16 +98,9 @@ internal sealed partial class MirBorrows
 
         var loan = this.loans[reservation];
         var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
-        for (var c = this.First(loan.Root); kind == AccessKind.Observe && c != None; c = this.candidates[c].Next)
+        if (kind == AccessKind.Observe && this.Conflict(loan.Root, steps, AccessKind.ObservePast, taking) is var c and not None)
         {
-            ref readonly var candidate = ref this.candidates[c];
-            this.Work++;
-            if (candidate.Takes(taking) && this.Hits(loan.Root, steps, AccessKind.Observe, candidate) &&
-                !this.Hits(loan.Root, steps, AccessKind.Write, candidate))
-            {
-                this.Report(this.Code(candidate, DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation);
-                return;
-            }
+            this.Report(this.Code(this.candidates[c], DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation);
         }
     }
 

@@ -100,15 +100,17 @@ internal sealed partial class MirEffects
         this.Obligations(report);
     }
 
+    // An obligation row's verdict, at Binding's row, which no body describes (R4-M71).
     private static void Verdict(MirReport report, in EffectObligation row, byte found, ulong views)
     {
         if ((found & (Environment | Unknown)) != 0)
         {
-            report.Add(new(row.Code, row.Requirement, row.Subject, views));
+            report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, views));
         }
         else if ((found & Limit) != 0)
         {
-            report.Add(new(DiagnosticCode.Unsupported_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported), row.Subject, views));
+            var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
+            report.Add(new(DiagnosticCode.Unsupported_Kd, requirement, row.Subject, MirProblem.NoBody, views));
         }
     }
 
@@ -477,7 +479,7 @@ internal sealed partial class MirEffects
             }
             else if (row.Definition is not { } target)
             {
-                report.Add(new(row.Code, row.Requirement, row.Subject, ulong.MaxValue));
+                report.Add(new(row.Code, row.Requirement, row.Subject, MirProblem.NoBody, ulong.MaxValue));
             }
             else
             {

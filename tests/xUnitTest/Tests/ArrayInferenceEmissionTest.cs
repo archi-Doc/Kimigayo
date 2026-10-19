@@ -52,7 +52,7 @@ public class ArrayInferenceEmissionTest
     public void InferenceRetainsOneDestructionResponsibility(string name, string source, string counts, int[] order)
     {
         var ir = ScalarEmissionTest.EmitFixture("ArrayInference" + name, source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("ArrayInference" + name, source, ir, string.Empty, counts, order: order);
+        StringEmissionTest.WriteAuditedFixture("ArrayInference" + name, ir, string.Empty, counts, order: order);
     }
 
     [Fact]

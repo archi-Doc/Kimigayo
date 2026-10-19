@@ -748,6 +748,61 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     let first = view[0]
                 """));
 
+    // SPEC 15.6.7 (DECISIONS R4-M68): the target is checked once, so each Loan and reservation are one problem. An activation conflicts only
+    // with a Loan shared in the holder it is found in (f3, a live view, an overlapping reservation); an exclusive Loan that hits the
+    // reservation is reported where the later Borrow met the other: at the reservation's formation, a call's (f1, i2), a writeback's (f4) or
+    // a destroying call's (i4), or at its own formation or inner activation while the reservation waits (issuedDuring, a reservation then).
+    [Fact]
+    public void AReservationMeetsEachLoanOnce()
+        => Assert.Equal(
+            [
+                "f1: x@uniq", "f3: give(x@uniq, 1) CallActivationConflict_Kd", "f4: x += 1", "i2: x@uniq", "i4: s@uniq",
+                "sortView: values.sort() CallActivationConflict_Kd", "issuedDuring: takeU(arr[0]@uniq) CallReservationConflict_Kd",
+                "swapSame: Kimi.Intrinsics.swap(p@uniq, p@uniq) CallReservationConflict_Kd", "f6: giveTwo(x@uniq, x@uniq) CallReservationConflict_Kd",
+            ],
+            Problems("""
+                func giveTwo(a: uniq/i32, b: uniq/i32) => ()
+                func takeU(a: uniq/i32) -> i32 => a@follow
+                func f1()
+                    var x = 1
+                    let c = x@uniq
+                    give(x@uniq, 1)
+                    inspect(c)
+                func f3()
+                    var x = 1
+                    let r = x@ref
+                    give(x@uniq, 1)
+                    inspect(r)
+                func f4()
+                    var x = 1
+                    let c = x@uniq
+                    x += 1
+                    inspect(c)
+                func i2()
+                    var x = 1
+                    let c = x@uniq
+                    giveTwo(x@uniq, c)
+                func i4()
+                    var s: Array<i32> = [1]
+                    let k = s@uniq
+                    Kimi.Intrinsics.replace(s@uniq, with: [2])
+                    inspect(k)
+                func sortView()
+                    var values: Array<i32> = [3, 1]
+                    let view = values.slice()
+                    values.sort()
+                    inspect(view)
+                func issuedDuring()
+                    var arr: Array<i32> = [1, 2]
+                    arr.append(takeU(arr[0]@uniq))
+                func swapSame()
+                    var p = 1
+                    Kimi.Intrinsics.swap(p@uniq, p@uniq)
+                func f6()
+                    var x = 1
+                    giveTwo(x@uniq, x@uniq)
+                """));
+
     // SPEC 7.7.3, 15.6.7 (A3 5's use of the callee operand): an Exclusive call takes its Closure as uniq/Self, so a Value callee's receiver
     // reservation activates at its Call as an argument's does, also through a reference and beside arguments; a Shared call borrows its
     // Closure shared, and a read of the Closure while the arguments are evaluated precedes the activation.
@@ -940,12 +995,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 15.6.6, 15.6.3, 15.7.1 (A3 err(destroy), E8, E11; 26a, 26b, 123, 123c, 15a, 15b): a call that destroys its target in place
     // reads the target where it is reserved and writes it at activation, and its old value's observing destruction uses the Places past it,
     // before the call ends the Loans it prefixes (SPEC 15.6.3's replace keeps c's parent Loan, 15b); a `clear` activates as an exclusive
-    // borrow, after its receiver's reservation met the same Loan (a formation and an activation, A6's merge: unit 1c).
+    // borrow, and its receiver's reservation met c's Loan at its formation, which reports the pair (R4-M68, as for s2 and in
+    // AReservationMeetsEachLoanOnce).
     [Fact]
     public void ADestroyingCallChecksWhatItDestroys()
         => Assert.Equal(
             [
-                "d26a: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "d26b: arr", "d26b: arr.clear() CallActivationConflict_Kd",
+                "d26a: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "d26b: arr",
                 "d123: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))",
                 "d123c: Kimi.Intrinsics.replace(s@uniq, with: Q.init(r: y@uniq, q: z@ref))", "d15b: x = 3",
             ],
@@ -1109,7 +1165,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         => Assert.Equal(
             [
                 "o136b: give2(x, r@follow)", "o136d: (x, r@follow)", "o136f: x + r@follow", "o136g: x.plus(r@follow)", "o137b: (x@uniq, x)",
-                "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "s2: g.level = r@follow.level CallActivationConflict_Kd", "rs1: x",
+                "o137c: (r, x)", "o137e: x", "n2: x", "s2: g", "rs1: x",
                 "o131a: give(r, x)", "o131b: giveR(r, x)", "o131c: x", "o130g: bump(value)",
             ],
             Problems(Order + """
@@ -1488,6 +1544,178 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             ["Unsupported_Kd func deep(n: Nest<ref/i32 during a>)", "Unsupported_Kd Nest<ref/i32>.init(value: y@ref)"],
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
+
+    // R4-M70 (SPEC 7.2.3; until A5-F9, unit 2e): the value a default's evaluation places into its pending slot carries the slot's default
+    // taint: a default template's result (the 1c design's p06, a recursive generic default and a recursive Function-typed one) and an inline
+    // copy's store (p15, whose copy keeps the slot of x borrowed in y's). A conflict whose Loan only sets with a taint hold is one located
+    // Unsupported_Kd per omitting call, never a Language problem; a Loan a holder without a taint also keeps stays one (`both`), as does an
+    // explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean value: unsupported too.
+    // A copy's store into its slot that acquires again by case, a PairAcquire (R5's F18 probe shapes), lies in the copy and taints: from a
+    // concrete caller (`copied`), a generic one (`copiedGeneric`) and a uniq argument's reborrow (`reborrowed`, whose template the old
+    // analysis rejects, DefaultAccessTest), as does a template call's result into the slot (`called`). A clean route stays the Language
+    // problem, witnessed by its clean holder (`copiedClean`). A destroying call's observing destruction (err(destroy)) reports the clean
+    // Loan before the tainted one whichever holder comes first (`dz`, `dzSwapped`: the group 1c final review's B1).
+    [Fact]
+    public void ADefaultsTaintMakesItsConflictsUnsupported()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func f<T>(n: i32, x: T, value: T = if n == 0 => x else => f(n - 1, x)) -> T
+                T is Copy
+                return value
+            func g(n: i32, value: () -> i32 = if n == 0 => func () => 7 else => g(n - 1)) -> () -> i32 => value@move
+            func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+            func same(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
+            func first(x: ref/i32 during a, y: i32 = 0) -> ref/i32 during a => x
+            func p06()
+                var k = 3
+                let r = f(3, k@ref)
+                k = 4
+                let a = g(3)
+            func p15()
+                var n = 3
+                fc(n@uniq)
+            func both()
+                var k = 1
+                let p = k@ref
+                let r = same(p)
+                k = 2
+                inspect(r)
+                inspect(p)
+            func joined()
+                var k = 1
+                let r = same(k@ref)
+                k = 2
+                inspect(r)
+            func given()
+                var k = 1
+                let r = first(k@ref)
+                k = 2
+                inspect(r)
+            func pick<s/T>(a: s/T, b: s/T = a) -> s/T
+                s is owner or ref
+                T is Copy
+                return b
+            func grab<s/T>(a: s/T, b: s/T = a) -> i32
+                s is ref or uniq
+                return 0
+            func id<s/T>(x: s/T) -> s/T
+                s is owner or ref
+                T is Copy
+                return x
+            func via<s/T>(a: s/T, b: s/T = id(a)) -> s/T
+                s is owner or ref
+                T is Copy
+                return b
+            func copied()
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(y)
+            func copiedClean()
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(r)
+                inspect(y)
+            func copiedGeneric<s/T>(z: s/T)
+                s is owner or ref
+                T is Copy
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(y)
+            func reborrowed(u: uniq/i32) -> i32 => grab(u)
+            func called()
+                var k = 1
+                let r = k@ref
+                let y = via(r)
+                k = 2
+                inspect(y)
+            func dz()
+                var x: Array<i32> = [1, 2]
+                var y: Array<i32> = [3]
+                var s = C.init(r: x@uniq)
+                let t = same(s.r@follow[0]@ref)
+                let u = s.r@follow[0]@ref
+                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                inspect(t)
+                inspect(u)
+            func dzSwapped()
+                var x: Array<i32> = [1, 2]
+                var y: Array<i32> = [3]
+                var s = C.init(r: x@uniq)
+                let u = s.r@follow[0]@ref
+                let t = same(s.r@follow[0]@ref)
+                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                inspect(t)
+                inspect(u)
+            """);
+        var program = Analyze(c);
+        Assert.Equal(
+            [
+                "f: f(n - 1, x) Unsupported_Kd", "g: g(n - 1) Unsupported_Kd", "p06: f(3, k@ref) Unsupported_Kd", "p06: g(3) Unsupported_Kd",
+                "p15: fc(n@uniq) Unsupported_Kd", "both: k = 2", "joined: same(k@ref) Unsupported_Kd", "given: k = 2",
+                "copied: pick(r) Unsupported_Kd", "copiedClean: k = 2", "copiedGeneric: pick(r) Unsupported_Kd",
+                "reborrowed: grab(u) Unsupported_Kd", "called: via(r) Unsupported_Kd",
+                "dz: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "dzSwapped: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))",
+            ],
+            Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        var clean = Array.FindIndex(program.Problems.All.ToArray(), x => program.Bodies[x.Body].Key.Decl?.Name == "copiedClean");
+        Assert.Contains(program.Problems.Facts(clean).ToArray(), x => x.Kind == MirFactKind.Use && Line(c, x.Site) == "inspect(r)");
+    }
+
+    // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
+    // is derived and never arises (the 1c design's op6; R5's Q21 review N3: a failed member access whose operand's Loan a kept temp holds,
+    // `get(x@ref).missing` and `(p@uniq).missing`), while a Loan another holder keeps is checked: op5's p, o7's r, and j1's h on the path
+    // that does not replace it.
+    [Fact]
+    public void AnOpaqueValueCarriesNoLoan()
+        => Assert.Equal(
+            ["op5: x = 2", "o7: x = 2", "j1: x = 2"],
+            RejectedProblems("""
+                func get(a: ref/i32) -> ref/i32 during a => a
+                func op5()
+                    var x = 1
+                    let p = x@ref
+                    let r = bogus(p)
+                    x = 2
+                    inspect(r)
+                    inspect(p)
+                func op6()
+                    var x = 1
+                    let p = x@ref
+                    let r: ref/i32 = bogus(p)
+                    x = 2
+                    inspect(r)
+                func o7()
+                    var x = 1
+                    let r = x@ref
+                    let s: ref/i32 = undefinedFn(r)
+                    x = 2
+                    inspect(s)
+                    inspect(r)
+                func j1(c: bool)
+                    var x = 1
+                    let r = x@ref
+                    var h: ref/i32 = r
+                    if c
+                        h = undefinedFn(0)
+                    x = 2
+                    inspect(h)
+                func kept()
+                    var x = 1
+                    let r: ref/i32 = get(x@ref).missing
+                    x = 5
+                    _ = r@follow
+                func keptUnique()
+                    var p = Pair.init()
+                    let r: uniq/Pair = (p@uniq).missing
+                    _ = p.a
+                    _ = r.a
+                """));
 
     // SPEC 4.8.2 (A3 E6, ret): a Slice handle is a borrow, so a call retaining it by its own Origin also carries what a read through it
     // reaches, and one retaining only its elements' Origins (toArray) keeps their Loans but not the handle's (SliceToArrayTest's References);
@@ -1878,12 +2106,27 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(7, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
     }
 
-    // The Loan problems of a program's own bodies: function and the subject's first line, with the code unless it is a comparison's.
+    // The Loan problems of a program's own bodies.
     private static string[] Problems(string source)
     {
         var c = MirBuildTest.Compile(Prelude + source);
-        var program = Analyze(c);
-        return [.. program.Problems.All.ToArray().Where(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0)
+        return Problems(c, Analyze(c), LoanCodes);
+    }
+
+    // The Loan problems of a program Binding rejects, whose failed nodes the MIR builds as Opaque values (SPEC 23.1.2).
+    private static string[] RejectedProblems(string source)
+    {
+        var c = MirBuildTest.Compile(Prelude + source);
+        Assert.NotEmpty(c.Binding.Issues);
+        var program = c.BuildMir();
+        new Stratum(c.Types).Run(program);
+        return Problems(c, program, LoanCodes);
+    }
+
+    // A program's problems of some codes in its own bodies: function and the subject's first line, with the code unless it is a comparison's.
+    private static string[] Problems(Compilation c, MirProgram program, DiagnosticCode[] codes)
+    {
+        return [.. program.Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
         static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;
