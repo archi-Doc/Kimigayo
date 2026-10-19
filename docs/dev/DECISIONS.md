@@ -3654,7 +3654,7 @@ structure is recorded here by the unit that first implements it.
   `MonoKind.ObjectDescriptor` and `MonoKind.VTable` are approved with the K package, §11; round 2 after the independent review's B1)
   Only a creation (`MakeObj`, `MakeRc`, `MakeArc`, the intrinsic rows whose `Target` is Descriptor, and an Item of their functions)
   targets the `ObjectDescriptor` item of its payload in the item's instance, the substitution's Type argument (`Types[0]`, the one
-  operand form every target row reads, as `LaysOutType` does), keyed by its erasure and admitted with its layout verdict (a
+  operand form every Type-reading row reads, as `LaysOutType` does), keyed by its erasure and admitted with its layout verdict (a
   type-driven item, R5-M44). A clone and a runtime Type test carry no target: a test acquires nothing (SPEC 13.6.4) and neither use
   needs a layout (SPEC 8.15.3); a clone is payload-independent (IMPL 21.1.3). A descriptor's targets, at its default site, are its
   payload's glue (the finalizer's destruction of the actual Type, SPEC 16.3.3, which a non-Sealed handle's glue leaves to it) and,
