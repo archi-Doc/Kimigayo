@@ -1805,11 +1805,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     exit (an O4 item). The proposal's revision and SPEC integration are a separate session (2f-S2); until then PD30 applies.
   - OQ4 (a): when Binding binds receiver-dependent closure-call results (2c-5), the default pipeline keeps its verdict through a
     gate in the old Analysis at the same call (`Ownership.Unsupported`), a D5 exception deleted at R6-check.
-  - OQ5 (i)(a), (ii), (iii)(a): R4 exits with no blocking row and no open (b) row naming an R4 unit or R4 G issue; a (b) row
-    naming another owner needs the owner's approval. The proof is §5.4's: the mir ledger at the exit head (0 open blocking rows,
-    0 unclassified signatures, Landed = 14 families with A5-F5's recorded (e) variants, A6's contract test), stand-in tests for
-    the codes the ledger does not compare, the census and the final review. The restated kind as PD18 narrows it is adopted;
-    2x-T3 implements it and supersedes R4-M47's clause.
+  - OQ5 (i)(a), (ii), (iii)(a) ((iii) superseded by R4-M80): R4 exits with no blocking row and no open (b) row naming an R4 unit
+    or R4 G issue; a (b) row naming another owner needs the owner's approval. The proof is §5.4's: the mir ledger at the exit
+    head (0 open blocking rows, 0 unclassified signatures, Landed = 14 families with A5-F5's recorded (e) variants, A6's
+    contract test), stand-in tests for the codes the ledger does not compare, the census and the final review. The restated kind
+    as PD18 narrows it is adopted; 2x-T3 implements it and supersedes R4-M47's clause.
   - OQ6 (a): the departures from owner-approved texts are confirmed: A4's Keys classes replace A3 §4.2's `bool` (R4-M38); C1-F4's
     row tuple gains Equality, Source, Clause and destination Type (A3 §4.3); A5P §7's U8p is superseded by R4-M40's `RawSlice`
     backing operand; A5P §7's M39 Binding part is void. The fifth, E5's cause site on the problem instead of keys in `MirOpaque`
@@ -1907,6 +1907,24 @@ and migration obligations remain in force; no numeric cap changes are authorized
   change in that folder's README for their resume. It re-plans BU's step-2 units (PD6) and its asks of R5 (AR-1, AR-2, AR-8)
   as they come due, with reviewers that wrote neither design nor code; AR-7's acceptance stays R5's and waits for its resume or
   goes to the owner.
+- **R4-M80 2x-T3: no restated kind (OQ5 (iii) (b))** (owner, 2026-10-19, relayed by the R4 planning session, verbatim
+  「作らない (推奨)」 to the option of no restated kind (OQ5 (iii) (b): the 79 rows stay blocking under 2x-T2's owners and the ledger
+  shape is unchanged); supersedes R4-M74's OQ5 (iii) answer; unit 2x-T3 stopped before code under its row's own condition) The
+  ledger adds no `restated` kind and keeps R4-M17's row shape. Finding: PD18's test (the old row's related borrow site equals a
+  fact site of a paired MIR record in its body, or the same A1 subject Place) has no input. The raw rows carry no related site
+  on either side, and on the live records of 2x-T2's 79 candidates (`draft/Sketches/A5 Step 2/step2-base-ledger.md` §6, base
+  `6e969f94`; one fresh compile per source reproduced all 79) `OwnershipIssue.Borrow` is set on 0, 52 rows carry `LoanSource`
+  (the holder, the value retaining the Loan), 5 only a reservation's lending point and 22 nothing, while a MIR problem's facts
+  name its Loan's anchor (the borrow), its witness and a reservation's anchor, and an A1 problem has none. Exact site equality
+  would move 9 rows, an equal start offset 30, span containment 49; the looser readings let a coincidence exempt a row from
+  blocking, unsound for the exit gate. Consequences: the 79 rows stay blocking under the owners 2x-T2 assigned in its "if left
+  missing" column (X-1 66, 2x-T4 11, 2a 2); the restated-row parts of 2g-4b, X-1 and X-5 have no rows. X-1 classifies each of
+  its 66 as the same failure at another location or a missed independent error, the latter a (b) defect of its family with a
+  regression test (planning session). R4-M47's clause stays as it is: 2x-T3 does not supersede it. 2x-T3's `BodyOf` part is
+  void: source a229d8f4dca0's node, which the plan took for one outside its tree, is in the tree with a broken Parent link (PLAN
+  G169), which a ledger mapping would hide. Rejected: a `sites` column in the raw row (an R4-M17 row-shape change PD18 avoids,
+  and a fresh ledger run; it tests the holder or reservation against the MIR's sites, not the same Loan); a Place-identity
+  reading by start offset or containment (not PD18's predicate, and unsound as above).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
