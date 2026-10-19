@@ -221,6 +221,34 @@ public class PublishedPlaceProjectionTest
         ScalarEmissionTest.EmitFixture("PublishedPlaceStoredShared", Source, string.Empty);
     }
 
+    // DECISIONS BU-10: the guard applies to element roots only; a string compared below a Field or a Tuple element that stores
+    // `uniq/Point`, reached through a shared parameter, is read in place and generates on the default pipeline, as before G147 (2b).
+    [Fact]
+    public void ComparedPartsBelowAStoredFieldReferenceGenerate()
+    {
+        const string Source = """
+            struct Point
+                public var name: string = ""
+                public init() => ()
+            struct Holder {a}
+                public var ptr: uniq/Point during a
+                public init(ptr: uniq/Point during a) => self.ptr = ptr@move
+            func field(h: ref/Holder) -> bool
+                return h.ptr.name == "a"
+            func element(t: ref/(uniq/Point during x, i32)) -> bool
+                return t.0.name == "b"
+            var p = Point.init()
+            p.name = "a"
+            var h = Holder.init(p@uniq)
+            let named = field(h@ref)
+            var q = Point.init()
+            q.name = "b"
+            var t = (q@uniq, 1)
+            require named and element(t@ref) else => $abort("field")
+            """;
+        ScalarEmissionTest.EmitFixture("PublishedPlaceStoredField", Source, string.Empty);
+    }
+
     // DECISIONS BU-10 (until R6-check): the old paths reach the referent of the reference an element stores only one layer deep and
     // only on the whitelisted paths (exclusively: not below a built-in element or a local's Tuple element; shared below a built-in
     // element: only on a named sequence), so the old analysis reports any other read through an element's stored layers, a

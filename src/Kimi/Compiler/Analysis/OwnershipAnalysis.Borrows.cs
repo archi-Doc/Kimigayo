@@ -7,17 +7,17 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    // DECISIONS BU-10 (the owner's whitelist; removed with the old path at R6-check): whether the old paths lower a read of an
-    // element through the one reference it stores, on the paths shown to generate: below a built-in element, only a shared read
-    // whose sequence is a name (IsName); below a user index's element, a shared read on any receiver path, and an exclusive one when
-    // the receiver path is a name, a stored Field of such a path, a Tuple element reached through a reference (the referent of a
-    // `uniq/` parameter) or another user index's element on such a path.
+    // DECISIONS BU-10 (the owner's whitelist; removed with the old path at R6-check): whether the old paths lower a read through the
+    // one reference a Place stores, on the paths shown to generate: below a built-in element, only a shared read whose sequence is a
+    // name (IsName); below a user index's element, or a Field or Tuple element read in place for a comparison, a shared read on any
+    // path, and an exclusive one when the path is a name, a stored Field of such a path, a Tuple element reached through a reference
+    // (the referent of a `uniq/` parameter) or another user index's element on such a path.
     private static bool LowersElementRead(Koto element, bool exclusive)
     {
         var node = KotoHelper.UnwrapParentheses(element);
-        if (node is not IndexKoto userIndex || !ElementAccess.IsUserIndex(userIndex))
+        if (node is IndexKoto builtIn && !ElementAccess.IsUserIndex(builtIn))
         {
-            return !exclusive && node is IndexKoto builtIn && IsName(builtIn.Left);
+            return !exclusive && IsName(builtIn.Left);
         }
 
         if (!exclusive)

@@ -2141,7 +2141,8 @@ R5 on the owner's request of 2026-10-18.
   list). Below a user index's element: an exclusive read when the receiver path is a local, parameter or capture, a stored Field of
   such a path, a Tuple element reached through a reference (the referent of a `uniq/` parameter) or another user index's element
   on such a path; a shared read whatever the receiver path (shown on those paths, a local's Tuple element and a built-in element).
-  Below a built-in element: only a shared read whose sequence is a local, parameter or capture. Outside it, for example:
+  Below a built-in element: only a shared read whose sequence is a local, parameter or capture. A Field or Tuple element read in
+  place for a comparison (`h.ptr.name == "a"`) is no element: as before G147 (2b), only its layers count. Outside it, for example:
   `vals[0].n = 5`, `vals[0][1].n = 5`, `t.0[1].n = 5`, and the reads `t.0[0].n`, `h.vals[0].n`, `vals[0][0].n`. The guard goes
   with the old analysis at R6-check. Rejected: A, `IsBarePlace` reading the node's Type for a synthesized read
   (one form; `PathAuthority` stays Owner, so Take and writes through `ref/` stay accepted); B, no read for a layered element (drops
