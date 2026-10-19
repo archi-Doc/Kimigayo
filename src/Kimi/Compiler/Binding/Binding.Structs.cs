@@ -7,15 +7,51 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
+    // PLAN G128's implementation limits on storage preparation (DECISIONS BU-12): the height of a Type's storage, and the Types on the
+    // storage walk's path, the query's root included, which ends a Type that grows. Refused and Capped are the walk's two failures.
+    private const int StorageHeightLimit = 64;
+    private const int StoragePathLimit = 256;
+    private const int StorageRefused = int.MaxValue;
+    private const int StorageCapped = int.MaxValue - 1;
+
     private readonly Dictionary<FunctionKoto, BindingSymbol> specialReceivers = new(ReferenceEqualityComparer.Instance);
     private readonly HashSet<Koto> inferredConstructorTargets = new(ReferenceEqualityComparer.Instance);
+
+    // The storage walk's marks for the pass, by Type: a finished Type's height (StorageRefused when refused), or an open Type's position
+    // on the walk's stack (Open), which every query leaves empty; ResetPass clears both, after a walk a fault aborted too.
+    private readonly Dictionary<BoundType, (int Height, int Open)> storageMarks = new(ReferenceEqualityComparer.Instance);
+    private readonly List<BoundType> storageStack = new();
     private Dictionary<Koto, ConstructorAbsence>? constructorAbsences;
     private ulong storageVersion;
 
     internal BindingSymbol? SpecialReceiver(FunctionKoto function) => this.specialReceivers.GetValueOrDefault(function);
 
-    // Whether a Type's storage substitutes completely, nested at most 64 levels below it (PLAN G128's bound).
-    internal bool PrepareTypeStorage(BoundType type) => this.StorageHeight(type, 64) >= 0;
+    // Whether a Type's storage substitutes completely within PLAN G128's limits (DECISIONS BU-12): its height is at most 64 and no walk
+    // from it passes 256 Types. A refusal marks every Type left open, each of which reaches the refusing part; a capped walk unmarks
+    // them, since the cap depends on the path. Instance substitution never queries storage, so the walk's stack is empty at entry.
+    internal bool PrepareTypeStorage(BoundType type)
+    {
+        if (this.storageStack.Count != 0)
+        {
+            throw new InvalidOperationException($"Storage preparation of {type.Name} was queried during another storage walk.");
+        }
+
+        var height = this.StorageHeight(type, 1, out _);
+        foreach (var open in this.storageStack)
+        {
+            if (height == StorageRefused)
+            {
+                this.storageMarks[open] = (StorageRefused, 0);
+            }
+            else
+            {
+                this.storageMarks.Remove(open);
+            }
+        }
+
+        this.storageStack.Clear();
+        return height <= StorageHeightLimit;
+    }
 
     internal BoundType? InstantiateStorageType(BoundType type, CallPlan call) => this.InstantiateStorageType(type, this.types.StorageSubst(call));
 
@@ -50,65 +86,96 @@ public sealed partial class Binding
         return false;
     }
 
-    // Whether an instance's storage substitutes completely, nested Types included, within the bound: the levels its walk reaches
-    // below a Type (0 for a scalar; 1 + the highest base, Field, Case payload Tuple or Type component), or -1 when a part does not
-    // substitute or the height exceeds the budget. A struct or enum keeps its height for the pass once all its parts passed, so the
-    // answer depends on the Type, not on the order of queries (DECISIONS BU-11). It reads storage metadata only; it never rebinds or
-    // selects a body.
-    private int StorageHeight(BoundType type, int budget)
+    // The storage height of a Type the walk meets as the path-th Type from the query's root, one strongly connected component at a time
+    // (Tarjan; DECISIONS BU-12): an edge between two members of a component counts 0, an edge to a non-member 1 + its height, so every
+    // member gets its component's height, the largest exit, when the member that opened the component closes it. The answer depends on
+    // the Type alone. An open Type gives 0 and its stack position as low; StorageRefused when a part does not substitute or a height
+    // passes 64; StorageCapped past 256 Types on the path. It reads storage metadata only; it never rebinds or selects a body.
+    private int StorageHeight(BoundType type, int path, out int low)
     {
-        if (budget < 0)
+        low = int.MaxValue;
+        if (this.storageMarks.TryGetValue(type, out var mark))
         {
-            return -1;
+            low = mark.Open == 0 ? low : mark.Open;
+            return mark.Open == 0 ? mark.Height : 0;
         }
 
+        if (path > StoragePathLimit)
+        {
+            return StorageCapped;
+        }
+
+        var position = this.storageStack.Count + 1;
+        this.storageStack.Add(type);
+        this.storageMarks[type] = (0, position);
         var height = 0;
-        if (!AdtDef.IsStruct(type) && !AdtDef.IsEnum(type))
+        var lowest = position;
+        var failure = this.StorageParts(type, path + 1, ref height, ref lowest);
+        if (failure != 0 || lowest < position)
         {
-            return this.Highest((BoundType[])type.Components, budget - 1, ref height) ? height : -1;
+            low = lowest;
+            return failure != 0 ? failure : height;
         }
 
-        var instance = this.Instance(type);
-        if (instance.Prepared == this.storageVersion)
+        for (var i = position - 1; i < this.storageStack.Count; i++)
         {
-            return instance.Height <= budget ? instance.Height : -1;
+            this.storageMarks[this.storageStack[i]] = (height, 0);
         }
 
-        // Stamped first at height 0, so an instance reached again through its own storage counts 0 and is not walked twice.
-        instance.Prepared = this.storageVersion;
-        instance.Height = 0;
-        if ((AdtDef.IsEnum(type) && instance.Cases is null) || !this.StoredHeight(instance, budget - 1, ref height) ||
-            !this.Highest((BoundType[])type.Components, budget - 1, ref height))
-        {
-            instance.Prepared = 0;
-            return -1;
-        }
-
-        instance.Height = height;
+        this.storageStack.RemoveRange(position - 1, this.storageStack.Count - position + 1);
         return height;
     }
 
-    // Raises height to one above each stored Type of an instance (its base, Fields and Case payload Tuples); false when one is missing
-    // or fails (StorageHeight).
-    private bool StoredHeight(AdtDef.InstanceStorage instance, int budget, ref int height)
-        => (instance.Base is not { } parent || this.Highest([parent], budget, ref height)) && this.Highest(instance.Fields, budget, ref height) &&
-            this.Highest(instance.Cases, budget, ref height);
-
-    // Raises height to one above each Type's storage height; false when one is missing or fails (StorageHeight).
-    private bool Highest(ReadOnlySpan<BoundType?> types, int budget, ref int height)
+    // Walks a Type's parts in order (a struct's or enum's base, Fields and Case payload Tuples, then its components): 0, or the failure
+    // that ends the walk.
+    private int StorageParts(BoundType type, int path, ref int height, ref int lowest)
     {
-        foreach (var type in types)
+        if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
         {
-            var part = type is null ? -1 : this.StorageHeight(type, budget);
-            if (part < 0)
+            var instance = this.Instance(type);
+            if (AdtDef.IsEnum(type) && instance.Cases is null)
             {
-                return false;
+                return StorageRefused;
             }
 
-            height = Math.Max(height, part + 1);
+            var failure = instance.Base is { } parent ? this.StorageEach([parent], path, ref height, ref lowest) : 0;
+            failure = failure != 0 ? failure : this.StorageEach(instance.Fields, path, ref height, ref lowest);
+            failure = failure != 0 ? failure : this.StorageEach(instance.Cases, path, ref height, ref lowest);
+            if (failure != 0)
+            {
+                return failure;
+            }
         }
 
-        return true;
+        return this.StorageEach((BoundType[])type.Components, path, ref height, ref lowest);
+    }
+
+    // Raises height over parts: a part that reaches an open Type is a member of the component (no level), any other an exit (1 + its
+    // height); lowest takes the lowest open position a part reaches. 0, or the failure that ends the walk.
+    private int StorageEach(ReadOnlySpan<BoundType?> parts, int path, ref int height, ref int lowest)
+    {
+        foreach (var part in parts)
+        {
+            if (part is null)
+            {
+                return StorageRefused;
+            }
+
+            var value = this.StorageHeight(part, path, out var low);
+            if (value > StorageHeightLimit)
+            {
+                return value;
+            }
+
+            height = Math.Max(height, low == int.MaxValue ? value + 1 : value);
+            lowest = Math.Min(lowest, low);
+            if (height > StorageHeightLimit)
+            {
+                return StorageRefused;
+            }
+        }
+
+        return 0;
     }
 
     private void IndexSpecialReceiver(FunctionKoto function, BindingScope scope)

@@ -233,17 +233,25 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
     }
 
-    // SPEC 3.1.3 (DECISIONS R5-M38): a named Place of Type Never takes the acquisition Binding publishes, Copy for a bare read (Never is
-    // Copy, BU-4), into its node's Never temp, so a Never parameter read twice is no MovedPlace.
-    [Fact]
-    public void ANeverPlaceIsAcquiredAsBindingPublishes()
+    // SPEC 3.1.3, 14.10.3 (DECISIONS R5-M38, BU-6): a named Place of Type Never takes the acquisition Binding publishes into its node's
+    // Never temp, Copy for a bare read (Never is Copy, BU-4) and Move for x@move, which keeps its effect on the assumed path: a Never
+    // parameter read twice is no MovedPlace, a read after x@move is one, and a read before it is not.
+    [Theory]
+    [InlineData(" => g(x, x)\n", "Copy Copy", "")]
+    [InlineData(" => g(x@move, x)\n", "Move Copy", "MovedPlace_Kd x 1")]
+    [InlineData(" => g(x, x@move)\n", "Copy Move", "")]
+    [InlineData("\n    let a = x@move\n    let b = x\n", "Move Copy", "MovedPlace_Kd x 1")]
+    public void ANeverPlaceIsAcquiredAsBindingPublishes(string body, string acquisitions, string problems)
     {
-        const string Source = "func g(a: Never, b: Never) => ()\nfunc absurd(x: Never) => g(x, x)\n";
-        var c = MirBuildTest.Compile(Source);
-        Assert.Empty(c.BuildMir().Findings);
-        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "x" && x.Parent is InvocationKoto);
-        Assert.Equal([HirAcquire.Copy, HirAcquire.Copy], reads.Select(static x => HirTables.AdjustOf(x).Acquire));
-        Assert.Empty(Problems(Source));
+        var source = "func g(a: Never, b: Never) => ()\nfunc absurd(x: Never)" + body;
+        var c = MirBuildTest.Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var reads = KotoTree.Walk(c.Kotonoha.RootKoto).Where(static x => x.ToString() == "x" && HirTables.AdjustOf(x).Acquire != HirAcquire.Unset);
+        Assert.Equal(acquisitions, string.Join(' ', reads.Select(static x => HirTables.AdjustOf(x).Acquire)));
+        var absurd = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "absurd");
+        Assert.Equal(acquisitions, string.Join(' ', absurd.Operands.ToArray().Where(static x => x.Place == new MirPlace(1)).Select(static x => x.Kind)));
+        Assert.Equal(problems, string.Join(" | ", Problems(source)));
     }
 
     // SPEC 12.2 (DECISIONS R5-M38): a named Never Place read before a later operand builds code is acquired into its node's Never temp,

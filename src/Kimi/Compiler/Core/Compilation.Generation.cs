@@ -111,7 +111,7 @@ public partial class Compilation
             return false;
         }
 
-        var generator = this.moduleCodegen ??= new(this.Layout);
+        var generator = this.moduleCodegen ??= new(this.Layout, this.Locations);
         if (generator.Write(program, collector, this.Binding.Startup, writer))
         {
             return true;

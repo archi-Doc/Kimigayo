@@ -323,9 +323,11 @@ public class MinimalEmissionTest
         }
     }
 
-    internal static Compilation Analyze(string source, string path = "Hello.kimi")
+    // A program analyzed for an Application, by the process's code generator unless one is named.
+    internal static Compilation Analyze(string source, string path = "Hello.kimi", CompilerCodegen? codegen = null)
     {
         var c = Compilation.CreateForTest();
+        c.Codegen = codegen ?? c.Codegen;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument(path, source));
         c.Bind();

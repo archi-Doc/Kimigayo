@@ -2170,8 +2170,9 @@ R5 on the owner's request of 2026-10-18.
   both take the join's Type. This supersedes the @move and @copy clauses of BU-4's U3 and U4 entries.
 - **BU-11** (2026-10-19; the BU planning session; PLAN G153 (2), found by R5's K6 review; option A1 of the BU6 design, chosen by
   the planning session the same day; R5-M37's Layout memo is the precedent) Binding's storage bound (PLAN G128: `TyCtxt.Apply`
-  refuses an instance whose stored Types nest more than 64 levels, A5 plan PD30's storage-nesting gap) is a property of each
-  instance. `StorageHeight(type, budget)` (`Binding.Structs.cs`) gives the levels the storage walk reaches below a Type (0 for a
+  refuses an instance whose stored Types nest more than 64 levels, R4-M51's located `Unsupported_Kd`, the capability row
+  StorageNesting) is a property of each instance. `StorageHeight(type, budget)` (`Binding.Structs.cs`) gives the levels the
+  storage walk reaches below a Type (0 for a
   scalar; 1 + its highest base, Field, Case payload Tuple or Type component), or -1 when a part does not substitute or the height
   exceeds the budget; `PrepareTypeStorage` admits a height of at most 64 and is the one entry. New state:
   `AdtDef.InstanceStorage.Height`, valid while `Prepared` is the current pass. A struct or enum is stamped at height 0 when the
@@ -2188,7 +2189,39 @@ R5 on the owner's request of 2026-10-18.
   `Option<rc/…>` is refused. Rejected: clearing the stamp when a Type component fails, alone (the memo still ignores depth); no
   memo below the root (exponential over shared parts, `Pair^25`); not keeping cycle members (exponential over mutually recursive
   Types); heights shared per strongly connected component with a growth cap on the walk (A2) and inline-only preparation (B),
-  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7).
+  which change what G128 and PD30 define the bound to mean. Not temporary (G128's bound goes at R7). Superseded by BU-12 in its
+  representation (`InstanceStorage.Height`, `Prepared`) and its residual; its rule for acyclic storage stands.
+- **BU-12** (2026-10-19; the BU planning session; PLAN G153 (2); design A2 (BU6b), whose direction, cap, reporting and residual
+  the owner chose on 2026-10-19, approved with changes by its design review; supersedes BU-11's representation and residual, whose
+  rule for acyclic storage stands; R5-M37's memo is the precedent) Binding's storage preparation (PLAN G128) decides a Type by the
+  strongly connected components of its storage. The nodes are the Types a storage walk meets (a struct's or enum's base, Fields and
+  Case payload Tuples, every Type's components); an edge between two members of a component counts 0, an edge to a non-member
+  1 + its height, and every member has its component's height, its largest exit. `PrepareTypeStorage` admits a Type whose height is
+  at most 64 and every Type it reaches substitutes, so the verdict depends on the Type alone: the failed-entry case
+  (`R<T> { x: X<T>, y: Box^200<T> }`, `X<T> { r: Option<rc/R<T>> }`) is refused in every order, `Option<rc/L<Box^61>>` is decided
+  with `L<Box^61>` (height 62), and a ring of structs linked by `Option<rc/…>` has height 1. A growing Type never closes a
+  component, so the walk's path holds at most 256 Types, the root included (the owner's value); a query that passes it is refused.
+  A capped walk and a height over 64 are G128's implementation limits: `TyCtxt.Apply` gives no Type, which is R4-M51's located
+  `Unsupported_Kd` (the capability row StorageNesting) at the requesting site by R5-M40's rule (the R5/R6 plan's PD30 for the
+  collector's mapping) and R5-M67's Limit (K6, K6b) when `PrepareTypeStorage(Self)` fails. IMPL 21.3.2 makes an exceeded limit
+  Resource: `Unsupported_Kd` is the owner's interim choice until R7 removes storage preparation from `Apply`. The walk
+  (`Binding.Structs.cs`, Tarjan): one per-pass table of marks by Type (`storageMarks`: a finished Type's height or Refused, an open
+  Type's stack position), cleared in `ResetPass`, and one stack, empty at every query's entry (a query during a walk is a broken
+  contract: `Instance` substitution never queries storage); structural Types are marked too, so the walk is linear in the distinct
+  Types it meets; a refusal marks every open Type Refused (each reaches the refusing part), a capped walk unmarks them. Corpus (the
+  suite with the library and the 44 milestones; 5.1 M default and 22.6 M mir queries): no verdict differs from BU-11's; the largest
+  cyclic component holds 4 Types. Rings of 17–42 structs build; from 43 the collector's glue-depth limit gives
+  `GenerationResourceLimit_Kd` at the destroyed value (BU-11 also gave the gap at the call). Cost: warm Bind unchanged with 0 B;
+  without a growing Type, cold +4 KB (Bind) to +44 KB (mir check) for the table; a growing Type's first walk retains about 230 KB of
+  interned Types for the compilation (BU-11 about 22 KB) in 0.65–0.84 ms, a re-walk takes 0.07 ms in the same pass and 0.45 ms in
+  the next. Residual (accepted by the owner): past the cap the verdict can depend on which other Types the program prepares, a pure
+  ring too: a 63-ring behind `h<Box^4<S1>>` is refused alone and twice, and admitted when `h<S1>` or `h<Option<rc/S1>>` appears
+  anywhere. Rejected: Tarjan over struct and enum instances only (a growing Type's Tuple arguments walked as trees within the cap);
+  a cap on the Types one query meets, or on a component's size (order-dependent; growth never closes); keeping a capped walk's
+  Types refused (order-dependent); counting hops inside a cycle (BU-11); a component height counting its internal distance (the
+  longest simple path); a declaration-level expansive-cycle check (it cannot see growth through associated projections);
+  inline-only preparation (B: changes G128 and breaks R4-M58, whose growing composed atom `Apply` still refuses). Deleted:
+  `InstanceStorage.Prepared` and `Height`. Not temporary (G128's limits go at R7).
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -3406,7 +3439,8 @@ structure is recorded here by the unit that first implements it.
   no-op statements, a `Use` into an unprojected local from an unprojected Copy or Move or a Bool, Integer or Unit constant (zero-sized
   writes nothing, a slot Type's copy is C2b's), Goto, SwitchInt, Return and Unreachable. PD11's coverage rows are the two components'
   dispatch arms (MIR vocabularies; body kinds Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b: a constant initializer folds
-  into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b); a test
+  into its slot and is never a function, package C §3.3); `MonoKind`s DropGlue (C4a), ClosureErasure and ItemAdapter (C5b), Builtin
+  (C8f, C9b) and PropertyWitness (C3c) of R5-M67, K8's ObjectDescriptor and VTable (C6a, C6c); a test
   build's TestEntry (C10a)): an arm not written yet records `Unsupported_Kd` once per subject, located by the collector's one rule
   (`InstanceCollector.Subject`, K 4.9, now internal), a broken input contract `InternalInvariant_Kd`; generation runs over every item and
   then discards the text. A record is a code without facts, `Unsupported_Kd` (location-only, DIAGNOSTICS §2 rule 3) or
@@ -3644,3 +3678,72 @@ structure is recorded here by the unit that first implements it.
   predicate beside the builder's); the construct's own result temp moved into the input (its Refs stay a stale `lent`); a temp per
   body for every construct value (MIR changes beyond inputs); a decision at the Call by the argument's HirOp (a consumer deciding by
   syntax); a second flag carrying non-reserving inputs to the bodies (a mode steering them, for no reader).
+- **R5-M73 The console `writeLine` row, string constants and the first pending files** (2026-10-19, C lane; plan C0b2, package C §3.2
+  and §7, audit rows WriteLine and Const String; under R5-M18 form 1, R5-M65 and R5-M66) `FunctionCodegen` writes a Call whose Fn
+  callee is a compiler function of the Body disposition (the published `IntrinsicDisposition`; a Shim is the shim items' row) by its
+  legacy runtime row, until R8, the console `writeLine` first; C9a's formatting rows come from one Backend table beside
+  `LegacyRuntimeHelpers.FormattingRow`. `writeLine` is `RuntimeAbi.WriteLine` called with the call's operands at its parameters'
+  slots and the call site's location text (`Compilation.Locations`, SPEC 22.5.1, a pooled `Location` constant; a site without text
+  is `InternalInvariant_Kd`). In a caller-location body the row forwards the body's own location, C3b's row; the other kinds are
+  C8b-C8e's and C9a's. A `Use` of a string constant into an unprojected `string` local stores the whole `%kimi.string`: its UTF-8
+  bytes a pooled `Text` constant, the Static release kind (the string representation, IMPL 21.1.3), the empty string `null` and 0.
+  The entry stays C0b1's (R5-M65).
+  - First program: `Console.writeLine("x")` also needs C2b's `Ref` of the literal's temporary and C4a's Keep Drop with the string's
+    DropGlue item, which PD12's gate step 2 guards (R4-M6a's verdicts are exact only for programs A1 accepts; the per-body fact waits
+    for R4's G125). So no console-output program generates under MIR code generation yet: the `Hello*` fixtures of
+    `FunctionCodegenTest` run on the old generator and are pending under sel. Bringing those two rows forward is an open question.
+  - Pending files: one full sel suite's failing cases, each filed under the review group (the plan's §4 Review column without `G:`;
+    a unit reviewed alone by its ID, `C7b.tsv`) of the first unit, in plan order C0a to C10b then K13a to K13c, whose verification
+    column names its class exactly, else of the first whose `X*` family prefixes the class's simple name, else `C-frame.tsv`, the
+    group of the ledger's own units (C0b2 writes it, E10 reports and E11 gates it). K13a-K13c name their classes in the Change
+    column, which is read for them (`OwnershipStorageLimitTest`, there only as marked for G7, is not named, so `Ownership*` files it
+    under C-drop); a nested class is filed by its outermost class; `FunctionCodegenTest` falls under C3a's `Function*` (call). A
+    fixture has a row only when it is written and fails natively; a case that fails only under load (PLAN G138) has none. A new row
+    follows the same rule, which E11 implements.
+  - `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels` asserts the old generator's agreement, so it selects the old generator
+    whatever the process's; `verify.ps1` normalizes `-Mode` as it does `-Pipeline` and `-Codegen`, since `codegen-pending.ps1`
+    compares the spelling.
+  - Rejected: a call writer for `writeLine` alone (the legacy rows share the parameter mapping); grouping by the first coverage
+    record a test meets (no record names its test); a catch-all file named by no group (R5-M66); pending rows for the depth test (the
+    old generator it asserts still runs under sel).
+- **R5-M74 Object descriptors and VTables of the checked set** (2026-10-19, K lane; plan K8, the K package's §4.3 ObjectDescriptor and
+  VTable rows and §4.5 rows 4, 8 and 12, package F §4.2-§4.3, S2-S4 X5 and X15; under R5-M18, R5-M60 and R5-M62; DEC Q6 form 1;
+  `MonoKind.ObjectDescriptor` and `MonoKind.VTable` are approved with the K package, §11; round 2 after the independent review's B1)
+  Only a creation (`MakeObj`, `MakeRc`, `MakeArc`, the intrinsic rows whose `Target` is Descriptor, and an Item of their functions)
+  targets the `ObjectDescriptor` item of its payload in the item's instance, the substitution's Type argument (`Types[0]`, the one
+  operand form every Type-reading row reads, as `LaysOutType` does), keyed by its erasure and admitted with its layout verdict (a
+  type-driven item, R5-M44). A clone and a runtime Type test carry no target: a test acquires nothing (SPEC 13.6.4) and neither use
+  needs a layout (SPEC 8.15.3); a clone is payload-independent (IMPL 21.1.3). A descriptor's targets, at its default site, are its
+  payload's glue (the finalizer's destruction of the actual Type, SPEC 16.3.3, which a non-Sealed handle's glue leaves to it) and,
+  when the payload's struct has a `VTableDef`, its `VTable` item; a VTable's targets, in slot order, are the bodies F4's consumer rule
+  names: `Implementations[slot]` under `TyCtxt.Synthesized(implementation, its owning layer, [])`, through `Implementation` like any
+  callee (limits, growing keys), where `TyCtxt.Applies` of the slot's original at the layer owning it holds; refuted, no target and
+  the override's body stays checked only (a closed root, or a generic body no instance applies; R4-M28, K11); undecided, or a function
+  off the representative's base chain, a broken contract, `InternalInvariant_Kd` at the VTable's site. A Virtual call and a virtual
+  slot's Item have no target (X5). F4's two outcomes of a failed override: slot selection failed, no table, so no VTable item; a later
+  failure, a table naming a definition without a MIR body, so that slot has no target; neither records anything (R4-M18). Same cause
+  found by the search for "what a function runs": an Item of a function without a MIR body reached only its implementation's body,
+  while its call reaches the published or the intrinsic row; `Implementation` falls back to `Bodyless`, which reads both, and the Fn
+  row is a default template (the original's, SPEC 8.13.2) else `Implementation`, so an Item of `makeObj`, `Text.writer` or
+  `Text.toString` targets what its call does. `ModuleCodegen.Item` reports the two kinds as coverage rows (C6a, C6c).
+  - C6a's contract: it numbers the erased payloads of the Generated descriptors and their base chains (`AdtDef.Base`, each base Type
+    under the payload's substitution, generic arguments kept, Origins excluded), one table per module; a descriptor's base map holds
+    its chain's numbers; a type test compares the object's numbers (`__kimi_object_supports`) with its target's,
+    `Erase(TypeOf(item, its token's Type))`, and where no Generated chain holds the target it is the constant false, the operand still
+    evaluated (SPEC 13.6.4: "A test with a statically known result is still valid and evaluates its operand"), since every runtime
+    object comes from a Generated creation; C6a decides whether the module needs the object runtime (a Generated descriptor or a
+    runtime-reached handle operation). C6c pairs slots with a VTable's targets by the implementation's definition.
+  - Departure (for the owner's departures list at R5's group review): the K package's §4.5 row 8 names all five handle operations as
+    descriptor sites; Clone and TypeTest leave it, because the package's §4.5 admission ("admitted only for a Type whose layout verdict is
+    OK") with row 8 put a layout obligation, and the glue and VTable closure of a Type never created, where SPEC 8.15.3 puts none (the
+    review's reproducers: `a is Huge` and a clone of `ref/(rc/Huge)` reported OversizedLayout_Kd; `a is Leaf<i32>` collected Leaf<i32>'s
+    slot bodies). X15's whitelist of target-bearing intrinsics shrinks from eight to six.
+  - Rejected: an identity-only item for a type test (a MonoKind the package does not name, while C6a numbers the chains anyway);
+    descriptors targeting their bases' descriptors (lays out Types never created); a TypeToken operand column on the intrinsic rows
+    (round 1's; nothing reads the token now) or on MirDescriptors with a validator arm; a slot index in `MonoTarget.At`.
+  - Verified (`InstanceCollectorTest`): closed tables of a generic hierarchy (one descriptor per erased payload for obj, rc and arc; slot
+    bodies per owning layer); the factory Item made, called and erased in an instance; Items of Text.writer and Text.toString; a finite
+    cycle reused and a growing key located at the creation; an original a table replaces adds nothing; refuted conditional slots (Block
+    and clause) without a target or the override's instance; both failed-override outcomes without a record; type tests and a clone
+    without a target or record (an oversized never-created struct, a never-created Leaf<i32>); warm collection 0 B. Under sel the
+    library roots and the 44 milestones give no new record.
