@@ -1654,20 +1654,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - OQ13 (a) (superseded in part by R4-M76): S5 is adopted: an effect atom on an associated projection that grows under
     polymorphic recursion widens to an unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding
     that changes the rule returns to the owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for
-    S2 (planning session). - **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4
-    planning session on 2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one
-    owner-approved design and share one final review before the group merges into dev; each unit is still verified and pushed, and
-    a unit that departs from the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts
-    only with Loans whose mode is shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot
-    or its owned contents `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries
-    `MirFactKind.Inlined` and is dropped while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's
-    evaluation places into its pending slot carries that slot's default taint, a Loan problem found only through tainted sets is a
-    located `Unsupported_Kd` at the omitting call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with
-    the key (code, subject, body) and R4-M11's cross-body merge at publication (R4-M71). Each unit's entry records its decision as
-    implemented; 1c-9 (records) keeps its own review. - **R4-M76 Owner answers on G148 and the step-2 drafts** (owner, 2026-10-19,
-    relayed by the R4 planning session; on G148's completed design review and the reviewed drafts 2x-S1, 2f-S1 and 2x-S5 in
-    `draft/Sketches/A5 Step 2/` and the S5 proposal `draft/Proposals/2026-10-19 Effect Atoms Widen.md` on branch
-    `claude/a5-2x-s5`) Library and milestones count 0 under each answer.
+    S2 (planning session).
+- **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4 planning session on
+  2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one owner-approved design and
+  share one final review before the group merges into dev; each unit is still verified and pushed, and a unit that departs from
+  the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts only with Loans whose mode is
+  shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot or its owned contents
+  `DefaultArgumentMove_Kd`, and a Language problem found inside an Inlined scope carries `MirFactKind.Inlined` and is dropped
+  while a copy's limit records stay (R4-M69); 1c-7, until A5-F9 a value a default's evaluation places into its pending slot
+  carries that slot's default taint, a Loan problem found only through tainted sets is a located `Unsupported_Kd` at the omitting
+  call, and an Opaque site's value is `{Φ_E}` (R4-M70); 1c-8, `MirProblem.Body` with the key (code, subject, body) and R4-M11's
+  cross-body merge at publication (R4-M71). Each unit's entry records its decision as implemented; 1c-9 (records) keeps its own
+  review.
+- **R4-M76 Owner answers on G148 and the step-2 drafts** (owner, 2026-10-19, relayed by the R4 planning session; on G148's
+  completed design review and the reviewed drafts 2x-S1, 2f-S1 and 2x-S5 in `draft/Sketches/A5 Step 2/` and the S5 proposal
+  `draft/Proposals/2026-10-19 Effect Atoms Widen.md` on branch `claude/a5-2x-s5`) Library and milestones count 0 under each
+  answer.
   - G148: rule G, no SPEC change (R4-M73 records it with G148's unit). Its loss P13 (the Type guard is per holder, so a store
     follows a shared Loan past a holder whose Type passes the guard only through a Type argument, a pair layer or an abstract
     part) is recovered by a representation, not a SPEC clause (OQ8 (b), for P13 in place of the earlier G148 answer's OQ8 (a)):
