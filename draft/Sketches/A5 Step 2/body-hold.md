@@ -1,6 +1,7 @@
 # Body hold: prototype round 17 (P13's interim, round 16's review B1)
 
-Status (2026-10-19): prototype round run, awaiting its independent review before implementation. Working record, not authority.
+Status (2026-10-19): prototype round run; its independent review says implement; implemented by unit G148 under the planning
+session's rulings (below; DECISIONS R4-M73). Working record, not authority.
 
 ## Why
 
@@ -93,38 +94,40 @@ The compiler's cost is the ledger's held bodies: `count<S>`, B6-for, MemberThrou
 whose P13 store holds it. Unit step 3 measures it.
 
 **Unchanged default-taint limits.** R4-M70 is unchanged, so the default taint's analogs keep the Language errors they have today:
-closureRouteD, closureRouteDJoin, guardDefault, guardDefaultOnly, rx-dChain, rx-dLoop and rx-dGuardRoute. These are the closure
-route and err(ended) R4-M70 records as limits, and route taint would have reclassified them. In the compiler's forms the result or
-slot joins the explicit argument's clean value with the default's tainted one, so per value the Language error is right. The "only"
-forms cannot be written in Kimigayo.
+closureRouteD, closureRouteDJoin, guardDefault, guardDefaultOnly, rx-dChain, rx-dLoop and rx-dGuardRoute. Route taint would have
+reclassified them. The planning session records them (round 17's review N3) as of R4-M70's class, beside its recorded err(ended)
+limit: an inline default copy is precise and its result or slot is tied to the explicit argument by Origin, so its Language errors
+through those routes are right per value (SPEC 15.6.4); a template call (a recursive default) over-approximates, and every attempt to
+write a conservative error through one was rejected by Binding (unverified for an accepted recursive default). Naming: the compiler
+probe called closureRouteD is the prototype's closureRouteDJoin; the "only" forms (closureRouteD, guardDefaultOnly, rx-dWriteOnly)
+cannot be written in Kimigayo; rx-dGuardRoute is not type-correct as the prototype encodes it.
 
-**rx-dWriteOnly.** The round-3 brief lists rx-dWriteOnly among the conflicts that depend on a by-argument store. It is a
-default-taint "only" form (a write through a default-only result), with no by-argument holder, so its body is not held. Under
-"default taint unchanged" it keeps its Language error, as it does today; it is not expressible in Kimigayo. Making it
-`Unsupported_Kd` would need route taint for the default taint, which the owner's choice leaves out. The planning session decides
-whether that is intended.
+**rx-dWriteOnly.** A default-taint "only" form (a write through a default-only result) with no by-argument holder, so its body is not
+held and it keeps its Language error. The planning session ruled this intended: the owner's choice leaves route taint for the default
+taint out.
 
 **Work.** The held flag costs one bit per body (or view), set where `Writes` returns a P13 target with a non-empty value; it adds no
 V16 term. Round 16's per-holder rescans and marker bits are not needed.
 
-## Implementation notes (step 2, after this round's review)
+## Implementation (unit G148 step 2, the planning session's rulings)
 
-- **Where:** `MirBorrows.Calls.cs` sets the per-body fact where `Writes` returns a target past its clean count and the row's value is
-  not empty. `MirBorrows.Reports.cs` reads it in its common `Report(code, anchor, via, at, reservation)`, one rule that replaces P13's
-  location rule. err(ended) (`Checks.Ended`) and every Loan code go through that overload, so `Checks.cs` and `Activations.cs` stay
-  untouched. The default taint's branch in the candidate overload returns its omitting-call `Unsupported_Kd` before it, so it keeps
-  its location.
-- **Timing (for the review):** problems are recorded during the checks replay, so the held fact must be known before the first
-  report. Setting it in the forward solve, at any visit, gives a may-fact that can hold a body whose P13 target becomes cleanly
-  reached only at the fixpoint. That adds `Unsupported_Kd` and never accepts. The prototype computes the fact exactly, at the
-  fixpoint. A replay in the solve's last pass would be exact at the cost of one more pass.
-- **Per body or per view:** the stratum runs once per Semantics case view. Holding per (body, view) is the natural grain, since a
-  view's P13 store affects only that view's states. A problem merged across views (`MirReport`, one key per code, subject and body)
-  may then carry `Unsupported_Kd` from a held view beside a Language code from another. The planning session decides the grain.
+- **Grain: (body, view).** A view's store changes only that view's states, `MirReport` keys a problem by (code, subject, body), so a
+  Language problem from a view not held and an `Unsupported_Kd` from a held one are two records, and the stratum runs each view's
+  solve and replay before the next.
+- **Timing: the forward solve.** `MirBorrows.Calls.cs` sets the fact where `Writes` returns a target past its clean count and the
+  row's value is not empty, on the σ_in the Call plans with, in the forward solve only (never in the checks replay); `Initial` resets
+  it per run. The solve applies each reached chain last at its converged state, so the fact is a may-fact that includes the
+  fixpoint's, and the replay reports with it known.
+- **One owner.** `Writes` is the only store path (a Call's rows today; A5-F7's capture stores and A5-F6's desc(c) stores take W there
+  too), so the fact has one place. Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via,
+  at, reservation)` (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and at err(destroy)); a future
+  producer must too. The default taint's branch in the candidate overload returns its omitting-call `Unsupported_Kd` first.
+- **Inlined scopes (R4-M69).** A Loan problem inside an inline default copy's scope is its template's and dropped whatever the hold
+  says; the hold reclassifies only problems the held view owns (MirBorrowsTest's heldCopy).
+- **Deleted:** P13's marker element, its `MarkerOf` row and location rule; `MirBorrows.cs` and `MirBorrows.Candidates.cs` are as
+  before the unit except one line that seeds a holder's slot.
 
 ## Not verified
 
-- The compiler implementation and its ledger cost.
-- The forward-solve timing's difference from the fixpoint fact.
-- The per-view grain.
-- Work and timing.
+- Work and timing beyond MirBorrowsTest's scaling shape.
+- The forward-solve fact's difference from the exact fixpoint fact (a may-fact; it can only add `Unsupported_Kd`).

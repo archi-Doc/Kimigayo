@@ -43,7 +43,7 @@ public sealed class MirTypesTest(ITestOutputHelper output)
             Parameters(body).Select(x => (x.Name, MirTypes.HoldsLoans(x.Type, seen, out _))).ToArray());
     }
 
-    // A3 E-store (SPEC 15.6, 15.6.2, 15.6.4; DECISIONS R4-M73): a call may write past a value that may hold, past no shared layer or raw
+    // A3 E16 (SPEC 15.6, 15.6.2, 15.6.4; DECISIONS R4-M73): a call may write past a value that may hold, past no shared layer or raw
     // pointer, an exclusive reference to storage that may hold a Loan or a raw pointer whose pointee may: an exclusive reference, in an
     // Array, a payload or a Field, a UniqSlice's elements, a Function value (the guard); only through a Type argument, a pair layer or an
     // abstract part, which may be one (P13's interim, R4-M76); not past a shared reference, through an exclusive reference to Loan-free

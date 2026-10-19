@@ -2,23 +2,26 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's Call transfer (A3 5, Calls; E14, E-store): a Call's retention rows (Rows), its callee's contract by operand position, carry its
-// inputs' values into its result or into every holder an argument's store reaches (W, MirBorrows.Values), one W per output; a value stored
-// only past a holder that passes the guard by argument carries P13's taint (R4-M73).
+// A5's Call transfer (A3 5, Calls; E14, E16): a Call's retention rows (Rows), its callee's contract by operand position, carry its
+// inputs' values into its result or into every holder an argument's store reaches (W, MirBorrows.Values), one W per output; a store of a
+// non-empty value past a holder that passes the guard only by argument holds the view (P13's interim, R4-M73).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = [];
+    private bool held; // Whether the view is held (R4-M73): a Call's W stored a non-empty value past a by-argument holder in the forward solve.
     private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
 
     // Whether a value of a case Type is a borrow, through which a read reaches what it refers to (A3 5's ret): a reference or a pair layer,
     // or a view handle, whose Index is a borrow Deref (E6).
     private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
-    // A Call at a location (A3 5, Calls; E14, E-store): its arguments' Moves, then each row of its retention (Rows) into the result or into
+    // A Call at a location (A3 5, Calls; E14, E16): its arguments' Moves, then each row of its retention (Rows) into the result or into
     // W of an argument's value, then the result into the destination (Placed: a default template's result carries its slot's default taint);
     // Φ_E for an untied result. A Value callee's environment, its value or what a reference to it refers to, reaches the result too (its
-    // captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
-    private void Call(ulong[] state, MirLocation at, in MirTerminator call)
+    // captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the forward solve, never in the checks replay, a non-empty value that W
+    // stores past a by-argument holder holds the view (R4-M73): the solve applies every chain at its converged state, so the fact includes the
+    // fixpoint's, and the replay reports with it known.
+    private void Call(ulong[] state, MirLocation at, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
         for (var i = 0; i < call.Count; i++)
@@ -36,7 +39,8 @@ internal sealed partial class MirBorrows
         }
 
         var retained = this.Rows(call, out var untied);
-        var (writesOf, clean) = (Retention.Result, 0); // The output whose writable holders the targets are, and the first P13 one.
+        var writesOf = Retention.Result; // The output whose writable holders the targets are.
+        var clean = 0; // The first target W reaches only past a by-argument holder.
         foreach (var row in retained)
         {
             var value = this.Retained(state, call.Start + row.Input, row.Input, row.Kind);
@@ -52,10 +56,10 @@ internal sealed partial class MirBorrows
                 writesOf = row.Output;
             }
 
-            var tainted = clean < this.targets.Count ? this.sets.Add(value, Markers + this.body.Locals.Length) : value; // P13's marker.
-            for (var k = 0; k < this.targets.Count; k++)
+            this.held |= !checks && value != 0 && clean < this.targets.Count;
+            foreach (var target in this.targets)
             {
-                this.AddSlot(this.targets[k], k < clean ? value : tainted, 0, Joined, issue: false);
+                this.AddSlot(target, value, 0, Joined, issue: false);
             }
         }
 

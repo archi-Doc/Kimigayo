@@ -5,7 +5,7 @@ using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
 
 namespace Kimi.Compiler.Mir;
 
-/// <summary>What a call that writes a value's storage may write past it (A3 E-store, DECISIONS R4-M73), from HoldsLoans' walk: the guard
+/// <summary>What a call that writes a value's storage may write past it (A3 E16, DECISIONS R4-M73), from HoldsLoans' walk: the guard
 /// of a value that may hold a Loan, three ways, and for one that holds none whether its raw pointers lead to storage that may.</summary>
 internal enum MirWrites : byte
 {
@@ -58,7 +58,7 @@ internal static partial class MirTypes
     /// own storage, a struct's Fields and base and an enum's payloads, and its components: elements, an owning handle's payload, and a
     /// Type argument, which its storage may hold behind a raw pointer (a library collection, its iterators) or as a Loan or a Weak (SPEC
     /// 3.2.2, 15.3.5). A raw pointer holds none (SPEC 5.2.2: its borrow ends at once), nor a function item. The same walk gives what a call
-    /// may write past the value (A3 E-store): its guard, whether it may hold, past no shared layer or raw pointer, an exclusive reference
+    /// may write past the value (A3 E16): its guard, whether it may hold, past no shared layer or raw pointer, an exclusive reference
     /// (a pair layer's exclusive case and an abstract part counting, as do a Function or Closure value and a part past the bound) to
     /// storage that may hold a Loan or a raw pointer whose pointee may, concretely or only through a struct's or enum's Type argument, a
     /// pair layer or an abstract part; and, for a value that holds no Loan, whether such a raw pointer lies past no reference. Each Type is
@@ -72,8 +72,13 @@ internal static partial class MirTypes
     {
         seen.Clear();
         var found = Holds(type, seen, Own, 0);
-        writes = (found & Loan) == 0 ? ((found & RawLoan) != 0 ? MirWrites.Raw : MirWrites.None)
-            : (found & Write) != 0 ? MirWrites.Through : (found & WriteByArgument) != 0 ? MirWrites.ThroughArgument : MirWrites.None;
+        writes = ((found & Loan) != 0, (found & Write) != 0, (found & WriteByArgument) != 0, (found & RawLoan) != 0) switch
+        {
+            (true, true, _, _) => MirWrites.Through,
+            (true, false, true, _) => MirWrites.ThroughArgument,
+            (false, _, _, true) => MirWrites.Raw,
+            _ => MirWrites.None,
+        };
         return (found & Loan) != 0;
     }
 
@@ -137,7 +142,8 @@ internal static partial class MirTypes
         }
 
         modes |= (byte)(1 << mode);
-        var (place, exclusive) = (mode & ~Argument, (mode & Argument) != 0 ? WriteByArgument : Write);
+        var place = mode & ~Argument;
+        var exclusive = (mode & Argument) != 0 ? WriteByArgument : Write;
         var met = place switch
         {
             Own => Loan,
@@ -172,7 +178,8 @@ internal static partial class MirTypes
             return met | referent;
         }
 
-        var (found, done) = (referent, own ? Loan | exclusive : met);
+        var found = referent;
+        var done = own ? Loan | exclusive : met;
         var arguments = own && (AdtDef.IsStruct(type) || AdtDef.IsEnum(type)) ? mode | Argument : mode;
         for (var i = 0; i < type.Components.Count && (found & done) != done; i++)
         {

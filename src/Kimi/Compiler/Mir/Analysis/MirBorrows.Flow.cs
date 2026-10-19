@@ -18,10 +18,12 @@ internal sealed partial class MirBorrows
     private int chainHead = -1; // The checks replay's chain: its head and first block.
     private int chainFirst;
 
-    // σ at the entry: a Loan-capable argument refers to storage the body does not own (Φ_E).
+    // σ at the entry: a Loan-capable argument refers to storage the body does not own (Φ_E); the forward solve starts with the view not
+    // held (R4-M73).
     private void Initial(ulong[] state)
     {
         state.AsSpan(0, this.holderCount).Clear();
+        this.held = false;
         for (var i = 1; i < this.body.Locals.Length && this.body.Locals[i].Kind == MirLocalKind.Arg; i++)
         {
             if (this.slots[i] >= 0)
@@ -44,7 +46,7 @@ internal sealed partial class MirBorrows
         {
             var location = this.Location(block, i);
             this.Work++;
-            this.Plan(state, block, i);
+            this.Plan(state, block, i, checks);
             if (checks)
             {
                 this.Advance(location);
@@ -81,7 +83,7 @@ internal sealed partial class MirBorrows
 
     // The entries of a location on the state: a statement's storage end, or its rvalue's value stored into its Place after the Moves it
     // makes; a Call's.
-    private void Plan(ulong[] state, int block, int index)
+    private void Plan(ulong[] state, int block, int index, bool checks)
     {
         this.entryCount = 0;
         foreach (var set in this.contentsRead)
@@ -95,7 +97,7 @@ internal sealed partial class MirBorrows
         {
             if (data.Terminator.Kind == MirTerminatorKind.Call)
             {
-                this.Call(state, new(block, index), data.Terminator);
+                this.Call(state, new(block, index), data.Terminator, checks);
             }
 
             return;

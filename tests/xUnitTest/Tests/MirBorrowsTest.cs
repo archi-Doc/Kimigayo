@@ -176,7 +176,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         """;
 
-    // The callees of the rows on a call's stores (A3 E-store): stores through two and three exclusive layers, a raw pointer and a Field, from
+    // The callees of the rows on a call's stores (A3 E16): stores through two and three exclusive layers, a raw pointer and a Field, from
     // one part's reference into another, out of a taken-out layer-1 reference into its own storage, a depth-3 sibling copy; callees that
     // store nothing; loops over an exclusive parameter and a Field, then an append.
     private const string Stores = """
@@ -486,7 +486,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(e@ref)
                 """));
 
-    // SPEC 15.6, 15.6.2, 15.6.4 (A3 E-store, DECISIONS R4-M73; PLAN G148): a call's store reaches every holder its argument reaches, past
+    // SPEC 15.6, 15.6.2, 15.6.4 (A3 E16, DECISIONS R4-M73; PLAN G148): a call's store reaches every holder its argument reaches, past
     // each exclusive layer, a struct's Field, a raw pointer to a local's storage (E) and a parameter's referent (E), as its direct twin's
     // does, so a write of the stored borrow's Place while the route is used errs: through two or three layers, a Box2's Field, a raw
     // pointer, a moved parameter's route and one part's reference into another (acrossLayers); a callee that takes the layer-1 reference
@@ -630,15 +630,15 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     _ = buffer.text()
                 """));
 
-    // SPEC 15.6.4, 15.6 (A3 E-store, DECISIONS R4-M73): retention is decided per argument, never per Origin, and E may be used after every
+    // SPEC 15.6.4, 15.6 (A3 E16, DECISIONS R4-M73): retention is decided per argument, never per Origin, and E may be used after every
     // point, so a call's store reaches the holders of its argument's route with every Loan it stores, the route's own included; rustc
     // accepts each of these, and SPEC's letter rejects them (no loss; PLAN's G148-X precision candidate would recover the first three).
     // Through a concrete route they are Language problems: a self-row returning a route's own Loan to its holder, read twice
     // (twoLayersRead, acrossLayersRead). Where the route passes a holder whose Type passes the guard only through a Type argument (an
-    // iterator's Loan<uniq/T>), the store carries P13's taint, so each is a located Unsupported_Kd until the guard reads each part
-    // (R4-M73): an exclusive iteration over a local collection of shared references, then reads (iterated), or over exclusive elements,
-    // then a shared one (exclusiveElements, MemberThroughLayersTest's program), and an exclusive parameter's iteration whose stores reach E,
-    // then an append (bumpRefs, its Loan met once, where the loop's Borrow of values is formed, R4-M68).
+    // iterator's Loan<uniq/T>), the store holds its view, so each is a located Unsupported_Kd until the guard reads each part (P13's
+    // body hold, R4-M73): an exclusive iteration over a local collection of shared references, then reads (iterated), or over
+    // exclusive elements, then a shared one (exclusiveElements, MemberThroughLayersTest's program), and an exclusive parameter's
+    // iteration whose stores reach E, then an append (bumpRefs, its Loan met once, where the loop's Borrow of values is formed, R4-M68).
     [Fact]
     public void ACallStoreFollowsSpecsPerArgumentRule()
     {
@@ -1349,12 +1349,12 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // checked for every instance, so a holder of an abstract Type may observe its Loans when it is destroyed: replacing `local` while the
     // iterator it lent is live conflicts in `hold<C>`, as in its twin over a Bin whose iterator's drop observes the source, while the twin
     // over Array<i32>, whose iterator observes nothing, is valid; and a borrow of an abstract call's temporary ends with its full
-    // expression, so a later use errs, as in its twin over Array<i32>.
+    // expression, so a later use errs, as in its twin over Array<i32>. hold<C>'s body is held (its abstract iterator's next stores past the
+    // by-argument iterator, DECISIONS R4-M73), so its conflict is the located Unsupported_Kd, the body hold's cost (the owner, 2026-10-19).
     [Fact]
     public void AnAbstractDestructionOrTemporaryIsCheckedInItsDefinition()
-        => Assert.Equal(
-            ["hold: local = second@move", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
-            Problems("""
+    {
+        var c = MirBuildTest.Compile(Prelude + """
                 struct Bin
                     Self is Iterable
                     associate Iterable.IteratorType(source) is BinIterator during source
@@ -1396,7 +1396,11 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 func keepArray(make: () -> Array<i32>) -> ()
                     let r = make()@ref
                     inspect(r)
-                """));
+                """);
+        Assert.Equal(
+            ["hold: local = second@move Unsupported_Kd", "holdBin: local = second@move", "keep: make()", "keepArray: make()"],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
 
     // SPEC 12.2, 15.6 (A3 E13 (1a), (2); prototype round 13's 136-137, n1-n2, s1-s2, fr-rs1, 131 and 130g): an operation evaluates its
     // operands in order and uses each one's value after its access, so operand i's access is checked with the values of the operands up to
@@ -1659,17 +1663,13 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // SPEC 8.14, 15.6.7 (A3 E13 (3), (4), review N3; prototype 132, 134, 138, 139): a pair-layer acquisition is its own Assign's borrow in its
     // marker's mode: an invocation's input reserves in its exclusive case, activated at its Call, so a shared borrow of its Place before
     // the Call is valid; elsewhere (a local, a tuple's element, a capture) it is a live exclusive borrow; and in a view where the pair
-    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view.
+    // layer is a reference its step is a borrow Deref's, so a borrow through the layer meets it. Each body errs in its uniq view. p139d's
+    // uniq view is held (inner11's self-row stores past the abstract x, DECISIONS R4-M73), so its conflict at `x@ref`, which no store
+    // causes, is the located Unsupported_Kd, the body hold's cost (the owner, 2026-10-19).
     [Fact]
     public void APairLayerAcquisitionBorrowsAsItsMarkerSays()
-        => Assert.Equal(
-            [
-                "p132a: inner2(v@ref, v) CallActivationConflict_Kd", "p132c: inner3(v, v@ref) CallActivationConflict_Kd",
-                "p132h: inner9(v, v) CallReservationConflict_Kd", "p132m: innerR(v, u) CallActivationConflict_Kd", "p134a: v",
-                "p134c: v@follow@ref", "p134e: v@follow@ref", ": func [v, u]() => ()", ": func [u, v]() => ()", "p138d: v@follow@ref",
-                "p139d: x@ref", "pN3: v@follow@ref",
-            ],
-            Problems(Order + """
+    {
+        var c = MirBuildTest.Compile(Prelude + Order + """
                 func p132a<s/T>(p: s/T) -> ()
                     s is ref or uniq
                     var v = p
@@ -1740,7 +1740,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     s is ref or uniq
                     var v = p
                     inner11(v, 1)
-                """));
+                """);
+        Assert.Equal(
+            [
+                "p132a: inner2(v@ref, v) CallActivationConflict_Kd", "p132c: inner3(v, v@ref) CallActivationConflict_Kd",
+                "p132h: inner9(v, v) CallReservationConflict_Kd", "p132m: innerR(v, u) CallActivationConflict_Kd", "p134a: v",
+                "p134c: v@follow@ref", "p134e: v@follow@ref", ": func [v, u]() => ()", ": func [u, v]() => ()", "p138d: v@follow@ref",
+                "p139d: x@ref Unsupported_Kd", "pN3: v@follow@ref",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
 
     // A3 E5, CS_call (100d, 101, 110, 111): an activation is checked with the states of the holders its reservation's own Loans name, so
     // reserving a holder that refers to itself conflicts at the call though the holder is not used afterwards; a sibling Field does not.
@@ -1910,20 +1919,40 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Contains(program.Problems.Facts(clean).ToArray(), x => x.Kind == MirFactKind.Use && Line(c, x.Site) == "inspect(r)");
     }
 
-    // A3's listed loss P13 under its interim (DECISIONS R4-M73, R4-M76, PD30; until the guard reads each part, before R4's exit): the guard
-    // is per holder, so a call's store follows what a holder carries past a holder whose Type passes it only through a Type argument, a
-    // pair layer or an abstract part, and every value stored only past such a holder carries P13's taint; a conflict whose Loan only tainted
-    // sets hold is a located Unsupported_Kd at the conflicting access, never a Language problem: a generic loop over a local Array<T>,
-    // then an append (g1: the iterator's next stores the Array's own Loan into it and, by the Φ_E it read through that Loan, into E, so
-    // the append and the Array's end conflict), the same over Array<s/T> (pairs, the pair cases' f<s/T>, whose `v@follow = x`, G147
-    // (8i), moves to Unsupported_Kd through E's join, the imprecision R4-M70 accepts), over an abstract Iterable (count: its parameter's
-    // end) and a shared loop over a local Array<uniq/(ref/i32)> (sharedOverExclusive: an exclusive Loan the iterator read through its
-    // shared one; its twin without next is valid). A Loan a clean holder keeps too stays the Language problem: the live iterator of
-    // cleanRoute.
+    // A3's listed loss P13 under its interim, the owner's body hold (DECISIONS R4-M73, R4-M76, PD30; until the guard reads each part,
+    // before R4's exit): the guard is per holder, so a call's store follows what a holder carries past a holder whose Type passes it only
+    // through a Type argument, a pair layer or an abstract part, and a (body, view) where a Call's W stores a non-empty value so is held:
+    // every Loan problem it owns is a located Unsupported_Kd at its access, never a Language problem, whatever route the conflict takes.
+    // The conflicts that depend on such a store: a generic loop over a local Array<T>, then an append (g1), the same over Array<s/T>
+    // (pairs, the pair cases' B6-for), an abstract Iterable's parameter end (count), a shared loop over a local Array<uniq/(ref/i32)>
+    // (sharedOverExclusive; its twin without next is valid), a Loan<…> holder's stores reached through the closure (closureRoute) and
+    // through err(ended)'s γ (guardP13), through a later write through a reference (writeQ) and through E5's seed (seedRoute), the three
+    // routes the interim's taint missed. The cost: a held body's Language problem that does not depend on the store is Unsupported_Kd too
+    // (cleanRoute's append, which the live iterator keeps clean; g1's `var xs`), while a body that is not held keeps it (notHeld, an
+    // iterator whose Type holds no exclusive reference; emptyStore, whose by-argument store's value is empty). A conflict inside an
+    // inline default copy stays its template's (R4-M69): the template reports it and the held caller adds nothing for the copy
+    // (heldCopy, dd3); a default-tainted conflict keeps its omitting call's location in a held body (heldDefault, R4-M70).
     [Fact]
     public void AListedLossIsUnsupported()
     {
         var c = MirBuildTest.Compile(Prelude + """
+            func storeL(l: uniq/Loan<uniq/(ref/(ref/i32 during p) during q) during a>, v: ref/(ref/i32 during p) during q) => ()
+            func storeD(l: uniq/Loan<uniq/(ref/Data during q) during a>, v: ref/Data during q) -> bool => true
+            func storeU(l: uniq/Loan<uniq/(uniq/(ref/i32 during p) during q) during a>, v: uniq/(ref/i32 during p) during q) => ()
+            struct WQ {a}
+                public var p: uniq/(ref/i32 during a) during a
+                public var q: ref/(ref/i32 during a) during a
+                public init(p: uniq/(ref/i32 during a) during a, q: ref/(ref/i32 during a) during a)
+                    self.p = p
+                    self.q = q
+            func storeQ(l: uniq/Loan<uniq/WQ during q> during m, v: ref/(ref/i32 during p) during q) => ()
+            func dd3(n: i32, m: i32 = (do
+                var t = n
+                let r = t@ref
+                t = 2
+                yield size(r)
+            )) => ()
+            func sameD(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
             func g1<T>(a: T, b: T)
                 T is Copy
                 var xs: Array<T> = []
@@ -1963,6 +1992,49 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     var it = arr.iterate()
                     _ = it@uniq
                 inspect(w)
+            func closureRoute()
+                var x = 1
+                var y = 2
+                var z: ref/i32 = x@ref
+                var w: ref/(ref/i32) = z@ref
+                var lh = Loan<uniq/(ref/(ref/i32))>.init(w@uniq)
+                var b: ref/i32 = y@ref
+                storeL(lh@uniq, b@ref)
+                y = 5
+                inspect(w)
+            func guardP13()
+                let packet: Packet = .Data(Data.init())
+                let other = Data.init()
+                var saved = other@ref
+                var lh = Loan<uniq/(ref/Data)>.init(saved@uniq)
+                match packet
+                    .Data(let d) if storeD(lh@uniq, d) => ()
+                    _ => ()
+                inspect(saved)
+            func writeQ()
+                var x = 1
+                var y = 2
+                var c = 3
+                var z: ref/i32 = x@ref
+                var z2: ref/i32 = x@ref
+                var zz = z2@ref
+                var w = WQ.init(p: z@uniq, q: zz)
+                var lh = Loan<uniq/WQ>.init(w@uniq)
+                var b: ref/i32 = y@ref
+                storeQ(lh@uniq, b@ref)
+                w.p@follow = c@ref
+                c = 5
+                inspect(b)
+            func seedRoute()
+                var x = 1
+                var y = 2
+                var z: ref/i32 = x@ref
+                var w: uniq/(ref/i32) = z@uniq
+                var lh = Loan<uniq/(uniq/(ref/i32))>.init(w@uniq)
+                var b: ref/i32 = y@ref
+                storeU(lh@uniq, b@uniq)
+                let r = w@follow@follow@ref
+                inspect(r)
             func cleanRoute<T>(a: T, b: T)
                 T is Copy
                 var xs: Array<T> = []
@@ -1971,13 +2043,50 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 _ = it.next()
                 xs.append(b)
                 _ = it.next()
+            func notHeld()
+                var x = 1
+                var xs: Array<ref/i32> = []
+                xs.append(x@ref)
+                var it = xs.iterate()
+                _ = it.next()
+                x = 2
+                _ = it.next()
+            func heldCopy<T>(a: T, b: T)
+                T is Copy
+                var xs: Array<T> = []
+                xs.append(a)
+                for e in xs
+                    _ = e
+                xs.append(b)
+                dd3(1)
+            func heldDefault<T>(a: T, b: T)
+                T is Copy
+                var xs: Array<T> = []
+                xs.append(a)
+                for e in xs
+                    _ = e
+                var k = 1
+                let r = sameD(k@ref)
+                k = 2
+                inspect(r)
+            func emptyStore<T>()
+                var xs: Array<Option<T>> = []
+                xs.append(.None)
+                var k = 1
+                let r = k@ref
+                k = 2
+                inspect(r)
             """);
         Assert.Equal(
             [
-                "g1: xs.append(b) Unsupported_Kd", "g1: var xs: Array<T> = [] Unsupported_Kd", "pairs: var arr: Array<s/T> = [child@move] Unsupported_Kd",
-                "pairs: v@follow = x Unsupported_Kd", "count: func count<S>(items: S) -> i32 Unsupported_Kd",
-                "sharedOverExclusive: var arr: Array<uniq/(ref/i32)> = [w@uniq] Unsupported_Kd", "sharedOverExclusive: inspect(w) Unsupported_Kd",
-                "cleanRoute: xs.append(b) CallActivationConflict_Kd", "cleanRoute: var xs: Array<T> = [] Unsupported_Kd",
+                "dd3: t = 2", "g1: xs.append(b) Unsupported_Kd", "g1: var xs: Array<T> = [] Unsupported_Kd",
+                "pairs: var arr: Array<s/T> = [child@move] Unsupported_Kd", "pairs: v@follow = x Unsupported_Kd",
+                "count: func count<S>(items: S) -> i32 Unsupported_Kd", "sharedOverExclusive: var arr: Array<uniq/(ref/i32)> = [w@uniq] Unsupported_Kd",
+                "sharedOverExclusive: inspect(w) Unsupported_Kd", "closureRoute: y = 5 Unsupported_Kd", "closureRoute: inspect(w) Unsupported_Kd",
+                "guardP13: let d Unsupported_Kd", "guardP13: inspect(saved) Unsupported_Kd", "writeQ: c = 5 Unsupported_Kd",
+                "seedRoute: w@follow@follow@ref Unsupported_Kd", "cleanRoute: xs.append(b) Unsupported_Kd", "cleanRoute: var xs: Array<T> = [] Unsupported_Kd",
+                "notHeld: x = 2", "heldCopy: xs.append(b) Unsupported_Kd", "heldCopy: var xs: Array<T> = [] Unsupported_Kd",
+                "heldDefault: sameD(k@ref) Unsupported_Kd", "heldDefault: var xs: Array<T> = [] Unsupported_Kd", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
@@ -2271,7 +2380,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // reference in loop k, an output quadratic in N: the worklist settles each loop before the next (R4-M65), so the passes stay constant
     // and the work and the Loan-set bytes (ν) are dense, not cubic. One operation with N operands, each carrying a Loan and each an
     // access of a borrowed root, gathers its check sets once (A3 E13 (5)), so it stays linear. N calls storing through a four-layer chain
-    // write every layer (A3 E-store), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73).
+    // write every layer (A3 E16), each accumulating every call's Loan, which the next call's walk scans: dense too (R4-M73).
     [Theory]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n    inspect(r{0})\n", "", true)]
     [InlineData("    var x = 1\n    let r = x@ref\n", "    var x{0} = {0}\n    let r{0} = x{0}@ref\n", "    inspect(r{0})\n", true)]

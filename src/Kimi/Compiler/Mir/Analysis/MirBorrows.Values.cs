@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's values on a state (A3 5's val, issued, content and refs, with E3 and E-store): what an rvalue, an operand or a Place carries, a
+// A5's values on a state (A3 5's val, issued, content and refs, with E3 and E16): what an rvalue, an operand or a Place carries, a
 // borrow's parents and Loan, the holders a set refers to, and those a call's store through it writes (W). On the state a location's plan
 // reads, a set's content is read once (E13 (5)), however many operands and retention rows read it.
 internal sealed partial class MirBorrows
@@ -161,13 +161,14 @@ internal sealed partial class MirBorrows
         return MirTypes.HoldsLoans(cases.Type(this.body.Locals[local].Type), this.walked, out this.writable[local]);
     }
 
-    // W(S) (A3 E-store, DECISIONS R4-M73) into the targets, the holders a call's store through S writes: refs(S) (E14); E for a direct Loan
+    // W(S) (A3 E16, DECISIONS R4-M73) into the targets, the holders a call's store through S writes: refs(S) (E14); E for a direct Loan
     // of S naming a local that holds no Loan but a raw pointer whose pointee may (MirWrites.Raw); and, from each holder h ≠ E of W whose
     // Type passes the guard, the holder each direct Loan of σ(h) names, in any mode, E where σ(h) carries Φ_E, and E for a direct Loan
     // naming such a raw-only local. The first pass steps from the holders that pass it concretely (MirWrites.Through), the second from
     // those that pass it only through a Type argument, a pair layer or an abstract part (MirWrites.ThroughArgument) and from what only
-    // they reach: those targets come last, from the index returned (the count where none), and a store into them carries P13's taint
-    // (R4-M73, Marker.ByArgument).
+    // they reach: those targets come last, from the index returned (the count where none), and a Call that stores a non-empty value into
+    // one holds its view (P13's interim, R4-M73). Every store path (a Call's rows; A5-F7's capture stores, unit 2c; A5-F6's desc(c)
+    // stores, 2f) takes W here and sets the hold so.
     private int Writes(ulong[] state, int set)
     {
         this.Refs(set);
@@ -186,7 +187,8 @@ internal sealed partial class MirBorrows
 
         this.targets.RemoveRange(count, this.targets.Count - count);
         this.Write(set); // The kinds of refs(S)'s holders, and E for a raw-only local.
-        var (clean, argument) = (int.MaxValue, false);
+        var clean = int.MaxValue;
+        var argument = false;
         for (var pass = 0; pass == 0 || (pass == 1 && argument); pass++)
         {
             for (var i = 0; i < this.targets.Count; i++)

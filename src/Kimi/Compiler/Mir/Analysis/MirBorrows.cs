@@ -10,11 +10,12 @@
 // ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow), with the Loan's
 // anchor, its witness's next use or the store that carries it, an activation's reservation and an inline default copy's call (R4-M69) as
 // facts, and Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound, CallRetention.Limit), a
-// limit record without that fact, at a default's omitting call for a conflict whose Loan only sets with its default taint hold (R4-M70),
-// or at the conflicting access where only sets with P13's taint hold it (R4-M73), through MirReport; and Work, the steps it took (A3 6.2).
+// limit record without that fact, or at a default's omitting call for a conflict whose Loan only sets with its default taint hold (R4-M70),
+// and in a view a Call holds (its W stored a value past a holder that passes the guard only by argument, P13's interim, R4-M73) every other
+// Loan problem as Unsupported_Kd at its access, through MirReport; and Work, the steps it took (A3 6.2).
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
-// state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, and the per-local markers and P13's of
-// the role table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A
+// state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, and the per-local markers of the role
+// table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A
 // Loan exists per non-raw Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no
 // shared borrow Deref (E3), named by its whole Place; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the
 // holders live after the access but those it overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's
@@ -41,7 +42,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMoveData moves, MirCases cases)
 {
     private const int Escaped = 0; // E's slot, and the element of the marker Φ_E.
-    private const int Markers = 1; // Local 0's marker, after Φ_E: local L's is Markers + L, which its role decides (Marker); P13's follows.
+    private const int Markers = 1; // The element of local 0's marker, after Φ_E: local L's is Markers + L, which its role decides (Marker).
 
     private readonly MirLoanSets sets = new();
     private readonly HashSet<BoundType> seen = new(ReferenceEqualityComparer.Instance);
@@ -53,17 +54,16 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private ulong views;
     private int holderCount; // The slots, E's included.
     private int flowCount; // The slots a head stores: E and the flow holders.
-    private int loanBase; // The element of Loan 0: after Φ_E and the markers.
+    private int loanBase; // The element of Loan 0: after Φ_E and the per-local markers.
     private int escapedSet; // The set {Φ_E}.
 
-    /// <summary>What a marker, element <see cref="Markers"/> plus a local or, for P13's, the locals, is: the role table of the markers
-    /// (R4-M70), by the local's role (<see cref="MarkerOf"/>).</summary>
+    /// <summary>What a local's marker, element <see cref="Markers"/> plus the local, is: the role table of the per-local markers (R4-M70),
+    /// by the local's role (<see cref="MarkerOf"/>).</summary>
     private enum Marker : byte
     {
         None,
         Guard, // A guard candidate H's γ_H (E7): on the Loans issued into H; at H's EndBorrow a value that keeps it escapes (err(ended)).
         Taint, // A pending slot D's default taint (until A5-F9, unit 2e): on the value a default's evaluation places into D (Placed).
-        ByArgument, // P13's (R4-M73, until the guard reads each part): on a value a call stores only past a by-argument guard (Writes).
     }
 
     /// <summary>Gets the work of the runs (A3 6.2): the pre-pass's walks, transfers, both problems' slot joins, the holders of each point
@@ -89,7 +89,7 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         var all = ulong.MaxValue >> (64 - (int)MirCases.Count(body));
         (this.program, this.body, this.view, this.views) = (program, body, view, moves.ViewDependent ? 1UL << (int)view : all);
         this.sets.Clear();
-        (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length + 1, this.sets.Add(0, Escaped));
+        (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
         if (this.loanCount == 0 && !this.guarded)
         {
@@ -121,9 +121,9 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
 
-    // The role table of the markers (R4-M70): local L's marker by L's role, and P13's after the locals' (R4-M73); every rule reads a
-    // marker's kind here, so a later kind adds a row.
-    private Marker MarkerOf(int marker) => marker == this.body.Locals.Length ? Marker.ByArgument : this.body.Locals[marker].Role switch
+    // The role table of the per-local markers (R4-M70): local L's marker by L's role; every rule reads a marker's kind here, so a later
+    // kind adds a row.
+    private Marker MarkerOf(int local) => this.body.Locals[local].Role switch
     {
         MirLocalRole.GuardCandidate => Marker.Guard,
         MirLocalRole.PendingSlot => Marker.Taint,
