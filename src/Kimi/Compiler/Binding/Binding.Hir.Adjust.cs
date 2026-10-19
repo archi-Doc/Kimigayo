@@ -249,7 +249,8 @@ public sealed partial class Binding
         }
 
         // A Pattern binding its plan borrows, below a reference layer, designates the payload of its Case position or an element of its Tuple
-        // position (SPEC 15.1.6); a binding of the whole Subject acquires it.
+        // position (SPEC 15.1.6), followed by the pair layer its plan selects (SPEC 13.5.5, DECISIONS BU-14); a binding of the whole Subject
+        // acquires it.
         private void Bindings(BoundMatch? plan)
         {
             for (var i = 0; plan is { IsCurrent: true } && i < plan.Positions.Count; i++)
@@ -258,23 +259,23 @@ public sealed partial class Binding
                 {
                     var place = adjust.Acquire != HirAcquire.None || position.Parent < 0 ? HirPlaceKind.Unset
                         : plan.Positions[position.Parent].Kind == BoundPatternKind.Case ? HirPlaceKind.Downcast : HirPlaceKind.Field;
-                    this.Write(position.Source, adjust, place);
+                    this.Write(position.Source, adjust, new(place, (byte)position.ImplicitFollows));
                 }
             }
         }
 
         // Only the nodes of the module being published; a call shared across modules names nodes of another. An exclusive borrow, and the
         // Reborrow or pair-case acquisition of a Place whose Type needs exclusive capability (SPEC 10.2, 4.7.2, 8.14), is an exclusive use.
-        private void Write(Koto? node, HirAdjust adjust, HirPlaceKind place = HirPlaceKind.Unset)
+        private void Write(Koto? node, HirAdjust adjust, HirPlace place = default)
         {
             if (this.Owns(node))
             {
                 this.table!.Hir.Adjusts![node!.SyntaxId] = adjust;
                 this.claims[node.SyntaxId] |= adjust.Adaptation == HirAdaptation.ExclusiveBorrow ||
                     (adjust.Acquire is HirAcquire.Reborrow or HirAcquire.ByCase && this.Exclusive(node.BoundType));
-                if (place != HirPlaceKind.Unset)
+                if (place.Kind != HirPlaceKind.Unset)
                 {
-                    this.table.Hir.Places![node.SyntaxId] = new(place, 0);
+                    this.table.Hir.Places![node.SyntaxId] = place;
                 }
             }
         }

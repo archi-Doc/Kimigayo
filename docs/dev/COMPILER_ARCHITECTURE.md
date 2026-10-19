@@ -192,7 +192,11 @@ first. IntrinsicId returns to 30 at R8.
   mirrored on the new path, the mechanical follow-up that a stage of the plan names, the owner's exception for the Place
   result removal (DECISIONS PR-1), and the owner's exception for G147 (2b): the old paths accept the forms its Binding
   correction makes valid where the old Emission is shown to generate them (the owner's whitelist of receiver paths), and
-  a guard in the old analysis reports the others as `Unsupported_Kd` until R6-check (DECISIONS BU-10).
+  a guard in the old analysis reports the others as `Unsupported_Kd` until R6-check (DECISIONS BU-10), and the owner's exception
+  for 2x-E7 (re-approved on its corrected premise): a guard in the old analysis reports `Unsupported_Kd` for a Pattern Binding
+  that borrows a part of an owned Subject or item past a pair layer admitting owner (`OwnedPart` with access other than Owned) and
+  for a Binding that selects a pair layer, including forms dev bound by value or followed structurally and ran, until R6-check
+  (DECISIONS BU-14).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.

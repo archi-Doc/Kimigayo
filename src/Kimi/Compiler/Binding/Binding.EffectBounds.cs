@@ -1648,15 +1648,15 @@ public sealed partial class Binding
         }
 
         // The parts of a Case or Tuple position that its Pattern left in the Subject: a part bound by a Move or Copy-or-Move
-        // acquisition leaves nothing (that binding's own cleanup counts it), a part reached through a reference owns
-        // nothing, and any other leaf (a wildcard, a literal, a Copy binding) stays and is destroyed with the Subject.
+        // acquisition leaves nothing (that binding's own cleanup counts it), a part reached through a reference in every case
+        // owns nothing (OwnedPart), and any other leaf (a wildcard, a literal, a Copy binding, a borrow past a pair layer that
+        // admits owner, SPEC 13.5.5) stays and is destroyed with the Subject.
         private void LeftParts(BoundMatch plan, int position, Koto use)
         {
             for (var p = position + 1; this.valid && p < plan.Positions[position].End; p = plan.Positions[p].End)
             {
                 var part = plan.Positions[p];
-                if (part.ImplicitFollows != 0 || part.AccessMode != PatternAccessMode.Owned ||
-                    (part.Kind == BoundPatternKind.Binding && part.Acquisition is PatternAcquisition.Move or PatternAcquisition.CopyOrMove))
+                if (!part.OwnedPart || (part.Kind == BoundPatternKind.Binding && part.Acquisition is PatternAcquisition.Move or PatternAcquisition.CopyOrMove))
                 {
                     continue;
                 }
