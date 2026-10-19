@@ -134,6 +134,7 @@ internal sealed partial class MirBorrows
         }
 
         ref readonly var data = ref this.body.Blocks[at.Block];
+        this.Work += 2; // The two scope walks (A3 6.2).
         var copy = this.body.Inlining(this.Source(at).Scope);
         var evaluates = (at.Index == data.Count && data.Terminator.Callee is { Kind: MirCalleeKind.Fn, Arg: > 0 }) ||
             (copy >= 0 && copy != this.body.Inlining(this.body.Locals[place.Root].Source.Scope));

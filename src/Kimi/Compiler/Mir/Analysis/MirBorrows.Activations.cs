@@ -85,8 +85,8 @@ internal sealed partial class MirBorrows
     }
 
     // err(destroy) (A3 5, E11): the old value a call destroys in place at its target, where its Type may observe what it holds, uses the
-    // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending; past the
-    // destruction walk's bound it is unclassified.
+    // Places past those the destroying activation writes exclusively and deeply, on the activation's check set, before the ending: the
+    // conflicts relation's ObservePast, so a clean Loan is reported first (R4-M70); past the destruction walk's bound it is unclassified.
     private void Destroyed(int reservation, BoundType target, int taking, MirLocation at)
     {
         var kind = this.Destruction(target);
@@ -98,16 +98,9 @@ internal sealed partial class MirBorrows
 
         var loan = this.loans[reservation];
         var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
-        for (var c = this.First(loan.Root); kind == AccessKind.Observe && c != None; c = this.candidates[c].Next)
+        if (kind == AccessKind.Observe && this.Conflict(loan.Root, steps, AccessKind.ObservePast, taking) is var c and not None)
         {
-            ref readonly var candidate = ref this.candidates[c];
-            this.Work++;
-            if (candidate.Takes(taking) && this.Hits(loan.Root, steps, AccessKind.Observe, candidate) &&
-                !this.Hits(loan.Root, steps, AccessKind.Write, candidate))
-            {
-                this.Report(this.Code(candidate, DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation);
-                return;
-            }
+            this.Report(this.Code(this.candidates[c], DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation);
         }
     }
 

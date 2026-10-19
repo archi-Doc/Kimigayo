@@ -6,8 +6,8 @@
 // difference ledger reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
 // rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows) has
-// NoBody; a fact is a site the problem relates, never a message: an Inlined fact names the inline default copy whose template a Language
-// problem belongs to, which a limit record never carries (R4-M69).
+// NoBody, whose views name no body's cases (A4's codes take no case fact); a fact is a site the problem relates, never a message: an
+// Inlined fact names the inline default copy whose template a Language problem belongs to, which a limit record never carries (R4-M69).
 // Must not derive a requirement from a code, carry message text, or merge or drop problems (MirReport's).
 
 #pragma warning disable SA1402 // The problem and fact records belong together.
@@ -27,7 +27,8 @@ namespace Kimi.Compiler.Mir;
 /// <param name="Views">The views that have the problem, bit i for view i (every bit: a problem no view decides).</param>
 internal readonly record struct MirProblem(DiagnosticCode Code, DiagnosticRequirement Requirement, SourceRef Subject, int Body, ulong Views)
 {
-    /// <summary>The body of a problem no body describes: A4's obligation rows, which lie at Binding's rows (R4-M71).</summary>
+    /// <summary>The body of a problem no body describes: A4's obligation rows, which lie at Binding's rows (R4-M71); its views name no
+    /// body's cases.</summary>
     internal const int NoBody = -1;
 }
 

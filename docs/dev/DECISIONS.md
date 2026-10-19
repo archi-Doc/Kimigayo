@@ -1645,7 +1645,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     concrete instantiation. MirLints needs nothing (the builder copies no MustNotComplete row), and A4's problems lie at Binding's rows.
   - Premise: a copy reaches its caller's state only through the prologue's shared borrows of the pending slots, formed at the call in
     the caller's scope, so a conflict with the caller is found at a caller-scope location (the design review's r01 and p15). A builder
-    change that breaks this (W1, F9) revisits the rule.
+    change that breaks this (W1, F9) revisits the rule. Mutable static storage is a second route: a default may write a group's `var`,
+    and a caller's Loan on that static would be found at the copy's write (SPEC 15.6.4) and dropped, with no record in the template. It
+    is unreachable while Binding rejects every borrow of group storage (P42, STATUS "Static members"), so Binding admitting such borrows
+    (P42) also revisits the rule, then keeping a Loan conflict whose Loan lies outside the copy's Inlined scope (group 1c's final review,
+    N1).
   - Rejected: the PreparedInput role on the copy's borrow temp (it changes the role's meaning, keeps the copy's duplicate, one problem
     per body under G125, and touches the held golden `tests/mir/defaults.mir`).
 - **R4-M70** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-7). For the
@@ -1666,12 +1670,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Representation: the per-local marker range (element 1 + L for local L) has its contract as a role table, `MirBorrows.MarkerOf`:
     `GuardCandidate` → γ_H (E7), `PendingSlot` → the default taint. A candidate keeps its tags apart for the sets with and without a
     taint, so the check "found only through tainted sets" reads the table once and a later taint kind adds a row (G148's P13 interim,
-    R4-M76).
+    R4-M76). err(destroy) is the conflicts relation's row `ObservePast` (what a deep access hits and the destroying activation's write
+    does not, in every mode), so it too reports a clean Loan before a tainted one; its own candidate loop, a second copy of the rule that
+    let the first holder decide, is deleted (group 1c's final review, B1).
   - Rejected: the first-found witness set (it hides o7); T2 for τ_s (it hides j1); one taint per template Call (no element for a
     copy); a taint by role alone (it would taint an explicit argument's slot).
-  - Limits: err(ended) reads γ_H without the taint check (the rule names Loan problems); err(destroy)'s candidate loop
-    (`MirBorrows.Activations.cs`, due for restructuring) keeps its first conflicting candidate, so a tainted Loan there can stand
-    before a clean one.
+  - Limit: err(ended) reads γ_H without the taint check (the rule names Loan problems).
 - **R4-M71** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-8; PLAN G125
   and G157 (8)). It supersedes R4-M3a's and R4-M67's key (code, subject) and places R4-M11's merge across bodies at publication.
   - Representation: `MirProblem(Code, Requirement, Subject, Body, Views)`. `Body` is the ordinal of the body whose case views `Views`

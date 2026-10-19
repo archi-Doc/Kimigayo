@@ -1552,8 +1552,9 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean value: unsupported too.
     // A copy's store into its slot that acquires again by case, a PairAcquire (R5's F18 probe shapes), lies in the copy and taints: from a
     // concrete caller (`copied`), a generic one (`copiedGeneric`) and a uniq argument's reborrow (`reborrowed`, whose template the old
-    // analysis rejects with DefaultArgumentBorrow_Kd in its uniq case), as does a template call's result into the slot (`called`). A clean
-    // route stays the Language problem, witnessed by its clean holder (`copiedClean`).
+    // analysis rejects, DefaultAccessTest), as does a template call's result into the slot (`called`). A clean route stays the Language
+    // problem, witnessed by its clean holder (`copiedClean`). A destroying call's observing destruction (err(destroy)) reports the clean
+    // Loan before the tainted one whichever holder comes first (`dz`, `dzSwapped`: the group 1c final review's B1).
     [Fact]
     public void ADefaultsTaintMakesItsConflictsUnsupported()
     {
@@ -1633,6 +1634,24 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 let y = via(r)
                 k = 2
                 inspect(y)
+            func dz()
+                var x: Array<i32> = [1, 2]
+                var y: Array<i32> = [3]
+                var s = C.init(r: x@uniq)
+                let t = same(s.r@follow[0]@ref)
+                let u = s.r@follow[0]@ref
+                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                inspect(t)
+                inspect(u)
+            func dzSwapped()
+                var x: Array<i32> = [1, 2]
+                var y: Array<i32> = [3]
+                var s = C.init(r: x@uniq)
+                let u = s.r@follow[0]@ref
+                let t = same(s.r@follow[0]@ref)
+                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                inspect(t)
+                inspect(u)
             """);
         var program = Analyze(c);
         Assert.Equal(
@@ -1641,15 +1660,11 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "p15: fc(n@uniq) Unsupported_Kd", "both: k = 2", "joined: same(k@ref) Unsupported_Kd", "given: k = 2",
                 "copied: pick(r) Unsupported_Kd", "copiedClean: k = 2", "copiedGeneric: pick(r) Unsupported_Kd",
                 "reborrowed: grab(u) Unsupported_Kd", "called: via(r) Unsupported_Kd",
+                "dz: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "dzSwapped: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))",
             ],
             Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
         var clean = Array.FindIndex(program.Problems.All.ToArray(), x => program.Bodies[x.Body].Key.Decl?.Name == "copiedClean");
         Assert.Contains(program.Problems.Facts(clean).ToArray(), x => x.Kind == MirFactKind.Use && Line(c, x.Site) == "inspect(r)");
-
-        // The old analysis rejects fc's and grab's defaults (DefaultArgumentBorrow_Kd), which the MIR leaves to A5-F9.
-        c.Analyze();
-        var borrows = c.Problems.Where(static x => x.Code == DiagnosticCode.DefaultArgumentBorrow_Kd);
-        Assert.Equal(["x", "a"], borrows.Select(x => Line(c, x.Subject)));
     }
 
     // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
