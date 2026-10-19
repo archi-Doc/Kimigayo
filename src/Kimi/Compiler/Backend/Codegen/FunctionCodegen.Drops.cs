@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Backend;
 // dropped value's instance Type may need a drop, by calling its DropGlue item, the collector's target at the Drop, with the Place's address
 // and the Drop's location text, Elide writing nothing; Flag (C4b) and Open (C4c) are rows not written yet. A glue function calls its Type's
 // routine (DropGlue.Release) with its own parameters through the call writer (PD3); ModuleCodegen names and signs the item.
-// Gate step 2's stand-in (R5-M78, removed by C4a's per-body step 2, package C 3.8, once R4 publishes MirProblem.Body, G125): under sel the
+// Gate step 2's stand-in (R5-M78, removed by C4a's per-body step 2, package C 3.8, which reads R4-M71's MirProblem.Body): under sel the
 // old analysis decides acceptance, so the MIR analyses' problems refuse nothing, and A2's verdicts are exact only for programs A1 accepts
 // (R4-M6a); a Drop is written only for a program whose MIR analyses recorded no Ownership problem (A1 with its arena record, A2, and
 // conservatively A4 and A5; A3's do not gate, PD12), else it is one located Unsupported_Kd.
@@ -50,7 +50,7 @@ internal sealed partial class FunctionCodegen
         output.Write("  ret void\n}\n");
     }
 
-    private void Drop(in MirTerminator drop, FunctionAbi abi)
+    private void Drop(in MirTerminator drop)
     {
         if (!this.Exact())
         {
@@ -69,7 +69,7 @@ internal sealed partial class FunctionCodegen
         switch (table.RowsOf(this.body.Ordinal)[group].Verdict)
         {
             case MirDropVerdict.Keep:
-                if (!this.Keep(drop, abi))
+                if (!this.Keep(drop))
                 {
                     return;
                 }
@@ -92,7 +92,7 @@ internal sealed partial class FunctionCodegen
     // Keep destroys exactly when the dropped value's instance Type may need a drop (MirTypes.MayNeedDrop, the rule the collector targets a
     // Drop's glue by, K package 4.5 row 9): refuted, nothing is written; else the collector's target, the Type's DropGlue item, is called on
     // the Place's address with the Drop's location, and a missing target is a broken contract (package C 3.2 I8). False after a record.
-    private bool Keep(in MirTerminator drop, FunctionAbi abi)
+    private bool Keep(in MirTerminator drop)
     {
         if (this.body.TypeOf(drop.Place) is not { } dropped || this.collector.TypeOf(this.item, dropped) is not { } type)
         {
@@ -118,7 +118,7 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        var location = this.Location(drop.Source, abi);
+        var location = this.Location(drop.Source);
         if (location < 0)
         {
             return false;

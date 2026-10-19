@@ -185,12 +185,11 @@ internal sealed partial class MirBuilder
                 _ => MirCastKind.Numeric,
             };
 
-            // IMPL 21.3.3: an integer conversion whose source range lies within its target's checks nothing (T and Wrapping<T>, u8@u32,
-            // i8@i64), nor does a widening floating-point one or one from an integer to a floating-point Type.
+            // IMPL 21.3.3: an integer conversion whose source range lies within its target's checks nothing (Within), nor does a widening
+            // floating-point one or one from an integer to a floating-point Type.
             var proven = kind switch
             {
-                MirCastKind.Integer => this.Width(source, out var signed) is var from and > 0 && this.Width(type, out var target) is var to and > 0 &&
-                    (target || !signed) && from - (signed ? 1 : 0) <= to - (target ? 1 : 0),
+                MirCastKind.Integer => this.Within(source, type),
                 MirCastKind.Floating => ReferenceEquals(type, BoundType.F64),
                 MirCastKind.Numeric => type.IsFloatingPoint,
                 _ => true,
@@ -229,6 +228,11 @@ internal sealed partial class MirBuilder
             _ => true,
         };
     }
+
+    // IMPL 21.3.3: whether an integer Type's range lies within another's (T and Wrapping<T>, u8 in u32, i8 in i64), so converting between
+    // them checks nothing; false where an instance decides a width.
+    private bool Within(BoundType source, BoundType target) => this.Width(source, out var signed) is var from and > 0 &&
+        this.Width(target, out var wide) is var to and > 0 && (wide || !signed) && from - (signed ? 1 : 0) <= to - (wide ? 1 : 0);
 
     // SPEC 3.1: the bit width of an integer Type's representation and its signedness, isize and usize the target's pointer width; 0 for
     // another Type, such as a Type parameter, whose instance decides it.

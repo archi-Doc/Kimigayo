@@ -11,11 +11,11 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>The frame of MIR code generation (R5 C0b1, K11; package C 3.2, 3.3 and 3.9; DECISIONS R5-M65, R5-M77): <c>ModuleCodegen</c>
-/// writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue, slots, runtime-reached
-/// blocks and the forms the frame covers, and a form not covered yet is one located <c>Unsupported_Kd</c> with no module. The
-/// <c>Frame*</c> fixtures run under the process's generators (the old one by default, MIR code generation under <c>-Pipeline mir -Codegen
-/// mir</c>); the other tests select MIR code generation themselves.</summary>
+/// <summary>The frame of MIR code generation (R5 C0b1, K11, C2a; package C 3.2, 3.3 and 3.9; DECISIONS R5-M65, R5-M77, R5-M83):
+/// <c>ModuleCodegen</c> writes the Generated items of the checked set and the output form, <c>FunctionCodegen</c> a body item's prologue,
+/// slots, runtime-reached blocks, the Places of its place writer and the forms the frame covers, and a form not covered yet is one located
+/// <c>Unsupported_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
+/// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
 public sealed class FunctionCodegenTest
 {
     private const string Branches =
@@ -41,6 +41,25 @@ public sealed class FunctionCodegenTest
         "func f(a: f64, b: i32) -> i64 => (a * b@f64)@i64\nfunc g(a: u64, c: f32) -> bool => a@f32 < -c and a@wrap<u8>@f64@f32 != 0.5\n";
 
     private const string Unused = "func unused(n: i64) -> i64 => n\n";
+
+    // A pair binder's function in its owner and its uniq case (SPEC 8.15, 13.5.5), instanced by the two calls.
+    private const string PairLayers =
+        "func keep<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    v@follow = x\n    return v@follow\n" +
+        "var y: i32 = 1\nlet a = keep(5, 2)\nlet b = keep(y@uniq, 2)\n";
+
+    // A base and its derived struct, and an enum whose payload Tuples differ in alignment (IMPL 21.1.2-21.1.3); the base call is C3a's row.
+    private const string Layouts =
+        "open struct Base\n    public var count: i32\n    protected init(count: i32) => self.count = count\nstruct Derived : Base\n" +
+        "    public var extra: i32\n    public init(count: i32, extra: i32) : base(count)\n        self.extra = extra\n" +
+        "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc counted(d: ref/Derived) -> i32 => d.count\n" +
+        "func extra(d: ref/Derived) -> i32 => d.extra\nfunc payload(shape: ref/Shape) -> i64\n    return match shape\n" +
+        "        .Rect(_, let h) => h\n        _ => 0\n";
+
+    // Elements read, written and updated, a referent read and written, and a fixed array built from its elements (R5 C2a).
+    private const string Places =
+        "func f(a: ref/[3 of i32], i: isize) -> i32 => a[i]\nfunc g(a: [3 of i64]) -> i64 => a[2]\nfunc h(q: uniq/i32) => q@follow = 7\n" +
+        "func k(t: ref/(i8, i64, i16), a: uniq/Array<u8>, i: isize) -> i16\n    a[i] += 1\n    return t.2\n" +
+        "func m() -> i16\n    let b: [3 of i16] = [1, 2, 3]\n    return b[1]\n";
 
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
     private const string Signatures =
@@ -191,6 +210,53 @@ public sealed class FunctionCodegenTest
         },
     };
 
+    // The place writer's programs (R5 C2a; DECISIONS R5-M83), self-checking as the operator rows' are: fixed-array elements read, written and
+    // updated at constant and computed positions, also of a narrower Type, and arrays built, filled and left uninitialized (SPEC 4.3, 4.7);
+    // a referent read and written through a reference and a compound update through its reservation (SPEC 13.5.5, 13.7.2). Each Abort
+    // program stops with KIMI_E_INDEX_BOUNDS at its selection (SPEC 4.7.4, 22.5.1-22.5.2): past the end, at a negative position, at a
+    // same-width unsigned position isize cannot hold, on a write and on an update; an assignment's right-hand side Aborts before its target
+    // is located (SPEC 13.7.1).
+    public static TheoryData<string, string, string> PlacePrograms => new()
+    {
+        {
+            "PlaceArray",
+            "var a: [4 of i32] = [10, 20, 30, 40]\nlet i: isize = 2\nlet n: u8 = 3\nvar bad: i32 = 0\n" +
+            "if a[0] != 10 or a[3] != 40 or a[i] != 30 or a[n] != 40 => bad = 1\na[i] = 7\na[1] += 5\na[n] -= 1\n" +
+            "if a[2] != 7 or a[1] != 25 or a[3] != 39 => bad = 1\nlet flags: [3 of bool] = [true, false, true]\nlet j: isize = 1\n" +
+            "if not flags[0] or flags[j] or not flags[i] => bad = 1\nlet zeros: [3 of i64] = [3 of 0]\nif zeros[i] != 0 => bad = 1\n" +
+            "unsafe\n    var b: [2 of i32] = noinit\n    b[j] = 5\n    b[0] = b[j] + 1\n    if b[0] != 6 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "PlaceDeref",
+            "var x: i32 = 1\nlet r = x@uniq\nr@follow = 41\nvar bad: i32 = 0\nif x != 41 => bad = 1\nx += 1\nlet s = x@ref\n" +
+            "if s@follow != 42 => bad = 1\nvar flag = false\nlet f = flag@uniq\nf@follow = true\nif not flag => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "PlaceIndexAbort",
+            "let a: [3 of i32] = [1, 2, 3]\nlet i: isize = 3\nlet x = a[i]\n",
+            "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n"
+        },
+        {
+            "PlaceNegativeAbort",
+            "let a: [3 of i32] = [1, 2, 3]\nlet i: isize = -1\nlet x = a[i]\n",
+            "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n"
+        },
+        {
+            "PlaceUnsignedAbort",
+            "let a: [3 of i32] = [1, 2, 3]\nlet n: u64 = 18446744073709551615\nlet x = a[n]\n",
+            "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n"
+        },
+        { "PlaceWriteAbort", "var a: [2 of u8] = [1, 2]\nlet i: isize = 2\na[i] = 0\n", "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n" },
+        { "PlaceUpdateAbort", "var a: [2 of u8] = [1, 2]\nlet i: isize = 5\na[i] += 1\n", "Hello.kimi:3:1: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n" },
+        {
+            "PlaceOrderAbort",
+            "var a: [2 of u8] = [1, 2]\nlet x: u8 = 255\nlet i: isize = 9\na[i] = x + 1\n",
+            "Hello.kimi:4:8: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"
+        },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
@@ -210,6 +276,11 @@ public sealed class FunctionCodegenTest
     [MemberData(nameof(Hellos))]
     public void HelloProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
+    [Theory]
+    [MemberData(nameof(PlacePrograms))]
+    public void PlaceProgramsRun(string name, string source, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
     // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
     // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
@@ -485,23 +556,72 @@ public sealed class FunctionCodegenTest
     [Fact]
     public void AGenericConversionChecksItsInstancesRange()
     {
-        var c = Analyze("func widen<T>(value: T) -> i64\n    T is PrimitiveInteger\n    return value@i64\nlet a = widen(5@i32)\nlet b = widen(5@u64)\n");
-        var program = c.BuildMir();
-        var collector = new InstanceCollector(c.Types, c.Layout);
-        var set = collector.Run(program, 1);
-        var start = Enumerable.Range(0, set.Items.Length).Single(x => set.Items[x].Key.Body.Def.Decl is null);
-        set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations);
-        _ = module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null);
-        var texts = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Body.Def.Decl?.Name == "widen").Select(x =>
-        {
-            using var writer = new StringWriter();
-            new FunctionCodegen(module).Write(program, collector, x, writer);
-            return writer.ToString();
-        }).ToArray();
+        var source = "func widen<T>(value: T) -> i64\n    T is PrimitiveInteger\n    return value@i64\nlet a = widen(5@i32)\nlet b = widen(5@u64)\n";
+        var texts = ItemTexts(Analyze(source), "widen");
         Assert.Equal(2, texts.Length);
         Assert.Single(texts, static x => x.Contains("sext i32 %t0 to i64\n", StringComparison.Ordinal) && !x.Contains("__kimi_abort", StringComparison.Ordinal));
         Assert.Single(texts, static x => x.Contains("icmp ugt i64 %t0, 9223372036854775807\n", StringComparison.Ordinal) && x.Contains("__kimi_abort", StringComparison.Ordinal));
+    }
+
+    // The place writer (R5 C2a; DECISIONS R5-M83, package C 3.2 I7 and I9): a Place's address is its root's home, then each step at the offset
+    // the prefix's Layout gives (IMPL 21.1): a Tuple element in Kimigayo order (the i64, then the i16 at 8), a Base at its derived struct's
+    // own address (X1) and a Field after the base, an enum payload after its i32 tag (8, the i64's alignment) and its second element at 0, a
+    // reference's referent at the address it stores, a constant element at its stride's multiple without a check; an Assign's value is
+    // computed before its Place is located (SPEC 13.7.1), and a fixed array is stored element by element. The items are written directly:
+    // the base call and the match's Discriminant are other rows (C3a, C2b). No inbounds (I9).
+    [Theory]
+    [InlineData(Places, "k", "%t14 = load ptr, ptr %l1, align 8\n  %t15 = getelementptr i8, ptr %t14, i64 8\n  %t16 = load i16, ptr %t15, align 2\n")]
+    [InlineData(Layouts, "counted", "%t0 = load ptr, ptr %l1, align 8\n  %t1 = load i32, ptr %t0, align 4\n")]
+    [InlineData(Layouts, "extra", "%t0 = load ptr, ptr %l1, align 8\n  %t1 = getelementptr i8, ptr %t0, i64 4\n  %t2 = load i32, ptr %t1, align 4\n")]
+    [InlineData(Layouts, "payload", "%t2 = load ptr, ptr %l3, align 8\n  %t3 = getelementptr i8, ptr %t2, i64 8\n  store ptr %t3, ptr %l5, align 8\n")]
+    [InlineData(Places, "g", "%t0 = getelementptr i8, ptr %a0, i64 16\n  %t1 = load i64, ptr %t0, align 8\n")]
+    [InlineData(Places, "h", "%t0 = load i32, ptr %l3, align 4\n  %t1 = load ptr, ptr %l1, align 8\n  store i32 %t0, ptr %t1, align 4\n")]
+    [InlineData(Places, "m", "store i16 1, ptr %l1, align 2\n  %t0 = getelementptr i8, ptr %l1, i64 2\n  store i16 2, ptr %t0, align 2\n")]
+    public void APlaceIsAddressedStepByStep(string source, string name, string text)
+    {
+        var item = Assert.Single(ItemTexts(Analyze(source, OutputKind.Library), name));
+        Assert.Contains(text, item);
+        Assert.DoesNotContain("inbounds", item);
+    }
+
+    // SPEC 4.7.1-4.7.4, 22.5.1-22.5.2 (R5 C2a; DECISIONS R5-M83): an Index checks its isize position, unsigned, so a negative one fails too,
+    // against the length: a fixed array's, or the length word of an Array's or Slice's handle, beside its buffer word. Its failure Aborts
+    // with KIMI_E_INDEX_BOUNDS (10) at the selection's location text; its success block addresses the element at the position times the
+    // stride from the array's or the buffer's address.
+    [Theory]
+    [InlineData("func f(a: ref/[3 of i32], i: isize) -> i32 => a[i]", "icmp uge i64 %, 3", "mul i64 %, 4", false)]
+    [InlineData("func f(a: ref/Array<i64>, i: isize) -> i64 => a[i]", "icmp uge i64 %, %", "mul i64 %, 8", true)]
+    [InlineData("func f(s: Slice<u16>, i: isize) -> u16 => s[i]", "icmp uge i64 %, %", "mul i64 %, 2", true)]
+    public void AnIndexChecksItsPositionAgainstTheLength(string source, string condition, string scale, bool handle)
+    {
+        var (ir, text) = Parse(source);
+        var f = Assert.Single(ir.Functions, x => x.Instructions.Any(y => y.Shape == condition));
+        var compare = Assert.Single(f.Instructions, x => x.Shape == condition);
+        var check = Assert.Single(f.Blocks, x => x.Instructions.Contains(compare));
+        Assert.Equal(("br i1 %, label %, label %", compare), (check.Terminator.Shape, Assert.Single(check.Terminator.Operands)));
+        AssertAbort(ir, text, check.Successors[0], AbortReasons.IndexBounds, source, source[(source.IndexOf("=> ", StringComparison.Ordinal) + 3)..]);
+        var element = Assert.Single(check.Successors[1].Instructions, static x => x.Shape == "getelementptr i8, ptr %, i64 %");
+        Assert.Equal((scale, compare.Operands[0]), (element.Operands[1].Shape, element.Operands[1].Operands[0]));
+        if (handle)
+        {
+            var length = compare.Operands[1];
+            Assert.Equal(("load i64, ptr %, align 8", "getelementptr i8, ptr %, i64 8"), (length.Shape, length.Operands[0].Shape));
+            Assert.Equal(("load ptr, ptr %, align 8", length.Operands[0].Operands[0]), (element.Operands[0].Shape, element.Operands[0].Operands[0]));
+        }
+
+        Assert.DoesNotContain("inbounds", text);
+    }
+
+    // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
+    // binding's own slot; in the uniq case the referent of the reference that slot holds.
+    [Fact]
+    public void APairLayerFollowsTheItemsView()
+    {
+        var texts = ItemTexts(Analyze(PairLayers), "keep");
+        Assert.Equal(2, texts.Length);
+        Assert.Single(texts, static x => x.Contains("%t2 = load i32, ptr %l5, align 4\n  store i32 %t2, ptr %l3, align 4\n", StringComparison.Ordinal));
+        var referent = "%t2 = load i32, ptr %l5, align 4\n  %t3 = load ptr, ptr %l3, align 8\n  store i32 %t2, ptr %t3, align 4\n";
+        Assert.Single(texts, x => x.Contains(referent, StringComparison.Ordinal));
     }
 
     // A floating constant is LLVM's hexadecimal double (R5 C1b; DECISIONS R5-M80): an f32's value widened exactly, so the sign of a zero, a
@@ -591,9 +711,10 @@ public sealed class FunctionCodegenTest
     // its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
     // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. The operator rows
     // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
-    // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; a compound
-    // update writes through a borrow (C2b) of its target. K11: an Application's function nothing calls is not generated, so its form records
-    // nothing; a Library generates it.
+    // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; the place
+    // writer (DECISIONS R5-M83) leaves a Tuple aggregate to C2b, at the literal, as it does a zero-sized local's address, at its borrow, and an
+    // object borrow's payload to C6a, at the Place read through it. K11: an Application's function nothing calls is not generated, so its form
+    // records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
@@ -601,14 +722,16 @@ public sealed class FunctionCodegenTest
     [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new[] { "id" })]
     [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new[] { "null@raw/i32" })]
     [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new[] { "p == q" })]
-    [InlineData("var x: i32 = 1\nx += 1\n", OutputKind.Application, new[] { "x += 1" })]
+    [InlineData("let t = (1, 2)\n", OutputKind.Application, new[] { "(1, 2)" })]
+    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new[] { "u@ref" })]
+    [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new[] { "v.id" })]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new[] { "twice(1)" })]
     [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new[] { "t" })]
     [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new[] { "keep(1)" })]
     [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new[] { "name()" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
-    [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1", "value" })]
+    [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
     [InlineData(Signatures, OutputKind.Library, new string[0])]
@@ -633,6 +756,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Arithmetic, OutputKind.Library)]
     [InlineData(Conversions, OutputKind.Library)]
     [InlineData(Drops, OutputKind.Application)]
+    [InlineData(Places, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -659,9 +783,9 @@ public sealed class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var (start, unused) = (Of(set, null), Of(set, "unused"));
         set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
         Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
-        new FunctionCodegen(module).Write(program, collector, unused, TextWriter.Null);
+        new FunctionCodegen(module, c.Types).Write(program, collector, unused, TextWriter.Null);
         Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
 
         static int Of(CheckedSet set, string? name) => Enumerable.Range(0, set.Items.Length).Single(x => set.Items[x].Key.Body.Def.Decl?.Name == name);
@@ -712,6 +836,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Arithmetic, OutputKind.Library)]
     [InlineData(Conversions, OutputKind.Library)]
     [InlineData(Drops, OutputKind.Application)]
+    [InlineData(Places, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -754,6 +879,26 @@ public sealed class FunctionCodegenTest
     }
 
     private static string Generate(string source) => Generate(Analyze(source));
+
+    // The definitions of a definition's body items (null: the top-level statements), each written directly whatever records the module's
+    // other items make: an instance a call names (the call is C3a's row) or a body beside a form not written yet. Every body item is an
+    // output root.
+    private static string[] ItemTexts(Compilation c, string? name)
+    {
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
+        set.Mark(bodies);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
+        _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
+        return [.. bodies.Where(x => set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
+        {
+            using var writer = new StringWriter();
+            new FunctionCodegen(module, c.Types).Write(program, collector, x, writer);
+            return writer.ToString();
+        })];
+    }
 
     // A Library program's IR and text: a Library generates every root (K11).
     private static (GeneratedIr Ir, string Text) Parse(string source)
