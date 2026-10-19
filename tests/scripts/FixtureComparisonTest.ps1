@@ -39,10 +39,10 @@ function Compare-Run([string] $baseline, [string] $candidate, [int] $exitCode, [
     Expect ($O2Metrics.IsPresent -eq (Test-Path -LiteralPath (Join-Path $output 'o2-metrics.json'))) "Only -O2Metrics writes o2-metrics.json ($baseline, $candidate)."
     return Get-Content -LiteralPath (Join-Path $output $(if ($O2Metrics) { 'o2-metrics.json' } else { 'fixture-comparison.json' })) -Raw | ConvertFrom-Json
 }
-# Optimized IR as LLVM prints it: a define per size, each an unlabeled entry block of that many instructions.
-function Put-O2([string] $run, [string] $stem, [int[]] $sizes, [string] $text = '') {
-    $defines = foreach ($size in $sizes) { "define void @f$size() {`n$("  %v = add i32 0, 0`n" * ($size - 1))  ret void`n}`n" }
-    Put (Join-Path $work "$run/work/native/$stem.O2.ll") ("; ModuleID = '$stem'`n`n" + $text + ($defines -join "`n"))
+# Optimized IR as LLVM prints it: a define of one unlabeled entry block of that many instructions.
+function Define([string] $name, [int] $size) { "define void @$name() {`n$("  %v = add i32 0, 0`n" * ($size - 1))  ret void`n}`n`n" }
+function Put-O2([string] $run, [string] $stem, [string] $text, [string] $step = 'native') {
+    Put (Join-Path $work "$run/work/$step/$stem.O2.ll") ("; ModuleID = '$stem'`n`n" + $text)
 }
 function Reject([string] $candidate, [string] $message, [string] $baseline = 'base', [switch] $O2Metrics) {
     try { & $compare -Baseline (Join-Path $work $baseline) -Candidate (Join-Path $work $candidate) -Output (Join-Path $work "compare-$candidate") -O2Metrics:$O2Metrics *> $null }
@@ -92,31 +92,49 @@ Remove-Item -LiteralPath (Join-Path $work 'set/fixtures-Release') -Recurse
 Reject 'set' 'has no fixtures-Release evidence'
 
 # O2 metrics: four.ll fails before O2 in the candidate and five.ll is the candidate's only, so each lacks one side.
-New-Run 'o2base' @{ one = 0; two = 0; three = 0; four = 0 }
-New-Run 'o2head' @{ one = 0; two = 0; three = 0; four = 0; five = 0 } @{ four = [ordered]@{ ok = $false; levels = @('O0') } }
+New-Run 'o2base' @{ one = 0; two = 0; three = 0; four = 0; six = 0 }
+New-Run 'o2head' @{ one = 0; two = 0; three = 0; four = 0; five = 0; six = 0 } @{ four = [ordered]@{ ok = $false; levels = @('O0') } }
 New-Run 'o2empty' @{ one = 0 }
 # Two instructions in an unlabeled entry block; four (not a switch case or its ']') in three labeled blocks.
 $sample = "define void @__kimi_start() #1 {`n  tail call void @__kimi_f1(i32 1)`n  ret void`n}`n`n; Function Attrs: uwtable`n" +
     "define internal fastcc i32 @__kimi_f1(i32 %x) {`nentry:`n  %a = add i32 %x, 1`n  switch i32 %a, label %b [`n    i32 0, label %5`n  ]`n`n" +
     "b:                                                ; preds = %entry`n  ret i32 %a`n`n5:`n  ret i32 0`n}`n`ndeclare void @g()`n`n"
-Put-O2 'o2base' 'one' @() $sample
-Put-O2 'o2head' 'one' @() ($sample + "define i32 @__kimi_f2() {`n  %r = call i32 @h()`n  br label %1`n`n1:`n  ret i32 %r`n}`n")
-foreach ($stem in @('two', 'three', 'four')) { Put-O2 'o2base' $stem $(if ($stem -eq 'two') { 4 } else { 2 }) }
-Put-O2 'o2head' 'two' @(4, 4)
-Put-O2 'o2head' 'three' @(4)
-Put-O2 'o2head' 'five' @(1)
-Put-O2 'o2empty' 'one' @()
+Put-O2 'o2base' 'one' $sample
+Put-O2 'o2head' 'one' ($sample + "define i32 @__kimi_f2() {`n  %r = call i32 @h()`n  br label %1`n`n1:`n  ret i32 %r`n}`n")
+foreach ($stem in @('two', 'three', 'four')) { Put-O2 'o2base' $stem (Define 'f' $(if ($stem -eq 'two') { 4 } else { 2 })) }
+Put-O2 'o2head' 'two' ((Define 'f' 4) + (Define 'g' 4))
+Put-O2 'o2head' 'three' (Define 'f' 4)
+Put-O2 'o2head' 'five' (Define 'f' 1)
+# six.ll's runtime helpers (one a template define, one a spliced marker) are unchanged and its body doubles: it ranks by
+# the body (2), above one.ll (1.5) although its whole module grows less (1.08), and before three.ll (2, +2) by name.
+Put-O2 'o2base' 'six' ((Define '__kimi_write_bytes' 15) + (Define '__kimi_exit' 9) + (Define '__kimi_start' 2))
+Put-O2 'o2head' 'six' ((Define '__kimi_write_bytes' 15) + (Define '__kimi_exit' 9) + (Define '__kimi_start' 4))
+Put-O2 'o2empty' 'one' (Define '__kimi_exit' 2)
 $o2 = Compare-Run 'o2base' 'o2head' 1 -O2Metrics
-Expect ((@($o2.ranked.fixture) -join ',') -ceq 'two.ll,three.ll,one.ll') 'O2 metrics must rank by instruction growth, then by the difference.'
-$one = @($o2.ranked)[2]
+Expect ((@($o2.ranked.fixture) -join ',') -ceq 'two.ll,six.ll,three.ll,one.ll') 'O2 metrics must rank by body instruction growth, then by the difference, then by name.'
+$one = @($o2.ranked)[3]
 $defines = @($one.candidate.defines | ForEach-Object { "$($_.name)=$($_.instructions)/$($_.blocks)" }) -join ','
 Expect ($defines -ceq '__kimi_start=2/1,__kimi_f1=4/3,__kimi_f2=3/2') "Each define must count its instructions and blocks, not '$defines'."
 Expect ($one.growth -eq 1.5 -and $one.difference -eq 3 -and $one.baseline.instructions -eq 6 -and $one.baseline.blocks -eq 4) 'A fixture must total its defines.'
-Expect ($o2.totals.fixtures -eq 3 -and $o2.totals.baseline.instructions -eq 12 -and $o2.totals.candidate.instructions -eq 21 -and $o2.totals.growth -eq 1.75) 'O2 totals must sum the paired fixtures.'
+$six = @($o2.ranked)[1]
+Expect ($six.growth -eq 2 -and $six.baseline.runtime.instructions -eq 24 -and $six.candidate.bodies.instructions -eq 4 -and $six.candidate.instructions -eq 28) 'Runtime helpers and bodies must be totalled apart.'
+Expect (@($o2.runtime) -ccontains '__kimi_exit' -and @($o2.runtime) -ccontains '__kimi_write_bytes' -and @($o2.runtime) -cnotcontains '__kimi_start') 'The runtime helpers must be the runtime template functions.'
+$totals = $o2.totals
+Expect ($totals.fixtures -eq 4 -and $totals.baseline.bodies.instructions -eq 14 -and $totals.candidate.bodies.instructions -eq 25 -and $totals.growth -eq 1.7857) 'O2 totals must sum the bodies of paired fixtures.'
+Expect ($totals.baseline.runtime.instructions -eq 24 -and $totals.candidate.runtime.instructions -eq 24 -and $totals.candidate.instructions -eq 49) 'O2 totals must sum their runtime helpers.'
 $unpaired = @($o2.unpaired | ForEach-Object { "$($_.fixture):$([int]($null -ne $_.baseline))$([int]($null -ne $_.candidate))" }) -join ','
 Expect ($unpaired -ceq 'five.ll:01,four.ll:10') "A fixture without an O2 file in one run must be reported, not '$unpaired'."
 Expect ((Get-Content -LiteralPath (Join-Path $work 'compare-o2base-o2head/fixture-comparison.txt')) -contains '  four.ll: none in candidate') 'The text report must name an unpaired fixture.'
 Expect ((@((Compare-Run 'o2base' 'o2base' 0 -O2Metrics).ranked.growth | Sort-Object -Unique) -join ',') -ceq '1') 'O2 metrics must not change the comparison result.'
 Reject 'same' 'has no native work directory' -O2Metrics
-Reject 'o2empty' 'has no defined function' 'o2base' -O2Metrics
+Reject 'o2empty' 'has no generated function' 'o2base' -O2Metrics
+# Two native steps: native-<i>-fixtures records native-<i>'s outputs, and a fixture takes its first step's O2 file.
+New-Run 'o2steps' @{ one = 0; two = 0 }
+Rename-Item -LiteralPath (Join-Path $work 'o2steps/native-fixtures') 'native-0-fixtures'
+Copy-Item -LiteralPath (Join-Path $work 'o2steps/native-0-fixtures') (Join-Path $work 'o2steps/native-1-fixtures') -Recurse
+Put-O2 'o2steps' 'one' (Define 'f' 3) 'native-0'
+Put-O2 'o2steps' 'one' (Define 'f' 5) 'native-1'
+Put-O2 'o2steps' 'two' (Define 'f' 7) 'native-1'
+$steps = @((Compare-Run 'o2steps' 'o2steps' 0 -O2Metrics).ranked | ForEach-Object { "$($_.fixture)=$($_.baseline.instructions)" }) -join ','
+Expect ($steps -ceq 'one.ll=3,two.ll=7') "Each native step must read its own work directory, the first step first, not '$steps'."
 Write-Output "Passed $cases fixture comparison checks. Synthetic runs retained: $work"

@@ -8,9 +8,10 @@
 # evidence throws.
 # -O2Metrics also writes o2-metrics.json (R5's MIR/legacy measurement, information only: the exit code stays the
 # comparison's): instructions and blocks per define of each natively run fixture's optimized IR, the first native step's
-# <work>/native*/<stem>.O2.ll (summary.json workDirectory); fixtures with one in both runs ranked by candidate/baseline
-# instruction growth, then by the difference, then by name; the others listed as unpaired. Defines are not paired across
-# runs: both generators name bodies __kimi_f<n>, each by its own numbering.
+# <work>/native*/<stem>.O2.ll (summary.json workDirectory), totalled over the runtime helpers (this checkout's runtime
+# template) and over the generated bodies; fixtures with one in both runs ranked by candidate/baseline body instruction
+# growth, then by the difference, then by name; the others listed as unpaired. Generated bodies are not paired across
+# runs: both generators name them __kimi_f<n>, each by its own numbering.
 #   ./scripts/compare-fixtures.ps1 -Baseline artifacts/verify/<parent run> -Candidate artifacts/verify/<run> [-O2Metrics]
 [CmdletBinding()]
 param(
@@ -113,13 +114,25 @@ if ($differingNative.Count -gt 0) {
     foreach ($item in $differingNative) { $text.Add("  $($item.fixture): $(if ($item.baseline) { $item.baseline } else { 'not run' }) -> $(if ($item.candidate) { $item.candidate } else { 'not run' })") }
 }
 if ($O2Metrics) {
+    # The runtime helpers are the functions LlvmModuleText.WriteRuntime writes in both generators: the runtime template's, each
+    # named on the line before its body's entry: label, by a define line or by the {{name}} marker ExpandRuntime replaces with
+    # that definition. Every other define is a generated body.
+    $template = [IO.File]::ReadAllLines((Join-Path $PSScriptRoot '../src/Kimi/Compiler/Emission/WindowsRuntime.ll.in'))
+    $runtime = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    for ($i = 1; $i -lt $template.Count; $i++) {
+        if ($template[$i] -ceq 'entry:') { $null = $runtime.Add(($template[$i - 1] -creplace '^\{\{(.+)\}\}$|^[^@]*@([^(]+)\(.*$', '$1$2')) }
+    }
     $paths = @(@($baseRun.o2.Values) + @($candidateRun.o2.Values))
     $chunks = @(for ($i = 0; $i -lt $parallel; $i++) { , @(for ($j = $i; $j -lt $paths.Count; $j += $parallel) { $paths[$j] }) })
     $metrics = @{}
     $chunks | ForEach-Object -ThrottleLimit $parallel -Parallel {
+        $runtime = $using:runtime
         foreach ($path in $_) {
             $defines = [Collections.Generic.List[object]]::new()
-            $total = [ordered]@{ instructions = 0; blocks = 0; defines = $defines }
+            $total = [ordered]@{
+                instructions = 0; blocks = 0; runtime = [ordered]@{ instructions = 0; blocks = 0 }; bodies = [ordered]@{ instructions = 0; blocks = 0 }
+                defines = $defines
+            }
             $define = $null
             # Between a define and its closing brace, LLVM's printer indents an instruction by exactly two spaces (a switch's
             # cases further; its closing ']' is no instruction) and writes a block label at column 0; an unlabeled entry
@@ -128,38 +141,50 @@ if ($O2Metrics) {
                 if ($null -eq $define) {
                     if ($line.StartsWith('define ', 'Ordinal')) { $define = [ordered]@{ name = $line.Substring($line.IndexOf('@') + 1).Split('(')[0]; instructions = 0; blocks = 0 } }
                 }
-                elseif ($line -ceq '}') { $defines.Add($define); $total.instructions += $define.instructions; $total.blocks += $define.blocks; $define = $null }
+                elseif ($line -ceq '}') {
+                    $part = if ($runtime.Contains($define.name)) { $total.runtime } else { $total.bodies }
+                    foreach ($count in @('instructions', 'blocks')) { $total[$count] += $define[$count]; $part[$count] += $define[$count] }
+                    $defines.Add($define)
+                    $define = $null
+                }
                 elseif ($line.StartsWith('  ', 'Ordinal')) { if ($line.Length -gt 2 -and ' ]'.IndexOf($line[2]) -lt 0) { $define.instructions++; $define.blocks = [Math]::Max(1, $define.blocks) } }
                 elseif ($line.Length -gt 0 -and ' ;'.IndexOf($line[0]) -lt 0) { $define.blocks++ }
             }
-            if ($total.instructions -eq 0) { throw "$path has no defined function." }
+            if ($total.bodies.instructions -eq 0) { throw "$path has no generated function." }
             [pscustomobject]@{ path = $path; metrics = $total }
         }
     } | ForEach-Object { $metrics[$_.path] = $_.metrics }
     foreach ($run in @($baseRun, $candidateRun)) { foreach ($fixture in @($run.o2.Keys)) { $run.o2[$fixture] = $metrics[$run.o2[$fixture]] } }
     $ranked = [Collections.Generic.List[object]]::new()
     $unpaired = [Collections.Generic.List[object]]::new()
-    $sides = @([ordered]@{ instructions = 0; blocks = 0 }, [ordered]@{ instructions = 0; blocks = 0 })
+    $sides = foreach ($side in 0, 1) {
+        [ordered]@{ instructions = 0; blocks = 0; runtime = [ordered]@{ instructions = 0; blocks = 0 }; bodies = [ordered]@{ instructions = 0; blocks = 0 } }
+    }
+    function Add-Counts($sum, $counts) {
+        foreach ($count in @('instructions', 'blocks')) { $sum[$count] += $counts[$count]; $sum.runtime[$count] += $counts.runtime[$count]; $sum.bodies[$count] += $counts.bodies[$count] }
+    }
+    # Fixtures rank by the growth of their generated bodies: the runtime helpers are the same text in both generators.
     foreach ($fixture in $nativeFixtures) {
         $before = $baseRun.o2[$fixture]
         $after = $candidateRun.o2[$fixture]
         if ($null -eq $before -or $null -eq $after) { $unpaired.Add([ordered]@{ fixture = $fixture; baseline = $before; candidate = $after }); continue }
-        $growth = [Math]::Round($after.instructions / [double]$before.instructions, 4)
-        $ranked.Add([ordered]@{ fixture = $fixture; growth = $growth; difference = $after.instructions - $before.instructions; baseline = $before; candidate = $after })
-        foreach ($count in @('instructions', 'blocks')) { $sides[0][$count] += $before[$count]; $sides[1][$count] += $after[$count] }
+        $growth = [Math]::Round($after.bodies.instructions / [double]$before.bodies.instructions, 4)
+        $ranked.Add([ordered]@{ fixture = $fixture; growth = $growth; difference = $after.bodies.instructions - $before.bodies.instructions; baseline = $before; candidate = $after })
+        Add-Counts $sides[0] $before
+        Add-Counts $sides[1] $after
     }
     $ranked = @($ranked | Sort-Object @{ Expression = { $_.growth }; Descending = $true }, @{ Expression = { $_.difference }; Descending = $true }, @{ Expression = { $_.fixture } } -CaseSensitive)
-    $growth = if ($ranked.Count -gt 0) { [Math]::Round($sides[1].instructions / [double]$sides[0].instructions, 4) } else { $null }
+    $growth = if ($ranked.Count -gt 0) { [Math]::Round($sides[1].bodies.instructions / [double]$sides[0].bodies.instructions, 4) } else { $null }
     $o2Report = [ordered]@{
-        baseline = $runs[0]; candidate = $runs[1]; totals = [ordered]@{ fixtures = $ranked.Count; baseline = $sides[0]; candidate = $sides[1]; growth = $growth }
-        ranked = $ranked; unpaired = @($unpaired)
+        baseline = $runs[0]; candidate = $runs[1]; runtime = @($runtime | Sort-Object -CaseSensitive)
+        totals = [ordered]@{ fixtures = $ranked.Count; baseline = $sides[0]; candidate = $sides[1]; growth = $growth }; ranked = $ranked; unpaired = @($unpaired)
     }
     $o2Report | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath (Join-Path $Output 'o2-metrics.json')
-    $o2Line = "O2: $($ranked.Count) paired, instructions $($sides[0].instructions) -> $($sides[1].instructions) (growth $growth), " +
-        "blocks $($sides[0].blocks) -> $($sides[1].blocks), $($unpaired.Count) unpaired"
+    $o2Line = "O2: $($ranked.Count) paired, body instructions $($sides[0].bodies.instructions) -> $($sides[1].bodies.instructions) (growth $growth), " +
+        "runtime $($sides[0].runtime.instructions) -> $($sides[1].runtime.instructions), all $($sides[0].instructions) -> $($sides[1].instructions), $($unpaired.Count) unpaired"
     $text.Add($o2Line)
-    if ($ranked.Count -gt 0) { $text.Add('Largest O2 instruction growth (baseline -> candidate):') }
-    foreach ($item in @($ranked | Select-Object -First 10)) { $text.Add("  $($item.fixture): $($item.baseline.instructions) -> $($item.candidate.instructions) ($($item.growth))") }
+    if ($ranked.Count -gt 0) { $text.Add('Largest O2 body instruction growth (baseline -> candidate):') }
+    foreach ($item in @($ranked | Select-Object -First 10)) { $text.Add("  $($item.fixture): $($item.baseline.bodies.instructions) -> $($item.candidate.bodies.instructions) ($($item.growth))") }
     if ($unpaired.Count -gt 0) { $text.Add('Unpaired O2 fixtures:') }
     foreach ($item in $unpaired) { $text.Add("  $($item.fixture): none in $(@(foreach ($side in @('baseline', 'candidate')) { if ($null -eq $item[$side]) { $side } }) -join ' and ')") }
 }

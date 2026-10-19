@@ -132,9 +132,11 @@ compare `Kimi.dll` bytes instead: its informational version embeds the commit id
 depends on the worktree, so the DLL changes between commits even when behavior does not.
 
 `-O2Metrics` also writes `o2-metrics.json`: instructions and blocks per `define` of each natively run fixture's optimized
-IR (`<work>/native*/<name>.O2.ll`, so both runs' `temp/verify` work directories must remain), the fixtures measured in
-both runs ranked by candidate/baseline instruction growth, and those without an O2 file in a run. The metrics are
-information, not part of the result; R5 measures MIR code generation against a legacy run with them (DECISIONS R5-M3).
+IR (`<work>/native*/<name>.O2.ll`, so both runs' `temp/verify` work directories must remain), totalled over the runtime
+helpers (the functions of the checkout's runtime template, which both generators write) and over the generated bodies;
+the fixtures measured in both runs ranked by candidate/baseline body instruction growth, and those without an O2 file in
+a run. The metrics are information, not part of the result; R5 measures MIR code generation against a legacy run with
+them (DECISIONS R5-M3).
 
 ## Specification acceptance and support boundaries
 
