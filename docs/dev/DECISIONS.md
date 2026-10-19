@@ -444,7 +444,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M10** A6: a problem rooted at an Opaque site is derived and dropped; an effect caused by one is Unknown with that
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
-  `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded, and its Inlined rule amended, by R4-M69.
+  `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
   places the merge across bodies at publication.
@@ -1271,7 +1272,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
   planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
   CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by
-  R4-M70) A5's Loan stratum, its joint core. `MirBorrows`
+  R4-M70; 1b-4's guard code settled and its merge's unit moved to 2a by R4-M72) A5's Loan stratum, its joint core. `MirBorrows`
   (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
   decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
   facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
@@ -1696,6 +1697,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
     constructors, of two and nine cases, gave one problem with `0x1FF`).
   - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
     same facts).
+- **R4-M72** (2026-10-19; decided by the planning session on 2026-10-18, adopting the design review of 1c's two designs (its verdicts
+  4 and 5 and its R4-M72 draft) with the 1c design, and by the owner through the step-2 plan's PD7 and PD11, adopted with the plan
+  (R4-M74, OQ1); with group 1c's final review's records; recorded by unit 1c-9; A3 §12 E15). The A6 table of A5's Loan problems
+  (DIAGNOSTICS, MIR Loan problems) and the placements group 1c left. It supersedes A3 §5's A6 rows for effects, `PreparedInput` roots
+  and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their merge, R4-M10's placement of the Access and Borrow codes in
+  A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
+  - Effects: err(effect), a static or unknown-environment effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
+    the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
+    unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
+    and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both
+    supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet: unit 2b
+    implements the first (none arises while no static Loan exists, since Binding rejects every borrow of group storage, PLAN G100) and
+    2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation.
+  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a template the preceding
+    parameters a default reads are the template's own parameters, whose callers' Loans lie outside its body, and a copy reaches its
+    pending slots only past the prologue's shared borrows, where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as
+    `DefaultArgumentMove_Kd` is A1's (R4-M69).
+  - Guard: err(ended) (E7) is `ComparisonLoanConflict_Kd` at the candidate's cleanup, its `EndBorrow`, anchored at the candidate, as
+    DIAGNOSTICS' escaped borrows; no guard-local code exists (A3 §9 item 9's DIAGNOSTICS record).
+  - Merge: E7's and E12's merge (the `destroy` conflict on a Loan `_0` carries whose Borrow the Origin stratum refuted, and err(ended)
+    where γ_H reaches `_0`) moves from unit 1c to 2a (2a-2, completed by 2g-5; the step-2 plan's PD11), since the Refuted relations it
+    reads come from the Origin stratum (A5-F4).
+  - View skip (unit 1c-3): `MirBorrows.Run` skips a body view only when it has no Loan and no guard candidate, since E7's γ needs no
+    Loan; A3 §6.1's skip of a view without a Loan accepted a guard value escaping in a Loan-free view (the design review's r02, an
+    unsound acceptance). The root flags only select the accesses checked.
+  - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
+    so R4 asks that H3, the first publisher, does it, and hands it to H0 through AR-4 (the step-2 plan's X-3 list).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
@@ -3534,7 +3562,8 @@ structure is recorded here by the unit that first implements it.
     (`Unsupported_Kd` at each access; X33 (a)). Search (K7's condition): over the library, the 44 milestones, the mutation, syntax and pair
     corpora (456 cases) and the 63 spec-case variants, only Milestone 42 uses the form, P42's completion program, which the old analysis
     rejects at the same accesses; no accepted program does. An immutable scalar `let` there, which the old path accepts and builds, is
-    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit.
+    refused under MIR code generation from this unit and at `check` from G2: the (e) row the PD27 list approves at R5's exit. Superseded
+    by R5-M82 (2026-10-19): such a static is the `StaticStorage` row once at its declaration, and its accesses carry no record.
   - The plan row's "through a `MirTypes.Destruction` visitor" is `MayNeedDrop` (presence) with `DropGlue.Parts` (the parts), as X3 and
     X27 decided.
   - Rejected: laying out the elements after admission (an admitted glue with a failed element); a target for every part whatever
@@ -4063,3 +4092,32 @@ structure is recorded here by the unit that first implements it.
   not commit evidence. A case that fails only under load (PLAN G138) is never listed: it fails the gate and is re-run.
   - Rejected: a verdict per test or native step (a fixture two patterns run would be judged twice); writing the ledger before the
     input observation (the evidence would name a ledger it did not compare); re-filing kept rows; an allowlist of load-dependent cases.
+- **R5-M82 Unsupported static storage is a capability row at its declaration** (2026-10-19, K lane; unit K11b, the planning session's
+  decisions on R4's sel pending check and on K11b's review; under R5-M18, R5-M40, R5-M53 and R5-M77; the capability rows approved with
+  the K package, §11) Since K11 MIR code generation reaches only what an output requires, so a form a codegen coverage row refused only
+  when every item was written is accepted when nothing reaches it; for a form no common rule covers, that accepts a narrow subset of it
+  (AGENTS Diagnostics). Static storage is one such form (P42; STATUS "Static members"). The capability check decides it from facts the
+  Backend reads, MIR code generation's own contract: a verified static of a root module is the `StaticStorage` row, `Unsupported_Kd` at
+  its declaration (its StaticInit body's source), used or not, when it can be set (`BoundProperty.Setter.IsPresent`: a `var`), when its
+  StaticInit body's result Type is not a scalar (`ScalarTypes`: an aggregate, borrowed or drop-needing Type) or when its definition
+  instantiates (`TyCtxt.Instantiates`: a static of a generic container's group, whose storage the MIR keys by its symbol alone, a literal
+  `let` included). It comes from the collector's definition-stage scan of root-module bodies (A3b), so under MIR code generation it rejects
+  at check (R5-M41). An unverified static is Binding's error; an immutable scalar of a closed group, also one with a first-access
+  initializer, is no record. Removal condition: P42, not C7b.
+  - One record per cause: this row supersedes R5-M60's `GenericStaticKey`, which recorded each access of a static of a generic
+    container's group; such an access admits nothing and records nothing (the declaration is the record), and the row is deleted. The
+    bundled library declares no such static (its rooted check, P5, has no record). Changed expectations: `AStaticAccessIsItsInitializer`
+    (one record at `public let count: i32 = 0` for the two accesses) and Milestone 42 (five declarations, no access records).
+  - Pending rows (R5-M73's rule applied by hand): the sel cases whose programs declare unsupported static storage now reject at check:
+    `CallableEffectBoundTest.FunctionItemsUseTheirTransitiveEffects` (closure, C5a's Callable*), `EffectBoundReportTest.ReportsTheViolatingEffect`
+    x3 and `MilestoneSourcesTest.AuthoredProgramsMatchTheirRecordedStageAndDiagnostic` (C-frame, no unit names them),
+    `Utf8ReserveEffectTest.ClearingBorrowedDictionariesChecksSourceDestruction` x2 (format, C9a's Utf*); their fixtures are unchanged.
+  - Search for other forms that relied on every item being written: the remaining coverage rows (Closure, DefaultTemplate and StaticInit
+    bodies, MIR forms, mono-item kinds, TestEntry) name forms the frame will write, so an unreached one is no accepted subset.
+  - Rejected: the old pipeline's `StaticScalar` predicate (it decides by syntax, the Backend may not read it, and a `Supports` wrapper over
+    it would be a `Supports*` gate; editing the frozen old generator to share it is outside D5); a pending row for the unused static (it
+    would ledger the unsound acceptance); a row for every StaticInit (it refuses statics C7b supports); a `var`-only row (one rule for
+    P42's remainder); coverage records for items outside Generated (codegen requests only Generated items, R5-M77).
+  - Verified: an unused and a read static `var`, an aggregate `let` and a literal `let` of a generic container's group are the gap at the
+    declaration; an immutable scalar `let`, literal or first-access, is none; `ModuleEmissionTest`'s unused-dependency `var` is refused
+    under both pipelines.

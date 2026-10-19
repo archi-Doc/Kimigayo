@@ -19,17 +19,18 @@ internal sealed partial class InstanceCollector
 
     // K 4.5 row 7: the StaticInit body a staticEnsure names (MirProgram.StaticInit, F10); none is a broken contract, since the builder
     // ensures only the statics whose initializers it builds. A static of a generic container's group, whose storage the MIR keys by its
-    // symbol alone (SPEC 22.4.4), is the capability table's generic-static-key gap at the access (X6, X33 (a)).
+    // symbol alone (SPEC 22.4.4), has no instance to admit: its declaration is the static-storage gap once (DECISIONS R5-M82, which
+    // supersedes R5-M60's record at each access; the bundled library declares none, as its rooted check shows).
     private int Static(MirProgram program, int item, MirBody body, SourceRef subject, in MirTerminator ensure)
     {
         var initializer = program.StaticInit(body, body.Operands[ensure.Start]);
-        if (initializer is null || this.types.Instantiates(initializer.Key.Decl!))
+        if (initializer is null)
         {
-            this.Set.Report(initializer is null ? DiagnosticCode.InternalInvariant_Kd : Capability.Code(CapabilityGap.GenericStaticKey), subject);
+            this.Set.Report(DiagnosticCode.InternalInvariant_Kd, subject);
             return -1;
         }
 
-        return this.Admit(item, subject, initializer, null);
+        return this.types.Instantiates(initializer.Key.Decl!) ? -1 : this.Admit(item, subject, initializer, null);
     }
 
     // K 4.5 "DropGlue": a DropGlue's targets, at its default site, its direct parts in destruction order (DropGlue.Parts): a destructor's

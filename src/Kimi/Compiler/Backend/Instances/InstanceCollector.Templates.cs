@@ -70,12 +70,17 @@ internal sealed partial class InstanceCollector
         this.starts[bodies.Length] = count;
     }
 
-    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations are checked against
-    // the capability table on the way (A3b). Returns the new count.
+    // A body's sites, appended from `count` in location order with their runtime bits; a root-module body's operations, and a root-module
+    // static's declaration, are checked against the capability table on the way (A3b). Returns the new count.
     private int Template(MirBody body, int count)
     {
         var blocks = body.Blocks;
         var root = body.Source.Module < this.rootModules;
+        if (root)
+        {
+            this.CheckStatic(body);
+        }
+
         this.reach.Clear(blocks.Length);
         this.reach.Walk(body, 0, checks: false);
         for (var block = 0; block < blocks.Length; block++)
