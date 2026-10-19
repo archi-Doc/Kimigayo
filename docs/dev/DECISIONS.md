@@ -999,7 +999,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
-    R5-M9.
+    R5-M9. OD4's parallel run is suspended by R4-M77 (2026-10-19) until the owner resumes it.
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -1694,6 +1694,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - G2 (2f-S1): (a). Values of one abstract Type share its Origin atoms for rule 1 (SPEC 8.11.4, 8.11.5's `Merge`), and c24's
     answer also sets the conformance carrier granularity, one rule for callers and conformances. `EffectBoundCallerTest`'s rows
     `zip` and `both`, valid today, become errors; their unit cites this answer. c24's own verdict stays open (the sketch's §9).
+- **R4-M77 R5 and the Binding units paused; R4 continues alone** (owner, 2026-10-19, choosing option A of the R4 planning
+  session's comparison, verbatim 「A案. 両方止める に決定します。推奨の「きりの良いところ」で、BUとR5を止め、引き継ぎ文書を作成し、再開プロンプトを書いてください。R4はそのまま継続してください。」; and,
+  asked of R5 directly as a question that R5 took as the owner's direction, refining R5's stopping point, verbatim
+  「「新しい単位は開始せず、現在の作業を継続。完了したら、push/マージまで行って終了」というのはいかがか？」, in place of the recommended point (C0c and K11 pushed, unmerged)) BU
+  stops after G147 (2b)'s merge. R5 starts no new unit; its units in flight (F18, F7 with R4's sign-off, K11, C1a, C0c, E13)
+  finish their reviews and merge into dev, and a unit whose review blocks a second time or whose fix needs a new design stops on
+  its pushed branch, unmerged, its handoff carrying AGENTS's two-round choice to the owner at the resume (R5's bound). Each then
+  writes its handoff and resume prompt in `artifacts/handoff/2026-10-19-pause/` (main checkout), releases its PLAN §3 holds and
+  stops its agents; R4 continues alone. R5-M1's parallel run (OD4) is suspended until the owner resumes it. The comparison's terms
+  for option A: gains, waits and machine load nearly vanish, R4 may use the builder files W1 held, and measurements get a quiet
+  machine; losses, R5's work stops, R6 is delayed, and R4 takes over builder work such as F18's (under the refinement F18 itself
+  merges first). Consequences (planning session): R4 may edit the files R5 and BU held, under COMPILER_ARCHITECTURE's ownership
+  rules, and lists each such change for their resume; it re-plans, as their units come due, the step-2 units the plan gives to BU
+  (PD6: 0c, 2b-6, 2x-E4a, 2x-E6, 2x-E7) and its asks of R5 AR-1, AR-2 and AR-8 (G147 (2)'s validator half), with reviewers that
+  wrote neither design nor code in place of AB-5's BU reviewers and AR-2's R5 reviewers. AR-7's acceptance stays R5's (the owner's
+  condition, R4-M74 OQ6) and waits for its resume or goes to the owner; AR-6 is met (R5-M63).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -1739,7 +1755,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4 and
-R5 on the owner's request of 2026-10-18.
+R5 on the owner's request of 2026-10-18; paused by R4-M77 (2026-10-19).
 
 - **BU-1** (2026-10-18; the BU planning session; correction of R4-M51's Stores clause, found by R4's E14 implementer at
   `f6b365bb`; R4-M51's contract stands) Stores of call retention (SPEC 15.6.4): an Origin occurrence is writable storage of
@@ -2217,8 +2233,8 @@ structure is recorded here by the unit that first implements it.
 - **R5-M1 Adoption** (owner, 2026-10-18; OQ1, OQ4, OQ10, OQ11 and the start) The plan is the formal plan for R5 (MIR code
   generation, shadow), R6-gen and R6-check: its units (§4), order (§3), metrics and stop rules (§5.1–§5.2, R5-M8) and three
   exit gates (§5.3–§5.5), which replace PLAN10 §12.2's R5 exit and give R6-gen and R6-check the gates R4-M35 left out. R5
-  runs now, in parallel with R4 (OD4 stands), in its own planning session. The design
-  packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
+  runs now, in parallel with R4 (OD4 stands; suspended by R4-M77 until the owner resumes it), in its own planning session.
+  The design packages S2–S4 (OQ4), Q8 (OQ10) and H0 (OQ11) each go to the owner once, after their design review, and are approved
   then, not in advance; each approval makes the package the owner-approved design of DEC Q6 forms 1 and 2 for the units and
   groups it names. The S2–S4 summary highlights PD3 (no `MirBodyKind.Shim`; shims are Backend mono items) and PD11
   (temporary codegen coverage rows reporting `Unsupported_Kd` under sel, outside the three reporters ARCH "Closed
