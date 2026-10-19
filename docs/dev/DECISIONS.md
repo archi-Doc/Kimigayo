@@ -444,9 +444,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M10** A6: a problem rooted at an Opaque site is derived and dropped; an effect caused by one is Unknown with that
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
-  `DefaultArgument*_Kd`.
+  `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded, and its Inlined rule amended, by R4-M69.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
-  as the case fact. Views are never collapsed. The key is R4-M3a's until U11.
+  as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
+  places the merge across bodies at publication.
 - **R4-M12** Library bodies are analyzed in every compilation. The library and the milestones produce no problems,
   except an (a) row whose library fix lands in the same unit. Suspended until the joint core lands (R4-M35).
 - **R4-M13** Tests migrate per method kind (body presence, operations, cleanup verdicts, Loans, verification state, R5/R6
@@ -468,7 +469,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   landing with the first analysis unit (parallel units would invent the same files). R4-M35 moves the restructuring to before the R5
   split.
 - **R4-M3a** (2026-10-12, planning session; design B's record taken into design A; supersedes R4-M3's fields; its fields amended by
-  R4-M67: the requirement each recording rule names).
+  R4-M67: the requirement each recording rule names, and by R4-M71: the body; its key superseded by R4-M71: (code, subject, body)).
   `MirProblem(DiagnosticCode Code, SourceRef Subject, ulong Views)`; `MirReport` merges by (Code, Subject), the canonical
   `Problem` key, OR-ing Views into the first problem, until U11 adds the Reason fact and Reason joins the key (R4-M11's
   (code, subject, Reason)); a merge keeps the first problem's facts. Construction records keep their own merge in
@@ -661,7 +662,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Field, and a second record of an early return's missing Field); a vocabulary member or a role for the exit request (a FakeRead
   is the analyses' read). The first-placement rule, the exit request, the reporting rule, the whole-subtree use and the delivery
   rule were added after U1's ledger and its independent review (main session, 2026-10-12). Its three lanes are superseded by
-  R4-M6a (five lanes).
+  R4-M6a (five lanes). Its rejection of DefaultArgumentMove decided in A1, and the PreparedInput rule left to MirReport, are
+  superseded by R4-M69.
 - **R4-M15a** (2026-10-12, planning session; supersedes R4-M15's "A5's arena" scope) `OwnershipStorageLimit_Kd` stays the one
   Resource code; it is decided at the one place that sizes analysis arenas, `MirDataflow.Prepare` (A1's state arena now, A5's
   Loan × point arena in U7), by byte size against the old path's limit value, 64 MiB (IMPL 21.3.2's text changes in R6). An
@@ -1268,11 +1270,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
   planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
-  CS_call over live_in(ℓ) superseded) A5's Loan stratum, its joint core. `MirBorrows` (`MirBorrows.cs`, the pre-pass;
-  `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view decides (as A1), and reports each
-  conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as facts: the witness holder's next use
-  in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows per problem (`MirFact`, kinds `Anchor`,
-  `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's. The choices within A3:
+  CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by
+  R4-M70) A5's Loan stratum, its joint core. `MirBorrows`
+  (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
+  decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
+  facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
+  per problem (`MirFact`, kinds `Anchor`, `Use`, `Store`; a merge keeps the first problem's, R4-M3a); A6's code mapping is unit 1c's.
+  The choices within A3:
   - Holder slots: E is slot 0, then the flow holders, then the chain-local ones. A holder is a flow holder when MirMoveData makes its
     root a flow root or a direct Loan names it, since content, refs and the closure read a named holder's state at any location;
     A3 §3's rule by MirMoveData alone would read a chain-local state outside its chain.
@@ -1608,11 +1612,90 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `(Code, Requirement, Subject, Views)`. Each recording rule names its requirement: A1, A2 and A3 a constant each; A4 the obligation
   row's, which Binding's `EffectObligation` carries beside its code (`EffectBound`, `VirtualEffectBound`, `CallableEffectBound`; the
   analysis limit `Unsupported`); A5 `ComparisonLoanConflict` for its four Loan codes, `Unsupported` and `StorageLimit`.
-  `MirReport.Add` keeps the key (code, subject). A merge that names another requirement is a recording-rule defect, a contract break
-  as in R4-M3a: it adds one `InternalInvariant_Kd` (`Ownership.Internal`) at the subject. There is no code-to-requirement table; this
-  supersedes R4-M3a's naming clause, as R5-M23 records. `MirDropTable.ViewsOf(body)` gives the views A1 and A2 completed (R4-M15a): 0
-  past A1's arena limit or for a body not analyzed. A5's driver step reads it, and R5's C4a will. It replaces the driver's private
-  `completed` array and amends R4-M6a's drop table. Rejected: the code-to-requirement table of the plan row (R5-M23's departure D7).
+  `MirReport.Add` keeps the key (code, subject) (superseded by R4-M71). A merge that names another requirement is a recording-rule
+  defect, a contract break as in R4-M3a: it adds one `InternalInvariant_Kd` (`Ownership.Internal`) at the subject. There is no
+  code-to-requirement table; this supersedes R4-M3a's naming clause, as R5-M23 records. `MirDropTable.ViewsOf(body)` gives the views
+  A1 and A2 completed (R4-M15a): 0 past A1's arena limit or for a body not analyzed. A5's driver step reads it, and R5's C4a will. It
+  replaces the driver's private `completed` array and amends R4-M6a's drop table. Rejected: the code-to-requirement table of the plan
+  row (R5-M23's departure D7).
+- **R4-M68** (2026-10-18; planning session after group 1c's two designs and their design review; A3 §5 err(activate), R4-M57 1b-3).
+  An activation conflicts only with Loans whose mode is shared in the holder where it is found; an exclusive Loan that hits the
+  reservation was met where the later Borrow was formed or activated: at the reservation's formation (`ComparisonLoanConflict_Kd`) or
+  at its own formation or inner activation (`CallReservationConflict_Kd`), so each (Loan, reservation) is reported once (SPEC
+  15.6.7). A destroying reservation's shallow write is treated the same way; err(destroy) keeps every mode. Representation: the
+  conflicts relation's rows `Activate` and `ActivateInPlace`. Evidence: the prototype with the rule, 332 cases, 0 unsound, 16 cases
+  lose only a duplicate; the corpus loses 54 CallActivation and 10 PlacementActivation records, each with a same-anchor survivor.
+  Rejected: an A6 merge by (anchor, reservation), a merge after the fact; reporting at the activation only (unsound on 38j).
+  Conditions for 2f: a Φ_c met at a receiver's formation is located at its later call (DIAGNOSTICS); a shared-receiver Φ_c takes the
+  receiver's mode, or 2f reruns this rule's prototype variant with that case.
+- **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-6). It
+  supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's rejection of
+  "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording rule name its
+  requirement, and `MirReport` has no Place and must not derive a requirement from a code.
+  - A1's mapping: A1 codes a Move of a PreparedInput slot (`MirLocalRole.PreparedInput`) or of its owned contents
+    `DefaultArgumentMove_Kd`, requirement `Ownership.DefaultArgumentMove` (SPEC 7.2.3: a default cannot Move that slot). The owned
+    contents lie past the slot's Deref with no other Deref, no PairLayer the view makes a reference and no Index of a value (a Slice's
+    or a raw pointer's); a Move past a borrow the slot's value holds keeps `StaticMovePathRequired_Kd`. A default's bare read of a
+    preceding parameter becomes Binding's failure at R5's H1 (Q8-4, Q8-8); its MIR is then Opaque and has no Move, so the rule needs no
+    condition.
+  - R4-M10's Inlined rule, amended: a recording rule that finds a Language problem inside an Inlined scope adds `MirFactKind.Inlined`
+    (the scope's call, from `MirBody.Inlining(scope)`), and `MirReport.Add` drops the problem: it is its template's check (SPEC 7.2.3).
+    The recorders are A1's, A2's incomplete layer at a Drop and A5's Loan conflicts. Limit records found inside a copy (A5's
+    `CallRetention.Limit` and the destruction walk's bound) get no Inlined fact and stay (SPEC 23.1.1, R4-M51): they depend on the
+    concrete instantiation. MirLints needs nothing (the builder copies no MustNotComplete row), and A4's problems lie at Binding's rows.
+  - Premise: a copy reaches its caller's state only through the prologue's shared borrows of the pending slots, formed at the call in
+    the caller's scope, so a conflict with the caller is found at a caller-scope location (the design review's r01 and p15). A builder
+    change that breaks this (W1, F9) revisits the rule. Mutable static storage is a second route: a default may write a group's `var`,
+    and a caller's Loan on that static would be found at the copy's write (SPEC 15.6.4) and dropped, with no record in the template. It
+    is unreachable while Binding rejects every borrow of group storage (P42, STATUS "Static members"), so Binding admitting such borrows
+    (P42) also revisits the rule, then keeping a Loan conflict whose Loan lies outside the copy's Inlined scope (group 1c's final review,
+    N1).
+  - Rejected: the PreparedInput role on the copy's borrow temp (it changes the role's meaning, keeps the copy's duplicate, one problem
+    per body under G125, and touches the held golden `tests/mir/defaults.mir`).
+- **R4-M70** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-7). For the
+  Loan stratum it supersedes A3 §4's `val(Opaque s)`, A3 §5's τ_s sentence and R4-M57's τ_s elements, with 1b-4's γ element
+  1 + (Opaque sites) + H, now 1 + H.
+  - Opaque values (option P): an Opaque site's value is `{Φ_E}`; it carries none of its roots' Loans, and τ_s leaves the Loan sets.
+    Every Opaque site rests on a recorded error (the builder makes one only for a node Binding rejected or an Unsupported form with its
+    record), so a Loan problem found only through one never arises: R4-M10's "derived and dropped", by construction. A Loan another
+    route reaches stays checked (SPEC 23.1.2; the design review's o7, j1 and op5). No `Opaque` or `Derived` fact kind and no drop rule
+    in `MirReport.Add`; 2g gets no derived Loan records from Opaque sites, which DIAGNOSTICS suppresses beside their causes anyway.
+  - Default taint (temporary; A5-F9, unit 2e, deletes it): a value a default's evaluation places into its pending slot D carries D's
+    marker: a default template's Call result, or an inline copy's store into D, a pending slot outside the copy's Inlined scope (the
+    slots of a call inside the copy lie inside it, and an explicit argument's slot is no default's). A Loan conflict whose Loan only
+    sets with a taint hold in the access's check set ("every set") is A5's located `Unsupported_Kd` at D's source, the omitting call,
+    requirement `Ownership.Unsupported`, with no fact, never a Language problem. A Loan that a set without a taint also holds stays the
+    Language problem, and an access reports such a Loan before a tainted one. A holder that joins a tainted and a clean value is
+    tainted (T2's join imprecision): its Language error becomes `Unsupported_Kd` until F9, accepted.
+  - Representation: the per-local marker range (element 1 + L for local L) has its contract as a role table, `MirBorrows.MarkerOf`:
+    `GuardCandidate` → γ_H (E7), `PendingSlot` → the default taint. A candidate keeps its tags apart for the sets with and without a
+    taint, so the check "found only through tainted sets" reads the table once and a later taint kind adds a row (G148's P13 interim,
+    R4-M76). err(destroy) is the conflicts relation's row `ObservePast` (what a deep access hits and the destroying activation's write
+    does not, in every mode), so it too reports a clean Loan before a tainted one; its own candidate loop, a second copy of the rule that
+    let the first holder decide, is deleted (group 1c's final review, B1).
+  - Rejected: the first-found witness set (it hides o7); T2 for τ_s (it hides j1); one taint per template Call (no element for a
+    copy); a taint by role alone (it would taint an explicit argument's slot).
+  - Limit: err(ended) reads γ_H without the taint check (the rule names Loan problems).
+- **R4-M71** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-8; PLAN G125
+  and G157 (8)). It supersedes R4-M3a's and R4-M67's key (code, subject) and places R4-M11's merge across bodies at publication.
+  - Representation: `MirProblem(Code, Requirement, Subject, Body, Views)`. `Body` is the ordinal of the body whose case views `Views`
+    numbers, `MirProblem.NoBody` (−1) where no body describes the problem: A4's obligation rows, which lie at Binding's rows (a row an
+    owing definition's own body judges per view keeps that body's view bits; A4's codes take no case fact). `MirReport` keys a problem
+    by (code, subject, body), so a subject built into several bodies (a Field initializer in each constructor, the design review's
+    r05; a limit record of an inline default copy and of its template) is one problem per body, each with its own body's views. Every
+    recording rule sets it: A1, A2, A3 and A5 the body they analyze, A4 `NoBody`, and `MirReport`'s disagreement record its problem's.
+    The ledger reads each problem (R5-M56), so such a subject has one MIR row per body. `MirProblem` grows from 24 to 32 bytes.
+  - Publication: R4-M11's merge by (code, subject, Reason) happens across bodies where the problems are published, one record per
+    (code, subject, Reason), a problem with facts at its subject; R4 publishes none (R4-M1), R5's H3, their first publisher, does it.
+  - Location-only records (PLAN G157 (8); R5-M65's rule at R4's site): `Compilation.ReportAnalysis` publishes the MIR's records,
+    codes without facts (construction records, validator findings and the checked set's records), keyed by their location through
+    `DiagnosticCollection.ReportLocation`, so the records of a `for` expansion's synthesized siblings (one span, depth and kind) are one
+    problem by the owner's merge of equal keys instead of an `UndefinedOrder` fault. No construction rule records at those siblings at
+    check today; the fault was latent (R5's C0b1 review).
+  - Reason: views number one body's case enumeration, so OR-ing two bodies' views loses which body's case a bit names (r05: G's two
+    constructors, of two and nine cases, gave one problem with `0x1FF`).
+  - Rejected: the Inlined rule alone (r05 has no Inlined scope); per-body view lists inside one problem (a list per problem for the
+    same facts).
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
@@ -3826,6 +3909,43 @@ structure is recorded here by the unit that first implements it.
     twin is both); a test build generates its discovered tests, not its top-level statements or their instance; a Library every root
     but the override of a refuted slot (generated where the slot applies); the mark follows runtime targets only and is replaced by the
     next mark and cleared by a new collection; writing an unmarked body records `InternalInvariant_Kd` at its site; warm generation 0 B.
+- **R5-M78 The first program's forms brought forward: `Ref`, the Keep and Elide drops, the string glue and gate step 2's stand-in**
+  (2026-10-19, C lane; plan C0c, package C §3.2, §3.6 and §3.8; owner, 2026-10-19: 「C0b2 の次の作業順を (a) 前倒しする」, choosing
+  (a) "bring C2b's unprojected-local `Ref` and C4a's string Keep/Elide Drop forward with a stand-in for gate step 2, a temporary
+  structure removed by C4a" over (b) "keep the package order"; under R5-M18 form 1, R5-M65 and R5-M73) Brought forward, each a whole
+  row of its table: C2b's `Ref` over the place writer (`FunctionCodegen.Rvalues.cs`; every `MirRefKind` is one pointer, IMPL 21.1.3;
+  the place writer's one covered Place is a local without projection that has storage, its home); C4a's Drop verdict rows
+  (`FunctionCodegen.Drops.cs`): a Keep destroys exactly when `MirTypes.MayNeedDrop(TypeOf(item, body.TypeOf(place)))` holds, the rule
+  the collector targets a Drop's glue by: refuted (a Type parameter instanced at a Type that owns nothing), nothing is written; else it
+  calls the collector's target, the Type's DropGlue item, on the Place's address with the Drop's location text, and a missing target is
+  `InternalInvariant_Kd` (package C 3.2 I8); Elide writes nothing. PD18's string row of the glue table: `DropGlue.Release` (the file K7
+  created) gives a Type's routine, the runtime release for a string, and every other Type is that table's located `Unsupported_Kd`
+  (C4a); ModuleCodegen names and signs the item (`__kimi_drop<item>`, `void (ptr, ptr, i64)`, `DropGlue.Parameters`, package C 3.3),
+  and `FunctionCodegen.WriteGlue` writes its function, the routine called with its own parameters through the call writer the
+  `writeLine` row uses (PD3).
+  - Why a stand-in: under sel `Accepts` reads the old analysis (`MirRecords` holds construction, validator and collector records
+    only), so the MIR analyses' A1 and A2 problems refuse nothing. Ledger row a1-whole-incomplete's `let a: [2 of string] = ["a",
+    "b"]` / `_ = a[0]@move` / `a.indices` is accepted with A1's `MovedPlace_Kd` at `a.indices` and a Keep row in its body. R4-M6a
+    makes A2's verdicts exact only for programs A1 accepts. Rule (temporary): a Drop row is written only for a program whose MIR
+    analyses recorded no problem whose requirement is in the Ownership partition: A1 with its arena record, A2 and, conservatively, A4
+    and A5. A3's control-flow problems do not gate (PD12). The check runs once per program version. Otherwise the Drop is one
+    location-only `Unsupported_Kd` at its location in the Emission partition. A runtime Drop without a group in a program it passes
+    is `InternalInvariant_Kd` (PD12). Removal: C4a's per-body gate step 2, which records the problem's own code at its subject (package
+    §3.8) once R4's 1c-8 publishes `MirProblem.Body` (G125). It must attribute an inline copy's problem, which R4's 1c-6 reports as its
+    template's, to the caller body.
+  - Kept: C2b keeps the projected and zero-sized `Ref`s (the zero-sized address symbol) and the other rvalues; C4a the glue of the
+    other Types (from `DropGlue.Parts`), the per-body step 2 with its refusal record and the entry superseding R4-M1, and this
+    stand-in's removal; C4s its matrix except the string rows' IR checks. Every C0c string is Static, so E2's audit sees no free; heap
+    strings come with C8c and C9c.
+  - `StringEmissionTest.WriteAuditedFixture` finds the audited constants among the audited module's own definitions (both generators'
+    `LlvmConstantPool`), not through the old generator's module: under sel the old module's numbering named other strings, so two
+    audit fixtures failed natively while the code was right.
+  - Departure (for the owner's departures list at R5's group review): rows of C2b and C4a (G:C-aggregate, G:C-drop) land in a
+    G:C-frame unit ahead of the package order. Gate step 2 is a program-wide stand-in over the Ownership partition, wider than PD12's
+    per-body A1/A2 rule. It records `Unsupported_Kd` at the Drop rather than the problem's code at its subject, because that record
+    needs G125 and byte facts A1's arena record does not keep. Glue bodies are written by `FunctionCodegen.WriteGlue` through the one call writer and
+    named by ModuleCodegen, so `Backend/DropGlue.cs` keeps the glue table (`DropGlue.Release`), not package 3.6's glue writing;
+    C4a extends that table (round-2 review note).
 - **R5-M81 The pending ledger's gate** (2026-10-19, E lane; plan E11, PD10, OQ9; under R5-M8, R5-M66 and R5-M73; removed with the
   ledger at G4, OQ9) Under `-Codegen mir` a run passes only when its failing set equals the ledger within its scope (R5-M66's
   coverage): an entry that passes now, is no longer executed or is added fails it. The verdict is the `codegen pending` step's, after

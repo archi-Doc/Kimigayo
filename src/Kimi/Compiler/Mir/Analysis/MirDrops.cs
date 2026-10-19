@@ -5,7 +5,8 @@
 // over MirMoveData's paths), each state event there and the paths A1's entry initializes (the arguments'; a constructing _0's own bit has
 // no subtree event, so no point); the selected view (MirCases). Output: MirProgram.Drops, per Drop one verdict group per view class, the
 // body's flags and their set and clear points, the views judged (A1 and A2 completed them), and MovedPlace_Kd through MirReport where a
-// layer with its own drop may be incomplete at its Drop. Elide where the view's Type needs no drop (MirTypes.MayNeedDrop) or nothing is
+// layer with its own drop may be incomplete at its Drop, inside an inline default copy with the copy's call as its Inlined fact (R4-M69).
+// Elide where the view's Type needs no drop (MirTypes.MayNeedDrop) or nothing is
 // initialized on any path; Keep where the whole is initialized on every path or the Place has no Move Path; Flag where it is complete or
 // wholly absent on every path, the flag mirroring the path's own bit; Open where a part may be missing: the components without a child
 // path follow the own bit, each child path its own verdict. The states are per solve, recorded as Type-free trees; the Type rule is per
@@ -304,7 +305,10 @@ internal sealed class MirDrops(MirMoveData moves, MirCases cases)
             if (verdict == MirDropVerdict.Open && AdtDef.Destructor(type!) is not null)
             {
                 var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse);
-                this.report.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, this.body.Subject(drop.Terminator.Source), views));
+                var inlined = this.body.Inlining(drop.Terminator.Source.Scope);
+                this.report.Add(
+                    new(DiagnosticCode.MovedPlace_Kd, requirement, this.body.Subject(drop.Terminator.Source), this.body.Ordinal, views),
+                    inlined < 0 ? default : [new(MirFactKind.Inlined, this.body.Scopes[inlined].Source)]);
             }
 
             var flag = verdict == MirDropVerdict.Elide ? -1 : node.Flag;

@@ -28,7 +28,7 @@ public class NestedDefaultTest
     {
         const string Source = "func inner(a: string = \"inner\") -> string => \"result\"\nfunc outer(a: string = \"outer\", b: string = inner()) => ()\nouter()";
         var ir = ScalarEmissionTest.EmitFixture("NestedDefaultCleanup", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("NestedDefaultCleanup", Source, ir, string.Empty, "inner=1;result=1;outer=1", order: [0, 1, 2]);
+        StringEmissionTest.WriteAuditedFixture("NestedDefaultCleanup", ir, string.Empty, "inner=1;result=1;outer=1", order: [0, 1, 2]);
     }
 
     [Fact]

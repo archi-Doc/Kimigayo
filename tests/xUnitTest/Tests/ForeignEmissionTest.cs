@@ -1019,7 +1019,7 @@ public class ForeignEmissionTest
         var name = consume ? "ForeignPointerString" : "ForeignPointerStringRetained";
         var stdout = consume ? "second\nthird\ndone\n" : "second\ndone\n";
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
+        StringEmissionTest.WriteAuditedFixture(name, ir, stdout, "=0;first=1;second=1;third=1;compare=2;skip=0;done=1");
     }
 
     [Theory]
@@ -1069,7 +1069,7 @@ public class ForeignEmissionTest
                 Console.writeLine("done")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerStringCompare", source, "alpha\nbeta\nkept\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", source, ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
+        StringEmissionTest.WriteAuditedFixture("ForeignPointerStringCompare", ir, "alpha\nbeta\nkept\ndone\n", "=0;alpha=3;beta=2;kept=2;done=1");
     }
 
     [Fact]
@@ -1123,7 +1123,7 @@ public class ForeignEmissionTest
                 require freed != 0 else => $abort("free")
             """;
         var ir = ScalarEmissionTest.EmitFixture("ForeignPointerEnum", source, "one\nvalue\ntwo\ndone\n");
-        StringEmissionTest.WriteAuditedFixture("ForeignPointerEnum", source, ir, "one\nvalue\ntwo\ndone\n", "one=1;two=1;value=1;first=1;second=1;nested=1;done=1");
+        StringEmissionTest.WriteAuditedFixture("ForeignPointerEnum", ir, "one\nvalue\ntwo\ndone\n", "one=1;two=1;value=1;first=1;second=1;nested=1;done=1");
     }
 
     [Fact]

@@ -53,7 +53,7 @@ public class BorrowedTupleEmissionTest
     {
         const string Source = "func read(pair: ref/(i32, string)) -> i32 => pair.0\nlet pair: (i32, string) = (42, \"owned\")\nrequire read(pair) == 42 else => $abort(\"value\")\nlet text = pair.1@move";
         var ir = ScalarEmissionTest.EmitFixture("BorrowedTupleCleanup", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("BorrowedTupleCleanup", Source, ir, string.Empty, "owned=1", order: [0]);
+        StringEmissionTest.WriteAuditedFixture("BorrowedTupleCleanup", ir, string.Empty, "owned=1", order: [0]);
     }
 
     [Fact]

@@ -48,7 +48,7 @@ public class AggregateFunctionEmissionTest
         var ir = ScalarEmissionTest.EmitFixture(name, source, stdout);
         if (destruction.Length != 0)
         {
-            StringEmissionTest.WriteAuditedFixture(name, source, ir, stdout, destruction);
+            StringEmissionTest.WriteAuditedFixture(name, ir, stdout, destruction);
         }
     }
 
@@ -61,7 +61,7 @@ public class AggregateFunctionEmissionTest
         var name = "AggregateFunctionOrder" + transfer;
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
         int[] order = transfer ? [0, 1] : [1, 0];
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, "first=1;second=1", order: order);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, "first=1;second=1", order: order);
     }
 
     [Fact]
@@ -69,7 +69,7 @@ public class AggregateFunctionEmissionTest
     {
         const string Source = "func f() -> (string, i32)\n    var value = (\"before\", 1)\n    defer => value = (\"after\", 2)\n    return value@move\nf()";
         var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionSnapshot", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateFunctionSnapshot", Source, ir, string.Empty, "before=1;after=1", order: [1, 0]);
+        StringEmissionTest.WriteAuditedFixture("AggregateFunctionSnapshot", ir, string.Empty, "before=1;after=1", order: [1, 0]);
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Emission.TryPrepare(out var module, out var error), error);
         var body = c.Ownership.Bodies[1];
@@ -90,7 +90,7 @@ public class AggregateFunctionEmissionTest
         var stderr = $"Hello.kimi:{line}:{column}: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         name = "AggregateFunctionAbort" + name;
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty, 1, stderr);
-        StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, "held=0", 1, stderr);
+        StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, "held=0", 1, stderr);
     }
 
     [Fact]

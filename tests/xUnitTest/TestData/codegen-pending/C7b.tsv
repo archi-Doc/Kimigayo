@@ -13,7 +13,6 @@ test	XunitTest.StaticElementUpdateTest.PreservesStaticPathsAcrossStorageAndCalls
 test	XunitTest.StaticElementUpdateTest.PreservesStaticPathsAcrossStorageAndCalls	XunitTest.StaticElementUpdateTest.PreservesStaticPathsAcrossStorageAndCalls(name: \"Retained\", source: \"var a: [2 of i32] = [1, 2]\\nlet left = a[0]@uniq\\nlet right = a[1]@uniq\\nKimi.Intrinsics.swap(left, right)\\nrequire a[0] == 2 and a[1] == 1 else => $abort(\\\"value\\\")\")
 test	XunitTest.StaticElementUpdateTest.RebindingAndReloadPreserveStaticAddresses	XunitTest.StaticElementUpdateTest.RebindingAndReloadPreserveStaticAddresses
 test	XunitTest.StaticInitializationTest.DetectsIndirectCycle	XunitTest.StaticInitializationTest.DetectsIndirectCycle
-test	XunitTest.StaticInitializationTest.DoesNotExecuteUnusedInitializer	XunitTest.StaticInitializationTest.DoesNotExecuteUnusedInitializer
 test	XunitTest.StaticInitializationTest.GenericCallersShareOneNongenericStaticSlot	XunitTest.StaticInitializationTest.GenericCallersShareOneNongenericStaticSlot
 test	XunitTest.StaticInitializationTest.InitializationOrderFollowsDependencies	XunitTest.StaticInitializationTest.InitializationOrderFollowsDependencies
 test	XunitTest.StaticInitializationTest.InitializesOnceAtFirstRead	XunitTest.StaticInitializationTest.InitializesOnceAtFirstRead

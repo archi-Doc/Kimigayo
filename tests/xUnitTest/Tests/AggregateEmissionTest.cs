@@ -43,7 +43,7 @@ public class AggregateEmissionTest
         var ir = ScalarEmissionTest.EmitFixture(name, source, string.Empty);
         if (destruction.Length != 0)
         {
-            StringEmissionTest.WriteAuditedFixture(name, source, ir, string.Empty, destruction);
+            StringEmissionTest.WriteAuditedFixture(name, ir, string.Empty, destruction);
         }
     }
 
@@ -109,7 +109,7 @@ public class AggregateEmissionTest
         Assert.Equal(8, layout.Value.Layout.Alignment);
         const string Source = "let value = (\"first\", \"second\", \"third\")";
         var ir = ScalarEmissionTest.EmitFixture("AggregateOrder", Source, string.Empty);
-        StringEmissionTest.WriteAuditedFixture("AggregateOrder", Source, ir, string.Empty, "first=1;second=1;third=1", order: [2, 1, 0]);
+        StringEmissionTest.WriteAuditedFixture("AggregateOrder", ir, string.Empty, "first=1;second=1;third=1", order: [2, 1, 0]);
     }
 
     [Theory]
@@ -130,6 +130,6 @@ public class AggregateEmissionTest
         const string Source = "var x = 2147483647\nlet value = (\"held\", x + 1)";
         const string Error = "Hello.kimi:2:22: abort KIMI_E_INT_OVERFLOW: Integer overflow\n";
         var ir = ScalarEmissionTest.EmitFixture("AggregateAbort", Source, string.Empty, 1, Error);
-        StringEmissionTest.WriteAuditedFixture("AggregateAbort", Source, ir, string.Empty, "held=0", 1, Error);
+        StringEmissionTest.WriteAuditedFixture("AggregateAbort", ir, string.Empty, "held=0", 1, Error);
     }
 }

@@ -12,7 +12,8 @@ internal sealed partial class MirBorrows
     private int[] contents = []; // By set: its content at the location plus 1 (0: not read there).
 
     // val(rv) (A3 5) and the Loans it issues: an operand's, a Ref's, the union of an aggregate's or a value-keeping Cast's operands, an Opaque
-    // site's roots with τ_s and Φ_E; under the view an Adapt is the rvalue its case selects (none: its operand's value).
+    // site's {Φ_E} (R4-M70: the site rests on a recorded error, so a problem only its roots' Loans would give never arises); under the view
+    // an Adapt is the rvalue its case selects (none: its operand's value).
     private (int Value, int Own) Value(ulong[] state, in MirRvalue rvalue, int location)
     {
         switch (rvalue.Kind)
@@ -32,14 +33,7 @@ internal sealed partial class MirBorrows
 
                 return (value, 0);
             case MirRvalueKind.Opaque:
-                var site = this.body.OpaqueSites[rvalue.Arg];
-                var opaque = this.sets.Add(this.escapedSet, 1 + rvalue.Arg);
-                foreach (var root in this.body.OpaqueRoots.Slice(site.Start, site.Count))
-                {
-                    opaque = this.sets.Union(opaque, this.Root(state, root));
-                }
-
-                return (opaque, 0);
+                return (this.escapedSet, 0);
             default:
                 return (0, 0);
         }
