@@ -742,6 +742,14 @@ the Loans of a zero-length fill (the owner's answer of 2026-10-19 to the plannin
   - Usage: library, milestones, SPEC examples and xUnit 0 (proposal §4 and §5, H: a grep-level scan). The default
     pipeline keeps its verdicts (OD5); no implementation is claimed. Not refreshed: SPECJ (its §15.6.4 still has the
     pre-P5 open key) and GUIDE.
+  - Correction (2026-10-20) to frozen `2026-10-19 Effect Atoms Widen.md` §10 (PLAN G170): the deep Copy query is Unknown
+    in canonical Binding under both lexical and effect scopes, for the same Type and scope. Zero `Binding.Issues`
+    did not establish Copy proof or ordinary acceptance: the duplicate-value case has ordinary TransferRequired and
+    MovedPlace errors; both helper chains have an ordinary effect-bound error, although the shorter passes MIR A4.
+    The proposed scope/Type explanation is unsupported by these observations. An unused CopyTree-qualified reference
+    parameter, before or after the original parameter, supplies a missing premise and makes the same original Type
+    Proven: declaration-premise supply depends on written projections. The shared supply/proof repair and S5 connection
+    remain open. This corrects measured implementation facts, adopts no S5 rule or repair, and leaves the frozen text intact.
 - [Complete Polonius A5 Plan](Proposals/2026-10-16%20Complete%20Polonius%20A5%20Plan.md): 一部取り込み. Integrated and
   frozen: §5.2's S3, the clarification the A5 step 2 plan's OQ12 requested before its unit 2a0-3b.
   - S3 → §15.3.6's candidate paragraph, as the plan words it, with a link to §15.6.5 for fixed and finite Origins: a
