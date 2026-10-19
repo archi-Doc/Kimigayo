@@ -230,7 +230,7 @@ public sealed partial class Binding
         for (var i = 0; i < match.Arms.Count; i++)
         {
             var arm = match.Arms[i];
-            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, PatternAccessMode.Owned, null);
+            var root = this.BindPattern(arm.Pattern, subject, scope, plan, -1, 0, new(PatternAccessMode.Owned, null));
             plan.ArmStorage.Add(new(arm, root));
             this.MarkPatternTree(arm.Pattern);
         }
@@ -343,11 +343,11 @@ public sealed partial class Binding
         return type;
     }
 
-    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, PatternAccessMode access, BoundOrigin? origin)
+    private int BindPattern(Koto syntax, BoundType matched, BindingScope outer, BoundMatch plan, int parent, int element, PatternReach reach)
     {
         if (syntax is ParenthesizedKoto grouping)
         {
-            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, access, origin);
+            var grouped = this.BindPattern(grouping.Operand, matched, outer, plan, parent, element, reach);
             Complete(grouping, matched);
             return grouped;
         }
@@ -361,44 +361,9 @@ public sealed partial class Binding
             return index;
         }
 
-        var type = matched;
         var structural = syntax is not IdentifierNameKoto { IdentifierName: "_" } and not SyntaxFormKoto { Akind: KotoKind.BindingPattern };
+        var type = this.SelectLayers(matched, structural, outer, ref reach, out var layers);
         var unsupported = false;
-        var layers = 0;
-        if (structural)
-        {
-            // SPEC 14.8.1, 3.4.3: a structural Pattern selects the referent of every safe value-reference layer
-            // that lacks its structure; a shared layer anywhere on the path bounds every descendant to shared access.
-            while (true)
-            {
-                if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 })
-                {
-                    access = type.Semantics == SemanticsKind.Ref || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
-
-                    // SPEC 10.2: a ref layer is a Copy that restarts the dependency at its own Origin; a uniq layer below it
-                    // is Reborrowed, so its Origin is met with the dependency reached so far.
-                    origin = type.Semantics == SemanticsKind.Ref || origin is null ? type.Origin ?? origin
-                        : type.Origin is { } layer ? this.Meet(origin, layer) : origin;
-                    type = type.Components[0];
-                    layers++;
-                    continue;
-                }
-
-                var admitted = this.FollowablePair(type, outer, out var target);
-                if (admitted == SemanticsMask.None)
-                {
-                    break;
-                }
-
-                // SPEC 14.8.1, 13.5.5: a qualifying pair layer is selected like the other safe value-reference layers. The access
-                // past it is the weakest over its admitted cases; an admitted owner keeps the dependency reached so far.
-                access = (admitted & SemanticsMask.Ref) != 0 || access == PatternAccessMode.Shared ? PatternAccessMode.Shared : PatternAccessMode.Exclusive;
-                origin = (admitted & SemanticsMask.Owner) != 0 ? origin : (admitted & SemanticsMask.Ref) != 0 || origin is null ? type.Origin ?? origin
-                    : type.Origin is { } stored ? this.Meet(origin, stored) : origin;
-                type = target;
-                layers++;
-            }
-        }
 
         if (structural && type.Semantics != SemanticsKind.Owner)
         {
@@ -416,9 +381,9 @@ public sealed partial class Binding
                 // SPEC 15.1.6: a part of the acquired owned Subject is bound as its stored Type; a Place reached
                 // with shared or exclusive access binds ref/T or uniq/T, also for a Copy T. A whole-Subject binding
                 // of a reference-valued Subject copies that reference and never selects the internal slot.
-                symbol.Type = access == PatternAccessMode.Owned ? matched
-                    : this.types.Intern(BoundTypeKind.Semantics, null, access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: origin);
-                symbol.BindsReference = access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
+                symbol.Type = reach.Access == PatternAccessMode.Owned ? matched
+                    : this.types.Intern(BoundTypeKind.Semantics, null, reach.Access == PatternAccessMode.Shared ? SemanticsKind.Ref : SemanticsKind.Uniq, [matched], origin: reach.Origin);
+                symbol.BindsReference = reach.Access != PatternAccessMode.Owned || (parent < 0 && plan.Mode != SubjectMode.ByValue);
                 binding.Operands[0].BoundSymbol = symbol;
                 Complete(binding.Operands[0], matched);
                 position = position with { Kind = BoundPatternKind.Binding, BodySymbol = symbol, WholePosition = true };
@@ -441,7 +406,7 @@ public sealed partial class Binding
                 position = position with { Kind = BoundPatternKind.Tuple, WholePosition = true };
                 for (var i = 0; i < tuple.Operands.Length; i++)
                 {
-                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, access, origin);
+                    var child = this.BindPattern(tuple.Operands[i], type.Components[i], outer, plan, index, i, reach);
                     position = position with { WholePosition = position.WholePosition && plan.PositionStorage[child].WholePosition };
                 }
 
@@ -467,7 +432,7 @@ public sealed partial class Binding
                     }
                     else
                     {
-                        this.BindPattern(children[i], payload, outer, plan, index, i, access, origin);
+                        this.BindPattern(children[i], payload, outer, plan, index, i, reach);
                     }
                 }
 
@@ -484,7 +449,7 @@ public sealed partial class Binding
         position = position with
         {
             End = plan.PositionStorage.Count,
-            AccessMode = access,
+            AccessMode = reach.Access,
             ImplicitFollows = layers,
         };
         plan.PositionStorage[index] = position;
