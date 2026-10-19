@@ -53,7 +53,7 @@ internal sealed partial class MirBorrows
         var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
         this.Reserving(state, at);
-        var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.body.Locals[guard].Role == MirLocalRole.GuardCandidate;
+        var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.MarkerOf(guard) == Marker.Guard;
         if (this.accessCount + this.reserving.Count > 0 || ended)
         {
             this.Gather(state, at, this.entryCount);
@@ -88,11 +88,13 @@ internal sealed partial class MirBorrows
         this.Activations(at);
     }
 
-    // The first Loan on an access's root in its check set (Takes) it conflicts with (A3 5's conflicts and hits), None for none: a write,
-    // Move, exclusive borrow or destruction with any mode, a read or shared borrow with a unique one, an activation with one shared in the
-    // holder found (R4-M68: an exclusive Loan that hits the reservation was met where the later Borrow was formed or activated, SPEC 15.6.7).
+    // The Loan on an access's root in its check set (Takes) it conflicts with (A3 5's conflicts and hits), None for none: a write, Move,
+    // exclusive borrow or destruction with any mode, a read or shared borrow with a unique one, an activation with one shared in the holder
+    // found (R4-M68: an exclusive Loan that hits the reservation was met where the later Borrow was formed or activated, SPEC 15.6.7). The
+    // first that sets without a default taint hold is the access's Language problem; only where none is, the first other (R4-M70).
     private int Conflict(int root, ReadOnlySpan<Step> steps, AccessKind kind, int taking)
     {
+        var tainted = None;
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
             ref readonly var candidate = ref this.candidates[c];
@@ -100,11 +102,16 @@ internal sealed partial class MirBorrows
             if (candidate.Takes(taking) && (kind is AccessKind.Activate or AccessKind.ActivateInPlace ? !candidate.Unique
                 : candidate.Unique || kind is not (AccessKind.Read or AccessKind.SharedBorrow)) && this.Hits(root, steps, kind, candidate))
             {
-                return c;
+                if (candidate.Clean.Takes(taking))
+                {
+                    return c;
+                }
+
+                tainted = tainted == None ? c : tainted;
             }
         }
 
-        return None;
+        return tainted;
     }
 
     // hits(A, X, k) (A3 5, E1, E3): within(A, X), or within(X, A) where the access is deep, or no borrow or raw Deref of X lies below A, or
@@ -152,7 +159,7 @@ internal sealed partial class MirBorrows
     // borrows), anchored at the candidate.
     private void Ended(MirLocation at, int candidate)
     {
-        var mark = this.guardBase + candidate;
+        var mark = Markers + candidate;
         if (this.markSeen[mark] == this.stamp)
         {
             var anchor = this.body.Subject(this.body.Locals[candidate].Source);

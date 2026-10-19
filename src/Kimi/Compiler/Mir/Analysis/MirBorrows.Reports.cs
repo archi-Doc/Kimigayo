@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23): a conflict's code (a Loan found in its reservation holder is a reservation
 // conflict) and each problem recorded through MirReport under its requirement with its facts: the Loan's or candidate's anchor, its witness
 // (a holder's next use in its chain, the location for a value an access takes, a transit value's or E's store), an activation's
-// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing.
+// reservation and, inside an inline default copy, its call (R4-M69); a located Unsupported_Kd where the stratum classifies nothing, and at
+// the source of the pending slot whose default taint every set holding a conflict's Loan carries (R4-M70, until A5-F9).
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
@@ -16,13 +17,22 @@ internal sealed partial class MirBorrows
     // A conflict's code (A3 5's A6 table): a Loan found in its reservation holder is a reservation conflict, else the check's code.
     private DiagnosticCode Code(in Candidate candidate, DiagnosticCode code) => this.Reserved(candidate) ? DiagnosticCode.CallReservationConflict_Kd : code;
 
-    // A conflicting candidate's problem: its Loan's anchor, and its witness for the check set (E13 (6)): a holder it was found live in (for
-    // an activation, other than its own), else the location, whose operation uses the value that carries it.
+    // A conflicting candidate's problem: where only sets with a default taint hold it in the check set, A5's located Unsupported_Kd at the
+    // source of the first taint's pending slot, the omitting call (R4-M70, never a Language problem until A5-F9 checks defaults); else its
+    // Loan's anchor, and its witness among the sets without a taint (E13 (6)): a holder it was found live in (for an activation, other than
+    // its own), else the location, whose operation uses the value that carries it.
     private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation)
     {
         ref readonly var found = ref this.candidates[candidate];
-        var live = taking <= Activating ? (found.Flags & Based) != 0 && Activation(found.Via) != taking : (found.Flags & (Based | Stored)) != 0;
-        this.Report(code, this.loans[found.Loan].Site, live ? found.Via : Taken, at, reservation);
+        var clean = found.Clean;
+        if (!clean.Takes(taking))
+        {
+            this.Unsupported(this.body.Subject(this.body.Locals[found.Taint - Markers].Source));
+            return;
+        }
+
+        var live = taking <= Activating ? (clean.Flags & Based) != 0 && Activation(clean.Via) != taking : (clean.Flags & (Based | Stored)) != 0;
+        this.Report(code, this.loans[found.Loan].Site, live ? clean.Via : Taken, at, reservation);
     }
 
     // A Loan problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
@@ -55,10 +65,13 @@ internal sealed partial class MirBorrows
 
     // A located Unsupported_Kd at a location whose access or call the stratum does not classify; a limit record, which depends on the
     // concrete instantiation, so an inline default copy's stays (SPEC 23.1.1, R4-M69).
-    private void Unsupported(MirLocation at)
+    private void Unsupported(MirLocation at) => this.Unsupported(this.Subject(at));
+
+    // A located Unsupported_Kd at a subject, with no fact.
+    private void Unsupported(SourceRef subject)
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-        this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, this.Subject(at), this.views));
+        this.program.Problems.Add(new(DiagnosticCode.Unsupported_Kd, requirement, subject, this.views));
     }
 
     // A location's subject: its statement's or terminator's.

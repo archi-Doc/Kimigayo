@@ -13,10 +13,11 @@ internal sealed partial class MirBorrows
     // or a view handle, whose Index is a borrow Deref (E6).
     private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
-    // A Call (A3 5, Calls; E14): its arguments' Moves, then each row of its retention (Rows) into the result or through an argument's
-    // referents, then the result into the destination; Φ_E for an untied result. A Value callee's environment, its value or what a reference
-    // to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
-    private void Call(ulong[] state, in MirTerminator call)
+    // A Call at a location (A3 5, Calls; E14): its arguments' Moves, then each row of its retention (Rows) into the result or through an
+    // argument's referents, then the result into the destination (Placed: a default template's result carries its slot's default taint);
+    // Φ_E for an untied result. A Value callee's environment, its value or what a reference to it refers to, reaches the result too (its
+    // captures; temporary until F7 reads TyCtxt.Closure, unit 2c).
+    private void Call(ulong[] state, MirLocation at, in MirTerminator call)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
         for (var i = 0; i < call.Count; i++)
@@ -59,7 +60,7 @@ internal sealed partial class MirBorrows
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         if (call.Target >= 0)
         {
-            this.Store(state, call.Place, result, 0, issue: false);
+            this.Store(state, call.Place, this.Placed(result, call.Place, at), 0, issue: false);
         }
     }
 

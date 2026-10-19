@@ -1545,6 +1545,106 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
+    // R4-M70 (SPEC 7.2.3; until A5-F9, unit 2e): the value a default's evaluation places into its pending slot carries the slot's default
+    // taint: a default template's result (the 1c design's p06, a recursive generic default and a recursive Function-typed one) and an inline
+    // copy's store (p15, whose copy keeps the slot of x borrowed in y's). A conflict whose Loan only sets with a taint hold is one located
+    // Unsupported_Kd per omitting call, never a Language problem; a Loan a holder without a taint also keeps stays one (`both`), as does an
+    // explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean value: unsupported too.
+    [Fact]
+    public void ADefaultsTaintMakesItsConflictsUnsupported()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func f<T>(n: i32, x: T, value: T = if n == 0 => x else => f(n - 1, x)) -> T
+                T is Copy
+                return value
+            func g(n: i32, value: () -> i32 = if n == 0 => func () => 7 else => g(n - 1)) -> () -> i32 => value@move
+            func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+            func same(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
+            func first(x: ref/i32 during a, y: i32 = 0) -> ref/i32 during a => x
+            func p06()
+                var k = 3
+                let r = f(3, k@ref)
+                k = 4
+                let a = g(3)
+            func p15()
+                var n = 3
+                fc(n@uniq)
+            func both()
+                var k = 1
+                let p = k@ref
+                let r = same(p)
+                k = 2
+                inspect(r)
+                inspect(p)
+            func joined()
+                var k = 1
+                let r = same(k@ref)
+                k = 2
+                inspect(r)
+            func given()
+                var k = 1
+                let r = first(k@ref)
+                k = 2
+                inspect(r)
+            """);
+        Assert.Equal(
+            [
+                "f: f(n - 1, x) Unsupported_Kd", "g: g(n - 1) Unsupported_Kd", "p06: f(3, k@ref) Unsupported_Kd", "p06: g(3) Unsupported_Kd",
+                "p15: fc(n@uniq) Unsupported_Kd", "both: k = 2", "joined: same(k@ref) Unsupported_Kd", "given: k = 2",
+            ],
+            Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+    }
+
+    // R4-M70 (SPEC 23.1.2, R4-M10): an Opaque site's value is {Φ_E}. The site rests on a recorded error, so a conflict found only through it
+    // is derived and never arises (the 1c design's op6; R5's Q21 review N3: a failed member access whose operand's Loan a kept temp holds,
+    // `get(x@ref).missing` and `(p@uniq).missing`), while a Loan another holder keeps is checked: op5's p, o7's r, and j1's h on the path
+    // that does not replace it.
+    [Fact]
+    public void AnOpaqueValueCarriesNoLoan()
+        => Assert.Equal(
+            ["op5: x = 2", "o7: x = 2", "j1: x = 2"],
+            RejectedProblems("""
+                func get(a: ref/i32) -> ref/i32 during a => a
+                func op5()
+                    var x = 1
+                    let p = x@ref
+                    let r = bogus(p)
+                    x = 2
+                    inspect(r)
+                    inspect(p)
+                func op6()
+                    var x = 1
+                    let p = x@ref
+                    let r: ref/i32 = bogus(p)
+                    x = 2
+                    inspect(r)
+                func o7()
+                    var x = 1
+                    let r = x@ref
+                    let s: ref/i32 = undefinedFn(r)
+                    x = 2
+                    inspect(s)
+                    inspect(r)
+                func j1(c: bool)
+                    var x = 1
+                    let r = x@ref
+                    var h: ref/i32 = r
+                    if c
+                        h = undefinedFn(0)
+                    x = 2
+                    inspect(h)
+                func kept()
+                    var x = 1
+                    let r: ref/i32 = get(x@ref).missing
+                    x = 5
+                    _ = r@follow
+                func keptUnique()
+                    var p = Pair.init()
+                    let r: uniq/Pair = (p@uniq).missing
+                    _ = p.a
+                    _ = r.a
+                """));
+
     // SPEC 4.8.2 (A3 E6, ret): a Slice handle is a borrow, so a call retaining it by its own Origin also carries what a read through it
     // reaches, and one retaining only its elements' Origins (toArray) keeps their Loans but not the handle's (SliceToArrayTest's References);
     // a view of a view keeps the outer view's own Loan beside its elements' (P4, Milestone27:100–101).
@@ -1934,12 +2034,27 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         Assert.Equal(7, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code)));
     }
 
-    // The Loan problems of a program's own bodies: function and the subject's first line, with the code unless it is a comparison's.
+    // The Loan problems of a program's own bodies.
     private static string[] Problems(string source)
     {
         var c = MirBuildTest.Compile(Prelude + source);
-        var program = Analyze(c);
-        return [.. program.Problems.All.ToArray().Where(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0)
+        return Problems(c, Analyze(c), LoanCodes);
+    }
+
+    // The Loan problems of a program Binding rejects, whose failed nodes the MIR builds as Opaque values (SPEC 23.1.2).
+    private static string[] RejectedProblems(string source)
+    {
+        var c = MirBuildTest.Compile(Prelude + source);
+        Assert.NotEmpty(c.Binding.Issues);
+        var program = c.BuildMir();
+        new Stratum(c.Types).Run(program);
+        return Problems(c, program, LoanCodes);
+    }
+
+    // A program's problems of some codes in its own bodies: function and the subject's first line, with the code unless it is a comparison's.
+    private static string[] Problems(Compilation c, MirProgram program, DiagnosticCode[] codes)
+    {
+        return [.. program.Problems.All.ToArray().Where(x => codes.Contains(x.Code) && x.Subject.Module == 0)
             .Select(x => $"{Function(c.SyntaxOf(x.Subject))}: {Line(c, x.Subject)}{Code(x.Code)}")];
 
         static string? Function(Koto node) => node is FunctionKoto function ? function.Name : node.Parent is { } parent ? Function(parent) : null;

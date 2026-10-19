@@ -1269,7 +1269,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   holder) or by predicate (no memo key, so every holder's set is scanned at every point). Not temporary.
 - **R4-M57** (2026-10-17; design A3 §3, §5, §6 and §8 with its §12 errata E3, E5, E6, E8 and E12; A5 step 1, unit 1b-2, on the
   planning session's instruction of the same day; its check sets amended by R4-M66: a borrow's stored value only seeding and 1b-3's
-  CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68) A5's Loan stratum, its joint core. `MirBorrows`
+  CS_call over live_in(ℓ) superseded; its 1b-3 activation codes amended by R4-M68; its τ_s elements and 1b-4's γ element superseded by
+  R4-M70) A5's Loan stratum, its joint core. `MirBorrows`
   (`MirBorrows.cs`, the pre-pass; `.Liveness`, `.Flow`, `.Checks`) checks a body per Semantics case view, once for a body no view
   decides (as A1), and reports each conflict as `ComparisonLoanConflict_Kd` at its access with the Loan's anchor and its witness as
   facts: the witness holder's next use in its chain, or the store whose value carries the Loan. `MirReport` gains pooled fact rows
@@ -1645,6 +1646,30 @@ and migration obligations remain in force; no numeric cap changes are authorized
     change that breaks this (W1, F9) revisits the rule.
   - Rejected: the PreparedInput role on the copy's borrow temp (it changes the role's meaning, keeps the copy's duplicate, one problem
     per body under G125, and touches the held golden `tests/mir/defaults.mir`).
+- **R4-M70** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-7). For the
+  Loan stratum it supersedes A3 §4's `val(Opaque s)`, A3 §5's τ_s sentence and R4-M57's τ_s elements, with 1b-4's γ element
+  1 + (Opaque sites) + H, now 1 + H.
+  - Opaque values (option P): an Opaque site's value is `{Φ_E}`; it carries none of its roots' Loans, and τ_s leaves the Loan sets.
+    Every Opaque site rests on a recorded error (the builder makes one only for a node Binding rejected or an Unsupported form with its
+    record), so a Loan problem found only through one never arises: R4-M10's "derived and dropped", by construction. A Loan another
+    route reaches stays checked (SPEC 23.1.2; the design review's o7, j1 and op5). No `Opaque` or `Derived` fact kind and no drop rule
+    in `MirReport.Add`; 2g gets no derived Loan records from Opaque sites, which DIAGNOSTICS suppresses beside their causes anyway.
+  - Default taint (temporary; A5-F9, unit 2e, deletes it): a value a default's evaluation places into its pending slot D carries D's
+    marker: a default template's Call result, or an inline copy's store into D, a pending slot outside the copy's Inlined scope (the
+    slots of a call inside the copy lie inside it, and an explicit argument's slot is no default's). A Loan conflict whose Loan only
+    sets with a taint hold in the access's check set ("every set") is A5's located `Unsupported_Kd` at D's source, the omitting call,
+    requirement `Ownership.Unsupported`, with no fact, never a Language problem. A Loan that a set without a taint also holds stays the
+    Language problem, and an access reports such a Loan before a tainted one. A holder that joins a tainted and a clean value is
+    tainted (T2's join imprecision): its Language error becomes `Unsupported_Kd` until F9, accepted.
+  - Representation: the per-local marker range (element 1 + L for local L) has its contract as a role table, `MirBorrows.MarkerOf`:
+    `GuardCandidate` → γ_H (E7), `PendingSlot` → the default taint. A candidate keeps its tags apart for the sets with and without a
+    taint, so the check "found only through tainted sets" reads the table once and a later taint kind adds a row (G148's P13 interim,
+    R4-M76).
+  - Rejected: the first-found witness set (it hides o7); T2 for τ_s (it hides j1); one taint per template Call (no element for a
+    copy); a taint by role alone (it would taint an explicit argument's slot).
+  - Limits: err(ended) reads γ_H without the taint check (the rule names Loan problems); err(destroy)'s candidate loop
+    (`MirBorrows.Activations.cs`, due for restructuring) keeps its first conflicting candidate, so a tainted Loan there can stand
+    before a clean one.
 - **R4-M74 A5 step 2 plan** (owner, 2026-10-19, relayed by the R4 planning session; plan unit 2x-A0) The owner's answers to all
   thirteen questions of the [A5 Step 2 Implementation Plan](../../draft/Proposals/2026-10-18%20A5%20Step%202%20Implementation%20Plan.md),
   packet 2 (OQ7–OQ10, OQ13) before its triggers. Its unit and decision names (2x-T1, PD18) are used as there; each
