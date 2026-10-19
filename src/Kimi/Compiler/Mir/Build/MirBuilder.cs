@@ -229,7 +229,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         var temporaries = this.OpenScope(block: false);
         var done = self is null ? new MirPlace(0) : this.Temp(BoundType.Unit, value);
         this.constructed = self is null ? null : value;
-        this.targets.Add(new(declaration, done, -1, -1, 0, 0, Reached: false) { Scope = 0 }); // A return's target, opened at the body's scope.
+        this.targets.Add(new(declaration, done, -1, -1, At: default, Reached: false)); // A return's target, opened at the body's scope.
         if (self is not null)
         {
             if (((FunctionKoto)declaration).BaseInitializer is { } baseCall)

@@ -169,11 +169,12 @@ internal sealed partial class MirBuilder
     // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
     // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
     // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is. An input the call
-    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves) and has no preparation path (A3 E13 (4)).
+    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves, MirCases.Reserves) and has no preparation
+    // path (A3 E13 (4)).
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
     {
         var adjust = HirTables.AdjustOf(node);
-        var reserves = input && this.Binder(expected ?? TypeOf(node)) >= 0;
+        var reserves = input && MirCases.Reserves(this.body, expected ?? TypeOf(node));
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));
         reserves |= input;
@@ -233,7 +234,7 @@ internal sealed partial class MirBuilder
             case HirAdaptation.None:
                 return adjust.Acquire switch
                 {
-                    HirAcquire.ByCase when this.Binder(type) is var binder and >= 0 => this.Temporary(
+                    HirAcquire.ByCase when MirCases.Binder(this.body, type) is var binder and >= 0 => this.Temporary(
                         type,
                         MirRvalue.Acquire(this.body.AddOperand(MirOperand.PairAcquire(binder, place)), input ? MirRefKind.TwoPhaseUniq : MirRefKind.Uniq),
                         node,
