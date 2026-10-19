@@ -328,7 +328,8 @@ public class DictionaryLibraryTest
 
         // Library reach of the Dictionary runtime's callees and theirs, until R5 C8e (DECISIONS R4-M13a, R5-M27): the old analysis collects
         // them for every Dictionary Type, and the checked set has them only once C8e roots the hidden DictionaryStorage instances (before
-        // it, the Dictionary's drop glue and placeEntry name no body). C8e moves these six reads to the Generated mark.
+        // it, the Dictionary's drop glue and placeEntry name no body). C8e moves these eight reads to the Generated mark: the six, and the two
+        // negatives that guard shrinking against being reached through them.
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryAppendSlot));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.Initialize).Declaration));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryClearLinks));
@@ -336,8 +337,9 @@ public class DictionaryLibraryTest
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.ClearEntries).Declaration));
         Assert.Contains(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryStorage(DictionaryCallee.Append).Declaration));
         // Shrinking is reached only through shrinkToFit calls; no bridge compiles it eagerly.
-        Assert.DoesNotContain(sel.Library.DictionaryCompact, generated);
-        Assert.DoesNotContain(sel.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration, generated);
+        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, c.Library.DictionaryCompact));
+        var shrink = c.Library.GetSymbol(KimiDeclarationId.DictionaryStorageShrinkToFit)!.Declaration;
+        Assert.DoesNotContain(c.Ownership.Bodies, body => ReferenceEquals(body.Function, shrink));
         Assert.Equal(CompilerFunctionKind.None, c.Library.DictionaryUnlink.SymbolOf()!.CompilerFunction);
         Assert.Contains("DictionaryStorage.kimi", c.Library.DictionaryUnlink.CodeContext.SourceDocument!.Path);
         ScalarEmissionTest.WriteFixture("DictionaryLibraryRemoval", outputIr, string.Empty);
