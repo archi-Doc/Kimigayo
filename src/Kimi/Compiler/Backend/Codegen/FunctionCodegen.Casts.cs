@@ -124,24 +124,6 @@ internal sealed partial class FunctionCodegen
 
     private static UInt128 Maximum(int width, bool signed) => UInt128.MaxValue >> (128 - width + (signed ? 1 : 0));
 
-    // LLVM's hexadecimal spelling of a floating constant of size bytes (LlvmScalarText's precondition): a double's bits, or a float's
-    // widened exactly, a NaN with its sign, payload and signaling bit, which a hardware widening would set.
-    private static Int128 Hexadecimal(Int128 bits, int size)
-    {
-        if (size == 8)
-        {
-            return unchecked((ulong)bits);
-        }
-
-        var single = unchecked((uint)bits);
-        if ((single & 0x7F800000) != 0x7F800000)
-        {
-            return BitConverter.DoubleToUInt64Bits(BitConverter.UInt32BitsToSingle(single)); // Exact for a finite value.
-        }
-
-        return ((ulong)(single >> 31) << 63) | (0x7FFUL << 52) | ((ulong)(single & 0x7FFFFF) << 29);
-    }
-
     // A Cast into its Place: its operand in its computation representation, its row's cast and, unless Proven, its check, which Aborts at
     // the statement's location and names its temporaries by the cast's number; the result stored into the Place's storage. Each
     // check is one rule here, its tests and its LlvmScalarText writer: a Range without a side writes the cast alone, and a Narrowing's

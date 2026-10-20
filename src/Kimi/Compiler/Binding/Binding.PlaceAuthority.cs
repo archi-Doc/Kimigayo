@@ -74,7 +74,7 @@ public sealed partial class Binding
     // recorded in-place read of it is representation.
     internal static SemanticsKind PathAuthority(Koto source)
     {
-        var path = PathAuthority(source, out var bindingDenies);
+        var path = PathAuthority(source, out var bindingDenies, out _);
         return bindingDenies ? SemanticsKind.Ref : path;
     }
 
@@ -113,12 +113,14 @@ public sealed partial class Binding
     // The path walk of PathAuthority: the access the path's layers grant, and bindingDenies, whether a selection on it (a user index
     // or an Array element, SPEC 4.7.1) needs its receiver exclusively acquired where the receiver's binding denies that (SPEC
     // 15.1.5), so that the selection shares the element for writes and exclusive borrows. A Take acquires nothing exclusively: it
-    // reads the layers alone (OffersTake, AccessFailure).
-    private static SemanticsKind PathAuthority(Koto source, out bool bindingDenies)
+    // reads the layers alone (OffersTake, AccessFailure), and layers, the cases of the layers of receivers' own Types the path passes
+    // (LayerCases), past any of which no Take is offered (SPEC 15.1.5, 13.5.5).
+    private static SemanticsKind PathAuthority(Koto source, out bool bindingDenies, out SemanticsMask layers)
     {
         var authority = SemanticsKind.Owner;
         var denied = false;
         bindingDenies = false;
+        layers = SemanticsMask.None;
         source = KotoHelper.UnwrapParentheses(source);
         for (var depth = 0; depth < 64; depth++)
         {
@@ -131,10 +133,13 @@ public sealed partial class Binding
                 case ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected:
                     next = selected.Left;
                     layer = selected.Left.BoundType?.Semantics;
+                    layers |= layer?.ToMask() ?? SemanticsMask.None;
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
                     next = pair.Left;
-                    layer = PairAuthority(pair.CodeContext.Compilation.Binding.PairAdmitted(pair));
+                    var admitted = pair.CodeContext.Compilation.Binding.PairAdmitted(pair);
+                    layer = PairAuthority(admitted);
+                    layers |= admitted;
                     break;
                 case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
                     // SPEC 3.4.3, 4.7.1, 15.1.5: the element Place is reached through the receiver's reference layers; indexUniq
@@ -166,6 +171,7 @@ public sealed partial class Binding
                 case MemberAccessKoto member when !IsGetterResult(member):
                     next = member.Left; // SPEC 3.4.3: a member is reached through every layer of its receiver's own Type.
                     layer = LayerAuthority(member.Left);
+                    layers |= LayerCases(member.Left);
                     break;
                 case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
                     next = part.Left; // An inline part shares its owner's path.
@@ -229,6 +235,19 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // SPEC 3.4.3, 13.5.5: the cases of the layers a Place's own Type adds to a path below the Place: a pair layer's admitted set and
+    // any other layer's Semantics; None for a Type without a layer.
+    private static SemanticsMask LayerCases(Koto place)
+    {
+        var cases = SemanticsMask.None;
+        for (var type = KotoHelper.UnwrapParentheses(place).BoundType; BelowLayer(type) is { } below; type = below)
+        {
+            cases |= TryPairLayer(type, out _, out _) ? place.CodeContext.Compilation.Binding.LayerAdmitted(type!) : type!.Semantics.ToMask();
+        }
+
+        return cases;
+    }
+
     // SPEC 13.5.5: a pair layer's weakest admitted case: shared when it admits a shared one, and otherwise exclusive unless it
     // admits an owner, an owning handle or a raw pointer, which keeps the operand's own path.
     private static SemanticsKind? PairAuthority(SemanticsMask admitted) => admitted switch
@@ -239,26 +258,26 @@ public sealed partial class Binding
     };
 
     // SPEC 3.4, 15.1.5: the one diagnostic for a capability that a Place's path denies. A shared layer grants Read only, an
-    // exclusive reference grants Read and Write but not Take, a writable part of a special receiver that SPEC lends exclusively
-    // but its row does not yet is unsupported (Receiver, SPEC 6.3.4), and otherwise the binding itself forbids the access, also
-    // through a selection whose receiver it cannot exclusively acquire.
+    // exclusive reference grants Read and Write but not Take, as no case of a pair layer does (SPEC 13.5.5; only a pair layer adds the
+    // owner case), a writable part of a special receiver that SPEC lends exclusively but its row does not yet is unsupported
+    // (Receiver, SPEC 6.3.4), and otherwise the binding itself forbids the access, also through a selection whose receiver it cannot
+    // exclusively acquire, or an object payload offers no Take.
     private static BindingFailure AccessFailure(Koto target, bool take = false)
-        => PathAuthority(target, out _) switch
+        => PathAuthority(target, out _, out var layers) switch
         {
             SemanticsKind.Ref => BindingFailure.SharedPathAccess,
             SemanticsKind.Uniq when take => BindingFailure.ExclusivePathTake,
+            _ when take && (layers & SemanticsMask.Owner) != 0 => BindingFailure.ExclusivePathTake,
             SemanticsKind.Owner when !take && ReceiverOfPart(target) is { LendsFields: false } && Writable(target) => BindingFailure.Unsupported,
             _ => BindingFailure.InvalidAssignment,
         };
 
-    // SPEC 15.1.5, 13.5.5: only an owned path offers Take, whether its binding permits exclusive acquisition or not; a guard
-    // candidate, a followed referent or payload and a followed pair layer never do, even when the layer admits owner.
+    // SPEC 15.1.5, 13.5.5: only an owned root and its inline parts offer Take, whether the binding permits exclusive acquisition or
+    // not: no path past a layer of a receiver's own Type (a reference, object handle or view, or pair layer) or a guard candidate does.
     private static bool OffersTake(Koto source)
     {
         var place = KotoHelper.UnwrapParentheses(source);
-        return place.BoundSymbol?.Kind != BindingSymbolKind.PatternCandidate &&
-            place is not ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } &&
-            (!IsBarePlace(place) || PathAuthority(place, out _) == SemanticsKind.Owner);
+        return !IsBarePlace(place) || (PathAuthority(place, out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
     }
 
     // SPEC 3.5: a bare Place, as opposed to a Temporary Value or an explicit @ operation. Only a Place's
@@ -522,9 +541,11 @@ public sealed partial class Binding
                     return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowableHandle(access.Left, scope, true, true));
                 }
 
-                return access.Left.BoundType is { Kind: BoundTypeKind.Semantics } receiver
-                    ? !exclusive || receiver.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq
-                    : this.BorrowablePlace(access.Left, scope, exclusive);
+                // SPEC 3.4.3, 13.5.5: past an exclusive layer of the receiver's own Type, a pair layer admitting only uniq included,
+                // the Field is lent in either mode; past another reference, view or raw pointer it is shared; an owned receiver, also
+                // past a pair layer admitting owner, lends it as the receiver Place does.
+                return LayerAuthority(access.Left) == SemanticsKind.Uniq ||
+                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.BorrowablePlace(access.Left, scope, exclusive));
             }
 
             return true;
