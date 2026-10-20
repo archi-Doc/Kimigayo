@@ -828,3 +828,25 @@ to Obsolete as superseded."
 - Outstanding: current-head reproduction, executable premise-supply completeness/resource/lifecycle gates, the
   separate finite Transferable summary, applicable package/vocabulary approvals and all implementation verification.
   G170/G124 remain open; S5 connection and the other F5/R4 exit obligations retain their own gates.
+
+## 2026-10-20 — S3 closure publication and M69 compiler/model correspondence
+
+The owner requested one agent per option, surrounding-code investigation, independent review with at most two correction rounds,
+comparison, and formal plans committed and pushed. The planning session selected the directions below after three independent
+options per problem; this records plan selection, not approval of an executable family package or new vocabulary/exception.
+
+- [S3 Closure Origin Publication Plan](Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md):
+  一部取り込み (open, intake only). Select body-relative C1-F4/C2 publication while preserving imported Origin identity.
+  Existing-rule mapping: its required meaning, result formation and S3-0–5 implement SPEC §15.3.6, §15.6.5 and §15.8.2;
+  implementation contracts refine A5 step 2's 2a0-D/2c-D and preserve OQ4/OQ11, H11 and AB-2's coordinated 0c merge.
+  Gate R must prove complete source rows, result formation/binding and normal-source publication before later units begin.
+- [M69 Default Loan Correspondence Plan](Proposals/2026-10-20%20M69%20Default%20Loan%20Correspondence%20Plan.md):
+  一部取り込み (open, intake only). Select producer-owned template coverage using actual Loan issuance and existing scope ancestry,
+  with normal-source/model correspondence and pointwise F5 effects. Existing-rule mapping: §§1–7 and M69-0–3 implement SPEC
+  §7.2.3, §8.15, §15.6.4, §15.6.7 and §23, refining 2e-D and its 2b-D/2b-1 interaction. Proposed supersession is limited to
+  R4-M69/R4-M73's unconditional A5 copy disposition; it takes effect only with the reviewed and approved implementing change.
+  Universal copy/lifecycle proof, real-input witnesses and record/publication correspondence remain gates; G171 stays open.
+- [Comparison and review record](Sketches/A5%20Step%202/S3-M69/Comparison%20and%20Review.md) links the alternatives and findings.
+  Neither proposal changes a language rule. No section is integrated into SPEC/IMPL and no text is frozen. No compiler, model,
+  build, test or performance measurement was executed by this planning task. Applicable package approvals and all implementation
+  checks remain outstanding; intake/review implies no support or release of an existing integration hold.
