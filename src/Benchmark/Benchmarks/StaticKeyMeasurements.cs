@@ -2,6 +2,7 @@
 
 using System.Diagnostics;
 using System.Globalization;
+using System.Numerics;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -11,7 +12,7 @@ using Kimi.Compiler.Mir;
 
 namespace Benchmark;
 
-// A4's static keys on large programs (PLAN G93, DECISIONS R4-M38): N members of a call chain and F mutable static Fields. A cold A4 is a
+// A4's static keys on large programs (PLAN G93, DECISIONS R4-M38, R4-M91): N members of a call chain and F mutable static Fields. A cold A4 is a
 // fresh MirEffects over a built program whose case views and dataflow are warm (A1-A3 warm them in the driver): Local per view, Run (the
 // fixed point, then Spread), then a Keys query at every Call and Drop, as A5 reads them. The MIR build is outside every interval.
 // "--static-keys" reports each phase's allocation (three fresh instances), the managed heap a fresh instance retains and a warm re-run's
@@ -201,7 +202,8 @@ internal static class StaticKeyMeasurements
     }
 
     // One pass of an instance, the driver's A4 rows as MirEffectsTest.Analyze runs them: each body's views' Local, then Run, then a Keys
-    // query at every Call and Drop of every view A5 analyzes (A2's table); the dataflow is begun with each body outside the phases.
+    // query at every Call and Drop of every view A5 analyzes (A2's table), counting the Fields its row names and the sites with a class;
+    // the dataflow is begun with each body outside the phases.
     private static Pass Measure(MirEffects effects, Workload w)
     {
         var (localBytes, localTicks) = (0L, 0L);
@@ -233,8 +235,13 @@ internal static class StaticKeyMeasurements
                 {
                     if (body.Blocks[block].Terminator.Kind is MirTerminatorKind.Call or MirTerminatorKind.Drop)
                     {
-                        keys += effects.Keys(body, view, block, out var unknown).Length;
-                        (sites, unknowns) = (sites + 1, unknowns + (unknown ? 1 : 0));
+                        var row = effects.Keys(body, view, block, out var classes);
+                        foreach (var word in row)
+                        {
+                            keys += BitOperations.PopCount((word | (word >> 1)) & 0x5555555555555555UL); // Each Field's read or write bit.
+                        }
+
+                        (sites, unknowns) = (sites + 1, unknowns + (classes != 0 ? 1 : 0));
                     }
                 }
             }

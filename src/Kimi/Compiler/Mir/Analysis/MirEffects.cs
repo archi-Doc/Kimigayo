@@ -6,7 +6,8 @@
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
 // (MirProgram.Drops), TyCtxt's obligations and callee facts.
 // Output: IncompatibleContractImplementation_Kd,
-// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's static keys (Keys).
+// UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's key row and classes
+// per view (Keys, Field).
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
 // G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
@@ -26,10 +27,17 @@ namespace Kimi.Compiler.Mir;
 /// <param name="flow">The dataflow, begun with the body whose views <see cref="Local"/> records: the blocks the runtime edges reach.</param>
 internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDataflow flow)
 {
-    private const byte Environment = 1; // The classes of a summary: an environment effect (SPEC 8.11.2),
-    private const byte Unknown = 2; // an effect that cannot be classified,
-    private const byte Limit = 4; // one this implementation cannot classify yet (Unsupported_Kd),
-    private const byte Derived = 8; // one only an Opaque site or a callee Binding rejected causes.
+    /// <summary>A class of a summary: an effect that cannot be classified, which may access any key (SPEC 15.6.4).</summary>
+    internal const byte Unknown = 2;
+
+    /// <summary>A class of a summary: an effect this implementation cannot classify yet (a located <c>Unsupported_Kd</c>).</summary>
+    internal const byte Limit = 4;
+
+    /// <summary>A class of a summary: an effect only an Opaque site or a callee Binding rejected causes, a dependent of that error
+    /// (R4-M10).</summary>
+    internal const byte Derived = 8;
+
+    private const byte Environment = 1; // The class of an environment effect (SPEC 8.11.2).
     private const byte Drop = 0; // An atom's kind: the destruction of a value of its Type, else 1 + the receiver of a call through it,
     private const byte Requires = byte.MaxValue; // or a published requirement on its Type (SPEC 4.9.6).
 
@@ -58,7 +66,6 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         {
             this.nodeCount = this.itemCount = this.edgeCount = this.keyCount = 0;
             this.fieldIds.Clear();
-            this.fields.Clear();
         }
 
         var node = this.nodeCount++;
