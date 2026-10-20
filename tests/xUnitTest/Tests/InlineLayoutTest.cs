@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Xunit;
 
@@ -52,10 +53,7 @@ public class InlineLayoutTest
         }
 
         source.Append("func f(s: S70) -> i32 => 1\nConsole.writeLine(\"deep\")\n");
-        var c = MinimalEmissionTest.Analyze(source.ToString());
-        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}")));
-        Assert.False(c.Validate(out var error));
-        Assert.True(c.Emission.FailureIsResourceLimit, error);
+        MinimalEmissionTest.AssertGenerationResourceLimit(source.ToString(), "depth limit of 64 levels");
     }
 
     [Fact]
@@ -63,7 +61,8 @@ public class InlineLayoutTest
     {
         // DECISIONS R5-M37 (a declared change of P7c): the old pool resolves each Type once per body, so t65's one-component Tuple,
         // 65 levels high, reused t64's resolution and was generated, while a fresh resolution reports the depth limit; Layout's
-        // placement height now decides it whatever the order.
+        // placement height now decides it whatever the order. MIR code generation reports it at check once per erased Type, at t65 to t70,
+        // the locals whose Types are more than 64 levels high (K13b, DECISIONS R5-M44); the old generator's one record names the limit.
         var source = new StringBuilder("func f() -> i32\n    let t0 = 1\n");
         for (var i = 1; i <= 70; i++)
         {
@@ -80,7 +79,9 @@ public class InlineLayoutTest
             project.AddSource("main.kimi", source.ToString());
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
-            Assert.Contains("depth limit of 64 levels", console.Text, StringComparison.Ordinal);
+            var records = Regex.Matches(console.Text, @"GenerationResourceLimit_Kd\n(?: --> (?<fact>\S+)|\nNote: (?<fact>[^\n]+))").Select(static x => x.Groups["fact"].Value);
+            var located = string.Join(' ', Enumerable.Range(67, 6).Select(static x => $"main.kimi:{x}:5"));
+            Assert.Equal(Codegen.Expect(located, "Inline layout exceeds the generation depth limit of 64 levels.", CodegenDeviations.CheckedSetAtCheck), string.Join(' ', records));
         }
         finally
         {
@@ -93,20 +94,14 @@ public class InlineLayoutTest
     [InlineData("[1073741824 of i32]")]
     [InlineData("(bool, [2147483647 of u8])")]
     public void FiniteLayoutsBeyondTheInternalSizeOrCountBoundAreResourceLimits(string type)
-    {
-        var c = MinimalEmissionTest.Analyze($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")");
-        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Validate(out var error));
-        Assert.True(c.Emission.FailureIsResourceLimit, error);
-        Assert.Contains("2147483647", error);
-    }
+        => MinimalEmissionTest.AssertGenerationResourceLimit($"func inspect(value: {type}) -> i32 => 1\nConsole.writeLine(\"finite\")", "2147483647");
 
     [Fact]
     public async Task AnInferredCLayoutInstanceReportsALaterFieldsResourceLimit()
     {
         // DECISIONS R5-M29 (a declared change of P7b): the old pool visits every Field of P<()> before Layout reports its zero-sized
-        // Field, so the later Field's resource limit is reported (GenerationFailed_Kd before); K10b's InvalidCLayout_Kd supersedes both.
+        // Field, so the later Field's resource limit is reported (GenerationFailed_Kd before); K10b's InvalidCLayout_Kd, at check under MIR
+        // code generation (K13b), supersedes both.
         var directory = Path.Combine(Path.GetTempPath(), "kimi-inline-layout-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(directory);
         try
@@ -115,7 +110,7 @@ public class InlineLayoutTest
             var project = new Project(new Kimigayo(console)) { Name = "layout", Directory = directory };
             project.AddSource("main.kimi", "#Layout(\"C\")\nstruct P<T>\n    var value: T\n    var big: [2147483648 of u8]\nfunc f<T>(value: T) -> i32\n    let x: Option<P<T>> = .None\n    return 0\nlet r = f(())\nConsole.writeLine(\"inferred\")");
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-            Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
+            Assert.Contains(Codegen.Expect("InvalidCLayout_Kd", "GenerationResourceLimit_Kd", CodegenDeviations.InferredCLayoutAtCheck), console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
         }
         finally
@@ -126,12 +121,5 @@ public class InlineLayoutTest
 
     [Fact]
     public void EnumTagAndAlignmentCountTowardsTheSizeLimit()
-    {
-        var c = MinimalEmissionTest.Analyze("enum Big\n    A([2147483647 of u8])\n    B\nfunc inspect(value: Big) -> i32 => 1\nConsole.writeLine(\"finite\")");
-        Assert.True(c.Binding.Result.IsComplete, string.Join("\n", c.Binding.Issues));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Validate(out var error));
-        Assert.True(c.Emission.FailureIsResourceLimit, error);
-        Assert.Contains("2147483647", error);
-    }
+        => MinimalEmissionTest.AssertGenerationResourceLimit("enum Big\n    A([2147483647 of u8])\n    B\nfunc inspect(value: Big) -> i32 => 1\nConsole.writeLine(\"finite\")", "2147483647");
 }

@@ -31,7 +31,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
 
         // Check, then generation, as a build runs them: MIR code generation reports the instance's operation at check (K13a).
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.InstanceCapabilityAtCheck), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
         c.ReportAnalysis();
         using var writer = new StringWriter();
         Assert.False(c.Generate(writer));
@@ -89,10 +89,12 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("GenericGenerationDiagnosticValid", source, string.Empty);
     }
 
+    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
+    // by G4 at the latest (DECISIONS R5-M85).
     [Fact]
     public void TypeAndLengthSlotsAppearOnceInDeclarationOrder()
     {
-        var c = MinimalEmissionTest.Analyze("func pick<length N, T>(values: [N of i32], value: T) -> T => value@move\nlet result = pick([1, 2], (20, 22))");
+        var c = MinimalEmissionTest.Analyze("func pick<length N, T>(values: [N of i32], value: T) -> T => value@move\nlet result = pick([1, 2], (20, 22))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try
@@ -113,7 +115,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
     public void IndependentUnsupportedOperationsRetainSeparateLocations()
     {
         var c = MinimalEmissionTest.Analyze(WideDivision.Replace("    return value / 2", "    let first = value / 2\n    return value % 2", StringComparison.Ordinal));
-        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.InstanceCapabilityAtCheck), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
         c.ReportAnalysis();
         Assert.False(c.Generate(TextWriter.Null));
         var errors = TestDiagnostics.Of(c);
@@ -122,10 +124,11 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
         Assert.NotEqual(errors[0].Span, errors[1].Span);
     }
 
+    // The old instance run's storage limit, pinned as above.
     [Fact]
     public void InstanceStorageLimitsKeepResourceFactsAndRecover()
     {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nlet result = identity((20, 22))");
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nlet result = identity((20, 22))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Validate(out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;
         try

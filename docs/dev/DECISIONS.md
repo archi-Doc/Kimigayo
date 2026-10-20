@@ -4524,12 +4524,13 @@ structure is recorded here by the unit that first implements it.
   unless the selector's one reading (`Compilation.DefaultCodegen`) is MIR's, and fails when the two are equal. Refining PD10's
   `Expect(target, legacy, item, class)` (package C row 22), the item is one `Deviation(Id, Class, Item, Clause, Reason)` of the
   `CodegenDeviations` catalog: Class OQ7's (a), (d) or (e) (R5-M6), Item a DECISIONS entry, Clause SPEC sections; `CodegenDeviationTest`
-  checks each and that an `Expect` names it (M7 counts them). First: `instance-capability-at-check` (d; R5-M41; SPEC 23.2.2), sel's
-  check-time record of R5-M54, which the old generator reports at generation. Its tests (K13a's `GenericGenerationDiagnosticTest`
-  rows, `PrimitiveIntegerTest`'s wide division, `PipelineSwitchTest`'s test command) run check and generation in every run; the old
-  generator's own refusal facts are checked on a compilation pinned to it and go at G2 with the legacy values. The pin needs the
-  `Codegen` setter G4 removes, so R5-M73's pinned depth test (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`) goes by G4 at the
-  latest. The native half lands with its first native consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal
+  checks each and that an `Expect` names it (M7 counts them). First: `checked-set-at-check` (d; R5-M41; SPEC 23.2.2), sel's check-time
+  records of the checked set, R5-M54's capability records and (K13b) R5-M40's and R5-M44's resource limits, which the old generator
+  reports at generation. Its tests (K13a's `GenericGenerationDiagnosticTest` rows, `PrimitiveIntegerTest`'s wide division,
+  `PipelineSwitchTest`'s test command, K13b's limit rows) run check and generation in every run; the old generator's own refusal facts
+  are checked on a compilation pinned to it and go at G2 with the legacy values. The pin needs the `Codegen` setter G4 removes, so every
+  test pinned to the old generator (R5-M73's depth test `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`, K13a's and K13b's
+  pins) goes by G4 at the latest. The native half lands with its first native consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal
   in both runs, the JSON of the entry and the legacy and target stdout, exit and stderr; `compare-fixtures.ps1` counts a differing
   fixture as deviating only when both runs carry the same `.deviation` and each run's output matches its side.
   - Rejected: per-test pipeline branches and xfail markers (PD10); item and class as arguments (declared at each use); the native

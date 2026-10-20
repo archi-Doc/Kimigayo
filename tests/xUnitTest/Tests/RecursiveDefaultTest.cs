@@ -94,15 +94,7 @@ public class RecursiveDefaultTest
 
     [Fact]
     public void GrowingDefaultSubstitutionsAreResourceDiagnosed()
-    {
-        const string source = "func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out var error));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Emission.FailureIsResourceLimit, error);
-    }
+        => MinimalEmissionTest.AssertGenerationResourceLimit("func grow<T>(n: i32, result: i32 = if n == 0 => 0 else => grow<[1 of T]>(n - 1)) -> i32 => result\n_ = grow<i32>(2)", "closed substitutions");
 
     [Fact]
     public void RecursiveAbortDoesNotUnwindPreparedInputsOrDefaultDefers()
