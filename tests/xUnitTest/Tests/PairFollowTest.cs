@@ -499,7 +499,9 @@ public class PairFollowTest
 
     private const string Selected = Box + Collection +
         "struct Q\n    public var w: i32\n    public var s: string\n    public init(w: i32)\n        self.w = w\n        self.s = \"a\"\n" +
-        "struct P\n    public var v: i32\n    public var inner: Q\n    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n" +
+        "    public func bumpW(self: uniq/Self) => self.w += 1\n" +
+        "struct P\n    public var v: i32\n    public var inner: Q\n    public var items: Array<i32>\n    public var coll: Collection<i32>\n" +
+        "    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n        self.items = [1, 2]\n        self.coll = Collection<i32>.init(items: [1, 2])\n" +
         "    public func bump(self: uniq/Self) => self.v += 1\n";
 
     // SPEC 13.5.5, 3.4.3: a member selected through a pair layer follows it as @follow does: with owner admitted, a Field inline
@@ -508,6 +510,10 @@ public class PairFollowTest
     [Theory]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v += 1", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.v++", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T>(value: s/T, x: Box<s/P during b>)\n    s is owner or uniq\n    x.item.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/(t/P during b))\n    s is owner or uniq\n    t is owner or uniq\n    x.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g<s/T, t/U>(value: s/T, n: t/U, x: s/(t/P during b))\n    s is owner or uniq\n    t is owner or uniq\n    let y = x.inner@move", DiagnosticCode.ExclusivePathTake_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    p.inner.w = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner\n    p.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    let q = p@move\n    q.v = 5", DiagnosticCode.InvalidAssignment_Kd)]
@@ -525,6 +531,10 @@ public class PairFollowTest
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.inner.w = 5", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    let r = p.v@uniq\n    r@follow = 3", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p@follow.v = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.inner.bumpW()", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.items.append(3)", null)]
+    [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is uniq\n    p.coll[0] = 5", null)]
+    [InlineData("func g<s/T>(value: s/T, x: s/(uniq/P during b))\n    s is owner or uniq\n    let r = x.v@uniq", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    q.v = 5", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    q.inner.w = 5", null)]
     [InlineData("func g<s/T>(value: s/T, p: s/P)\n    s is owner or uniq\n    var q = p@move\n    let r = q.v@uniq\n    r@follow = 3", null)]
