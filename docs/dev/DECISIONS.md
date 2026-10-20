@@ -4481,3 +4481,12 @@ structure is recorded here by the unit that first implements it.
   exception, for this item only, to R5-M6's rejection of D5 fixes that make the two generators agree: the old generator's output is
   wrong code on the default pipeline and the fix is a few lines; R5-M6 stands for every other item. Rejected: (b) a decided OQ7 (a)
   deviation until G3, which would keep a wrong value on the default pipeline.
+- **R5-M88 `AnalyzeInstance` is deleted at R6-gen** (2026-10-21, planning session; plan Q4 under R5-M5, the owner's OQ6 (e);
+  supersedes R4-M35's OD10 clause "with `AnalyzeInstance` a check-only step until R6-check") The clause kept the instance run
+  because the definition run missed two holes it covered, PLAN10-X1 (an abstract part's destruction observing) and abstract
+  temporaries as Loan roots. That reason no longer holds: Q1 reproduced both and Q2 and Q3 fixed them in the old definition run as
+  D5 miscompile fixes (dev `4eb19789`; regressions in `BorrowingIterationTest` and `BlockEscapeLoanTest`; no library body or
+  milestone program rejected, DEC O3). `check` never runs the instance run: its only callers are the old Emission's
+  (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
+  `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
+  (once the old Emission is gone nothing calls it, and acceptance never read it).
