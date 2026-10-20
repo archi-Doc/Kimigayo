@@ -231,6 +231,14 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal("The temporary `make()` is destroyed here while a live value keeps its Loan", record.Note);
     }
 
+    // SPEC 3.6: the valid twins of TemporaryGeneric and TemporaryFunction: a borrow of an abstract or a Function temporary used within
+    // its statement outlives no temporary.
+    [Theory]
+    [InlineData("func inspect<T>(value: ref/T) => ()\nfunc keep<T>(make: () -> T) -> ()\n    inspect(make()@ref)\n\npublic func main() -> ()\n    Console.writeLine(\"x\")\n")]
+    [InlineData("func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\nfunc call(f: ref/(() -> i32)) -> i32 => f()\n\npublic func main() -> ()\n    Console.writeLine(\"\\(call(mk()@ref))\")\n")]
+    public void ABorrowOfATemporaryWithinItsStatementIsValid(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+
     // SPEC 15.6.2, 16.2.2: borrows that never outlive their root's scope are valid and run.
     [Theory]
     [InlineData("CapturedOuter", "let n = 5\nlet g = label block: do\n    let k = 1\n    exit to block func [n@ref] () => n@follow\nConsole.writeLine(\"\\(g())\")", "5\n")]

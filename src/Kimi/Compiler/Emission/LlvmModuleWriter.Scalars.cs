@@ -37,10 +37,7 @@ internal static partial class LlvmModuleWriter
         var length = 0;
         if (operand.Kind is EmissionOperandKind.Float32 or EmissionOperandKind.Float64)
         {
-            // LLVM's hexadecimal float spelling uses the exactly extended double bits.
-            var bits = operand.Kind == EmissionOperandKind.Float32
-                ? BitConverter.DoubleToUInt64Bits(BitConverter.UInt32BitsToSingle((uint)operand.Value)) : unchecked((ulong)operand.Value);
-            bits.TryFormat(digits, out length, "X16", CultureInfo.InvariantCulture);
+            Hexadecimal(operand.Value, operand.Kind == EmissionOperandKind.Float32 ? 4 : 8).TryFormat(digits, out length, "X16", CultureInfo.InvariantCulture);
         }
         else if (operand.Kind is not (EmissionOperandKind.CallerLocation or EmissionOperandKind.CallerLocationLength or EmissionOperandKind.NullAddress))
         {

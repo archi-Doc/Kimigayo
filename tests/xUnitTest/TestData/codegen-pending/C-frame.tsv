@@ -1768,7 +1768,6 @@ test	XunitTest.PositionModelTest.PositionsResolveAsTheModel	XunitTest.PositionMo
 test	XunitTest.PositionWarningTest.WarnedAccessAbortsOnlyWhenExecuted	XunitTest.PositionWarningTest.WarnedAccessAbortsOnlyWhenExecuted
 test	XunitTest.PrimitiveIntegerTest.GenericBodiesUseEachInstanceOperations	XunitTest.PrimitiveIntegerTest.GenericBodiesUseEachInstanceOperations
 test	XunitTest.PrimitiveIntegerTest.NarrowingAnInstanceChecksItsRange	XunitTest.PrimitiveIntegerTest.NarrowingAnInstanceChecksItsRange
-test	XunitTest.PrimitiveIntegerTest.WideDivisionIsDiagnosedForTheInstance	XunitTest.PrimitiveIntegerTest.WideDivisionIsDiagnosedForTheInstance
 test	XunitTest.ProductTestMembershipTest.OnlyProductCodeIsEmitted	XunitTest.ProductTestMembershipTest.OnlyProductCodeIsEmitted(name: \"Overload\", source: \"func helper(value: i32) => Console.writeLine(\\\"product\\\")\\nhelper(1)\\n#Test\\nfunc helper() => TestOnly.missing()\")
 test	XunitTest.ProjectedBorrowEmissionTest.Executes	XunitTest.ProjectedBorrowEmissionTest.Executes(name: \"Field\", source: \"let b = Batch.init(values)\\nlet r = b.view()\\nrequire r[0] == 6 and r[1] == 7 else => $abort(\\\"projection\\\")\")
 test	XunitTest.ProjectedBorrowEmissionTest.Executes	XunitTest.ProjectedBorrowEmissionTest.Executes(name: \"Forward\", source: \"func forward(b: ref/Batch) -> ref/[2 of i32] during b => b.view()\\nlet b = Batch.init(values)\\nrequire forward(b@ref)[1] == 7 else => $abort(\\\"forward\\\")\")

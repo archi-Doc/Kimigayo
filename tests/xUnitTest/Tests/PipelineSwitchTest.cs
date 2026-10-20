@@ -17,8 +17,8 @@ namespace XunitTest;
 /// generation records as <c>kimi build</c> does.</summary>
 public sealed class PipelineSwitchTest
 {
-    // A fill of a length its instance decides is the MIR's one Unsupported record here, a form no R3 unit builds.
-    private const string Source = "func filled<length N>(value: i32) -> [N of i32] => [N of value]\nlet values = filled<2>(1)\n";
+    // A position of a Type parameter is the MIR's one Unsupported record here, a form the old path accepts, until PLAN G167 builds it.
+    private const string Source = "func at<I>(values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    return values[p]\nlet x = at([1, 2, 3], 1@u8)\n";
 
     // The default is the pipeline KIMI_PIPELINE names, legacy when unset; any other value is a configuration error, not a fallback.
     [Fact]
@@ -165,7 +165,8 @@ public sealed class PipelineSwitchTest
     }
 
     // R5 C0a: kimi test publishes its generation records through the entry, as kimi build does: a test build the old generator refuses
-    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54).
+    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54,
+    // DECISIONS R5-M85), and the command generates only a build its check prepared.
     [Fact]
     public void TheTestCommandPublishesTheGenerationRecords()
     {
@@ -179,13 +180,10 @@ public sealed class PipelineSwitchTest
             const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             var c = project.PrepareTests(TestContext.Current.CancellationToken);
-            Assert.Equal(Compilation.DefaultCodegen == CompilerCodegen.Mir, c is null);
-            if (c is not null)
-            {
-                var stem = Path.Combine(directory, "tests");
-                Assert.False(project.PublishArtifacts(c, new(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2"), null, out _));
-            }
-
+            Assert.Equal(Codegen.Expect(true, false, CodegenDeviations.InstanceCapabilityAtCheck), c is null);
+            var stem = Path.Combine(directory, "tests");
+            var paths = new ArtifactPaths(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2");
+            Assert.False(c is not null && project.PublishArtifacts(c, paths, null, out _));
             Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));
@@ -276,11 +274,11 @@ public sealed class PipelineSwitchTest
         Assert.False(c.Analyze().IsVerified);
         var problem = Assert.Single(c.Problems);
         Assert.Equal(DiagnosticCode.Unsupported_Kd, problem.Code);
-        Assert.Equal("[N of value]", c.SyntaxOf(problem.Subject).ToString());
+        Assert.Equal("p", c.SyntaxOf(problem.Subject).ToString());
         Assert.Equal((false, 1), (c.Analysis.IsVerified, c.Analysis.ErrorCount));
         c.ReportAnalysis();
         var record = Assert.Single(TestDiagnostics.Of(c), x => x.Severity == DiagnosticSeverity.Error);
-        Assert.Equal(("Unsupported_Kd", "[N of value]"), (record.Code, record.Text));
+        Assert.Equal(("Unsupported_Kd", "p"), (record.Code, record.Text));
         Assert.False(c.WriteIr(TextWriter.Null, out var failure));
         Assert.Contains("MIR", failure);
         Assert.False(c.Validate(out _));

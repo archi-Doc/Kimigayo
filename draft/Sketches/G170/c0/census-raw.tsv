@@ -1,0 +1,153 @@
+Binding.ArithmeticContracts.cs:63	AddArithmeticPremises	private void AddArithmeticPremises(BoundContract declaration, BoundType self, ConstraintEnvironment environment, BindingSymbol source)
+Binding.ArithmeticContracts.cs:70	AddArithmeticPremises	this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Semantics, self, mask: SemanticsMask.Owner)), source);
+Binding.ArithmeticContracts.cs:71	AddArithmeticPremises	this.AddConstraintFact(environment, this.NotStringConstraint(self), source);
+Binding.ArithmeticContracts.cs:74	AddArithmeticPremises	this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Semantics, counterpart, mask: SemanticsMask.Owner)), source);
+Binding.ArithmeticContracts.cs:75	AddArithmeticPremises	this.AddConstraintFact(environment, this.NotStringConstraint(counterpart), source);
+Binding.ArithmeticDiagnostics.cs:51	ValidateArithmeticDirections	foreach (var fact in environment.Facts)
+Binding.ArithmeticDiagnostics.cs:63	ValidateArithmeticDirections	if (current.Constraints is not { Invalid: false } other)
+Binding.ArithmeticDiagnostics.cs:68	ValidateArithmeticDirections	foreach (var oppositeFact in other.Facts)
+Binding.ArithmeticOperators.cs:39	ArithmeticNumericDomain	if (current.Constraints is not { Invalid: false } environment)
+Binding.ArithmeticOperators.cs:44	ArithmeticNumericDomain	foreach (var fact in environment.Facts)
+Binding.ArithmeticOperators.cs:200	SelectArithmetic	if (current.Constraints is not { Invalid: false } environment)
+Binding.ArithmeticOperators.cs:205	SelectArithmetic	foreach (var fact in environment.Facts)
+Binding.AssociatedTypes.cs:109	FindAssociated	if (current.Constraints is not { Invalid: false } environment)
+Binding.AssociatedTypes.cs:114	FindAssociated	foreach (var fact in environment.Facts)
+Binding.AssociatedTypes.cs:236	BindAssociatedProjection	this.AddContractPremises(evidence.Contract!, type, scope);
+Binding.AssociatedTypes.cs:679	ContractTypeCore	if (current.Constraints is not { Invalid: false } environment)
+Binding.AssociatedTypes.cs:684	ContractTypeCore	foreach (var fact in environment.Facts)
+Binding.CallableEffects.cs:33	AvailableCallableEffects	if (current.Constraints is not { Invalid: false } environment)
+Binding.CallableSelection.cs:49	SelectValueCall	capacity += current.Constraints?.Facts.Count ?? 0;
+Binding.CallableSelection.cs:58	SelectValueCall	if (current.Constraints is not { } environment)
+Binding.CallableSelection.cs:63	SelectValueCall	foreach (var fact in environment.Facts)
+Binding.Capabilities.cs:522	SymbolicCapability	var parameterIdentity = HasParameterIdentity(work.Scope);
+Binding.Capabilities.cs:526	SymbolicCapability	if (scope.Constraints is not { } environment)
+Binding.Capabilities.cs:536	SymbolicCapability	foreach (var available in environment.Facts)
+Binding.ConditionalConformances.cs:16	DisjointConformanceFacts	if (left.Constraints is not { Invalid: false } x)
+Binding.ConditionalConformances.cs:23	DisjointConformanceFacts	if (right.Constraints is not { Invalid: false } y)
+Binding.ConditionalConformances.cs:28	DisjointConformanceFacts	foreach (var p in x.Facts)
+Binding.ConditionalConformances.cs:30	DisjointConformanceFacts	foreach (var q in y.Facts)
+Binding.ConditionalConformances.cs:122	VerifyConformanceAgreement	var environment = scope.Constraints ??= new();
+Binding.ConditionalConformances.cs:123	VerifyConformanceAgreement	if (b.Scope.Parent?.Constraints is { } other)
+Binding.ConditionalConformances.cs:125	VerifyConformanceAgreement	foreach (var fact in other.DirectFacts)
+Binding.ConditionalConformances.cs:127	VerifyConformanceAgreement	this.AddConstraintFact(environment, fact);
+Binding.ConditionalConformances.cs:130	VerifyConformanceAgreement	for (var f = 0; f < other.DerivedFacts.Count; f++)
+Binding.ConditionalConformances.cs:132	VerifyConformanceAgreement	var derived = other.DerivedFacts[f];
+Binding.ConditionalConformances.cs:133	VerifyConformanceAgreement	this.AddConstraintFact(environment, derived.Fact, derived.Source);
+Binding.ConditionalConformances.cs:256	BindConditionalDeclarations	this.ExpandScopeContractPremises(scope);
+Binding.ConditionalConformances.cs:267	BindConditionalDeclarations	(scope.Constraints ??= new()).Invalid = true;
+Binding.ConditionalConformances.cs:277	ResolveConformance	if (current.Constraints?.Invalid == true)
+Binding.ConditionalConformances.cs:437	ProveConformanceConditions	if (path.Scope.Parent?.Constraints?.Invalid == true)
+Binding.ConditionalMembers.cs:37	ProveMemberConditions	this.scopes[declaration].Constraints?.Invalid == true)
+Binding.ConditionalMembers.cs:74	ValidateConditionalBlock	(this.scopes[syntax].Constraints ??= new()).Invalid = true;
+Binding.ConstraintValidation.cs:54	AdmittedSemantics	if (current.Constraints is not { Invalid: false } environment)
+Binding.ConstraintValidation.cs:59	AdmittedSemantics	foreach (var fact in environment.Facts)
+Binding.ConstraintValidation.cs:404	ValidateConstraintUses	(scope.Constraints ??= new()).Invalid = true;
+Binding.ConstraintValidation.cs:668	HasValueRole	if (current.Constraints is not { Invalid: false } environment)
+Binding.ConstraintValidation.cs:673	HasValueRole	foreach (var fact in environment.Facts)
+Binding.Constraints.Model.cs:42	?	this.HasAssociatedProjection = ContainsProjection(key.Subject) || ContainsProjection(key.RequiredType) || key.Left?.HasAssociatedProjection == true ||
+Binding.Constraints.Model.cs:63	?	internal bool HasAssociatedProjection { get; }
+Binding.Constraints.Model.cs:121	Identity	internal HashSet<BoundConstraint> DirectFacts { get; } = new(ReferenceEqualityComparer.Instance);
+Binding.Constraints.Model.cs:123	Identity	internal List<(BoundConstraint Fact, BindingSymbol Source)> DerivedFacts { get; } = new();
+Binding.Constraints.Model.cs:127	Identity	internal bool HasAssociatedProjection { get; set; }
+Binding.Constraints.Model.cs:131	Identity	internal bool HasParameterIdentity { get; set; }
+Binding.Constraints.Model.cs:135	Reset	this.Facts.Clear();
+Binding.Constraints.Model.cs:136	Reset	this.DirectFacts.Clear();
+Binding.Constraints.Model.cs:137	Reset	this.DerivedFacts.Clear();
+Binding.Constraints.Model.cs:139	Reset	this.HasAssociatedProjection = false;
+Binding.Constraints.Model.cs:140	Reset	this.HasParameterIdentity = false;
+Binding.Constraints.cs:198	AvailableConstraintFact	if (!environment.Facts.Contains(fact))
+Binding.Constraints.cs:203	AvailableConstraintFact	if (environment.DirectFacts.Contains(fact))
+Binding.Constraints.cs:208	AvailableConstraintFact	for (var i = 0; i < environment.DerivedFacts.Count; i++)
+Binding.Constraints.cs:210	AvailableConstraintFact	var derived = environment.DerivedFacts[i];
+Binding.Constraints.cs:370	BindConstraints	this.ExpandContractPremises();
+Binding.Constraints.cs:389	ValidateConstraintEnvironments	if (scope.Constraints is not { } environment || (sourcesOnly && this.IsLibraryDeclaration(scope.Owner)))
+Binding.Constraints.cs:401	ValidateConstraintEnvironments	foreach (var fact in environment.Facts)
+Binding.Constraints.cs:410	ValidateConstraintEnvironments	this.FailConstraint(scope.Owner, environment.Facts.Count == 1 ? this.FindConformanceDiagnosticCause(scope.Owner, fact) : null);
+Binding.Constraints.cs:493	BindConstraint	var environment = scope.Constraints ??= new();
+Binding.Constraints.cs:494	BindConstraint	this.AddConstraintFact(environment, requirement);
+Binding.Constraints.cs:584	AddConstraintFact	private void AddConstraintFact(ConstraintEnvironment environment, BoundConstraint fact, BindingSymbol? source = null)
+Binding.Constraints.cs:593	AddConstraintFact	environment.DirectFacts.Add(fact);
+Binding.Constraints.cs:595	AddConstraintFact	else if (!environment.DerivedFacts.Contains((fact, source)))
+Binding.Constraints.cs:597	AddConstraintFact	environment.DerivedFacts.Add((fact, source));
+Binding.Constraints.cs:600	AddConstraintFact	var added = environment.Facts.Add(fact);
+Binding.Constraints.cs:606	AddConstraintFact	environment.HasAssociatedProjection |= fact.HasAssociatedProjection;
+Binding.Constraints.cs:607	AddConstraintFact	environment.HasParameterIdentity |= fact is { Kind: ConstraintKind.TypeIdentity, Subject.Kind: BoundTypeKind.Parameter, RequiredType: not null };
+Binding.Constraints.cs:614	AddConstraintFact	this.AddConstraintFact(environment, fact.Left!, source);
+Binding.Constraints.cs:615	AddConstraintFact	this.AddConstraintFact(environment, fact.Right!, source);
+Binding.Constraints.cs:623	ProveConstraint	var parameterIdentity = HasParameterIdentity(scope);
+Binding.Constraints.cs:628	ProveConstraint	if (current.Constraints is not { } environment)
+Binding.Constraints.cs:640	ProveConstraint	if (environment.HasAssociatedProjection || parameterIdentity || normalized.Kind == ConstraintKind.Callable || normalized is { Kind: ConstraintKind.Not
+Binding.Constraints.cs:642	ProveConstraint	foreach (var fact in environment.Facts)
+Binding.Constraints.cs:685	NormalizeProofConstraint	if (!constraint.HasAssociatedProjection && !HasParameterIdentity(scope))
+Binding.Constraints.cs:714	NormalizeProofType	if (type.ContainsParameter && HasParameterIdentity(scope))
+Binding.ContractAgreement.cs:32	ContractOverlapScope	var environment = scope.Constraints ??= new();
+Binding.ContractAgreement.cs:35	ContractOverlapScope	this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.TypeIdentity, variable.Type, target.Type)));
+Binding.ContractAgreement.cs:38	ContractOverlapScope	this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.TypeIdentity, left.Type, right.Type)));
+Binding.ContractAgreement.cs:46	RefutedOverlapInputs	if (scope.Constraints is not { Invalid: false } environment)
+Binding.ContractAgreement.cs:51	RefutedOverlapInputs	foreach (var fact in environment.DirectFacts)
+Binding.ContractAgreement.cs:69	AddOverlapFacts	var environment = target.Constraints ??= new();
+Binding.ContractAgreement.cs:72	AddOverlapFacts	if (scope.Constraints is not { Invalid: false } other)
+Binding.ContractAgreement.cs:77	AddOverlapFacts	foreach (var fact in other.DirectFacts)
+Binding.ContractAgreement.cs:79	AddOverlapFacts	this.AddConstraintFact(environment, fact);
+Binding.ContractAgreement.cs:82	AddOverlapFacts	for (var i = 0; i < other.DerivedFacts.Count; i++)
+Binding.ContractAgreement.cs:84	AddOverlapFacts	var derived = other.DerivedFacts[i];
+Binding.ContractAgreement.cs:85	AddOverlapFacts	this.AddConstraintFact(environment, derived.Fact, derived.Source);
+Binding.ContractAgreement.cs:92	ValidateAssociatedOverlapAgreement	if (scope.Constraints is not { Invalid: false } environment)
+Binding.ContractAgreement.cs:98	ValidateAssociatedOverlapAgreement	foreach (var fact in environment.Facts)
+Binding.ContractCalls.cs:109	RequirementMember	if (current.Constraints is not { Invalid: false } environment)
+Binding.ContractCalls.cs:114	RequirementMember	foreach (var fact in environment.Facts)
+Binding.ContractCalls.cs:155	RequirementMember	this.AddContractPremises(contract.Contract!, type, scope);
+Binding.ContractMatching.cs:167	VerifyConformance	if (conformance.Identity.Invalid || conformance.Invalid || conformance.Declaration.BindingState == BindingState.Invalid || conformance.Scope.Parent?.C
+Binding.ContractMatching.cs:534	CompatibleRequirement	var environment = premises.Constraints ??= new();
+Binding.ContractMatching.cs:542	CompatibleRequirement	this.AddConstraintFact(environment, this.ContractConstraint(constraint, premises, self));
+Binding.ContractMatching.cs:545	CompatibleRequirement	this.ExpandScopeContractPremises(premises);
+Binding.Contracts.cs:676	ProveConformance	if (current.Constraints is not { Invalid: false } environment)
+Binding.Contracts.cs:681	ProveConformance	foreach (var fact in environment.Facts)
+Binding.Contracts.cs:720	ExpandContractPremises	private void ExpandContractPremises()
+Binding.Contracts.cs:733	ExpandContractPremises	this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
+Binding.Contracts.cs:736	ExpandContractPremises	this.ExpandScopeContractPremises(scope);
+Binding.Contracts.cs:740	ExpandScopeContractPremises	private void ExpandScopeContractPremises(BindingScope scope)
+Binding.Contracts.cs:742	ExpandScopeContractPremises	if (scope.Constraints is not { } environment || environment.Facts.Count == 0)
+Binding.Contracts.cs:747	ExpandScopeContractPremises	var count = environment.Facts.Count;
+Binding.Contracts.cs:755	ExpandScopeContractPremises	environment.Facts.CopyTo(facts);
+Binding.Contracts.cs:762	ExpandScopeContractPremises	this.AddContractPremises(shape, subject, scope);
+Binding.Contracts.cs:772	AddContractPremises	private void AddContractPremises(BoundContract shape, BoundType self, BindingScope scope)
+Binding.Contracts.cs:774	AddContractPremises	var environment = scope.Constraints ??= new();
+Binding.Contracts.cs:778	AddContractPremises	this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[i])), shape.Symbol);
+Binding.Contracts.cs:784	AddContractPremises	this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
+Binding.Contracts.cs:789	AddContractPremises	this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false, declaration.Symbol), shape.Symbol);
+Binding.Contracts.cs:884	ValidateContractDeclarations	if (scope.Constraints is { } environment)
+Binding.Contracts.cs:887	ValidateContractDeclarations	foreach (var a in environment.Facts)
+Binding.EffectDeclarations.cs:212	AvailableEffectBounds	if (current.Constraints is not { Invalid: false } environment)
+Binding.EffectDeclarations.cs:217	AvailableEffectBounds	foreach (var fact in environment.Facts)
+Binding.FunctionItems.cs:526	RecordReferenceConstraint	var failures = this.referenceConstraints ??= new(ReferenceEqualityComparer.Instance);
+Binding.Indexers.cs:204	HasContractFact	if (current.Constraints is not { Invalid: false } environment)
+Binding.Indexers.cs:209	HasContractFact	foreach (var fact in environment.Facts)
+Binding.InheritedConformances.cs:280	AddInheritedPremises	var environment = scope.Constraints ??= new();
+Binding.InheritedConformances.cs:285	AddInheritedPremises	this.AddConstraintFact(environment, this.SubstituteConstraint(constraint, path.Type.Declaration, (BoundType[])self.Components));
+Binding.InheritedConformances.cs:289	AddInheritedPremises	this.ExpandScopeContractPremises(scope);
+Binding.Qualification.cs:291	ReportQualification	if (Equals(repairs[i].Facts![1], prefix))
+Binding.Retention.cs:40	CallableBoundSignatures	if (current.Constraints is not { Invalid: false } constraints)
+Binding.Retention.cs:45	CallableBoundSignatures	foreach (var fact in constraints.Facts)
+Binding.Structs.cs:329	FailConstructorAbsence	(type.Kind == BoundTypeKind.Parameter && HasParameterIdentity(this.ConstraintScope(node))))
+Binding.TypeIdentity.cs:12	HasParameterIdentity	private static bool HasParameterIdentity(BindingScope scope)
+Binding.TypeIdentity.cs:16	HasParameterIdentity	if (current.Constraints is { Invalid: false, HasParameterIdentity: true })
+Binding.TypeIdentity.cs:31	SubstituteIdentityPremises	if (!type.ContainsParameter || !HasParameterIdentity(scope))
+Binding.TypeIdentity.cs:100	IdentityPremise	if (current.Constraints is { Invalid: false, HasParameterIdentity: true } environment)
+Binding.TypeIdentity.cs:102	IdentityPremise	capacity += environment.Facts.Count * 2;
+Binding.TypeIdentity.cs:117	IdentityPremise	if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
+Binding.TypeIdentity.cs:122	IdentityPremise	foreach (var fact in environment.Facts)
+Binding.TypeIdentity.cs:144	IdentityPremise	if (current.Constraints is not { Invalid: false, HasParameterIdentity: true } environment)
+Binding.TypeIdentity.cs:149	IdentityPremise	foreach (var fact in environment.Facts)
+Binding.ValueCalls.cs:291	TryCallable	if (current.Constraints is not { } environment)
+Binding.ValueCalls.cs:296	TryCallable	foreach (var fact in environment.Facts)
+Binding.VirtualOverrides.cs:97	PrepareVirtualHeaderPremises	this.AddConstraintFact(scope.Constraints ??= new(), facts[i]);
+Binding.VirtualOverrides.cs:101	PrepareVirtualHeaderPremises	this.ExpandScopeContractPremises(scope);
+Binding.VirtualOverrides.cs:116	PrepareVirtualHeaderPremises	if (source.Constraints is not { Invalid: false } environment)
+Binding.VirtualOverrides.cs:121	PrepareVirtualHeaderPremises	foreach (var fact in environment.DirectFacts)
+Binding.VirtualOverrides.cs:399	PrepareVirtualOverridePremises	premises.Constraints = bodyScope.Constraints ??= new();
+Binding.VirtualOverrides.cs:406	PrepareVirtualOverridePremises	this.ExpandScopeContractPremises(premises);
+Binding.VirtualOverrides.cs:411	InheritVirtualConstraints	if (source.Constraints is not { } environment)
+Binding.VirtualOverrides.cs:416	InheritVirtualConstraints	foreach (var fact in environment.DirectFacts)
+Binding.VirtualOverrides.cs:434	InheritVirtualConstraints	this.AddConstraintFact(premises.Constraints!, bound);
+BindingModel.cs:641	Reset	this.Constraints?.Reset();

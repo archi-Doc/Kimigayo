@@ -2744,8 +2744,11 @@ public sealed partial class OwnershipBody
     }
 
     // SPEC 3.6, 3.4.2: a temporary named by a Projection Origin is a Loan root, whatever its Type, since a borrow of a temporary cannot
-    // outlive it; a scalar or a reference slot only when a Borrow lends its own storage, as `one()@ref` or `first(xs@ref)@ref` does. A
-    // function item has no storage: it denotes its function, with no environment (SPEC 3.2.1), so no Loan ends with it.
+    // outlive it; a scalar or a reference slot only when a Borrow lends its own storage, as `one()@ref` or `first(xs@ref)@ref` does.
+    // The Function Item exception is D5's scope boundary, not a SPEC rule: R5 Q3 fixes the temporaries that have storage (the wrong-code
+    // class), and a Function Item temporary has none (SPEC 3.2.1), so a borrow of it cannot dangle and D5 lets Q3 change nothing else.
+    // SPEC 15.4.3 (1) and 3.6 make a borrow of one used after its statement invalid, and A5 rejects it; this path keeps its verdict until
+    // R6-check.
     private bool IsTemporaryOriginRoot(int root, BoundOrigin origin)
     {
         var candidate = this.Places[root];
