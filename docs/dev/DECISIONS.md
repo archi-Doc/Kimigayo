@@ -4519,3 +4519,12 @@ structure is recorded here by the unit that first implements it.
     and the twelve StringEmissionTest rows this unit makes generable would fail their class-I assertion); a copy-form column published by Layout (a shared-representation change with no second consumer
     before G8); a constant address for zero-sized homes (it departs from package row 10); code generation spelling the tag's i32 (a second
     copy of Layout's rule); asking `MirCases.Reborrows` (above); unconditional frame declarations (above).
+- **R5-M88 `AnalyzeInstance` is deleted at R6-gen** (2026-10-21, planning session; plan Q4 under R5-M5, the owner's OQ6 (e);
+  supersedes R4-M35's OD10 clause "with `AnalyzeInstance` a check-only step until R6-check") The clause kept the instance run
+  because the definition run missed a hole it covered, PLAN10-X1 (an abstract part's destruction observing; A5 plan §9.1), to which
+  the R5 plan's OQ6 added abstract temporaries as Loan roots. That reason no longer holds: Q1 reproduced both and Q2 and Q3 fixed them in the old definition run as
+  D5 miscompile fixes (dev `4eb19789`; regressions in `BorrowingIterationTest` and `BlockEscapeLoanTest`; no library body or
+  milestone program rejected, DEC O3). `check` never runs the instance run: its only callers are the old Emission's
+  (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
+  `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
+  (once the old Emission is gone nothing calls it, and acceptance never read it).
