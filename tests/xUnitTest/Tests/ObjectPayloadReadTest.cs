@@ -93,6 +93,28 @@ public class ObjectPayloadReadTest(ITestOutputHelper output)
         }
     }
 
+    // SPEC 15.1.5, 13.5.5: an object payload never offers Take, also a part selected through the handle; the handle itself and a
+    // handle stored in an owned Field do.
+    [Theory]
+    [InlineData("func g(h: obj/P)\n    let y = h.inner@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h.inner@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g(h: obj/P)\n    let y = h@follow.inner@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h.v@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let y = h.inner.s@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    consume(h.inner@move)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g(h: obj/P)\n    let y = h@follow@move", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("func g(h: obj/P)\n    let y = h@move", null)]
+    [InlineData("func g()\n    var h = P.init(1)@obj\n    let n = h.v", null)]
+    [InlineData("func g(x: Box<obj/P>)\n    let y = x.item@move", null)]
+    public void PayloadPartsOfferNoTake(string function, DiagnosticCode? code)
+    {
+        var c = MinimalEmissionTest.Analyze(
+            "struct Q\n    public var w: i32\n    public var s: string\n    public init(w: i32)\n        self.w = w\n        self.s = \"a\"\n" +
+            "struct P\n    public var v: i32\n    public var inner: Q\n    public init(v: i32)\n        self.v = v\n        self.inner = Q.init(v)\n" +
+            "struct Box<E>\n    public var item: E\n    public init(item: E) => self.item = item@move\nfunc consume(q: Q) => ()\n" + function);
+        Assert.Equal(code is { } expected ? [expected] : Array.Empty<DiagnosticCode>(), c.Binding.Issues.Select(x => x.Code));
+    }
+
     [Fact]
     public void ReadingDoesNotBypassExclusiveLoans()
     {

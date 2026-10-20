@@ -90,8 +90,10 @@ public sealed partial class Binding
             return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.3: a shared layer bounds the path to shared access.
         }
 
+        // SPEC 13.5.5: the receiver's own Type adds no exclusive or shared layer, so the Field lies inline in its storage, past an
+        // owning handle or in the owner case of a pair layer too (no member is selected through a raw pointer).
         if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
-            (AdtDef.IsStruct(field.Left.BoundType) || field.Left.BoundType?.HandleMode is not null) &&
+            LayerAuthority(field.Left) is null && AdtDef.IsStruct(DeclaringType(field.Left.BoundType)) &&
             Receiver(field.Left) is null && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
         {
             return false; // A mutable field still requires a mutable owning root.

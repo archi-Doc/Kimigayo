@@ -2632,6 +2632,38 @@ resumed by R4-M86 (2026-10-20).
   `@move`, which 6.3.4 forbids only for Non-Copy values); granting the construction row now (the review's B1 to B3). Open: PLAN
   G163 (capture of the helper borrow; every borrow in a `drop` body has the Origin `Projection[drop#0]`), G164 (writes below a
   receiver's Field, `ElementAccess.WritableRoot`), G165 (old-path acceptance of Field borrow conflicts in `drop`), G166.
+- **BU-16** (2026-10-21; the BU planning session; PLAN G147 (2)'s generic pair parameter; design v3, after the implementer stopped
+  v1 and the review blocked v2's Take half) A Place selected through a layer of a receiver's own Type gets each capability by every
+  case the layer admits (SPEC 15.1.5, 13.5.5), decided by the capability's existing owner. Take: no path past such a layer (a
+  reference, an object handle or view, a pair layer) offers Take. `PathAuthority`'s walk reports the cases of the layers it passes
+  (`LayerCases`: a pair layer's admitted set, any other layer's Semantics; set by the Follow, PayloadFollow and PairFollow arms and
+  for a member's receiver; the user-index and Array/Dictionary arms already grant Uniq or Ref); `OffersTake` offers Take on an
+  Owner path that passed none, and `AccessFailure` keeps each layer kind's code: past a pair layer admitting owner (only a pair
+  layer adds that case) `ExclusivePathTake_Kd`, below an object payload `InvalidAssignment_Kd` (as `h@follow@move`), past a
+  reference its authority's. The authority itself is unchanged. Write: `Writable`'s owned-root Field clause applies when the
+  receiver's own Type adds no exclusive or shared layer (`LayerAuthority` null) and the Type below its layers is a struct: an owned
+  struct, an owning obj handle or a pair layer whose owner case adds none (no member is selected through a raw pointer). Exclusive
+  borrow: `BorrowablePlace`'s stored-Property clause lends a Field exclusively past an exclusive layer of the receiver's own Type, a
+  uniq-only pair layer included, shares it past another reference or view, and otherwise asks the receiver Place. Why: an
+  owner-admitting pair layer and an owning obj handle have no authority (they keep the root's write and borrow capability), so the
+  walk offered Take past them (`p.inner@move`, `p.v@move`; `var h = P.init(1)@obj; let y = h.v@move` accepted end to end, and
+  `h.inner@move`, `h@follow.inner@move`, `consume(h.inner@move)` rejected only by the old path's `TransferRequired_Kd`), and both
+  clauses read the receiver Type's shape, so a pair-layer receiver skipped the owned-root rule (`p.v = 5`, `p.v++`, `p.inner.w = 5`,
+  `let q = p@move; q.v = 5`, `x.item = y@move`, `p` and `x` owned parameters in the owner case; unsound on the MIR) and a uniq-only
+  one lent no Field exclusively (`let r = p.v@uniq` refused). Deleted: `OffersTake`'s syntactic Follow, PayloadFollow, PairFollow
+  and guard-candidate exclusions and `CompleteTransfer`'s `PairFollow` failure rewrite, which decided explicit follows alone by
+  syntax. Kept: the `PairFollow` clauses of `Writable` and `BorrowablePlace` (`PairCapability`, the follow node's own rule).
+  Rejected: v1, BU-13's binding denial for the owner case (a binding fact about an inline Place is no shared layer: every consumer
+  that follows a `uniq` reference stored below the step, `Writable`'s Follow clause, `PairCapability`, `TryPairReceiver`,
+  `PairSubject`, `ReceiverThroughLayers` and `ExclusivelyAcquirable`, refused forms the concrete owned twin accepts, such as
+  `x.item@follow = 5` with `x: s/Box<uniq/i32 during b>`); v1-(i), skipping that denial by the queried Place's own Type (one Place
+  answered by its consumer; `x.item = y@move` stays accepted); v1-(ii), every follow consumer asking a referent question (larger,
+  no extra form once the Field clause closes `x.item = y@move`); v2's pair-only Take flag (one case of the open family: object
+  payloads kept it); a fourth `PathAuthority` outcome (BU-13's B). Default pipeline: these forms get Binding's code in place of the
+  old path's `Unsupported_Kd` or `TransferRequired_Kd`; `let r = p.v@uniq` (`s is uniq`) passes Binding and gets the old path's
+  `Unsupported_Kd` (D5). Tuple and fixed-array elements through a pair layer stay Binding's `Unsupported_Kd` (`Binding.Elements`).
+  Library, milestones and the diagnostic corpus unchanged. Open: PLAN G164 (valid element writes below a pair-layer receiver) and
+  G179 (a user index through a pair layer). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
