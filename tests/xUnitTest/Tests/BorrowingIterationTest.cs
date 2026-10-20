@@ -99,10 +99,13 @@ public class BorrowingIterationTest
     }
 
     // SPEC 13.7.1, 15.6.6 (PLAN G176): `=` destroys the holder's old value before placing the new one, so where that destruction may
-    // observe (a Cursor with a drop, an abstract iterator), replacing the source the old value borrows first conflicts with it; moving the
-    // holder out first, assigning it first, or a Cursor whose destruction observes nothing is valid.
+    // observe (a Cursor with a drop, an abstract iterator), replacing the source the old value borrows first conflicts with it, also where
+    // the holder was moved out on one path only (a conditional replacement); moving the holder out first, assigning it first, also after a
+    // conditional move, or a Cursor whose destruction observes nothing is valid.
     [Theory]
     [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values, c: bool)", true, "if c => sink(it@move)\n    it = other.iterate()\n    local = second@move", null)]
     [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "var it")]
     [InlineData("(first: Values, second: Values, third: Values)", true, "sink(it@move)\n    local = second@move\n    it = other.iterate()", null)]
     [InlineData("(first: Values, second: Values, third: Values)", true, "it = other.iterate()\n    local = second@move", null)]
