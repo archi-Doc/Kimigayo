@@ -807,3 +807,17 @@ to Obsolete as superseded."
   rule (plan B §1.3, §3.3). Its other sections (results and ownership, nesting, Deferred Block, migration,
   implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
   closure.
+
+## 2026-10-21 — G160 stored Loan destinations
+
+- [G160 Stored Loan Destinations](Proposals/2026-10-21%20G160%20Stored%20Loan%20Destinations.md):
+  一部取り込み (open, intake only). The requested design compares independent plans A and B,
+  selects a common published storage-destination contract, and proposes explicit unsafe storage
+  correspondence rather than inferring raw authority from a sibling `Loan<T>`.
+- Planned mapping: proposal §5 → SPEC §3.5.2, §5.2.1/§5.6, §6, §15.1.2–§15.1.3, §15.3.5,
+  §15.6/§15.6.4, §16.3 and Appendices E/F;
+  §5.2 → standard collection/storage contracts in §22.1–§22.2; §4 → implementation decisions
+  and the affected architecture contracts when implemented. §6–§7 are implementation and
+  verification plans, not language rules. U1 requires owner adoption before authoritative changes.
+- No section is integrated into SPEC or IMPL, no text is frozen, and no compiler support is
+  claimed. G160 remains open; this intake neither resumes R4 implementation nor closes G148/P13.
