@@ -12,8 +12,19 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: every call the builder builds for it complete (each
-    /// argument with its Source, a direct base call with its implementation's symbol), and per Op: a call its plan (an index's selected call; a
+    /// <summary>Gets whether an Op is an operation (SPEC 3.1, 4.7, 6.2.2, 12.3, 13.2-13.6): a literal's constant, a Field, a Deref, a
+    /// built-in selection, a built-in operator, <c>and</c>/<c>or</c>, a borrow, a conversion or a runtime Type test, whose building forms the
+    /// node's value or Place from Binding's selection for the node, for which the node's Type stands (<see cref="HasFacts"/>); one Binding
+    /// left unresolved is an Error that keeps every operand its form evaluates (DECISIONS R4-M88). A new HirOp member decides here
+    /// whether it is one.</summary>
+    /// <param name="op">The Op a node's form calls for.</param>
+    /// <returns>Whether it is an operation.</returns>
+    internal static bool Operation(HirOp op) => op is HirOp.Literal or HirOp.Field or HirOp.Deref or HirOp.Index or HirOp.PrimitiveOp or
+        HirOp.Logical or HirOp.Borrow or HirOp.Convert or HirOp.RuntimeTypeTest;
+
+    /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>),
+    /// every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
+    /// symbol), and per Op: a call its plan (an index's selected call; a
     /// tuple operator's with its conforming Type and its two arguments, which its expansion reads, DECISIONS R5-M75), a
     /// key resolution its Evaluated argument, an assignment or update of a Property its accessors' plans (an update's setter with its
     /// Evaluated argument) and, for an update with one standard accessor, the Property's symbol; an interpolation its Type, heap,
@@ -26,6 +37,11 @@ public sealed partial class Binding
     /// <returns>Whether the node has its facts.</returns>
     internal bool HasFacts(Koto node, HirOp op)
     {
+        if (Operation(op) && HirTables.Meaning(node) is null)
+        {
+            return false;
+        }
+
         switch (op)
         {
             case HirOp.Call or HirOp.Index when node is IndexKoto index:

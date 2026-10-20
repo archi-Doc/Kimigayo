@@ -17,6 +17,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     private const string Resource = "struct Resource\n    var name: string\nfunc make() -> Resource => Resource.init(name: \"r\")\n" +
         "func consume(r: Resource) => ()\nfunc inspect(r: ref/Resource) => ()\n";
 
+    private const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
+    private const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
+
     // SPEC 15.1.1: a use needs its Place initialized on every incoming runtime path.
     [Fact]
     public void AUseNeedsInitializationOnEveryPath()
@@ -394,11 +397,9 @@ public sealed class MirInitTest(ITestOutputHelper output)
     [Fact]
     public void AFailedNodeKeepsTheProblemsOfItsResolvedChildren()
     {
-        const string Take = "func take(a: string, b: string) -> i32 => 1\nfunc once(a: string) -> i32 => 1\n";
         const string Body = "func (n: i32)\n        let t = \"x\"\n        _ = take(t@move, t@move)\n        return n@ref\n";
         Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    _ = " + Body));
         Assert.Equal(["MovedPlace_Kd t 1"], Problems(Take + "func f()\n    let g = " + Body));
-        const string Pair = "struct P\n    public var a: i32 = 1\n    public init() => ()\nfunc make(a: string, b: string) -> P => P.init()\n";
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f(n: i32) -> i32\n    let s = \"x\"\n    return n[take(s@move, s@move)]\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + Pair + "func f() -> i32\n    let s = \"x\"\n    return make(s@move, s@move).missing\n"));
         Assert.Equal(["MovedPlace_Kd s 1"], Problems(Take + "func f() -> i32\n    let s = \"x\"\n    return take(s@move, s@move)@follow\n"));
@@ -411,6 +412,49 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
     }
+
+    // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
+    // an operand it did not resolve (`1 + (missing + once(s@move))`, a selection's index), so the problems of what it evaluates stay; one
+    // in a statement or a typed destination, `and`, a parenthesized `if` and the selection whose `if` index has no Type validate now
+    // (fail-before: a finding, which stops every analysis, or, for the index, the whole selection derived). A construct, an assignment, a
+    // labeled do and a default keep their forms (a typed destination keeps the Loan its branch places), an assignment's derived value
+    // initializes its target, and a failed call's operands stay replaced (PLAN G121).
+    [Theory]
+    [InlineData(Take + "func f(c: bool) -> bool\n    let s = \"x\"\n    return take(s@move, s@move) == 1 and missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    let s = \"x\"\n    _ = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(c: bool) -> i32\n    let s = \"x\"\n    return (if c => take(s@move, s@move) else => missing)\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    let s = \"x\"\n    let x: i32 = 1 + (missing + once(s@move))\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(v: [3 of i32]) -> i32\n    let s = \"x\"\n    return v[take(s@move, s@move) + missing]\n", "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[if c => i else => missing]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x 1")]
+    [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y = make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y += make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(c: bool)\n    let s = \"x\"\n    var y: i32 = 0\n    y = if c => take(s@move, s@move) else => missing\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f(c: bool) -> i32\n    let s = \"x\"\n    let v: i32 = if c => take(s@move, s@move) else => missing\n    return v\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    let s = \"x\"\n    let x: i32 = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    _ = (make(s@move, \"y\").missing)\n    let t = s@move\n", "MovedPlace_Kd s 1")]
+    [InlineData(
+        "func index(a: string) -> isize => 1\nfunc f(v: [3 of i32])\n    let s = \"x\"\n    _ = (v[index(s@move)].missing)\n    let t = s@move\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f() -> i32\n    let s = \"x\"\n    return other + label l: do\n        _ = once(s@move)\n        _ = once(s@move)\n" +
+        "        exit to l missing\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(Take + "func f()\n    var t: string\n    t = missing\n    _ = once(t@move)\n", "")]
+    [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "UninitializedPlace_Kd self.b 1")]
+    [InlineData(
+        "func use(v: ref/i32) -> i32 => 1\nfunc f(c: bool) -> i32\n    var x: i32 = 1\n    let r: ref/i32 = if c => x@ref else => missing\n    x = 2\n" +
+        "    return use(r)\n",
+        "ComparisonLoanConflict_Kd x = 2 1")]
+    [InlineData(
+        Take + "func two(a: i32, b: i32) -> i32 => 1\nfunc f() -> i32\n    let s = \"x\"\n    let v: i32 = two(once(s@move), missing)\n    let t = s@move\n" +
+        "    return v\n",
+        "")]
+    public void ADerivedValueKeepsTheProblemsOfWhatItEvaluates(string source, string expected)
+        => Assert.Equal(expected.Length == 0 ? [] : expected.Split(" | "), Problems(source));
 
     // R4-M20: the words of A1's state arena for a body begun and built: its heads × the stored words of its lanes.
     internal static long ArenaWords(MirBody body, MirDataflow flow, MirMoveData moves)

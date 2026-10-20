@@ -2036,6 +2036,60 @@ and migration obligations remain in force; no numeric cap changes are authorized
     T.(Tree).Child.(Tree).Child)` with `T is CopyTree`, called from a confined `visit` under `U is CopyTree`, `U is Copy`,
     `U.(Tree).Child is U`: `IncompatibleContractImplementation_Kd`), in uninstantiable code only; it is G170's. A layered projection
     (a pair layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
+- **R4-M88 An operation Binding left unresolved is an Error node that keeps every operand it evaluates** (2026-10-21; unit 2x-E2's
+  HIR publication rule, PLAN G103 E9b and G95; design B of two independent designs, chosen by the planning session after R4's and R5's
+  reviews; R5, R5-M63's owner, agreed to the R5-M63 text below; replaces the blocked draft of `1babec22`) SPEC 23.1.2, R4-M10, R4-M70
+  option P, R4-M61. `HasFacts` listed no Type for an operation although its building reads Binding's selection for the node, so the
+  publisher gave one Binding left unresolved its form's Op and the builder formed it from `TypeOf`'s `()` fallback: Type and
+  Projection findings (`'A' == 65`, `x + 128` of `Wrapping<T>`, `value is Dog`, a stray `s is ref or uniq`, G95's `values[r]`), each
+  of which stops every analysis of the program; and a construct Binding left untyped was held at `()` though its position fixes its
+  Type (`return if c => 1 else => missing`).
+  - Rule 1 (`Binding.Operation`, `Binding.HasFacts`): an operation, a form whose building forms its value or Place from Binding's
+    selection for the node (Literal, Field, Deref, Index, PrimitiveOp, Logical, Borrow, Convert, RuntimeTypeTest), lists the node's
+    Type among its facts, standing for that selection, so the publisher's rule publishes one Binding left unresolved as Error. A new
+    HirOp member decides its membership in `Operation` (HirOp's documentation names the members). Constructs, statements, calls and
+    names Binding left unresolved keep their Ops where they have their facts. Name is not an operation: a resolved name can lack a
+    Type (a parenthesized callee `(f)(1)`, a capture entry), which would be a broken contract (8 tests failed with it).
+  - Rule 2 (`HirPublisher.Keeps`), R5's text: "an operation (Literal, Field, Deref, Index, PrimitiveOp, Logical, Borrow, Convert,
+    RuntimeTypeTest) Binding left unresolved (no failure of its own, not a recovery, not broken) is an Error node and keeps every operand
+    its form evaluates — resolved, unresolved or Error — each evaluated as its own value, never acquired, its root named at the site; an
+    Error operand is evaluated as its derived Opaque with its own kept operands; this holds also when the operation is Error for another
+    missing fact; it supersedes 'an operand is kept only when its own Op is published with its facts' for these nodes and decides
+    R5-M63's deferred unresolved compound Places for Field, Index, Deref and `@follow`. Unchanged: rejected compound Places keep only
+    resolved operands; failed or unresolved calls, statements and constructs, and tuple/array/interpolation/dictionary/for forms stay
+    under G121 (owner); Logical's kept right operand is evaluated unconditionally", and (planning session with R5) it keeps every
+    operand its form evaluates "except an unresolved construct whose value has no Type, which is replaced (G121)": a Block, Unsafe, Do,
+    If, Match or Try Binding left unresolved with no Type, since no destination Type holds a kept operand (built at `()`,
+    `return v[if c => i else => missing]` got a finding and lost the record of a move before it); a labeled do and a parenthesized
+    group stay kept. A kept-construct design the owner chooses for G121 removes the exception. `Keeps` reads the node's binding
+    state first and the parent's form Op once per parent (the walk's `unresolvedOperation`). Its kept right operand evaluated
+    unconditionally, a Logical's moves there are definite rather than possible; A1 reports a later use as `MovedPlace_Kd` either way.
+  - Part 3 (`MirBuilder.Value`, from `Operand`): a value Binding gave no Type, a construct it left unresolved or a derived value, is held
+    at the Type its consumer expects. It is one rule with `Unsupported(node, derived, expected)`, which held a derived value so already:
+    SPEC 14.9.2 makes a construct's Expression Type its Target Result Type, the fixed expectation, which Binding does not publish for
+    one it left unresolved. Temporary: the builder's choice goes, with residual R1, when Binding publishes that Type (option C). Golden:
+    `tests/mir/opaque.mir`'s returned `@follow` temp, `()` to `i32`.
+  - Kept: `MirBuilder.Into`'s clause for an assignment or update whose target Binding rejected (an Assign keeps its Op).
+    `MirBuilder.Rejected`'s "a value without a Type" and "a name of an Error local" terms, whose removal 9cf3bf26 staged for this rule:
+    `x = 1` with `x: Missing`, a name Binding left unresolved, still needs the first; their removal needs a published fact for such a
+    name (PLAN G103).
+  - Cost: one predicate test and one Type read per published node and one form Op per Error node; no allocation. Measured on the
+    prototype (mir Functional with `KIMI_MIR_DIFF`, base by a switch): b-finding's rows (BinaryKoto 44, IsKoto 12, ReturnKoto 4) gone;
+    two new A1 rows, the SPEC 14 example's own `use(p)` and `pass(x@move, x)` errors, which the `animal is Dog` finding had hidden.
+  - Residual R1 (PLAN G103): a construct Binding left untyped where nothing fixes its Type, a discard (`_ = if c => 1 else =>
+    missing`) or a parenthesized operand of an unresolved operation (`1 + (if c => take(s) else => missing)`), is held at `()`; where a
+    source has a Type the validator's finding remains, as before. Owners: Binding's Expression Type (SPEC 14.9.2 rule 2, option C) or
+    G121's kept-construct design. Opens (G121, owner): an un-annotated failed `let`, a failed match, a failed Place over a failed Place
+    (`make(s@move).missing.a`), and failed or unresolved calls with moving arguments.
+  - Rejected: every node Binding left unresolved on a recorded error an Error (`1babec22`: constructs and statements lost children, an
+    Assign's Opaque read its target, `FailureCauses` allocated per node); Binding publishing the Expression Type now (option C:
+    owner and BU scope, and rule 1 is still needed: `'A' == 65` has no operator for any Type); a MIR marker for a Type Binding did not
+    form (a vocabulary entry that weakens the validator; still needs rule 1); the builder deciding derived operations (a second copy of
+    the publisher's decision); rule 2 keeping only resolved operands, or only resolved and derived ones (both lose records the base
+    reported: `once(s@move) + missing`, `other + label l: do`); Name as an operation (above); building every untyped construct's parts
+    for effect (drops the Loan a typed destination receives: `let r: ref/i32 = if c => x@ref else => missing`); a new-Error test by
+    node state (reaches unresolved calls, G121); building an untyped construct operand's parts for effect (G121's kept-construct design,
+    owner-reserved).
 - **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
   「推奨どおり承認 (推奨)」
   to the package with OQ-F5-1 to OQ-F5-6 at their recommendations; R4-M74 OQ2) The package is
@@ -4107,6 +4161,8 @@ structure is recorded here by the unit that first implements it.
   and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
   next change.
   - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
+  - R4-M88 decides its deferred unresolved compound Places and amends its kept operands: an operation Binding left
+    unresolved keeps every operand its form evaluates but an unresolved construct without a Type.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
   package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
   DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a
