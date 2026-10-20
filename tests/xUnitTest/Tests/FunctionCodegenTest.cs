@@ -79,6 +79,10 @@ public sealed class FunctionCodegenTest
         "func put<s/T>(value: s/T, x: i32) -> ()\n    s is owner or ref\n    T is Copy\n    _ = x@s\nfunc owned() => put(5, 1)\nfunc lent()\n" +
         "    var y: i32 = 1\n    put(y@ref, 1)\n";
 
+    // A case adaptation whose one case creates an object (SPEC 8.14, 13.5.3), instanced by the call.
+    private const string Creations =
+        "func put<s/T>(value: s/T, x: i32) -> ()\n    s is obj\n    _ = x@s\nfunc lent()\n    let o = 5@obj\n    put(o@move, 1)\n";
+
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
     private const string Signatures =
         "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
@@ -807,6 +811,51 @@ public sealed class FunctionCodegenTest
         Assert.Single(put, static x => Regex.IsMatch(x, @"store ptr %l2, ptr %l\d+, align 8\n"));
     }
 
+    // DECISIONS R5-M87 (SPEC 8.14, 13.5.3): an Adapt whose view selects an object creation, which allocates, is C6a's row: one located
+    // Unsupported_Kd at the adaptation, and the instance writes no Copy of the operand in place of the object.
+    [Fact]
+    public void AnObjectCreationAdaptationIsLeftToC6a()
+    {
+        var c = Analyze(Creations, OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Contains(("Unsupported_Kd", (string?)"x@s"), Records(c));
+        Assert.DoesNotContain("load i32, ptr %l2", Assert.Single(ItemTexts(c, "put")), StringComparison.Ordinal);
+    }
+
+    // I1 for the case views (DECISIONS R5-M87): a PairAcquire's and an Adapt's instances, which only a call (C3a's row) generates, are
+    // written the same in one compilation and in two.
+    [Theory]
+    [InlineData(Acquisitions, "keep")]
+    [InlineData(Adaptations, "put")]
+    public void ViewInstancesAreDeterministic(string source, string name)
+    {
+        var c = Analyze(source, OutputKind.Library);
+        var first = ItemTexts(c, name);
+        Assert.Equal(2, first.Length);
+        Assert.Equal(first, ItemTexts(c, name));
+        Assert.Equal(first, ItemTexts(Analyze(source, OutputKind.Library), name));
+    }
+
+    // I11 for the case views (DECISIONS R5-M87): writing again the module of a PairAcquire's and an Adapt's instances allocates nothing (its
+    // callers' calls are C3a's rows, recorded each time).
+    [Trait("Purpose", "Allocation")]
+    [Theory]
+    [InlineData(Acquisitions)]
+    [InlineData(Adaptations)]
+    public void WarmViewInstancesAllocateNothing(string source)
+    {
+        var c = Analyze(source, OutputKind.Library);
+        var program = c.BuildMir();
+        var collector = new InstanceCollector(c.Types, c.Layout);
+        var set = collector.Run(program, 1);
+        var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
+        set.Mark(bodies);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
+        Assert.False(module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null));
+        var allocated = AllocationMeasurement.Measure(() => _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null));
+        Assert.Equal(0, allocated);
+    }
+
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
     // binding's own slot; in the uniq case the referent of the reference that slot holds.
     [Fact]
@@ -910,7 +959,8 @@ public sealed class FunctionCodegenTest
     // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
     // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; the place
     // writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87)
-    // write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to C8e, at the member. K11: an Application's
+    // write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from
+    // none to C8d, at the literal. K11: an Application's
     // function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
@@ -922,6 +972,7 @@ public sealed class FunctionCodegenTest
     [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
     [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
     [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
+    [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new[] { "[]" })]
     [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new[] { "v.id" })]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new[] { "twice(1)" })]

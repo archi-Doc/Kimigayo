@@ -10,31 +10,31 @@
 // convention, IMPL 21.3.1), constant pool and record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
-// per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored
-// into its local's slot, a pointer-passed argument and the result slot used in place; I3 exactly the blocks MirReach.Walk(body, 0,
-// checks: false) reaches, in index order, so code only the checks reach is never generated (SPEC 14.10.3); I4 an operand is read at
-// each use (loaded, or its address when its value is in memory); I5 a check not Proven Aborts at its site's location text (SPEC
-// 22.5.1); I7 every Type is Layout.Of(TypeOf(item, t)); I9 no nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign into
-// a Place the place writer locates (FunctionCodegen.Places: a local's home, a zero-sized one's the module's zero-sized symbol, and the
-// projections, an Index with its bounds check), after its rvalue, each value put in its representation (a value in memory, a slot Type
-// other than the string's record, copied by memcpy; nothing for a zero-sized one): of a Use, from a Copy, Move or PairAcquire of such a
-// Place (a PairAcquire's two cases write the same bits) or a Bool, Integer, Float or Unit constant, or of a string constant to a string
-// Place (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer,
-// floating-point, bool, char and Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw
-// pointer Cast by the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case or fixed-array Aggregate of
-// such operands, or of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len of a fixed array, Array
-// or Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues; R5-M78, R5-M83, R4-M81, R5-M87); Goto,
-// SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given
-// the call site's location text (SPEC 22.5.1); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written
-// yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; statics (C7b); a handle's or object borrow's Deref (C6a);
-// Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e) and a string's (C8c) Len, an Adapt's object
-// creation (C6a); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string operations (C8c), checked 128-bit
-// arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a), raw-pointer (C8a) and other
-// string constants (C8c); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual slot (C6c), an intrinsic
-// (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag
-// (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: this frame and the dispatch; the place writer and the loads,
-// stores and copies through it (FunctionCodegen.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs), conversions
-// (.Casts.cs), calls (.Calls.cs) and drops (.Drops.cs).
+// per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored into
+// its local's slot, a pointer-passed argument and the result slot used in place; I3 exactly the blocks MirReach.Walk(body, 0, checks:
+// false) reaches, in index order, so code only the checks reach is never generated (SPEC 14.10.3); I4 an operand is read at each use
+// (loaded, or its address when its value is in memory); I5 a check not Proven Aborts at its site's location text (SPEC 22.5.1); I7 every
+// Type is Layout.Of(TypeOf(item, t)); I9 no nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and
+// EndBorrow (nothing is generated); an Assign into a Place the place writer locates (FunctionCodegen.Places: a local's home, a zero-sized
+// one's the module's zero-sized symbol, and the projections, an Index with its bounds check), after its rvalue, each value put in its
+// representation (a value in memory, a slot Type other than the string's record, copied by memcpy; nothing for a zero-sized one): of a Use,
+// from a Copy, Move or PairAcquire of such a Place (a PairAcquire's two cases write the same bits) or a Bool, Integer, Float or Unit
+// constant, or of a string constant to a string Place (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp
+// on integer, wrapping integer, floating-point, bool, char and Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a
+// numeric, wrapping, bit or raw pointer Cast by the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case
+// or fixed-array Aggregate of such operands, or of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len
+// of a fixed array, Array or Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues; R5-M78, R5-M83, R4-M81,
+// R5-M87); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row
+// (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs;
+// R5-M78). Rows not written yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; statics (C7b); a handle's or object
+// borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e) and a string's (C8c)
+// Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); operators on raw-pointer (C8a) operands and string operations
+// (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a),
+// raw-pointer (C8a) and other string constants (C8c); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual
+// slot (C6c), an intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its
+// own (C3b); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: this frame and the dispatch; the place
+// writer and the loads, stores and copies through it (FunctionCodegen.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs),
+// conversions (.Casts.cs), calls (.Calls.cs) and drops (.Drops.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -322,11 +322,14 @@ internal sealed partial class FunctionCodegen
         return true;
     }
 
-    // The representation of a Type of the body in the item's instance (I7); null, with InternalInvariant_Kd at the body, where the instance
-    // does not lay it out (the collector laid out the item's Types).
-    private ValueLowering? Representation(BoundType type)
+    // The representation of a Type of the body in the item's instance (I7): Laid of its instance Type.
+    private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
+
+    // The representation of a Type in the item's instance (I7); null, with InternalInvariant_Kd at the body, where TypeOf made none or Layout
+    // has none (the collector laid out every Type of an admitted item).
+    private ValueLowering? Laid(BoundType? closed)
     {
-        if (this.collector.TypeOf(this.item, type) is { } closed && this.module.Layout.Of(closed).Value is { } lowering)
+        if (closed is not null && this.module.Layout.Of(closed).Value is { } lowering)
         {
             return lowering;
         }

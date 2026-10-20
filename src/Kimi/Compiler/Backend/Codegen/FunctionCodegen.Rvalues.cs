@@ -75,10 +75,10 @@ internal sealed partial class FunctionCodegen
         this.Store(statement, address);
     }
 
-    // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC 13.7.1), then
-    // an enum Case's ordinal as its tag (Layout.Tag) and each value put at its part (Part), or a Fill's one value at each element by one
-    // counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure environment is C5a's row, an
-    // Array or Dictionary from none C8d's and C8e's.
+    // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC 13.7.1),
+    // then an enum Case's ordinal as its tag (Layout.Tag) and each value put at its component (Component), or a Fill's one value at each
+    // element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure environment is
+    // C5a's row, an Array or Dictionary from none C8d's and C8e's.
     private void Aggregate(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -125,19 +125,19 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < operands.Length; i++)
         {
-            var (offset, part) = this.Part(kind, type, record, rvalue.Arg, i);
-            if (this.Laid(part) is { Layout.Size: > 0 } lowering)
+            var (offset, component) = this.Component(kind, type, record, rvalue.Arg, i);
+            if (this.Laid(component) is { Layout.Size: > 0 } lowering)
             {
-                this.Put(this.Offset(address, offset), part, lowering, this.arguments[i]);
+                this.Put(this.Offset(address, offset), component, lowering, this.arguments[i]);
             }
         }
     }
 
-    // The part of an aggregate its index-th operand initializes (IMPL 21.1.2), in the aggregate's record: its offset and its Type in the
-    // item's instance. A Tuple's element and a struct's own Field are at the record's Field offsets, a struct's base first and at 0 (its
-    // complete base is a prefix, X1); an enum Case's payload element is at the payload's offset, the record's Field 1, plus its offset in
-    // the Case's payload Tuple; a fixed array's element is at its position times the element's stride.
-    private (long Offset, BoundType Type) Part(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
+    // The component of an aggregate its index-th operand initializes (IMPL 21.1.2; the validator's Component), in the aggregate's record:
+    // its offset and its Type in the item's instance. A Tuple's element and a struct's own Field are at the record's Field offsets, a
+    // struct's base first and at 0 (its complete base is a prefix, X1); an enum Case's payload element is at the payload's offset, the
+    // record's Field 1, plus its offset in the Case's payload Tuple; a fixed array's element is at its position times the element's stride.
+    private (long Offset, BoundType Type) Component(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
     {
         var offsets = record.Layout.FieldOffsets.Span;
         switch (kind)
@@ -261,18 +261,5 @@ internal sealed partial class FunctionCodegen
                 this.Assign(statement with { Rvalue = rvalue });
                 return;
         }
-    }
-
-    // The representation of a Type already in the item's instance (I7); null, with InternalInvariant_Kd at the body, where it has none (the
-    // collector laid out every Type of an admitted item).
-    private ValueLowering? Laid(BoundType closed)
-    {
-        if (this.module.Layout.Of(closed).Value is { } lowering)
-        {
-            return lowering;
-        }
-
-        this.Report(DiagnosticCode.InternalInvariant_Kd, default);
-        return null;
     }
 }

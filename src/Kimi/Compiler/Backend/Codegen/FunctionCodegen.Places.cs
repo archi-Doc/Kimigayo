@@ -9,15 +9,16 @@ namespace Kimi.Compiler.Backend;
 // The place writer of FunctionCodegen (R5 plan C2a, C2b, package C 3.2 I4, I5, I7 and I9; DECISIONS R5-M83, R5-M87), the one owner of a
 // Place's address, and the loads, stores and copies through it. A Place is its root's home, a local's (a static's slot is C7b's row; a
 // zero-sized local's home is the module's zero-sized symbol, which ModuleCodegen defines on request, IMPL 21.1.3), then each step of its
-// interned projection chain, root first, by one row per MirProjectionKind, in the Layout of the prefix's Type in the item's instance
-// (IMPL 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at its position times the element's stride, which the validator proved below the
-// length; a Downcast at the enum's payload offset; a Deref of a reference or raw pointer the address it stores (IMPL 21.1.3), of an object
-// handle or borrow the payload, C6a's row; a PairLayer the Place itself in the owner case, else the referent of its case Type by the Deref
-// row (MirCases.Layer under the item's view, SPEC 13.5.5); an Index its isize position checked against the length, a fixed array's closed
-// length or an Array's or Slice's length word, unsigned, so a negative position fails, Aborting with KIMI_E_INDEX_BOUNDS (SPEC 4.7.4,
-// 22.5.2) at its position local's location, which the builder locates at the selection (DECISIONS R4-M56, SPEC 22.5.1), then the element
-// at the position times the stride from the fixed array's or the buffer word's address. Offsets are written without inbounds (I9). A
-// value is read and put in its representation (InMemory): a value in memory is its address, its bytes copied by memcpy when it is put.
+// interned projection chain, root first, by one row per MirProjectionKind, in the Layout of the prefix's Type in the item's instance (IMPL
+// 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at
+// its position times the element's stride, which the validator proved below the length; a Downcast at the enum's payload offset; a Deref of
+// a reference or raw pointer the address it stores (IMPL 21.1.3), of an object handle or borrow the payload, C6a's row; a PairLayer the
+// Place itself in the owner case, else the referent of its case Type by the Deref row (MirCases.Layer under the item's view, SPEC 13.5.5);
+// an Index its isize position checked against the length, a fixed array's closed length or an Array's or Slice's length word, unsigned, so
+// a negative position fails, Aborting with KIMI_E_INDEX_BOUNDS (SPEC 4.7.4, 22.5.2) at its position local's location, which the builder
+// locates at the selection (DECISIONS R4-M56, SPEC 22.5.1), then the element at the position times the stride from the fixed array's or the
+// buffer word's address. Offsets are written without inbounds (I9). A value is read and put in its representation (InMemory): a value in
+// memory is its address, its bytes copied by memcpy when it is put.
 internal sealed partial class FunctionCodegen
 {
     // IMPL 21.1.3, 21.3.1 (DECISIONS R5-M87): whether a value of a Type is in memory, so it is read as its address and copied by memcpy: a
