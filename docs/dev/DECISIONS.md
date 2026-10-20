@@ -4482,3 +4482,50 @@ structure is recorded here by the unit that first implements it.
   exception, for this item only, to R5-M6's rejection of D5 fixes that make the two generators agree: the old generator's output is
   wrong code on the default pipeline and the fix is a few lines; R5-M6 stands for every other item. Rejected: (b) a decided OQ7 (a)
   deviation until G3, which would keep a wrong value on the default pipeline.
+- **R5-M87 The rvalue rows of MIR code generation and the copy form of a value** (2026-10-21, C lane; plan C2b, package C 3.2 I4, I7
+  and I8, 3.3, §4, row 10, X1 and X13; the planning session's decisions on C2b's design; under R5-M18 form 1, R5-M78 and R5-M83)
+  - Copy form (IMPL 21.1.3, 21.3.1; SPEC 3.5: a Copy and a Move write the source's bits): a value is in memory when its Type is a slot
+    Type of nonzero size (`Abi.HasResultSlot`) whose representation is not one first-class LLVM value. The place writer's one predicate
+    (`InMemory`) excludes the string's record (`RuntimeAbi.String`, three Fields), the one slot Type with a first-class representation,
+    which is loaded and stored whole, its Fields only, as the old generator's MoveString moves it; no Layout or Abi fact says "first-class",
+    so that row is its one reference. `Read` gives a value in memory as its address and `Put` copies it into a destination with
+    `llvm.memcpy` of its size, its alignment on both pointers (the old generator's aggregate copy text; package C §4); any other value is
+    loaded and stored in its storage representation, and a zero-sized one writes nothing. The ranges never overlap: every assignment
+    moves a fresh temp (`MirBuilder.Replace`, `Overwrite`) and every other Use, aggregate and Fill initializes a fresh Place (searched over
+    every `Use`, `MirRvalue.Use` and aggregate site of `Mir/Build`); locating a destination writes nothing, so the bytes copied are the
+    value secured first (SPEC 13.7.1).
+  - Rows, one switch per closed vocabulary, each now complete, a kind without an arm a thrown internal error: a Use of any Place or
+    covered constant; PairAcquire as a Copy of its Place in the item's case Type; the Tuple, struct (its base first, at 0, X1) and enum
+    Case aggregates, each operand put at its part from `Layout.Of`'s Field offsets (a Case's payload at Field 1 plus its payload Tuple's
+    offset, after the Case ordinal stored as the tag); the fixed-array aggregate and the Fill (R4-M81's loop) through `Put`, so elements
+    in memory are copied too; Discriminant, the tag loaded and zero-extended to isize; Len of a fixed array (its closed length, after its
+    Place is located), an Array or a Slice (its handle's length word, Field 1, the one `Length` C2a's Index reads); an Adapt by the
+    ordinary rvalue `MirCases.Adapt` returns under the item's view, written by that rvalue's row (a view that selects none is
+    `InternalInvariant_Kd`); a zero-sized local's home and so its borrow and its parts' address, the module's one 16-aligned symbol
+    `__kimi_zero_sized` (package C row 10).
+  - `Layout.Tag`: an enum's tag, the Case ordinal as the i32 row at offset 0, published by Layout (its due split first, e25c876f) and read
+    by `PlaceEnum`, the Case aggregate and Discriminant: the enum record publishes only its Field offsets.
+  - Refinement of the accepted design: the module frame (`ModuleCodegen.Frame`) writes the memory declarations and the zero-sized
+    symbol only when a definition requested them (`ModuleCodegen.Request`, design 2's request form), not unconditionally:
+    `ScalarEmissionTest.EmitFixture` returns the whole module, and an unconditional declaration would fail
+    `StringEmissionTest.TransfersAndCleanupExecuteOnce`'s `DoesNotContain("llvm.memcpy")` for the string moves this unit writes.
+  - Left as located `Unsupported_Kd`: a Closure environment (C5a); an Array or a Dictionary from none (C8d, C8e); a Dictionary's Len, its
+    count being `DictionaryStorage.length`, word 3 (C8e); a string's Len (C8c); an Adapt's object creation, which allocates (C6a);
+    upcasts and object borrows' payloads stay C6a's (the Cast table and the place writer). The plan's native multi-view body from
+    `tests/mir/cases.kimi` needs calls: it moves to C3a; C2b tests both views of `keep` and of a case adaptation at the IR level.
+  - Departure (for the owner's departures list at R5's group review): design 2 §2.2's dispatch says "a PairAcquire uses
+    `MirCases.Reborrows`"; code generation does not ask it, because both cases write the same bits: a Reborrow of `uniq/T` is the pointer
+    the Place already holds (IMPL 21.1.3), and the other case Copies the Place, so the case changes only the Type, which `TypeOf` gives.
+  - Rejected: memcpy for the string too (one predicate, but it copies the record's padding where the old generator moves its Fields,
+    and the twelve StringEmissionTest rows this unit makes generable would fail their class-I assertion); a copy-form column published by Layout (a shared-representation change with no second consumer
+    before G8); a constant address for zero-sized homes (it departs from package row 10); code generation spelling the tag's i32 (a second
+    copy of Layout's rule); asking `MirCases.Reborrows` (above); unconditional frame declarations (above).
+- **R5-M88 `AnalyzeInstance` is deleted at R6-gen** (2026-10-21, planning session; plan Q4 under R5-M5, the owner's OQ6 (e);
+  supersedes R4-M35's OD10 clause "with `AnalyzeInstance` a check-only step until R6-check") The clause kept the instance run
+  because the definition run missed a hole it covered, PLAN10-X1 (an abstract part's destruction observing; A5 plan §9.1), to which
+  the R5 plan's OQ6 added abstract temporaries as Loan roots. That reason no longer holds: Q1 reproduced both and Q2 and Q3 fixed them in the old definition run as
+  D5 miscompile fixes (dev `4eb19789`; regressions in `BorrowingIterationTest` and `BlockEscapeLoanTest`; no library body or
+  milestone program rejected, DEC O3). `check` never runs the instance run: its only callers are the old Emission's
+  (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
+  `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
+  (once the old Emission is gone nothing calls it, and acceptance never read it).
