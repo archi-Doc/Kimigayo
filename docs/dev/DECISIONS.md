@@ -4343,14 +4343,17 @@ structure is recorded here by the unit that first implements it.
   - Rejected: `MirCastKind.Position` (option A: a vocabulary entry); failing at the conversion (option C: an Abort before later
     boundaries are evaluated); a branchless shift-and-or encoding (not a MIR form, opaque to review); keeping Wrap for a same-width
     unsigned position (a second encoding of an unresolved position).
-- **R5-M87 The owner's decisions of 2026-10-21: R5's departures list and PLAN G157 (19)** (owner, 2026-10-21, on the R5 planning
+- **R5-M86 The owner's decisions of 2026-10-21: R5's departures list and PLAN G157 (19)** (owner, 2026-10-21, on the R5 planning
   session's explanation; verbatim 「departures list：K6b（R5-M70）、K8（R5-M74）、C0c（R5-M78）の 3 件を、すべて承認します。」 and
-  「G157は、(a) 旧生成器を直す（推奨）でお願いします」) The three departures from owner-approved texts that R5 recorded for the owner's
+  「G157は、(a) 旧生成器を直す（推奨）でお願いします」, then, asked about R5-M6, the answer 「(a) のまま（R5-M6 の例外）」; the
+  consequences are the planning session's) The three departures from owner-approved texts that R5 recorded for the owner's
   list are confirmed: K6b's Builtin key by the shim's compiler function in `MonoKey.Symbol` (R5-M70; against the K package's §4.3
   Builtin row and R5-M67's `Variant` key); K8's Clone and TypeTest without a descriptor target, which shrinks X15's whitelist to six
   (R5-M74; against the K package's §4.5 row 8); C0c's rows of C2b and C4a brought forward with gate step 2's program-wide stand-in
   until C4a and the glue written by `FunctionCodegen.WriteGlue` (R5-M78; against the package order, PD12's per-body rule and package
   C §3.6). They leave the list; R5's group reviews check the code against those entries. PLAN G157 (19), the old generator's f32
   signaling-NaN constants (SPEC 13.5.4: `@bits` keeps NaN payloads), takes option (a): a D5 miscompile fix, the exact widening one
-  rule that both generators write through, so no deviation is recorded and E12's native half waits for C5a or C7b. Rejected: (b) a
-  decided OQ7 (a) deviation until G3, which would keep a wrong value on the default pipeline while the fix is a few lines.
+  rule that both generators write through, so no deviation is recorded and E12's native half waits for C5a or C7b. This is the owner's
+  exception, for this item only, to R5-M6's rejection of D5 fixes that make the two generators agree: the old generator's output is
+  wrong code on the default pipeline and the fix is a few lines; R5-M6 stands for every other item. Rejected: (b) a decided OQ7 (a)
+  deviation until G3, which would keep a wrong value on the default pipeline.
