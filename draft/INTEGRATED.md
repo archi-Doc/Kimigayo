@@ -879,3 +879,26 @@ names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
   and G174's Binding part after its unsound-acceptance units (bu11, G163; G170's C0 may run beside them) and will have 2b-6 treat
   the unqualified in-group borrow as it treats the qualified one (2b-6's row names only `InvalidAssignment_Kd`); R5 reviews 2b-5's
   MIR consumption with `StaticRoot` (AR-2) and M69's scope query in the shared `MirBody`, and its E lane takes G175.
+
+## 2026-10-21 — Introduction-site requirements for generic parameters
+
+The owner's instruction of 2026-10-20 (translated): write the formal plan, specification and implementation plan, for the
+generic-parameter constraint draft "R1"; implementation starts after R9; the plan takes precedence over SPEC and its
+references for the matters it changes, and existing specifications govern the rest; SPEC is not changed by this task;
+record the intake in INTEGRATED at commit.
+
+- [Introduction-Site Requirements and Implementation Plan](Proposals/2026-10-21%20Introduction-Site%20Requirements%20and%20Implementation%20Plan.md):
+  一部取り込み (open, intake only). A requirement on an ordinary Type slot is written on the slot (`<T is R>`), the
+  introduction-site concept `associate X is R` already uses; each Constraint Clause has one place, decided by its shape;
+  requirements on one slot are one `and` requirement, and a Constraint is a conjunct. Implementation starts after R9
+  (units GR0–GR6). By the owner's instruction, the plan takes precedence over SPEC and its references for its stated
+  changes.
+- Planned mapping (its §6): §2.1 → F.5, F.2.1, §8.1.1, §8.2.2, §13.6.4, Appendix E; §2.2–§2.3 → §7.5, §8.2.1,
+  §8.4.1–§8.4.2, §8.11.6, F.6.2–F.6.3, §6.1.4; §2.4 → §8.3.1, §8.10, §8.11.6, §10.5.2, §10.8; §2.5 → §6.1.2, §6.1.4,
+  §7.5, §8.2.3, §8.5.2, §9.1, §9.4.4, §9.5, §15.3.4; §2.6 → §8.4.1, §8.5.1, §8.5.3, §8.5.4; §2.7 → §19.1, §19.4; §2.8 →
+  §23.1.3 and the check output schema; §2.9 → F.4.3; 63 example lines in 53 declarations. Formal integration needs the
+  owner's explicit instruction and lands only inside the GR3–GR5 group merge (its §1, §4).
+- No section is integrated into SPEC or IMPL, no text is frozen, and no compiler support is claimed. Its §7 requests the
+  owner's decisions: the rules it adds to the draft, option (ii) for effect-bearing Callable parameters (the owner's
+  preliminary preference was (i)), the `length` keyword, the SyntaxForm row and repair kind, and the scope of the
+  integration instruction; it also lists open issues for PLAN after a check on the current tree.

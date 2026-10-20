@@ -311,12 +311,13 @@ internal sealed partial class MirEffects
         }
     }
 
-    // An atom of the evaluated summary, once; while judging an obligation it is resolved at once by the target's premises: a destroyed
-    // abstract part proven Copy does nothing (SPEC 8.7.2), any other is unknown (a call through an input reaches here only without
-    // confined).
+    // An atom of the evaluated summary, once. It is resolved at once by the definition's premises while judging an obligation, and where its
+    // Type is a projection with a recursive base, which a summary never keeps (SPEC 15.6.4; TyCtxt.RecursiveBase): a destroyed abstract part
+    // proven Copy does nothing (SPEC 16.3.3 "unless the Type is Copy", 8.11.2 "not proven Copy"), any other is unknown (a call through an
+    // input reaches here only without confined).
     private void AddAtom(BoundType type, byte kind, BindingSymbol? requirement = null)
     {
-        if (this.reader < 0)
+        if (this.reader < 0 || types.RecursiveBase(this.definition, type))
         {
             this.found |= kind == Drop && types.Copy(this.definition, type) ? (byte)0 : Unknown;
             return;
