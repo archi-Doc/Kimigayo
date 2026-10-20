@@ -3,13 +3,15 @@
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
 // constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the checked splice every
 // runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations,
-// the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names
-// and numbers formatted on the stack (or once, as text, for a template filled at startup). Both generators write the frame through
-// it (PD2: promoted, never copied; Name came from the old writer with ObjectRuntime, R5-M69).
-// Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, name
-// prefixes and symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons) and the target profile (WindowsProfile).
+// the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
+// numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
+// hexadecimal spelling. Both generators write the frame through it (PD2: promoted, never copied; Name came from the old writer with
+// ObjectRuntime, R5-M69; Hexadecimal from FunctionCodegen, replacing the old writer's hardware widening, PLAN G157 (19)).
+// Input: a writer, the module's LlvmConstantPool, the test runtime text of a test build, ExternalFunction records, numbers, a
+// floating constant's IEEE bits, name prefixes and symbols; the runtime ABI records (RuntimeAbi), the abort reasons (AbortReasons)
+// and the target profile (WindowsProfile).
 // Output: LLVM text written to the writer; a symbol's spelling after @ and the symbol recovered from that spelling; an expanded
-// runtime template.
+// runtime template; a floating constant's hexadecimal spelling bits.
 // Invariants: the legacy writer's .ll stays byte-identical while it shares this text; warm writes allocate nothing; each runtime ABI
 // definition marker of a template is spliced exactly once and none is left unexpanded, or the template fails; the text holds no
 // checkout path.
@@ -217,6 +219,26 @@ internal static class LlvmModuleText
         Span<char> digits = stackalloc char[40];
         value.TryFormat(digits, out var length, default, CultureInfo.InvariantCulture);
         output.Write(digits[..length]);
+    }
+
+    // The bits LLVM's hexadecimal spelling of a floating constant writes, from the constant's IEEE bits of size 4 or 8 bytes: a double's
+    // own bits, or a float's exactly widened double (SPEC 13.5.4 keeps NaN payloads and the sign of zero). A finite float widens exactly
+    // through the hardware; an infinity or NaN keeps its sign, takes the all-ones exponent and its payload shifted by 29, so a signaling
+    // NaN stays signaling where a hardware widening sets its quiet bit.
+    internal static ulong Hexadecimal(Int128 bits, int size)
+    {
+        if (size == 8)
+        {
+            return unchecked((ulong)bits);
+        }
+
+        var single = unchecked((uint)bits);
+        if ((single & 0x7F800000) != 0x7F800000)
+        {
+            return BitConverter.DoubleToUInt64Bits(BitConverter.UInt32BitsToSingle(single));
+        }
+
+        return ((ulong)(single >> 31) << 63) | (0x7FFUL << 52) | ((ulong)(single & 0x7FFFFF) << 29);
     }
 
     // A numbered name (a symbol, label or SSA value): its prefix, then the number formatted on the stack.
