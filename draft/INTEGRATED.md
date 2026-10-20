@@ -892,3 +892,12 @@ options per problem; this records plan selection, not approval of an executable 
   This is the current filename after the rename at `3a272f3e`; the earlier intake's old filename remains historical.
   G172 keeps that premise design and its independent supply gate. G172 selection implies no implementation support,
   release of the BU/R5 pause or Transferable hold, or approval of new vocabulary.
+- Revision (2026-10-20; the owner asked for the plan to be scrutinized against the Principles; open text, nothing
+  frozen): §1 adds the supplied plan's recorded checking-order dependences on identical compiler trees (an
+  alternative-support cycle accepted in one declaration order only; order-dependent exclusion diagnostics). The
+  mapping's "alternative-support dependencies" becomes one meaning, shown by G1 or reported as a SPEC gap, of
+  "depends" in §8.5.5's evidence exclusion and pending identification (result positions, identification keys,
+  alternative supports, proof alternatives); the proposal's result-position reading is a proposal, not a settled
+  rule. Also corrected: provisional premise answers in completion, the unreachable collecting guard, typed
+  diagnostic causes, syntax-free state keys and the supplied §§4.5, 4.7, 4.9, 4.10, 5 and 8–10 (proposal §8). The
+  existing-rule mapping to SPEC sections, the selection of C, the unit structure and the holds are unchanged.
