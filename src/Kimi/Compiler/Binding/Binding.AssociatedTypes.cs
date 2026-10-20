@@ -7,7 +7,6 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     private readonly Dictionary<(BoundConformancePath Path, BoundRequirement Associated), AssociatedBinding> associatedBindings = new();
-    private readonly HashSet<(BoundType Type, BindingScope Scope)> normalizingAssociated = new();
     private HashSet<BoundRequirement>? ambiguousAssociatedMatches;
     private Dictionary<Koto, (BoundRequirement First, BoundRequirement Second, int Count)>? associatedAmbiguities;
 
@@ -598,112 +597,6 @@ public sealed partial class Binding
         // Explicit header metadata may normalize a common binding before witnesses are ready.
         // The separately retained projection obligation must still prove conformance at finalization.
         return available ?? (conflicting ? null : pending);
-    }
-
-    /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
-    private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
-    {
-        if (this.collectingAssociated is not { } batch)
-        {
-            return this.ContractTypeCore(type, scope, self, normalize);
-        }
-
-        var key = (type, scope, self, normalize, this.activeRequirementContract);
-        if (batch.Normalized.TryGetValue(key, out var known))
-        {
-            return known;
-        }
-
-        var result = this.ContractTypeCore(type, scope, self, normalize);
-        batch.Normalized[key] = result;
-        return result;
-    }
-
-    private BoundType ContractTypeCore(BoundType type, BindingScope scope, BoundType? self, bool normalize)
-    {
-        type = this.ApplyContractEnvironment(type, scope);
-        if (this.activeRequirementContract is { } bound)
-        {
-            type = this.SubstituteContractReference(type, bound); // SPEC 8.4.3: the requirement of a bound reference.
-        }
-
-        // SPEC 8.4: Self of any Contract, including an ancestor whose requirement is read here, is the conforming Type. A
-        // reference to a Contract, such as a projection's declaring Contract, only has its Type arguments substituted.
-        if (IsContractSelf(type))
-        {
-            return self ?? this.EnclosingContractSelf(scope) ?? type;
-        }
-
-        var count = type.Components.Count;
-        var components = count == 0 ? null : this.RentTypes(count);
-        try
-        {
-            var changed = false;
-            for (var i = 0; i < count; i++)
-            {
-                components![i] = this.ContractType(type.Components[i], scope, self, normalize);
-                changed |= !ReferenceEquals(components[i], type.Components[i]);
-            }
-
-            var result = changed ? this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments) : type;
-            if (!normalize || result.Kind is not (BoundTypeKind.AssociatedProjection or BoundTypeKind.Parameter or BoundTypeKind.TargetProjection or BoundTypeKind.SemanticsApplication) || !this.normalizingAssociated.Add((result, scope)))
-            {
-                return result;
-            }
-
-            try
-            {
-                if (this.BuiltinArithmeticOutput(result, scope) is { } numericOutput)
-                {
-                    return numericOutput;
-                }
-
-                if (result.Kind == BoundTypeKind.AssociatedProjection && this.FixedArrayIteratorType(result) is { } fixedIterator)
-                {
-                    return fixedIterator;
-                }
-
-                if (result.Kind == BoundTypeKind.AssociatedProjection && result.Components[0] is { Symbol.Declaration: StructKoto or EnumKoto } receiver &&
-                    this.ResolveAssociated(receiver, result.Symbol!, scope, result.Components.Count == 2 ? result.Components[1] : null) is { } fixedType)
-                {
-                    fixedType = this.SubstituteStoredOrigins(fixedType, result.Symbol!.Declaration, (BoundOrigin[])result.OriginArguments);
-                    // A container substitution can expose another associated projection
-                    // (Wrapper<S>.Element -> S.Element). Normalize that identity too;
-                    // the active query above still guards recursive specifications.
-                    return this.StoredType(fixedType, receiver) is { } stored
-                        ? this.ContractType(stored, scope, self) : result;
-                }
-
-                for (var current = scope; current is not null; current = current.Parent)
-                {
-                    if (current.Constraints is not { Invalid: false } environment)
-                    {
-                        continue;
-                    }
-
-                    foreach (var fact in environment.Facts)
-                    {
-                        if (fact.Kind == ConstraintKind.TypeIdentity && this.FactStates(fact, result, out var required) && this.AvailableConstraintFact(environment, fact) && required is not null)
-                        {
-                            return this.ContractType(required, scope, self);
-                        }
-                    }
-                }
-
-                return result;
-            }
-            finally
-            {
-                this.normalizingAssociated.Remove((result, scope));
-            }
-        }
-        finally
-        {
-            if (components is not null)
-            {
-                this.typeScratch.Return(components, clearArray: true);
-            }
-        }
     }
 
     // The one conformance of `owner` whose bound reference, instantiated for `receiver` (`Indexable<K>` of `Keyed<isize>`),
