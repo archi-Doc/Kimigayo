@@ -2743,14 +2743,15 @@ public sealed partial class OwnershipBody
         return -1;
     }
 
-    // SPEC 3.6, 3.4.2: a temporary named by a Projection Origin is a Loan root; a scalar or a reference slot only when a Borrow lends
-    // its own storage, as `one()@ref` or `first(xs@ref)@ref` does.
+    // SPEC 3.6, 3.4.2: a temporary named by a Projection Origin is a Loan root, whatever its Type, since a borrow of a temporary cannot
+    // outlive it; a scalar or a reference slot only when a Borrow lends its own storage, as `one()@ref` or `first(xs@ref)@ref` does. A
+    // function item has no storage: it denotes its function, with no environment (SPEC 3.2.1), so no Loan ends with it.
     private bool IsTemporaryOriginRoot(int root, BoundOrigin origin)
     {
         var candidate = this.Places[root];
         return origin.Kind == OriginKind.Projection && candidate.Kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result &&
-            (ReferenceEquals(candidate.Type, BoundType.String) || AdtDef.IsStruct(candidate.Type) || AdtDef.IsEnum(candidate.Type) || candidate.Type.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Tuple or BoundTypeKind.Array or BoundTypeKind.Dictionary or BoundTypeKind.Closure || ScalarTypes.Supports(candidate.Type) || candidate.Type.HandleMode is not null || ReferenceTypes.IsBorrow(candidate.Type)) &&
-            ReferenceEquals(candidate.Source, origin.Binder) && (!(ScalarTypes.Supports(candidate.Type) || ReferenceTypes.IsBorrow(candidate.Type)) || this.IsBorrowedPlace(root));
+            candidate.Type.Kind != BoundTypeKind.FunctionItem && ReferenceEquals(candidate.Source, origin.Binder) &&
+            (!(ScalarTypes.Supports(candidate.Type) || ReferenceTypes.IsBorrow(candidate.Type)) || this.IsBorrowedPlace(root));
     }
 
     private bool SharesDeferredExecution(int place, int root)
