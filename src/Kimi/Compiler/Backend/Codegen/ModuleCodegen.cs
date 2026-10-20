@@ -22,6 +22,7 @@
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
+// Files: the items, their names and signatures and the records (this file); the module frame and the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -29,7 +30,7 @@ using Kimi.Compiler.Mir;
 namespace Kimi.Compiler.Backend;
 
 /// <summary>Writes the LLVM module of a program version's checked set (R5 package C 3.3).</summary>
-internal sealed class ModuleCodegen
+internal sealed partial class ModuleCodegen
 {
     private readonly StringWriter functions = new(CultureInfo.InvariantCulture); // The definitions, buffered until the module is complete.
     private readonly LlvmConstantPool constants = new();
@@ -87,16 +88,7 @@ internal sealed class ModuleCodegen
             return false;
         }
 
-        LlvmModuleText.WriteHeader(output, this.constants);
-        LlvmModuleText.WriteRuntime(output, testRuntime: null);
-        output.Write(LlvmModuleText.OverflowDeclarations);
-        output.Write(this.functions.GetStringBuilder());
-        if (start is not null)
-        {
-            WriteStart(output, start);
-        }
-
-        output.Write(LlvmModuleText.Footer);
+        this.Assemble(output, start);
         return true;
     }
 
@@ -162,19 +154,6 @@ internal sealed class ModuleCodegen
         }
     }
 
-    // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.
-    private static void WriteStart(TextWriter output, FunctionAbi startup)
-    {
-        output.Write(RuntimeAbi.Start.GetDefinition(exported: true));
-        output.Write("entry:\n  call ");
-        output.Write(startup.Result);
-        output.Write(" @");
-        output.Write(startup.Name);
-        output.Write("()\n  call void @");
-        output.Write(RuntimeAbi.Exit.Name);
-        output.Write("(i32 0)\n  unreachable\n}\n");
-    }
-
     // An item by its kind's row: a body item through FunctionCodegen; a type-driven item is a row not written yet, at the site that
     // admitted it.
     private void Item(MirProgram program, InstanceCollector collector, int item)
@@ -200,30 +179,5 @@ internal sealed class ModuleCodegen
             default:
                 throw new InvalidOperationException($"The mono item kind {entry.Key.Kind} has no code generation row.");
         }
-    }
-
-    // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test
-    // build's TestEntry is a row not written yet (C10a), at each test root. False for an Application whose startup root has no signature
-    // while nothing explains it: a broken contract without a subject.
-    private bool Start(MirProgram program, InstanceCollector collector, in StartupResult startup, ReadOnlySpan<int> roots, out FunctionAbi? entry)
-    {
-        entry = null;
-        if (startup.Kind == StartupKind.Test)
-        {
-            foreach (var root in roots)
-            {
-                this.Report(DiagnosticCode.Unsupported_Kd, collector.Subject(root, program.Bodies[this.set.Items[root].BodyOrdinal], default));
-            }
-
-            return true;
-        }
-
-        if (startup.OutputKind == OutputKind.Library)
-        {
-            return true;
-        }
-
-        entry = roots[0] < this.signatures.Length ? this.signatures[roots[0]] : null;
-        return entry is not null || this.Records.Count != 0;
     }
 }
