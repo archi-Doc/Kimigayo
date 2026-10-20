@@ -11,7 +11,7 @@ namespace XunitTest;
 /// <summary>A4, effect summaries on MIR (SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; docs/dev/DECISIONS.md R4-M22): each rule with a
 /// valid program and an invalid one, through the problems <c>Compilation.BuildMir</c> finds (R4 shadow: unpublished), each as its code,
 /// the first line of its subject and its views.</summary>
-public sealed class MirEffectsTest(ITestOutputHelper output)
+public sealed partial class MirEffectsTest(ITestOutputHelper output)
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n";
 
