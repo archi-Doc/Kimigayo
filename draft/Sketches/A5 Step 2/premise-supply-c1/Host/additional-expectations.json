@@ -1,0 +1,446 @@
+[
+  {
+    "Case": "alias-invalid-forward",
+    "Query": "alias",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)",
+      "is(U,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ],
+    "Required": [
+      "equivalent:is(U,C)<-is(T,C)"
+    ]
+  },
+  {
+    "Case": "alias-invalid-forward",
+    "Query": "original",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ]
+  },
+  {
+    "Case": "alias-invalid-forward",
+    "Query": "negative",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": true,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ]
+  },
+  {
+    "Case": "alias-invalid-forward",
+    "Query": "candidates",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": false,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ],
+    "UsableCandidates": false,
+    "PrivateCandidates": [
+      "is(T,C)"
+    ]
+  },
+  {
+    "Case": "alias-invalid-reversed",
+    "Query": "alias",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)",
+      "is(U,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ],
+    "Required": [
+      "equivalent:is(U,C)<-is(T,C)"
+    ]
+  },
+  {
+    "Case": "alias-invalid-reversed",
+    "Query": "original",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ]
+  },
+  {
+    "Case": "alias-invalid-reversed",
+    "Query": "negative",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": true,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ]
+  },
+  {
+    "Case": "alias-invalid-reversed",
+    "Query": "candidates",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": false,
+    "Closed": true,
+    "Candidates": [],
+    "Errors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:identity",
+      "root:positive"
+    ],
+    "UsableCandidates": false,
+    "PrivateCandidates": [
+      "is(T,C)"
+    ]
+  },
+  {
+    "Case": "alias-valid",
+    "Query": "alias",
+    "Completion": "Complete",
+    "Value": "Proven",
+    "Positive": true,
+    "Negative": false,
+    "ExactErrors": []
+  },
+  {
+    "Case": "alias-valid",
+    "Query": "negative",
+    "Completion": "Complete",
+    "Value": "Refuted",
+    "Positive": false,
+    "Negative": true,
+    "ExactErrors": []
+  },
+  {
+    "Case": "alias-negative-error",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Errors": [
+      "is(T,C)",
+      "is(U,C)"
+    ],
+    "Supports": [
+      "root:negative"
+    ]
+  },
+  {
+    "Case": "alias-downstream-error",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Errors": [
+      "is(T,C)",
+      "is(U,C)",
+      "is(U,D)"
+    ],
+    "Supports": [
+      "root:positive",
+      "root:independent",
+      "rule:downstream@is(U,C)=>is(U,D)"
+    ],
+    "Required": [
+      "equivalent:is(U,C)<-is(T,C)",
+      "rule:downstream@is(U,C)=>is(U,D)"
+    ]
+  },
+  {
+    "Case": "alias-pending",
+    "Query": "q",
+    "Completion": "Pending",
+    "Value": null,
+    "Positive": true,
+    "Negative": false,
+    "Pending": [
+      "operand:is(T,C)"
+    ],
+    "Closed": false,
+    "Candidates": []
+  },
+  {
+    "Case": "alias-resource",
+    "Query": "q",
+    "Completion": "Failed",
+    "Value": null,
+    "Failure": "Resource",
+    "FailureOperation": "operand:is(T,C)",
+    "Closed": false,
+    "Candidates": []
+  },
+  {
+    "Case": "alias-unsupported",
+    "Query": "q",
+    "Completion": "Failed",
+    "Value": null,
+    "Failure": "Unsupported",
+    "FailureOperation": "operand:is(T,C)",
+    "Closed": false,
+    "Candidates": []
+  },
+  {
+    "Case": "empty-valid",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": null,
+    "Positive": false,
+    "Negative": false,
+    "Closed": true,
+    "UsableCandidates": true,
+    "Candidates": [],
+    "PrivateCandidates": [],
+    "ExactErrors": [],
+    "Pending": []
+  },
+  {
+    "Case": "empty-invalid",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": false,
+    "Closed": true,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "PrivateCandidates": [],
+    "ExactErrors": [
+      "environment:empty-invalid"
+    ],
+    "Pending": []
+  },
+  {
+    "Case": "empty-pending",
+    "Query": "q",
+    "Completion": "Pending",
+    "Value": null,
+    "Positive": false,
+    "Negative": false,
+    "Closed": false,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "PrivateCandidates": [],
+    "ExactErrors": [],
+    "Pending": [
+      "environment:empty-pending"
+    ]
+  },
+  {
+    "Case": "empty-resource",
+    "Query": "q",
+    "Completion": "Failed",
+    "Value": null,
+    "Positive": false,
+    "Negative": false,
+    "Closed": false,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "PrivateCandidates": [],
+    "ExactErrors": [],
+    "Pending": [],
+    "Failure": "Resource",
+    "FailureOperation": "environment:empty-resource"
+  },
+  {
+    "Case": "empty-unsupported",
+    "Query": "q",
+    "Completion": "Failed",
+    "Value": null,
+    "Positive": false,
+    "Negative": false,
+    "Closed": false,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "PrivateCandidates": [],
+    "ExactErrors": [],
+    "Pending": [],
+    "Failure": "Unsupported",
+    "FailureOperation": "environment:empty-unsupported"
+  },
+  {
+    "Case": "nonempty-invalid-environment",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": false,
+    "Closed": true,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "PrivateCandidates": [
+      "is(T,C)"
+    ],
+    "ExactErrors": [
+      "environment:nonempty-invalid-environment",
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:positive"
+    ],
+    "Required": [
+      "environment:is(T,C)"
+    ]
+  },
+  {
+    "Case": "candidate-operand-error",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": false,
+    "Negative": false,
+    "Closed": true,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "PrivateCandidates": [
+      "is(T,C)"
+    ],
+    "ExactErrors": [
+      "is(T,C)"
+    ],
+    "Supports": [
+      "root:positive"
+    ]
+  },
+  {
+    "Case": "alternative-unavailable",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Proven",
+    "Positive": true,
+    "Negative": false,
+    "Supports": [
+      "root:positive"
+    ],
+    "AbsentSupports": [
+      "rule:alternative@is(T,A)=>is(U,C)"
+    ],
+    "ExactErrors": []
+  },
+  {
+    "Case": "alternative-pending",
+    "Query": "q",
+    "Completion": "Pending",
+    "Value": null,
+    "Positive": true,
+    "Negative": false,
+    "Supports": [
+      "root:positive"
+    ],
+    "AbsentSupports": [
+      "rule:alternative@is(T,A)=>is(U,C)"
+    ],
+    "Pending": [
+      "source:wait"
+    ]
+  },
+  {
+    "Case": "alternative-required-error",
+    "Query": "q",
+    "Completion": "Complete",
+    "Value": "Error",
+    "Positive": true,
+    "Negative": false,
+    "Supports": [
+      "root:positive"
+    ],
+    "AbsentSupports": [
+      "rule:alternative@is(T,A)=>is(U,C)"
+    ],
+    "Errors": [
+      "is(T,A)",
+      "is(U,C)"
+    ],
+    "Required": [
+      "rule:alternative@is(T,A)=>is(U,C)"
+    ]
+  },
+  {
+    "Case": "invalid-entry-pending",
+    "Query": "q",
+    "Completion": "Pending",
+    "Value": null,
+    "Closed": false,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "Errors": [
+      "environment:invalid-entry-pending"
+    ],
+    "Pending": [
+      "source:wait"
+    ]
+  },
+  {
+    "Case": "invalid-entry-resource",
+    "Query": "q",
+    "Completion": "Failed",
+    "Value": null,
+    "Closed": false,
+    "UsableCandidates": false,
+    "Candidates": [],
+    "Errors": [
+      "environment:invalid-entry-resource"
+    ],
+    "Failure": "Resource",
+    "FailureOperation": "source:limit"
+  }
+]
