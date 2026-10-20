@@ -828,3 +828,16 @@ to Obsolete as superseded."
 - Outstanding: current-head reproduction, executable premise-supply completeness/resource/lifecycle gates, the
   separate finite Transferable summary, applicable package/vocabulary approvals and all implementation verification.
   G170/G124 remain open; S5 connection and the other F5/R4 exit obligations retain their own gates.
+
+## 2026-10-20 — G170 associated value scheduling
+
+- [G170 Associated Value Scheduling Plan](Proposals/2026-10-20%20G170%20Associated%20Value%20Scheduling%20Plan.md):
+  一部取り込み (open, intake only). The owner asked for solution options for G170's associated-inference cycle (the
+  premise plan's blocked PS1 source lifecycle), then for one design from the most promising option without competing
+  designs or review. The plan selects value-level scheduling (its S4) and records owner decisions OD1–OD5; it approves
+  no representation, SPEC wording, acceptance change or implementation.
+- Existing-rule mapping: §§1–7 implement SPEC §8.5.5 and §8.3.3's Finality with IMPL A.1 and A.4. Appendix B is
+  proposed clarification text for §8.5.5 (gaps g1–g6), not integrated and not frozen; it needs the owner's explicit
+  instruction (OD3).
+- Outstanding: V0 evidence on the implementing head, V1's order-independence model, OD1–OD5, and all implementation
+  verification. G170 remains open; the premise plan's other gates, R4-M83's hold and R4-M79's pause are unchanged.
