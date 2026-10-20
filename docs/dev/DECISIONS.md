@@ -1991,6 +1991,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
     proposals cite them) are not reused for other meanings; a decision taken again keeps its old number. Any session's new G rows
     start at G175 until R4 records G171–G174. The pause README (`artifacts/handoff/2026-10-19-pause-2/README.md`) marks its rows
     for the rolled-back work.
+- **R4-M87 S5 implemented: the recursive-base view and A4's widening** (2026-10-21; unit 2b-S5, one design and one review under the
+  owner's form (c), R4-M76 and R4-M74 OQ13, with BU's Binding review under PD6 (AB-5); SPEC 8.3.3 and 15.6.4 since `4595bbfc`; the S5
+  proposal's §8; placed after R4-M86)
+  - View (a Binding fact; step 2 plan PD6): `TyCtxt.RecursiveBase(definition, type)`, whether one of a projection's bases is proven by
+    the proof rule (`ProveConstraint`) under the definition's `EffectPremises`, the scope of `Copy` and `Sealed`, to conform to one of
+    the pass's recursive Contract declarations. A declaration C is recursive when the premise supply of `T is C` (`AddContractPremises`,
+    SPEC 8.3.2's row, C's Self as T), expanded through each available supplied conformance of T or of a projection of T, supplies a
+    conformance of a projection of T to C's declaration with any Type arguments or to a refinement of it (`IsRefinement`); an `or`
+    Constraint supplies nothing. Each declaration is expanded once at T and once at a projection of T: finite by construction (at most
+    twice the declarations) and exact for what a Contract supplies through Self, whose supply at one projection is that at another,
+    shifted. The list is found on a pass's first query and stamped with the pass's version (`storageVersion`, as Binding's
+    comparison-plan and formatting memos), in a pooled scratch scope: nothing runs in Bind, the view is immutable after Bind, and a
+    warm rebind with its queries allocates nothing; `TyCtxt.ResetViews` gains no line. G170 PlanB (selected, not implemented) plans that at its
+    cutover (C4) the search moves onto the ContractSolver's enumeration and its recursive-Contract prohibition reads this classification.
+  - A4: `AddAtom` resolves at once, as at an obligation, an atom whose Type has a recursive base: a destruction proven Copy under the
+    summary's premises does nothing (SPEC 16.3.3, 8.11.2), anything else is Unknown, the unknown environment effects SPEC 15.6.4 puts
+    in its place; other atoms are kept as before. No MIR vocabulary or diagnostic code; growth through a recursive base the view finds
+    no longer reaches G128's Limit.
+  - Rejected: a memo kept until an edit (a `ResetViews` line in R5's K lane); a per-Contract state reset in `PrepareContracts` (grows
+    the over-limit `Binding.Contracts.cs`); a declaration graph read off clause syntax (a list of Constraint forms, the proposal
+    review's B5); scanning the definition's premise facts in A4 or the view (a second copy of `ProveConformance`'s premise rule);
+    keeping a recursive-base atom proven Copy (no effect, and a kept one would still grow); a cut by base chain (a declaration
+    reached again through its own Type argument repeats at Types that are not bases of each other, so that cut is not finite by
+    construction; review B2).
+  - Limits, not fixed here: an argument-dependent clause, a Constraint on a Contract's own Type parameter or a projection of it, which
+    can supply something new only at a declaration's later expansion, is not followed (an under-approximation; Binding rejects every
+    projection-form program found; the plain-parameter form is unverified). A base G170
+    hides keeps its atom: a growing one ends at G128's bound (a located `Unsupported_Kd`), a non-growing one is accepted where SPEC
+    15.6.4 rejects, in uninstantiable code. G170's false Copy for `T.(Tree).Child.(Tree).Child` under `T is CopyTree` now widens the
+    callee's own summary, so a caller whose premises classified the kept atom is rejected on the mir pipeline (`h<T>(t:
+    T.(Tree).Child.(Tree).Child)` with `T is CopyTree`, called from a confined `visit` under `U is CopyTree`, `U is Copy`,
+    `U.(Tree).Child is U`: `IncompatibleContractImplementation_Kd`), in uninstantiable code only; it is G170's. A layered projection
+    (a pair layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
