@@ -1999,6 +1999,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
   M69's inline suppression, M70's default taint and M73's hold remain unchanged. M69-0's universal correspondence proof
   and M69-2's ownership decisions, including their 2b-D/2e-D OQ2 and F5/F9 gates, remain open; this metadata preparation
   neither supplies that proof nor authorizes a new coverage decision.
+- **R4-M85 Associated inference uses path-local head normalization** (owner, 2026-10-20; G172 clarification,
+  SPEC 8.5.5 and 23.1.2) Extraction normalizes only the path to a required missing associated Type, far enough to
+  expose each outer form. Off-path parts wait for the mandatory full checks after determination; the complete
+  selected subtype retains its binders, Origins and external-value dependencies. A determined value does not
+  validate its source conformance. Acceptance requires that conformance's checks to pass; failure caused only
+  by that source is visibly reported as dependent, with the failed source location, while unrelated errors remain
+  independent. Section 23.1.2 makes only this reporting case mandatory; grouping and other dependent reports
+  keep their existing discretion.
+  The cause is the ambiguous "normalized results" boundary, shared by path-head exposure and evidence extraction,
+  with source validity distinct from determination. R4 compared independent A/B designs and selected B's concise
+  normative boundary plus A's narrow reporting reference. Rejected: eager whole-result normalization, per-form
+  exclusions and requiring whole-source validity before value determination; these introduce unrelated dependencies.
+  No shared lazy-Type representation, result-materialization API, local validation receipt, scheduler, diagnostic
+  code or production implementation is adopted. Transitive identification keys, alternative evidence/proof supports,
+  complete source-validity publication and G170 C1/G172 G1's executable gates remain open. The normative example
+  is not execution evidence; implementation, regressions and measurements remain unverified. D5/O3 and all existing
+  Transferable, S3 and M69 gates remain.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

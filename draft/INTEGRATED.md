@@ -917,3 +917,21 @@ options per problem; this records plan selection, not approval of an executable 
   G172 does not unconditionally block C4, and any concrete adapter prerequisite must be recorded before a
   dependent cutover. Transferable's C4/T0 gate, the S3/M69 proof and package gates, and applicable D5/O3
   acceptance-change dispositions remain.
+
+## 2026-10-20 — G172 path-local head normalization
+
+- Owner clarification (DECISIONS R4-M85) resolves the extraction-boundary part of the
+  [G172 plan](Proposals/2026-10-20%20G172%20Associated%20Value%20Inference%20Plan.md) §§1 and 4.2–4.3:
+  [SPEC §8.5.5](../docs/spec/08-generics-constraints-and-contracts.md#855-inference) now requires head normalization
+  only on paths to missing associated Types, retaining the complete selected subtype and its dependencies.
+  Off-path parts wait for full checks after determination; source-conformance validity remains required for
+  acceptance. A failure caused only by that source must visibly report the dependency and source location;
+  [SPEC §23.1.2](../docs/spec/23-compiler-services.md#2312-reporting) records this narrow reporting exception.
+- This clarification supersedes only the earlier intake's unresolved extraction-boundary reading. Identification
+  keys reached transitively, alternative evidence/proof supports and complete validity publication remain G170
+  C1/G172 G1 obligations. The proposal remains 一部取り込み (open); its integrated extraction-boundary text is
+  frozen and unchanged. Earlier intake and revision entries remain historical.
+- The owner selected the normalization scope and failure treatment; R4 compared A/B designs for the normative
+  wording. The role-named example preserves the owner's dependency shape and the existing PA/PB example remains.
+  Neither example is new execution evidence. No production representation, diagnostic code, implementation,
+  verified support, BU/R5 resume or release of Transferable/S3/M69 and D5/O3 gates follows from this integration.
