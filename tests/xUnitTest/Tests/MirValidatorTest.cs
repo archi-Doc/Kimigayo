@@ -499,6 +499,61 @@ public sealed class MirValidatorTest
         Assert.Equal([(MirViolation.Binder, body.Source)], Validate(body).Select(static x => (x.Rule, x.Subject)));
     }
 
+    // DECISIONS R5-M90 (2e-D 5.7): a region, the body or an Inlined scope's locations (a default's copy), is entered only at its first
+    // location, and no edge from inside it targets the block that location lies in. Valid: a copy the caller's statement before it enters
+    // mid-block, with a nested copy that shares its first location, and a copy at a block's start that two caller edges enter (a loop's).
+    // Each broken form is an Entry finding at the edge: a caller jump into the first copy's second block, the caller's statement between
+    // two parts of it, its edge back into the block it began in, and the second copy's edge to its first location. An edge to block 0,
+    // the body's first location, is EachRuleRejectsTheBodyThatBreaksIt's.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("jump")]
+    [InlineData("fall")]
+    [InlineData("back")]
+    [InlineData("again")]
+    public void ARegionIsEnteredOnlyAtItsFirstLocation(string? broken)
+    {
+        var body = MirModelTest.NewBody(Fixture.Value.Types);
+        var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
+        var copy = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
+        var inner = (ushort)body.AddScope(copy, MirScopeKind.Inlined, default);
+        var loop = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
+        var (entry, call, rest, after) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        var (head, next, tail, done) = (body.AddBlock(), body.AddBlock(), body.AddBlock(), body.AddBlock());
+        SourceInfo In(ushort scope, string form = "") => (broken == form ? Broken : At) with { Scope = scope };
+        void Read(int block, SourceInfo source) => body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, flag, source));
+        MirTerminator Branch(int to, int otherwise, SourceInfo source)
+        {
+            body.AddCase(0, to);
+            return MirTerminator.SwitchInt(MirOperand.Copy(flag), body.Cases.Length - 1, 1, otherwise, source);
+        }
+
+        Read(entry, At);
+        body.Terminate(entry, MirTerminator.Goto(call, At));
+        Read(call, At); // The caller's statement before the copy, its slot's StorageLive.
+        Read(call, In(inner));
+        Read(call, In(copy));
+        if (broken == "fall")
+        {
+            Read(call, Broken);
+            Read(call, In(copy));
+        }
+
+        body.Terminate(call, MirTerminator.Goto(rest, In(copy)));
+        Read(rest, In(copy));
+        body.Terminate(rest, broken == "back" ? Branch(call, after, In(copy, "back")) : MirTerminator.Goto(after, In(copy)));
+        Read(after, At);
+        body.Terminate(after, Branch(broken == "jump" ? rest : head, head, In(0, "jump")));
+        Read(head, In(loop));
+        body.Terminate(head, MirTerminator.Goto(next, In(loop)));
+        Read(next, In(loop));
+        body.Terminate(next, broken == "again" ? Branch(head, tail, In(loop, "again")) : MirTerminator.Goto(tail, In(loop)));
+        Read(tail, At);
+        body.Terminate(tail, Branch(head, done, At));
+        body.Terminate(done, MirTerminator.Return(At));
+        Assert.Equal(broken is null ? [] : [(MirViolation.Entry, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
     // V11: validating a body again, the Type tier's and its Adapt's case views included, and enumerating its uses, of the body and under
     // each case view, allocates nothing.
     [Trait("Purpose", "Allocation")]
@@ -773,6 +828,9 @@ public sealed class MirValidatorTest
                 break;
             case MirViolation.Unreachable:
                 body.Terminate(body.AddBlock(), MirTerminator.Return(Broken));
+                break;
+            case MirViolation.Entry: // R5-M90: an edge to block 0, the body's first location.
+                body.Terminate(done, MirTerminator.Goto(entry, Broken));
                 break;
             case MirViolation.StatementRange:
                 Unsafe.AsRef(in body.Blocks[exit]).Count = 99;

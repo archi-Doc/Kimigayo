@@ -19,6 +19,7 @@ internal enum MirViolation : byte
     TargetRange, // A successor, case range, check target or MustNotComplete block out of range; a MustNotComplete end with a check or not Unreachable.
     CheckTarget, // A check target on a terminator other than Goto, a Call without a target and Unreachable.
     Unreachable, // A block that neither runtime nor check edges reach from the entry.
+    Entry, // An edge into a region, the body or an Inlined scope's locations, elsewhere than its first location, or from it into that block.
     Diverged, // A read, move or borrow, where runtime edges reach, of a Temp whose only writes are diverging Calls' destinations (G131).
     NeverWrite, // A Temp of Type Never written by other than an unadapted Copy or Move of a Never Place, an Opaque value or a diverging Call.
     Local, // Local 0 is not the Return local, an Arg local does not directly follow it, or a local has no Type.
@@ -51,8 +52,9 @@ internal readonly record struct MirFinding(MirViolation Rule, SourceRef Subject)
 
 /// <summary>The one structural verifier of MIR (plan 14-5): a body's structure, locals, projections against their base Types, operands,
 /// rvalues and arities, the Types values flow between (<see cref="MirTypes.Agree"/>, modulo Origins), each Adapt under every
-/// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131) and a Call's input temps
-/// (G136), before any analysis reads it. It keeps its scratch, so a warm run allocates nothing.</summary>
+/// Semantics case view (<see cref="MirCases"/>), the blocks that read a Temp only diverging Calls write (G131), a Call's input temps
+/// (G136) and where each region, the body or a default's copy, is entered (DECISIONS R5-M90), before any analysis reads it. It keeps
+/// its scratch, so a warm run allocates nothing.</summary>
 /// <remarks>An intrinsic's operands are checked by its row's arity (its declaration's parameters come first, a fact of the table,
 /// MirValidatorTest) and staticEnsure's also as its static's slot (DECISIONS R5-M71), a Value callee's against its Type's signature where
 /// that Type is a Function Type, else by its declared signature's arity only, and every Call's whole-local inputs by one write of an input
@@ -107,6 +109,7 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             this.Diverged(body, findings);
             this.Reach(body, findings);
+            this.Entries(body, findings);
         }
     }
 
@@ -145,13 +148,17 @@ internal sealed partial class MirValidator(TyCtxt types)
         // Whether a range of a table lies within it.
         private static bool InRange(int start, int count, int length) => start >= 0 && count >= 0 && start <= length - count;
 
-        private void At(in SourceInfo source)
+        // False when the source lies outside the scopes.
+        private bool At(in SourceInfo source)
         {
             this.at = source;
             if (source.Scope >= body.Scopes.Length)
             {
                 this.Report(MirViolation.Scope);
+                return false;
             }
+
+            return true;
         }
     }
 }

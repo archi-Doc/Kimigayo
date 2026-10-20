@@ -4596,3 +4596,29 @@ structure is recorded here by the unit that first implements it.
   (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
   `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
   (once the old Emission is gone nothing calls it, and acceptance never read it).
+- **R5-M90 A region is entered only at its first location** (2026-10-21, R5 planning session; plan AR-9 in W1, R4's ask (ii) of
+  the 2e-D package §7 under R4-M90, a prerequisite of G:A5-F9's dev merge) Rule (`MirValidator.Blocks.cs`, `MirViolation.Entry`):
+  a region is the body (scope 0) or an Inlined scope's locations, a default's copy (R4-M69). An edge, from a location to the next
+  in its block or a terminator's runtime or check edge to a block's first location (MIR has no other edge), enters each region that
+  holds its target but not its source, and the body's entry enters each region holding (0, 0). Every edge entering a region goes to
+  one location, its first, and no edge from inside the region targets the block that location lies in; a finding is
+  `InternalInvariant_Kd` at the edge's source. For the body, region 0, the second clause is §5.7's "the template's block 0 has no
+  predecessor" (self-edges included); a copy's first location is where `Inline` continues the caller's current block with its
+  template's block 0, after the pending slot's StorageLive, so it is entered only there, dominates the copy and is its first location
+  in any reverse postorder (§5.3's pre-pass), and the copy never returns into that block (the caller's image of a predecessor of the
+  template's block 0, which would also re-run the caller's statements before the copy). Reason (§5.7): A5's copy disposition (D11)
+  gathers Entry(B) at a copy's entry and rests on the copy's correspondence to its template; an edge entering elsewhere would carry
+  Loans the gather misses (an unsound omission), and an edge back into the entry's block would over-include (extra records).
+  `Inline` keeps both, but nothing validated them. The rule is wider than §5.7's template wording: it holds for every body, since
+  the body is region 0 and the builder targets no entry block anywhere, so one rule states both clauses with no body-kind branch.
+  The validator walks the raw scope table, building its own region tree, rather than `MirBody.Common` (2e-4) or `Inlining`: it is
+  the one owner that checks that table and must not rest on a query that trusts validated IR, so 2e-4's query is no second copy of
+  this rule. A table the walk cannot follow stops it, as a projection chain stops `Tables`: `Tables` returns false for a broken scope
+  table and `Block` for a location outside the scopes (the `Scope` finding is unchanged). Census: no finding in the library, the 44
+  milestones, the `tests/mir` goldens, the SPEC variants, a probe of nested copies (depth 3, in a `while` condition and a `loop`) and
+  the suite under the default pipeline and `-Pipeline mir` (4.48 million body validations, 28,625 copies, 1,492 templates). Cost: one
+  pass over the locations and edges and one over the edges, scratch per scope; warm 0 B. Rejected: a block-0 clause for
+  DefaultTemplate bodies only (a body-kind branch for a fact every body holds); the first location by layout, the least block and
+  index in the region (a fact of block allocation, not of control flow); validating templates only and trusting the fold (A5 reads
+  the caller's MIR; a fold defect would go unseen); publishing each copy's entry in `MirScope` (a new column the edges determine);
+  A5 checking the shape in its pre-pass (a consumer revalidating producer IR).
