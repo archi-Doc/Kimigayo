@@ -319,9 +319,13 @@ The current definition is one struct or enum with its conformances; nested defin
 
 **Identification.** Each requirement's implementation is identified once by the key of [§8.6.3](#863-implementation-matching) under the frozen premises, never filtered by result, Origins, Constraints or Effects. The outcome is **pending** when some candidate's key comparison depends on a missing associated Type of the definition; otherwise it is **unique**, **missing** or **ambiguous**. Only a unique match supplies evidence. After completion, only pending identifications are identified again, for compatibility only; missing and ambiguous ones are final. Function results supply evidence, `index` and `indexUniq` among them; Property and accessor results supply none. The implementation's result is its declared result, or Unit when omitted. Bodies, call sites and instantiations supply nothing.
 
-**Extraction.** The normalized results are traversed only along structure leading to missing associated Types: a missing position takes the complete implementation Type (a whole Function Type included); same nominal constructions and Tuples follow corresponding arguments; fixed arrays follow elements only when lengths are already equal; concrete Semantics layers follow the same layer. Function Types, unresolved projections and unresolved Semantics applications are not entered. The extracted Type keeps everything, including Origins, and every binder in it must be valid in the conformance scope: a method's generic parameter, per-call Origin or elided receiver Origin makes it unusable. Other result parts get ordinary compatibility; there is no Origin solving, conversion, Copy judgment or search for a capable Type.
+**Extraction.** Traverse the declared results only along structure leading to missing associated Types in the required result. On those paths, normalize each Type only far enough to expose its outer form (**head normalization**); do not normalize or check off-path parts until the ordinary checks after completion. An alias or projection on a path is reduced only far enough to expose that head; an unresolved head is not entered.
+
+A missing position takes the complete implementation Type (a whole Function Type included); same nominal constructions and Tuples follow corresponding arguments; fixed arrays follow elements only when lengths are already equal; concrete Semantics layers follow the same layer. Function Types, unresolved projections and unresolved Semantics applications are not entered. The extracted Type keeps everything, including Origins, and every binder in it must be valid in the conformance scope: a method's generic parameter, per-call Origin or elided receiver Origin makes it unusable. An associated value needed to expose a path head or determine the complete extracted Type remains a dependency under Frozen premises. Other result parts receive the post-completion checks below; extraction performs no Origin solving, conversion, Copy judgment or search for a capable Type.
 
 **Completion.** Evidence from another path is usable when the destination's premises prove the source's premises. All usable evidence for an identity must be one complete Type, which becomes the binding; differing Types, including differing Origins, are an error, and no evidence needs an explicit specification. Then all ordinary checks apply ([§8.6.3](#863-implementation-matching)); a compatibility failure never reselects. Explicit bindings keep ordinary result compatibility (under `longer outlives shorter`, `ref/T during longer` satisfies a binding `ref/T during shorter`), but inference never finds such a Type. Inherited bindings are not inferred again ([§8.6.2](#862-inherited-conformance)). Acceptance never depends on an inference work budget; exhausting a limit is a resource failure ([§23.1.1](23-compiler-services.md#2311-categories)).
+
+Determining an associated Type does not establish the validity of its source conformance. After determination, all ordinary checks cover the entire declared result, including parts not visited during extraction. Acceptance using that value also requires its source conformance to pass these checks. A failure caused only by a failed source conformance is reported as dependent on that failure, with the failed source's location, rather than as an independent error; the dependency and source location must be visible in the report ([§23.1.2](23-compiler-services.md#2312-reporting)). Unrelated errors are reported independently.
 
 ```kimi
 struct NumberSource
@@ -350,6 +354,32 @@ struct PB
     public func y(self: ref/Self) -> i64 => 0
     public func w(self: ref/Self) -> PA.(P).Z => 0   // PB.W is i32, from PA.Z.
 ```
+
+Only the first element supplies evidence for `PairReader.Item` in this example:
+
+```kimi
+contract PairReader
+    associate Item
+    func readPair(self) -> (Self.Item, i32)
+
+contract ValueReader
+    associate Item
+    func read(self) -> Self.Item
+
+struct PairSource
+    Self is PairReader
+    public func readPair(self) -> (i32, ValueSource.(ValueReader).Item) => (1, 2)
+
+struct ValueSource
+    Self is ValueReader
+    public func read(self) -> PairSource.(PairReader).Item => 3
+```
+
+The Tuple head exposes the first element `i32`, determining `PairSource.(PairReader).Item` without inspecting the second element. `ValueSource.(ValueReader).Item` then takes that determined Type. The full checks must still validate both conformances and the entire pair result, which is now `(i32, i32)`.
+
+If the pair's second element is instead the nonexistent `ValueSource.Missing`, both associated values can still be determined, but the later result check fails at `PairSource`. `ValueSource` cannot be accepted using that failed source: its dependent failure names `PairSource`'s location. Any unrelated error in `ValueSource` is also reported.
+
+If the pair's first element is instead `ValueSource.(ValueReader).Item`, that entire projection is the selected evidence, so determining `PairSource.(PairReader).Item` depends on its value. Evidence returning through it to a value inferred in `PairSource` supplies no evidence under Frozen premises. Likewise, an alias or projection wrapping the whole pair must expose a Tuple head before extraction can enter it; an unresolved head supplies no corresponding elements.
 
 ## 8.6. Conformance
 

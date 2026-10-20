@@ -27,7 +27,7 @@ Exceeding a resource limit is reported as Resource, never as Language or Proof, 
 
 ### 23.1.2. Reporting
 
-Each independent failed requirement is reported, even when another check fails. How failures are grouped into diagnostic records (including one failure found under several Semantics cases or instantiations), and whether a failure caused only by another reported failure is also reported, are implementation-defined; grouping never changes acceptance.
+Each independent failed requirement is reported, even when another check fails. How failures are grouped into diagnostic records (including one failure found under several Semantics cases or instantiations) is implementation-defined; grouping never changes acceptance. Whether a failure caused only by another reported failure is also reported is implementation-defined, except for the dependent failures required by [§8.5.5](08-generics-constraints-and-contracts.md#855-inference), whose dependency and failed source location must be visible.
 
 A diagnostic names a source and, optionally, a span in it, or no source for a problem outside every source. Lines and columns shown to people follow [§2.1](02-source-and-lexical-structure.md#21-source-text-and-lines); a tool protocol uses the positions its contract states.
 
