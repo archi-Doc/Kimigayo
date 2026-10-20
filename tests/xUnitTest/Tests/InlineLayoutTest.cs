@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Kimi;
 using Xunit;
 
@@ -60,8 +61,8 @@ public class InlineLayoutTest
     {
         // DECISIONS R5-M37 (a declared change of P7c): the old pool resolves each Type once per body, so t65's one-component Tuple,
         // 65 levels high, reused t64's resolution and was generated, while a fresh resolution reports the depth limit; Layout's
-        // placement height now decides it whatever the order. MIR code generation reports it at check at t65, the first local whose Type
-        // is 65 levels high (K13b); the old generator's record names the limit.
+        // placement height now decides it whatever the order. MIR code generation reports it at check once per erased Type, at t65 to t70,
+        // the locals whose Types are more than 64 levels high (K13b, DECISIONS R5-M44); the old generator's one record names the limit.
         var source = new StringBuilder("func f() -> i32\n    let t0 = 1\n");
         for (var i = 1; i <= 70; i++)
         {
@@ -78,7 +79,9 @@ public class InlineLayoutTest
             project.AddSource("main.kimi", source.ToString());
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
             Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
-            Assert.Contains(Codegen.Expect("main.kimi:67:5", "depth limit of 64 levels", CodegenDeviations.CheckedSetAtCheck), console.Text, StringComparison.Ordinal);
+            var records = Regex.Matches(console.Text, @"GenerationResourceLimit_Kd\n(?: --> (?<fact>\S+)|\nNote: (?<fact>[^\n]+))").Select(static x => x.Groups["fact"].Value);
+            var located = string.Join(' ', Enumerable.Range(67, 6).Select(static x => $"main.kimi:{x}:5"));
+            Assert.Equal(Codegen.Expect(located, "Inline layout exceeds the generation depth limit of 64 levels.", CodegenDeviations.CheckedSetAtCheck), string.Join(' ', records));
         }
         finally
         {
