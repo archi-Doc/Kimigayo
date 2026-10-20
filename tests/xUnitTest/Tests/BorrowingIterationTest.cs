@@ -1,5 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using Kimi;
+using Kimi.Diagnostics;
 using Xunit;
 
 namespace XunitTest;
@@ -77,6 +79,35 @@ public class BorrowingIterationTest
         var c = MinimalEmissionTest.Analyze(Declarations(exclusive) + "var values = Values.init()\nfor item in values" + (exclusive ? "@uniq" : string.Empty) + "\n    values = Values.init()\n    require item == 7 else => $abort(\"source\")");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Analysis.IsVerified);
+    }
+
+    // SPEC 15.6.6, 16.3.3, 8.15.1 (PLAN10-X1): a generic body is checked for every instance, so a holder whose Type has an abstract part
+    // not proven Copy may observe its Loans when it is destroyed: replacing `local` while the iterator or view it lent lives to its cleanup
+    // conflicts, also with the abstract part inside an Option, while the concrete twin, whose Cursor has no drop, and a Copy view are valid.
+    [Theory]
+    [InlineData("<T>(first: T, second: T)\n    T is Iterable", "var it = local.iterate()\n    _ = it.next()", "var it")]
+    [InlineData("<T>(first: T, second: T)\n    T is Iterable", "let it = Option.Some(local.iterate())", "let it")]
+    [InlineData("(first: Values, second: Values)", "var it = local.iterate()\n    _ = it.next()", null)]
+    [InlineData("<T>(first: T, second: T)\n    T is Lens", "let v = local.look()", "let v")]
+    [InlineData("<T>(first: T, second: T)\n    T is CopyLens", "let v = local.look()", null)]
+    public void AnAbstractHolderMayObserveItsLoansWhenDestroyed(string signature, string hold, string? loan)
+    {
+        var source = Declarations(false) + "contract Lens\n    associate View(source)\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
+            "contract CopyLens\n    associate View(source) is Copy\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
+            "func hold" + signature + "\n    var local = first@move\n    " + hold + "\n    local = second@move\npublic func main() => ()\n";
+        var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
+        if (loan is null)
+        {
+            Assert.Empty(diagnostics);
+            return;
+        }
+
+        var record = Assert.Single(diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), record.Code);
+        Assert.Equal("local = second@move", Text(record.Span));
+        Assert.StartsWith(loan, Text(Assert.Single(record.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
+
+        string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
     }
 
     [Theory]

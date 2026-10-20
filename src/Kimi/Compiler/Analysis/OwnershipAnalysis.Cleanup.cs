@@ -6,11 +6,18 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    private static bool CleanupObservesBorrows(BoundType type, int depth = 0)
+    // SPEC 15.6.6, 16.3.3, 8.15.1: whether destroying a value of the Type may observe the Loans it holds: through a struct that declares a
+    // drop, or an abstract part not proven Copy, whose destruction every instance decides (MirTypes.Observes, DECISIONS R4-M36).
+    private bool CleanupObservesBorrows(BoundType type, Koto source, int depth = 0)
     {
         if (depth > 64)
         {
             return true; // Conservatively retain a dependency through recursive destruction.
+        }
+
+        if (type.IsAbstract)
+        {
+            return this.CopyProof(type, source, this.Active) != ConstraintProof.Proven;
         }
 
         if (AdtDef.IsStruct(type))
@@ -22,13 +29,13 @@ public sealed partial class OwnershipAnalysis
 
             for (var i = 0; i < AdtDef.Count(type); i++)
             {
-                if (AdtDef.FieldType(type, i) is not { } field || CleanupObservesBorrows(field, depth + 1))
+                if (AdtDef.FieldType(type, i) is not { } field || this.CleanupObservesBorrows(field, source, depth + 1))
                 {
                     return true;
                 }
             }
 
-            if (AdtDef.Base(type) is { } parent && CleanupObservesBorrows(parent, depth + 1))
+            if (AdtDef.Base(type) is { } parent && this.CleanupObservesBorrows(parent, source, depth + 1))
             {
                 return true;
             }
@@ -38,7 +45,7 @@ public sealed partial class OwnershipAnalysis
         {
             for (var i = 0; i < type.Components.Count; i++)
             {
-                if (CleanupObservesBorrows(type.Components[i], depth + 1))
+                if (this.CleanupObservesBorrows(type.Components[i], source, depth + 1))
                 {
                     return true;
                 }
@@ -49,7 +56,7 @@ public sealed partial class OwnershipAnalysis
         {
             foreach (var payload in cases)
             {
-                if (CleanupObservesBorrows(payload, depth + 1))
+                if (this.CleanupObservesBorrows(payload, source, depth + 1))
                 {
                     return true;
                 }
