@@ -874,3 +874,21 @@ options per problem; this records plan selection, not approval of an executable 
   bindings its supports read. Also corrected: source anchors and the six expansion callers, the solver's supply-only
   entry operations, the absent-head example, alternatives, the reason for request-local answers, one scheduler,
   B/D re-prototyping and C2's routing (proposal §8). The existing-rule mapping to SPEC sections is unchanged.
+
+## 2026-10-20 — G172 associated value inference
+
+- [G172 Associated Value Inference Plan](Proposals/2026-10-20%20G172%20Associated%20Value%20Inference%20Plan.md):
+  一部取り込み (open, intake only). The owner requested multiple solutions and implementation plans, independent
+  review, comparison, selection and publication, including revision of the supplied G170 Associated Value Scheduling
+  Plan. The planning session selects C, evidence-local associated-value demand, after comparing partial publication,
+  batch retries, revised Scheduling, shared work transport and a unified solver. The supplied Scheduling candidate's
+  revised contract and units are proposal §3 option C and §§4–6; its original all-read/SCC exclusion and cost claims are not adopted.
+- Existing-rule mapping: proposal §§1, 4 and G0–G4 implement SPEC §8.5.5's frozen premises, identification,
+  extraction and completion; preserve §8.2.3 identity, §8.3 proof/finality, §8.6.3 compatibility and §23.1 diagnostic
+  categories. Proposal §7 defines verification obligations. No language rule is changed, no section is integrated
+  into SPEC/IMPL and no proposal text is frozen. G1 must resolve alternative-support dependencies with G170 C1 or
+  report the exact SPEC gap; this intake does not select a new meaning of "depends".
+- The owner adopted [G170 PlanB](Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md).
+  This is the current filename after the rename at `3a272f3e`; the earlier intake's old filename remains historical.
+  G172 keeps that premise design and its independent supply gate. G172 selection implies no implementation support,
+  release of the BU/R5 pause or Transferable hold, or approval of new vocabulary.
