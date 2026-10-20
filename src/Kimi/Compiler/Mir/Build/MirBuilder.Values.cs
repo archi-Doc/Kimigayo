@@ -187,8 +187,8 @@ internal sealed partial class MirBuilder
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&
             expected?.Components is not [_]) || (adjust.Adaptation == HirAdaptation.Erasure && expected is null))
         {
-            // Only an Error proof, on a Type Binding rejected, leaves the acquisition unset, so its value is derived from that error (SPEC
-            // 23.1.2); a projected receiver's storage is its Field's (Member), and the other adaptations are not built yet.
+            // An Error proof or a Place without a Type (Bare) leaves a consumed child's acquisition unset, so its value is derived from
+            // that error (SPEC 23.1.2); a projected receiver's storage is its Field's (Member), and the other adaptations are not built yet.
             return MirOperand.Move(this.Unsupported(node, adjust.Acquire == HirAcquire.Unset, expected));
         }
 
