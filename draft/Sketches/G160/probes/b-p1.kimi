@@ -1,0 +1,55 @@
+struct RawBox {a}
+    public var p: raw/(ref/i32 during a)
+    public var r: ref/i32 during a
+    public init(p: raw/(ref/i32 during a), r: ref/i32 during a)
+        self.p = p
+        self.r = r
+struct KeptBox<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+struct MarkBox {a}
+    public var p: raw/(ref/i32 during a)
+    let loan: Loan<ref/i32 during a>
+    public init(p: raw/(ref/i32 during a), r: ref/i32 during a)
+        self.p = p
+        self.loan = Loan.init(r)
+func storeKept<T>(b: uniq/KeptBox<T>, v: T)
+    unsafe => Raw.initialize(b.p, v@move)
+func storeMark(b: uniq/(MarkBox during a), v: ref/i32 during a)
+    unsafe => b.p[0] = v
+func putSB(b: ref/(RawBox during a), v: ref/i32 during a)
+    unsafe => b.p[0] = v
+func keptAlias()
+    var x = 1
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    var b = KeptBox<ref/i32>.init(p: cell)
+    storeKept(b@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func markAlias()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = MarkBox.init(p: cell, r: y@ref)
+    storeMark(b@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func sharedBox()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = RawBox.init(p: cell, r: y@ref)
+    putSB(b@ref, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func sharedBoxLive()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = RawBox.init(p: cell, r: y@ref)
+    putSB(b@ref, x@ref)
+    x = 5
+    inspect(b)

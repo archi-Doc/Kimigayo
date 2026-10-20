@@ -1,0 +1,29 @@
+struct Cursor<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+func setC<T>(c: uniq/Cursor<T>, v: T)
+    unsafe => c.p[0] = v
+func cursorWrite()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var c = Cursor<ref/i32>.init(p: w@raw)
+    setC(c@uniq, x@ref)
+    x = 5
+    inspect(w)
+func cursorWriteLive()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var c = Cursor<ref/i32>.init(p: w@raw)
+    setC(c@uniq, x@ref)
+    x = 5
+    inspect(c)
+func directWrite()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    let p = w@raw
+    unsafe => p[0] = x@ref
+    x = 5
+    inspect(w)

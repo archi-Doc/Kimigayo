@@ -1,0 +1,14 @@
+struct View<T> {s}
+    public var data: raw/T
+    let loan: Loan<uniq/T during s>
+    public init(a: uniq/T during s)
+        self.data = a@follow@raw
+        self.loan = Loan.init(a)
+func viewDirect()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var v = View<ref/i32>.init(w@uniq)
+    unsafe => *v.data = x@ref
+    x = 5
+    inspect(w)

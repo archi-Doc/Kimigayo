@@ -1,0 +1,26 @@
+struct View<T> {s}
+    public var data: raw/T
+    let loan: Loan<uniq/T during s>
+    public init(a: uniq/T during s)
+        self.data = a@follow@raw
+        self.loan = Loan.init(a)
+func setV<T>(v: uniq/View<T>, value: T)
+    unsafe => v.data[0] = value
+func viewRead()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var v = View<ref/i32>.init(w@uniq)
+    setV(v@uniq, x@ref)
+    var q = y@ref
+    unsafe => q = v.data[0]
+    x = 5
+    inspect(q)
+func viewKept()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var v = View<ref/i32>.init(w@uniq)
+    setV(v@uniq, x@ref)
+    x = 5
+    inspect(w)
