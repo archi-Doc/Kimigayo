@@ -808,63 +808,73 @@ to Obsolete as superseded."
   implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
   closure.
 
-## 2026-10-20 — Implementation-defect plans: M69, S3, premise supply and Transferable, G170 PlanB, G172 (R4's evaluation)
+## 2026-10-21 — Implementation-defect plans: M69, S3, premise supply and Transferable, G170 PlanB, G172 (R4's evaluation)
 
 The owner's commit `e307e9f9` added seven plans to the reset dev (DECISIONS R4-M86), and the owner instructed R4 at its
 resume (verbatim): 「これらの文書は、実装上の問題点の修正計画書です。どのような内容か確認し、有用ならR4、R5、Binding Unitへ通達し、共有・利用してください。実装完了後は、通常通りdraft/Changesに移動してください。有用でなければ、理由を表示して、Obsoleteに移動してください。」
 for the five below (Accessor Result Contracts and As Naming Syntax are outside it). R4's planning session evaluated each
-against dev with an independent fact check (2026-10-21, probes at dev `4b36db41`; sources and outputs in the R4 session's
-scratch `eval-1020/`). All five are useful and stay in `Proposals` as 一部取り込み (open) until implemented; none moves to
-`Obsolete`. Their text is unchanged; the corrections below apply to it. Intake implies no implementation support and no owner
-adoption: the adoptions and holds their texts name ("adopted (PLAN)", R4-M83, R4-M84, R4-M85) are rolled-back records not in
-force on dev (R4-M86), and each plan's design choice is taken again in the design its row names, with the owner's package
-approval (R4-M74 OQ2) or under BU's planning.
+against dev with an independent fact check (2026-10-21, probes at dev `4b36db41`; its summary, probe sources and outputs are
+copied to `artifacts/verify/20261021-r4-plans-eval/`, main checkout, Git-ignored). All five are
+useful and stay in `Proposals` as 一部取り込み (open) until implemented; none moves to `Obsolete`. No section is integrated into
+SPEC or IMPL, and no text is frozen; their text is unchanged, and the corrections below apply to it. Intake implies no
+implementation support and no owner adoption: the adoptions and holds their texts name ("adopted (PLAN)", R4-M83, R4-M84,
+R4-M85) are rolled-back records not in force on dev (R4-M86), and each plan's design choice is taken again in the design its row
+names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
 
-- **Common corrections.** Not on dev: DECISIONS R4-M82–R4-M85; the INTEGRATED records of 2026-10-20; `Loan.Statement`
+- **Common corrections.** Not on dev: DECISIONS R4-M82–R4-M85; the INTEGRATED entries for these five plans; `Loan.Statement`
   (M69-1); the edit of SPEC 8.5.5 and 23.1.2; the baselines `a415c755`, `bc3fcd3f`, `8400ce72`, `3a272f3e`, `0c8ec470`,
-  `f373cd67`, `64649f97`, `338831f7`, `0ccf13ce`, `71984552`, `37184417`, `74c3b8b5` (all on
-  `origin/backup/rollback-20261020-origin-dev`, as are the linked `draft/Sketches/A5 Step 2/S3-M69/` option designs and review
-  record); `artifacts/verify/20261020-g170-plan-revision/` and `-g172-inference-plan/` exist nowhere. PLAN G171–G174 are
-  re-registered on dev with the meanings the plans cite. Binding and SPEC chapter 8 at dev equal those at the plans' baselines,
-  so their Binding observations carry over; line numbers drift where the rolled-back history split files.
+  `f373cd67`, `64649f97`, `338831f7`, `0ccf13ce`, `71984552`, `37184417` (all on `origin/backup/rollback-20261020-origin-dev`,
+  as are the linked `draft/Sketches/A5 Step 2/S3-M69/` option designs and review record); `artifacts/verify/20261020-g170-plan-revision/`
+  and `-g172-inference-plan/` exist nowhere. Binding and SPEC chapter 8 at dev equal those at the plans' baselines, so their
+  Binding observations carry over; line numbers drift where the rolled-back history split files.
+- **PLAN numbers.** G171, G172 and G174 are registered on dev with the meanings the evaluated plans cite. G173 is not: no
+  evaluated plan cites it (the rolled-back row's G173, `TestDiagnostics.Collect`'s first document by path, tied to S3's same-path
+  donor edit whose evidence head `74c3b8b5` is not on dev, is registered as G175), and As Naming Syntax cites "PLAN G173" for
+  another issue. Accessor Result Contracts cites "PLAN G174" for an issue other than the evaluated plans' G174; R4 or the owner
+  numbers those two plans' issues when they are taken up.
 - [M69 Default Loan Correspondence](Proposals/2026-10-20%20M69%20Default%20Loan%20Correspondence%20Plan.md) — useful (R4,
   A5). Its A5 facts hold at dev (`Report`'s access-scope Inlined fact, `MirReport.Add`'s drop, `Conflict`'s first-clean
   selection, an empty `Accessing.Effect`); `Loan` carries `Site`, not `Statement`. Correction: G171 is already an unsound MIR
   acceptance, not only an integration hazard: `add(c: uniq/Counter, x: i32 = State.poke(counter@uniq))` called as
   `State.add(counter@uniq)` in its group is accepted on the MIR, while the explicit twin reports `CallReservationConflict_Kd`
-  (shadow; the default pipeline reports `Unsupported_Kd`), because Binding admits an unqualified group-storage borrow, against
-  R4-M69's premise. Use: PLAN G171; option 3 is the candidate design for 2b-D's copy-disposition item, which supersedes part of
-  R4-M69 (an owner-approved design) and so goes through 2b-D's full process and package approval; a prototype round with
-  G171's shapes serves M69-0's proof obligation before 2b-D's design review; M69-1 is redone from dev if 2b-D adopts it, and
-  M69-2 lands before or with 2b-3.
+  (shadow; the default pipeline reports `Unsupported_Kd`). The cause is R4-M69's Inlined drop; Binding's binding of an unqualified
+  group-storage borrow makes the route reachable, against R4-M69's premise. Use: PLAN G171. Option 3 is a candidate for 2e-D's copy
+  disposition (PD15 (ii)); because M69-2 must land before or with 2b-3 and PD1 puts F5 before F9, R4 proposes to take that item
+  into 2b-D's package, for the owner's approval (OQ2); it supersedes part of R4-M69, an owner-approved design, so it takes the full
+  process. An additional prototype round (2x-P11, round 20) with G171's shapes serves M69-0's proof obligation before that design
+  review; M69-1 is redone from dev if the design adopts it.
 - [S3 Closure Origin Publication](Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md) — useful (R4's
   Binding views, BU reviewing). §3's probe gives the stated verdicts on dev, §2's anchors exist as described and its planned
   components are absent; the mir pipeline also records an unpublished A5 `ComparisonLoanConflict_Kd` at `g`'s `let m = 8`
   (a storage end, PD11's merge in 2a-2). Use: design input to 2a0-D (body-relative atom classes of captured Origins) and 2c-D
-  (C2's result formals and source rows); gate R is answered by 2x-P7 (C2's prototype round) and 2a0-D's prototype; S3-0–S3-6
-  map onto 2a0-2, 2c-2–2c-6 and H11 as its §6 says, not a separate unit series; option 3 is chosen again in those designs.
+  (C2's result formals and source rows). S3-2, S3-3, S3-4a, S3-4b and S3-5 refine 2a0-2, 2c-2, 2c-3 (with 2c-5's OQ4 gate), 2c-4
+  and 2c-6; S3-0 (gate R's source-backed prototype, taking 2x-P4's prototype and 2x-P7's cases as inputs; 2x-P7 has not run and
+  stays 2c-D's prerequisite), S3-1 (a restructure) and S3-6 (review) have no step-2 unit and run inside 2a0-D's and 2c-D's
+  preparation; they open no separate series. Option 3 is chosen again in those designs.
 - [Canonical Premise Supply and Transferable](Proposals/2026-10-20%20Canonical%20Premise%20Supply%20and%20Transferable%20Plan.md)
   — useful (R4's 2b; the Binding producer with BU's review). At dev no Transferable producer exists, `Core.kimi` lacks
-  `contract Transferable` while LIBRARY declares it, and a written `T is Transferable` is `UnresolvedBinding_Kd` (a Language
-  error for a valid form, SPEC 22.1); `HoldsRaw` has one production reader (`StaticRoot`); `Register` falls through for an
-  unlisted intrinsic; G174 holds as stated. Use: T0 → 2b-D's Transferable contract (PD5): the finite per-declaration summary,
-  the site census, the default-pipeline disposition (D5/O3), the per-case proof anchor and the choice for G174; T1 → 2b-4,
-  T2 → 2b-5, T3 → 2b-8; PLAN G124's note and G174. Whether 2b-4/2b-5 wait for G170's supply (the rolled-back R4-M83) goes to
-  the owner in 2b-D's package; until then R4 starts neither (R4-M86). Its §§2–4 stay replaced by G170 PlanB.
+  `contract Transferable` while SPEC 22.1 and LIBRARY declare it, and a written `T is Transferable` is `UnresolvedBinding_Kd` (a
+  Language error for a valid form); `HoldsRaw` has one production reader (`StaticRoot`); `Register` falls through for an
+  unlisted intrinsic; G174 holds as stated. Use: T0 → 2b-D's Transferable contract (PD5): the finite per-declaration summary, the
+  site census, the default-pipeline disposition (D5/O3), the per-case proof anchor and the choice for G174; T1 → 2b-4, T2 → 2b-5,
+  T3 → 2b-8; PLAN G124's note and G174. 2b-4 and 2b-5 follow 2b-D (the step 2 plan's prerequisites), whose package needs the
+  owner's approval, so neither starts before it; R4-M86's interim hold ends with this evaluation; whether they also wait for
+  G170's supply (the rolled-back R4-M83) goes to the owner in that package. Its §§2–4 stay replaced by G170 PlanB.
 - [G170 PlanB](Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md) — useful (BU; R4 reviews the
   A1/A4 consumers). The defect is broader than dev's PLAN G170 said: Binding's `ProveCopy` is Unknown or false for the deep
-  projection, so the default pipeline rejects too (`TransferRequired_Kd`, `MovedPlace_Kd`); the unused stronger spelling makes
-  both pipelines accept; a non-recursive Contract shows the same; §2's cause sites and the six callers hold. Use: PLAN G170
-  restated; BU's plan for it (C0–C4), scheduled by BU's planning session.
+  projection, so the default pipeline rejects `(value, value)` too (`TransferRequired_Kd`, `MovedPlace_Kd`); the unused stronger
+  spelling makes both pipelines accept; a non-recursive Contract shows the same; §2's cause sites and the six callers exist as
+  described (the causal explanation is the plan's C0 to confirm). `S5Probe.cs`'s helper chains are not G170's (no Copy-proof
+  evidence; the Transferable plan §5.3). Use: PLAN G170 restated and STATUS's Types and Contracts row; the candidate plan for
+  BU's planning (C0–C4).
 - [G172 Associated Value Inference](Proposals/2026-10-20%20G172%20Associated%20Value%20Inference%20Plan.md) — useful (BU).
-  SPEC 8.5.5's PA/PB example is rejected in both declaration orders; requirement order has no effect today, so §1's step 2 is
-  incidental (whole-batch withholding explains the failure alone); `alt` is accepted with E first (D.X = E.W = `i32`) and
-  rejected with D first; the exclusion chains' diagnostics change with declaration order; the collecting-conformance guard is
-  unreachable by code reading; the `InferenceProblem.Dependency` reason text is truncated mid-phrase. Use: PLAN G172; BU's
-  plan (G0–G4); its G1 asks the owner's reading of "depends" again (the rolled-back R4-M85 is not in force).
-- G173, cited by S3's evidence: `TestDiagnostics.Collect` reads a source through `DiagnosticOwner.FindDocument(path)`, which
-  returns the first document with that path (code reading). PLAN G173.
-- Shared on 2026-10-21 with R5's and BU's planning sessions (cross-session messages), which confirmed: BU takes G170 (PlanB
-  C0–C4), G172 (G0–G4, its G1 asking the owner's reading of "depends") and G174's Binding part, after its unsound-acceptance
-  units (bu11, G163; G170's C0 may run beside them), and 2b-6 covers the unqualified in-group borrow; R5 reviews 2b-5's MIR
-  consumption with `StaticRoot` (AR-2) and M69's scope query in the shared `MirBody`, and its E lane takes G173.
+  SPEC 8.5.5's PA/PB example is rejected in both declaration orders; requirement order has no effect today, so the plan's
+  order-dependent step 2 of §1 is not needed to explain the failure (whole-batch withholding is consistent with it; untested);
+  `alt` is accepted with E first (D.X = E.W = `i32`) and rejected with D first; the exclusion chains' diagnostics change with
+  declaration order; the collecting-conformance guard is unreachable by code reading; the `InferenceProblem.Dependency` reason
+  text is truncated mid-phrase. Use: PLAN G172 and STATUS's Inference row; the candidate plan for BU's planning (G0–G4); its G1
+  fixes "depends" from SPEC 8.5.5 and 8.3.3 or reports the gap for the owner's reading (the rolled-back R4-M85 is not in force).
+- Shared on 2026-10-21 with R5's and BU's planning sessions by cross-session messages; their confirmations: BU takes G170, G172
+  and G174's Binding part after its unsound-acceptance units (bu11, G163; G170's C0 may run beside them) and will have 2b-6 treat
+  the unqualified in-group borrow as it treats the qualified one (2b-6's row names only `InvalidAssignment_Kd`); R5 reviews 2b-5's
+  MIR consumption with `StaticRoot` (AR-2) and M69's scope query in the shared `MirBody`, and its E lane takes G175.
