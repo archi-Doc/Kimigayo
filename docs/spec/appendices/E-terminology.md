@@ -51,7 +51,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Fixed expected call signature | The one call signature fixed by a position's expected Type: a common Function Type, or the one signature the Callable Constraints of an unbound slot `F` give at `F`, `ref/F` or `uniq/F`. | [§10.5.2](../10-overload-resolution-and-inference.md#1052-call-signatures) |
 | Follow | `@follow`: selects the Place a reference or a qualifying pair layer points to, or the payload of an object handle whose View Target is a proven Sealed Type. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Function Item / common Function Type | One resolved function declaration, no environment / the erased calling contract shared by callable values. | [§3.2.1](../03-types-and-values.md#321-callable-value-types) |
-| Holder | A local, parameter or temporary, which carries the Loans of the values stored in every part of it. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
+| Holder | A local, parameter or temporary, which carries the Loans of the values stored in every part of it and reaches the storage the body does not own that its parts reach. | [§15.6](../15-ownership-and-lifetime-analysis.md#156-borrow-checking) |
 | Independently typable argument | A non-literal argument whose complete Type is fixed with no expectation from the call and no literal default; a nested call qualifies only with exactly one applicable candidate without an expected result, and an anonymous function never does. A Tuple or array literal argument is none of these; its elements are classified instead ([§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds)). | [§10.5.1](../10-overload-resolution-and-inference.md#1051-argument-kinds) |
 | Indexable / UniqIndexable | Contracts whose `index` and `indexUniq` return the reference that `receiver[key]` follows to its element. | [§4.7.1](../04-arrays-indexing-and-slices.md#471-index-expression-resolution) |
 | Integer / wrapping integer / numeric Type | One of twelve integer Cores / `Wrapping<T>` / integer, wrapping integer or floating-point. | [§3.1](../03-types-and-values.md#31-primitive-cores) |
@@ -83,6 +83,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Pair binder / pair target | In a pair parameter `<s/T>`: `s` / `T`. | [§8.1.1](../08-generics-constraints-and-contracts.md#811-type-slots-and-pair-parameters) |
 | Pair layer | A Type whose outer Semantics is a pair binder. | [§13.5.5](../13-operators-and-assignment.md#1355-follow) |
 | Parameter acquisition shape | One acquisition mode for overlapping parameters of one function group. | [§7.4](../07-functions-and-callable-values.md#74-parameter-acquisition-shape) |
+| Parameter-dependent effect | An effect a summary keeps in terms of a Type parameter or associated-Type projection, composed by callers with the actual Type unless [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) widens it. | [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) |
 | Place / Storage | Selected storage with its Type and capabilities / a region that holds values. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
 | `preserves results` | Effect bound: a call conflicts with no Loan of an earlier result of the same requirement. | [§8.11.3](../08-generics-constraints-and-contracts.md#8113-preserves-results) |
@@ -97,6 +98,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Reborrow | A borrow derived from an existing borrow. | [§13.5.6](../13-operators-and-assignment.md#1356-borrow-and-reborrow) |
 | Receiver Expression | The receiver of a method, accessor or function-value call. | [§3.4.1](../03-types-and-values.md#341-access-paths-and-value-kinds) |
 | Receiver shape | The Semantics of a receiver's Type; one per function group. | [§7.3.2](../07-functions-and-callable-values.md#732-receiver-shape) |
+| Recursive Contract | A Contract whose Constraints require a projection of the conforming Type to conform to it again; no concrete Type conforms. | [§8.3.3](../08-generics-constraints-and-contracts.md#833-recursion-and-finality) |
 | Reference-path selection | Selection through successive safe reference layers, by Types alone. | [§3.4.3](../03-types-and-values.md#343-reference-path-selection) |
 | Region | A set of program points; `region(o)` is what Origin `o` denotes. | [§15.2.1](../15-ownership-and-lifetime-analysis.md#1521-origin-expressions) |
 | Region splitting | Deriving several child Loans from one parent Loan; exclusive children never overlap. | [§15.6.3](../15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting) |

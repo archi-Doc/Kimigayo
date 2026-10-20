@@ -75,11 +75,15 @@ pending = [1, 2]
 
 ### 4.3.3. Fill construction
 
-`[Length of value]` constructs a fixed array; an `Array<T>` expectation is a mismatch. `Length` follows [§4.2](#42-length-expressions), and the element Type must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and copied into every element.
+`[Length of value]` constructs a fixed array; an `Array<T>` expectation is a mismatch. `Length` follows [§4.2](#42-length-expressions), and the element Type must be Copy. `value` is evaluated and acquired exactly once, even for length zero, and copied into every element. The array carries `value`'s Loans ([§15.6](15-ownership-and-lifetime-analysis.md#156-borrow-checking)) at every length, so `[0 of v]` keeps them too.
 
 ```kimi
 let zeros: [64 of u8] = [64 of 0]
 let flags = [8 of false] // [8 of bool]
+var x = 1
+let none = [0 of x@ref]  // [0 of ref/i32] carries x's Loan.
+// x = 2                 // Error: none is used below.
+inspect(none)
 ```
 
 ### 4.3.4. `noinit`
@@ -565,7 +569,7 @@ The exclusive receiver is reserved before later arguments and activated at entry
 | Dictionary `clear`, destruction and owning-iterator destruction | Destruction of `V` and `K` |
 | Every other operation of [§4.6](#46-positions-and-ranges) to [§4.9](#49-dynamic-collections): construction, `append`, `insert`, `pop`, `remove`, `swap`, `swapRemove`, `reverse`, `appendAll`, `appendCopies`, Array, fixed-array and Slice access, view, position, metadata and capacity operations | None |
 
-A row, with the dependency rules above, allocation, Abort and the accesses through the operation's inputs, is the operation's complete published effect. Callers use it, never a library body, and the library implementation must stay within it. Calls of a Callable argument are composed at the caller through the actual argument ([§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)). A concrete instantiation such as `Array<i32>` uses the row directly. Parameter-dependent destruction is composed at callers for Loan checking; bound verification ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)) substitutes the definition's own bindings, and destruction that still depends on an abstract Type is unclassifiable there. A generic body checks such a destruction against its own Loans under [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
+A row, with the dependency rules above, allocation, Abort and the accesses through the operation's inputs, is the operation's complete published effect. Callers use it, never a library body, and the library implementation must stay within it. Calls of a Callable argument are composed at the caller through the actual argument ([§8.11.6](08-generics-constraints-and-contracts.md#8116-callable-effect-bounds)). A concrete instantiation such as `Array<i32>` uses the row directly. Parameter-dependent destruction is composed at callers for Loan checking, unless [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) widens it; bound verification ([§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)) substitutes the definition's own bindings, and destruction that still depends on an abstract Type is unclassifiable there. A generic body checks such a destruction against its own Loans under [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
 
 ```kimi
 var values: Array<i32> = [3, 1, 2]
