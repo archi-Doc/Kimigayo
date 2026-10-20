@@ -1709,7 +1709,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   effects, `PreparedInput` roots
   and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their merge, R4-M10's placement of the Access and Borrow codes in
   A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
-  - Effects (clarified by R4-M89: a Loan found only in a reservation holder is `CallReservationConflict_Kd` (A6 row 1); "none
+  - Effects (clarified by R4-M89: a Loan found only in a reservation holder that the call does not activate is
+    `CallReservationConflict_Kd` (A6 row 1); "none
     arises" overlooked implicit static reservations (`tests/mir/statics.mir:178`)): err(effect), a static or unknown-environment
     effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
     the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
@@ -1781,7 +1782,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Diagnostics rule forbids). Prototype round 17: 425 cases, every conflict that depends on a by-argument store `Unsupported_Kd`, every
     view not held unchanged, every (Loan, access) rule G reports reported once; 26 held, 11 of them losing an independent Language
     error (draft/Sketches/A5 Step 2/body-hold.md).
-  - Default-taint records (R17-N3; superseded by R4-M90 (2e-4; the taint 2e-3)): R4-M70's closure route is of the same class as its
+  - Default-taint records (R17-N3; superseded by R4-M90 (2e-1 for template calls, 2e-3 for copies)): R4-M70's closure route is of
+    the same class as its
     recorded err(ended) limit. An inline copy is
     precise and its result or slot is tied to the explicit argument by Origin, so its Language errors through that route are right per
     value (SPEC 15.6.4); template calls (recursive defaults) over-approximate, and every attempt to make a conservative error through one
@@ -2034,7 +2036,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     T.(Tree).Child.(Tree).Child)` with `T is CopyTree`, called from a confined `visit` under `U is CopyTree`, `U is Copy`,
     `U.(Tree).Child is U`: `IncompatibleContractImplementation_Kd`), in uninstantiable code only; it is G170's. A layered projection
     (a pair layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
-- **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim 「推奨どおり承認 (推奨)」
+- **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
+  「推奨どおり承認 (推奨)」
   to the package with OQ-F5-1 to OQ-F5-6 at their recommendations; R4-M74 OQ2) The package is
   `draft/Sketches/A5 Step 2/2b-D-package.md`, from two independent designs, a design review that chose a combination per item and a
   confirmation round whose two blocking items (the staticEnsure rule's may-set proof, e10f; the layer obligation's Unknown) were
@@ -2062,14 +2065,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     ensure's located `Unsupported_Kd` registered at X-2 meanwhile. A third SPEC gap goes to the next SPEC session (the package's
     §4): 15.3.5's fixed point for projection families, which SPEC states as terminating only for Type-argument recursion.
   - Numbering: R4-M88 is reserved for 2x-E2's HIR publication rule (redesigned after its review).
-- **R4-M90 A5-F9's design package (2e-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim 「推奨どおり承認 (推奨)」
+- **R4-M90 A5-F9's design package (2e-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
+  「推奨どおり承認 (推奨)」
   to the package with OQ-F9-1 and OQ-F9-2 at their recommendations; R4-M74 OQ2) The package is
   `draft/Sketches/A5 Step 2/2e-D-package.md` (design A with parts of B; review and confirmation in `2e-D-review.md`, whose two
   blocking text items were applied). Units: 2e-0 (R4's own builder unit after 2x-E2), then G:A5-F9's 2e-1, 2e-2, 2e-3, 2e-4, 2e-5;
   optional draft round 2x-P13. DEC Q6 form 2 for 2e-1 to 2e-5 (one group review; a departing unit leaves the group); 2e-0 and
   2x-P13 take their own reviews (PD29). PQ-1 (BU agreed, 2026-10-21): 2b-6's qualified part lands as planned; its unqualified
-  in-group and implicit-receiver part lands after G:A5-F9's dev merge, re-expecting the caller-owned witnesses (and 2b-3's implicit
-  static-receiver tests) as Binding's `Unsupported_Kd`, with a P42 row in PLAN. This amends the 2b-D package's §1.5 and 2b-6 row:
+  in-group and implicit-receiver part lands after G:A5-F9's dev merge, re-expecting the caller-owned witnesses (and any of 2b-3's
+  tests that use those forms) as Binding's `Unsupported_Kd`, with a P42 row in PLAN. This amends the 2b-D package's §1.5 and 2b-6 row:
   2b-8a waits for the qualified part only. In short:
   - A template's PreparedInput Deref is an Inline step (A3 erratum E17 (numbered at adoption in 2e-2's entry)); R26-borrow and
     R26-access share one slot-rooted definition up to the first raw step; template calls take P9's Content rows, a raw slot
