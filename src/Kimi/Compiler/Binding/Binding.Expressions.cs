@@ -845,8 +845,7 @@ public sealed partial class Binding
 
         if (symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Storage or BindingSymbolKind.PatternCandidate or BindingSymbolKind.Capture && scope.Function != symbol.Scope.Function)
         {
-            if (scope.Function is not { IsAnonymous: true, Captures: null } closure ||
-                this.Capture(closure, symbol, this.scopes[closure]) is not { } capture)
+            if (this.CaptureOuterUse(symbol, scope) is not { } capture)
             {
                 return this.Fail(node, BindingFailure.Capture);
             }
