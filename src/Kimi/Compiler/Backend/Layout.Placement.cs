@@ -225,9 +225,9 @@ internal sealed partial class Layout
         return fold.Laid(this.Record((int)size, alignment, []), size, alignment);
     }
 
-    // An enum: an i32 tag at offset 0, then the union of its Case payload Tuples, aligned for the most aligned payload (IMPL 21.1.3:
-    // implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS). Payloads Binding did not substitute make
-    // it Rejected.
+    // An enum: its tag (Tag, an i32 holding the Case ordinal) at offset 0, then the union of its Case payload Tuples, aligned for the most
+    // aligned payload (IMPL 21.1.3: implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS). Payloads
+    // Binding did not substitute make it Rejected.
     private Entry PlaceEnum(BoundType type, int budget)
     {
         if (AdtDef.CaseTypes(type) is not { } payloads)
@@ -245,19 +245,23 @@ internal sealed partial class Layout
             payload = UInt128.Max(payload, part.Size);
         }
 
-        var offset = Align(4, alignment);
-        var size = Align(offset + Align(payload, alignment), Math.Max(4, alignment));
-        if (fold.Decide(budget, size, Math.Max(4, alignment), Outcome.Ok) is { } decided)
+        var tag = Tag.Layout;
+        var offset = Align((uint)tag.Size, alignment);
+        var whole = Math.Max(tag.Alignment, alignment);
+        var size = Align(offset + Align(payload, alignment), whole);
+        if (fold.Decide(budget, size, whole, Outcome.Ok) is { } decided)
         {
             return decided;
         }
 
         var local = this.scratch;
         local.Begin();
-        local.Write("{ i32, ");
+        local.Write("{ ");
+        local.Write(tag.StorageType);
+        local.Write(", ");
         local.WriteBytes(alignment, (long)Align(payload, alignment));
         local.Write(" }");
-        return fold.Laid(this.Record((int)size, Math.Max(4, alignment), [0, (int)offset]), size, Math.Max(4, alignment));
+        return fold.Laid(this.Record((int)size, whole, [0, (int)offset]), size, whole);
     }
 
     // Completes the key written as the storage text and returns the representation's one record, created at its first use.
