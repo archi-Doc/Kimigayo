@@ -14,9 +14,6 @@ internal sealed partial class MirValidator
     private const byte Lending = 16;
     private const byte Input = 32;
 
-    // Whether a local's only writes are diverging Calls' destinations (G131), whatever G136's bits say.
-    private static bool Diverging(byte writes) => (writes & (DivergingWrite | OtherWrite)) == DivergingWrite;
-
     private partial struct Checker
     {
         // A whole write of a local MirUses reports, the first or a later one.
