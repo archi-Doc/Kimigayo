@@ -841,7 +841,8 @@ names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
   group-storage borrow makes the route reachable, against R4-M69's premise. Use: PLAN G171. Option 3 is a candidate for 2e-D's copy
   disposition (PD15 (ii)); because M69-2 must land before or with 2b-3 and PD1 puts F5 before F9, R4 proposes to take that item
   into 2b-D's package, for the owner's approval (OQ2); it supersedes part of R4-M69, an owner-approved design, so it takes the full
-  process. An additional prototype round (2x-P11, round 20) with G171's shapes serves M69-0's proof obligation before that design
+  process. An additional prototype round with G171's shapes (round 20; R4 proposes the unit name 2x-P11, not yet in the step 2 plan, which gains
+  it with its next edit) serves M69-0's proof obligation before that design
   review; M69-1 is redone from dev if the design adopts it.
 - [S3 Closure Origin Publication](Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md) — useful (R4's
   Binding views, BU reviewing). §3's probe gives the stated verdicts on dev, §2's anchors exist as described and its planned
@@ -849,8 +850,8 @@ names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
   (a storage end, PD11's merge in 2a-2). Use: design input to 2a0-D (body-relative atom classes of captured Origins) and 2c-D
   (C2's result formals and source rows). S3-2, S3-3, S3-4a, S3-4b and S3-5 refine 2a0-2, 2c-2, 2c-3 (with 2c-5's OQ4 gate), 2c-4
   and 2c-6; S3-0 (gate R's source-backed prototype, taking 2x-P4's prototype and 2x-P7's cases as inputs; 2x-P7 has not run and
-  stays 2c-D's prerequisite), S3-1 (a restructure) and S3-6 (review) have no step-2 unit and run inside 2a0-D's and 2c-D's
-  preparation; they open no separate series. Option 3 is chosen again in those designs.
+  stays 2c-D's prerequisite) and S3-1 (a restructure) have no step-2 unit and run inside 2a0-D's and 2c-D's preparation; S3-6
+  (S3's closing review) is the F7 group's final review, after 2c-6; they open no separate series. Option 3 is chosen again in those designs.
 - [Canonical Premise Supply and Transferable](Proposals/2026-10-20%20Canonical%20Premise%20Supply%20and%20Transferable%20Plan.md)
   — useful (R4's 2b; the Binding producer with BU's review). At dev no Transferable producer exists, `Core.kimi` lacks
   `contract Transferable` while SPEC 22.1 and LIBRARY declare it, and a written `T is Transferable` is `UnresolvedBinding_Kd` (a
