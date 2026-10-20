@@ -228,6 +228,13 @@ public sealed class FunctionCodegenTest
             string.Empty
         },
         {
+            "PlaceFill",
+            "let x: i32 = 7\nlet five: [5 of i32] = [5 of x]\nlet none: [0 of i32] = [0 of x]\nlet i: isize = 4\nvar bad: i32 = 0\n" +
+            "if five[0] != 7 or five[i] != 7 => bad = 1\nlet bytes: [64 of u8] = [64 of 255]\nif bytes[63] != 255 => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
             "PlaceDeref",
             "var x: i32 = 1\nlet r = x@uniq\nr@follow = 41\nvar bad: i32 = 0\nif x != 41 => bad = 1\nx += 1\nlet s = x@ref\n" +
             "if s@follow != 42 => bad = 1\nvar flag = false\nlet f = flag@uniq\nf@follow = true\nif not flag => bad = 1\nlet check = 1 / (1 - bad)\n",
@@ -610,6 +617,28 @@ public sealed class FunctionCodegenTest
         }
 
         Assert.DoesNotContain("inbounds", text);
+    }
+
+    // SPEC 4.3.3 (DECISIONS R4-M81): a Fill stores its one value at each element by one counted i64 loop over its instance's closed
+    // length, so its text does not grow with the length (fail-before: one store per element), and a zero-length one stores nothing, also
+    // into a Field followed by another (a Field initializer's Fill is built into its Field).
+    [Fact]
+    public void AFillIsOneLoopOverItsLength()
+    {
+        IrFunction Filler(int length) => Assert.Single(
+            Parse($"func f() -> i32\n    let a: [{length} of i32] = [{length} of 7]\n    return a[1]\n").Ir.Functions,
+            static x => x.Instructions.Any(static y => y.Shape == "store i32 7, ptr %, align 4"));
+        var (small, large) = (Filler(4), Filler(4096));
+        Assert.Equal(small.Instructions.Select(static x => x.Opcode), large.Instructions.Select(static x => x.Opcode));
+        Assert.Single(large.Instructions, static x => x.Shape == "store i32 7, ptr %, align 4");
+        Assert.Single(large.Instructions, static x => x.Shape == "icmp eq i64 %, 4096");
+        Assert.Single(large.Instructions, static x => x.Opcode == "phi");
+
+        var init = Assert.Single(ItemTexts(
+            Analyze("struct S\n    public var n: i32 = 5\n    public var z: [0 of i32] = [0 of 9]\n    public var m: i32 = 6\n    public init() => ()\n", OutputKind.Library),
+            "init"));
+        Assert.Contains("store i32 6", init, StringComparison.Ordinal);
+        Assert.DoesNotContain("store i32 9", init, StringComparison.Ordinal);
     }
 
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the

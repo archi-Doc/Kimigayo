@@ -9,7 +9,8 @@ namespace Kimi.Compiler.Mir;
 //   make them); an rvalue's Type agrees with its destination's and each operation admits its operands' Types (Types, Casts, Component,
 //   Adapts); every Semantics case view resolves each Adapt (Views); and the temps whose Type the tier reads as unknown (Unknown).
 // - Inputs: an rvalue whose arity holds, with its destination's Type; operands and their Places; the body's case views (MirCases).
-// - Outputs: Type and Operation findings; the Adapts whose Places and token are in range, for Views.
+// - Outputs: Type and Operation findings; the Adapts whose Places and token are in range, for Views; the unknown mask Unknown gives the
+//   checker (a flag per local).
 // - Invariants: an operand of unknown Type (a Place or constant out of range, a temp Unknown names, the Never value) agrees with
 //   every Type.
 // - Prohibitions: no range or kind finding (the walk's: MirValidator.Tables, .Rvalues); a Call's Types are MirValidator.Signatures'.
@@ -137,10 +138,10 @@ internal sealed partial class MirValidator
         }
 
         // The Type of an aggregate's operand, as the Place it initializes projects it: a Tuple's element, a Closure's capture, a struct's base
-        // then its own Fields, a Case's payload, a fixed array's element.
+        // then its own Fields, a Case's payload, a fixed array's or a Fill's element.
         private readonly BoundType? Component(in MirRvalue rvalue, int index) => (MirAggregateKind)rvalue.Op switch
         {
-            MirAggregateKind.FixedArray => rvalue.Type!.Components[0],
+            MirAggregateKind.FixedArray or MirAggregateKind.Fill => rvalue.Type!.Components[0],
             MirAggregateKind.Adt when AdtDef.IsEnum(rvalue.Type) => body.ProjectedType(
                 body.ProjectedType(
                     rvalue.Type,

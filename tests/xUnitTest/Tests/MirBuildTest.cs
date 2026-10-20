@@ -126,28 +126,73 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     // each way out of its scope), and an Opaque value naming the locals its syntax touches. A node the lexer or Binding rejected is a derived
     // Opaque without a record (SPEC 23.1.2): Binding's Error, a use of a local whose declaration is an Error, and the Field initializer of a
     // declaration Binding did not bind (a struct with a misplaced `length` slot), in each constructor. Building goes on after each. The
-    // unbuilt form is a fill of a length its instance decides, which no R3 unit builds.
+    // unbuilt form is a position of a Type parameter, which PLAN G167 builds; its Opaque names the root of the position's value, built
+    // already (DECISIONS R5-M84).
     [Fact]
     public void UnsupportedFormsAreOpaqueAtOneRecord()
     {
         var c = Compile("struct Grid<length N>\n    public var cells: [N of i32] = [N of 7]\n    public init() => ()\n    public init(y: i32) => ()\n" +
-            "func f<length N>(a: i32, b: i32) -> i32\n    let c: [N of i32] = [N of (a + b)]\n    return b\nfunc g() -> i32 => missing\n" +
-            "func h<length N>(a: i32, c: bool) -> i32\n    defer\n        let d: [N of i32] = [N of a]\n    if c => return 1\n    return a\n" +
-            "func k() -> i32\n    let x = missing\n    return x\n");
+            "func f<I>(a: i32, values: [3 of i32], p: I) -> i32\n    I is PrimitiveInteger\n    let c = values[p]\n    return a\nfunc g() -> i32 => missing\n" +
+            "func h<I>(a: i32, c: bool, values: [3 of i32], q: I) -> i32\n    I is PrimitiveInteger\n    defer\n        let d = values[q]\n" +
+            "    if c => return 1\n    return a\nfunc k() -> i32\n    let x = missing\n    return x\n");
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         var bodies = program.Bodies.ToArray().Where(static x => x.Key.Decl?.Name is "f" or "g" or "h" or "k").ToDictionary(static x => x.Key.Decl!.Name);
-        var fill = bodies["f"];
-        Assert.True(fill.HasOpaque);
-        Assert.Equal([1, 2], fill.OpaqueRoots.ToArray());
-        Assert.Contains(fill.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
+        var position = bodies["f"];
+        Assert.True(position.HasOpaque);
+        Assert.Equal([3], position.OpaqueRoots.ToArray());
+        Assert.Contains(position.Blocks.ToArray(), static x => x.Terminator.Kind == MirTerminatorKind.Return);
         var records = program.Records.Where(static x => x.Subject.Module == 0).Select(x => c.SyntaxOf(x.Subject).ToString()).Order(StringComparer.Ordinal);
-        Assert.Equal(["[N of (a + b)]", "[N of a]"], records);
-        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "[N of a]"));
+        Assert.Equal(["p", "q"], records);
+        Assert.Equal(2, bodies["h"].OpaqueSites.ToArray().Count(x => c.SyntaxOf(x.Source).ToString() == "q"));
 
         Assert.Equal(2, program.Bodies.ToArray().Count(x => x.OpaqueSites.ToArray().Any(y => c.SyntaxOf(y.Source).ToString() == "[N of 7]")));
         Assert.Equal(HirOp.Error, HirTables.Op(c.SyntaxOf(bodies["g"].OpaqueSites[0].Source)));
         Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
+    }
+
+    // SPEC 4.3.3 (DECISIONS R4-M81): a fill, of a generic or a constant length, also 0, is one Fill of its literal's Type from its value's
+    // one acquisition (an argument read, a call's result, an inner aggregate's temp), with no record, no Opaque value and no copy of the
+    // value into a temp of its own (fail-before: a generic fill was an Unsupported record, a constant one L copies of such a temp).
+    [Theory]
+    [InlineData("[N of x]", "_3 = Fill(copy _1): [N of i32]")]
+    [InlineData("[(N + 1) of 0]", "_3 = Fill(const 0_i32): [(1 + N) of i32]")]
+    [InlineData("[4 of x]", "_3 = Fill(copy _1): [4 of i32]")]
+    [InlineData("[0 of x]", "_3 = Fill(copy _1): [0 of i32]")]
+    [InlineData("[0 of g()]", "_3 = Fill(move _4): [0 of i32]")]
+    [InlineData("[3 of (4, true)]", "_3 = Fill(move _4): [3 of (i32, bool)]")]
+    [InlineData("[2 of [3 of 9]]", "_4 = Fill(const 9_i32): [3 of i32]|_3 = Fill(move _4): [2 of [3 of i32]]")]
+    public void AFillIsOneAggregateOfItsValuesAcquisition(string literal, string fills)
+    {
+        // The parameter's Type is a signature length, whose ValidLength obligation SPEC 4.4.2 lets the body's (N + 1) rely on.
+        var c = Compile($"func g() -> i32 => 1\nfunc f<length N>(x: i32, s: [(N + 1) of i32]) -> i32\n    let a = {literal}\n    return 0\n");
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        Assert.False(body.HasOpaque);
+        var text = new StringBuilder();
+        MirDump.Write(body, text, program.Drops, body.Ordinal);
+        var aggregates = Regex.Matches(text.ToString(), @"(_\d+ = (?:Fill|FixedArray)\(.*?\): .*?) @\d+").Select(static x => x.Groups[1].Value);
+        Assert.Equal(fills.Split('|'), aggregates);
+        var statements = body.Statements.ToArray();
+        foreach (var fill in statements.Where(static x => x.Rvalue is { Kind: MirRvalueKind.Aggregate, Op: (byte)MirAggregateKind.Fill }))
+        {
+            var value = body.Operands[fill.Rvalue.Start];
+            Assert.DoesNotContain(statements, x => value.Kind != MirOperandKind.Const && x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use } &&
+                x.Place == value.Place);
+        }
+    }
+
+    // SPEC 4.3.3, IMPL 21.3.2 (DECISIONS R4-M81): a fill's MIR does not grow with its length (fail-before: [1048576 of 0@u8] had 1,048,580
+    // operands, [4 of 0@u8] 8).
+    [Fact]
+    public void AFillsMirDoesNotGrowWithItsLength()
+    {
+        int Operands(int length) => Compile($"func f() -> u8\n    let bytes: [{length} of u8] = [{length} of 0]\n    return bytes[3]\n").BuildMir()
+            .Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "f").Operands.Length;
+        Assert.Equal(Operands(4), Operands(1048576));
     }
 
     // SPEC 3.1.3, 3.8: a literal whose Type holds a Never element is built at its published Type, with no record and no validator finding:

@@ -20,7 +20,8 @@
 // a scalar is loaded and stored in its storage representation), or of a string constant to a string Place (its UTF-8 bytes a pooled
 // constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and Unit operands by
 // the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw pointer Cast by the conversion table
-// (FunctionCodegen.Casts), or of a Ref, or of a fixed-array Aggregate of such operands (FunctionCodegen.Rvalues; R5-M78, R5-M83); Goto,
+// (FunctionCodegen.Casts), or of a Ref, or of a fixed-array Aggregate of such operands, or of a Fill of one, a counted loop over its
+// instance's length (FunctionCodegen.Rvalues; R5-M78, R5-M83, R4-M81); Goto,
 // SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given
 // the call site's location text (SPEC 22.5.1); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written
 // yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; statics (C7b); a handle's or object borrow's Deref (C6a);
