@@ -123,6 +123,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--static-keys")
+        {
+            StaticKeyMeasurements.Run(timing: args.Length > 1 && args[1] == "timing");
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--compiler-pipeline-check")
         {
             CompilerPipelineMeasurements.Check();

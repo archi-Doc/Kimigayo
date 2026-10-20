@@ -55,7 +55,11 @@ public class InputDependentValueCallTest
 
     private const string IsNone = "\nmatch r\n    .Some(let item) => $abort(\"some\")\n    .None => ()";
 
-    // SPEC 15.4.3, 15.6.4: a result whose Origins are all static substitutes nothing, whatever the per-call inputs.
+    // SPEC 15.4.3, 15.6.4: a result whose Origins are all static substitutes nothing, whatever the per-call inputs. The Callable row's
+    // acceptance is the old path's verdict until R6-check: `apply(none)` borrows the Function Item temporary `none` for `f: ref/F`, SPEC
+    // 15.4.3 (1) binds the result to `f`, and SPEC 3.6 ends that temporary at its statement, so `match r` is invalid. A5 rejects it
+    // (a ComparisonLoanConflict_Kd row of R4's MIR difference ledger, which R4 reclassifies to class (a)); the default pipeline keeps D5's
+    // Function Item boundary (OwnershipBody.IsTemporaryOriginRoot).
     [Theory]
     [InlineData("Item", None + "let e = none\nlet r = e()" + IsNone)]
     [InlineData("Erased", None + "let e: () -> Option<ref/i32> = none\nlet r = e()" + IsNone)]
