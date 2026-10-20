@@ -187,7 +187,21 @@ public sealed partial class Binding
     }
 
     // SPEC 7.7.2: a use, in an omitted-list Closure, of a binding of an enclosing activation captures it as the Closure's environment
-    // binding; null when no environment holds it (a named function, an explicit list, or a binding Capture refuses).
-    private BindingSymbol? CaptureOuterUse(BindingSymbol symbol, BindingScope scope)
-        => scope.Function is { IsAnonymous: true, Captures: null } closure ? this.Capture(closure, symbol, this.scopes[closure]) : null;
+    // binding; null when no environment holds it (a named function, an explicit list, a binding Capture refuses, or a value that carries
+    // the helper borrow, whose use fails as a contextual binding's does, SPEC 16.3.1).
+    private BindingSymbol? CaptureOuterUse(Koto use, BindingSymbol symbol, BindingScope scope)
+        => scope.Function is { IsAnonymous: true, Captures: null } closure && !this.FailHelperUse(closure, symbol, use)
+            ? this.Capture(closure, symbol, this.scopes[closure]) : null;
+
+    // SPEC 16.3.1: an omitted list's use of a value that carries the helper borrow fails before the Closure's environment holds it.
+    private bool FailHelperUse(FunctionKoto closure, BindingSymbol source, Koto use)
+    {
+        if (this.HelperCarrier(closure, source) is not { } helper)
+        {
+            return false;
+        }
+
+        this.FailExplained(ref this.captureFailures, use, BindingFailure.Capture, this.HelperCaptureFact(use.Span, source, helper));
+        return true;
+    }
 }

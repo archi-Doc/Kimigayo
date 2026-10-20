@@ -332,6 +332,11 @@ public sealed partial class Binding
                     return this.FailCaptureEntry(function, repeats, capture, BindingFailure.Capture, source.Type ?? BoundType.Unit, source);
                 }
 
+                if (source is not null && this.HelperCarrier(function, source) is { } helper)
+                {
+                    return this.FailHelperEntry(function, repeats, capture, source, helper); // SPEC 16.3.1: nor its helper borrow.
+                }
+
                 if (source is null || this.Capture(function, source, scope, capture) is not { } environment)
                 {
                     // An entry whose binding failed derives from that failure and adds nothing to the repeats.
