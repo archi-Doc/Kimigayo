@@ -9,10 +9,10 @@ namespace Kimi.Compiler.Backend;
 // an enum places an i32 tag before the union of its Case payloads. The walk (DECISIONS R5-M37) places a Type with a budget of the
 // levels left in the 64-level window: a Type within its budget gets one complete entry, its own answer at every budget; a deeper one
 // gets one exhausted entry per budget, holding its first CLayout in the window or its oversize, so every answer is a function of the Type
-// alone and placement stays linear over shared parts. Each placement is measured in 128 bits before one decision (Fold.Decide) owns its
-// outcome, the own size included; every entry keeps its size, exact when every part was laid out within the window and resolved by
-// Binding, else a lower bound (such parts add no bytes; every arrangement is monotone in its parts), Over for any size above 2^63 - 1
-// (DECISIONS R5-M52). Each representation has one record within a program version.
+// alone and placement stays linear over shared parts. Each placement is measured in 128 bits before one decision (Fold.Decide, in
+// Layout.Decision.cs) owns its outcome, the own size included; every entry keeps its size, exact when every part was laid out within
+// the window and resolved by Binding, else a lower bound (such parts add no bytes; every arrangement is monotone in its parts), Over
+// for any size above 2^63 - 1 (DECISIONS R5-M52). Each representation has one record within a program version.
 internal sealed partial class Layout
 {
     // IMPL 21.3.2: the generation limit of a size, offset or element count, which the LLVM text writes as a signed 32-bit number.
@@ -225,9 +225,9 @@ internal sealed partial class Layout
         return fold.Laid(this.Record((int)size, alignment, []), size, alignment);
     }
 
-    // An enum: an i32 tag at offset 0, then the union of its Case payload Tuples, aligned for the most aligned payload (IMPL 21.1.3:
-    // implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS). Payloads Binding did not substitute make
-    // it Rejected.
+    // An enum: its tag (Tag, an i32 holding the Case ordinal) at offset 0, then the union of its Case payload Tuples, aligned for the most
+    // aligned payload (IMPL 21.1.3: implementation-defined). The nonnull Option is laid out so too until PLAN U8 (STATUS). Payloads
+    // Binding did not substitute make it Rejected.
     private Entry PlaceEnum(BoundType type, int budget)
     {
         if (AdtDef.CaseTypes(type) is not { } payloads)
@@ -245,19 +245,23 @@ internal sealed partial class Layout
             payload = UInt128.Max(payload, part.Size);
         }
 
-        var offset = Align(4, alignment);
-        var size = Align(offset + Align(payload, alignment), Math.Max(4, alignment));
-        if (fold.Decide(budget, size, Math.Max(4, alignment), Outcome.Ok) is { } decided)
+        var tag = Tag.Layout;
+        var offset = Align((uint)tag.Size, alignment);
+        var whole = Math.Max(tag.Alignment, alignment);
+        var size = Align(offset + Align(payload, alignment), whole);
+        if (fold.Decide(budget, size, whole, Outcome.Ok) is { } decided)
         {
             return decided;
         }
 
         var local = this.scratch;
         local.Begin();
-        local.Write("{ i32, ");
+        local.Write("{ ");
+        local.Write(tag.StorageType);
+        local.Write(", ");
         local.WriteBytes(alignment, (long)Align(payload, alignment));
         local.Write(" }");
-        return fold.Laid(this.Record((int)size, Math.Max(4, alignment), [0, (int)offset]), size, Math.Max(4, alignment));
+        return fold.Laid(this.Record((int)size, whole, [0, (int)offset]), size, whole);
     }
 
     // Completes the key written as the storage text and returns the representation's one record, created at its first use.
@@ -287,108 +291,8 @@ internal sealed partial class Layout
         return record;
     }
 
-    // A placed Type's answer, placement height (an exhausted entry's is its budget + 1), size and alignment. Invariants: Alignment is 0
-    // exactly when the size is not exact (a lower bound, or Over), and a measure reads it only through Math.Max(Alignment, 1); Size is Over
-    // exactly when the answer is Oversized or a CLayout over the bound, the one fact Result.Oversized publishes.
-    private readonly record struct Entry(Result Result, int Height, ulong Size, int Alignment)
-    {
-        internal bool Exact => this.Alignment > 0;
-
-        // The one construction of an entry: Result.Oversized derives from the size.
-        internal static Entry Of(Outcome outcome, ValueLowering? value, BoundType? instance, int height, ulong size, int alignment)
-            => new(new(outcome, value, instance, size == Over), height, size, alignment);
-    }
-
     // An exhausted entry's key: the Type, by reference (BoundType's identity), and its remaining budget.
     private readonly record struct Window(BoundType Type, int Budget);
-
-    // One placement's parts folded in placement order and its one decision, the owner of the precedence (DECISIONS R5-M52, amending
-    // R5-M37): the first CLayout in the window, then Oversized (a size over 2^63 - 1, a lower bound sufficing, or an oversized part), then
-    // DepthLimit when a part reaches past the budget, then the first limit (the parts', then the Type's own count), then the first Rejected,
-    // then the Type's own size.
-    private struct Fold
-    {
-        private readonly BoundType type;
-        private BoundType? clayout;
-        private BoundType? rejected;
-        private Outcome limit;
-        private int height;
-        private bool exact;
-        private bool over;
-
-        internal Fold(BoundType type) => (this.type, this.exact) = (type, true);
-
-        // Folds a part's entry and returns it; a CLayout part names its own instance, and any other exactly zero-sized one, whatever its
-        // outcome, makes a C-layout struct CLayout (KC7).
-        internal Entry Add(Entry part, bool cField)
-        {
-            this.height = Math.Max(this.height, part.Height);
-            this.exact &= part.Exact;
-            this.over |= part.Size == Over;
-            var result = part.Result;
-            if (result.Outcome == Outcome.CLayout)
-            {
-                this.clayout ??= result.Instance;
-            }
-            else if (cField && part.Exact && part.Size == 0)
-            {
-                this.clayout ??= this.type;
-            }
-            else if (result.Outcome == Outcome.Rejected)
-            {
-                this.rejected ??= result.Instance;
-            }
-            else if (result.Outcome is Outcome.SizeLimit or Outcome.CountLimit && this.limit == Outcome.Ok)
-            {
-                this.limit = result.Outcome;
-            }
-
-            return part;
-        }
-
-        // A stored Type Binding did not resolve: nothing placed, no level, no known size.
-        internal void Reject() => (this.rejected, this.exact) = (this.rejected ?? this.type, false);
-
-        // The decided entry of parts placed with `budget` levels left and measured at `size`, or null when every part is laid out and the
-        // Type's own size admits its record.
-        internal readonly Entry? Decide(int budget, UInt128 size, int alignment, Outcome ownCount)
-        {
-            var stored = this.over || size >= Over ? Over : (ulong)size;
-            var known = this.exact && stored < Over ? alignment : 0;
-            var height = this.height > budget ? budget + 2 : this.height + 1;
-            if (this.clayout is not null)
-            {
-                return Entry.Of(Outcome.CLayout, null, this.clayout, height, stored, known);
-            }
-
-            if (stored == Over)
-            {
-                return Entry.Of(Outcome.Oversized, null, null, height, Over, 0);
-            }
-
-            if (this.height > budget)
-            {
-                return Entry.Of(Outcome.DepthLimit, null, null, height, stored, 0);
-            }
-
-            var limited = this.limit == Outcome.Ok ? ownCount : this.limit;
-            if (limited != Outcome.Ok)
-            {
-                return Entry.Of(limited, null, null, height, stored, known);
-            }
-
-            if (this.rejected is not null)
-            {
-                return Entry.Of(Outcome.Rejected, null, this.rejected, height, stored, 0);
-            }
-
-            return size > MaximumSize ? Entry.Of(Outcome.SizeLimit, null, null, height, stored, known) : null;
-        }
-
-        // The record the Type's own size admitted.
-        internal readonly Entry Laid(ValueLowering record, UInt128 size, int alignment)
-            => Entry.Of(Outcome.Ok, record, null, this.height + 1, (ulong)size, alignment);
-    }
 
     // The placement buffers: the parts of the placements in progress, innermost last, and one record's offsets and key, written
     // after its parts are laid out.
