@@ -4528,3 +4528,50 @@ structure is recorded here by the unit that first implements it.
   (`LlvmEmitter.cs:380`, `LlvmEmitter.Defaults.cs:15`; a search of `src` finds no other), so R6-gen's G7 deletes
   `OwnershipAnalysis.AnalyzeInstance` (`Analysis/OwnershipAnalysis.Instances.cs`) with them. Rejected: keeping it until R6-check
   (once the old Emission is gone nothing calls it, and acceptance never read it).
+- **R5-M89 The call rows of MIR code generation, the signature owner and copy slots** (2026-10-21, C lane; plan C3a, package C 3.2 I8,
+  3.3 and 3.9, plan 5.6.2, IMPL 21.3.1 and 21.4.7, SPEC 3.5, 14.10.3 and 22.6; the planning session's decisions on C3a's design; under
+  R5-M65, R5-M77 and R5-M87)
+  - Signature owner (a responsibility moved from `FunctionCodegen.LayOut` to `ModuleCodegen`): `ModuleCodegen.Signature(item)` gives a
+    body item's signature from its own body, local 0's and its Arg locals' Types through `TypeOf(item, ·)` in its kind's order and the
+    caller-location flag (`KimiLibraryCatalog.RequiresCallerLocation`), through `Abi.Of` under the internal convention, memoized while
+    `Abi.Matches` holds; the definition and every call read the one `FunctionAbi`, so a caller may be written before its callee.
+  - Calls (I8): a Fn callee by the collector's target at the call, read by one forward cursor (`Target`, also Drop Keep's, which replaces
+    `Drops`' binary search: the targets are in location order and the frame writes the sites in that order); a body item is called as
+    `__kimi_f<item>` under its signature, each operand at its parameter (a Value in its computation representation, a bool narrowed; a
+    string borrow with its attributes; nothing for a zero-sized parameter; an OwnedSlot a Move's Place itself or a copy slot), the
+    destination's address as the result slot, a Value result widened and put into the destination, then `br` to the target or
+    `unreachable` after a call without one (SPEC 14.10.3). One call writer (`WriteCall`) writes the legacy rows', the glue items' and
+    the module entry's calls too (`__kimi_start` calls its startup root through it, `WriteEntryCall`).
+  - Copy slots (SPEC 3.5 with IMPL 21.3.1, the planning session's decision): a Copy of a value in memory (R5-M87's copy form) that a
+    runtime-reached Call passes by pointer, which the callee owns from the call on, is copied into a copy slot `%c<k>`, an aligned
+    alloca of the caller's entry block, so the callee never sees its source change (`f(s, s@uniq)`); one pre-scan of the reached
+    blocks' Calls, after `MirReach.Walk` and before the prologue, numbers them. A string constant passed to a string parameter is
+    written into a copy slot as its record (the Static release kind, so the callee's drop releases nothing); its store takes an address
+    since bp2 (`Text`, with the place writer's stores). No builder change: a Copy argument stays a Copy operand.
+  - Disjointness (R5-M87's claim across calls): the result slot is the call's destination, never a pointer argument. `MirBuilder.Invoke`
+    is the one Call constructor with a destination (the Fail intrinsic's is Unwritten); an assignment's call goes through
+    `MirBuilder.Replace`'s fresh temp, a Move argument's Place is moved out and a Copy's is a copy slot (searched over `Mir/Build`'s
+    `MirTerminator.Call` sites; `AResultSlotIsNeverAnArgumentsPointer` and the native `CallSlots`).
+  - Body kinds: `FunctionCodegen.OrderOf`, the one switch over the closed `MirBodyKind` vocabulary that `Write`, `LayOut` and
+    `Signature` read, gives the order of a kind's Arg locals: Fn, Getter, Setter and Test the receiver first (`MirCallee.Position`), a
+    DefaultTemplate its prepared inputs in slot order (plan 5.6.2), so a recursive default calls its template; Closure (C5a) and
+    StaticInit (C7b) bodies stay located. `ArgumentLocal` gives a definition and its calls the same order. No MIR change.
+  - `#LibraryImport` (SPEC 22.6, IMPL 21.4.7; no plan unit named the row, `ForeignEmissionTest`'s rows): a Fn callee without a target
+    that is one of `Binding.LibraryImports` is called by its C signature (`Abi.Of` under the C convention), named by
+    `LlvmModuleText.ExternalName`, one signature per symbol, and its call requests the declaration (`ModuleCodegen.Import`, design 2's
+    request form, R5-M87), which the frame writes once per symbol through `WriteExternals`, skipping the names the runtime declares.
+    Any other Fn callee without a target is `InternalInvariant_Kd`.
+  - Departure (for the owner's departures list at R5's group review): the old generator also declares a program's own imports that no
+    call reaches (a Library import only when used); the module declares what its definitions call, so an uncalled import has no
+    declaration, and `ForeignEmissionTest.PointerSignaturesDeclareOpaquePointers` and `RebindingWithoutTheImportForgetsItsDeclaration`,
+    which assert one, stay pending; declaring every validated import would add the Library's `QueryPerformance*` imports to every
+    module (`TimeLibraryTest.UnusedClockHasNoNativeReferencesOrInitializer`).
+  - Restructure: `FunctionCodegen.Rvalues.cs` was restructured in this unit (bp2, `FunctionCodegen.Aggregates.cs`), not by C5a, because
+    the string record's store changed. Header correction: TypeToken constants are intrinsic operands (C6a's TypeTest, C9a), not
+    C3a's. R5-M87's native multi-view body from `tests/mir/cases.kimi` is `CallViews`.
+  - Left as located `Unsupported_Kd`: a requirement's call and a caller-location callee (C3b); a value's call and FnItem constants
+    (C5a); a virtual slot (C6c); an intrinsic (C8a, C10a); the Builtin shims (C8f, C9b); property witnesses (C3c).
+  - Rejected: a signature from the call's operand Types (a second copy of the frame's rule; their Origins differ); the MIR builder
+    securing every Copy argument of a slot Type (a held builder change for an ABI concern); passing a Copy's source address (wrong code
+    under `f(s, s@uniq)`); a MIR member or a clause in `LayOut` for a template's order (the body kind is the published fact); the old
+    generator's split between the program's and the Library's imports (a consumer deciding by a declaration's source what a call decides).
