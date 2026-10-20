@@ -32,6 +32,7 @@
 //   sed '/^var verbose = /a if (args.Contains("-f4loans")) return F4Loans.Run();' A5RulesPrototype.cs > proto.cs
 //   cat origins.cs >> proto.cs && dotnet run proto.cs -- -f4loans
 using System.Text;
+using System.Text.Json;
 
 return F4.Run(args);
 // ==== end of entry (the -loans recipe drops the lines above) ====
@@ -234,23 +235,77 @@ static class F4
     sealed class Oracle((string A, string B)[] prems)
     {
         readonly Dictionary<string, HashSet<string>> rev = new();
-        readonly ILookup<string, string> longer = prems.ToLookup(p => p.B, p => p.A);
+        readonly ILookup<string, string> longer = prems.ToLookup(p => Canon(p.B), p => Canon(p.A));
+        readonly HashSet<string> expressions = prems.SelectMany(p => new[] { Canon(p.A), Canon(p.B) })
+            .SelectMany(x => x.Split('&').Append(x)).Append("static").ToHashSet();
 
         HashSet<string> Rev(string t) // the atoms a premise chain proves to outlive t
         {
             if (rev.TryGetValue(t, out var s)) return s;
-            s = new() { t };
-            for (var work = new Queue<string>([t]); work.Count > 0;)
-                foreach (var a in longer[work.Dequeue()]) { W++; if (s.Add(a)) work.Enqueue(a); }
+            s = new() { t, "static" };
+            var meets = expressions.Where(x => x.Contains('&')).ToDictionary(x => x, x => x.Split('&'));
+            var containing = meets.SelectMany(m => m.Value.Select(o => (Operand: o, Meet: m.Key))).ToLookup(x => x.Operand, x => x.Meet);
+            var work = new Queue<string>(s);
+            void Add(string x) { if (s.Add(x)) work.Enqueue(x); }
+            while (work.Count > 0)
+            {
+                var x = work.Dequeue();
+                foreach (var a in longer[x]) { W++; Add(Canon(a)); }
+                if (meets.TryGetValue(x, out var operands)) foreach (var operand in operands) { W++; Add(operand); }
+                foreach (var meet in containing[x]) { W += meets[meet].Length; if (meets[meet].All(s.Contains)) Add(meet); }
+            }
             return rev[t] = s;
         }
 
         public bool Entails(string f, string t)
         {
+            f = Canon(f); t = Canon(t);
             if (f == t || f == "static") return true;
-            if (f.Contains('&')) return f.Split('&').All(o => Entails(o, t));   // (a and b) outlives c exactly when both do
-            if (t.Contains('&')) return t.Split('&').Any(o => Entails(f, o));   // x outlives a proves x outlives (a and b)
-            return Rev(t).Contains(f) || Rev("static").Contains(f);             // a outlives static proves a equal to static
+            var added = false;
+            foreach (var e in new[] { f, t }.SelectMany(x => x.Split('&').Append(x))) added |= expressions.Add(e);
+            if (added) rev.Clear();
+            return Rev(t).Contains(f);
+        }
+    }
+
+    // Independent finite reference: saturate a relation matrix, not reverse closures or Oracle calls.
+    sealed class PremiseReference((string A, string B)[] premises)
+    {
+        readonly HashSet<string> expressions = premises.SelectMany(p => new[] { Canon(p.A), Canon(p.B) })
+            .SelectMany(x => x.Split('&').Append(x)).Append("static").ToHashSet();
+        Dictionary<string, int> index;
+        bool[,] relation;
+        public bool Entails(string from, string to)
+        {
+            from = Canon(from); to = Canon(to);
+            bool added = false;
+            foreach (string term in new[] { from, to }.SelectMany(x => x.Split('&').Append(x))) added |= expressions.Add(term);
+            if (!added && relation is not null) return relation[index[from], index[to]];
+            var names = expressions.ToArray();
+            index = names.Select((x, i) => (x, i)).ToDictionary(x => x.x, x => x.i);
+            int n = names.Length;
+            relation = new bool[n, n];
+            var meets = Enumerable.Range(0, n).Where(i => names[i].Contains('&'))
+                .ToDictionary(i => i, i => names[i].Split('&').Select(x => index[x]).ToArray());
+            for (int i = 0; i < n; i++) { relation[i, i] = true; relation[index["static"], i] = true; }
+            foreach (var p in premises) relation[index[Canon(p.A)], index[Canon(p.B)]] = true;
+            foreach (var m in meets) foreach (int operand in m.Value) relation[operand, m.Key] = true;
+            bool changed;
+            do
+            {
+                changed = false;
+                for (int a = 0; a < n; a++)
+                    for (int b = 0; b < n; b++)
+                        if (relation[a, b])
+                            for (int c = 0; c < n; c++)
+                                if (!relation[a, c] && relation[b, c]) { relation[a, c] = true; changed = true; }
+                foreach (var m in meets)
+                    for (int target = 0; target < n; target++)
+                        if (!relation[m.Key, target] && m.Value.All(x => relation[x, target]))
+                        { relation[m.Key, target] = true; changed = true; }
+            }
+            while (changed);
+            return relation[index[from], index[to]];
         }
     }
 
@@ -361,7 +416,7 @@ static class F4
     // SPEC 15.6.5's definition, path by path: from each end (fixed or finite) through inner nodes to every end.
     static List<Rep> Reference(Graph g)
     {
-        var oracle = new Oracle(g.Prems.ToArray());
+        var oracle = new PremiseReference(g.Prems.ToArray());
         var reps = new List<Rep>();
         int n = g.Name.Count;
         var outEdges = g.E.ToLookup(e => e.A);
@@ -393,6 +448,7 @@ static class F4
     // SPEC 15.3.6 with S3: a variable's bounds are followed through other (inferred) nodes to fixed or finite Origins; a covariant
     // class takes the meet of its upper bounds, a contravariant one the lower bound that outlives every other, an invariant one an end
     // it is equal to; otherwise it has no candidate and stays a local region. CandDecl: the declaration's bounds only (no later use).
+    // Historical OJ5 comparison only. The selected A2 common calculation below never calls this replacement-based experiment.
     static Dictionary<string, string> Candidates(Body b, Graph g, Cfg cfg, List<string> noCandidate)
     {
         var oracle = new Oracle(g.Prems.ToArray());
@@ -455,6 +511,565 @@ static class F4
         }
 
         return subst;
+    }
+
+    // ---------------------------------------------------------------------------------------------------------------- selected A2 bounded common model
+    // Hand-authored scoped equations only. Inputs: canonical expressions, classified atoms, occurrence rows, established aliases,
+    // complete independent premises and requested variances. Outputs: availability, component candidate/consistency, retained
+    // checks and result-formal definitions. No compiler/source adapter, Loan decision or source-fit premise participates in inference.
+    sealed class Expressions
+    {
+        public readonly List<(string Label, int[] Operands)> Items = new() { ("static", []) };
+        readonly Dictionary<string, int> atoms = new() { ["static"] = 0 };
+        readonly Dictionary<string, int> meets = new();
+        public int Atom(string label)
+        {
+            if (atoms.TryGetValue(label, out int id)) return id;
+            atoms[label] = id = Items.Count; Items.Add((label, [])); return id;
+        }
+        public int[] Leaves(int id) => Items[id].Operands.Length == 0 ? [id] : Items[id].Operands;
+        public int Meet(IEnumerable<int> terms)
+        {
+            var operands = terms.SelectMany(Leaves).Distinct().Order().ToArray();
+            if (operands.Length == 0) throw new InvalidOperationException("Empty meet is not a candidate");
+            if (operands.Length == 1) return operands[0];
+            string key = string.Join(",", operands);
+            if (meets.TryGetValue(key, out int id)) return id;
+            meets[key] = id = Items.Count; Items.Add((null, operands)); return id;
+        }
+        // Text is only the old finite graph adapter's encoding of canonical integer identities, never parsed display names.
+        public string Key(int id) => string.Join('&', Leaves(id).Select(x => x == 0 ? "static" : $"o{x:D5}"));
+        public object Snapshot() => Items.Select((e, id) => new { id, label = e.Label, operands = e.Operands }).ToArray();
+    }
+
+    sealed record Equation(int Id, int A, int B, bool Equal = false, ulong Cases = ulong.MaxValue);
+    sealed record Slot(string Definition, string Position, int Source, char Variance);
+    sealed record Choice(int[] Members, char Variance, string Rule, int Candidate, bool Consistent, int[] Upper, int[] Lower, int[] Fixing, int[] Occurrences);
+    sealed record Formal(string Definition, string Position, int Q, int Equation, string[] CallerImages);
+    sealed record ModelAnswer(bool Available, string Reason, Choice[] Choices, Equation[] Original, Equation[] Checks,
+        Formal[] Formals, string[] OriginalFailures, string[] CheckFailures, bool? Valid);
+
+    sealed class Model(string id, Expressions expressions = null)
+    {
+        public readonly string Id = id;
+        public readonly Expressions X = expressions ?? new();
+        public readonly Dictionary<int, Kind> Kinds = new() { [0] = Kind.Fixed };
+        public readonly Dictionary<int, List<char>> Variances = new();
+        public readonly Dictionary<int, int> Aliases = new();
+        public readonly HashSet<int> Boundary = new() { 0 };
+        public readonly List<Equation> Rows = new(), Premises = new();
+        public readonly List<Slot> Slots = new();
+        public int Atom(string name, Kind kind = Kind.Fixed)
+        {
+            int x = X.Atom(name); Kinds[x] = kind;
+            if (kind == Kind.Fixed) Boundary.Add(x);
+            return x;
+        }
+        public int Variable(string name, params char[] variances)
+        {
+            int x = Atom(name, Kind.Inferred);
+            if (variances.Length > 0) Variances[x] = variances.ToList();
+            return x;
+        }
+        public Model Rel(int a, int b, bool equality = false, ulong cases = ulong.MaxValue)
+        { Rows.Add(new(Rows.Count, a, b, equality, cases)); return this; }
+        public Model Premise(int a, int b, bool equality = false, ulong cases = ulong.MaxValue)
+        { Premises.Add(new(Premises.Count, a, b, equality, cases)); return this; }
+        public Model Result(int source, char variance = '+', string definition = "f", string position = "result")
+        { Slots.Add(new(definition, position, source, variance)); return this; }
+        public object Snapshot() => new { Id, expressions = X.Snapshot(), kinds = Kinds.Select(x => new { id = x.Key, kind = x.Value.ToString() }),
+            variance = Variances.Select(x => new { id = x.Key, positions = x.Value }), aliases = Aliases.Select(x => new { from = x.Key, to = x.Value }),
+            boundary = Boundary.Order().ToArray(), rows = Rows, premises = Premises, slots = Slots };
+    }
+
+    sealed class Scoped(Model model, int view)
+    {
+        public readonly Model Model = model;
+        public readonly int View = view;
+        public readonly List<Equation> Rows = new(), Premises = new();
+        public readonly Dictionary<int, int> Substitution = new();
+        public string Unavailable;
+        public bool Inferred(int x) => model.X.Items[x].Operands.Length == 0 && model.Kinds[x] == Kind.Inferred;
+        public bool Fixed(int x) => model.X.Leaves(x).All(a => model.Kinds[a] == Kind.Fixed);
+        public int Apply(int x)
+        {
+            var pending = new HashSet<int>();
+            int Visit(int term)
+            {
+                if (Substitution.TryGetValue(term, out int known)) return known;
+                if (!pending.Add(term)) throw new InvalidOperationException($"unresolved-alias-cycle:{term}");
+                int value = model.Aliases.TryGetValue(term, out int alias) ? Visit(alias)
+                    : model.X.Items[term].Operands.Length > 0 ? model.X.Meet(model.X.Leaves(term).Select(Visit)) : term;
+                pending.Remove(term); Substitution[term] = value; return value;
+            }
+            return Visit(x);
+        }
+        public void Prepare()
+        {
+            try
+            {
+                foreach (var row in model.Rows.Where(r => (r.Cases >> view & 1) != 0)) Rows.Add(row with { A = Apply(row.A), B = Apply(row.B) });
+                foreach (var p in model.Premises.Where(r => (r.Cases >> view & 1) != 0)) Premises.Add(p with { A = Apply(p.A), B = Apply(p.B) });
+                foreach (var v in model.Variances.Keys) Apply(v);
+                foreach (var slot in model.Slots) Apply(slot.Source);
+            }
+            catch (InvalidOperationException e) { Unavailable = e.Message; return; }
+            var unresolved = Rows.Concat(Premises).SelectMany(r => new[] { r.A, r.B })
+                .Where(x => model.X.Items[x].Operands.Length > 0 && model.X.Leaves(x).Any(a => model.Kinds[a] == Kind.Inferred)).Distinct().ToArray();
+            if (unresolved.Length > 0) Unavailable = "unresolved-variable-in-meet:" + string.Join(",", unresolved);
+            else if (Premises.Any(p => !Fixed(p.A) || !Fixed(p.B))) Unavailable = "independent-premise-not-fixed";
+        }
+        public (int A, int B, int Occurrence)[] Edges() => Rows.SelectMany(r => r.Equal
+            ? new[] { (r.A, r.B, r.Id), (r.B, r.A, r.Id) } : new[] { (r.A, r.B, r.Id) }).ToArray();
+        public (string A, string B)[] ProofPremises() => Premises.SelectMany(p => p.Equal
+            ? new[] { (Model.X.Key(p.A), Model.X.Key(p.B)), (Model.X.Key(p.B), Model.X.Key(p.A)) }
+            : new[] { (Model.X.Key(p.A), Model.X.Key(p.B)) }).ToArray();
+        public bool? Outlives(int a, int b, Func<string, string, bool> proof)
+        {
+            if (a == b) return true;
+            if (Fixed(a) && Fixed(b)) return proof(Model.X.Key(a), Model.X.Key(b));
+            // Only a body's own finite region has this containment order. Distinct finite regions have no invented order.
+            if (Fixed(a) && Model.X.Leaves(b).All(x => Model.Kinds[x] == Kind.FiniteBody)) return true;
+            if (Model.X.Leaves(a).Any(x => IsFinite(Model.Kinds[x])) && Fixed(b)) return false;
+            return null;
+        }
+    }
+
+    static Choice[] CommonCandidates(Scoped s)
+    {
+        var m = s.Model; var edges = s.Edges();
+        var variables = m.Kinds.Keys.Where(x => s.Inferred(x) && s.Apply(x) == x).ToArray();
+        var graph = new Graph();
+        foreach (int x in variables) graph.Node(m.X.Key(x), Kind.Inferred);
+        foreach (var e in edges)
+        { int a = graph.Node(m.X.Key(e.A), s.Inferred(e.A) ? Kind.Inferred : Kind.Fixed), b = graph.Node(m.X.Key(e.B), s.Inferred(e.B) ? Kind.Inferred : Kind.Fixed); graph.E.Add((a, b, e.Occurrence.ToString(), false)); }
+        var adj = Enumerable.Range(0, graph.Name.Count).Select(_ => new List<int>()).ToArray();
+        foreach (var e in graph.E) adj[e.A].Add(e.B);
+        var components = Scc(graph, adj);
+        var oracle = new Oracle(s.ProofPremises());
+        bool? Out(int a, int b) => s.Outlives(a, b, oracle.Entails);
+        var choices = new List<Choice>();
+        foreach (var component in components.Members)
+        {
+            var members = variables.Where(x => component.Contains(graph.Ix[m.X.Key(x)])).Order().ToArray();
+            var contributions = m.Variances.Where(x => members.Contains(s.Apply(x.Key))).SelectMany(x => x.Value).Distinct().ToArray();
+            if (contributions.Length == 0) continue;
+            char variance = contributions.Length == 1 ? contributions[0] : '=';
+            var evidence = new HashSet<int>();
+            int[] Bound(bool forward)
+            {
+                var seen = members.ToHashSet(); var queue = new Queue<int>(members); var terminals = new HashSet<int>();
+                while (queue.Count > 0)
+                {
+                    int x = queue.Dequeue();
+                    foreach (var e in edges.Where(e => (forward ? e.A : e.B) == x))
+                    {
+                        W++; evidence.Add(e.Occurrence); int next = forward ? e.B : e.A;
+                        if (!s.Inferred(next)) terminals.Add(next);
+                        else if (seen.Add(next)) queue.Enqueue(next);
+                    }
+                }
+                return terminals.Order().ToArray();
+            }
+            var upper = Bound(false); var lower = Bound(true); var fixing = upper.Intersect(lower).Order().ToArray();
+            int candidate = -1; bool consistent = true; string rule = "NoCandidate";
+            if (fixing.Length > 0)
+            {
+                var comparisons = fixing.SelectMany(a => fixing.Select(b => Out(a, b))).ToArray();
+                if (comparisons.Contains(null)) { s.Unavailable = "unproved-finite-equality"; return []; }
+                consistent = comparisons.All(x => x == true);
+                rule = consistent ? "Equality" : "InconsistentEquality";
+                if (consistent) candidate = fixing[0];
+            }
+            else if (variance == '+' && upper.Length > 0) { candidate = m.X.Meet(upper); rule = "Covariant"; }
+            else if (variance == '-' && lower.Length > 0)
+            {
+                var principals = lower.Where(a => lower.All(b => Out(a, b) == true)).ToArray();
+                if (principals.Length > 0) { candidate = principals[0]; rule = "Contravariant"; }
+                else if (lower.Any(a => lower.All(b => Out(a, b) != false)))
+                { s.Unavailable = "unproved-finite-principal"; return []; }
+            }
+            else if (variance == '=' && upper.Length > 0 && lower.Length > 0)
+            {
+                var all = upper.Concat(lower).Distinct().Order().ToArray();
+                var comparisons = all.SelectMany(a => all.Select(b => Out(a, b))).ToArray();
+                if (comparisons.Contains(null)) { s.Unavailable = "unproved-finite-equality"; return []; }
+                if (comparisons.All(x => x == true)) { candidate = all[0]; rule = "Invariant"; }
+            }
+            choices.Add(new(members, variance, rule, candidate, consistent, upper, lower, fixing, evidence.Order().ToArray()));
+        }
+        return choices.OrderBy(c => c.Members[0]).ToArray();
+    }
+
+    // Reference candidates: full variable-intermediate relation matrices, no Tarjan, CommonCandidates or Oracle.
+    static Choice[] CandidateReference(Scoped s)
+    {
+        var m = s.Model; var edges = s.Edges();
+        var nodes = m.Kinds.Keys.Where(x => s.Apply(x) == x).Concat(edges.SelectMany(e => new[] { e.A, e.B })).Distinct().Order().ToArray();
+        var index = nodes.Select((x, i) => (x, i)).ToDictionary(x => x.x, x => x.i);
+        int n = nodes.Length; var reach = new bool[n, n];
+        for (int i = 0; i < n; i++) reach[i, i] = true;
+        foreach (var e in edges) reach[index[e.A], index[e.B]] = true;
+        for (int via = 0; via < n; via++)
+            if (s.Inferred(nodes[via]))
+                for (int a = 0; a < n; a++)
+                    for (int b = 0; b < n; b++) reach[a, b] |= reach[a, via] && reach[via, b];
+        var proof = new PremiseReference(s.ProofPremises());
+        bool? Order(int a, int b) => s.Outlives(a, b, proof.Entails);
+        var answers = new List<Choice>(); var visited = new HashSet<int>();
+        foreach (int root in nodes.Where(s.Inferred))
+        {
+            if (visited.Contains(root)) continue;
+            var group = nodes.Where(x => s.Inferred(x) && reach[index[root], index[x]] && reach[index[x], index[root]]).ToArray();
+            visited.UnionWith(group);
+            var variances = m.Variances.Where(x => group.Contains(s.Apply(x.Key))).SelectMany(x => x.Value).Distinct().ToArray();
+            if (variances.Length == 0) continue;
+            char variance = variances.Length == 1 ? variances[0] : '=';
+            var upper = nodes.Where(x => !s.Inferred(x) && group.Any(v => reach[index[x], index[v]])).ToArray();
+            var lower = nodes.Where(x => !s.Inferred(x) && group.Any(v => reach[index[v], index[x]])).ToArray();
+            var fixing = nodes.Where(x => upper.Contains(x) && lower.Contains(x)).ToArray();
+            var occurrences = edges.Where(e =>
+                (s.Inferred(e.A) && group.Any(v => reach[index[v], index[e.A]])) ||
+                (s.Inferred(e.B) && group.Any(v => reach[index[e.B], index[v]]))).Select(e => e.Occurrence).Distinct().Order().ToArray();
+            int chosen = -1; bool consistent = true; string rule = "NoCandidate";
+            if (fixing.Length != 0)
+            {
+                bool uncertain = false;
+                foreach (int a in fixing) foreach (int b in fixing)
+                { var relation = Order(a, b); uncertain |= relation is null; consistent &= relation == true; }
+                if (uncertain) { s.Unavailable = "unproved-finite-equality"; return []; }
+                rule = consistent ? "Equality" : "InconsistentEquality";
+                if (consistent) chosen = fixing.Min();
+            }
+            else switch (variance)
+            {
+                case '+':
+                    if (upper.Length > 0) { chosen = m.X.Meet(upper); rule = "Covariant"; }
+                    break;
+                case '-':
+                    bool possible = false;
+                    foreach (int a in lower)
+                    {
+                        var relations = lower.Select(b => Order(a, b)).ToArray();
+                        if (relations.All(x => x == true)) { chosen = a; rule = "Contravariant"; break; }
+                        possible |= relations.All(x => x != false);
+                    }
+                    if (chosen < 0 && possible) { s.Unavailable = "unproved-finite-principal"; return []; }
+                    break;
+                case '=':
+                    if (upper.Length == 0 || lower.Length == 0) break;
+                    var bounds = upper.Union(lower).Order().ToArray(); bool equal = true, unknown = false;
+                    foreach (int a in bounds) foreach (int b in bounds)
+                    { var relation = Order(a, b); equal &= relation == true; unknown |= relation is null; }
+                    if (unknown) { s.Unavailable = "unproved-finite-equality"; return []; }
+                    if (equal) { chosen = bounds.Min(); rule = "Invariant"; }
+                    break;
+                default: throw new InvalidOperationException("Unknown model variance");
+            }
+            answers.Add(new(group, variance, rule, chosen, consistent, upper, lower, fixing, occurrences));
+        }
+        return answers.OrderBy(c => c.Members[0]).ToArray();
+    }
+
+    static Graph ModelGraph(Scoped s, IEnumerable<Equation> rows, IEnumerable<Equation> premises, IEnumerable<int> checkingFormals)
+    {
+        var body = new Body(s.Model.Id, "A2 model", "", "15.3.6/15.6.5");
+        foreach (var atom in s.Model.Kinds) body.Atoms[s.Model.X.Key(atom.Key)] = atom.Value;
+        foreach (int q in checkingFormals) body.Atoms[s.Model.X.Key(q)] = Kind.Fixed;
+        foreach (var row in rows) body.Rows.Add(new(row.Id.ToString(), s.Model.X.Key(row.A), s.Model.X.Key(row.B), row.Equal, ~0UL, false, false));
+        foreach (var p in premises) body.Prems.Add(new(s.Model.X.Key(p.A), s.Model.X.Key(p.B), p.Equal, ~0UL));
+        return Build(body, 0, Design, null);
+    }
+
+    // Pure result consumer shared by both calculators: all semantic decisions are supplied candidates and the chosen judgment.
+    static ModelAnswer FormResult(Scoped s, Choice[] choices, Func<Graph, List<Rep>> judge)
+    {
+        var m = s.Model;
+        var substitutions = choices.Where(c => c.Candidate >= 0).SelectMany(c => c.Members.Select(v => (v, c.Candidate))).ToDictionary(x => x.v, x => x.Candidate);
+        int Replace(int expression) => m.X.Meet(m.X.Leaves(expression).Select(x => substitutions.GetValueOrDefault(x, x)));
+        var checks = s.Rows.Select(r => r with { A = Replace(r.A), B = Replace(r.B) }).ToList();
+        var premises = s.Premises.ToList(); var formals = new List<Formal>();
+        int next = m.Rows.Count;
+        foreach (var slot in m.Slots)
+        {
+            int source = s.Apply(slot.Source), expression = Replace(source);
+            if (!m.X.Leaves(expression).All(m.Boundary.Contains)) expression = -1;
+            int q = m.X.Atom("$Q:" + slot.Definition + ":" + slot.Position);
+            if (expression >= 0) premises.Add(new(premises.Count, q, expression, true));
+            formals.Add(new(slot.Definition, slot.Position, q, expression,
+                Enumerable.Range(0, 2).Select(call => expression >= 0 ? $"substitution({call},{expression})" : $"fresh({call},{slot.Definition},{slot.Position})").ToArray()));
+            checks.Add(new(next++, slot.Variance == '-' ? q : source, slot.Variance == '-' ? source : q, slot.Variance == '='));
+        }
+        string[] Reports(Graph graph) => judge(graph).Select(r => r.ToString()).Order(StringComparer.Ordinal).ToArray();
+        // Original constraints are judged under original P; no Q or substituted candidate can erase them.
+        var originalFailures = Reports(ModelGraph(s, s.Rows, s.Premises, []));
+        // Original + substituted + fit rows share the same owner, with only independently formed Q definitions added to P.
+        var all = s.Rows.Concat(checks).ToArray();
+        var failures = Reports(ModelGraph(s, all, premises, formals.Select(f => f.Q)));
+        bool valid = choices.All(c => c.Consistent) && originalFailures.Length == 0 && failures.Length == 0;
+        return new(true, null, choices, s.Rows.ToArray(), checks.ToArray(), formals.ToArray(), originalFailures, failures, valid);
+    }
+
+    static ModelAnswer CompleteModel(Scoped scoped, Choice[] choices, Func<Graph, List<Rep>> judge)
+    {
+        if (scoped.Unavailable is not null) return new(false, scoped.Unavailable, choices,
+            scoped.Model.Rows.Where(r => (r.Cases >> scoped.View & 1) != 0).ToArray(), [], [], [], [], null);
+        return FormResult(scoped, choices, judge);
+    }
+
+    static ModelAnswer CommonModel(Model model, int view)
+    {
+        var scoped = new Scoped(model, view); scoped.Prepare();
+        return CompleteModel(scoped, scoped.Unavailable is null ? CommonCandidates(scoped) : [], g => Judge(g, AllSourcesCfg));
+    }
+
+    static ModelAnswer ReferenceModel(Model model, int view)
+    {
+        var scoped = new Scoped(model, view); scoped.Prepare();
+        return CompleteModel(scoped, scoped.Unavailable is null ? CandidateReference(scoped) : [], Reference);
+    }
+
+    sealed record ModelExample(Model Input, int View, bool Available, bool? Valid, int[] Candidates, string[] Rules, string Requirement);
+
+    static IEnumerable<ModelExample> CommonExamples()
+    {
+        foreach (bool proven in new[] { false, true })
+        {
+            var m = new Model(proven ? "EQ2" : "EQ1"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+');
+            m.Rel(r, a, true).Rel(b, r).Result(r); if (proven) m.Premise(b, a);
+            yield return new(m, 0, true, proven, [a], ["Equality"], "Equality fixes A before the unrelated upper B; B>=A is checked independently.");
+        }
+        foreach (bool directed in new[] { false, true })
+        {
+            var m = new Model("EQ3-" + (directed ? "directed" : "reverse")); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+');
+            m.Rel(b, r);
+            if (directed) m.Rel(a, r).Rel(r, a); else m.Rel(a, r, true);
+            m.Rel(b, r).Result(r);
+            yield return new(m, 0, true, false, [a], ["Equality"], "Reversed equality, equivalent directed rows and repeated source occurrences retain A.");
+        }
+        foreach (bool equal in new[] { false, true })
+        {
+            var m = new Model("EQ4-" + equal); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+');
+            m.Rel(r, a, true).Rel(r, b, true).Result(r); if (equal) m.Premise(a, b, true);
+            yield return new(m, 0, true, equal, [equal ? a : -1], [equal ? "Equality" : "InconsistentEquality"], "Two fixed targets require independent equality.");
+        }
+        {
+            var m = new Model("EQ5"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+'), s = m.Variable("s", '-');
+            m.Rel(r, s, true).Rel(s, a, true).Rel(b, r).Result(r);
+            yield return new(m, 0, true, false, [a], ["Equality"], "The mixed SCC remains equality-fixed; B>=A is not absorbed into a meet.");
+        }
+        {
+            var m = new Model("COV1"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+');
+            m.Rel(a, r).Rel(b, r).Result(r);
+            yield return new(m, 0, true, true, [m.X.Meet([a, b])], ["Covariant"], "No equality: meet all upper terminals.");
+        }
+        {
+            var m = new Model("COV2"); int a = m.Atom("A"), r = m.Variable("r"), s = m.Variable("s", '+');
+            m.Rel(a, r).Rel(r, s).Result(s);
+            yield return new(m, 0, true, true, [a], ["Covariant"], "A non-requested inferred intermediary remains traversable.");
+        }
+        foreach (bool equality in new[] { false, true })
+        {
+            var m = new Model(equality ? "FIN1-equality" : "FIN1"); int l = m.Atom("L", Kind.FiniteBody), r = m.Variable("r", '+');
+            m.Rel(l, r, equality).Result(r);
+            yield return new(m, 0, true, false, [l], [equality ? "Equality" : "Covariant"], "A finite candidate is not a boundary expression; L reaches fixed Q.");
+        }
+        {
+            var m = new Model("RAW1"); int r = m.Variable("raw", '+'); m.Result(r);
+            yield return new(m, 0, true, true, [-1], ["NoCandidate"], "An unconstrained inferred anchor has no fabricated static candidate; this model says nothing about unsafe/source admissibility.");
+        }
+        foreach (bool principal in new[] { false, true })
+        {
+            var m = new Model(principal ? "CON2" : "CON1"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '-');
+            m.Rel(r, a).Rel(r, b).Result(r, '-'); if (principal) m.Premise(b, a);
+            yield return new(m, 0, true, principal, [principal ? b : -1], [principal ? "Contravariant" : "NoCandidate"], "Q->r->A/B requires a principal lower expression independently of source fit.");
+        }
+        foreach (bool equal in new[] { false, true })
+        {
+            var m = new Model("INV1-" + equal); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '=');
+            m.Rel(a, r).Rel(r, b).Result(r, '='); if (equal) m.Premise(a, b, true);
+            yield return new(m, 0, true, equal, [equal ? a : -1], [equal ? "Invariant" : "NoCandidate"], "Invariant inference requires independent equality, not an endpoint/meet shortcut.");
+        }
+        foreach (char variance in new[] { '+', '-', '=' })
+        {
+            var m = new Model("CYC1-" + variance); int r = m.Variable("r", variance), s = m.Variable("s");
+            m.Rel(r, s).Rel(s, r).Result(r, variance);
+            yield return new(m, 0, true, true, [-1], ["NoCandidate"], "A variable-only cycle with no terminal has no candidate.");
+        }
+        foreach (bool finite in new[] { false, true })
+        {
+            var m = new Model("CYC2-" + finite); int a = m.Atom("A", finite ? Kind.FiniteBody : Kind.Fixed), r = m.Variable("r", '+'), s = m.Variable("s", '+');
+            m.Rel(r, s).Rel(s, r).Rel(a, r).Result(s);
+            yield return new(m, 0, true, !finite, [a], ["Covariant"], "One upper terminal reaches the entire SCC; finite escape survives.");
+        }
+        {
+            var m = new Model("CYC2-mixed"); int a = m.Atom("A"), r = m.Variable("r", '+'), s = m.Variable("s", '-');
+            m.Rel(r, s).Rel(s, r).Rel(a, r).Result(r);
+            yield return new(m, 0, true, false, [-1], ["NoCandidate"], "Mixed SCC variance is invariant; an upper bound alone is no equality.");
+        }
+        {
+            var m = new Model("MIX1"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+', '-');
+            m.Rel(a, r).Rel(r, b).Result(r, '+', position: "positive").Result(r, '-', position: "negative");
+            yield return new(m, 0, true, false, [-1], ["NoCandidate"], "Mixed occurrences share invariant inference but keep distinct result slots.");
+        }
+        foreach (bool reverse in new[] { false, true })
+        {
+            var m = new Model("MEET1-" + reverse); int a = m.Atom("A"), b = m.Atom("B"), ab = m.X.Meet([a, b]);
+            m.Rel(reverse ? ab : a, reverse ? a : ab);
+            yield return new(m, 0, true, !reverse, [], [], "Meet laws are asymmetric: A>=A&B, but A&B>=A needs B>=A.");
+        }
+        {
+            var m = new Model("MEET2"); int a = m.Atom("A"), b = m.Atom("B"), c = m.Atom("C"), r = m.Variable("r", '+'), ab = m.X.Meet([a, b]);
+            m.Rel(r, ab, true).Rel(c, r).Result(r);
+            yield return new(m, 0, true, false, [ab], ["Equality"], "Equality-fixed meet is retained; C is an independent remaining check.");
+        }
+        {
+            var m = new Model("MEET3"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+'), s = m.Variable("s", '-'), ab = m.X.Meet([a, b]);
+            m.Rel(r, s, true).Rel(s, ab, true).Result(r);
+            yield return new(m, 0, true, true, [ab], ["Equality"], "A terminal meet fixes a mixed variable SCC.");
+        }
+        foreach (bool self in new[] { false, true })
+        {
+            var m = new Model("MEET4-" + self); int a = m.Atom("A"), r = m.Variable("r", '+'), s = m.Variable("s");
+            m.Rel(r, m.X.Meet([self ? r : s, a]), true).Result(r);
+            yield return new(m, 0, false, null, [], [], "Unresolved variable under a meet is unavailable, with no invented rejection.");
+        }
+        {
+            var m = new Model("MEET5"); int a = m.Atom("A"), b = m.Atom("B"), c = m.Atom("C"), r = m.Variable("r", '+'), s = m.Variable("s");
+            m.Aliases[s] = b; m.Rel(r, m.X.Meet([s, a]), true).Rel(c, r).Result(r);
+            yield return new(m, 0, true, false, [m.X.Meet([a, b])], ["Equality"], "Established declaration substitution precedes terminal-meet equality.");
+        }
+        {
+            var m = new Model("MEET5-bound-not-alias"); int a = m.Atom("A"), b = m.Atom("B"), r = m.Variable("r", '+'), s = m.Variable("s");
+            m.Rel(s, b).Rel(r, m.X.Meet([s, a]), true).Result(r);
+            yield return new(m, 0, false, null, [], [], "An inferred bound does not become an established alias.");
+        }
+        {
+            var m = new Model("alias-cycle"); int r = m.Variable("r", '+'), s = m.Variable("s");
+            m.Aliases[r] = s; m.Aliases[s] = r; m.Rel(r, s).Result(r);
+            yield return new(m, 0, false, null, [], [], "Cyclic unresolved declaration alias remains unavailable.");
+        }
+        var shared = new Expressions();
+        foreach (var kind in new[] { Kind.FiniteBody, Kind.Inferred, Kind.Fixed })
+        {
+            var m = new Model("SCOPE1-" + kind, shared); int p = m.Atom("p", kind), r = m.Variable("r", '+');
+            m.Rel(p, r).Result(r, definition: m.Id);
+            yield return new(m, 0, true, kind != Kind.FiniteBody, [kind == Kind.Inferred ? -1 : p],
+                [kind == Kind.Inferred ? "NoCandidate" : "Covariant"], "One canonical p has a body-relative finite/inferred/fixed class; child stops at imported p.");
+        }
+        foreach (int view in new[] { 0, 1 })
+        {
+            var m = new Model("CASE1-" + (view == 0 ? "owner" : "borrow")); int a = m.Atom("A"), c = m.Atom("C");
+            m.Rel(a, c).Premise(a, c, cases: 2);
+            yield return new(m, view, true, view == 1, [], [], "Explicit admitted case IDs: borrow-only premise cannot widen to owner.");
+        }
+        {
+            var m = new Model("SLOT1"); int r = m.Variable("r", '+');
+            foreach (string definition in new[] { "f", "g" }) foreach (string position in new[] { "left", "right" }) m.Result(r, '+', definition, position);
+            yield return new(m, 0, true, true, [-1], ["NoCandidate"], "Equal sources keep four definition/position Qs and eight fresh per-call images.");
+        }
+        foreach (bool finite in new[] { false, true })
+        {
+            var m = new Model("ORIG1-" + finite); int a = m.Atom("A", finite ? Kind.FiniteBody : Kind.Fixed), b = m.Atom("B"), r = m.Variable("r", '+');
+            m.Rel(a, r).Rel(r, b).Result(r);
+            yield return new(m, 0, true, false, [a], ["Covariant"], "Original finite-to-fixed/fixed-to-fixed demand survives substitution.");
+        }
+        {
+            var m = new Model("finite-order-unavailable"); int a = m.Atom("L1", Kind.FiniteBody), b = m.Atom("L2", Kind.FiniteBody), r = m.Variable("r", '-');
+            m.Rel(r, a).Rel(r, b).Result(r, '-');
+            yield return new(m, 0, false, null, [], [], "Distinct finite-region ordering is not guessed.");
+        }
+    }
+
+    static Model Reorder(Model source, bool repeat)
+    {
+        var model = new Model(source.Id + (repeat ? "-repeat" : "-reverse"), source.X);
+        foreach (var x in source.Kinds) model.Kinds[x.Key] = x.Value;
+        foreach (var x in source.Variances) model.Variances[x.Key] = x.Value.ToList();
+        foreach (var x in source.Aliases) model.Aliases[x.Key] = x.Value;
+        model.Boundary.Clear(); model.Boundary.UnionWith(source.Boundary);
+        model.Rows.AddRange(source.Rows.AsEnumerable().Reverse()); model.Premises.AddRange(source.Premises.AsEnumerable().Reverse());
+        if (repeat)
+        {
+            foreach (var x in source.Rows) model.Rows.Add(x with { Id = model.Rows.Count });
+            foreach (var x in source.Premises) model.Premises.Add(x with { Id = model.Premises.Count });
+        }
+        model.Slots.AddRange(source.Slots);
+        return model;
+    }
+
+    static int RunCommonModel()
+    {
+        W = 0;
+        int failures = 0, deterministic = 0, exhaustive = 0, unavailable = 0, oracleQueries = 0;
+        void Emit(string kind, object value) => Console.WriteLine(JsonSerializer.Serialize(new { kind, value }));
+        var premiseCases = new[]
+        {
+            (Id: "meet-premise-left", P: new[] { ("A&B", "C") }, Q: new[] { ("A&B", "C", true), ("A", "C", true), ("B", "C", true) }),
+            (Id: "meet-premise-right", P: new[] { ("C", "A&B") }, Q: new[] { ("C", "A&B", true), ("C", "A", false), ("C", "B", false) }),
+            (Id: "meet-transitive", P: new[] { ("A&B", "C&D"), ("C", "E"), ("D", "E") }, Q: new[] { ("A&B", "E", true), ("A", "E", true), ("B", "E", true), ("E", "A", false) }),
+            (Id: "meet-cycle", P: new[] { ("A&B", "C"), ("C", "A&B") }, Q: new[] { ("A", "C", true), ("B", "C", true), ("C", "A", false), ("C", "A&B", true) })
+        };
+        foreach (var test in premiseCases)
+            foreach (var premises in new[] { test.P, test.P.Reverse().Concat(test.P).ToArray() })
+                foreach (var queries in new[] { test.Q, test.Q.Reverse().ToArray() })
+                {
+                    var oracle = new Oracle(premises); var reference = new PremiseReference(premises);
+                    foreach (var (a, b, expected) in queries)
+                    {
+                        oracleQueries++; bool actual = oracle.Entails(a, b), other = reference.Entails(a, b);
+                        if (actual != expected || other != expected) failures++;
+                        Emit("premise-law", new { test.Id, premises = premises.Select(p => new { a = p.Item1, b = p.Item2 }).ToArray(), a, b, expected, actual, reference = other });
+                    }
+                }
+        bool Check(Model m, int view, ModelExample expected)
+        {
+            // Capture inputs before Q allocation. The same canonical atom identity may be classified differently by another body.
+            var input = m.Snapshot();
+            long workBefore = W;
+            var actual = CommonModel(m, view); var reference = ReferenceModel(m, view);
+            string a = JsonSerializer.Serialize(actual), b = JsonSerializer.Serialize(reference);
+            bool same = a == b;
+            bool retained = actual.Original.Select(r => r.Id).Order().SequenceEqual(m.Rows.Where(r => (r.Cases >> view & 1) != 0).Select(r => r.Id).Order());
+            bool oracle = expected is null || actual.Available == expected.Available && actual.Valid == expected.Valid &&
+                actual.Choices.Select(c => c.Candidate).SequenceEqual(expected.Candidates) && actual.Choices.Select(c => c.Rule).SequenceEqual(expected.Rules);
+            bool slots = actual.Formals.Select(f => (f.Definition, f.Position)).Distinct().Count() == actual.Formals.Length &&
+                actual.Formals.Select(f => f.Q).Distinct().Count() == actual.Formals.Length;
+            if (m.Id.StartsWith("SLOT1", StringComparison.Ordinal))
+                slots &= actual.Formals.Length == 4 && actual.Formals.All(f => f.Equation == -1) &&
+                    actual.Formals.SelectMany(f => f.CallerImages).Distinct().Count() == 8;
+            if (!actual.Available) unavailable++;
+            bool passed = same && retained && oracle && slots;
+            if (!passed) failures++;
+            Emit(expected is null ? "exhaustive-case" : "named-case", new { input, view, expressions = m.X.Snapshot(),
+                expected = expected is null ? null : new { expected.Available, expected.Valid, expected.Candidates, expected.Rules, expected.Requirement },
+                actual, reference, same, retained, oracle, slots, passed, work = W - workBefore });
+            return passed;
+        }
+        foreach (var example in CommonExamples())
+        {
+            foreach (var model in new[] { example.Input, Reorder(example.Input, false), Reorder(example.Input, true) })
+            { deterministic++; Check(model, example.View, example); }
+        }
+        // Every three-vertex nonreflexive graph, two Fixed/FiniteBody classifications and three variance rows.
+        // P may use only fixed terminals. Invalid premise domains are omitted explicitly, not treated as empty premises.
+        for (int kinds = 0; kinds < 4; kinds++)
+            foreach (char variance in new[] { '+', '-', '=' })
+                for (int mask = 0; mask < 64; mask++)
+                    for (int p = 0; p < 4; p++)
+                    {
+                        if (p != 0 && kinds != 0) continue;
+                        var m = new Model($"ex-{kinds}-{variance}-{mask}-{p}");
+                        int a = m.Atom("A", (kinds & 1) == 0 ? Kind.Fixed : Kind.FiniteBody);
+                        int b = m.Atom("B", (kinds & 2) == 0 ? Kind.Fixed : Kind.FiniteBody), r = m.Variable("r", variance);
+                        var directed = new[] { (a, b), (a, r), (b, a), (b, r), (r, a), (r, b) };
+                        for (int bit = 0; bit < directed.Length; bit++) if ((mask >> bit & 1) != 0) m.Rel(directed[bit].Item1, directed[bit].Item2);
+                        if ((p & 1) != 0) m.Premise(a, b); if ((p & 2) != 0) m.Premise(b, a);
+                        m.Result(r, variance); exhaustive++; Check(m, 0, null);
+                    }
+        Emit("common-model-complete", new { provenance = "hand-authored bounded model; no ordinary-source correspondence",
+            deterministic, exhaustive, oracleQueries, unavailable, failures, sourcePremiseEligibility = "unavailable", gateR = "open", work = W });
+        return failures;
     }
 
     // ---------------------------------------------------------------------------------------------------------------- one body
@@ -775,7 +1390,7 @@ static class F4
 
         Table("Stratum variants", cases, StratumCfgs);
         Table("Merge variants (cases with Loan problems)", cases.Where(c => c.Loans.Count > 0), MergeCfgs);
-        Table("Inference (OJ5's candidates substituted into the rows; S3)", cases.Where(c => c.Vars.Count > 0 && c.Group is "S3" or "row 7" or "row 13"), InferenceCfgs);
+        Table("Historical OJ5 inference variants (replacement experiments, not the selected A2 rule)", cases.Where(c => c.Vars.Count > 0 && c.Group is "S3" or "row 7" or "row 13"), InferenceCfgs);
 
         Console.WriteLine("\n## Classes and cost\n\n| Case | Views | Classes | Work |\n| --- | ---: | ---: | ---: |");
         foreach (var c in cases.Where(c => c.Views.Length > 1)) { var o = Analyze(c, Design); Console.WriteLine($"| {c.Id} | {c.Views.Length} | {o.Classes} | {o.Work} |"); }
@@ -825,6 +1440,7 @@ static class F4
         Console.WriteLine($"\nRandom graphs: {randomCount}, reference disagreements {bad}.");
         failures += bad;
         Console.WriteLine($"Design: {failures} failures (UNSOUND, OVERSTRICT or reference), {findings} report findings (LOST, EXTRA, DOUBLE).");
+        failures += RunCommonModel();
         return failures;
     }
 }
