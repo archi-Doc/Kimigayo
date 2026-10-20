@@ -173,6 +173,26 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Equal(opaque is null ? [] : [opaque], sites.Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M88): a node Binding left unresolved on a recorded error (an operator, a runtime Type test, a selection
+    // whose index Type it rejected, an if whose branch failed) is an Error node, so its value is the derived Opaque value, never a form
+    // built from a Type that does not exist, and each body validates without a record.
+    [Theory]
+    [InlineData("'A' == 65\n", "'A' == 65")]
+    [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x + 128\n", "x + 128")]
+    [InlineData("func f(x: i32) -> bool\n    return x is Missing\n", "x is Missing")]
+    [InlineData("s is ref or uniq\n", "s is ref or uniq")]
+    [InlineData("func f(values: [3 of i32], r: Range<isize>) -> i32 => values[r]\n", "values[r]")]
+    [InlineData("func f(c: bool) -> i32\n    return if c => 1 else => missing\n", "if c => 1\nelse => missing")]
+    public void UnresolvedNodesAreDerived(string source, string opaque)
+    {
+        var c = Compile(source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray());
+        Assert.Contains(opaque, sites.Select(x => c.SyntaxOf(x.Source).ToString()));
+    }
+
     // SPEC 4.3.3 (DECISIONS R4-M81): a fill, of a generic or a constant length, also 0, is one Fill of its literal's Type from its value's
     // one acquisition (an argument read, a call's result, an inner aggregate's temp), with no record, no Opaque value and no copy of the
     // value into a temp of its own (fail-before: a generic fill was an Unsupported record, a constant one L copies of such a temp).

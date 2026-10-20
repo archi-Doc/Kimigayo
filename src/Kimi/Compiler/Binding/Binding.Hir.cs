@@ -95,7 +95,7 @@ public sealed partial class Binding
             if (node.SyntaxOwner is { Hir.Ops: { } ops, Hir.Res: { } res, Hir.Completions: { } completions, Hir.Places: { } places } && node.SyntaxId < ops.Length)
             {
                 // An Error Binding resolved without rejecting it lacks the facts its Op guarantees (HasFacts): a broken HIR contract.
-                if (op == HirOp.Error && node.BindingState == BindingState.Resolved && !Rejected(node))
+                if (op == HirOp.Error && node.BindingState == BindingState.Resolved && !this.Rejected(node))
                 {
                     node.SyntaxOwner.Hir.Broken!.Add(node);
                 }
@@ -163,9 +163,6 @@ public sealed partial class Binding
         // A definition's parts (body, defaults, initializer, accessor bodies) are published only when Binding resolved the definition: those
         // of an unresolved one, such as a definition beyond the case bound (Binding.CaseLimits), are not verified.
         private static bool PartsPublished(Koto definition) => definition.BindingState == BindingState.Resolved;
-
-        // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3) or a failure.
-        private static bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None;
 
         // SPEC 3.4.3, 13.5.5: the form of a compound Place: a Field, an Index, a Deref (`*p`, `p@follow`) or a group (such as a list item the
         // parser recovered, a parameter default or a call's last argument).
@@ -265,11 +262,16 @@ public sealed partial class Binding
             }
         }
 
+        // Whether the lexer, the parser or Binding rejected a node: a recovery, a #switch that selected no arm (SPEC 19.3), a failure, or a
+        // node Binding left unresolved on a recorded error, its failure causes naming one besides the unresolved mark (DECISIONS R4-M88).
+        private bool Rejected(Koto node) => IsRecovery(node, out _) || node is CompileTimeSwitchKoto || node.BindingFailure != BindingFailure.None ||
+            (binding.FailureCauses(node) is { } causes && Array.Exists(causes, static x => !x.IsUnresolved));
+
         // SPEC 23.1.2 (DECISIONS R5-M63): a compound Place Binding rejected or did not resolve, not a broken contract, keeps each operand
         // Binding resolved as a value or a Place, an Op with its facts (not a Type or group name, Syntax), at its position, evaluated in
         // place; its other children stay replaced. The parent is the child's.
         private bool Keeps(Koto child) => child.BindingState == BindingState.Resolved && CompoundPlace(this.parent!) &&
-            (Rejected(this.parent!) || this.parent!.BindingState != BindingState.Resolved) &&
+            (this.Rejected(this.parent!) || this.parent!.BindingState != BindingState.Resolved) &&
             this.OpOf(child, HirPosition.Evaluated) is not (HirOp.Unset or HirOp.Syntax or HirOp.Error);
 
         // The Op a node's parts are published under (DECISIONS R5-M63): a closure Binding bound in this pass, at an evaluated or a replaced
@@ -295,7 +297,7 @@ public sealed partial class Binding
                 return HirOp.Syntax;
             }
 
-            if (Rejected(node))
+            if (this.Rejected(node))
             {
                 return HirOp.Error;
             }

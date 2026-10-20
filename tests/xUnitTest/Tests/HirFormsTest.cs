@@ -141,6 +141,28 @@ public sealed class HirFormsTest
         Assert.DoesNotContain(c.BuildMir().Records, x => x.Subject == SourceRef.Of(jump));
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M88): a node Binding left unresolved on a recorded error is published Error whatever its form, its value
+    // derived from that error; an unresolved compound Place keeps its operands Binding resolved (R5-M63) and replaces the rest. A node
+    // unresolved only on the unresolved mark, a labeled do whose value an exit gives, keeps its Op, so its children stay built.
+    [Theory]
+    [InlineData("func f(x: i32) -> i32\n    return x + missing\n", "x + missing", true, null)]
+    [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", true, null)]
+    [InlineData("func f(x: i32) -> bool\n    return x is Missing\n", "x is Missing", true, null)]
+    [InlineData("func f(c: bool) -> i32\n    return if c => 1 else => missing\n", "if c => 1", true, null)]
+    [InlineData("func f(values: [3 of i32], r: Range<isize>) -> i32 => values[r]\n", "values[r]", true, "values")]
+    [InlineData("func f() -> i32\n    return label l: do\n        exit to l missing\n", "label l: do", false, null)]
+    public void AnUnresolvedNodeOnARecordedErrorIsAnError(string source, string text, bool error, string? kept)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(x => x.ToString()!.StartsWith(text, StringComparison.Ordinal));
+        Assert.NotEqual(BindingState.Resolved, node.StateOf());
+        Assert.Equal(BindingFailure.None, node.FailureOf());
+        Assert.Equal(error, HirTables.Op(node) == HirOp.Error);
+        var keeps = node.ChildNodes.Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
+        Assert.Equal(kept is null ? [] : [kept], error ? keeps.Select(static x => x.ToString()) : []);
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]
@@ -512,8 +534,9 @@ public sealed class HirFormsTest
     // SPEC 23.1.2 (DECISIONS R5-M63): a failed Field, Index, follow or `*p` keeps the operands Binding resolved as a value or a Place at
     // their positions, written in place (None, None) with their own Ops; a member name, a follow target, a Type name and an operand Binding
     // did not resolve, or resolved without the facts of an evaluated name (both paths of a name), stay replaced, so the MIR records
-    // nothing. A group the parser recovered (a parameter default) keeps its operand; a group around a failed call is not the failed node,
-    // and the call's children stay replaced (PLAN G121).
+    // nothing. A group the parser recovered (a parameter default) keeps its operand; a group around a failed call, which Binding left
+    // unresolved on the call's error, is the Error node (DECISIONS R4-M88), and the call, which is not resolved, is replaced with its
+    // children (PLAN G121).
     [Fact]
     public void AFailedPlaceKeepsTheOperandsBindingResolved()
     {
@@ -530,11 +553,10 @@ public sealed class HirFormsTest
         [
             "n Name None/None", "take(s@move, s@move) Call None/None", "make(s@move, s@move) Call None/None", "missing Syntax Unset/None",
             "take(s@move, s@move) Call None/None", "follow Syntax Unset/None", "missing Syntax Unset/None", "0 Syntax Unset/None",
-            "P Syntax Unset/None", "missing Syntax Unset/None", "take(s@move, s@move) Call None/None", "take Syntax Unset/None",
-            "s@move Syntax Unset/None", "s@move Syntax Unset/None", "1 Syntax Unset/None",
+            "P Syntax Unset/None", "missing Syntax Unset/None", "take(s@move, s@move) Call None/None", "take(s@move, s@move, 1) Syntax Unset/None",
         ];
         Assert.Equal(expected, rows);
-        Assert.Equal(HirOp.Group, HirTables.Op(Reachable(c.Kotonoha).OfType<ParenthesizedKoto>().Single()));
+        Assert.Equal(HirOp.Error, HirTables.Op(Reachable(c.Kotonoha).OfType<ParenthesizedKoto>().Single()));
         Assert.Empty(c.BuildMir().Records);
         var ambiguous = MinimalEmissionTest.Analyze("group Config\n    public var count: i32 = 3\nstruct Settings\n    public var count: i32 = 0\n" +
             "func read(Config: ref/Settings) -> i32\n    return Config.count\n");

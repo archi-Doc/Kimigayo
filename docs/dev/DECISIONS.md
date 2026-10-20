@@ -2024,6 +2024,34 @@ and migration obligations remain in force; no numeric cap changes are authorized
     T.(Tree).Child.(Tree).Child)` with `T is CopyTree`, called from a confined `visit` under `U is CopyTree`, `U is Copy`,
     `U.(Tree).Child is U`: `IncompatibleContractImplementation_Kd`), in uninstantiable code only; it is G170's. A layered projection
     (a pair layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
+- **R4-M88 A node Binding left unresolved on a recorded error is an Error node** (2026-10-21; unit 2x-E2's publisher rule, G103 E9b
+  and G95; design by the unit, agreed by R5 as R5-M63's owner, reviews by R5 for the HIR contract and BU for `Binding.Hir.cs`; decides
+  R5-M63's deferred unresolved compound Places) SPEC 23.1.2, R4-M70 option P: `HirOp.Error` means Binding rejected the expression or
+  left it unresolved, but the publisher applied the second half only to a form without an Op, so a PrimitiveOp, Logical,
+  RuntimeTypeTest, Index, Name, Field, Deref, Group, Assign, CompoundAssign, If or Block Binding did not resolve was built from a Type
+  that does not exist (the builder's `()`): validator findings, which stop every MIR analysis of the program.
+  - Rule: `HirPublisher.Rejected` also holds for a node Binding did not resolve whose failure causes (`Binding.FailureCauses`) name a
+    recorded error, a key besides the unresolved mark. Such a node is published Error whatever its form, its value the derived Opaque
+    with no record.
+  - R5-M63's residual, stated precisely: an unresolved compound Place resting on a recorded error is now Error and, when it is the
+    evaluated node, keeps its operands Binding resolved (`Keeps`); as an operand of another Error node it is replaced, and its roots
+    are named at the outer Opaque site (root collection walks the replaced syntax), so A1 still checks them, since `Keeps` keeps only
+    operands published with their facts. A group around a failed call, unresolved on the call's error, is now that Error node, the
+    call replaced (HirFormsTest's G121 row).
+  - A node unresolved only on the unresolved mark keeps its Op, so its children stay built (R5-M63: a node's failure hides no
+    independent error in them): a labeled do whose value an exit gives (an independent `MovedPlace_Kd` inside stays reported) and an
+    if whose branches only yield (R5-M42's derived jumps, golden `rejected`).
+  - Deleted: `MirBuilder.Into`'s clause for an update of a target Binding rejected (the update is itself such a node). Staged:
+    `MirBuilder.Rejected`'s "a value without a Type" and "a name of an Error local" terms, for `MirBuilder.Opaque.cs`'s restructure.
+  - Cost: `FailureCauses` allocates its key array once per such node and pass, in incomplete programs only (the complete programs of
+    the warm-publish allocation tests have none). After G2, warm LSP analysis of incomplete programs pays it per such node, acceptable
+    under the allocation policy; G2's recorded warm-Analyze measurement should include an incomplete source. No codegen consumer
+    changes (the Backend reads the MIR only).
+  - Rejected: every unresolved node an Error (hides the labeled do's independent problems, removes R5-F13's jumps); `FailureCauses`
+    non-null without the recorded-key test (the same for the labeled do, whose cause is only the unresolved do); the builder reading
+    `Rejected` before dispatch (a second copy of the publisher's decision); per-Op `HasFacts` rows requiring a Type (an open family:
+    every value a consumer holds in a temp reads its Type); a non-allocating copy of PrerequisiteKeys' walk in the publisher (a
+    second copy of the rule; `Binding.Diagnostics.cs` is over its limit).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -4040,6 +4068,8 @@ structure is recorded here by the unit that first implements it.
   and an omitted default's site, `MirBuilder.Defaults.cs`), files AGENTS' three-units rule makes due for restructuring before their
   next change.
   - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
+  - R4-M88 decides its deferred unresolved compound Places: one Binding left unresolved on a recorded error is an Error node that
+    keeps its operands Binding resolved; as an operand of another Error node it is replaced, its roots named at the outer Opaque site.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
   package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
   DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a
