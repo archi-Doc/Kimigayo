@@ -874,3 +874,46 @@ options per problem; this records plan selection, not approval of an executable 
   bindings its supports read. Also corrected: source anchors and the six expansion callers, the solver's supply-only
   entry operations, the absent-head example, alternatives, the reason for request-local answers, one scheduler,
   B/D re-prototyping and C2's routing (proposal §8). The existing-rule mapping to SPEC sections is unchanged.
+
+## 2026-10-20 — G172 associated value inference
+
+- [G172 Associated Value Inference Plan](Proposals/2026-10-20%20G172%20Associated%20Value%20Inference%20Plan.md):
+  一部取り込み (open, intake only). The owner requested multiple solutions and implementation plans, independent
+  review, comparison, selection and publication, including revision of the supplied G170 Associated Value Scheduling
+  Plan. The planning session selects C, evidence-local associated-value demand, after comparing partial publication,
+  batch retries, revised Scheduling, shared work transport and a unified solver. The supplied Scheduling candidate's
+  revised contract and units are proposal §3 option C and §§4–6; its original all-read/SCC exclusion and cost claims are not adopted.
+- Existing-rule mapping: proposal §§1, 4 and G0–G4 implement SPEC §8.5.5's frozen premises, identification,
+  extraction and completion; preserve §8.2.3 identity, §8.3 proof/finality, §8.6.3 compatibility and §23.1 diagnostic
+  categories. Proposal §7 defines verification obligations. No language rule is changed, no section is integrated
+  into SPEC/IMPL and no proposal text is frozen. G1 must resolve alternative-support dependencies with G170 C1 or
+  report the exact SPEC gap; this intake does not select a new meaning of "depends".
+- The owner adopted [G170 PlanB](Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md).
+  This is the current filename after the rename at `3a272f3e`; the earlier intake's old filename remains historical.
+  G172 keeps that premise design and its independent supply gate. G172 selection implies no implementation support,
+  release of the BU/R5 pause or Transferable hold, or approval of new vocabulary.
+- Revision (2026-10-20; the owner asked for the plan to be scrutinized against the Principles; open text, nothing
+  frozen): §1 adds the supplied plan's recorded checking-order dependences on identical compiler trees (an
+  alternative-support cycle accepted in one declaration order only; order-dependent exclusion diagnostics). The
+  mapping's "alternative-support dependencies" becomes one meaning, shown by G1 or reported as a SPEC gap, of
+  "depends" in §8.5.5's evidence exclusion and pending identification (result positions, identification keys,
+  alternative supports, proof alternatives); the proposal's result-position reading is a proposal, not a settled
+  rule. Also corrected: provisional premise answers in completion, the unreachable collecting guard, typed
+  diagnostic causes, syntax-free state keys and the supplied §§4.5, 4.7, 4.9, 4.10, 5 and 8–10 (proposal §8). The
+  existing-rule mapping to SPEC sections, the selection of C, the unit structure and the holds are unchanged.
+- Implementation adoption (2026-10-20, owner): implement the revised plan at `e76e2f20`, retaining its two
+  documentation commits and exact proposal text. R4 takes C, evidence-local associated-value demand, and G0–G4
+  in Binding; BU and R5 remain paused. Start G0's remaining exact-head reproduction/census and G1's executable
+  design. Reuse C0's independently accepted PA/PB observations where inputs coincide; its two declaration
+  orders do not establish G0's requirement permutations, alternative-support, locality or readiness coverage.
+- G170 C1 and G172 G1 jointly settle the one meaning-of-depends gate for result positions, identification keys,
+  alternative supports and proof alternatives; adoption supplies none of their missing verdicts. Associated
+  inference owns declaration-pass completion, distinct from request-local premise judgments and structural
+  capability fixed points. G1 still compares physical transport reuse; cross-engine waits cannot synchronously
+  drain another driver or reset Resource budgets through replay.
+- The existing-rule mapping above is unchanged: §§1, 4 and G0–G4 implement SPEC §8.5.5 while preserving §8.2.3,
+  §8.3, §8.6.3 and §23.1; §7 supplies verification obligations. No SPEC/IMPL text, policy, diagnostic vocabulary
+  or support boundary is changed by adoption. G170 now proceeds to C1 after its accepted C0 before baseline;
+  G172 does not unconditionally block C4, and any concrete adapter prerequisite must be recorded before a
+  dependent cutover. Transferable's C4/T0 gate, the S3/M69 proof and package gates, and applicable D5/O3
+  acceptance-change dispositions remain.
