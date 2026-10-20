@@ -914,3 +914,12 @@ options per problem; this records plan selection, not approval of an executable 
 - The named-alias separator supersedes only the spelling in the 2026-10-16 Named Alias Declarations plan
   at the post-R9 cutover; that plan's approved declaration semantics and R7 schedule are unchanged.
   No SPEC/IMPL text is integrated or frozen, no executable source changed, and no support or speedup is claimed.
+- Revision (2026-10-20; the owner asked for the plan to be scrutinized against the Principles; open text, nothing
+  frozen): the mapping becomes §§2.1–2.3 → SPEC §7.2.1–2, §7.3.1, §7.7.1, §8.13.2, §10.1.1, §15.7, §18.2.1, §22.1
+  and Appendix F.3.1/F.6.1–F.6.3 (one PlainParameter production); §2.4 → §1.2's notation table, Appendix
+  F.4/F.6.1/F.10 and affected §2.1 examples; §§3–5 implementation, deletion and verification; §6 integration
+  targets; §7 Principles; §8 revision notes and owner questions. Proposed for owner approval, not integrated: an
+  `as` parameter clause must rename (`x as x` is an error; same-name aliases unchanged) and the former `=>` gets one
+  located error with a replacement candidate only where the clause is then valid. Spelling, gate, R7 schedule and
+  semantics, and unit structure are unchanged; the revision adds the request that R7 add no arrow-specific alias
+  structure (recorded in PLAN).
