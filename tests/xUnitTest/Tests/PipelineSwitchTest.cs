@@ -165,7 +165,8 @@ public sealed class PipelineSwitchTest
     }
 
     // R5 C0a: kimi test publishes its generation records through the entry, as kimi build does: a test build the old generator refuses
-    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54).
+    // reports the located Unsupported_Kd, not failure text. Under MIR code generation the check rejects the instance first (R5-M54,
+    // DECISIONS R5-M85), and the command generates only a build its check prepared.
     [Fact]
     public void TheTestCommandPublishesTheGenerationRecords()
     {
@@ -179,13 +180,10 @@ public sealed class PipelineSwitchTest
             const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             var c = project.PrepareTests(TestContext.Current.CancellationToken);
-            Assert.Equal(Compilation.DefaultCodegen == CompilerCodegen.Mir, c is null);
-            if (c is not null)
-            {
-                var stem = Path.Combine(directory, "tests");
-                Assert.False(project.PublishArtifacts(c, new(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2"), null, out _));
-            }
-
+            Assert.Equal(Codegen.Expect(true, false, CodegenDeviations.InstanceCapabilityAtCheck), c is null);
+            var stem = Path.Combine(directory, "tests");
+            var paths = new ArtifactPaths(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2");
+            Assert.False(c is not null && project.PublishArtifacts(c, paths, null, out _));
             Assert.Contains("Unsupported_Kd", console.Text, StringComparison.Ordinal);
             Assert.DoesNotContain("GenerationFailed_Kd", console.Text, StringComparison.Ordinal);
             Assert.Empty(Directory.EnumerateFiles(directory, "*.ll", SearchOption.AllDirectories));

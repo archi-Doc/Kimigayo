@@ -30,7 +30,7 @@ public class CodegenDeviationTest
             Assert.Matches($@"(?m)^- \*\*{Regex.Escape(entry.Item)}[* ]", decisions);
             Assert.All(entry.Clause.Split(' '), x => Assert.Contains(x, DiagnosticCorpus.SpecSections));
             Assert.NotEqual(string.Empty, entry.Reason.Trim());
-            Assert.Contains(sources, x => x.Contains("CodegenDeviations." + field.Name, StringComparison.Ordinal));
+            Assert.Contains(sources, x => Regex.IsMatch(x, $@"\bCodegen\.Expect(<[^>]*>)?\([^;]*\bCodegenDeviations\.{field.Name}\)"));
         }
     }
 }

@@ -4344,17 +4344,20 @@ structure is recorded here by the unit that first implements it.
     boundaries are evaluated); a branchless shift-and-or encoding (not a MIR form, opaque to review); keeping Wrap for a same-width
     unsigned position (a second encoding of an unresolved position).
 - **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
-  form 1; temporary: G3 reduces each `Expect` to its target, G4 removes the form and the catalog) Where MIR code generation (sel)
-  differs from the old generator by a decided item, the expectation states its target and keeps the legacy value:
-  `Codegen.Expect(target, legacy, deviation)` (`tests/xUnitTest/Codegen.cs`) gives the legacy value unless the selector's one reading
-  (`Compilation.DefaultCodegen`) is MIR's, and fails when the two are equal. Refining PD10's `Expect(target, legacy, item, class)`
-  (package C row 22), the item is one `Deviation(Id, Class, Item, Clause, Reason)` of the `CodegenDeviations` catalog: Class OQ7's (a),
-  (d) or (e) (R5-M6), Item a DECISIONS entry, Clause SPEC sections; `CodegenDeviationTest` checks each and that a test names it (M7
-  counts them). First: `instance-capability-at-check` (d; R5-M41; SPEC 23.2.2), sel's check-time record of R5-M54, which the old
-  generator reports at generation; K13a's i128 rows run check and `Generate` in every run, and the old generator's own refusal facts
-  are checked on a compilation pinned to it (R5-M73's depth test) until G7 deletes it. The native half lands with its first native
-  consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal in both runs, the JSON of the entry and the legacy
-  and target stdout, exit and stderr; `compare-fixtures.ps1` counts a differing fixture as deviating only when both runs carry the
-  same `.deviation` and each run's output matches its side.
+  form 1; temporary: the stage that makes an `Expect`'s target the default reduces it to the target, G2 for acceptance-time records
+  such as this entry's (the collector runs on the default pipeline from G2, R5-M41) and G3 for generated output; G4 removes the form
+  and the catalog) Where MIR code generation (sel) differs from the old generator by a decided item, the expectation states its
+  target and keeps the legacy value: `Codegen.Expect(target, legacy, deviation)` (`tests/xUnitTest/Codegen.cs`) gives the legacy value
+  unless the selector's one reading (`Compilation.DefaultCodegen`) is MIR's, and fails when the two are equal. Refining PD10's
+  `Expect(target, legacy, item, class)` (package C row 22), the item is one `Deviation(Id, Class, Item, Clause, Reason)` of the
+  `CodegenDeviations` catalog: Class OQ7's (a), (d) or (e) (R5-M6), Item a DECISIONS entry, Clause SPEC sections; `CodegenDeviationTest`
+  checks each and that an `Expect` names it (M7 counts them). First: `instance-capability-at-check` (d; R5-M41; SPEC 23.2.2), sel's
+  check-time record of R5-M54, which the old generator reports at generation. Its tests (K13a's `GenericGenerationDiagnosticTest`
+  rows, `PrimitiveIntegerTest`'s wide division, `PipelineSwitchTest`'s test command) run check and generation in every run; the old
+  generator's own refusal facts are checked on a compilation pinned to it and go at G2 with the legacy values. The pin needs the
+  `Codegen` setter G4 removes, so R5-M73's pinned depth test (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`) goes by G4 at the
+  latest. The native half lands with its first native consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal
+  in both runs, the JSON of the entry and the legacy and target stdout, exit and stderr; `compare-fixtures.ps1` counts a differing
+  fixture as deviating only when both runs carry the same `.deviation` and each run's output matches its side.
   - Rejected: per-test pipeline branches and xfail markers (PD10); item and class as arguments (declared at each use); the native
     half before a consumer; null targets for the old generator's own facts.

@@ -57,7 +57,7 @@ public class GenericGenerationDiagnosticTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
-        // The old generator's refused instance, which G7 deletes with it, on a compilation pinned to it so that every run checks it.
+        // The old generator's refused instance, on a compilation pinned to it so that every run checks it, until G2 (DECISIONS R5-M85).
         var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
         using var oldWriter = new StringWriter();
         Assert.False(old.WriteIr(oldWriter, out var failure));

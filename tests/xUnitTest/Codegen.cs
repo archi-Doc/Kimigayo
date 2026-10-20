@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// The codegen deviation form of R5 (plan E12, PD10, OQ7; DECISIONS R5-M85): a temporary structure, which G3 reduces to the targets and
-// G4 removes with the catalog.
+// The codegen deviation form of R5 (plan E12, PD10, OQ7; DECISIONS R5-M85): a temporary structure. The stage that makes a target the
+// default reduces its Expect to it (G2 for acceptance-time records, G3 for generated output); G4 removes the form with the catalog.
 // Responsibility: an expectation that MIR code generation (sel) meets differently from the old generator by a decided item states its
 // target and keeps the legacy value beside it, naming the item's one catalog entry.
 // Input: the process's code generator, the selector's one reading (Compilation.DefaultCodegen). Output: the value the running code
@@ -17,12 +17,12 @@ namespace XunitTest;
 /// <summary>The value an expectation takes under the process's code generator (R5 PD10).</summary>
 internal static class Codegen
 {
-    /// <summary>Gets a value indicating whether the process generates with the old generator, whose values deviations keep until G3.</summary>
+    /// <summary>Gets a value indicating whether the process generates with the old generator, whose values deviations keep.</summary>
     internal static bool Legacy => Compilation.DefaultCodegen == CompilerCodegen.Legacy;
 
     /// <summary>Gets the expected value under the process's code generator.</summary>
     /// <typeparam name="T">A type with value equality.</typeparam>
-    /// <param name="target">The value under MIR code generation, which stays at G3.</param>
+    /// <param name="target">The value under MIR code generation, which stays once its stage makes it the default.</param>
     /// <param name="legacy">The old generator's value.</param>
     /// <param name="deviation">The catalog entry of the decided item.</param>
     /// <returns><paramref name="legacy"/> under the old generator, else <paramref name="target"/>.</returns>
