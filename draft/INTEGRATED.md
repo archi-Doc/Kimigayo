@@ -901,3 +901,16 @@ options per problem; this records plan selection, not approval of an executable 
   rule. Also corrected: provisional premise answers in completion, the unreachable collecting guard, typed
   diagnostic causes, syntax-free state keys and the supplied §§4.5, 4.7, 4.9, 4.10, 5 and 8–10 (proposal §8). The
   existing-rule mapping to SPEC sections, the selection of C, the unit structure and the holds are unchanged.
+
+## 2026-10-20 — As naming syntax
+
+- [As Naming Syntax and Implementation Plan](Proposals/2026-10-20%20As%20Naming%20Syntax%20and%20Implementation%20Plan.md):
+  一部取り込み (open, intake only). The owner adopted `external as internal` and `alias A as B`, with
+  implementation, migration and parser/layout cleanup strictly after recorded R9 completion.
+- By the owner's instruction, this plan overrides SPEC and its references only for its stated changes.
+  Mapping: §§2.1–2.2 → SPEC §7.2.1–2, §7.3.1, §7.7.1, §8.13.2, §18.2.1 and Appendix F.3/F.6;
+  §2.3 → §1.2's notation table, Appendix F.4/F.6/F.10 and affected §2.1 examples. §§3–5 define the implementation,
+  deletion and verification obligations; §6 records integration targets and Principles.
+- The named-alias separator supersedes only the spelling in the 2026-10-16 Named Alias Declarations plan
+  at the post-R9 cutover; that plan's approved declaration semantics and R7 schedule are unchanged.
+  No SPEC/IMPL text is integrated or frozen, no executable source changed, and no support or speedup is claimed.
