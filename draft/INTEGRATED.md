@@ -28,6 +28,13 @@ All folders are direct children of `draft`, so moving a document between them ke
 
 ## Changes
 
+- [Inline Generic Parameter Constraints](Proposals/2026-10-20%20Inline%20Generic%20Parameter%20Constraints.md):
+  一部取り込み (open, intake only, 2026-10-20). The owner requested a discussion proposal for
+  `F is Callable<...>` inside a generic parameter list. No syntax or policy is adopted.
+  Prospective mapping: SPEC §7.5, §§8.1–8.3 and Appendix F; inspect §§6, 8.4, 8.10–8.11,
+  10.5 and 23 as described in proposal §6. Nothing is integrated or frozen; scope,
+  coexistence, pair parameters, name scope, effects and source style remain unresolved.
+
 | 文書 | 状態 | 取り込み先・証跡 |
 | --- | --- | --- |
 | `2026-10-07 User-Defined Arithmetic and Implementation Plan.md` | 取り込み済み | 2026-10-08: §2.1–2.3 → SPEC arithmetic-contracts §§1–2, §3.1.1.1, §7.6.4, §8.4.7/§8.4.7.3, §22.1 and LIBRARY; §2.4–2.5 → arithmetic-contracts §2, §3.5.3, §10.2/§10.6, §12.3.1; §2.6–2.8 → arithmetic-contracts §§3–5, §13.2–4/§13.7–8 and §17.3; §3–4 → arithmetic-contracts §§5–6, §23.5.3 and DIAGNOSTICS; §5 → dev/ARITHMETIC A0–A5, PLAN G84, STATUS and existing VERIFICATION (Program 43 reserved); §6 → SPEC index, Appendices D/E/F, LIBRARY and STYLE. §1 and the draft-only restrictions in §§5–6 are superseded by the user's intake/implementation instruction. All language rules incorporated; none rejected or transferred. Frozen text is moved unchanged to Changes. Integration is complete, implementation is not. |
