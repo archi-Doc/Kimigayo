@@ -87,11 +87,17 @@ internal sealed partial class FunctionCodegen
     private void Aggregate(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
-        var fill = (MirAggregateKind)rvalue.Op == MirAggregateKind.Fill;
-        if ((!fill && (MirAggregateKind)rvalue.Op != MirAggregateKind.FixedArray) || this.InstanceType(statement.Place) is not { Kind: BoundTypeKind.FixedArray } type)
+        var type = this.InstanceType(statement.Place);
+        var kind = (MirAggregateKind)rvalue.Op;
+        switch (kind)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
-            return;
+            case MirAggregateKind.FixedArray or MirAggregateKind.Fill when type is { Kind: BoundTypeKind.FixedArray }:
+                break;
+            case MirAggregateKind.Tuple or MirAggregateKind.Adt or MirAggregateKind.Closure or MirAggregateKind.FixedArray or MirAggregateKind.Fill:
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+                return;
+            default:
+                throw new InvalidOperationException($"The MIR aggregate kind {kind} has no code generation row.");
         }
 
         if (this.module.Layout.Of(type.Components[0]).Value is not { } element)
@@ -122,7 +128,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (fill)
+        if (kind == MirAggregateKind.Fill)
         {
             this.Fill(address, element.Layout, this.arguments[0], type.Length);
             return;

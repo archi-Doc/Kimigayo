@@ -106,13 +106,9 @@ internal sealed partial class FunctionCodegen
         var type = this.InstanceType(prefix)!;
         var isize = this.slots[position].Value;
         var index = this.Load(position);
-        var buffer = start;
-        var length = new Value('\0', type.Length);
-        if (type.Kind != BoundTypeKind.FixedArray)
-        {
-            buffer = this.LoadAt(start, RuntimeAbi.StringReference.Layout); // An Array's or Slice's buffer word, a pointer (IMPL 21.1.3).
-            length = this.LoadAt(this.Offset(start, sequence.Layout.FieldOffsets.Span[1]), isize.Layout);
-        }
+        // An Array's or Slice's buffer word, a pointer (IMPL 21.1.3).
+        var buffer = type.Kind == BoundTypeKind.FixedArray ? start : this.LoadAt(start, RuntimeAbi.StringReference.Layout);
+        var length = this.Length(type, sequence, start);
 
         var id = this.next++;
         var output = this.output;
@@ -145,6 +141,12 @@ internal sealed partial class FunctionCodegen
         address = this.Offset(buffer, bytes);
         return true;
     }
+
+    // A sequence's length (SPEC 4.7.3) from its address: a fixed array's closed length, else the length word of an Array's or Slice's
+    // handle record, its Field 1 (IMPL 21.1.3).
+    private Value Length(BoundType sequence, ValueLowering record, Value start)
+        => sequence.Kind == BoundTypeKind.FixedArray ? new('\0', sequence.Length)
+            : this.LoadAt(this.Offset(start, record.Layout.FieldOffsets.Span[1]), Layout.Row(BoundType.ISize).Layout);
 
     // An address a constant number of bytes past another: the same address for none.
     private Value Offset(Value start, long bytes) => bytes == 0 ? start : this.Offset(start, new Value('\0', bytes));
