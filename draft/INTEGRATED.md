@@ -867,3 +867,10 @@ options per problem; this records plan selection, not approval of an executable 
   Current-head reproduction, executable relevance/resource/lifecycle gates, migration and vocabulary dispositions,
   production verification and performance comparisons remain outstanding. G170/G124 stay open; no BU/R5 resume,
   Transferable hold release, F5 completion or implementation support is implied.
+- Revision (2026-10-20; the owner asked for the plan to be scrutinized against the Principles; open text, nothing
+  frozen): a CLI check shows SPEC §8.5.5's PA/PB example rejected in both declaration orders (PLAN G172). This
+  supersedes the entry's "not a newly reproduced inference defect": G172 is an inference-owner cause the proposal
+  leaves to its own unit, and C reads inferred-value admissibility from that owner per evidence view, returning the
+  bindings its supports read. Also corrected: source anchors and the six expansion callers, the solver's supply-only
+  entry operations, the absent-head example, alternatives, the reason for request-local answers, one scheduler,
+  B/D re-prototyping and C2's routing (proposal §8). The existing-rule mapping to SPEC sections is unchanged.

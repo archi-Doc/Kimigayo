@@ -3,7 +3,7 @@
 Status: 一部取り込み (open; selected implementation plan, no specification integration or implementation).
 Request: 2026-10-20, compare several solutions and implementation plans, independently review them, and select the
 most fundamental, concise and efficient design consistent with the Kimigayo Principles.
-Source baseline: `a415c755fe239e61c6754940923cbbba6b2fef0f`.
+Source baseline: `a415c755fe239e61c6754940923cbbba6b2fef0f`; revised at `bc3fcd3f` against the Principles (§8).
 
 Select **C: demand-driven declaration premises with explicit evidence dependencies**. This is a design selection,
 not a measured performance result. It replaces the G170 supplier design in §§3–4 and supply work PS0–PS5 in the
@@ -15,7 +15,8 @@ References to the earlier PS5 supply exit now mean C4 here; Transferable's remai
 ## 1. Problem, evidence and required meaning
 
 G170 records a missing proof, not a demonstrated infinite loop, unsound acceptance or associated-value inference
-cycle. The source inspection in this unit runs no compiler, tests or benchmarks. The historical observation is
+cycle. The original planning unit ran no compiler, tests or benchmarks; the revision ran one CLI check of the
+inference example below (§8). The historical observation is
 [PLAN G170](../../docs/dev/PLAN.md) and the corrected
 [S5 intake](../INTEGRATED.md); the retained program is
 [S5Probe.cs](../Sketches/A5%20Step%202/S5Probe.cs). Its older labels are not an acceptance oracle.
@@ -58,8 +59,18 @@ Three different dependencies must retain different meanings:
 For the last row, suppose `A.Item` is inferred as i32, `B.Value` depends on `A.Item`, and `A.Other` depends on
 `B.Value`. The graph `A.Item → B.Value → A.Other` has no identity cycle, but it cannot infer `A.Other`: its evidence
 depends on an inferred value of A. Explicitly specifying `A.Item` changes that evidence boundary. Conversely, an
-independently determined value of B may be used without waiting for B's remaining associated values. This is a
-design test, not a newly reproduced defect in the existing inference implementation.
+independently determined value of B may be used without waiting for B's remaining associated values.
+
+The existing inference owner does not meet that last rule, a cause separate from G170
+([PLAN G172](../../docs/dev/PLAN.md)). At the revision head, SPEC §8.5.5's own PA/PB example is rejected in both
+declaration orders, and the order decides which definition's inference fails: `AssociatedTypeInferenceFailed_Kd` on
+`Q.W` when PA is declared first, on `P.X` when PB is, the other definition then failing its conformance (a CLI check,
+§8). Source explanation, a hypothesis until a test confirms it: `InferAssociatedTypes` extracts evidence requirement
+by requirement and `ResolveAssociated` withholds a definition's values until its whole batch completes. With PA
+first, PB's batch starts while `x`'s result is normalized, before `z` is extracted, so PA.Z is not yet determined.
+The repair is per-value demand in AssociatedInference (determine the needed value, or suspend the extraction that
+needs it), which the rule's pre-rewrite text already required; publication granularity alone would make acceptance
+depend on requirement order. §4.2 states what C needs from that owner.
 
 Authority: [SPEC §8.2.3, §8.3, §8.5.5 and §8.6.3](../../docs/spec/08-generics-constraints-and-contracts.md).
 Concrete conformance to a Contract classified recursive by §8.3.3 is prohibited, a stronger rule than merely
@@ -72,10 +83,10 @@ Paths are under `src/Kimi/Compiler/Binding/`; methods are stable navigation anch
 
 | Site | Present behavior / obligation |
 | --- | --- |
-| `Binding.Contracts.cs`: `ExpandScopeContractPremises` | Takes one snapshot of Facts; additions do not cause another expansion round. |
+| `Binding.Contracts.cs`: `ExpandScopeContractPremises` | Takes one snapshot of Facts; additions do not cause another expansion round. Six callers: `ExpandContractPremises` (every declaration scope, after eagerly adding a Contract scope's own, inherited and ancestor clauses for its Self), `BindConditionalDeclarations`, `AddInheritedPremises`, `CompatibleRequirement` (ContractMatching), `PrepareVirtualHeaderPremises` and `PrepareVirtualOverridePremises`. |
 | `Binding.Contracts.cs`: `AddContractPremises` | Substitutes own and inherited clauses and adds ancestor facts. Reuse these rules, not their eager publication policy. |
 | `Binding.AssociatedTypes.cs`: `BindAssociatedProjection` | Adds premises for the proven Contract chosen by the written qualifier. This makes querying syntax a semantic producer. |
-| `Binding.ContractCalls.cs`: `ContractMembers`; `Binding.VirtualOverrides.cs`: `PrepareVirtualOverridePremises` | Member access and override preparation also expand premises. |
+| `Binding.ContractCalls.cs`: `RequirementMember` | Member access adds premises for each proven Contract of the referenced receiver, the same syntax trigger. |
 | `Binding.Constraints.Model.cs`: `ConstraintEnvironment` | Facts, DirectFacts and DerivedFacts coexist; a derived row records a source Contract, not the complete antecedent/support graph. |
 | `Binding.Constraints.cs`: `AvailableConstraintFact`, `AvailableContractPremise`, `ProveConstraint` | Checks existing materialized evidence and declaration availability; a recursion guard cannot manufacture a missing premise. |
 | `Binding.Capabilities.cs`: `SymbolicCapability` and capability work | Reads the same supply, with purpose-sensitive structural judgments and cached results. |
@@ -143,9 +154,9 @@ design; retain its subject-candidate interface in C.** No shape-based fallback t
 
 **Design.** Retain finite declared assumptions and existing bound Contract clauses. Evaluate requested propositions
 or subject candidates against them using one request-local dependency graph. Each derivation retains its bound
-antecedent, declaration validity and associated-value evidence dependencies. Inference supplies its own frozen
-evidence context; it does not become an unrestricted fixed point. Section 4 specifies the contract; section 6 gives
-the implementation units.
+antecedent, declaration validity and the associated bindings it read under its evidence view. Inference supplies its
+own frozen evidence context and admissibility; it does not become an unrestricted fixed point. Section 4 specifies
+the contract; section 6 gives the implementation units.
 
 **Expected size and cost.** Medium addition for request work and support edges, with the broadest directly justified
 deletion of duplicate supply paths. Reuse interned Types/constraints and existing substitution/identity rules. Work
@@ -203,10 +214,14 @@ Retain `BoundConstraint`/`ConstraintKey`, bound Contract references, declaration
 the existing identity owner. The finite input environment contains declared assumptions and source references;
 derived results are request state, never new assumptions copied into another scope.
 
-Two semantic entry operations share rule application: prove a bound proposition; enumerate candidate constraints
-for a bound subject. Enumeration retains pending declarations for discovery and ambiguity; proof/normalization
-uses only available evidence. A discovered candidate does not prove its prerequisites. Neither operation silently
-truncates, resolves an unbound program Type by guessing, or changes overload selection rules.
+Two semantic entry operations share rule application, both taking the evidence view (§4.2): supply the available
+evidence for a bound proposition and for its negation; enumerate the constraints available or discoverable for a
+bound subject. Each answer states whether it is complete, provisional or a Resource failure. `ProveConstraint`'s
+four-valued judgment and the concrete and capability judgments keep their owners and read evidence through the
+first; identity normalization reads a subject's available identity evidence, and lookup its candidates, through the
+second. Enumeration retains pending declarations for discovery and ambiguity; proof/normalization uses only
+available evidence. A discovered candidate does not prove its prerequisites. Neither operation silently truncates,
+resolves an unbound program Type by guessing, or changes overload selection rules.
 
 ### 4.2 Evidence view and associated inference
 
@@ -224,14 +239,30 @@ The inference owner still identifies once, extracts only allowed declared-result
 candidate for agreement and publishes completed values. Pending matches are reconsidered for compatibility only;
 missing/ambiguous matches do not become new evidence after completion. Bodies and call sites supply nothing.
 
-Publish necessary dependencies of an inferred value with its completion; every downstream proof/normalization
-must retain them. Under frozen definition D, a support depending directly or transitively on any value inferred in
-D is inadmissible. Do not reject an independent support merely because another path is cyclic. Do not use an
+Admissibility of an inferred value is a fact the inference owner publishes, not a second rule inside C. C reads an
+associated binding only through the owner's state for the request's view. In frozen definition D's view, every
+value inferred in D, and every value whose evidence depends directly or transitively on one, is inadmissible; a
+determined value of another definition outside that set is admissible while that definition still has unresolved
+values. A derivation that read an inadmissible value supplies nothing in that view, and the view key keeps its rows
+from other views. Do not reject an independent support merely because another path is cyclic. Do not use an
 individual matching candidate as a certificate while omitting the producer's conflict/completion obligations.
-Other definitions complete under their own rules; a caller's exclusion context controls admissibility of their
-published evidence, not the global meaning of their associated values. An unrelated unresolved value in another
-definition is not a reason to block a determined independent value. C1 must demonstrate this through real source
-binding, not only an abstract graph with manually supplied dependencies.
+Other definitions complete under their own rules; a caller's view controls admissibility of their published
+evidence, not the global meaning of their associated values.
+
+Dependencies also flow back. Inference evidence passes through premises C supplies, such as projection
+normalization over identity facts and conformance-condition proofs. The associated bindings read by those supports,
+transitively through step 4's edges, are returned to the owner, which includes them in the inferred value's
+published dependencies; a reused row returns its recorded reads. Which supports' reads count must not depend on
+search order: C1 fixes either every admissible support, searched exhaustively, or one canonical minimal support.
+If §8.5.5's "depends" does not decide between them, that is reported as a SPEC gap, not chosen here.
+
+Today the owner withholds every value of an in-progress definition and collects evidence requirement by requirement
+(§1, G172). G172's own unit, per-value demand in AssociatedInference, is not part of C0–C4. C2's entry operations
+take the view as an explicit input, derived from today's collection state (`collectingAssociated`) as a pure move;
+C3 leaves inference outcomes unchanged under whichever owner state is current. C1 demonstrates the view through real
+source binding, not only an abstract graph with manually supplied dependencies, for exclusion and for values of
+completed definitions; the admissible value of an in-progress definition is G172's to demonstrate. G170's C4 closure
+does not wait for G172.
 
 ### 4.3 Demand evaluation
 
@@ -241,35 +272,51 @@ binding, not only an abstract graph with manually supplied dependencies.
    subject. Include ancestor clauses and non-immediate/deep subjects. Start with exhaustive template selection in
    the bounded reference model; a production index is an optimization requiring the same answers.
 3. Instantiate only template Self/declared parameters using existing bound antecedent instances and substitution.
-   For `C<A>` with consequence `Self.X is Copy`, A is absent from the head: obtain A from an available bound source
-   such as `T is C<i32>`. Never invent A, enumerate all Types or solve program T to match the rule.
-4. Register antecedent, source-validity, identity and inferred-value support dependencies. Tabling merges repeated
-   demands within one evidence view; keep alternative derivations separate. New available evidence wakes dependents.
-5. Apply only SPEC logic: conjunction supplies conjuncts; disjunction supplies no disjunct. Preserve exact compound
-   assumptions, negation, concrete judgments and error propagation. Inspect both polarities and relevant Error
-   dependencies; a first positive hit is not a completed answer.
+   In `contract C<A>: Tree` with clause `Self.(Tree).Child is Copy`, the head binds Self but not A (a projection
+   through C's own associated Type would carry A in its bound Contract reference, §8.6.1), so a demand
+   `T.(Tree).Child is Copy` needs an available bound instance such as `T is C<i32>`. Never invent A, enumerate all
+   Types or solve program T to match the rule.
+4. Register antecedent, source-validity, identity and associated-binding support dependencies. Tabling merges
+   repeated demands within one evidence view. A pending, cyclic or inadmissible derivation never blocks an
+   independent one; each polarity is decided by one admissible support or by exhausting its permitted search, and
+   alternatives are stored only as far as §4.2's dependency rule needs. New available evidence wakes dependents.
+5. Supply only by SPEC logic: conjunction supplies conjuncts; disjunction supplies no disjunct; exact compound
+   assumptions stay available as written. Negation, concrete judgments and error propagation stay with
+   `ProveConstraint`. Search both polarities and relevant Error dependencies; a first positive hit is not a
+   complete answer.
 6. Use only proven identity for matching; reconsider dependent matches when identity becomes available. Preserve
    full Type structure, applied Contract/Origin identity and congruence; never decompose equality to infer arguments.
    Any required identity correction belongs to that owner and is separately reproduced/designed, not hidden here.
 7. Re-entry records an edge. An unseeded finite proof component contributes no evidence. A finite independent
    support may establish its goal, subject to recursive-Contract prohibition and the inference exclusion above.
    Keep Copy/Owned structural fixed-point semantics and capability purpose keys with their existing owner.
-8. Complete only after the relevant work and source dependencies are settled. Unknown means a completed permitted
-   search found neither polarity. A still-pending declaration is provisional, not a cached negative or final Unknown.
+8. An answer is complete only after the relevant work and source dependencies are settled; `ProveConstraint` returns
+   Unknown only from complete answers with neither polarity. A still-pending declaration makes the answer
+   provisional, not a cached negative or final Unknown.
 
 The hard part is step 2, not drawing the dependency graph. C1 must give a rule-by-rule selection argument covering
 identities, absent-head binders and candidate enumeration, then compare against an exhaustive bounded evaluator.
 A syntactic-prefix selector is B, not C. Finite templates do not bound generated obligations. Growing substitutions
-need explicit work/materialization limits and a located Resource failure, never an arbitrary depth returning
-Unknown/Refuted. Limit values, failure transport and dependent-use stopping are fixed and tested at C1; the existing
-generation-limit diagnostic cannot be repurposed. Any new diagnostic/vocabulary takes its applicable approval.
+need explicit work/materialization limits, counted per request so that reaching one never depends on earlier
+queries, and a located Resource failure, never an arbitrary depth returning Unknown/Refuted. Limit values, failure
+transport and dependent-use stopping are fixed and tested at C1; the existing generation-limit diagnostic cannot be
+repurposed. Any new diagnostic/vocabulary takes its applicable approval.
 
 ### 4.4 Lifecycle, cost and deletion contract
 
 Start with reusable request-local work arrays/rows and support edges. Nested proof, identity and candidate reads
 share the appropriate request/view. Retain capacity after completion, not semantic answers across top-level
-requests. Premise-dependent capability evaluated state must obey this lifetime too. Within-request deduplication
-must not merge inference views or capability purposes. Cross-request caches require a later measured design.
+requests. This lifetime adds no query-order dependence (§8.3.3 Finality): C's answers, a Resource outcome included,
+are functions of the request and its inputs. For the same reason premise-dependent capability evaluated state must
+obey it too. Other persistent state that shapes answers, such as capability results kept until
+`ClearCapabilityResults` and normalization caches, is in C0's census. Within-request deduplication must not merge
+inference views or capability purposes. Cross-request caches require a later measured design that keeps that
+independence.
+
+The capability work graph (`capabilityNodes`, its edges and queue) already schedules dependency-driven evaluation
+with wake-ups, and G172's per-value demand needs the same. Whichever of C1 and G172's design comes first decides
+one worklist for premise, capability and value demands, each node kind keeping its own rule, or records the
+contract difference that needs a second scheduler; an unexplained second scheduler fails review.
 
 Binding's existing source-completion and invalidation lifecycle remains authoritative. No query writes an
 authoritative premise. If validation callbacks mutate source validity during evaluation, C1/C2 must separate that
@@ -278,8 +325,10 @@ Never hide such mutation with a new generation counter or certify a declaration 
 
 One coherent semantic cutover removes:
 
-- `ExpandScopeContractPremises` as the completeness mechanism and its scratch snapshot buffer;
-- syntax-triggered `AddContractPremises` publication at projection/member sites and override expansion;
+- `ExpandScopeContractPremises` as the completeness mechanism, at all six callers (§2), and its scratch snapshot
+  buffer;
+- syntax-triggered `AddContractPremises` publication in `BindAssociatedProjection` and `RequirementMember`;
+- `ExpandContractPremises`'s eager clauses for a Contract scope's Self, which becomes one input assumption;
 - obsolete DerivedFacts materialization/copying in scope composition;
 - semantic fact-bag scans and presence shortcuts that can conceal derivable evidence;
 - persistent premise-dependent answer state made redundant by the request contract.
@@ -290,9 +339,10 @@ it. Do not leave an old/new fallback, an optional mode, a CopyTree case, or two 
 
 Let V be requested bound obligations, E instantiated support edges and J template/identity join work. Request
 storage should follow O(V + E) plus reusable input indexes; running work must expose J as well as V/E. No unconditional
-linear-time claim is made: matching, alternative supports and identities can be costly. Avoid enumerating every
-root-to-goal proof path; share dependency rows and retain alternatives. Record cold/warm time, allocations, retained
-capacity and repeated top-level work. Add an index/summary only when equivalent-work measurements justify it.
+linear-time claim is made: matching, alternative supports and identities can be costly. Avoid enumerating
+root-to-goal proof paths; share dependency rows and store alternatives only as step 4 allows. Record cold/warm time,
+allocations, retained capacity and repeated top-level work. Add an index/summary only when equivalent-work
+measurements justify it.
 
 ## 5. Review and adoption gates
 
@@ -320,14 +370,16 @@ review rounds on the same family, the owner chooses a representation, whitelist 
 
 | Unit | Work / deletions | Completion condition |
 | --- | --- | --- |
-| C0: exact-head evidence | Reconstruct G170 in its test owner; record same bound Type/scope, ordinary/MIR results and current supply/read census. Inspect inference dependency boundaries. | Absent/before/after spelling and query-order evidence; desired regression fails before repair; no new inference defect claimed without a reproducer. Capture source/configuration, sizes/hotspots and existing baselines. |
-| C1: executable design | Prototype demand selection/support in `draft/Sketches`; compare B/C/D on bounded equivalent inputs. Exercise production source adapters for frozen inference and validity, without shipping a second solver. | Rule-selection argument plus exhaustive-model agreement, real-source dependency witnesses, resource boundary, lifecycle and cost results. Exact representation/entry contract and approvals reviewed before production change. Prototype retirement: archive as evidence when C3 regressions cover its cases. |
-| C2: preparation | Move existing responsibilities into the ContractSolver target concern; separate source publication/read where necessary, split due files. Independently repair identity only if a reproduced prerequisite demands it. | Pure moves have unchanged diagnostic/semantic HIR+MIR/generated-fixture evidence per VERIFICATION. Any identity/lifecycle behavior change is a distinct reviewed unit, not called a move. Record moved responsibilities in DECISIONS/architecture/CODEMAP. |
-| C3: shared cutover | Implement the reviewed evaluator, evidence view and source dependencies; migrate every §2 consumer and delete §4.4's alternatives together. Resource publication ships with evaluation. | G170 plus §7 matrix, allocation/reuse checks, no stale consumer/cache/derived-bag path; default acceptance matches its prior disposition. No partial fallback branch. |
-| C4: cost and final review | Measure equivalent workloads, inspect size/deletion and hotspot census; remove new duplication with separately checked units. Independent final review covers C2–C4. | Correct proof/candidates and all source/inference boundaries; recorded cold/warm/retained comparisons, native guarantees unchanged; focused checks and Session pass. Only now update verified support and close G170. |
+| C0: exact-head evidence | Reconstruct G170 in its test owner; record same bound Type/scope, ordinary/MIR results and current supply/read census. Record which inference outcomes the frozen view must keep, G172's included. | Absent/before/after spelling and query-order evidence; desired regression fails before repair; no inference defect beyond G172 claimed without a reproducer. Capture source/configuration, sizes/hotspots and existing baselines. |
+| C1: executable design | Prototype C's demand selection/support in `draft/Sketches` against an exhaustive bounded reference evaluator; §3's B/D counterexamples are its inputs, not further prototypes. Exercise production source adapters for frozen inference and validity, without shipping a second solver. | Rule-selection argument plus exhaustive-model agreement, real-source dependency witnesses, resource boundary, lifecycle, scheduler (§4.4) and cost results. Exact representation/entry contract and approvals reviewed before production change. Prototype retirement: archive as evidence when C3 regressions cover its cases. |
+| C2: preparation | Move existing responsibilities into the ContractSolver target concern and route each §2 read through §4.1's two entry operations, with the view (§4.2), still answered from the existing Facts, wherever that is a pure move; separate source publication/read where necessary, split due files. No consumer-specific mode or parameter is added to make a move pure. Independently repair identity only if a reproduced prerequisite demands it. | Pure moves have unchanged diagnostic/semantic HIR+MIR/generated-fixture evidence per VERIFICATION. Reads left unrouted, writers, scope composers that copy DerivedFacts and presence flags are listed for C3 with the behavior change each needs. Any identity/lifecycle behavior change is a distinct reviewed unit, not called a move. Record moved responsibilities in DECISIONS/architecture/CODEMAP. |
+| C3: shared cutover | Replace what answers the entry operations with the reviewed evaluator, evidence view and source dependencies; migrate the consumers C2 listed and delete §4.4's alternatives together. Resource publication ships with evaluation. | G170 plus §7 matrix, allocation/reuse checks, no stale consumer/cache/derived-bag path; default acceptance matches its prior disposition. No partial fallback branch. |
+| C4: cost and final review | Measure equivalent workloads, inspect size/deletion and hotspot census; remove new duplication with separately checked units. Independent final review covers C2–C4. | Correct proof/candidates and all source/inference boundaries (G172's in-progress half excepted, §4.2); recorded cold/warm/retained comparisons, native guarantees unchanged; focused checks and Session pass. Only now update verified support and close G170. |
 
-C3 is one semantic unit after preparation, not permission for an unreviewably large change. If C1's concrete census
-cannot make it reviewable, revise the unit design before coding while preserving one owner at every mergeable head.
+C3 is one semantic unit after preparation, not permission for an unreviewably large change: C2's routing leaves it
+the evaluator, the listed consumers and the deletions, with one supplier behind the entry operations at every head.
+If C1's concrete census cannot make it reviewable, revise the unit design before coding while preserving one owner
+at every mergeable head.
 Record new representations and rejected options in the first implementing commit; document intake alone adds no
 implementation DECISIONS entry. S5 and Transferable resume through their own existing units after this supply gate.
 
@@ -341,7 +393,7 @@ Reuse owning tests and helpers; add cases at the lowest public observable layer 
 | General rule selection | Deep non-prefix head, inherited refinements, missing head binder, Contract arguments and Origin families; `AssociatedSubjectConstraintBindingTest`, `AssociatedContractParameterTest`, `AssociatedIdentityTest`. |
 | Logic / identity | And/Or/exact compound, negation, contradictory and Error evidence; congruent nested Types with no inverse inference; `ConstraintBindingTest`, `NormalizedConstraintProofBindingTest`, `TypeIdentityTest`, `AssociatedIdentityTest`. |
 | Proof recursion / availability | Recursive abstract input versus forbidden concrete conformance; unseeded cycle versus independent support; invalid outer/refined source; `ClosedConformancePrerequisiteBindingTest`, `ProvisionalContractPremiseBindingTest`, `IntrinsicCapabilityTest`. |
-| Frozen inference | Same-definition chain and A.Item→B.Value→A.Other exclusion; explicit counterpart; independent external value while another is pending; missing/ambiguous matches and pending compatibility; `AssociatedInferenceTest`. |
+| Frozen inference | Same-definition chain; explicit counterpart; missing/ambiguous matches and pending compatibility; a completed external value in either declaration order; dependencies returned through C-supplied normalization and conditions; outcomes unchanged by C3; `AssociatedInferenceTest`. G172's unit owns §8.5.5's PA/PB example in both declaration and requirement orders, the A.Item→B.Value→A.Other exclusion (today, with A first, both A.Other and B.Value fail) and an independent value of an in-progress definition. |
 | Inference publication / edits | Merged fragments, distinct bound Contracts, late source/effect failure, remove/restore explicit evidence; `AssociatedInferenceBoundaryTest`, existing inference lifecycle/allocation checks. |
 | Discovery and scopes | Pending candidates remain discoverable and ambiguity is preserved; scope unions, conditional/override/property premises, Callable/indexer/arithmetic/effect consumers; existing owners in CODEMAP and §2. |
 | Finality | Reverse declaration/query order, ordinary versus frozen views, provisional→final, late invalidation within final validation, reload/edit/repair; `ClosedConstraintLifecycleBindingTest`, `LateConstraintEnvironmentBindingTest`, `ConstraintProjectionCertificateBindingTest`, `UnresolvedCapabilityProofBindingTest`. |
@@ -355,19 +407,21 @@ finite models, not permission to limit language semantics. Timing belongs in `sr
 add a premise workload only if it is a distinct measured responsibility. Preserve zero-allocation tests, including
 `WarmAssociatedRefinementProofsAllocateNothing` and existing inference/deep-refinement warm checks.
 
-Compare the original baseline, C and any viable B/D prototype under the same inputs and fixed conditions. Report
-correctness differences before timings. Record code additions/deletions by owner, time distributions, allocations,
-retained memory and V/E/J work counts. A net size increase can be justified by deleting competing semantics; a speed
-claim requires measurements. An unexplained regression or an existing assertion failure blocks completion; never
-add warm-up, weaken a ratchet or claim reduced work by dropping permitted evidence. Native O2 runtime/allocation
-guarantees remain constraints. Generated code need not change for an existing accepted input merely to fix proof.
+Compare the original baseline and C under the same inputs and fixed conditions; a B or D prototype is built only if
+these measurements reopen §3. Report correctness differences before timings. Record code additions/deletions by
+owner, time distributions, allocations, retained memory and V/E/J work counts. A net size increase can be justified
+by deleting competing semantics; a speed claim requires measurements. An unexplained regression or an existing
+assertion failure blocks completion; never add warm-up, weaken a ratchet or claim reduced work by dropping
+permitted evidence. Native O2 runtime/allocation guarantees remain constraints. Generated code need not change for
+an existing accepted input merely to fix proof.
 
 Implementation verification follows [VERIFICATION](../../docs/dev/VERIFICATION.md): selected Unit classes/methods
 for changed behavior, `Purpose=Allocation` where appropriate, and a final Session with explicit relevant native
 fixture/milestone selections. A Session covering the last unchanged unit replaces its Unit run. NativeAOT is not
 selected. Associate Unit/Session evidence with `scripts/verify-commit.ps1` before pushing implementing commits.
 This planning-only unit requires diff/reference review and independent proposal review, no builds or tests; it has
-no Unit/Session evidence to associate. Preserve its review and reference evidence under `artifacts/verify/`.
+no Unit/Session evidence to associate. Preserve its review and reference evidence under `artifacts/verify/`. The
+revision's CLI check (§8) is evidence for G172, not a Unit or Session run.
 
 ## 8. Review record
 
@@ -394,3 +448,34 @@ that the real-source dependency and completeness work remains an implementation 
 Executable selection completeness, real-source dependency publication, resources and performance remain C1/C3/C4
 gates. This review approves a plan to establish those facts; it is neither evidence that they hold nor approval to
 resume paused implementation work. No compiler, model, build, test or performance measurement ran in this unit.
+
+### Revision (2026-10-20)
+
+The owner asked for the plan to be scrutinized and corrected against the Principles. The planning session checked
+the anchors and claims against `bc3fcd3f` (compiler sources at `0ccf13ce`) and changed:
+
+| Finding | Principle / rule | Correction |
+| --- | --- | --- |
+| §1 called the cross-definition case "a design test, not a newly reproduced defect"; SPEC §8.5.5's PA/PB example is rejected in both declaration orders, the order deciding which inference fails. | Explicit Semantics; §8.3.3 Finality | G172 recorded as a separate inference-owner cause (per-value demand); §4.2 and §7 leave it to its own unit; G170's closure does not wait for it. |
+| §4.2 carried inferred-value dependency sets in proof rows beside the inference owner's own admissibility decision. | One Concept, One Canonical Form | The owner publishes admissibility per view, D's own values included; C keys rows by view and returns the bindings its supports read; C1 fixes an order-independent reporting rule. |
+| §2 named a nonexistent `ContractMembers` and only one of six `ExpandScopeContractPremises` callers. | Local Reasoning (census) | `RequirementMember`; all six callers and the eager Contract-scope clauses; §4.4's deletions name them. |
+| §4.1 made the solver "prove" propositions, against §2's "supplying evidence" and its own premise-only scope. | One owning component | The solver supplies evidence (by proposition) and subject evidence/candidates, with completion state; judgment, normalization and lookup keep their owners. |
+| §4.3's absent-head example carried A in its head (§8.6.1). | Explicit Semantics | An inherited projection whose head lacks A. |
+| §4.3/§4.4 retained alternative supports without a stated need. | Short, Fast | One admissible support decides an answer; alternatives are kept only for §4.2's dependency rule. |
+| Request-local answers lacked their reason; a second dependency scheduler beside the capability work graph went unmentioned. | Local Reasoning; Consistent | Finality and per-request limits stated; one worklist for premise, capability and G172's value demands, or a recorded contract difference. |
+| C1/C4 re-prototyped B and D, which §3 had rejected. | Short | C against an exhaustive reference evaluator; B/D counterexamples are inputs; D reopens only on measurements. |
+| C3 migrated every consumer together with the evaluator. | AGENTS separate commits | C2 routes reads, with the view, through the entry operations as pure moves without mode parameters; C3 replaces their answers and handles the listed writers and flags. |
+
+Evidence: one `Kimi.exe check` of SPEC §8.5.5's example in each declaration order, sources and outputs under
+`artifacts/verify/20261020-g170-plan-revision/`; no Unit/Session run. G170's selection, C's contract otherwise, the
+gates and holds are unchanged.
+
+Independent reviewer `review_revision`, author of neither the plan nor the revision, re-ran the probes (and
+variants) and checked every claim against source and SPEC. Round 1 requested changes: G172's first explanation
+missed requirement-order extraction, so its repair is per-value demand rather than publication granularity, and the
+rule predates the 2026-10-15 rewrite (not S1015); admissibility omitted D's own values; the dependencies returned
+through C-supplied premises and an order-independent reporting rule were missing; normalization needs subject
+reads. Non-blocking: completion state in answers, the view from C2, no mode parameters, G172's ordering, one
+scheduler, an overclaimed order independence, stale text and wording. All were applied as above. Round 2 accepted
+the revision with no blocking finding; its four editorial points (exhaustive supports, the A-first condition, C4's
+G172 exception, wrapping) were applied.
