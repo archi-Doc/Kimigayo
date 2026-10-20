@@ -10,6 +10,7 @@ public sealed partial class Binding
     private readonly Dictionary<BoundOrigin, LocalRegion> localRegions = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundOrigin> regionWork = new();
     private readonly HashSet<BoundOrigin> regionVisited = new(ReferenceEqualityComparer.Instance);
+    private readonly List<Koto?> regionEvidence = new();
     private int regionVersion;
 
     internal static bool IsLocalRegion(BoundOrigin origin)
@@ -73,6 +74,34 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // SPEC 15.6, 15.6.5: the Origin, read at a use, through which a value of a Type carries `origin`, judged without flow: one the Type
+    // names (a meet operand included) or a local region with `origin` among its sources; null when the value does not carry it.
+    internal BoundOrigin? CarrierOf(BoundType type, BoundOrigin origin, Koto use)
+    {
+        if (this.RegionCarrier(type.Origin, origin, use) is { } own)
+        {
+            return own;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (this.RegionCarrier(type.OriginArguments[i], origin, use) is { } argument)
+            {
+                return argument;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.CarrierOf(type.Components[i], origin, use) is { } part)
+            {
+                return part;
+            }
+        }
+
+        return null;
     }
 
     // The graph stores contract bounds, never a current value. Ownership separately follows the definitions reaching each use.
@@ -160,32 +189,58 @@ public sealed partial class Binding
         return false;
     }
 
+    // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent read through
+    // OriginAtUse at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound whose
+    // parent is `source` or a meet holding it; null when `region` holds `source` itself or does not reach it. A local's own initializer
+    // stands for its declaration.
     internal Koto? LocalRegionSourceUse(BoundOrigin region, BoundOrigin source)
     {
         this.regionWork.Clear();
+        this.regionEvidence.Clear();
         this.regionVisited.Clear();
         this.regionWork.Add(region);
+        this.regionEvidence.Add(null);
         while (this.regionWork.Count != 0)
         {
             var current = this.regionWork[^1];
+            var evidence = this.regionEvidence[^1];
             this.regionWork.RemoveAt(this.regionWork.Count - 1);
-            if (!this.regionVisited.Add(current) || !this.localRegions.TryGetValue(current, out var bounds))
+            this.regionEvidence.RemoveAt(this.regionEvidence.Count - 1);
+            if (ReferenceEquals(current, source))
+            {
+                return Use(evidence);
+            }
+
+            if (!this.regionVisited.Add(current))
             {
                 continue;
             }
 
-            for (var i = 0; i < bounds.Parents.Count; i++)
+            if (this.localRegions.TryGetValue(current, out var bounds))
             {
-                if (ReferenceEquals(bounds.Parents[i], source))
+                for (var i = 0; i < bounds.Parents.Count; i++)
                 {
-                    return bounds.Values[i] is VariableKoto { InitializerKoto: { } initializer } ? initializer : bounds.Values[i];
-                }
+                    var parent = this.OriginAtUse(bounds.Parents[i], bounds.Values[i]);
+                    if (ReferenceEquals(parent, source))
+                    {
+                        return Use(bounds.Values[i]); // A direct parent first, before a longer path.
+                    }
 
-                this.regionWork.Add(bounds.Parents[i]);
+                    this.regionWork.Add(parent);
+                    this.regionEvidence.Add(bounds.Values[i]);
+                }
+            }
+
+            for (var i = 0; i < current.Operands.Count; i++)
+            {
+                this.regionWork.Add(current.Operands[i]);
+                this.regionEvidence.Add(evidence);
             }
         }
 
         return null;
+
+        static Koto? Use(Koto? value) => value is VariableKoto { InitializerKoto: { } initializer } ? initializer : value;
     }
 
     private static bool HasLocalRegion(BoundOrigin origin)
@@ -205,6 +260,10 @@ public sealed partial class Binding
 
         return false;
     }
+
+    // An Origin of a Type read at a use, when it carries `origin` (CarrierOf).
+    private BoundOrigin? RegionCarrier(BoundOrigin? expression, BoundOrigin origin, Koto use)
+        => expression is not null && this.OriginAtUse(expression, use) is var read && this.RegionContains(read, origin) ? read : null;
 
     private void ResetLocalRegions()
     {

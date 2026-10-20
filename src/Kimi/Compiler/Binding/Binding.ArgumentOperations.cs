@@ -114,6 +114,10 @@ public sealed partial class Binding
     // The Projection slot that names a closure literal's own temporary value, the receiver of a call on that literal (SPEC 15.8.2).
     internal const int ClosureValueSlot = int.MinValue;
 
+    // The Projection slot of the helper borrow, a Borrow of the whole destruction receiver (SPEC 16.3.1, Binding.HelperOrigin). Its binder
+    // is always a destructor, never a value or a closure, so no reader of an environment or closure-value slot meets it.
+    internal const int HelperSlot = int.MinValue + 1;
+
     // The Projection slot that names a binding's own Place.
     internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 
@@ -378,13 +382,18 @@ public sealed partial class Binding
     // keeps that reference's dependencies, whereas the own slot of a local, a parameter, an environment binding or a temporary is
     // a Place of the body or of the closure's receiver (SPEC 15.8.2).
     private BoundOrigin SlotOrigin(Koto source)
-        => KotoHelper.UnwrapParentheses(source) is var slot &&
+        => this.HelperOrigin(source) ?? (KotoHelper.UnwrapParentheses(source) is var slot &&
             (slot is IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture } ||
             slot is InvocationKoto)
-            ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source);
+            ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
 
     private BoundOrigin PlaceOrigin(Koto source)
     {
+        if (this.HelperOrigin(source) is { } helper)
+        {
+            return helper;
+        }
+
         if (this.ReadsReferent(source))
         {
             return this.OriginAtom(source, OriginKind.Projection, 0);
