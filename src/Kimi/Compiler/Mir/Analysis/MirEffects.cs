@@ -8,9 +8,9 @@
 // Output: IncompatibleContractImplementation_Kd,
 // UnsatisfiedEffectBound_Kd and Unsupported_Kd through MirReport, and for A5 the per-node summaries and a site's static keys (Keys).
 // Atoms compose through each call's substitution into the caller (an atom concrete there is resolved there, one on a projection with a
-// recursive base where it arises, SPEC 15.6.4, so the fixed point is finite); requirement and virtual calls take the bounds of the caller's
-// own premises; one worklist with recorded dependencies solves the least fixed point; storage is pooled and reset by counts, so a warm
-// version allocates nothing.
+// recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
+// G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
+// the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
 // Must not read syntax or HIR, re-derive premises, bounds or obligations, decide `preserves results` (A5-3), or report a failure that only
 // an Opaque site or a callee Binding rejected causes (derived, R4-M10).
 

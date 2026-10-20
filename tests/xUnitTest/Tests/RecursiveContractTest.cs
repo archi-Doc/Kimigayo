@@ -25,7 +25,8 @@ public sealed class RecursiveContractTest
     // SPEC 8.3.3: each recursive Contract of the S5 proposal's 2.1, through the premise supply of `T is C` (SPEC 8.3.2): Tree; CopyTree,
     // which refines Tree and constrains its inherited Child; A and B, which supply each other's conformance; Rec, whose refinement
     // constrains Node's unconstrained Child (Node is not recursive); Seq, whose Next conforms to another bound reference of its declaration;
-    // A with a Constraint on a two-step projection of Self (B is not recursive). A disjunction supplies nothing, so Bush is not recursive.
+    // A with a Constraint on a two-step projection of Self (B is not recursive). A disjunction supplies nothing, so Bush is not recursive;
+    // a conjunction supplies each side (Hedge); a conformance to a proper refinement counts (Shrub's Child is a Bonsai, which refines Shrub).
     // SPEC 15.6.4: any base counts: Forest is not recursive, but Root is a Tree, so T.Root.Child has a recursive base.
     [Theory]
     [InlineData(Tree, "T is Tree", "T.(Tree).Child", true)]
@@ -38,6 +39,8 @@ public sealed class RecursiveContractTest
     [InlineData(TwoStep, "T is A", "T.(A).X", true)]
     [InlineData(TwoStep, "T is B", "T.(B).Y", false)]
     [InlineData("contract Leafy\ncontract Bush\n    associate Child is Bush or Leafy\n", "T is Bush", "T.(Bush).Child", false)]
+    [InlineData("contract Leafy\ncontract Hedge\n    associate Child is Hedge and Leafy\n", "T is Hedge", "T.(Hedge).Child", true)]
+    [InlineData("contract Shrub\n    associate Child is Bonsai\ncontract Bonsai: Shrub\n", "T is Shrub", "T.(Shrub).Child", true)]
     [InlineData(Forest, "T is Forest", "T.(Forest).Root", false)]
     [InlineData(Forest, "T is Forest", "T.(Forest).Root.(Tree).Child", true)]
     public void AProjectionHasARecursiveBase(string declarations, string premise, string projection, bool expected)
@@ -64,15 +67,19 @@ public sealed class RecursiveContractTest
     [Fact]
     public void AWarmRebindAndItsQueriesAllocateNothing()
     {
-        var c = Bind(Forest + Mutual + "func probe<T, U>(value: T.(Forest).Root.(Tree).Child, other: U.(A).X)\n    T is Forest\n    U is A\n    ()\n");
+        var c = Bind(Forest + Mutual + "contract Seq<E>\n    associate Next is Seq<Option<E>>\n" +
+            "func probe<T, U, V>(value: T.(Forest).Root.(Tree).Child, other: U.(A).X, next: V.(Seq<i32>).Next)\n    T is Forest\n    U is A\n" +
+            "    V is Seq<i32>\n    ()\n");
         var probe = Probe(c);
-        var (first, second) = (TyCtxt.Signature(probe, null, 0, out _)!, TyCtxt.Signature(probe, null, 1, out _)!);
-        Assert.True(c.Types.RecursiveBase(probe, first) && c.Types.RecursiveBase(probe, second));
+        var types = Enumerable.Range(0, 3).Select(i => TyCtxt.Signature(probe, null, i, out _)!).ToArray();
+        Assert.All(types, x => Assert.True(c.Types.RecursiveBase(probe, x)));
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
             c.Binding.Bind(BindingMode.Final);
-            _ = c.Types.RecursiveBase(probe, first);
-            _ = c.Types.RecursiveBase(probe, second);
+            foreach (var type in types)
+            {
+                _ = c.Types.RecursiveBase(probe, type);
+            }
         }));
     }
 

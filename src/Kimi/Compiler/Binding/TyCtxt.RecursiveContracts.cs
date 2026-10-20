@@ -5,13 +5,16 @@
 // Input: a definition (null: a module's top-level statements) and an interned Type, after Bind.
 // Output: RecursiveBase. The pass's recursive Contract declarations behind it are found on the first query that reaches a projection and
 // kept for the pass (stamped with Binding's pass version), so they are immutable after Bind; nothing runs inside Bind.
-// Invariants: a Contract C is recursive exactly when the premise supply of `T is C` (SPEC 8.3.2: AddContractPremises, C's Self as T),
-// expanded through each supplied conformance of T or of a projection of T, supplies an available conformance of a projection of T to C's
-// declaration with any Type arguments or to a refinement of it; a declaration is expanded at most once along a chain of bases, so the
-// search is finite. A base conforms when the proof rule (ProveConstraint) proves it under the definition's effect premises
+// Invariants: a Contract C is recursive when the premise supply of `T is C` (SPEC 8.3.2: AddContractPremises, C's Self as T), expanded
+// through each supplied conformance of T or of a projection of T, supplies an available conformance of a projection of T to C's
+// declaration with any Type arguments or to a refinement of it. Each declaration is expanded once at T and once at a projection of T, so
+// the search is finite (at most twice the declarations) and exact for what a Contract supplies through Self; a Constraint on a projection
+// of a Contract's own Type parameter, which can supply something new only at a later expansion, is not followed (an under-approximation:
+// such a base keeps its atom). A base conforms when the proof rule (ProveConstraint) proves it under the definition's effect premises
 // (Binding.EffectPremises), the premise scope of Copy and Sealed.
-// Must not: list Constraint kinds or read clause syntax, prove anything outside the proof rule and the premise supply, or write state other
-// than its memo and its scratch scope.
+// Must not: list the Constraint forms that make a Contract recursive or read clause syntax, or prove anything outside the proof rule and
+// the premise supply. Besides its memo and its scratch scope it writes only what any proof after Bind writes (interned constraints and
+// Types, capability results, bound Contract references).
 
 namespace Kimi.Compiler;
 

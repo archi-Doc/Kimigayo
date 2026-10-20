@@ -8,9 +8,9 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     // The pass's recursive Contract declarations, valid while recursiveVersion is the pass's version; the search's scope and the
-    // (declaration, Type) pairs it expanded, reused.
+    // declarations it expanded, at T or at a projection of T, reused.
     private readonly List<BindingSymbol> recursiveContracts = [];
-    private readonly HashSet<(BindingSymbol Declaration, BoundType Subject)> suppliedExpansions = [];
+    private readonly HashSet<(BindingSymbol Declaration, bool AtSelf)> suppliedExpansions = [];
     private BindingScope? supplyScope;
     private ulong recursiveVersion;
 
@@ -73,8 +73,10 @@ public sealed partial class Binding
 
     // SPEC 8.3.3: whether `T is C` supplies (SPEC 8.3.2), directly or through the Constraints of the Contracts so supplied, a conformance of
     // a projection of T to C's declaration or a refinement of it. The supply's facts are a worklist: each available conformance of T or a
-    // projection of T is expanded in turn, unless its declaration was expanded at that Type or at one of its bases. An `or` Constraint is
-    // one fact of kind Or and supplies nothing.
+    // projection of T is expanded in turn, each declaration once at T and once at a projection of T. What a declaration supplies through
+    // Self at one projection is what it supplies at another, shifted, so this finds every such conformance in at most twice as many
+    // expansions as declarations; a Constraint on a projection of a declaration's own Type parameter, which can supply something new only
+    // at a later expansion, is not followed. An `or` Constraint is one fact of kind Or and supplies nothing.
     private bool IsRecursive(BoundContract shape)
     {
         var scope = this.supplyScope ??= new(this.Library.Kotonoha.RootKoto) { Constraints = new() };
@@ -82,7 +84,7 @@ public sealed partial class Binding
         var self = this.ContractSelfType(shape.Symbol);
         environment.Reset();
         this.suppliedExpansions.Clear();
-        this.suppliedExpansions.Add((shape.Symbol, self));
+        this.suppliedExpansions.Add((shape.Symbol, true));
         this.AddContractPremises(shape, self, scope);
         for (var i = 0; i < environment.DerivedFacts.Count; i++)
         {
@@ -98,30 +100,12 @@ public sealed partial class Binding
                 return true;
             }
 
-            if (this.FirstExpansion(contract.Declaration.BoundSymbol!, subject))
+            if (this.suppliedExpansions.Add((contract.Declaration.BoundSymbol!, ReferenceEquals(subject, self))))
             {
                 this.AddContractPremises(supplied, subject, scope);
             }
         }
 
         return false;
-    }
-
-    // Records the expansion of a declaration at a Type of the search, unless it was expanded at that Type or at one of its bases (a chain
-    // that repeats a declaration, which makes that declaration recursive itself).
-    private bool FirstExpansion(BindingSymbol declaration, BoundType subject)
-    {
-        for (var b = subject; ; b = b.Components[0])
-        {
-            if (this.suppliedExpansions.Contains((declaration, b)))
-            {
-                return false;
-            }
-
-            if (b.Kind != BoundTypeKind.AssociatedProjection)
-            {
-                return this.suppliedExpansions.Add((declaration, subject));
-            }
-        }
     }
 }
