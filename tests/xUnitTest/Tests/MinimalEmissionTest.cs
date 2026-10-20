@@ -336,6 +336,27 @@ public class MinimalEmissionTest
         return c;
     }
 
+    // SPEC 8.15.3, 23.1.1: a valid program past a generation resource limit is refused with GenerationResourceLimit_Kd and no output, checked
+    // and then generated as a build runs them. MIR code generation reports the checked set's limit at check (K13b); the old generator's
+    // failure text is checked on a compilation pinned to it until G2 (DECISIONS R5-M85).
+    internal static void AssertGenerationResourceLimit(string source, string legacyFailure)
+    {
+        var c = Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, Describe(c, null));
+        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), Describe(c, null));
+        c.ReportAnalysis();
+        using var output = new StringWriter();
+        Assert.False(c.Generate(output));
+        Assert.Empty(output.ToString());
+        var error = Assert.Single(TestDiagnostics.Of(c));
+        Assert.Equal(("GenerationResourceLimit_Kd", DiagnosticSeverity.Error), (error.Code, error.Severity));
+
+        var old = Analyze(source, codegen: CompilerCodegen.Legacy);
+        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
+        Assert.True(old.Emission.FailureIsResourceLimit, failure);
+        Assert.Contains(legacyFailure, failure, StringComparison.Ordinal);
+    }
+
     // The failure message of an analysis or generation assertion: the results, the old path's records (requirement, code and location) and,
     // under mir, the problems with their Op. It only reads, since a message argument is evaluated whether or not the assertion fails.
     internal static string Describe(Compilation c, string? error)

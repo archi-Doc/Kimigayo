@@ -12,10 +12,12 @@ namespace XunitTest;
 
 public class OwnershipStorageLimitTest(ITestOutputHelper output)
 {
+    // The old instance run's storage limit (InstanceStorageLimit, deleted at G7), on a compilation pinned to the old generator, which goes
+    // by G4 at the latest (DECISIONS R5-M85).
     [Fact]
     public void ConcreteInstanceLimitsRemainResourceFailuresAndRecover()
     {
-        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))");
+        var c = MinimalEmissionTest.Analyze("func identity<T>(value: T) -> T => value@move\nidentity((20, 22))", codegen: CompilerCodegen.Legacy);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         Assert.True(c.WriteIr(TextWriter.Null, out var initial), initial);
         var previous = OwnershipStorage.ByteLimit;

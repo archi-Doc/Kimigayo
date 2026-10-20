@@ -282,29 +282,22 @@ public class GenericStorageEmissionTest
         Assert.Equal(2, Instances(module).Length);
     }
 
+    // SPEC 8.15.3: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource failure, distinguished from semantic and
+    // representation errors.
     [Fact]
     public void GrowingSubstitutionKeysAreResourceDiagnosed()
-    {
-        // SPEC 21.3.2: T -> Box<T> re-enters grow with ever new keys; generation stops with a resource
-        // failure, distinguished from semantic and representation errors.
-        var c = MinimalEmissionTest.Analyze(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)");
-        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var output = new StringWriter();
-        Assert.False(c.WriteIr(output, out var error));
-        Assert.Empty(output.ToString());
-        Assert.True(c.Emission.FailureIsResourceLimit, error);
-        Assert.Contains("grow", error, StringComparison.Ordinal);
-    }
+        => MinimalEmissionTest.AssertGenerationResourceLimit(Box + "func grow<T>(value: T, n: i32) -> i32 => if n == 0 => 0 else => grow<Box<T>>(Box<T>.init(value@move), n - 1)\nlet r = grow<i32>(1, 3)", "grow");
 
     [Fact]
     public void OversizedSubstitutionSetsAreResourceDiagnosed()
     {
-        // SPEC 21.3.2: a third distinct closed context of choose exceeds a lowered substitution set limit.
+        // A third distinct closed context of choose exceeds a lowered substitution set limit: the old generator's own limit, on a
+        // compilation pinned to it, which goes by G4 at the latest (DECISIONS R5-M85).
         var limit = GenericStoragePlan.SubstitutionSetLimit;
         GenericStoragePlan.SubstitutionSetLimit = 2;
         try
         {
-            var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)");
+            var c = MinimalEmissionTest.Analyze(Choose + "let a = choose<i8>(1, 2, true)\nlet b = choose<i16>(1, 2, true)\nlet d = choose<i32>(1, 2, true)", codegen: CompilerCodegen.Legacy);
             using var output = new StringWriter();
             Assert.False(c.WriteIr(output, out var error));
             Assert.Empty(output.ToString());
