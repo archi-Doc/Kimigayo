@@ -60,13 +60,21 @@ public class BitConversionTest
             "let negativeInfinity = 0xFF80_0000@bits<f32>\nlet negativeZero = -0.0@bits<u64>\nlet d: f64 = -2.5\nlet dbits = d@bits<i64>\nlet dback = dbits@bits<f64>\n" +
             "let w: Wrapping<u32> = 0x4000_0000\nlet two = w@bits<f32>\nlet subnormal = 1@u32@bits<f32>\nlet subnormalBits = subnormal@bits<Wrapping<u32>>\n" +
             "let signaling = 0x7F80_0001@u32@bits<f32>\nlet signalingBits = signaling@bits<u32>\nlet literalBits = 1.5@bits<u32>\n" +
+            "let folded = 0x7F80_0001@bits<f32>\nlet foldedNegative = 0xFF80_0001@bits<f32>\nlet foldedWide = 0x7FF0_0000_0000_0001@bits<f64>\n" +
             "if raw == 0x3FC0_0000 and back == 1.5 and quiet != quiet and payload == 0x7FC0_0001 and negativeInfinity < -3.0e38 and negativeZero == 0x8000_0000_0000_0000 and dbits == -4610560118520545280 and dback == -2.5 " +
-            "and two == 2.0 and subnormal > 0.0 and subnormal < 1.0e-44 and subnormalBits == 1 and signalingBits == 0x7F80_0001 and literalBits == raw => Console.writeLine(\"ok\")";
+            "and two == 2.0 and subnormal > 0.0 and subnormal < 1.0e-44 and subnormalBits == 1 and signalingBits == 0x7F80_0001 and literalBits == raw " +
+            "and folded@bits<u32> == 0x7F80_0001 and foldedNegative@bits<u32> == 0xFF80_0001 and foldedWide@bits<u64> == 0x7FF0_0000_0000_0001 " +
+            "=> Console.writeLine(\"ok\")";
         var ir = ScalarEmissionTest.EmitFixture("BitConversions", source, "ok\n");
         Assert.Contains(" = bitcast float ", ir);
         Assert.Contains(" = bitcast i32 ", ir);
         Assert.Contains(" = bitcast double ", ir);
         Assert.Contains(" = bitcast i64 ", ir);
+
+        // A folded constant is the hexadecimal double of its bits widened exactly: a signaling NaN stays signaling, sign and payload kept.
+        Assert.Contains("float 0x7FF0000020000000", ir);
+        Assert.Contains("float 0xFFF0000020000000", ir);
+        Assert.Contains("double 0x7FF0000000000001", ir);
     }
 
     [Fact]

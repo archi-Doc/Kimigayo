@@ -662,6 +662,8 @@ public sealed class FunctionCodegenTest
     [InlineData("func f() -> f32 => 2139095040@bits<f32>", "store float 0x7FF0000000000000, ptr %, align 4")]
     [InlineData("func f() -> f32 => 2139095041@bits<f32>", "store float 0x7FF0000020000000, ptr %, align 4")]
     [InlineData("func f() -> f32 => 4290772993@bits<f32>", "store float 0xFFF8000020000000, ptr %, align 4")]
+    [InlineData("func f() -> f32 => 4286578689@bits<f32>", "store float 0xFFF0000020000000, ptr %, align 4")]
+    [InlineData("func f() -> f64 => 9218868437227405313@bits<f64>", "store double 0x7FF0000000000001, ptr %, align 8")]
     public void FloatingConstantsAreHexadecimalDoubles(string source, string store)
         => Assert.Single(Parse(source).Ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == store);
 

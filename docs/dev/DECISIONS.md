@@ -4287,8 +4287,9 @@ structure is recorded here by the unit that first implements it.
     takes its column's unchecked column (`Unchecked`: an integer's wrapping column, any other its own). `Rows` is checked at type
     initialization against both operator enums and the column count (C1a's review, item 5).
   - Floating constants: a Value of prefix `x` is LLVM's hexadecimal double; an f32 constant is widened exactly in code, so a NaN keeps
-    its payload and signaling bit, which a hardware widening sets (the old generator's does, an open issue). `WriteValue` spells through
-    the one `Spell`, and C1a's failure operands are one `Failure` for both tables.
+    its payload and signaling bit, which a hardware widening sets (the old generator's did until R5-M86's D5 fix; both generators
+    now take their bits from `LlvmModuleText.Hexadecimal`). `WriteValue` spells through the one `Spell`, and C1a's failure operands are one
+    `Failure` for both tables.
   - Rejected: a second operator table for floating point; a row-level fixed operand (`fneg` takes none, and `fsub 0, x` loses -0.0);
     per-form arms or a plan computed beside the table (the old `BodyLowering.PlanConversion` shape); a Proven test in codegen; a check
     written with no test (`WriteCheckedConversion` needs a bound); the runtime's float-to-double conversion for constants.
