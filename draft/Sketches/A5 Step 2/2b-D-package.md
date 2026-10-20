@@ -1,5 +1,7 @@
 # 2b-D package: A5-F5 effects and static anchors, A4's keys, Transferable
 
+Copied from the R4 session's scratch on 2026-10-21; references to design-A.md, design-B.md, review.md, package.md and scratch probe folders name files kept outside the repository.
+
 Consolidated by designer A on the planning session's instruction (2026-10-21), from design A, design B and the design review
 (`review.md`), which read both. It follows the review's recommended combination item by item. The planning session confirmed one
 reading: e1's code follows the A6 table's row 1 (§1.5), recorded in DEC as a clarification of R4-M72. Base: `origin/dev`

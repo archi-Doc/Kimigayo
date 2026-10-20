@@ -1,5 +1,7 @@
 # 2e-D independent design review: A5-F9 (defaults and inline copies, PLAN G171)
 
+Copied from the R4 session's scratch on 2026-10-21; references to design-A.md, design-B.md, review.md, package.md and scratch probe folders name files kept outside the repository.
+
 I wrote neither design. Base: `origin/dev` `84a21a2b`. No MIR, MirBuilder or MirTypes file has changed since the designs' base
 `851e755b`; I checked this with `git diff --stat` after 2b-S5 and bu11 landed. I worked read-only and ran no builds or test suites.
 

@@ -1,5 +1,7 @@
 # 2b-D design review: A5-F5 effects and static anchors, A4's keys, Transferable
 
+Copied from the R4 session's scratch on 2026-10-21; references to design-A.md, design-B.md, review.md, package.md and scratch probe folders name files kept outside the repository.
+
 Independent reviewer (wrote neither design), 2026-10-21. Code read at dev `1e4bf722` (2b-S5 merged; `r4-docs` worktree,
 read-only) and `origin/dev` for Binding. The designs were written on `851e755b`. No repository edit, no build and no test suite
 ran. Both prototype variants were rerun from empty scratch folders (`rv2bd-runA`, `rv2bd-runB`; `dotnet run proto.cs -- -r18`,

@@ -1,5 +1,7 @@
 # 2e-D package: A5-F9, defaults and inline copies (ER-defaults, the copy disposition, PLAN G171)
 
+Copied from the R4 session's scratch on 2026-10-21; references to design-A.md, design-B.md, review.md, package.md and scratch probe folders name files kept outside the repository.
+
 Consolidated by designer A on 2026-10-21, on the planning session's instruction. It takes the design review's (`review.md`)
 per-item recommendation: design A is the base, folded with the items the review takes from design B. No repository file was
 edited.
