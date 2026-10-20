@@ -864,6 +864,7 @@ approval (R4-M74 OQ2) or under BU's planning.
   plan (G0–G4); its G1 asks the owner's reading of "depends" again (the rolled-back R4-M85 is not in force).
 - G173, cited by S3's evidence: `TestDiagnostics.Collect` reads a source through `DiagnosticOwner.FindDocument(path)`, which
   returns the first document with that path (code reading). PLAN G173.
-- Shared on 2026-10-21 with R5's and BU's planning sessions (cross-session messages): G170, G172 and G174's Binding part are
-  Binding work for BU's planning session to schedule under its plans; R5 reviews 2b-5's MIR consumption (AR-2) and M69's
-  scope query in the shared `MirBody`; G173 is test tooling with no owner yet.
+- Shared on 2026-10-21 with R5's and BU's planning sessions (cross-session messages), which confirmed: BU takes G170 (PlanB
+  C0–C4), G172 (G0–G4, its G1 asking the owner's reading of "depends") and G174's Binding part, after its unsound-acceptance
+  units (bu11, G163; G170's C0 may run beside them), and 2b-6 covers the unqualified in-group borrow; R5 reviews 2b-5's MIR
+  consumption with `StaticRoot` (AR-2) and M69's scope query in the shared `MirBody`, and its E lane takes G173.
