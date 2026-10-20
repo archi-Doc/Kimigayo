@@ -7,7 +7,8 @@ namespace Kimi.Compiler.Mir;
 // Constructors (SPEC 6.3.3): the steps that build a constructor's object in its return local from fresh storage before its body runs.
 internal sealed partial class MirBuilder
 {
-    // The base constructor into the base subobject, then this layer's Field initializers in declaration order, each into its Field.
+    // The base constructor into the base subobject, then this layer's Field initializers in declaration order, each into its Field; a
+    // Field Binding formed no stored Type for has no Place (Stored), so its initializer, a part of the declaration it rejected, is not placed.
     private void Construct(BoundType self, FunctionKoto constructor)
     {
         if (constructor.BaseInitializer is { } baseCall)
@@ -15,11 +16,12 @@ internal sealed partial class MirBuilder
             this.Initialize(this.body.Project(new(0), MirProjectionKind.Base, 1), baseCall);
         }
 
+        var inherited = AdtDef.StorageCount(self) - AdtDef.Count(self);
         for (var i = 0; i < AdtDef.Count(self); i++)
         {
-            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field)
+            if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field && this.Stored(new(0), self, inherited + i) is { } place)
             {
-                this.Initialize(this.body.Project(new(0), MirProjectionKind.Field, i), initializer, HirTables.Op(field) != HirOp.Body);
+                this.Initialize(place, initializer, HirTables.Op(field) != HirOp.Body);
             }
         }
     }

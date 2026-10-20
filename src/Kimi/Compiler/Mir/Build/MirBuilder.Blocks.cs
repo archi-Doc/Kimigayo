@@ -75,15 +75,22 @@ internal sealed partial class MirBuilder
         else
         {
             this.Statement(item);
-            if (HirTables.CompletionOf(container) == HirCompletion.Completes && ReferenceEquals(this.body.TypeOf(destination), BoundType.Unit))
-            {
-                this.Unit(destination, container);
-            }
+            this.Leave(destination, container);
         }
 
         if (ReferenceEquals(item, this.constructed) && HirTables.Op(item) != HirOp.Block && Completes(item))
         {
             this.RequestExit(this.current, this.Info(this.declaration, local: true)); // An expression body completes; a block body's block.
+        }
+    }
+
+    // SPEC 7.1, 14.2: the Unit a container leaves where it completes into a Unit destination; one completing into another Type falls
+    // through, which Binding or control flow rejects (FunctionFallthrough_Kd), and leaves no value.
+    private void Leave(MirPlace destination, Koto container)
+    {
+        if (HirTables.CompletionOf(container) == HirCompletion.Completes && ReferenceEquals(this.body.TypeOf(destination), BoundType.Unit))
+        {
+            this.Unit(destination, container);
         }
     }
 
@@ -110,7 +117,7 @@ internal sealed partial class MirBuilder
         }
         else
         {
-            this.Unit(destination, block);
+            this.Leave(destination, block);
         }
 
         if (ReferenceEquals(block, this.constructed) && Completes(block))
