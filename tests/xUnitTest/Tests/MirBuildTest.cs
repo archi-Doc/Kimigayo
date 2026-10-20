@@ -151,6 +151,28 @@ public sealed class MirBuildTest(ITestOutputHelper output)
         Assert.Equal(["let x = missing", "x"], bodies["k"].OpaqueSites.ToArray().Select(x => c.SyntaxOf(x.Source).ToString()));
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M70): where Binding or control flow published that it formed no value, the MIR forms none from facts
+    // that do not exist and records nothing, so each body validates: an acquisition Binding's Copy proof left unset on a Type it rejected
+    // (a raw read of a struct whose C layout it rejected) is the acquired node's derived Opaque value; a Field Binding formed no stored
+    // Type for (one naming a missing Type, or inferred from a call it rejected) has no Place, so a constructor places no initializer
+    // there; and an empty body falling through a non-Unit result, which control flow rejects, leaves no value, as a body ending in a
+    // statement does.
+    [Theory]
+    [InlineData("#Layout(\"C\")\nstruct S\nfunc read(p: raw/S)\n    unsafe\n        let value = *p\n", "InvalidCLayout_Kd", "*p")]
+    [InlineData("struct S\n    var item: Missing = 7\n    var other: i32 = 1\n", "UnresolvedBinding_Kd", null)]
+    [InlineData("group Tags\n    public func tagOf<T>() -> i32\n        T is Owned\n        return 0\nstruct Entry\n    var tag = Tags.tagOf<Entry>()\n", "UnprovenConstraint_Kd", null)]
+    [InlineData("func f<T>() -> T\n    T is Copy\n", "FunctionFallthrough_Kd", null)]
+    public void ValuesBindingDidNotFormAreDerived(string source, string code, string? opaque)
+    {
+        var c = Compile(source);
+        Assert.Contains(CompilationTestHelper.BindingErrors(c), x => x.Code == code);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Records, static x => x.Subject.Module == 0);
+        var sites = program.Bodies.ToArray().Where(static x => x.Source.Module == 0).SelectMany(static x => x.OpaqueSites.ToArray());
+        Assert.Equal(opaque is null ? [] : [opaque], sites.Select(x => c.SyntaxOf(x.Source).ToString()));
+    }
+
     // SPEC 4.3.3 (DECISIONS R4-M81): a fill, of a generic or a constant length, also 0, is one Fill of its literal's Type from its value's
     // one acquisition (an argument read, a call's result, an inner aggregate's temp), with no record, no Opaque value and no copy of the
     // value into a temp of its own (fail-before: a generic fill was an Unsupported record, a constant one L copies of such a temp).
