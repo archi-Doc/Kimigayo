@@ -31,7 +31,8 @@ internal sealed partial class MirBorrows
         }
 
         var live = taking <= Activating ? (clean.Flags & Based) != 0 && Activation(clean.Via) != taking : (clean.Flags & (Based | Stored)) != 0;
-        this.Report(code, this.loans[found.Loan].Site, live ? clean.Via : Taken, at, reservation);
+        var anchor = this.body.Subject(this.body.Statements[this.loans[found.Loan].Statement].Source);
+        this.Report(code, anchor, live ? clean.Via : Taken, at, reservation);
     }
 
     // A Loan problem at a location with its facts (A3 6.4): the anchor of the Loan or guard candidate; its witness, a holder's next use (none
@@ -59,7 +60,8 @@ internal sealed partial class MirBorrows
 
         if (reservation >= 0)
         {
-            this.facts[count++] = new(MirFactKind.Reservation, this.loans[reservation].Site);
+            var source = this.body.Statements[this.loans[reservation].Statement].Source;
+            this.facts[count++] = new(MirFactKind.Reservation, this.body.Subject(source));
         }
 
         if (inlined >= 0)
