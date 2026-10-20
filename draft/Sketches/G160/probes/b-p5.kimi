@@ -1,0 +1,43 @@
+struct TupBox<T>
+    public var p: (raw/T, isize)
+    public init(p: raw/T) => self.p = (p, 0)
+func storeTup<T>(b: uniq/TupBox<T>, v: T)
+    unsafe => Raw.initialize(b.p.0, v@move)
+struct Wrap<T>
+    public var v: T
+    public init(v: T) => self.v = v@move
+struct Outer<V>
+    public var w: Wrap<raw/V>
+    public init(p: raw/V) => self.w = Wrap<raw/V>.init(v: p)
+func storeOuter<V>(o: uniq/Outer<V>, v: V)
+    unsafe => Raw.initialize(o.w.v, v@move)
+func putTupLocal(t: uniq/((raw/(ref/i32 during a), isize)), v: ref/i32 during a)
+    unsafe => t.0[0] = v
+func tupKeptDead()
+    var x = 1
+    var b = TupBox<ref/i32>.init(p: Raw.allocate(1))
+    storeTup(b@uniq, x@ref)
+    x = 5
+func tupKeptLive()
+    var x = 1
+    var b = TupBox<ref/i32>.init(p: Raw.allocate(1))
+    storeTup(b@uniq, x@ref)
+    x = 5
+    inspect(b)
+func outerDead()
+    var x = 1
+    var o = Outer<ref/i32>.init(p: Raw.allocate(1))
+    storeOuter(o@uniq, x@ref)
+    x = 5
+func outerLive()
+    var x = 1
+    var o = Outer<ref/i32>.init(p: Raw.allocate(1))
+    storeOuter(o@uniq, x@ref)
+    x = 5
+    inspect(o)
+func tupLocal()
+    var x = 1
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    var t: (raw/(ref/i32), isize) = (cell, 0)
+    putTupLocal(t@uniq, x@ref)
+    x = 5

@@ -1,0 +1,44 @@
+struct KeptBox<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+func storeKept<T>(b: uniq/KeptBox<T>, v: T)
+    unsafe => Raw.initialize(b.p, v@move)
+struct RawBox {a}
+    public var p: raw/(ref/i32 during a)
+    public var r: ref/i32 during a
+    public init(p: raw/(ref/i32 during a), r: ref/i32 during a)
+        self.p = p
+        self.r = r
+func storeRawV(b: RawBox during a, v: ref/i32 during a)
+    unsafe => b.p[0] = v
+func storeRawUU(b: uniq/(uniq/(RawBox during a) during c), v: ref/i32 during a)
+    unsafe => b@follow@follow.p[0] = v
+func keptAlias()
+    var x = 1
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    var b = KeptBox<ref/i32>.init(p: cell)
+    storeKept(b@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func keptDirect()
+    var x = 1
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    unsafe => b.p[0] = x@ref
+    x = 5
+func rawBoxByValue()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    var b = RawBox.init(p: cell, r: y@ref)
+    storeRawV(b@move, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func rawBoxUU()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    var b = RawBox.init(p: cell, r: y@ref)
+    var u = b@uniq
+    storeRawUU(u@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])

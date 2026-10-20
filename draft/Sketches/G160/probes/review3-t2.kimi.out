@@ -1,0 +1,5 @@
+phiLoss: x = 5
+phiLoss: inspect(w)
+phiLoss: var w = z@ref
+phiLoss: var z = 3
+phiLoss2: x = 5

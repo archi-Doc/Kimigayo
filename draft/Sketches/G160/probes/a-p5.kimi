@@ -1,0 +1,26 @@
+struct V2<T> {s}
+    public var data: raw/T
+    public var r: uniq/T during s
+    public init(a: uniq/T during s)
+        self.data = a@follow@raw
+        self.r = a
+func setV2<T>(v: uniq/V2<T>, value: T)
+    unsafe => v.data[0] = value
+func viewRead2()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var v = V2<ref/i32>.init(w@uniq)
+    setV2(v@uniq, x@ref)
+    var q = y@ref
+    unsafe => q = v.data[0]
+    x = 5
+    inspect(q)
+func viewKept2()
+    var x = 1
+    var y = 2
+    var w = y@ref
+    var v = V2<ref/i32>.init(w@uniq)
+    setV2(v@uniq, x@ref)
+    x = 5
+    inspect(w)

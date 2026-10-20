@@ -1,0 +1,7 @@
+func capOwned()
+    var a = Data.init()
+    var views = Array<ref/Data>.init(capacity: 2)
+    views.append(a@ref)
+    for v in views@move
+        inspect(v)
+    a.value = 3

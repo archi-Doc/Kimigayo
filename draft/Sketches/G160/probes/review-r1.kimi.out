@@ -1,0 +1,3 @@
+keptDirectDead: x = 5
+keptInitDead: x = 5
+rawArrayIter: var a = Data.init()

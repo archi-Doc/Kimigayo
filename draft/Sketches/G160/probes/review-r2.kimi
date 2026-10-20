@@ -1,0 +1,29 @@
+func rawArrayIter()
+    let cell: raw/(ref/Data) = Raw.allocate(1)
+    let cell2: raw/(ref/Data) = Raw.allocate(1)
+    var arr: Array<raw/(ref/Data)> = [cell]
+    for p in arr
+        inspect(p)
+    arr.append(cell2)
+    inspect(arr)
+func refArrayIter()
+    var a = Data.init()
+    var b = Data.init()
+    var arr: Array<ref/Data> = [a@ref]
+    for p in arr
+        inspect(p)
+    arr.append(b@ref)
+    inspect(arr)
+struct Pick<T>
+    public var p: raw/T
+    public var n: isize
+    public init(p: raw/T) => self.p = p
+    public func bump(self: uniq/Self) => self.n += 1
+func pickRaw()
+    let cell: raw/(ref/Data) = Raw.allocate(1)
+    var w = Data.init()
+    let cells: raw/(raw/(ref/Data)) = Raw.allocate(1)
+    var k = Pick<raw/(ref/Data)>.init(p: cells)
+    let r = w@ref
+    k.bump()
+    w.value = 3

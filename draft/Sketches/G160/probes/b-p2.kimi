@@ -1,0 +1,54 @@
+struct RawBox {a}
+    public var p: raw/(ref/i32 during a)
+    public var r: ref/i32 during a
+    public init(p: raw/(ref/i32 during a), r: ref/i32 during a)
+        self.p = p
+        self.r = r
+struct RawOnly {a}
+    public var p: raw/(ref/i32 during a)
+    public init(p: raw/(ref/i32 during a)) => self.p = p
+func byValue(b: RawBox during a, v: ref/i32 during a)
+    unsafe => b.p[0] = v
+func byValueOnly(b: RawOnly during a, v: ref/i32 during a)
+    unsafe => b.p[0] = v
+func putRRV(slot: raw/(raw/(ref/i32 during a)), value: ref/i32 during a)
+    unsafe => slot[0][0] = value
+func putTuple(slot: uniq/((raw/(ref/i32 during a), ref/i32 during a)), value: ref/i32 during a)
+    unsafe => slot.0[0] = value
+func valueBox()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = RawBox.init(p: cell, r: y@ref)
+    byValue(b@move, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func valueOnly()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = RawOnly.init(p: cell)
+    byValueOnly(b@move, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func valueRR()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    let cells: raw/(raw/(ref/i32)) = Raw.allocate(1)
+    unsafe => Raw.initialize(cells, cell)
+    putRRV(cells, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func tupleHolder()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var t = (cell, y@ref)
+    putTuple(t@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
