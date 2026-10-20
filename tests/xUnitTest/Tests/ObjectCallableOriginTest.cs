@@ -7,6 +7,10 @@ namespace XunitTest;
 
 public class ObjectCallableOriginTest
 {
+    // The old path's verdict until R6-check: Program's `apply(identity, n@mode)` borrows the Function Item temporary `identity` for
+    // `f: ref/F`, SPEC 15.4.3 (1) binds the result to `f` as well, and SPEC 3.6 ends that temporary at its statement, so the later use
+    // of `direct` is invalid. A5 rejects it (ComparisonLoanConflict_Kd rows of R4's MIR difference ledger, which R4 reclassifies to
+    // class (a)); the default pipeline keeps D5's Function Item boundary (OwnershipBody.IsTemporaryOriginRoot).
     [Theory]
     [InlineData("ref")]
     [InlineData("uniq")]
@@ -60,6 +64,7 @@ public class ObjectCallableOriginTest
         Assert.Equal((true, true, true), (verified, written, bound));
     }
 
+    // Program's acceptance is the old path's verdict until R6-check (SPEC 15.4.3 (1), 3.6; see BorrowSignaturesSharePerCallOriginInstantiation).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("objref")]
