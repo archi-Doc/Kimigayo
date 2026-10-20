@@ -198,6 +198,37 @@ public sealed class MirValidatorTest
         Assert.All(findings, x => Assert.Equal((Enum.Parse<MirViolation>(rule), Broken.Syntax), (x.Rule, x.Subject)));
     }
 
+    // SPEC 4.3.1, 4.3.3, 4.3.4 (DECISIONS R4-M81): a fixed array's aggregate has one operand per element or none (noinit, the only count at
+    // a generic length, where no element literal binds), and a Fill one, at a fixed-array Type; any other count is an Arity finding
+    // (fail-before: a generic length admitted any count, and no Fill was valid).
+    [Theory]
+    [InlineData("FixedArray", 3, "b", false)]
+    [InlineData("FixedArray", 0, "b", false)]
+    [InlineData("FixedArray", 0, "a", false)]
+    [InlineData("Fill", 1, "b", false)]
+    [InlineData("Fill", 1, "a", false)]
+    [InlineData("FixedArray", 1, "b", true)]
+    [InlineData("FixedArray", 1, "a", true)]
+    [InlineData("Fill", 2, "b", true)]
+    [InlineData("Fill", 1, "d", true)]
+    public void AnArraysAggregateHasTheOperandsItsKindSays(string kind, int count, string parameter, bool broken)
+    {
+        var c = MirBuildTest.Compile("func w<length N>(a: [N of i32], b: [3 of i32], d: Array<i32>) -> i32 => 1\n");
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "w");
+        var body = new MirBody();
+        body.Reset(new(function.SymbolOf()!, MirBodyKind.Fn), default);
+        body.AddLocal(new(BoundType.I32, MirLocalKind.Return, At));
+        var target = MirModelTest.Local(body, function.Parameters.Single(x => x.InternalName == parameter).Type.TypeOf()!);
+        var one = MirOperand.Const(body.Const(new(MirConstKind.Integer, BoundType.I32, 1)));
+        var block = body.AddBlock();
+        var aggregate = MirRvalue.Aggregate(Enum.Parse<MirAggregateKind>(kind), AddOperands(body, [.. Enumerable.Repeat(one, count)]), count, body.TypeOf(target)!);
+        body.Push(block, MirStatement.Assign(target, aggregate, Broken));
+        body.Terminate(block, MirTerminator.Return(At));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Equal(broken ? [MirViolation.Arity] : [], findings.Select(static x => x.Rule));
+    }
+
     // SPEC 8.2, 15.3: Types that differ only by their Origins agree, and so do Types a body's Type-identity premise equates (E and S under
     // `E is S`), which the corpus's generic bodies rely on; other Types disagree.
     [Fact]
@@ -641,6 +672,7 @@ public sealed class MirValidatorTest
         Assign(pairs, MirRvalue.Aggregate(MirAggregateKind.Tuple, Operands(one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 2, tuple));
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(one, one, one), 3, types.Array));
         Assign(array, MirRvalue.Aggregate(MirAggregateKind.FixedArray, Operands(), 0, types.Array)); // SPEC 4.3.4 noinit: no element stored.
+        Assign(array, MirRvalue.Aggregate(MirAggregateKind.Fill, Operands(one), 1, types.Array)); // SPEC 4.3.3: every element a copy of one.
         Assign(point, MirRvalue.Aggregate(MirAggregateKind.Adt, Operands(MirOperand.Move(parent), one, Const(MirConstKind.Bool, BoundType.Boolean, 1)), 3, types.Point));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.Index, index.Root)))));
         Assign(result, MirRvalue.Use(Operands(MirOperand.Copy(body.Project(array, MirProjectionKind.ConstIndex, 2)))));

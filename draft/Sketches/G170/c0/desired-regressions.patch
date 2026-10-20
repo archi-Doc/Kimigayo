@@ -1,0 +1,185 @@
+diff --git a/tests/xUnitTest/Tests/AssociatedInferenceTest.cs b/tests/xUnitTest/Tests/AssociatedInferenceTest.cs
+index ced53972..9909bbbf 100644
+--- a/tests/xUnitTest/Tests/AssociatedInferenceTest.cs
++++ b/tests/xUnitTest/Tests/AssociatedInferenceTest.cs
+@@ -85,6 +85,71 @@ public class AssociatedInferenceTest
+         Assert.Equal("i32", Assert.Single(Definition(c).AssociatedTypes).Value.Name);
+     }
+ 
++    // G172 (SPEC 8.5.5's example): PB.W is i32 from PA.Z, a value PA determines independently of its own inferred values, and PA.X is
++    // i64 from PB.Y; neither declaration order nor requirement order decides the outcome.
++    [Theory]
++    [InlineData(false, false, false)]
++    [InlineData(false, false, true)]
++    [InlineData(false, true, false)]
++    [InlineData(false, true, true)]
++    [InlineData(true, false, false)]
++    [InlineData(true, false, true)]
++    [InlineData(true, true, false)]
++    [InlineData(true, true, true)]
++    public void IndependentValuesOfAnInProgressDefinitionSupplyEvidence(bool reverseDeclarations, bool reverseP, bool reverseQ)
++    {
++        var p = "contract P\n    associate X\n    associate Z\n" + Pair("    func x(self: ref/Self) -> Self.X\n", "    func z(self: ref/Self) -> Self.Z\n", reverseP);
++        var q = "contract Q\n    associate Y\n    associate W\n" + Pair("    func y(self: ref/Self) -> Self.Y\n", "    func w(self: ref/Self) -> Self.W\n", reverseQ);
++        const string pa = "struct PA\n    Self is P\n    public func x(self: ref/Self) -> PB.(Q).Y => 0\n    public func z(self: ref/Self) -> i32 => 0\n";
++        const string pb = "struct PB\n    Self is Q\n    public func y(self: ref/Self) -> i64 => 0\n    public func w(self: ref/Self) -> PA.(P).Z => 0\n";
++        var c = Bound(p + q + Pair(pa, pb, reverseDeclarations));
++        Assert.Equal("i64", Value(c, "PA", "P", "X"));
++        Assert.Equal("i32", Value(c, "PA", "P", "Z"));
++        Assert.Equal("i64", Value(c, "PB", "Q", "Y"));
++        Assert.Equal("i32", Value(c, "PB", "Q", "W"));
++    }
++
++    // G172: D.X is i32 from `a`. `b`'s result E.W depends on D.X, a value inferred in D, so it supplies D no evidence and meets only the
++    // ordinary result check; E.W is i32 from the determined D.X. Neither declaration nor requirement order decides the outcome.
++    [Theory]
++    [InlineData(false, false)]
++    [InlineData(false, true)]
++    [InlineData(true, false)]
++    [InlineData(true, true)]
++    public void EvidenceOnTheDefinitionsOwnValueIsExcludedWhileIndependentEvidenceCompletes(bool reverseDeclarations, bool reverseRequirements)
++    {
++        var p = "contract P\n    associate X\n" + Pair("    func a(self: ref/Self) -> Self.X\n", "    func b(self: ref/Self) -> Self.X\n", reverseRequirements);
++        const string q = "contract Q\n    associate W\n    func w(self: ref/Self) -> Self.W\n";
++        const string d = "struct D\n    Self is P\n    public func a(self: ref/Self) -> i32 => 0\n    public func b(self: ref/Self) -> E.(Q).W => 0\n";
++        const string e = "struct E\n    Self is Q\n    public func w(self: ref/Self) -> D.(P).X => 0\n";
++        var c = Bound(p + q + Pair(d, e, reverseDeclarations));
++        Assert.Equal("i32", Value(c, "D", "P", "X"));
++        Assert.Equal("i32", Value(c, "E", "Q", "W"));
++    }
++
++    // G172 (PlanB 1): A.Z is i32, B.Y comes from A.Z and A.X's only evidence, B.Y, depends on A.Z, a value inferred in A, so A.X cannot be
++    // inferred. Both declaration orders give the same outcome. (B's outcome is G172's to settle: by SPEC 8.5.5 B.Y is i32, not asserted.)
++    [Fact]
++    public void EvidenceThroughAnotherDefinitionOnTheDefinitionsOwnValueIsExcluded()
++    {
++        const string contracts = "contract P\n    associate X\n    associate Z\n    func x(self: ref/Self) -> Self.X\n    func z(self: ref/Self) -> Self.Z\ncontract Q\n    associate Y\n    func y(self: ref/Self) -> Self.Y\n";
++        const string a = "struct A\n    Self is P\n    public func x(self: ref/Self) -> B.(Q).Y => 0\n    public func z(self: ref/Self) -> i32 => 0\n";
++        const string b = "struct B\n    Self is Q\n    public func y(self: ref/Self) -> A.(P).Z => 0\n";
++        var outcomes = new List<string>();
++        foreach (var reverse in new[] { false, true })
++        {
++            var c = CompilationTestHelper.ParseSuccess(contracts + Pair(a, b, reverse), "associated-inference.kimi");
++            Assert.False(c.Bind().IsComplete);
++            Assert.False(Conformance(c, "A", "P").IsVerified);
++            Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.AssociatedTypeInferenceFailed_Kd && x.Node.ToString()!.Contains("Self is P", StringComparison.Ordinal));
++            var conformance = Conformance(c, "B", "Q");
++            outcomes.Add($"B verified {conformance.IsVerified}, B.Y {(conformance.IsVerified ? conformance.AssociatedTypes.Single().Value.Name : "-")}; " +
++                string.Join(", ", c.Binding.Issues.Select(x => x.Code).Order()));
++        }
++
++        Assert.Equal(outcomes[0], outcomes[1]);
++    }
++
+     [Fact]
+     public void NominalMutualReferencesNeedNoConformanceCycle()
+     {
+@@ -396,4 +461,16 @@ public class AssociatedInferenceTest
+     }
+ 
+     private static string Describe(Compilation c) => string.Join("\n", c.Binding.Issues.Select(x => $"{x.Code}: {x.Node}"));
++
++    private static string Pair(string first, string second, bool reverse) => reverse ? second + first : first + second;
++
++    private static BoundConformance Conformance(Compilation c, string typeName, string contractName)
++    {
++        var type = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == typeName);
++        var contract = c.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == contractName);
++        return c.Binding.GetConformanceDefinition(type.TypeOf()!, contract.SymbolOf()!)!;
++    }
++
++    private static string Value(Compilation c, string typeName, string contractName, string name)
++        => Conformance(c, typeName, contractName).AssociatedTypes.Single(x => x.Key.Symbol.Name == name).Value.Name;
+ }
+diff --git a/tests/xUnitTest/Tests/AssociatedRefinementCapabilityBindingTest.cs b/tests/xUnitTest/Tests/AssociatedRefinementCapabilityBindingTest.cs
+index 58151bb7..7156159d 100644
+--- a/tests/xUnitTest/Tests/AssociatedRefinementCapabilityBindingTest.cs
++++ b/tests/xUnitTest/Tests/AssociatedRefinementCapabilityBindingTest.cs
+@@ -8,6 +8,8 @@ namespace XunitTest;
+ 
+ public class AssociatedRefinementCapabilityBindingTest
+ {
++    private const string Trees = "public contract Tree\n    associate Child is Tree\npublic contract CopyTree: Tree, Copy\n    Self.(Tree).Child is CopyTree\n";
++
+     [Theory]
+     [InlineData("Copy", false)]
+     [InlineData("Copy", true)]
+@@ -81,6 +83,78 @@ public class AssociatedRefinementCapabilityBindingTest
+         Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(function.Parameters[0].Type.TypeOf()!, function));
+     }
+ 
++    // G170 (SPEC 8.3.2): the input T is CopyTree supplies T.Child is CopyTree, then T.Child.Child is CopyTree and so on, each Copy by
++    // refinement. Proving the same Type in the same scope depends neither on an unused parameter spelling the projection through the
++    // stronger CopyTree nor on whether it precedes or follows the queried one; the effect premises (TyCtxt.Copy) give the same answer.
++    [Theory]
++    [InlineData(1, "")]
++    [InlineData(1, "before")]
++    [InlineData(1, "after")]
++    [InlineData(2, "")]
++    [InlineData(2, "before")]
++    [InlineData(2, "after")]
++    [InlineData(4, "")]
++    [InlineData(4, "before")]
++    [InlineData(4, "after")]
++    [InlineData(8, "")]
++    [InlineData(8, "before")]
++    [InlineData(8, "after")]
++    public void RecursiveRefinementPremisesProveDeepProjectionsWhateverTheSpelling(int depth, string hint)
++    {
++        var value = "value: T" + string.Concat(Enumerable.Repeat(".(Tree).Child", depth));
++        var stronger = "hint: ref/T" + string.Concat(Enumerable.Repeat(".(CopyTree).Child", depth));
++        var parameters = hint switch { "before" => stronger + ", " + value, "after" => value + ", " + stronger, _ => value };
++        var c = MinimalEmissionTest.Analyze(Trees + "group G\n    func inspect<T>(" + parameters + ")\n        T is CopyTree\n        ()");
++        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
++        Assert.True(c.Binding.Result.IsComplete);
++        var function = Function(c);
++        var type = function.Parameters.Single(x => x.InternalName == "value").Type.TypeOf()!;
++        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(type, function));
++        Assert.True(c.Types.Copy(function.SymbolOf(), type));
++    }
++
++    // G170: a Type no source spells, as A4 generates by substitution, has the same answer as a spelled one.
++    [Theory]
++    [InlineData(1)]
++    [InlineData(2)]
++    [InlineData(4)]
++    [InlineData(8)]
++    public void RecursiveRefinementPremisesProveGeneratedProjections(int depth)
++    {
++        var c = MinimalEmissionTest.Analyze(Trees + "group G\n    func inspect<T>(value: T.(Tree).Child)\n        T is CopyTree\n        ()");
++        Assert.True(c.Binding.Result.IsComplete);
++        var function = Function(c);
++        var child = function.Parameters[0].Type.TypeOf()!;
++        var type = child;
++        for (var i = 1; i < depth; i++)
++        {
++            type = c.Types.Intern(BoundTypeKind.AssociatedProjection, child.Symbol, SemanticsKind.Owner, [type, child.Components[1]]);
++        }
++
++        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(type, function));
++        Assert.True(c.Types.Copy(function.SymbolOf(), type));
++    }
++
++    // G170 through a non-recursive Contract: CopyOuter's clause supplies T.Inner is CopyHolder, whose clause makes T.Inner.Item Copy.
++    [Theory]
++    [InlineData("")]
++    [InlineData("before")]
++    [InlineData("after")]
++    public void NestedRefinementPremisesProveTheProjectionWhateverTheSpelling(string hint)
++    {
++        const string value = "value: T.(Outer).Inner.(Holder).Item";
++        const string stronger = "hint: ref/T.(Outer).Inner.(CopyHolder).Item";
++        var parameters = hint switch { "before" => stronger + ", " + value, "after" => value + ", " + stronger, _ => value };
++        var c = MinimalEmissionTest.Analyze("public contract Holder\n    associate Item\npublic contract CopyHolder: Holder\n    Self.(Holder).Item is Copy\n" +
++            "public contract Outer\n    associate Inner is Holder\npublic contract CopyOuter: Outer\n    Self.(Outer).Inner is CopyHolder\n" +
++            "group G\n    func inspect<T>(" + parameters + ")\n        T is CopyOuter\n        ()");
++        Assert.Empty(TestDiagnostics.Of(c, "Hello.kimi"));
++        var function = Function(c);
++        var type = function.Parameters.Single(x => x.InternalName == "value").Type.TypeOf()!;
++        Assert.Equal(ConstraintProof.Proven, c.Binding.ProveCopy(type, function));
++        Assert.True(c.Types.Copy(function.SymbolOf(), type));
++    }
++
+     [Trait("Purpose", "Allocation")]
+     [Fact]
+     public void WarmAssociatedRefinementProofsAllocateNothing()

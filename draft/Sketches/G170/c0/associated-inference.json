@@ -1,0 +1,1549 @@
+{
+  "compiler": "0.1.1 (8cd2344a-fd20-4d2c-8102-255a816ba79a)",
+  "compilerModule": "8cd2344a-fd20-4d2c-8102-255a816ba79a",
+  "benchmarkModule": "051155ca-e08b-4b78-b5ce-138e56d69176",
+  "configuration": "Release",
+  "runtime": ".NET 10.0.13",
+  "os": "Microsoft Windows 10.0.26300",
+  "warmupIterations": 16,
+  "iterationsPerSample": 16,
+  "samples": 5,
+  "results": [
+    {
+      "axis": "declarations",
+      "size": 1,
+      "explicitBinding": true,
+      "sourceSha256": "9B3FFAA491C59C7E18078E7D2E2BE79B1F47DDE4E9D9DE6B9204E12FD3B94275",
+      "coldMilliseconds": 269.9396,
+      "coldBytes": 4852312,
+      "millisecondsPerIteration": [
+        32.88661875,
+        24.20395625,
+        16.97688125,
+        11.78971875,
+        14.7326125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "declarations",
+      "size": 1,
+      "explicitBinding": false,
+      "sourceSha256": "E54B83E896F0FE0DD768D527020FDF762B556091B581142454DFEC94426698F8",
+      "coldMilliseconds": 26.6023,
+      "coldBytes": 4861656,
+      "millisecondsPerIteration": [
+        29.7732,
+        21.3871,
+        21.61780625,
+        14.3386,
+        12.77101875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "declarations",
+      "size": 8,
+      "explicitBinding": true,
+      "sourceSha256": "5F71D268101F125F62204B6B219175771245F6A9E67C53357521B527398DF7E6",
+      "coldMilliseconds": 31.5512,
+      "coldBytes": 4932408,
+      "millisecondsPerIteration": [
+        15.3404875,
+        14.454125,
+        14.158,
+        13.809825,
+        13.917675
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 74,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "declarations",
+      "size": 8,
+      "explicitBinding": false,
+      "sourceSha256": "8217F3FE6C107DB36C848F91F62F4ED5A4F984A3D7A3E931BD61E3C1472A0EDD",
+      "coldMilliseconds": 13.8954,
+      "coldBytes": 4873320,
+      "millisecondsPerIteration": [
+        11.24356875,
+        12.3542875,
+        13.67995,
+        13.3257625,
+        13.411475
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 8,
+        "Matches": 74,
+        "Evidence": 8,
+        "PathCapacity": 32,
+        "EvidenceCapacity": 64,
+        "GraphCapacity": 2216
+      }
+    },
+    {
+      "axis": "declarations",
+      "size": 24,
+      "explicitBinding": true,
+      "sourceSha256": "3AAA2A3A7E2F9C503FC6D46FC21D9F05B8DDC755C7800BF61E4FEB50501576A2",
+      "coldMilliseconds": 11.8332,
+      "coldBytes": 5090944,
+      "millisecondsPerIteration": [
+        12.8384375,
+        9.9596625,
+        16.57025,
+        15.77138125,
+        12.01105
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 90,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2145
+      }
+    },
+    {
+      "axis": "declarations",
+      "size": 24,
+      "explicitBinding": false,
+      "sourceSha256": "9A4EBBB5582162FEF1A10E8ADB2FF4287628F29920E35AF0D49C6A89B21F8505",
+      "coldMilliseconds": 16.0264,
+      "coldBytes": 5122952,
+      "millisecondsPerIteration": [
+        12.86995625,
+        9.4564,
+        11.80891875,
+        14.35265,
+        12.3293625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 24,
+        "Matches": 90,
+        "Evidence": 24,
+        "PathCapacity": 96,
+        "EvidenceCapacity": 192,
+        "GraphCapacity": 2648
+      }
+    },
+    {
+      "axis": "requirements",
+      "size": 1,
+      "explicitBinding": true,
+      "sourceSha256": "9B3FFAA491C59C7E18078E7D2E2BE79B1F47DDE4E9D9DE6B9204E12FD3B94275",
+      "coldMilliseconds": 17.7746,
+      "coldBytes": 4787120,
+      "millisecondsPerIteration": [
+        12.90713125,
+        11.43256875,
+        10.65945,
+        11.23054375,
+        14.71915625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "requirements",
+      "size": 1,
+      "explicitBinding": false,
+      "sourceSha256": "E54B83E896F0FE0DD768D527020FDF762B556091B581142454DFEC94426698F8",
+      "coldMilliseconds": 22.2529,
+      "coldBytes": 4789896,
+      "millisecondsPerIteration": [
+        10.94228125,
+        9.75000625,
+        12.60866875,
+        10.06089375,
+        11.7400125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "requirements",
+      "size": 8,
+      "explicitBinding": true,
+      "sourceSha256": "4DA34BCB82E83054BF89C8799DA2D3D6B3BBE93C4ADF6F0B701D074B4FF56AC1",
+      "coldMilliseconds": 12.8682,
+      "coldBytes": 4818528,
+      "millisecondsPerIteration": [
+        15.13763125,
+        12.356475,
+        14.9184625,
+        12.95693125,
+        11.6956875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 74,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "requirements",
+      "size": 8,
+      "explicitBinding": false,
+      "sourceSha256": "17B8E938F5627BC6961EBF7D28B11BBFB92D615CA4F51914A4A182F3418DB33F",
+      "coldMilliseconds": 17.3103,
+      "coldBytes": 4824080,
+      "millisecondsPerIteration": [
+        13.60053125,
+        13.51865625,
+        9.585725,
+        14.62515625,
+        14.4215125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 74,
+        "Evidence": 8,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 16,
+        "GraphCapacity": 2089
+      }
+    },
+    {
+      "axis": "requirements",
+      "size": 24,
+      "explicitBinding": true,
+      "sourceSha256": "45AA498CFC4176EAF03ACE468553E17877BDD2CC59EED880F5F85B681C4B6B9B",
+      "coldMilliseconds": 21.5336,
+      "coldBytes": 4924640,
+      "millisecondsPerIteration": [
+        13.12515625,
+        18.44205,
+        14.63686875,
+        15.90873125,
+        15.51120625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 90,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2145
+      }
+    },
+    {
+      "axis": "requirements",
+      "size": 24,
+      "explicitBinding": false,
+      "sourceSha256": "54E94A47B0918E81FE96DA0119ECAF9E8616CBBE54EE1323CB7EFCAA346F22E3",
+      "coldMilliseconds": 25.4525,
+      "coldBytes": 4941640,
+      "millisecondsPerIteration": [
+        13.163675,
+        13.99988125,
+        14.78205625,
+        12.58040625,
+        13.21209375
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 90,
+        "Evidence": 24,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 64,
+        "GraphCapacity": 2249
+      }
+    },
+    {
+      "axis": "candidates",
+      "size": 1,
+      "explicitBinding": true,
+      "sourceSha256": "0C8BBB335041E2BA5C28812A9B51D5AE050ABAAD011EEF4831D6E6304E9D7C47",
+      "coldMilliseconds": 11.7586,
+      "coldBytes": 4790792,
+      "millisecondsPerIteration": [
+        10.98726875,
+        12.406875,
+        15.18184375,
+        18.00495,
+        20.80685
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "candidates",
+      "size": 1,
+      "explicitBinding": false,
+      "sourceSha256": "2F6B7F6B2DA5D0E8EC88B4E2FB20FD663B5679D8785DA9CF37D8A102F4A04CC1",
+      "coldMilliseconds": 25.8288,
+      "coldBytes": 4793496,
+      "millisecondsPerIteration": [
+        21.1217625,
+        22.85165,
+        14.96640625,
+        12.82491875,
+        12.80678125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "candidates",
+      "size": 8,
+      "explicitBinding": true,
+      "sourceSha256": "50684DF0BCB957537C8FFC8788C12A9580CFE63915AA32298C2963A7FC92B0DF",
+      "coldMilliseconds": 13.2107,
+      "coldBytes": 4831920,
+      "millisecondsPerIteration": [
+        13.329575,
+        12.3625875,
+        10.58420625,
+        11.53721875,
+        16.74863125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "candidates",
+      "size": 8,
+      "explicitBinding": false,
+      "sourceSha256": "26FCDA1DBB3518DBC63C7C0441ABECC4F9D59FDAB406B9E727DD7626D5FC8408",
+      "coldMilliseconds": 14.7637,
+      "coldBytes": 4834104,
+      "millisecondsPerIteration": [
+        15.00205625,
+        12.23408125,
+        16.304,
+        13.000925,
+        13.5046625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "candidates",
+      "size": 24,
+      "explicitBinding": true,
+      "sourceSha256": "B2085F2DD6B869BFAE9B1144F7BBB0EF42FB9B68FF3E0F349498C9BD8B23E9CD",
+      "coldMilliseconds": 15.206,
+      "coldBytes": 4999856,
+      "millisecondsPerIteration": [
+        12.5293375,
+        14.3231,
+        12.5381375,
+        12.1637625,
+        11.51921875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "candidates",
+      "size": 24,
+      "explicitBinding": false,
+      "sourceSha256": "6B6FD5687437A23BFC4C1956B9B874B80EEAD6E65E40CC3520C293FB73F73AED",
+      "coldMilliseconds": 20.2121,
+      "coldBytes": 5004464,
+      "millisecondsPerIteration": [
+        11.4880875,
+        19.57451875,
+        12.38969375,
+        13.04300625,
+        12.19481875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2089
+      }
+    },
+    {
+      "axis": "depth",
+      "size": 2,
+      "explicitBinding": true,
+      "sourceSha256": "12BDE61B4B94B525820799EA4CFE4A583A8C9E3AA838F1DD6711E51F66FD9BEF",
+      "coldMilliseconds": 11.1205,
+      "coldBytes": 4794312,
+      "millisecondsPerIteration": [
+        14.45984375,
+        12.685225,
+        13.05611875,
+        11.73480625,
+        14.6407875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "depth",
+      "size": 2,
+      "explicitBinding": false,
+      "sourceSha256": "C0C970FE9DA38C069406CE246B812A4A0A0F7631744957E41F7F3F6ED24D4080",
+      "coldMilliseconds": 11.2342,
+      "coldBytes": 4797120,
+      "millisecondsPerIteration": [
+        14.97544375,
+        17.16265,
+        31.92769375,
+        40.549675,
+        23.978825
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "depth",
+      "size": 4,
+      "explicitBinding": true,
+      "sourceSha256": "16D7C3E04F47DF5C2F9B65E02AB0DDDF564F3ACE99D089363AE33C98EA1D93F5",
+      "coldMilliseconds": 47.4029,
+      "coldBytes": 4798160,
+      "millisecondsPerIteration": [
+        35.5621625,
+        27.91095,
+        41.17175625,
+        25.52951875,
+        18.973425
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "depth",
+      "size": 4,
+      "explicitBinding": false,
+      "sourceSha256": "EF7E6171A62A494A9AD4E181AC6050D9636465181C883F9357E2BDB69CA58200",
+      "coldMilliseconds": 11.8937,
+      "coldBytes": 4801872,
+      "millisecondsPerIteration": [
+        17.94448125,
+        14.2567875,
+        14.46390625,
+        12.10845625,
+        14.69533125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2077
+      }
+    },
+    {
+      "axis": "depth",
+      "size": 6,
+      "explicitBinding": true,
+      "sourceSha256": "1ADAF47D4A80B503F69A6FD3117475D7DFEB70DD66BE6FBFBF7477D9E91834C5",
+      "coldMilliseconds": 16.9581,
+      "coldBytes": 4801704,
+      "millisecondsPerIteration": [
+        15.208625,
+        12.61500625,
+        11.45485625,
+        13.95731875,
+        15.52570625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "depth",
+      "size": 6,
+      "explicitBinding": false,
+      "sourceSha256": "7ED78FB5FCAE07A40C49628485242C419CE7F30B4189CB0DA0DCE0322060EACE",
+      "coldMilliseconds": 18.3593,
+      "coldBytes": 4808168,
+      "millisecondsPerIteration": [
+        13.24595625,
+        13.44235,
+        10.3759625,
+        10.6137625,
+        15.601875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2097
+      }
+    },
+    {
+      "axis": "shared",
+      "size": 2,
+      "explicitBinding": true,
+      "sourceSha256": "C7F2B2646D5B54EDC2A080A8BE8646E854A9127B28E660374850DC8F288F7637",
+      "coldMilliseconds": 100.0891,
+      "coldBytes": 4796320,
+      "millisecondsPerIteration": [
+        20.95425,
+        13.70175625,
+        12.4773625,
+        16.13066875,
+        16.06165
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "shared",
+      "size": 2,
+      "explicitBinding": false,
+      "sourceSha256": "BF4085DB871F12025ADD7B8C8F43D9A2A728249FEB124BC6A0F76F758F358359",
+      "coldMilliseconds": 12.2744,
+      "coldBytes": 4799200,
+      "millisecondsPerIteration": [
+        14.21834375,
+        9.8053375,
+        16.1062625,
+        14.9027375,
+        15.69805625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "shared",
+      "size": 4,
+      "explicitBinding": true,
+      "sourceSha256": "85BF87C1906525267B550F31DD3CD492F66EF8C36981C139596C524A8974BC73",
+      "coldMilliseconds": 11.2274,
+      "coldBytes": 4815264,
+      "millisecondsPerIteration": [
+        19.7040875,
+        13.166325,
+        15.36314375,
+        14.9891625,
+        14.4499
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "shared",
+      "size": 4,
+      "explicitBinding": false,
+      "sourceSha256": "B0CF5128AC8E3A155FA8D39985A43B1555E0460653F4ABD60F053355A3DAAC0E",
+      "coldMilliseconds": 16.3386,
+      "coldBytes": 4819112,
+      "millisecondsPerIteration": [
+        16.17746875,
+        11.437075,
+        13.57948125,
+        15.15711875,
+        12.43100625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2077
+      }
+    },
+    {
+      "axis": "shared",
+      "size": 6,
+      "explicitBinding": true,
+      "sourceSha256": "968B272BA793AB05FC804C22B301396DACEBB10306CB44C9A7111D05177353A9",
+      "coldMilliseconds": 23.2515,
+      "coldBytes": 4900888,
+      "millisecondsPerIteration": [
+        14.29431875,
+        16.20308125,
+        12.8662625,
+        14.56759375,
+        14.47534375
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "shared",
+      "size": 6,
+      "explicitBinding": false,
+      "sourceSha256": "D14839FD14D16709F2882A98C0E0F1BA4A120779A9C7D54B347FC5590B13B86C",
+      "coldMilliseconds": 12.31,
+      "coldBytes": 4895176,
+      "millisecondsPerIteration": [
+        13.596675,
+        19.02970625,
+        14.46953125,
+        15.20799375,
+        14.11895625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2097
+      }
+    },
+    {
+      "axis": "refinement",
+      "size": 1,
+      "explicitBinding": true,
+      "sourceSha256": "30CEE1448096B73F3F206FCA85B1088FBE8785EC7A7A39479D5882349CB100A2",
+      "coldMilliseconds": 24.7953,
+      "coldBytes": 4793632,
+      "millisecondsPerIteration": [
+        14.75545625,
+        9.77813125,
+        14.9970125,
+        13.6519125,
+        14.981975
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "refinement",
+      "size": 1,
+      "explicitBinding": false,
+      "sourceSha256": "3DA05874022EFE958FA8EC1AF4F41FB89C3561F1D754467BF02A78661C463268",
+      "coldMilliseconds": 14.5239,
+      "coldBytes": 4797056,
+      "millisecondsPerIteration": [
+        10.717825,
+        12.36058125,
+        12.98805,
+        9.87113125,
+        15.42295
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 12,
+        "GraphCapacity": 2076
+      }
+    },
+    {
+      "axis": "refinement",
+      "size": 8,
+      "explicitBinding": true,
+      "sourceSha256": "399E2FFA0F21BDDDA9A23473F9C01A74ABD9ABE520065ECD7AEBE8AE64CC8CEB",
+      "coldMilliseconds": 12.2899,
+      "coldBytes": 4903440,
+      "millisecondsPerIteration": [
+        13.9940375,
+        15.6395875,
+        12.9794875,
+        13.7388625,
+        12.44083125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 74,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "refinement",
+      "size": 8,
+      "explicitBinding": false,
+      "sourceSha256": "D90FC7DC47CFE4AB363E5C3CD6CD5CC5C757F0B1FEE9BD6A0872539DC36C35AE",
+      "coldMilliseconds": 14.1793,
+      "coldBytes": 4931632,
+      "millisecondsPerIteration": [
+        11.61264375,
+        11.2573,
+        16.1858,
+        15.30625625,
+        12.78554375
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 74,
+        "Evidence": 8,
+        "PathCapacity": 32,
+        "EvidenceCapacity": 80,
+        "GraphCapacity": 2300
+      }
+    },
+    {
+      "axis": "refinement",
+      "size": 24,
+      "explicitBinding": true,
+      "sourceSha256": "5720D28F67FB8E75B84B6476FAB8F91C15203E61F230EB1B8B6AF9C42D87BE60",
+      "coldMilliseconds": 11.9767,
+      "coldBytes": 5268936,
+      "millisecondsPerIteration": [
+        12.19839375,
+        15.568275,
+        16.4303625,
+        14.2004125,
+        17.29418125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 90,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2145
+      }
+    },
+    {
+      "axis": "refinement",
+      "size": 24,
+      "explicitBinding": false,
+      "sourceSha256": "FEE202EB73B08ED3197C5004D6C8BF0E240BD82CAAD8E236AFA3C999BA1F22AA",
+      "coldMilliseconds": 19.6192,
+      "coldBytes": 5509040,
+      "millisecondsPerIteration": [
+        12.86839375,
+        16.48594375,
+        15.9408375,
+        14.32215,
+        13.49086875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 90,
+        "Evidence": 24,
+        "PathCapacity": 64,
+        "EvidenceCapacity": 832,
+        "GraphCapacity": 3964
+      }
+    },
+    {
+      "axis": "external",
+      "size": 1,
+      "explicitBinding": true,
+      "sourceSha256": "9B3FFAA491C59C7E18078E7D2E2BE79B1F47DDE4E9D9DE6B9204E12FD3B94275",
+      "coldMilliseconds": 11.049,
+      "coldBytes": 4787120,
+      "millisecondsPerIteration": [
+        12.779425,
+        11.80505,
+        17.24375,
+        22.146675,
+        38.4009125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "external",
+      "size": 1,
+      "explicitBinding": false,
+      "sourceSha256": "E54B83E896F0FE0DD768D527020FDF762B556091B581142454DFEC94426698F8",
+      "coldMilliseconds": 21.2223,
+      "coldBytes": 4789896,
+      "millisecondsPerIteration": [
+        22.3097125,
+        14.729625,
+        12.478325,
+        13.737725,
+        19.75080625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "external",
+      "size": 8,
+      "explicitBinding": true,
+      "sourceSha256": "41AA10A97759F95764886945EE3566153D9910287AE3AB4152E67D368050C62F",
+      "coldMilliseconds": 14.882,
+      "coldBytes": 4868624,
+      "millisecondsPerIteration": [
+        10.13875,
+        14.7385625,
+        16.71945625,
+        10.955025,
+        13.6250875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 74,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "external",
+      "size": 8,
+      "explicitBinding": false,
+      "sourceSha256": "2DD8B4CA1E703E2982678D00FEF18E4F15B6B6B6EC81245EF147A119BEDC907E",
+      "coldMilliseconds": 19.8271,
+      "coldBytes": 4888672,
+      "millisecondsPerIteration": [
+        13.79321875,
+        13.67695625,
+        12.0457,
+        17.43545625,
+        15.5294
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 8,
+        "Matches": 74,
+        "Evidence": 8,
+        "PathCapacity": 32,
+        "EvidenceCapacity": 64,
+        "GraphCapacity": 2276
+      }
+    },
+    {
+      "axis": "external",
+      "size": 24,
+      "explicitBinding": true,
+      "sourceSha256": "CDB58E7815451463D8D4022933D467EF8093FDF30420543D546AAA31556D7C5E",
+      "coldMilliseconds": 12.8662,
+      "coldBytes": 5119408,
+      "millisecondsPerIteration": [
+        15.82235,
+        17.0702375,
+        13.8287875,
+        13.5984,
+        37.714825
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 0,
+        "Matches": 90,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2145
+      }
+    },
+    {
+      "axis": "external",
+      "size": 24,
+      "explicitBinding": false,
+      "sourceSha256": "06BDF11204A661CC2E7E05BB9E2152515301A458957CB48CC415516406CFFAD2",
+      "coldMilliseconds": 11.7485,
+      "coldBytes": 5185264,
+      "millisecondsPerIteration": [
+        35.650025,
+        20.657975,
+        15.15461875,
+        15.0339375,
+        9.719825
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": null,
+      "editBytes": null,
+      "storage": {
+        "Batches": 24,
+        "Matches": 90,
+        "Evidence": 24,
+        "PathCapacity": 96,
+        "EvidenceCapacity": 192,
+        "GraphCapacity": 2868
+      }
+    },
+    {
+      "axis": "unrelated",
+      "size": 1,
+      "explicitBinding": true,
+      "sourceSha256": "9B3FFAA491C59C7E18078E7D2E2BE79B1F47DDE4E9D9DE6B9204E12FD3B94275",
+      "coldMilliseconds": 11.1974,
+      "coldBytes": 4787120,
+      "millisecondsPerIteration": [
+        14.23590625,
+        10.01853125,
+        14.70608125,
+        14.147075,
+        11.2807875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": 13.4345,
+      "editBytes": 8232,
+      "storage": {
+        "Batches": 0,
+        "Matches": 67,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "unrelated",
+      "size": 1,
+      "explicitBinding": false,
+      "sourceSha256": "E54B83E896F0FE0DD768D527020FDF762B556091B581142454DFEC94426698F8",
+      "coldMilliseconds": 12.9747,
+      "coldBytes": 4789896,
+      "millisecondsPerIteration": [
+        13.3254125,
+        16.44390625,
+        11.45809375,
+        14.0798875,
+        18.5406125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": 20.5005,
+      "editBytes": 7912,
+      "storage": {
+        "Batches": 1,
+        "Matches": 67,
+        "Evidence": 1,
+        "PathCapacity": 4,
+        "EvidenceCapacity": 8,
+        "GraphCapacity": 2069
+      }
+    },
+    {
+      "axis": "unrelated",
+      "size": 8,
+      "explicitBinding": true,
+      "sourceSha256": "5F71D268101F125F62204B6B219175771245F6A9E67C53357521B527398DF7E6",
+      "coldMilliseconds": 19.533,
+      "coldBytes": 4859344,
+      "millisecondsPerIteration": [
+        15.46235,
+        13.67648125,
+        15.32900625,
+        21.9147375,
+        17.293125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": 13.3025,
+      "editBytes": 13024,
+      "storage": {
+        "Batches": 0,
+        "Matches": 74,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2037
+      }
+    },
+    {
+      "axis": "unrelated",
+      "size": 8,
+      "explicitBinding": false,
+      "sourceSha256": "8217F3FE6C107DB36C848F91F62F4ED5A4F984A3D7A3E931BD61E3C1472A0EDD",
+      "coldMilliseconds": 21.6934,
+      "coldBytes": 4871488,
+      "millisecondsPerIteration": [
+        20.08279375,
+        18.699575,
+        15.685325,
+        17.37539375,
+        12.64661875
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": 16.5557,
+      "editBytes": 11216,
+      "storage": {
+        "Batches": 8,
+        "Matches": 74,
+        "Evidence": 8,
+        "PathCapacity": 32,
+        "EvidenceCapacity": 64,
+        "GraphCapacity": 2216
+      }
+    },
+    {
+      "axis": "unrelated",
+      "size": 24,
+      "explicitBinding": true,
+      "sourceSha256": "3AAA2A3A7E2F9C503FC6D46FC21D9F05B8DDC755C7800BF61E4FEB50501576A2",
+      "coldMilliseconds": 15.4879,
+      "coldBytes": 5089112,
+      "millisecondsPerIteration": [
+        17.84414375,
+        22.38385,
+        20.0082875,
+        17.50978125,
+        23.35985625
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": 13.4324,
+      "editBytes": 24288,
+      "storage": {
+        "Batches": 0,
+        "Matches": 90,
+        "Evidence": 0,
+        "PathCapacity": 0,
+        "EvidenceCapacity": 0,
+        "GraphCapacity": 2145
+      }
+    },
+    {
+      "axis": "unrelated",
+      "size": 24,
+      "explicitBinding": false,
+      "sourceSha256": "9A4EBBB5582162FEF1A10E8ADB2FF4287628F29920E35AF0D49C6A89B21F8505",
+      "coldMilliseconds": 24.921,
+      "coldBytes": 5122952,
+      "millisecondsPerIteration": [
+        22.07806875,
+        18.79073125,
+        17.36568125,
+        14.7779625,
+        16.12333125
+      ],
+      "bytesPerSample": [
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      "editMilliseconds": 36.6313,
+      "editBytes": 18768,
+      "storage": {
+        "Batches": 24,
+        "Matches": 90,
+        "Evidence": 24,
+        "PathCapacity": 96,
+        "EvidenceCapacity": 192,
+        "GraphCapacity": 2648
+      }
+    }
+  ]
+}

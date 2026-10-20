@@ -35,6 +35,7 @@ fn f @0
       _1 = Tuple(const 1_i32, const true): (i32, bool) @0
       _6 = FixedArray(const 1_i32, const 1_i32, const 1_i32): [3 of i32] @0
       _6 = FixedArray(): [3 of i32] @0
+      _6 = Fill(const 1_i32): [3 of i32] @0
       _3 = Adt(move _10, const 1_i32, const true): Point @0
       _0 = copy _6[_4] @0
       _0 = copy _6[2] @0
