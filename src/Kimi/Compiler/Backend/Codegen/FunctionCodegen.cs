@@ -23,8 +23,8 @@
 // on integer, wrapping integer, floating-point, bool, char and Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a
 // numeric, wrapping, bit or raw pointer Cast by the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case
 // or fixed-array Aggregate of such operands, or of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len
-// of a fixed array, Array or Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues; R5-M78, R5-M83, R4-M81,
-// R5-M87); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row
+// of a fixed array, Array or Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues and .Aggregates; R5-M78,
+// R5-M83, R4-M81, R5-M87); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row
 // (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs;
 // R5-M78). Rows not written yet: Closure (C5a), DefaultTemplate (C3a) and StaticInit (C7b) bodies; statics (C7b); a handle's or object
 // borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e) and a string's (C8c)
@@ -34,8 +34,8 @@
 // slot (C6c), an intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its
 // own (C3b); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: the dispatch (this file); the
 // function's frame: its signature, homes, prologue and return (FunctionCodegen.Frame.cs); the place writer and the loads, stores and
-// copies through it (.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs) and
-// drops (.Drops.cs).
+// copies through it (.Places.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions
+// (.Casts.cs), calls (.Calls.cs) and drops (.Drops.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
