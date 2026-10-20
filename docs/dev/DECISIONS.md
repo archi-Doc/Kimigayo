@@ -1988,6 +1988,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
   or waived. A shared proof representation first and a smaller closed whitelist were not chosen here; both remain future
   options under their own gates. This decision approves no SPEC change, vocabulary, exception or implementation design.
   All other sequencing and gates under M74, and M79's R5/BU pause, remain unchanged.
+- **R4-M84 A Loan retains its issuing statement** (2026-10-20, R4 planning session; adopted M69 plan §6, M69-1;
+  independently reviewed behavior-preserving preparation) `MirBorrows.Loans` retains the body-local statement index for
+  both non-raw Ref and reborrowing PairAcquire Loans, replacing the saved display-only `Loan.Site`. Stable group ordering
+  copies this identity with the Loan; renumbering changes Loan IDs, not statement indices. `MirBorrows.Reports` derives
+  the candidate and reservation anchors through `MirBody.Subject` from that statement, preserving its body-source fallback.
+  The current body and live Loan range belong to the same Run; this adds no cross-body cache or public identity.
+  Rejected: retaining both Site and statement (redundant), a full SourceInfo (unneeded stored projection), and an expansion
+  registry (another responsibility). No additional table, solve, owner-selection rule or MIR vocabulary is introduced.
+  M69's inline suppression, M70's default taint and M73's hold remain unchanged. M69-0's universal correspondence proof
+  and M69-2's ownership decisions, including their 2b-D/2e-D OQ2 and F5/F9 gates, remain open; this metadata preparation
+  neither supplies that proof nor authorizes a new coverage decision.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

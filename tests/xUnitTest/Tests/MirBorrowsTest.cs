@@ -2435,6 +2435,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
     // A3 6.4, R4-M3a: a problem's facts are its Loan's or guard candidate's anchor and its witness: the holder's next use in its chain (for
     // an activation from its call on; none in a later chain), or the store that carries the Loan; and an activation's reservation.
+    // activated issues b's Loan first, then a's; ordering by root group must keep a's anchor and reservation with their issuing statements.
     [Fact]
     public void AProblemNamesItsLoanAndWitness()
     {
@@ -2450,7 +2451,10 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 inspect(x)
             func activated()
                 var a = Pair.init()
+                var b = 1
+                let kept = b@ref
                 two(a@uniq, a@ref)
+                inspect(kept)
             func escaped()
                 let fallback = Data.init()
                 let packet: Packet = .Data(Data.init())
