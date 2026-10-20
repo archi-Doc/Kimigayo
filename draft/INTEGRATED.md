@@ -914,3 +914,15 @@ options per problem; this records plan selection, not approval of an executable 
 - The named-alias separator supersedes only the spelling in the 2026-10-16 Named Alias Declarations plan
   at the post-R9 cutover; that plan's approved declaration semantics and R7 schedule are unchanged.
   No SPEC/IMPL text is integrated or frozen, no executable source changed, and no support or speedup is claimed.
+
+## 2026-10-20 — Accessor result contracts
+
+- [Accessor Result Contracts and Implementation Plan](Proposals/2026-10-20%20Accessor%20Result%20Contracts%20and%20Implementation%20Plan.md):
+  一部取り込み (open, intake only). The owner adopted result-free getter/setter signatures for stored,
+  computed and required Properties. Implementation, restructuring, executable probes and migration start
+  only after recorded R9 completion.
+- By the owner's instruction, this plan overrides SPEC and its references only for its stated changes.
+  Mapping: §2 → SPEC §11.1/§11.3–4 and Appendix F.4.3/F.7; §3 → §11.6 and §15.3.3–4/§15.4;
+  §4 → §11.9. §§5–6 define ownership, deletion, migration and verification; §7 records integration targets
+  and Principles. Unchanged contracts, including standard access and Contract witnesses, remain in force.
+- No SPEC/IMPL text is integrated or frozen, no executable source changed, and no support or speedup is claimed.

@@ -12,6 +12,7 @@ Implement the finalized language of SPEC.md (Chapters 1–19 and 22) and the imp
 - **Adopted library contracts:** channel delivery is FIFO by successful-send commit order, and remaining items are completely destroyed one at a time in reverse order (SPEC §22.3.4). Apply these when the deferred async implementation resumes. Slice `firstIndexWhere(predicate:)` remains unimplemented within the existing library support boundary.
 - **Proposal text changes** and **NativeAOT tests** need explicit instruction. Instructed intake or closure includes register updates and moves under AGENTS.
 - **Post-R9 naming syntax:** the owner adopted [`as` for parameter names and named aliases](../../draft/Proposals/2026-10-20%20As%20Naming%20Syntax%20and%20Implementation%20Plan.md). All implementation, migration and parser/layout cleanup starts only after recorded R9 completion; the plan overrides SPEC only for its stated changes. Current SPEC and implementation are unchanged.
+- **Post-R9 accessor results:** the owner adopted [result-free getter/setter signatures](../../draft/Proposals/2026-10-20%20Accessor%20Result%20Contracts%20and%20Implementation%20Plan.md), with operation-specific Origin contracts. All implementation, restructuring, executable probes and migration start only after recorded R9 completion; the plan overrides SPEC only for its stated changes. Current SPEC and implementation are unchanged.
 
 ## 2. Working rules
 
