@@ -828,6 +828,16 @@ to Obsolete as superseded."
 - Outstanding: current-head reproduction, executable premise-supply completeness/resource/lifecycle gates, the
   separate finite Transferable summary, applicable package/vocabulary approvals and all implementation verification.
   G170/G124 remain open; S5 connection and the other F5/R4 exit obligations retain their own gates.
+- Revision (2026-10-20; the owner asked for the plan to be scrutinized against the Principles; open text, nothing
+  frozen): the supply design of §§2–4, PS0–PS5 and §7.1, replaced by G170 PlanB, is removed (text at `f373cd67`); §§2–4
+  now state the contract Transferable consumes from C4, and the proposed `ConstraintProofResourceLimit_Kd` is withdrawn
+  in favor of PlanB's Resource contract; judgment stays with `ProveConstraint` and provisional answers are re-judged, not
+  failures. Also: T1's sites including the Contract-requirement path and `Register`'s closed rule, a D5/O3 disposition for
+  T1's default-pipeline acceptance change, `ContainsRawPointer` as the old effect checker (deleted at R6-check), the MIR path
+  and raw tests, a finite-summary example, and T0's comparison of a Transferable-only summary with one component summary
+  shared with Owned, whose growth guard pins a non-SPEC Unknown (PLAN G174) (proposal §9). Mapping: §§1, 5 and T0–T3
+  implement §8.3 (abstract premises), §8.7.1, §8.11.2, §15.2.3–§15.2.4, §15.3.5 and §22.1; §8.2.3/§8.3 supply is
+  PlanB's. Holds and gates are unchanged; T0's preparation proceeds before C4.
 
 ## 2026-10-20 — S3 closure publication and M69 compiler/model correspondence
 
@@ -850,6 +860,19 @@ options per problem; this records plan selection, not approval of an executable 
   Neither proposal changes a language rule. No section is integrated into SPEC/IMPL and no text is frozen. No compiler, model,
   build, test or performance measurement was executed by this planning task. Applicable package approvals and all implementation
   checks remain outstanding; intake/review implies no support or release of an existing integration hold.
+- Revision (2026-10-20; the owner asked for both plans to be scrutinized against the Principles; open text, nothing frozen).
+  S3 (proposal §8): legacy `CallLocalOrigin` reads the meet-rewritten result, so an S3-3 shadow comparison decides whether
+  S3-4a feeds it from FiniteBody rows and deletes the rewrite, else H11; closure formals reuse the Input-slot identity in
+  C2-owned storage as a recorded responsibility extension; S3-0 takes 2x-P7's cases as inputs instead of waiting for it;
+  gate R adds per-row premise scopes (decided by its evidence, else a 2a0-D/2c-D input), trial fits, direct local checks,
+  shortcuts, unresolved meets and receiver-before-result timing; environment-binding borrows are classified per receiver
+  case; citations, sources
+  and owners corrected; numbered sections and one deletion table. M69 (proposal §9): M69-0 starts from the recovered,
+  reviewed G171 source instead of a sketch that fails Binding, apart from the unaccepted 69-case model; §3 defers to R4-M84
+  (M69-1 landed); the scope query is `MirBody.Common` beside `Inlining`, skipped outside copies, and the ownership rule a new
+  A5 partial; census rows for `held` and the R4-M70 taint; R3's Loan and scopes are left to 2b-D (§§3–4); A1/A2's
+  record-then-drop is staged for removal in PLAN by M69-2 unless their contracts differ. Mappings, selections, gates and holds
+  are unchanged.
 
 ## 2026-10-20 — G170 premise dependencies and inference
 
