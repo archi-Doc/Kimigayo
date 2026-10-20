@@ -815,3 +815,16 @@ to Obsolete as superseded."
   rule (plan B §1.3, §3.3). Its other sections (results and ownership, nesting, Deferred Block, migration,
   implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
   closure.
+
+## 2026-10-20 — Canonical premise supply and Transferable
+
+- [Canonical Premise Supply and Transferable Plan](Proposals/2026-10-20%20Canonical%20Premise%20Supply%20and%20Transferable%20Plan.md):
+  一部取り込み (open, intake only). The owner selected shared premise supply (option A), with G170 resolved before
+  Transferable, and requested an investigated, independently reviewed implementation plan. This records the direction
+  and plan request, not approval of new vocabulary, executable implementation or release of R4-M83's hold.
+- Existing-rule mapping: §§1–4 and PS0–PS5 implement SPEC §8.2.3 and §8.3, retaining §8.6/§8.8/§8.15's source,
+  substitution and definition-time contracts; §5 and T0–T3 implement §8.7.1, §8.11.2, §15.2.3–§15.2.4, §15.3.5
+  and §22.1. The proposal changes no language rule. No section is integrated into SPEC/IMPL and no text is frozen.
+- Outstanding: current-head reproduction, executable premise-supply completeness/resource/lifecycle gates, the
+  separate finite Transferable summary, applicable package/vocabulary approvals and all implementation verification.
+  G170/G124 remain open; S5 connection and the other F5/R4 exit obligations retain their own gates.
