@@ -231,6 +231,14 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal("The temporary `make()` is destroyed here while a live value keeps its Loan", record.Note);
     }
 
+    // SPEC 3.6: the valid twins of TemporaryGeneric and TemporaryFunction: a borrow of an abstract or a Function temporary used within
+    // its statement outlives no temporary.
+    [Theory]
+    [InlineData("func inspect<T>(value: ref/T) => ()\nfunc keep<T>(make: () -> T) -> ()\n    inspect(make()@ref)\n\npublic func main() -> ()\n    Console.writeLine(\"x\")\n")]
+    [InlineData("func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\nfunc call(f: ref/(() -> i32)) -> i32 => f()\n\npublic func main() -> ()\n    Console.writeLine(\"\\(call(mk()@ref))\")\n")]
+    public void ABorrowOfATemporaryWithinItsStatementIsValid(string source)
+        => Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+
     // SPEC 15.6.2, 16.2.2: borrows that never outlive their root's scope are valid and run.
     [Theory]
     [InlineData("CapturedOuter", "let n = 5\nlet g = label block: do\n    let k = 1\n    exit to block func [n@ref] () => n@follow\nConsole.writeLine(\"\\(g())\")", "5\n")]
@@ -241,8 +249,6 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
     [InlineData("ReborrowBothExits", "func show<s/T>(value: s/T, c: bool) -> ()\n    s is ref or uniq\n    T is Copy\n    let local = value\n    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block z@ref\n    Console.writeLine(\"\\(r@follow)\")\nlet v = 3\nshow(v@ref, true)", "1\n")]
     [InlineData("AbstractBothExits", "func show<C, T>(values: ref/C, other: ref/T, c: bool) -> ()\n    C is Iterable\n    T is Copy\n    var count: i32 = 0\n    for a in values\n        count += 1\n    let r = label block: do\n        let n: T = other@follow\n        if c\n            exit to block other\n        exit to block other\n    let k: T = r@follow\n    Console.writeLine(\"\\(count)\")\nlet xs: Array<i32> = [1]\nlet v = 3\nshow(xs@ref, v@ref, true)", "1\n")]
     [InlineData("TemporaryReferenceReborrow", FirstText + SlotInt + "let words: Array<string> = [\"a\"]\nlet r = first(words@ref)@follow@ref\nConsole.writeLine(r)\nConsole.writeLine(first(words@ref)@ref@follow)\nvar xs: Array<i32> = [1]\nlet s = slot(xs@uniq)@follow@uniq\ns@follow = 2\nslot(xs@uniq)@follow += 1\nConsole.writeLine(\"\\(xs[0])\")", "a\na\n3\n")]
-    [InlineData("TemporaryGenericWithin", "func inspect<T>(value: ref/T) => ()\nfunc keep<T>(make: () -> T) -> ()\n    inspect(make()@ref)\nfunc mk() -> Array<i32> => [1, 2]\nkeep(mk)\nConsole.writeLine(\"generic\")", "generic\n")]
-    [InlineData("TemporaryFunctionWithin", "func mk() -> (() -> i32)\n    let values: Array<i32> = [11, 22, 33]\n    return func [values@move] () -> i32 => values[1]\nfunc call(f: ref/(() -> i32)) -> i32 => f()\nConsole.writeLine(\"\\(call(mk()@ref))\")", "22\n")]
     [InlineData("LocalCopied", "let r = label b: do\n    let n: Array<i32> = [5, 6]\n    let q = n[1]@ref\n    let t = (q, 1)\n    exit to b t.0@follow + n[0]\nConsole.writeLine(\"\\(r)\")", "11\n")]
     public void BorrowsWithinTheirRootsScopeRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture("BlockEscapeLoan" + name, source, stdout);
