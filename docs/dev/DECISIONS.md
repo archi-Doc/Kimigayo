@@ -445,7 +445,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
-  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69.
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90.
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
   places the merge across bodies at publication.
@@ -1054,7 +1054,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   through setters now (the receiver would have to be acquired once at locate and passed to the setter: F8's unit 2d); the validator
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
   The `RawSlice` backing and C8 landed later (R4-M40, R4-M41).
-- **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of its §9 item 8 on 2026-10-17) A4's static keys for A5.
+- **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of its §9 item 8 on 2026-10-17; its `(Field, Write)` list and
+  `bool` superseded by R4-M89 (unit 2b-1: the key row per view, classes as R4-M74 OQ6)) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
   once and written where any access writes it, from the summaries the last `Run` solved; `unknown` where A4 does not classify what it
   runs (an Unknown effect, an atom left abstract under the body's premises, resolved at once as for an obligation, a Limit, or a
@@ -1630,7 +1631,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Rejected: an A6 merge by (anchor, reservation), a merge after the fact; reporting at the activation only (unsound on 38j).
   Conditions for 2f: a Φ_c met at a receiver's formation is located at its later call (DIAGNOSTICS); a shared-receiver Φ_c takes the
   receiver's mode, or 2f reruns this rule's prototype variant with that case.
-- **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-6). It
+- **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-6; its
+  Inlined rule superseded for A5 by R4-M90 (2e-4; A1/A2 at 2e-4 or 2g-6)). It
   supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's rejection of
   "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording rule name its
   requirement, and `MirReport` has no Place and must not derive a requirement from a code.
@@ -1662,7 +1664,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     record), so a Loan problem found only through one never arises: R4-M10's "derived and dropped", by construction. A Loan another
     route reaches stays checked (SPEC 23.1.2; the design review's o7, j1 and op5). No `Opaque` or `Derived` fact kind and no drop rule
     in `MirReport.Add`; 2g gets no derived Loan records from Opaque sites, which DIAGNOSTICS suppresses beside their causes anyway.
-  - Default taint (temporary; A5-F9, unit 2e, deletes it): a value a default's evaluation places into its pending slot D carries D's
+  - Default taint (temporary; A5-F9, unit 2e, deletes it; deleted by R4-M90's R-a (template calls 2e-1, copies 2e-3)): a value a
+    default's evaluation places into its pending slot D carries D's
     marker: a default template's Call result, or an inline copy's store into D, a pending slot outside the copy's Inlined scope (the
     slots of a call inside the copy lie inside it, and an explicit argument's slot is no default's). A Loan conflict whose Loan only
     sets with a taint hold in the access's check set ("every set") is A5's located `Unsupported_Kd` at D's source, the omitting call,
@@ -1702,17 +1705,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **R4-M72** (2026-10-19; decided by the planning session on 2026-10-18, adopting the design review of 1c's two designs (its verdicts
   4 and 5 and its R4-M72 draft) with the 1c design, and by the owner through the step-2 plan's PD7 and PD11, adopted with the plan
   (R4-M74, OQ1); with group 1c's final review's records; recorded by unit 1c-9; A3 §12 E15). The A6 table of A5's Loan problems
-  (DIAGNOSTICS, MIR Loan problems) and the placements group 1c left. It supersedes A3 §5's A6 rows for effects, `PreparedInput` roots
+  (DIAGNOSTICS, MIR Loan problems; it gains a row, R4-M90) and the placements group 1c left. It supersedes A3 §5's A6 rows for
+  effects, `PreparedInput` roots
   and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their merge, R4-M10's placement of the Access and Borrow codes in
   A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
-  - Effects: err(effect), a static or unknown-environment effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
+  - Effects (clarified by R4-M89: a Loan found only in a reservation holder that the call does not activate is
+    `CallReservationConflict_Kd` (A6 row 1); "none
+    arises" overlooked implicit static reservations (`tests/mir/statics.mir:178`)): err(effect), a static or unknown-environment
+    effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
     the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
     unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
     and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both
     supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet: unit 2b
     implements the first (none arises while no static Loan exists, since Binding rejects every borrow of group storage, PLAN G100) and
     2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation.
-  - Defaults: `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a template the preceding
+  - Defaults (superseded by R4-M90): `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a
+    template the preceding
     parameters a default reads are the template's own parameters, whose callers' Loans lie outside its body, and a copy reaches its
     pending slots only past the prologue's shared borrows, where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as
     `DefaultArgumentMove_Kd` is A1's (R4-M69).
@@ -1751,7 +1759,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via, at, reservation)`
       (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and err(destroy)), so the hold is one rule there,
       and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c) must report through it too.
-    - R4-M69 governs inline default copies: a Loan problem inside an Inlined scope is its template's and dropped whatever the hold
+    - R4-M69 governs inline default copies (superseded by R4-M90 (2e-4; the taint 2e-3)): a Loan problem inside an Inlined scope is
+      its template's and dropped whatever the hold
       says; the hold reclassifies only problems the held view owns. R4-M70's default taint is unchanged: a Loan only default-tainted
       sets hold stays the `Unsupported_Kd` at the omitting call, also in a held view (one record per problem).
     - Cost, accepted by the owner: a held view's Language problems that do not depend on the store become `Unsupported_Kd` too
@@ -1773,7 +1782,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Diagnostics rule forbids). Prototype round 17: 425 cases, every conflict that depends on a by-argument store `Unsupported_Kd`, every
     view not held unchanged, every (Loan, access) rule G reports reported once; 26 held, 11 of them losing an independent Language
     error (draft/Sketches/A5 Step 2/body-hold.md).
-  - Default-taint records (R17-N3): R4-M70's closure route is of the same class as its recorded err(ended) limit. An inline copy is
+  - Default-taint records (R17-N3; superseded by R4-M90 (2e-1 for template calls, 2e-3 for copies)): R4-M70's closure route is of
+    the same class as its
+    recorded err(ended) limit. An inline copy is
     precise and its result or slot is tied to the explicit argument by Origin, so its Language errors through that route are right per
     value (SPEC 15.6.4); template calls (recursive defaults) over-approximate, and every attempt to make a conservative error through one
     was rejected by Binding (unverified for an accepted recursive default).
@@ -1835,7 +1846,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     that changes the rule returns to the owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for
     S2 (planning session).
 - **R4-M75 Group 1c's design is owner-approved** (owner, 2026-10-19; DEC Q6 form 2; adopted by the R4 planning session on
-  2026-10-18 after two independent designs and their design review) Units 1c-5 to 1c-8 implement one owner-approved design and
+  2026-10-18 after two independent designs and their design review; 1c-6's Inlined drop and 1c-7's default taint superseded by
+  R4-M90) Units 1c-5 to 1c-8 implement one owner-approved design and
   share one final review before the group merges into dev; each unit is still verified and pushed, and a unit that departs from
   the design leaves the group and takes the full process. The design: 1c-5, an activation conflicts only with Loans whose mode is
   shared in the holder where it is found (R4-M68); 1c-6, A1 codes a Move of a PreparedInput slot or its owned contents
@@ -2024,6 +2036,61 @@ and migration obligations remain in force; no numeric cap changes are authorized
     T.(Tree).Child.(Tree).Child)` with `T is CopyTree`, called from a confined `visit` under `U is CopyTree`, `U is Copy`,
     `U.(Tree).Child is U`: `IncompatibleContractImplementation_Kd`), in uninstantiable code only; it is G170's. A layered projection
     (a pair layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
+- **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
+  「推奨どおり承認 (推奨)」
+  to the package with OQ-F5-1 to OQ-F5-6 at their recommendations; R4-M74 OQ2) The package is
+  `draft/Sketches/A5 Step 2/2b-D-package.md`, from two independent designs, a design review that chose a combination per item and a
+  confirmation round whose two blocking items (the staticEnsure rule's may-set proof, e10f; the layer obligation's Unknown) were
+  fixed as the reviewer worded them (`2b-D-review.md`). Round 18's record (`draft/Sketches/A5 Step 0/prototype.md`) gains e10f and
+  the R18EnsureClosed/Keyed/Exact/ByField UNSOUND rows, amending finding 4, with unit 2b-3's prototype update (deferred from this
+  records commit). It is the owner-approved design of DEC Q6 form 2 for G:A5-F5, form 1 for the Transferable view units (R4-M74
+  OQ2): G:A5-F5's units take the group review (2b-1, 2b-3, 2b-8a), its other units their own (2x-R13, 2x-R14, 2x-P12, 2b-4a, 2b-4,
+  2b-5, 2b-7 and BU's 2b-6), and 2b-8b, a records unit, none (Q6 form 3). In short:
+  - err(effect) is an access in `MirBorrows` (`AccessKind` rows `EffectRead`, `EffectWrite`; three effect fact kinds); the Call's
+    set is `Takes(n−1)` with no holder left out (a reading of E13 (1)(b)), the Drop's is `TakesValue`; W6; e1's code is
+    `CallReservationConflict_Kd` by the A6 table's row 1 (a clarification of R4-M72's effect row); R3 issues no Loan and runs
+    through the solve; staticEnsure is PD12 (ii) as written for every key; a static's Loan names E (G136 (i) replaces PD12 (iv)'s
+    lemma); a copy-found effect conflict is dropped until 2e-4 (G171; shadow only, no regression).
+  - A4's `Keys` returns the key row with a per-view query (R4-M38's list and `bool` superseded; the storage unchanged, 2b-2).
+  - Transferable: one per-declaration component summary shared with Owned (fixing G174), a three-valued layer obligation, the
+    static's container premises as its anchor, read by A4 through `TyCtxt.Transferable(staticField)` with no `MirStatic` field;
+    `HoldsRaw`, its walk and `RawStaticRead` go (2b-5). The container anchor departs from the Transferable plan's T2/§5.3, and a
+    generic static's unproven verdict is Limit, not Environment, until P42.
+  - Owner answers: OQ-F5-1 (a) a whole static write ends its Field's Loans (a static Field read as a Move Path; a clarifying SPEC
+    sentence goes to the next SPEC session); OQ-F5-2 (b) the shared summary (BU's 2b-4a, R4 reviewing; the growth guard deleted
+    after a census); OQ-F5-3 (a) declaring `Kimi.Transferable` and Owned's change are SPEC-conformance fixes on both pipelines with
+    evidence, a located `Unsupported_Kd` guard for any form the old emission does not generate; OQ-F5-4 (a) 2b-4/2b-5 do not wait
+    for G170; OQ-F5-5 (a) the departures confirmed as one list (the package's §6); OQ-F5-6 (a) SPEC 15.6.4's "a live Loan … proves"
+    reads liveness as a may-property, reported to the next SPEC session ("a Loan that every path to the access carries"), the
+    ensure's located `Unsupported_Kd` registered at X-2 meanwhile. A third SPEC gap goes to the next SPEC session (the package's
+    §4): 15.3.5's fixed point for projection families, which SPEC states as terminating only for Type-argument recursion.
+  - Numbering: R4-M88 is reserved for 2x-E2's HIR publication rule (redesigned after its review).
+- **R4-M90 A5-F9's design package (2e-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
+  「推奨どおり承認 (推奨)」
+  to the package with OQ-F9-1 and OQ-F9-2 at their recommendations; R4-M74 OQ2) The package is
+  `draft/Sketches/A5 Step 2/2e-D-package.md` (design A with parts of B; review and confirmation in `2e-D-review.md`, whose two
+  blocking text items were applied). Units: 2e-0 (R4's own builder unit after 2x-E2), then G:A5-F9's 2e-1, 2e-2, 2e-3, 2e-4, 2e-5;
+  optional draft round 2x-P13. DEC Q6 form 2 for 2e-1 to 2e-5 (one group review; a departing unit leaves the group); 2e-0 and
+  2x-P13 take their own reviews (PD29). PQ-1 (BU agreed, 2026-10-21): 2b-6's qualified part lands as planned; its unqualified
+  in-group and implicit-receiver part lands after G:A5-F9's dev merge, re-expecting the caller-owned witnesses (and any of 2b-3's
+  tests that use those forms) as Binding's `Unsupported_Kd`, with a P42 row in PLAN. This amends the 2b-D package's §1.5 and 2b-6 row:
+  2b-8a waits for the qualified part only. In short:
+  - A template's PreparedInput Deref is an Inline step (A3 erratum E17 (numbered at adoption in 2e-2's entry)); R26-borrow and
+    R26-access share one slot-rooted definition up to the first raw step; template calls take P9's Content rows, a raw slot
+    `MirWrites.Raw` the raw row, any other slot whose Type holds raw, at a call whose inputs' Contents hold a Loan, a located
+    `Unsupported_Kd` (r3, registered under PD28, removed by G160's representation); R-a ends the inspection Loans of every moved
+    pending slot before the omitting call's checks and deletes R4-M70's default taint.
+  - The copy disposition (PLAN G171): a failure found in a copy is its template's only when every participating event lies in the
+    current evaluation of one copy (round 20's `R20Own` with `R20Entry`: a Loan live into the copy's entry from outside moves the
+    boundary outward), decided per candidate before selection on every failure path; `Loan.Location` replaces `Loan.Site`;
+    `MirBody.Common`. A caller-owned problem inside a copy is recorded at the outermost omitting call with an `Evaluated` fact;
+    `Evaluated` replaces `Inlined` if D15 lands in 2e-4, else both coexist until 2g-6. R5's validator rule AR-9 (a copy is entered
+    only at its first location) is a prerequisite of G:A5-F9's dev merge.
+  - Owner answers: OQ-F9-1 (a) a reservation's activation is not checked against its own Loan when a recursive default's value
+    carries it (a clarifying SPEC 15.6.7 sentence goes to the next SPEC session); OQ-F9-2 (a) the departures confirmed: R4-M69's
+    Inlined rule replaced for A5 (A1/A2 follow in 2e-4 if 2x-R7 and a `MirDrops.cs` response are ready, else in 2g-6), R4-M73's
+    "R4-M69 governs inline default copies" sub-bullet and R4-M72's Defaults bullet superseded, and R4-M72's A6 table gains the row
+    above; the rolled-back M69 plan's exclusion of that relocation is not in force.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
