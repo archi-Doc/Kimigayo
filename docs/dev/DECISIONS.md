@@ -1002,7 +1002,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Elsewhere in DEC and ARCH, an "R6" item that only Emission concerns means R6-gen and any other means R6-check (for example R4-M1,
     R4-M3a, R4-M13a and R4-M17's unit a).
   - Superseded later in part (2026-10-18): plan §9.1's "both measured" by R5-M3 and its forwarding properties at R6-check by
-    R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19).
+    R5-M9. OD4's parallel run was suspended by R4-M77, restored by R4-M78 and suspended again by R4-M79 (all 2026-10-19), and restored
+    by R4-M86 (2026-10-20).
 - **R4-M36** (2026-10-17; design A3 §4.1 G2, owner approval of its §9 item 8 on 2026-10-17) The Type facts A5's holders and destruction
   checks read. `MirTypes.HoldsLoans(type, seen)` (A3 §3's holder rule): a part of the value is a borrow or pair layer, a Slice, a
   Function or Closure value or an abstract Type; its parts are its own storage (Fields and base, payloads) and its components (elements,
@@ -1925,6 +1926,22 @@ and migration obligations remain in force; no numeric cap changes are authorized
   G169), which a ledger mapping would hide. Rejected: a `sites` column in the raw row (an R4-M17 row-shape change PD18 avoids,
   and a fresh ledger run; it tests the holder or reservation against the MIR's sites, not the same Loan); a Place-identity
   reading by start offset or containment (not PD18's predicate, and unsound as above).
+- **R4-M86 R4, R5 and the Binding units resumed on a reset dev** (owner, 2026-10-20; supersedes R4-M79's pause) On 2026-10-20
+  dev and main were reset to `b1a9c8a5` (R4's pause record), and the owner's commit `e307e9f9` added seven 2026-10-20
+  proposals. The history of that day's resumed R4 session (the validator split, 2x-E1's merge, 2b-2, M69-1, the G170, G172, S3
+  and M69 units and records, DECISIONS R4-M82–R4-M85, PLAN G171–G174, a SPEC 8.5.5 edit) exists only on
+  `origin/backup/rollback-20261020-*` and is not part of dev. Each planning session was restarted with its resume prompt: R4
+  with `artifacts/handoff/2026-10-19-r4-pause/R4-resume-prompt.md` and the owner's addition on five of the proposals (M69, S3,
+  Canonical Premise Supply and Transferable, G170 PlanB, G172), verbatim 「これらの文書は、実装上の問題点の修正計画書です。どのような内容か確認し、有用ならR4、R5、Binding Unitへ通達し、共有・利用してください。実装完了後は、通常通りdraft/Changesに移動してください。有用でなければ、理由を表示して、Obsoleteに移動してください。」;
+  BU with its `BU-resume-prompt.md` pasted verbatim; R5 after asking the owner whether to resume on that base, verbatim
+  「再開する」. Consequences (planning sessions): R5 and BU work in parallel with R4 again; R5-M1's parallel run (OD4) is
+  restored; the PLAN §3 hold protocol applies as before R4-M77, and BU's step-2 units (PD6) and the asks AB-1–AB-6 and AR-1–AR-8
+  stand as R4-M74 states them. The rolled-back history is treated as not existing: its units are redone from dev under their own
+  reviews (2x-E1 is re-landed from its reviewed commits `136718f9` and `58fd2095` after a fresh MirValidator split), and its
+  owner decisions (the plan adoptions, R4-M83's hold, R4-M85's clarification) are not in force; R4 evaluates the five proposals
+  anew. Numbering: R4-M81 stays 2x-E1's; R4-M82–R4-M85 and PLAN G171–G174 are not reused for other meanings, since the
+  proposals cite them; R5's new PLAN rows start at G175. The pause README (`artifacts/handoff/2026-10-19-pause-2/README.md`)
+  marks its rows for the rolled-back work.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
