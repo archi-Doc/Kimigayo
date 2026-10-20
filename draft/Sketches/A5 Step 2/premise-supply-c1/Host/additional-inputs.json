@@ -1,0 +1,987 @@
+[
+  {
+    "Id": "alias-invalid-forward",
+    "Scope": "alias-invalid-forward",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "alias",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "original",
+        "Proposition": "is(T,C)",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "negative",
+        "Proposition": "not(is(U,C))",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "candidates",
+        "Proposition": "is(U,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-invalid-reversed",
+    "Scope": "alias-invalid-reversed",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(U,T)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "alias",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "original",
+        "Proposition": "is(T,C)",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "negative",
+        "Proposition": "not(is(U,C))",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "candidates",
+        "Proposition": "is(U,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-valid",
+    "Scope": "alias-valid",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "alias",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      },
+      {
+        "Purpose": "Ordinary",
+        "Id": "negative",
+        "Proposition": "not(is(U,C))",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-negative-error",
+    "Scope": "alias-negative-error",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "negative",
+        "Proposition": "not(is(T,C))",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "not(is(U,C))",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-downstream-error",
+    "Scope": "alias-downstream-error",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      },
+      {
+        "Id": "independent",
+        "Proposition": "is(U,D)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [
+      {
+        "Head": "is(U,D)",
+        "Id": "downstream",
+        "Source": "ok",
+        "Antecedent": "is(U,C)"
+      }
+    ],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,D)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-pending",
+    "Scope": "alias-pending",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Pending",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-resource",
+    "Scope": "alias-resource",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Resource",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alias-unsupported",
+    "Scope": "alias-unsupported",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Unsupported",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "empty-valid",
+    "Scope": "empty-valid",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [],
+    "Roots": [],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "empty-invalid",
+    "Scope": "empty-invalid",
+    "Oracle": "ClosedForward",
+    "Environment": "Invalid",
+    "Sources": [],
+    "Roots": [],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "empty-pending",
+    "Scope": "empty-pending",
+    "Oracle": "ClosedForward",
+    "Environment": "Pending",
+    "Sources": [],
+    "Roots": [],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "empty-resource",
+    "Scope": "empty-resource",
+    "Oracle": "ClosedForward",
+    "Environment": "Resource",
+    "Sources": [],
+    "Roots": [],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "empty-unsupported",
+    "Scope": "empty-unsupported",
+    "Oracle": "ClosedForward",
+    "Environment": "Unsupported",
+    "Sources": [],
+    "Roots": [],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "nonempty-invalid-environment",
+    "Scope": "nonempty-invalid-environment",
+    "Oracle": "ClosedForward",
+    "Environment": "Invalid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "candidate-operand-error",
+    "Scope": "candidate-operand-error",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,C)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alternative-unavailable",
+    "Scope": "alternative-unavailable",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [
+      {
+        "Head": "is(U,C)",
+        "Id": "alternative",
+        "Source": "off",
+        "Antecedent": "is(T,A)"
+      }
+    ],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,A)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alternative-pending",
+    "Scope": "alternative-pending",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [
+      {
+        "Head": "is(U,C)",
+        "Id": "alternative",
+        "Source": "wait",
+        "Antecedent": "is(T,A)"
+      }
+    ],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "alternative-required-error",
+    "Scope": "alternative-required-error",
+    "Oracle": "ClosedForward",
+    "Environment": "Valid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "identity",
+        "Proposition": "eq(T,U)",
+        "Source": "ok"
+      },
+      {
+        "Id": "positive",
+        "Proposition": "is(T,C)",
+        "Source": "ok"
+      }
+    ],
+    "Rules": [
+      {
+        "Head": "is(U,C)",
+        "Id": "alternative",
+        "Source": "ok",
+        "Antecedent": "is(T,A)"
+      }
+    ],
+    "Operands": [
+      {
+        "State": "Invalid",
+        "Proposition": "is(T,A)"
+      }
+    ],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(U,C)",
+        "Kind": "Proof"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "invalid-entry-pending",
+    "Scope": "invalid-entry-pending",
+    "Oracle": "ClosedForward",
+    "Environment": "Invalid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "dependent",
+        "Proposition": "is(T,C)",
+        "Source": "wait"
+      }
+    ],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  },
+  {
+    "Id": "invalid-entry-resource",
+    "Scope": "invalid-entry-resource",
+    "Oracle": "ClosedForward",
+    "Environment": "Invalid",
+    "Sources": [
+      {
+        "State": "Available",
+        "Id": "ok",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Unavailable",
+        "Id": "off",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Pending",
+        "Id": "wait",
+        "Provenance": "synthetic"
+      },
+      {
+        "State": "Resource",
+        "Id": "limit",
+        "Provenance": "synthetic"
+      }
+    ],
+    "Roots": [
+      {
+        "Id": "dependent",
+        "Proposition": "is(T,C)",
+        "Source": "limit"
+      }
+    ],
+    "Rules": [],
+    "Operands": [],
+    "Leaves": [],
+    "Queries": [
+      {
+        "Purpose": "Ordinary",
+        "Id": "q",
+        "Proposition": "is(T,$contract)",
+        "Kind": "Candidates"
+      }
+    ],
+    "Correspondence": "C1 synthetic discriminator; no real source validity or production correspondence"
+  }
+]
