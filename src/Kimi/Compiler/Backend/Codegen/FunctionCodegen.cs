@@ -32,9 +32,10 @@
 // (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a), Location (C3b), TypeToken (C3a),
 // raw-pointer (C8a) and other string constants (C8c); calls of a function's instance (C3a), a requirement (C3b), a value (C5a), a virtual
 // slot (C6c), an intrinsic (C8a, C10a) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its
-// own (C3b); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: this frame and the dispatch; the place
-// writer and the loads, stores and copies through it (FunctionCodegen.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs),
-// conversions (.Casts.cs), calls (.Calls.cs) and drops (.Drops.cs).
+// own (C3b); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: the dispatch (this file); the
+// function's frame: its signature, homes, prologue and return (FunctionCodegen.Frame.cs); the place writer and the loads, stores and
+// copies through it (.Places.cs); the rvalues (.Rvalues.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs) and
+// drops (.Drops.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -66,15 +67,6 @@ internal sealed partial class FunctionCodegen
     /// <param name="module">The module whose signatures and records it uses.</param>
     /// <param name="types">The Type context of the program, whose case Types the item's view selects.</param>
     internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.cases) = (module, new(types));
-
-    // Where a local lives (I2).
-    private enum Home : byte
-    {
-        None, // Zero-sized: no storage.
-        Slot, // Its alloca, %l<local>.
-        Argument, // The pointer its caller passed, %a<slot>.
-        Result, // The result slot, %ret.
-    }
 
     /// <summary>Writes the definition of a body item, or records why not.</summary>
     /// <param name="program">The program, whose body the item replays and whose drop table and problems its drops read.</param>
@@ -122,92 +114,6 @@ internal sealed partial class FunctionCodegen
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
     // signed range is the negative number with the same bits.
     private static Int128 Signed(Int128 bits, int width) => width >= 128 ? bits : (bits << (128 - width)) >> (128 - width);
-
-    // Lays out every local in the item's instance (I7), then gets the item's signature from local 0 and the arguments in slot order (SPEC
-    // 7.3: the Arg locals hold them receiver first); null after a record.
-    private FunctionAbi? LayOut()
-    {
-        var locals = this.body.Locals;
-        if (this.slots.Length < locals.Length)
-        {
-            this.slots = new Slot[Math.Max(locals.Length, 2 * this.slots.Length)];
-            this.types = new BoundType[this.slots.Length];
-            this.parameters = new BoundType[this.slots.Length];
-        }
-
-        var arguments = 0;
-        for (var i = 0; i < locals.Length; i++)
-        {
-            if (this.collector.TypeOf(this.item, locals[i].Type) is not { } type || this.module.Layout.Of(type).Value is not { } value)
-            {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, locals[i].Source); // The collector laid out every local of an admitted item.
-                return null;
-            }
-
-            (this.types[i], this.slots[i]) = (type, new(value.Layout.Size == 0 ? Home.None : Home.Slot, i, value));
-            arguments += locals[i].Kind == MirLocalKind.Arg ? 1 : 0;
-        }
-
-        var decl = this.body.Key.Decl;
-        for (var slot = 0; slot < arguments; slot++)
-        {
-            this.parameters[slot] = this.types[1 + MirCallee.Position(decl, slot)];
-        }
-
-        // SPEC 22.5.1: a caller-location library function receives its caller's location; the old generator's constructor and destructor
-        // result slot is its own ABI choice, which local 0's Type replaces here (IMPL 21.3.1).
-        var flags = KimiLibraryCatalog.RequiresCallerLocation(decl) ? Abi.Flags.CallerLocation : Abi.Flags.None;
-        return this.module.Signature(this.item, flags, this.types[0], this.parameters.AsSpan(0, arguments));
-    }
-
-    // The entry block (I2): a pointer-passed argument and the result slot are their locals' homes; one aligned alloca per other local of
-    // nonzero size; each Value argument stored into its local's slot.
-    private void Prologue()
-    {
-        var output = this.output;
-        output.Write(this.abi.GetDefinition(exported: false));
-        output.Write("entry:\n");
-        foreach (var parameter in this.abi.Parameters)
-        {
-            if (parameter.Kind == AbiParameterKind.OwnedSlot)
-            {
-                ref var slot = ref this.slots[this.LocalOf(parameter)];
-                slot = slot with { Home = Home.Argument, Index = parameter.LogicalIndex };
-            }
-            else if (parameter.Kind == AbiParameterKind.ResultSlot)
-            {
-                this.slots[0] = this.slots[0] with { Home = Home.Result };
-            }
-        }
-
-        for (var i = 0; i < this.body.Locals.Length; i++)
-        {
-            if (this.slots[i] is { Home: Home.Slot, Value.Layout: var layout })
-            {
-                output.Write("  %l");
-                WriteNumber(output, i);
-                output.Write(" = alloca ");
-                output.Write(layout.StorageType);
-                output.Write(", align ");
-                WriteNumber(output, layout.Alignment);
-                output.Write('\n');
-            }
-        }
-
-        foreach (var parameter in this.abi.Parameters)
-        {
-            if (parameter.Kind is AbiParameterKind.Value or AbiParameterKind.SharedReference)
-            {
-                var local = this.LocalOf(parameter);
-                this.StoreAt(new('h', local), this.slots[local].Value.Layout, this.Widen(this.slots[local].Value, new('a', parameter.LogicalIndex)));
-            }
-        }
-
-        output.Write("  br label %b0\n");
-    }
-
-    // The local an argument parameter passes: Arg local 1 plus the parameter's position (SPEC 7.3).
-    private int LocalOf(in AbiParameter parameter) => 1 + MirCallee.Position(this.body.Key.Decl, parameter.LogicalIndex);
 
     private void Block(int index)
     {
@@ -427,24 +333,6 @@ internal sealed partial class FunctionCodegen
         output.Write(" ]\n");
     }
 
-    // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation.
-    private void Return()
-    {
-        if (this.abi.ResultSlot || this.slots[0].Home == Home.None)
-        {
-            this.output.Write("  ret void\n");
-            return;
-        }
-
-        var lowering = this.slots[0].Value;
-        var value = this.Narrow(lowering, this.Load(0));
-        this.output.Write("  ret ");
-        this.output.Write(lowering.ComputationType);
-        this.output.Write(' ');
-        this.WriteValue(value);
-        this.output.Write('\n');
-    }
-
     // IMPL 21.1.3: bool, the one Type whose computation (i1) and storage (i8) representations differ, widens to be stored and narrows to
     // be computed; every other value is the same in both.
     private Value Widen(ValueLowering lowering, Value value) => this.Convert("zext ", lowering.ComputationType, value, lowering.Layout.StorageType);
@@ -499,9 +387,6 @@ internal sealed partial class FunctionCodegen
 
     // A record at a site of the body, located by the collector's rule (K package 4.9).
     private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
-
-    // A local's home and representation: Index is a pointer-passed argument's slot.
-    private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
 
     // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @), the home
     // of local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling) or
