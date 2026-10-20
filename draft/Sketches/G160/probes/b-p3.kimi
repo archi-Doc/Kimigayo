@@ -1,0 +1,25 @@
+struct Buffer<T>
+    internal let data: raw/T
+    internal var length: isize
+    let capacity: isize
+    public init(capacity: isize)
+        self.data = Raw.allocate<T>(capacity)
+        self.length = 0
+        self.capacity = capacity
+    public func push(self: uniq/Self, value: T)
+        require self.length < self.capacity else => $abort("Buffer is full")
+        unsafe => Raw.initialize(self.data + self.length, value@move)
+        self.length += 1
+func mkOpt<T>() -> Option<T> => .None
+func putO(slot: uniq/(Option<uniq/(ref/i32 during a) during c>), value: ref/i32 during a) => ()
+func putB(slot: uniq/(Buffer<uniq/(ref/i32 during a) during c>), value: ref/i32 during a) => ()
+func optUntied()
+    var x = 1
+    var o: Option<uniq/(ref/i32)> = mkOpt()
+    putO(o@uniq, x@ref)
+    x = 5
+func bufUntied()
+    var x = 1
+    var b = Buffer<uniq/(ref/i32)>.init(capacity: 2)
+    putB(b@uniq, x@ref)
+    x = 5

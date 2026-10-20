@@ -1,0 +1,15 @@
+contract Src
+    associate Item
+struct RawSrc
+    Self is Src
+    associate Src.Item is raw/(ref/i32 during static)
+struct HoldItem<S>
+    S is Src
+    public var item: S.Src.Item
+    public init(item: S.Src.Item) => self.item = item
+func putItem(h: uniq/HoldItem<RawSrc>, v: ref/i32 during static)
+    unsafe => h.item[0] = v
+func projField()
+    let cell: raw/(ref/i32 during static) = Raw.allocate(1)
+    var h = HoldItem<RawSrc>.init(item: cell)
+    putItem(h@uniq, 7@ref)
