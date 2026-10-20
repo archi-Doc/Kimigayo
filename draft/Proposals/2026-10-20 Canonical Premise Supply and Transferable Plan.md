@@ -4,6 +4,12 @@ Status: 一部取り込み (open; implementation design, no specification integr
 Owner direction: 2026-10-20, shared premise supply (option A); resolve G170 before connecting Transferable.
 Investigation baseline: `64649f97d732dfd6f875dbfbfe66d5805300b310` (`dev`).
 
+G170 supply follow-up: the selected [G170 Premise Dependencies and Inference Plan](2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20Plan.md)
+replaces this proposal's PS0–PS5 work and premise-supply design, including the target ContractSolver ownership and
+frozen-inference evidence contract. The original investigation below remains historical evidence. Section 5 and
+T0–T3 retain the separate Transferable obligations; their premise-supply prerequisite is now the follow-up's C4 exit.
+S5 connection, R4-M83's hold and all applicable owner gates remain unchanged.
+
 This plan covers investigation, design, implementation units and their completion gates. The current request authorizes
 this reviewed plan, not compiler implementation. The direction is approved; the detailed implementation package and
 new vocabulary still take their applicable approvals. R4-M83's hold, R4-M79's BU/R5 pause and the normal 2b-D gates
