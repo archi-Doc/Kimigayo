@@ -95,6 +95,45 @@ public class BorrowingIterationTest
         var source = Declarations(false) + "contract Lens\n    associate View(source)\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
             "contract CopyLens\n    associate View(source) is Copy\n    func look(self: ref/Self during source) -> Self.View(source)\n" +
             "func hold" + signature + "\n    var local = first@move\n    " + hold + "\n    local = second@move\npublic func main() => ()\n";
+        AssertSourceReplacement(source, loan);
+    }
+
+    // SPEC 13.7.1, 15.6.6 (PLAN G176): `=` destroys the holder's old value before placing the new one, so where that destruction may
+    // observe (a Cursor with a drop, an abstract iterator), replacing the source the old value borrows first conflicts with it; moving the
+    // holder out first, assigning it first, or a Cursor whose destruction observes nothing is valid.
+    [Theory]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("<T>(first: T, second: T, third: T)\n    T is Iterable", false, "local = second@move\n    it = other.iterate()", "var it")]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "sink(it@move)\n    local = second@move\n    it = other.iterate()", null)]
+    [InlineData("(first: Values, second: Values, third: Values)", true, "it = other.iterate()\n    local = second@move", null)]
+    [InlineData("(first: Values, second: Values, third: Values)", false, "local = second@move\n    it = other.iterate()", null)]
+    public void ReplacingAHolderMayObserveItsOldValue(string signature, bool drop, string replace, string? loan)
+    {
+        var declarations = Declarations(false);
+        if (drop)
+        {
+            declarations = declarations.Replace(
+                "=> self.value = value\n", "=> self.value = value\n    drop\n        Console.writeLine(\"\\(self.value@follow)\")\n", StringComparison.Ordinal);
+        }
+
+        var source = declarations + "func sink<T>(value: T) => ()\nfunc hold" + signature + "\n    var local = first@move\n    var other = third@move\n" +
+            "    var it = local.iterate()\n    _ = it.next()\n    " + replace + "\n    _ = it.next()\npublic func main() => ()\n";
+        AssertSourceReplacement(source, loan);
+    }
+
+    [Theory]
+    [InlineData("origin a outlives b", true)]
+    [InlineData("", false)]
+    [InlineData("origin b outlives a", false)]
+    public void EnumPayloadShorteningNeedsProof(string relation, bool valid)
+    {
+        var c = MinimalEmissionTest.Analyze("func f(value: ref/i32 during a, other: ref/i32 during b) -> Option<ref/i32 during b>\n    " + relation + "\n    return .Some(value)");
+        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // A source's one Loan conflict at `local = second@move`, whose Loan the value declared by `loan` keeps; no diagnostic for null.
+    private static void AssertSourceReplacement(string source, string? loan)
+    {
         var diagnostics = DiagnosticCorpus.Check(source).Diagnostics;
         if (loan is null)
         {
@@ -108,15 +147,5 @@ public class BorrowingIterationTest
         Assert.StartsWith(loan, Text(Assert.Single(record.Related!, static x => x.Role == "loan").Span), StringComparison.Ordinal);
 
         string Text(SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
-    }
-
-    [Theory]
-    [InlineData("origin a outlives b", true)]
-    [InlineData("", false)]
-    [InlineData("origin b outlives a", false)]
-    public void EnumPayloadShorteningNeedsProof(string relation, bool valid)
-    {
-        var c = MinimalEmissionTest.Analyze("func f(value: ref/i32 during a, other: ref/i32 during b) -> Option<ref/i32 during b>\n    " + relation + "\n    return .Some(value)");
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 }
