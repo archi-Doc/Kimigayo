@@ -5,29 +5,23 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The rvalues of FunctionCodegen (R5 package C 3.2, plan C2b; C0c brings Ref forward, DECISIONS R5-M78, and C2a the fixed-array
-// aggregate, R5-M83), each into its Place through the place writer.
+// The rvalues of FunctionCodegen (R5 package C 3.2, plan C2b; DECISIONS R5-M78, R5-M83, R5-M87, R4-M81), each computed from its operands,
+// then put into its Place through the place writer (SPEC 13.7.1): a Use, a Ref, an aggregate, a Discriminant, a Len and an Adapt.
 internal sealed partial class FunctionCodegen
 {
-    // A Use: its operand in the Place's storage representation, nothing for a zero-sized Place; a string constant written whole; a copy of
-    // a slot Type is C2b's (memcpy).
+    // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
+    // constant written whole.
     private void Use(in MirStatement statement)
     {
         var operand = this.body.Operands[statement.Rvalue.Start];
-        var type = this.InstanceType(statement.Place)!;
         if (operand.Kind == MirOperandKind.Const && this.body.Consts[operand.Arg] is { Kind: MirConstKind.String, Value: string text } &&
-            ReferenceEquals(type, BoundType.String))
+            ReferenceEquals(this.InstanceType(statement.Place), BoundType.String))
         {
             this.Text(statement, text);
             return;
         }
 
-        if (this.LoweringOf(statement.Place) is not { } lowering)
-        {
-            return; // A broken contract, recorded.
-        }
-
-        if (Abi.HasResultSlot(type, lowering) || !this.Operand(operand, out var value))
+        if (!this.Operand(operand, out var value))
         {
             this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
             return;
@@ -81,35 +75,25 @@ internal sealed partial class FunctionCodegen
         this.Store(statement, address);
     }
 
-    // An Aggregate (SPEC 4.3.1-4.3.4): a fixed array from its elements in order, each operand's value stored at its position times the
-    // element's stride once the Place is located; noinit, from none, stores none; a Fill its one value at each element (Fill). A Tuple,
-    // struct, enum Case or Closure environment and an element of a slot Type are C2b's rows, an Array or Dictionary from none C8d's and C8e's.
+    // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC 13.7.1), then
+    // an enum Case's ordinal as its tag (Layout.Tag) and each value put at its part (Part), or a Fill's one value at each element by one
+    // counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure environment is C5a's row, an
+    // Array or Dictionary from none C8d's and C8e's.
     private void Aggregate(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
-        var type = this.InstanceType(statement.Place);
+        var type = this.InstanceType(statement.Place)!;
         var kind = (MirAggregateKind)rvalue.Op;
         switch (kind)
         {
-            case MirAggregateKind.FixedArray or MirAggregateKind.Fill when type is { Kind: BoundTypeKind.FixedArray }:
+            case MirAggregateKind.Tuple or MirAggregateKind.Adt:
+            case MirAggregateKind.FixedArray or MirAggregateKind.Fill when type.Kind == BoundTypeKind.FixedArray:
                 break;
-            case MirAggregateKind.Tuple or MirAggregateKind.Adt or MirAggregateKind.Closure or MirAggregateKind.FixedArray or MirAggregateKind.Fill:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+            case MirAggregateKind.Closure or MirAggregateKind.FixedArray:
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C5a's environment; C8d's and C8e's collections from none.
                 return;
             default:
                 throw new InvalidOperationException($"The MIR aggregate kind {kind} has no code generation row.");
-        }
-
-        if (this.module.Layout.Of(type.Components[0]).Value is not { } element)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source); // The collector laid out the Place's Type.
-            return;
-        }
-
-        if (Abi.HasResultSlot(type.Components[0], element))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // An element of a slot Type is copied by C2b's row.
-            return;
         }
 
         var operands = this.body.Operands.Slice(rvalue.Start, rvalue.Count);
@@ -123,28 +107,63 @@ internal sealed partial class FunctionCodegen
             }
         }
 
-        if (!this.Destination(statement, out var address) || element.Layout.Size == 0)
+        if (!this.Destination(statement, out var address) || this.LoweringOf(statement.Place) is not { Layout.Size: > 0 } record)
         {
             return;
         }
 
         if (kind == MirAggregateKind.Fill)
         {
-            this.Fill(address, element.Layout, this.arguments[0], type.Length);
+            this.Fill(address, type, this.arguments[0]);
             return;
+        }
+
+        if (kind == MirAggregateKind.Adt && AdtDef.IsEnum(type))
+        {
+            this.StoreAt(address, Layout.Tag.Layout, new('\0', rvalue.Arg)); // The Case ordinal, at the record's offset 0.
         }
 
         for (var i = 0; i < operands.Length; i++)
         {
-            this.StoreAt(this.Offset(address, (long)i * element.Layout.Stride), element.Layout, this.arguments[i]);
+            var (offset, part) = this.Part(kind, type, record, rvalue.Arg, i);
+            if (this.Laid(part) is { Layout.Size: > 0 } lowering)
+            {
+                this.Put(this.Offset(address, offset), part, lowering, this.arguments[i]);
+            }
         }
     }
 
-    // SPEC 4.3.3 (DECISIONS R4-M81): a Fill's value stored at each element of the instance's closed length by one counted i64 loop, so the
-    // text does not grow with the length; none at length 0. The loop is entered through a label of its own, which the counter's phi names.
-    private void Fill(Value address, TypeLayout element, Value value, long length)
+    // The part of an aggregate its index-th operand initializes (IMPL 21.1.2), in the aggregate's record: its offset and its Type in the
+    // item's instance. A Tuple's element and a struct's own Field are at the record's Field offsets, a struct's base first and at 0 (its
+    // complete base is a prefix, X1); an enum Case's payload element is at the payload's offset, the record's Field 1, plus its offset in
+    // the Case's payload Tuple; a fixed array's element is at its position times the element's stride.
+    private (long Offset, BoundType Type) Part(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
     {
-        if (length == 0)
+        var offsets = record.Layout.FieldOffsets.Span;
+        switch (kind)
+        {
+            case MirAggregateKind.FixedArray:
+                return (index * (long)(this.Laid(type.Components[0])?.Layout.Stride ?? 0), type.Components[0]);
+            case MirAggregateKind.Tuple:
+                return (offsets[index], type.Components[index]);
+            case MirAggregateKind.Adt when AdtDef.IsEnum(type):
+                var payload = AdtDef.CaseTypes(type)![ordinal];
+                return (offsets[1] + (this.Laid(payload)?.Layout.FieldOffsets.Span[index] ?? 0), payload.Components[index]);
+            case MirAggregateKind.Adt when AdtDef.Base(type) is { } parent:
+                return index == 0 ? (0, parent) : (offsets[index - 1], AdtDef.FieldType(type, index - 1)!);
+            case MirAggregateKind.Adt:
+                return (offsets[index], AdtDef.FieldType(type, index)!);
+            default:
+                throw new InvalidOperationException($"The MIR aggregate kind {kind} has no parts.");
+        }
+    }
+
+    // SPEC 4.3.3 (DECISIONS R4-M81): a Fill's value put at each element of the instance's closed length by one counted i64 loop, so the
+    // text does not grow with the length (its Place is not zero-sized, so the length is not 0). The loop is entered through a label of its
+    // own, which the counter's phi names.
+    private void Fill(Value address, BoundType type, Value value)
+    {
+        if (this.Laid(type.Components[0]) is not { } element)
         {
             return;
         }
@@ -168,9 +187,9 @@ internal sealed partial class FunctionCodegen
         output.Write(" = mul i64 ");
         this.WriteValue(index);
         output.Write(", ");
-        WriteNumber(output, element.Stride);
+        WriteNumber(output, element.Layout.Stride);
         output.Write('\n');
-        this.StoreAt(this.Offset(address, offset), element, value);
+        this.Put(this.Offset(address, offset), type.Components[0], element, value);
         output.Write("  ");
         this.WriteValue(next);
         output.Write(" = add i64 ");
@@ -180,12 +199,80 @@ internal sealed partial class FunctionCodegen
         output.Write(" = icmp eq i64 ");
         this.WriteValue(next);
         output.Write(", ");
-        WriteNumber(output, length);
+        WriteNumber(output, type.Length);
         output.Write("\n  br i1 ");
         this.WriteValue(done);
         Name(output, ", label %filled", id);
         Name(output, ", label %fill", id);
         Name(output, "\nfilled", id);
         output.Write(":\n");
+    }
+
+    // A Discriminant (SPEC 6.5.1, 14.8): the Case ordinal its enum Place's tag holds (Layout.Tag, at the record's offset 0), widened to the
+    // Place's isize.
+    private void Discriminant(in MirStatement statement)
+    {
+        if (!this.Address(statement.Rvalue.Place, out var address))
+        {
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+            return;
+        }
+
+        if (this.LoweringOf(statement.Place) is { } isize)
+        {
+            var tag = Layout.Tag;
+            this.Store(statement, this.Convert("zext ", tag.ComputationType, this.LoadAt(address, tag.Layout), isize.ComputationType));
+        }
+    }
+
+    // A Len (SPEC 4.7.3): the length of a fixed array, Array or Slice Place (Length), its Place located first, so an Index on its path
+    // checks its bounds. A Dictionary's count (its DictionaryStorage length word) is C8e's row; a string's has no Len row yet (C8c).
+    private void Len(in MirStatement statement)
+    {
+        var place = statement.Rvalue.Place;
+        var type = this.InstanceType(place)!;
+        if (type.Kind is not (BoundTypeKind.FixedArray or BoundTypeKind.Array or BoundTypeKind.Slice) || !this.Address(place, out var address))
+        {
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source);
+            return;
+        }
+
+        if (this.LoweringOf(place) is { } record)
+        {
+            this.Store(statement, this.Length(type, record, address));
+        }
+    }
+
+    // An Adapt (SPEC 8.14, 13.5.3): the ordinary rvalue of the operation the item's view selects (MirCases.Adapt), written by that rvalue's
+    // row: an Identity its operand, a pointer conversion or a non-exclusive upcast a Proven Cast, a borrow or an address a Ref. An object
+    // creation allocates, C6a's row; a view that selects none is a broken contract (Binding admitted each case).
+    private void Adapt(in MirStatement statement)
+    {
+        var rvalue = this.cases.Adapt(statement.Rvalue, out var operation);
+        switch (operation)
+        {
+            case ConversionBinding.None:
+                this.Report(DiagnosticCode.InternalInvariant_Kd, statement.Source);
+                return;
+            case ConversionBinding.ObjectCreation:
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C6a creates the object.
+                return;
+            default:
+                this.Assign(statement with { Rvalue = rvalue });
+                return;
+        }
+    }
+
+    // The representation of a Type already in the item's instance (I7); null, with InternalInvariant_Kd at the body, where it has none (the
+    // collector laid out every Type of an admitted item).
+    private ValueLowering? Laid(BoundType closed)
+    {
+        if (this.module.Layout.Of(closed).Value is { } lowering)
+        {
+            return lowering;
+        }
+
+        this.Report(DiagnosticCode.InternalInvariant_Kd, default);
+        return null;
     }
 }

@@ -61,6 +61,24 @@ public sealed class FunctionCodegenTest
         "func k(t: ref/(i8, i64, i16), a: uniq/Array<u8>, i: isize) -> i16\n    a[i] += 1\n    return t.2\n" +
         "func m() -> i16\n    let b: [3 of i16] = [1, 2, 3]\n    return b[1]\n";
 
+    // The rvalue rows (R5 C2b; DECISIONS R5-M87): values in memory copied, a string moved, an enum Case built and matched, a length, a
+    // Fill of a value in memory and a zero-sized borrow.
+    private const string Rvalues =
+        "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc copy(t: (i32, i64)) -> (i32, i64) => t\nfunc text(x: string) -> string => x@move\n" +
+        "func rect(a: i32, b: i64) -> Shape => .Rect(a, b)\nfunc area(s: ref/Shape) -> i64\n    return match s\n        .Rect(let w, let h) => w@i64 * h\n" +
+        "        _ => 0\nfunc count(a: ref/Array<i64>) -> isize => a.length\nfunc fill(p: (i32, i64)) -> [3 of (i32, i64)] => [3 of p]\n" +
+        "func unit() -> i32\n    let u = ()\n    let r = u@ref\n    return 1\n";
+
+    // A pair binder's acquisition (tests/mir/cases.kimi's keep) and a case adaptation, each in its owner and its other case (SPEC 8.14,
+    // 8.15), instanced by the calls.
+    private const string Acquisitions =
+        "func keep<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let local = v\n    _ = local\n" +
+        "    v@follow = x\n    return v@follow\nfunc owned() -> i32 => keep(5, 2)\nfunc lent() -> i32\n    var y: i32 = 1\n    return keep(y@uniq, 2)\n";
+
+    private const string Adaptations =
+        "func put<s/T>(value: s/T, x: i32) -> ()\n    s is owner or ref\n    T is Copy\n    _ = x@s\nfunc owned() => put(5, 1)\nfunc lent()\n" +
+        "    var y: i32 = 1\n    put(y@ref, 1)\n";
+
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
     private const string Signatures =
         "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
@@ -235,6 +253,12 @@ public sealed class FunctionCodegenTest
             string.Empty
         },
         {
+            "PlaceWidePosition",
+            "let a: [4 of i32] = [10, 20, 30, 40]\nlet b: [2 of u64] = [1, 3]\nlet c: [2 of i128] = [2, 0]\nlet i: isize = 1\nvar bad: i32 = 0\n" +
+            "if a[b[i]] != 40 or a[c[i]] != 10 or a[b[0]] != 20 or a[c[0]] != 30 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
             "PlaceDeref",
             "var x: i32 = 1\nlet r = x@uniq\nr@follow = 41\nvar bad: i32 = 0\nif x != 41 => bad = 1\nx += 1\nlet s = x@ref\n" +
             "if s@follow != 42 => bad = 1\nvar flag = false\nlet f = flag@uniq\nf@follow = true\nif not flag => bad = 1\nlet check = 1 / (1 - bad)\n",
@@ -264,6 +288,41 @@ public sealed class FunctionCodegenTest
         },
     };
 
+    // The rvalue rows' programs (R5 C2b; DECISIONS R5-M87), self-checking as the operator rows' are: Tuples built, copied, nested and read,
+    // zero-sized values borrowed (SPEC 4.3, IMPL 21.1.3); enum Cases built and matched by their discriminant and payload (SPEC 6.5, 14.8);
+    // lengths and indices (SPEC 4.7.3); arrays of values in memory built and filled (SPEC 4.3.3); a string moved, then written.
+    public static TheoryData<string, string, string> RvaluePrograms => new()
+    {
+        {
+            "RvalueTuple",
+            "let t: (i8, i64) = (1, 2)\nlet u = t\nvar bad: i32 = 0\nif u.0 != 1 or u.1 != 2 => bad = 1\nlet n: ((i8, i64), i32) = (u, 3)\nlet m = n\n" +
+            "if m.0.1 != 2 or m.1 != 3 or m.0.0 != 1 => bad = 1\nlet z = ((), ())\nlet r = z@ref\nlet q = z.1@ref\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RvalueEnum",
+            "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nlet s: Shape = .Rect(3, 4)\nlet c: Shape = .Circle(5)\nlet e: Shape = .Empty\n" +
+            "var bad: i32 = 0\nlet a: i64 = match s\n    .Rect(let w, let h) => w@i64 + h\n    _ => 0\nif a != 7 => bad = 1\n" +
+            "let b: i32 = match c\n    .Circle(let r) => r\n    _ => 0\nif b != 5 => bad = 1\nlet k: i32 = match e\n    .Empty => 1\n    _ => 0\n" +
+            "if k != 1 => bad = 1\nlet o: Option<i64> = .Some(9)\nlet v: i64 = match o\n    .Some(let x) => x\n    .None => 0\nif v != 9 => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RvalueLength",
+            "let a: [4 of i32] = [1, 2, 3, 4]\nvar bad: i32 = 0\nif a.length != 4 => bad = 1\nlet r = a.indices\nif r.start != 0 or r.end != 4 => bad = 1\n" +
+            "let none: [0 of i32] = [0 of 1]\nif none.length != 0 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RvalueElements",
+            "let p: (i32, i64) = (1, 2)\nlet q: [2 of (i32, i64)] = [p, (3, 4)]\nlet f: [3 of (i32, i64)] = [3 of p]\nlet i: isize = 1\nvar bad: i32 = 0\n" +
+            "if q[i].0 != 3 or q[0].1 != 2 or q[i].1 != 4 => bad = 1\nif f[2].1 != 2 or f[i].0 != 1 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        { "RvalueString", "let t = \"moved\"\nlet u = t@move\nConsole.writeLine(u)\n", "moved\n" },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
@@ -288,6 +347,11 @@ public sealed class FunctionCodegenTest
     [MemberData(nameof(PlacePrograms))]
     public void PlaceProgramsRun(string name, string source, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
+
+    [Theory]
+    [MemberData(nameof(RvaluePrograms))]
+    public void RvalueProgramsRun(string name, string source, string stdout)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
     // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
     // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
@@ -580,7 +644,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Places, "k", "%t14 = load ptr, ptr %l1, align 8\n  %t15 = getelementptr i8, ptr %t14, i64 8\n  %t16 = load i16, ptr %t15, align 2\n")]
     [InlineData(Layouts, "counted", "%t0 = load ptr, ptr %l1, align 8\n  %t1 = load i32, ptr %t0, align 4\n")]
     [InlineData(Layouts, "extra", "%t0 = load ptr, ptr %l1, align 8\n  %t1 = getelementptr i8, ptr %t0, i64 4\n  %t2 = load i32, ptr %t1, align 4\n")]
-    [InlineData(Layouts, "payload", "%t2 = load ptr, ptr %l3, align 8\n  %t3 = getelementptr i8, ptr %t2, i64 8\n  store ptr %t3, ptr %l5, align 8\n")]
+    [InlineData(Layouts, "payload", "%t5 = load ptr, ptr %l3, align 8\n  %t6 = getelementptr i8, ptr %t5, i64 8\n  store ptr %t6, ptr %l5, align 8\n")]
     [InlineData(Places, "g", "%t0 = getelementptr i8, ptr %a0, i64 16\n  %t1 = load i64, ptr %t0, align 8\n")]
     [InlineData(Places, "h", "%t0 = load i32, ptr %l3, align 4\n  %t1 = load ptr, ptr %l1, align 8\n  store i32 %t0, ptr %t1, align 4\n")]
     [InlineData(Places, "m", "store i16 1, ptr %l1, align 2\n  %t0 = getelementptr i8, ptr %l1, i64 2\n  store i16 2, ptr %t0, align 2\n")]
@@ -639,6 +703,108 @@ public sealed class FunctionCodegenTest
             "init"));
         Assert.Contains("store i32 6", init, StringComparison.Ordinal);
         Assert.DoesNotContain("store i32 9", init, StringComparison.Ordinal);
+    }
+
+    // DECISIONS R5-M87 (IMPL 21.1.3, 21.3.1): a value in memory, a slot Type of nonzero size other than the string's first-class record, is
+    // copied from its source's address into its destination by one memcpy of its size with its alignment on both pointers, which the
+    // module then declares.
+    [Theory]
+    [InlineData("func f(t: (i32, i64)) -> (i32, i64) => t", 8, 16)]
+    [InlineData("func f(a: [3 of i16]) -> [3 of i16] => a", 2, 6)]
+    [InlineData("func f(o: Option<i32>) -> Option<i32> => o@move", 4, 8)]
+    [InlineData("struct P\n    public var x: i64\n    public var y: i8\n    public init(x: i64, y: i8)\n        self.x = x\n        self.y = y\nfunc f(p: P) -> P => p@move", 8, 16)]
+    public void AValueInMemoryIsCopiedByMemcpy(string source, int alignment, int size)
+    {
+        var (ir, text) = Parse(source);
+        var f = ir.Single("internal void (ptr, ptr)");
+        var copy = Assert.Single(f.Instructions, static x => x.Opcode == "call");
+        Assert.Same(ir.Function("llvm.memcpy.p0.p0.i64"), copy.Callee);
+        Assert.Equal($"call void @(ptr align {alignment} %, ptr align {alignment} %, i64 {size}, i1 false)", copy.Shape);
+        Assert.Equal(f.Parameters, copy.Operands);
+        Assert.Contains(LlvmModuleText.MemoryDeclarations, text);
+    }
+
+    // DECISIONS R5-M87: the string's record, a first-class value of its three Fields (RuntimeAbi.String), is loaded and stored whole, its
+    // Fields only, as the old generator moves it; nothing is copied by memcpy, so the module declares none.
+    [Fact]
+    public void AStringIsMovedAsItsRecord()
+    {
+        var (ir, text) = Parse("func f(x: string) -> string => x@move");
+        var f = ir.Single("internal void (ptr, ptr)");
+        var moves = f.Instructions.Where(static x => x.Opcode is "load" or "store").ToArray();
+        Assert.Equal(["load %kimi.string, ptr %, align 8", "store %kimi.string %, ptr %, align 8"], moves.Select(static x => x.Shape));
+        Assert.Equal([f.Parameters[1], moves[0], f.Parameters[0]], [moves[0].Operands[0], .. moves[1].Operands]);
+        Assert.DoesNotContain("llvm.memcpy", text);
+    }
+
+    // An aggregate puts each operand at its part (IMPL 21.1.2-21.1.3; DECISIONS R5-M87), after its operands: a Tuple's elements at the
+    // record's Field offsets (Kimigayo order: the i64 first); an enum Case's ordinal as its i32 tag at 0 and its payload at the payload's
+    // offset plus the payload Tuple's; a ResolvedRange's Fields; a value in memory copied into its part; a Fill's copied at each element.
+    [Theory]
+    [InlineData("func f(a: i8, b: i64) -> (i8, i64) => (a, b)", "  %t2 = getelementptr i8, ptr %ret, i64 8\n  store i8 %t0, ptr %t2, align 1\n  store i64 %t1, ptr %ret, align 8\n")]
+    [InlineData(
+        "enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc f(a: i32, b: i64) -> Shape => .Rect(a, b)",
+        "  store i32 1, ptr %ret, align 4\n  %t2 = getelementptr i8, ptr %ret, i64 16\n  store i32 %t0, ptr %t2, align 4\n  %t3 = getelementptr i8, ptr %ret, i64 8\n  store i64 %t1, ptr %t3, align 8\n")]
+    [InlineData("enum Shape\n    Circle(i32)\n    Rect(i32, i64)\n    Empty\nfunc f() -> Shape => .Empty", "b0:\n  store i32 2, ptr %ret, align 4\n  ret void\n")]
+    [InlineData(
+        "func f(p: (i32, i64), c: i8) -> ((i32, i64), i8) => (p, c)",
+        "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %ret, ptr align 8 %a0, i64 16, i1 false)\n  %t1 = getelementptr i8, ptr %ret, i64 16\n  store i8 %t0, ptr %t1, align 1\n")]
+    [InlineData(
+        "func f(a: ref/[3 of i32]) -> ResolvedRange => a.indices",
+        "  store i64 3, ptr %l2, align 8\n  %t1 = load i64, ptr %l2, align 8\n  store i64 0, ptr %ret, align 8\n  %t2 = getelementptr i8, ptr %ret, i64 8\n  store i64 %t1, ptr %t2, align 8\n")]
+    [InlineData(
+        "func f(p: (i32, i64)) -> [2 of (i32, i64)] => [p, p]",
+        "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %ret, ptr align 8 %a0, i64 16, i1 false)\n  %t0 = getelementptr i8, ptr %ret, i64 16\n  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %t0, ptr align 8 %a0, i64 16, i1 false)\n")]
+    [InlineData(
+        "func f(p: (i32, i64)) -> [3 of (i32, i64)] => [3 of p]",
+        "  %t5 = getelementptr i8, ptr %ret, i64 %t3\n  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %t5, ptr align 8 %a0, i64 16, i1 false)\n  %t2 = add i64 %t1, 1\n")]
+    public void AnAggregatePutsEachOperandAtItsPart(string source, string text)
+        => Assert.Contains(text, Parse(source).Text, StringComparison.Ordinal);
+
+    // SPEC 14.8, IMPL 21.1.3 (DECISIONS R5-M87): a Discriminant reads its enum Place's i32 tag at offset 0 and widens it to isize, which the
+    // match's SwitchInt compares with the Case ordinals; the Downcast then addresses the payload.
+    [Fact]
+    public void ADiscriminantReadsTheTag()
+        => Assert.Contains(
+            "  %t1 = load ptr, ptr %l3, align 8\n  %t2 = load i32, ptr %t1, align 4\n  %t3 = zext i32 %t2 to i64\n  store i64 %t3, ptr %l4, align 8\n  %t4 = load i64, ptr %l4, align 8\n  switch i64 %t4, label %b2 [ i64 1, label %b3 ]\n",
+            Assert.Single(ItemTexts(Analyze(Layouts, OutputKind.Library), "payload")),
+            StringComparison.Ordinal);
+
+    // SPEC 4.7.3 (DECISIONS R5-M87): a Len is a fixed array's closed length once its Place is located, or the length word (Field 1) of an
+    // Array's or a Slice's handle, the word an Index checks against.
+    [Theory]
+    [InlineData("func f(a: ref/[3 of i32]) -> isize => a.length", "  %t0 = load ptr, ptr %l1, align 8\n  store i64 3, ptr %l0, align 8\n")]
+    [InlineData(
+        "func f(a: ref/Array<i64>) -> isize => a.length",
+        "  %t0 = load ptr, ptr %l1, align 8\n  %t1 = getelementptr i8, ptr %t0, i64 8\n  %t2 = load i64, ptr %t1, align 8\n  store i64 %t2, ptr %l0, align 8\n")]
+    [InlineData("func f(s: Slice<u16>) -> isize => s.length", "  %t0 = getelementptr i8, ptr %a0, i64 8\n  %t1 = load i64, ptr %t0, align 8\n  store i64 %t1, ptr %l0, align 8\n")]
+    public void ALenIsTheSequencesLength(string source, string text)
+        => Assert.Contains(text, Parse(source).Text, StringComparison.Ordinal);
+
+    // IMPL 21.1.3 (package C row 10; DECISIONS R5-M87): a zero-sized local's home, so its borrow and its parts', is the module's one
+    // 16-aligned zero-sized symbol, which the module defines only when a definition uses it.
+    [Fact]
+    public void AZeroSizedHomeIsTheModulesSymbol()
+    {
+        var text = Parse("func f() -> i32\n    let u = ()\n    let r = u@ref\n    let z = ((), ())\n    let q = z.1@ref\n    return 1\n").Text;
+        Assert.Equal(["%l2", "%l4"], Regex.Matches(text, @"store ptr @__kimi_zero_sized, ptr (%l\d+), align 8\n").Select(static x => x.Groups[1].Value));
+        Assert.Contains("\n@__kimi_zero_sized = private unnamed_addr constant [1 x i8] zeroinitializer, align 16\n", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("__kimi_zero_sized", Parse(Unused).Text, StringComparison.Ordinal);
+    }
+
+    // SPEC 8.14, 8.15 (DECISIONS R5-M87): a PairAcquire writes its Place's bits in the item's case Type, a Copy in the owner case and, in
+    // the uniq case, the pointer the Place holds, its Reborrow; an Adapt is the rvalue the view selects, an Identity's Copy or a borrow.
+    [Fact]
+    public void AnAcquisitionAndAnAdaptationFollowTheItemsView()
+    {
+        var keep = ItemTexts(Analyze(Acquisitions, OutputKind.Library), "keep");
+        Assert.Equal(2, keep.Length);
+        Assert.Single(keep, static x => Regex.IsMatch(x, @"(%t\d+) = load i32, ptr %l3, align 4\n  store i32 \1, ptr %l4, align 4\n"));
+        Assert.Single(keep, static x => Regex.IsMatch(x, @"(%t\d+) = load ptr, ptr %l3, align 8\n  store ptr \1, ptr %l4, align 8\n"));
+        var put = ItemTexts(Analyze(Adaptations, OutputKind.Library), "put");
+        Assert.Equal(2, put.Length);
+        Assert.Single(put, static x => Regex.IsMatch(x, @"(%t\d+) = load i32, ptr %l2, align 4\n  store i32 \1, ptr %l\d+, align 4\n"));
+        Assert.Single(put, static x => Regex.IsMatch(x, @"store ptr %l2, ptr %l\d+, align 8\n"));
     }
 
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
@@ -736,16 +902,16 @@ public sealed class FunctionCodegenTest
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local copies a slot Type (C2b's row), at the source; a callee's call is C3a's,
+    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87); a callee's call is C3a's,
     // at that call, while a generic callee's instance whose Keep of a T instanced at i32 needs no drop records nothing (R5-M78); the
     // Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings
     // its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
     // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. The operator rows
     // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
     // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; the place
-    // writer (DECISIONS R5-M83) leaves a Tuple aggregate to C2b, at the literal, as it does a zero-sized local's address, at its borrow, and an
-    // object borrow's payload to C6a, at the Place read through it. K11: an Application's function nothing calls is not generated, so its form
-    // records nothing; a Library generates it.
+    // writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87)
+    // write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to C8e, at the member. K11: an Application's
+    // function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
@@ -753,12 +919,13 @@ public sealed class FunctionCodegenTest
     [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new[] { "id" })]
     [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new[] { "null@raw/i32" })]
     [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new[] { "p == q" })]
-    [InlineData("let t = (1, 2)\n", OutputKind.Application, new[] { "(1, 2)" })]
-    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new[] { "u@ref" })]
+    [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
+    [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
+    [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
     [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new[] { "v.id" })]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new[] { "twice(1)" })]
-    [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new[] { "t" })]
+    [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new string[0])]
     [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new[] { "keep(1)" })]
     [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new[] { "name()" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
@@ -788,6 +955,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Conversions, OutputKind.Library)]
     [InlineData(Drops, OutputKind.Application)]
     [InlineData(Places, OutputKind.Library)]
+    [InlineData(Rvalues, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -868,6 +1036,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Conversions, OutputKind.Library)]
     [InlineData(Drops, OutputKind.Application)]
     [InlineData(Places, OutputKind.Library)]
+    [InlineData(Rvalues, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

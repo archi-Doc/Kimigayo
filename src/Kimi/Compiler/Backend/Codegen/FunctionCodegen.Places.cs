@@ -6,19 +6,25 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The place writer of FunctionCodegen (R5 plan C2a, package C 3.2 I4, I5, I7 and I9; DECISIONS R5-M83), the one owner of a Place's address,
-// and the loads and stores through it. A Place is its root's home, a local's (a static's slot is C7b's row, a zero-sized local's address
-// C2b's zero-sized address symbol), then each step of its interned projection chain, root first, by one row per MirProjectionKind, in the
-// Layout of the prefix's Type in the item's instance (IMPL 21.1): a Field at its Field offset; a Base at the derived struct's own address,
-// its complete base being a prefix (X1); a ConstIndex at its position times the element's stride, which the validator proved below the
+// The place writer of FunctionCodegen (R5 plan C2a, C2b, package C 3.2 I4, I5, I7 and I9; DECISIONS R5-M83, R5-M87), the one owner of a
+// Place's address, and the loads, stores and copies through it. A Place is its root's home, a local's (a static's slot is C7b's row; a
+// zero-sized local's home is the module's zero-sized symbol, which ModuleCodegen defines on request, IMPL 21.1.3), then each step of its
+// interned projection chain, root first, by one row per MirProjectionKind, in the Layout of the prefix's Type in the item's instance
+// (IMPL 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at its position times the element's stride, which the validator proved below the
 // length; a Downcast at the enum's payload offset; a Deref of a reference or raw pointer the address it stores (IMPL 21.1.3), of an object
 // handle or borrow the payload, C6a's row; a PairLayer the Place itself in the owner case, else the referent of its case Type by the Deref
 // row (MirCases.Layer under the item's view, SPEC 13.5.5); an Index its isize position checked against the length, a fixed array's closed
 // length or an Array's or Slice's length word, unsigned, so a negative position fails, Aborting with KIMI_E_INDEX_BOUNDS (SPEC 4.7.4,
 // 22.5.2) at its position local's location, which the builder locates at the selection (DECISIONS R4-M56, SPEC 22.5.1), then the element
-// at the position times the stride from the fixed array's or the buffer word's address. Offsets are written without inbounds (I9).
+// at the position times the stride from the fixed array's or the buffer word's address. Offsets are written without inbounds (I9). A
+// value is read and put in its representation (InMemory): a value in memory is its address, its bytes copied by memcpy when it is put.
 internal sealed partial class FunctionCodegen
 {
+    // IMPL 21.1.3, 21.3.1 (DECISIONS R5-M87): whether a value of a Type is in memory, so it is read as its address and copied by memcpy: a
+    // slot Type of nonzero size (Abi.HasResultSlot) whose representation is not one first-class LLVM value. A scalar, a pointer and the
+    // string's record (RuntimeAbi.String, its three Fields: the one slot Type with a first-class representation) are loaded and stored.
+    private static bool InMemory(BoundType type, ValueLowering lowering) => Abi.HasResultSlot(type, lowering) && !ReferenceEquals(lowering, RuntimeAbi.String);
+
     // A Place's address (the rows above): false for a row not written yet, which the caller records at its site; true without an address
     // after a record.
     private bool Address(MirPlace place, out Value address)
@@ -31,8 +37,8 @@ internal sealed partial class FunctionCodegen
 
         if (place.Projection == 0)
         {
-            address = new('h', place.Root);
-            return this.slots[place.Root].Home != Home.None; // A zero-sized local's address is the zero-sized address symbol (C2b).
+            address = new('h', place.Root); // A zero-sized local's is the zero-sized symbol (WriteHome).
+            return true;
         }
 
         var prefix = place with { Projection = this.body.Projections[place.Projection].Prefix };
@@ -183,16 +189,43 @@ internal sealed partial class FunctionCodegen
         return false;
     }
 
-    // An Assign's value in its Place's storage representation, stored once its Place is located; nothing for a zero-sized Place.
+    // An Assign's value put into its Place once the Place is located; nothing for a zero-sized Place.
     private void Store(in MirStatement statement, Value value)
     {
         if (this.Destination(statement, out var address) && this.LoweringOf(statement.Place) is { Layout.Size: > 0 } lowering)
         {
-            this.StoreAt(address, lowering.Layout, value);
+            this.Put(address, this.InstanceType(statement.Place)!, lowering, value);
         }
     }
 
-    // A Place's value in its storage representation (I4), none for a zero-sized one; false for a Place whose row is not written yet.
+    // A value of nonzero size put at an address in its Type's representation (its Type in the item's instance): a value in memory copied
+    // from the address Read gave, by memcpy with the Type's alignment on both pointers (package C 4; ModuleCodegen declares it on request),
+    // any other stored in its storage representation. The builder never copies between overlapping Places (DECISIONS R5-M87).
+    private void Put(Value address, BoundType type, ValueLowering lowering, Value value)
+    {
+        if (!InMemory(type, lowering))
+        {
+            this.StoreAt(address, lowering.Layout, value);
+            return;
+        }
+
+        this.module.Request(ModuleCodegen.Needs.Memory);
+        var (output, layout) = (this.output, lowering.Layout);
+        output.Write("  call void @llvm.memcpy.p0.p0.i64(ptr align ");
+        WriteNumber(output, layout.Alignment);
+        output.Write(' ');
+        this.WriteValue(address);
+        output.Write(", ptr align ");
+        WriteNumber(output, layout.Alignment);
+        output.Write(' ');
+        this.WriteValue(value);
+        output.Write(", i64 ");
+        WriteNumber(output, layout.Size);
+        output.Write(", i1 false)\n");
+    }
+
+    // A Place's value in its representation (I4): loaded in its storage representation, or its address when the value is in memory; none
+    // for a zero-sized one; false for a Place whose row is not written yet.
     private bool Read(MirPlace place, out Value value)
     {
         value = default;
@@ -208,7 +241,7 @@ internal sealed partial class FunctionCodegen
 
         if (this.LoweringOf(place) is { Layout.Size: > 0 } lowering)
         {
-            value = this.LoadAt(address, lowering.Layout);
+            value = InMemory(this.InstanceType(place)!, lowering) ? address : this.LoadAt(address, lowering.Layout);
         }
 
         return true;
@@ -274,8 +307,13 @@ internal sealed partial class FunctionCodegen
             case Home.Result:
                 this.output.Write("%ret");
                 return;
+            case Home.None:
+                this.module.Request(ModuleCodegen.Needs.ZeroSized);
+                this.output.Write('@');
+                this.output.Write(ModuleCodegen.ZeroSized);
+                return;
             default:
-                throw new InvalidOperationException("A zero-sized local has no home.");
+                throw new InvalidOperationException($"The home {slot.Home} has no spelling.");
         }
     }
 }

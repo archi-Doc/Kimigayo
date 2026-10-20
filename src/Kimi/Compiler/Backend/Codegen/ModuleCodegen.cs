@@ -72,6 +72,7 @@ internal sealed partial class ModuleCodegen
     {
         this.Records.Clear();
         this.reported.Clear();
+        this.needs = Needs.None;
         this.constants.Clear();
         this.functions.GetStringBuilder().Clear();
         this.set = collector.Set;
