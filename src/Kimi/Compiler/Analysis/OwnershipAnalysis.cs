@@ -695,7 +695,7 @@ public sealed partial class OwnershipAnalysis
         {
             DeferredExecution = kind is OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result ? this.activeDeferred : -1,
             DefaultContext = this.defaultContext,
-            CleanupObservesBorrows = CleanupObservesBorrows(type),
+            CleanupObservesBorrows = this.CleanupObservesBorrows(type, source),
         });
         this.body.IsConcrete &= !type.HasAbstractPart;
         if (invalidCopy || !(neverResult || type.Kind == BoundTypeKind.Parameter || this.SupportsType(type)))
