@@ -1926,6 +1926,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
   G169), which a ledger mapping would hide. Rejected: a `sites` column in the raw row (an R4-M17 row-shape change PD18 avoids,
   and a fresh ledger run; it tests the holder or reservation against the MIR's sites, not the same Loan); a Place-identity
   reading by start offset or containment (not PD18's predicate, and unsound as above).
+- **R4-M81 2x-E1: `MirAggregateKind.Fill`, every fill literal one aggregate of its value** (owner, 2026-10-19, relayed by the R4
+  planning session, verbatim: O1 「承認する (推奨)」 to the new member (DEC O1); Q2 「持つ (推奨)」 to a constant zero-length fill
+  carrying its value's Loans. Full process: two independent designs and a design review, which took design B with its
+  corrections; PLAN G103 E9a) SPEC 4.3.3: `[L of v]` acquires v once, also for L = 0, and copies it into every element.
+  - The new member `MirAggregateKind.Fill` has exactly one operand, v's acquisition.
+    - Its length is its Type's (`[N of T]`, `[(N + 1) of T]`), which an instance closes (`InstanceCollector.TypeOf`,
+      `FunctionCodegen.InstanceType`).
+    - Every fill literal, constant or generic, is one Fill (`MirBuilder.Aggregate`).
+  - `FixedArray` keeps one operand per element, or none (noinit; an Array's or a Dictionary's empty collection).
+  - The validator's Arity:
+    - a Fill is 1, at a fixed-array Type;
+    - a `FixedArray` is its constant length L, or 0;
+    - at a generic length only 0, which replaces the rule that let an instance count it, where any count passed;
+    - `Component` reads a Fill's element.
+  - A5's `val` is the union over the one operand, so a Fill holds v's Loans at every length.
+    - A generic body is checked for every instance (SPEC 4.4.2), and the old path keeps one payload, including N = 0.
+    - The SPEC sentence that states Q2 goes to the next SPEC session (PLAN).
+  - Code generation (R5's file, under R4-M79): the Fill row is one counted i64 loop over the instance's closed length, and stores
+    nothing at 0.
+    - Its text does not grow with L.
+    - At O2 a byte fill becomes one `memset`, a 4096-element i32 fill vectorized stores, and a 4-element one a single vector store.
+    - Any other aggregate kind keeps its located `Unsupported_Kd`.
+  - Deleted:
+    - the builder's exclusion of generic lengths;
+    - its `once` temp and its L-fold operand loop, with an `int` counter against a `long` length;
+    - the O(L) MIR of a constant fill (`[1048576 of 0@u8]`: 1,048,580 operands, now as many as `[4 of 0@u8]`; about 100 bytes
+      of analysis allocation per element), which a valid `[2147483647 of 0@u8]` would have exhausted (not run).
+  - The tests that used the generic fill as the unbuilt form use PLAN G167's position of a Type parameter until G167 lands:
+    `PipelineSwitchTest.Source`, `UnsupportedFormsAreOpaqueAtOneRecord` and `tests/mir/opaque.kimi`.
+  - Rejected:
+    - a `FixedArray` with one operand as a fill. This adds one more case to an open family, which every consumer decodes by
+      shape; an unaware generator writes silent wrong code; and the validator cannot tell a fill from a literal left with one
+      operand.
+    - the builder's loop over noinit, `Len` and `Index`. This gives an Abort effect per `Index` with no source check, needs `Len`
+      and `Index` generation, which is not written yet, and adds a loop per fill.
+    - a length operand. It duplicates the length the Type carries and needs a `MirConstKind` member.
+    - the new form for generic lengths only, which makes two forms for one concept.
+    - unrolled stores or a length threshold in the generator.
+  - Open: `FixedArray`'s count 0 means noinit at a fixed-array Type and the empty collection at a handle Type, so the validator
+    cannot detect a literal that lost all its operands. Neither design introduced this gap.
 - **R4-M86 R4, R5 and the Binding units resumed on a reset dev** (owner, 2026-10-20; supersedes R4-M79's pause) On 2026-10-20
   dev and main were reset to `b1a9c8a5` (R4's pause record), and the owner's commit `e307e9f9` added seven 2026-10-20
   proposals. The history of that day's resumed R4 session (the validator split, 2x-E1's merge, 2b-2, M69-1, the G170, G172, S3
@@ -1951,6 +1991,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
     proposals cite them) are not reused for other meanings; a decision taken again keeps its old number. Any session's new G rows
     start at G175 until R4 records G171–G174. The pause README (`artifacts/handoff/2026-10-19-pause-2/README.md`) marks its rows
     for the rolled-back work.
+- **R4-M87 S5 implemented: the recursive-base view and A4's widening** (2026-10-21; unit 2b-S5, one design and one review under the
+  owner's form (c), R4-M76 and R4-M74 OQ13, with BU's Binding review under PD6 (AB-5); SPEC 8.3.3 and 15.6.4 since `4595bbfc`; the S5
+  proposal's §8; placed after R4-M86)
+  - View (a Binding fact; step 2 plan PD6): `TyCtxt.RecursiveBase(definition, type)`, whether one of a projection's bases is proven by
+    the proof rule (`ProveConstraint`) under the definition's `EffectPremises`, the scope of `Copy` and `Sealed`, to conform to one of
+    the pass's recursive Contract declarations. A declaration C is recursive when the premise supply of `T is C` (`AddContractPremises`,
+    SPEC 8.3.2's row, C's Self as T), expanded through each available supplied conformance of T or of a projection of T, supplies a
+    conformance of a projection of T to C's declaration with any Type arguments or to a refinement of it (`IsRefinement`); an `or`
+    Constraint supplies nothing. Each declaration is expanded once at T and once at a projection of T: finite by construction (at most
+    twice the declarations) and exact for what a Contract supplies through Self, whose supply at one projection is that at another,
+    shifted. The list is found on a pass's first query and stamped with the pass's version (`storageVersion`, as Binding's
+    comparison-plan and formatting memos), in a pooled scratch scope: nothing runs in Bind, the view is immutable after Bind, and a
+    warm rebind with its queries allocates nothing; `TyCtxt.ResetViews` gains no line. G170 PlanB (selected, not implemented) plans that at its
+    cutover (C4) the search moves onto the ContractSolver's enumeration and its recursive-Contract prohibition reads this classification.
+  - A4: `AddAtom` resolves at once, as at an obligation, an atom whose Type has a recursive base: a destruction proven Copy under the
+    summary's premises does nothing (SPEC 16.3.3, 8.11.2), anything else is Unknown, the unknown environment effects SPEC 15.6.4 puts
+    in its place; other atoms are kept as before. No MIR vocabulary or diagnostic code; growth through a recursive base the view finds
+    no longer reaches G128's Limit.
+  - Rejected: a memo kept until an edit (a `ResetViews` line in R5's K lane); a per-Contract state reset in `PrepareContracts` (grows
+    the over-limit `Binding.Contracts.cs`); a declaration graph read off clause syntax (a list of Constraint forms, the proposal
+    review's B5); scanning the definition's premise facts in A4 or the view (a second copy of `ProveConformance`'s premise rule);
+    keeping a recursive-base atom proven Copy (no effect, and a kept one would still grow); a cut by base chain (a declaration
+    reached again through its own Type argument repeats at Types that are not bases of each other, so that cut is not finite by
+    construction; review B2).
+  - Limits, not fixed here: an argument-dependent clause, a Constraint on a Contract's own Type parameter or a projection of it, which
+    can supply something new only at a declaration's later expansion, is not followed (an under-approximation; Binding rejects every
+    projection-form program found; the plain-parameter form is unverified). A base G170
+    hides keeps its atom: a growing one ends at G128's bound (a located `Unsupported_Kd`), a non-growing one is accepted where SPEC
+    15.6.4 rejects, in uninstantiable code. G170's false Copy for `T.(Tree).Child.(Tree).Child` under `T is CopyTree` now widens the
+    callee's own summary, so a caller whose premises classified the kept atom is rejected on the mir pipeline (`h<T>(t:
+    T.(Tree).Child.(Tree).Child)` with `T is CopyTree`, called from a confined `visit` under `U is CopyTree`, `U is Copy`,
+    `U.(Tree).Child is U`: `IncompatibleContractImplementation_Kd`), in uninstantiable code only; it is G170's. A layered projection
+    (a pair layer over a projection, `s/T.(Tree).Child`) is not tested; no path was found that reaches `AddAtom` with one.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
@@ -2559,6 +2632,38 @@ resumed by R4-M86 (2026-10-20).
   `@move`, which 6.3.4 forbids only for Non-Copy values); granting the construction row now (the review's B1 to B3). Open: PLAN
   G163 (capture of the helper borrow; every borrow in a `drop` body has the Origin `Projection[drop#0]`), G164 (writes below a
   receiver's Field, `ElementAccess.WritableRoot`), G165 (old-path acceptance of Field borrow conflicts in `drop`), G166.
+- **BU-16** (2026-10-21; the BU planning session; PLAN G147 (2)'s generic pair parameter; design v3, after the implementer stopped
+  v1 and the review blocked v2's Take half) A Place selected through a layer of a receiver's own Type gets each capability by every
+  case the layer admits (SPEC 15.1.5, 13.5.5), decided by the capability's existing owner. Take: no path past such a layer (a
+  reference, an object handle or view, a pair layer) offers Take. `PathAuthority`'s walk reports the cases of the layers it passes
+  (`LayerCases`: a pair layer's admitted set, any other layer's Semantics; set by the Follow, PayloadFollow and PairFollow arms and
+  for a member's receiver; the user-index and Array/Dictionary arms already grant Uniq or Ref); `OffersTake` offers Take on an
+  Owner path that passed none, and `AccessFailure` keeps each layer kind's code: past a pair layer admitting owner (only a pair
+  layer adds that case) `ExclusivePathTake_Kd`, below an object payload `InvalidAssignment_Kd` (as `h@follow@move`), past a
+  reference its authority's. The authority itself is unchanged. Write: `Writable`'s owned-root Field clause applies when the
+  receiver's own Type adds no exclusive or shared layer (`LayerAuthority` null) and the Type below its layers is a struct: an owned
+  struct, an owning obj handle or a pair layer whose owner case adds none (no member is selected through a raw pointer). Exclusive
+  borrow: `BorrowablePlace`'s stored-Property clause lends a Field exclusively past an exclusive layer of the receiver's own Type, a
+  uniq-only pair layer included, shares it past another reference or view, and otherwise asks the receiver Place. Why: an
+  owner-admitting pair layer and an owning obj handle have no authority (they keep the root's write and borrow capability), so the
+  walk offered Take past them (`p.inner@move`, `p.v@move`; `var h = P.init(1)@obj; let y = h.v@move` accepted end to end, and
+  `h.inner@move`, `h@follow.inner@move`, `consume(h.inner@move)` rejected only by the old path's `TransferRequired_Kd`), and both
+  clauses read the receiver Type's shape, so a pair-layer receiver skipped the owned-root rule (`p.v = 5`, `p.v++`, `p.inner.w = 5`,
+  `let q = p@move; q.v = 5`, `x.item = y@move`, `p` and `x` owned parameters in the owner case; unsound on the MIR) and a uniq-only
+  one lent no Field exclusively (`let r = p.v@uniq` refused). Deleted: `OffersTake`'s syntactic Follow, PayloadFollow, PairFollow
+  and guard-candidate exclusions and `CompleteTransfer`'s `PairFollow` failure rewrite, which decided explicit follows alone by
+  syntax. Kept: the `PairFollow` clauses of `Writable` and `BorrowablePlace` (`PairCapability`, the follow node's own rule).
+  Rejected: v1, BU-13's binding denial for the owner case (a binding fact about an inline Place is no shared layer: every consumer
+  that follows a `uniq` reference stored below the step, `Writable`'s Follow clause, `PairCapability`, `TryPairReceiver`,
+  `PairSubject`, `ReceiverThroughLayers` and `ExclusivelyAcquirable`, refused forms the concrete owned twin accepts, such as
+  `x.item@follow = 5` with `x: s/Box<uniq/i32 during b>`); v1-(i), skipping that denial by the queried Place's own Type (one Place
+  answered by its consumer; `x.item = y@move` stays accepted); v1-(ii), every follow consumer asking a referent question (larger,
+  no extra form once the Field clause closes `x.item = y@move`); v2's pair-only Take flag (one case of the open family: object
+  payloads kept it); a fourth `PathAuthority` outcome (BU-13's B). Default pipeline: these forms get Binding's code in place of the
+  old path's `Unsupported_Kd` or `TransferRequired_Kd`; `let r = p.v@uniq` (`s is uniq`) passes Binding and gets the old path's
+  `Unsupported_Kd` (D5). Tuple and fixed-array elements through a pair layer stay Binding's `Unsupported_Kd` (`Binding.Elements`).
+  Library, milestones and the diagnostic corpus unchanged. Open: PLAN G164 (valid element writes below a pair-layer receiver) and
+  G179 (a user index through a pair layer). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -4247,8 +4352,9 @@ structure is recorded here by the unit that first implements it.
     takes its column's unchecked column (`Unchecked`: an integer's wrapping column, any other its own). `Rows` is checked at type
     initialization against both operator enums and the column count (C1a's review, item 5).
   - Floating constants: a Value of prefix `x` is LLVM's hexadecimal double; an f32 constant is widened exactly in code, so a NaN keeps
-    its payload and signaling bit, which a hardware widening sets (the old generator's does, an open issue). `WriteValue` spells through
-    the one `Spell`, and C1a's failure operands are one `Failure` for both tables.
+    its payload and signaling bit, which a hardware widening sets (the old generator's did until R5-M86's D5 fix; both generators
+    now take their bits from `LlvmModuleText.Hexadecimal`). `WriteValue` spells through the one `Spell`, and C1a's failure operands are one
+    `Failure` for both tables.
   - Rejected: a second operator table for floating point; a row-level fixed operand (`fneg` takes none, and `fsub 0, x` loses -0.0);
     per-form arms or a plan computed beside the table (the old `BodyLowering.PlanConversion` shape); a Proven test in codegen; a check
     written with no test (`WriteCheckedConversion` needs a bound); the runtime's float-to-double conversion for constants.
@@ -4343,3 +4449,35 @@ structure is recorded here by the unit that first implements it.
   - Rejected: `MirCastKind.Position` (option A: a vocabulary entry); failing at the conversion (option C: an Abort before later
     boundaries are evaluated); a branchless shift-and-or encoding (not a MIR form, opaque to review); keeping Wrap for a same-width
     unsigned position (a second encoding of an unresolved position).
+- **R5-M85 The codegen deviation form** (2026-10-20, E lane; plan E12 and K13a, PD10, OQ7; under R5-M8, R5-M66 and R5-M73; DEC Q6
+  form 1; temporary: the stage that makes an `Expect`'s target the default reduces it to the target, G2 for acceptance-time records
+  such as this entry's (the collector runs on the default pipeline from G2, R5-M41) and G3 for generated output; G4 removes the form
+  and the catalog) Where MIR code generation (sel) differs from the old generator by a decided item, the expectation states its
+  target and keeps the legacy value: `Codegen.Expect(target, legacy, deviation)` (`tests/xUnitTest/Codegen.cs`) gives the legacy value
+  unless the selector's one reading (`Compilation.DefaultCodegen`) is MIR's, and fails when the two are equal. Refining PD10's
+  `Expect(target, legacy, item, class)` (package C row 22), the item is one `Deviation(Id, Class, Item, Clause, Reason)` of the
+  `CodegenDeviations` catalog: Class OQ7's (a), (d) or (e) (R5-M6), Item a DECISIONS entry, Clause SPEC sections; `CodegenDeviationTest`
+  checks each and that an `Expect` names it (M7 counts them). First: `instance-capability-at-check` (d; R5-M41; SPEC 23.2.2), sel's
+  check-time record of R5-M54, which the old generator reports at generation. Its tests (K13a's `GenericGenerationDiagnosticTest`
+  rows, `PrimitiveIntegerTest`'s wide division, `PipelineSwitchTest`'s test command) run check and generation in every run; the old
+  generator's own refusal facts are checked on a compilation pinned to it and go at G2 with the legacy values. The pin needs the
+  `Codegen` setter G4 removes, so R5-M73's pinned depth test (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`) goes by G4 at the
+  latest. The native half lands with its first native consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal
+  in both runs, the JSON of the entry and the legacy and target stdout, exit and stderr; `compare-fixtures.ps1` counts a differing
+  fixture as deviating only when both runs carry the same `.deviation` and each run's output matches its side.
+  - Rejected: per-test pipeline branches and xfail markers (PD10); item and class as arguments (declared at each use); the native
+    half before a consumer; null targets for the old generator's own facts.
+- **R5-M86 The owner's decisions of 2026-10-21: R5's departures list and PLAN G157 (19)** (owner, 2026-10-21, on the R5 planning
+  session's explanation; verbatim 「departures list：K6b（R5-M70）、K8（R5-M74）、C0c（R5-M78）の 3 件を、すべて承認します。」 and
+  「G157は、(a) 旧生成器を直す（推奨）でお願いします」, then, asked about R5-M6, the answer 「(a) のまま（R5-M6 の例外）」; the
+  consequences are the planning session's) The three departures from owner-approved texts that R5 recorded for the owner's
+  list are confirmed: K6b's Builtin key by the shim's compiler function in `MonoKey.Symbol` (R5-M70; against the K package's §4.3
+  Builtin row and R5-M67's `Variant` key); K8's Clone and TypeTest without a descriptor target, which shrinks X15's whitelist to six
+  (R5-M74; against the K package's §4.5 row 8); C0c's rows of C2b and C4a brought forward with gate step 2's program-wide stand-in
+  until C4a and the glue written by `FunctionCodegen.WriteGlue` (R5-M78; against the package order, PD12's per-body rule and package
+  C §3.6). They leave the list; R5's group reviews check the code against those entries. PLAN G157 (19), the old generator's f32
+  signaling-NaN constants (SPEC 13.5.4: `@bits` keeps NaN payloads), takes option (a): a D5 miscompile fix, the exact widening one
+  rule that both generators write through, so no deviation is recorded and E12's native half waits for C5a or C7b. This is the owner's
+  exception, for this item only, to R5-M6's rejection of D5 fixes that make the two generators agree: the old generator's output is
+  wrong code on the default pipeline and the fix is a few lines; R5-M6 stands for every other item. Rejected: (b) a decided OQ7 (a)
+  deviation until G3, which would keep a wrong value on the default pipeline.

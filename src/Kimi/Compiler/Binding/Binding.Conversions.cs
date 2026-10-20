@@ -110,8 +110,7 @@ public sealed partial class Binding
         if (!OffersTake(conversion.Left) ||
             (ReceiverOfPart(conversion.Left) is not null && this.ProveCopy(type, conversion) != ConstraintProof.Proven))
         {
-            var failure = AccessFailure(conversion.Left, take: true);
-            return this.Fail(conversion, failure == BindingFailure.InvalidAssignment && KotoHelper.UnwrapParentheses(conversion.Left) is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } ? BindingFailure.ExclusivePathTake : failure);
+            return this.Fail(conversion, AccessFailure(conversion.Left, take: true));
         }
 
         // SPEC 11.2: consuming var storage requires its accessible standard setter,

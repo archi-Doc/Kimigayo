@@ -1,0 +1,985 @@
+##### d1 absent
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 1 (== spelled value) `T.Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 2 `T.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 8 `T.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+FACTS of FunctionKoto inspect: 5 facts, 1 direct, 5 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree,Tree] T.Child is Tree
+   d[CopyTree] T is Copy
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 absent
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 2 (== spelled value) `T.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 3 `T.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 8 `T.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+FACTS of FunctionKoto inspect: 6 facts, 1 direct, 6 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree,Tree] T.Child is Tree
+   d[CopyTree] T is Copy
+   d[Tree] T.Child.Child is Tree
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d2 stronger before
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(hint: ref/T.(Tree).Child.(CopyTree).Child, value: T.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `ref/T.(Tree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `T.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 3 `T.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+FACTS of FunctionKoto inspect: 8 facts, 1 direct, 9 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree,Tree] T.Child is Tree
+   d[CopyTree] T is Copy
+   d[CopyTree] T.Child.Child is CopyTree
+   d[CopyTree,Tree] T.Child.Child is Tree
+   d[CopyTree] T.Child is Copy
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 stronger after
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, hint: ref/T.(Tree).Child.(CopyTree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 3 `T.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d4 absent
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 4 (== spelled value) `T.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 5 `T.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 8 `T.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d4 stronger before
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(hint: ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child, value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 5 `T.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d4 stronger after
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child, hint: ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 5 `T.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d8 absent
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 8 (== spelled value) `T.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 9 `T.Child.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 8 (== spelled value) `T.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d8 stronger before
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(hint: ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child, value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 9 `T.Child.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d8 stronger after
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child, hint: ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.generated depth 9 `T.Child.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 hint all-CopyTree after
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, hint: ref/T.(CopyTree).Child.(CopyTree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(CopyTree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 hint CopyTree-on-T-only after
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, hint: ref/T.(CopyTree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param1 `ref/T.(CopyTree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+FACTS of FunctionKoto inspect: 6 facts, 1 direct, 6 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree,Tree] T.Child is Tree
+   d[CopyTree] T is Copy
+   d[Tree] T.Child.Child is Tree
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d4 hint depth-2 stronger only
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child, hint: ref/T.(Tree).Child.(CopyTree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d2 value unqualified
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.Child.Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.Child.Child`: lexical Unknown, effect False (Unknown)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d2 value written CopyTree
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(CopyTree).Child.(CopyTree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(CopyTree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 hint in another function
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+func other<T>(hint: ref/T.(Tree).Child.(CopyTree).Child)
+    T is CopyTree
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d2 body () (PlanB's form)
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    ()
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 member call on T.Child after the use
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, node: ref/T.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+    let next = node.child()
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child`: lexical Proven, effect True (Proven)
+FACTS of FunctionKoto inspect: 6 facts, 1 direct, 6 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree,Tree] T.Child is Tree
+   d[CopyTree] T is Copy
+   d[Tree] T.Child.Child is Tree
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 10:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 10:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 10:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 10:16 `(value, value)`
+MIR problems: 1
+
+##### d2 member call on T.Child before the use
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, node: ref/T.(Tree).Child)
+    T is CopyTree
+    let next = node.child()
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child`: lexical Proven, effect True (Proven)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 11:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 11:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 11:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 11:16 `(value, value)`
+MIR problems: 1
+
+##### d2 member call declared in CopyTree on T.Child
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+    func touch(self: ref/Self)
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, node: ref/T.(Tree).Child)
+    T is CopyTree
+    node.touch()
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child`: lexical Proven, effect True (Proven)
+FACTS of FunctionKoto inspect: 8 facts, 1 direct, 9 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree,Tree] T.Child is Tree
+   d[CopyTree] T is Copy
+   d[Tree,CopyTree] T.Child.Child is Tree
+   d[CopyTree] T.Child.Child is CopyTree
+   d[CopyTree] T.Child is Copy
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 member call declared in CopyTree on T.Child, after the use
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+    func touch(self: ref/Self)
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, node: ref/T.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+    node.touch()
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### d2 no member call (same declarations)
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child, node: ref/T.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param1 `ref/T.(Tree).Child`: lexical Proven, effect True (Proven)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 10:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 10:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 10:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 10:16 `(value, value)`
+MIR problems: 1
+
+##### d2 absent, reverse query order
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(value: T.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.generated depth 3 `T.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.generated depth 8 `T.Child.Child.Child.Child.Child.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 9:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 9:16 `(value, value)`
+MIR problems: 1
+
+##### d2 stronger before, reverse query order
+contract Tree
+    associate Child is Tree
+
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+
+func inspect<T>(hint: ref/T.(Tree).Child.(CopyTree).Child, value: T.(Tree).Child.(Tree).Child)
+    T is CopyTree
+    let pair = (value, value)
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.generated depth 3 `T.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy inspect.param1 `T.(Tree).Child.(Tree).Child`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param0 `ref/T.(Tree).Child.(CopyTree).Child`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### nonrec absent
+contract Holder
+    associate Item
+
+contract CopyHolder: Holder
+    Self.(Holder).Item is Copy
+
+contract Outer
+    associate Inner is Holder
+
+contract CopyOuter: Outer
+    Self.(Outer).Inner is CopyHolder
+
+func inspect<T>(value: T.(Outer).Inner.(Holder).Item) -> i32
+    T is CopyOuter
+    let a = value
+    let b = value
+    return 0
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Outer).Inner.(Holder).Item`: lexical Unknown, effect False (Unknown)
+FACTS of FunctionKoto inspect: 4 facts, 1 direct, 4 derived rows
+  D T is CopyOuter
+   d[CopyOuter] T.Inner is CopyHolder
+   d[CopyOuter] T is Outer
+   d[CopyOuter,Outer] T.Inner is Holder
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 15:13 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 16:13 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 16:13 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 16:13 `value`
+MIR problems: 1
+
+##### nonrec stronger before
+contract Holder
+    associate Item
+
+contract CopyHolder: Holder
+    Self.(Holder).Item is Copy
+
+contract Outer
+    associate Inner is Holder
+
+contract CopyOuter: Outer
+    Self.(Outer).Inner is CopyHolder
+
+func inspect<T>(hint: ref/T.(Outer).Inner.(CopyHolder).Item, value: T.(Outer).Inner.(Holder).Item) -> i32
+    T is CopyOuter
+    let a = value
+    let b = value
+    return 0
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `ref/T.(Outer).Inner.(CopyHolder).Item`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `T.(Outer).Inner.(Holder).Item`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### nonrec stronger after
+contract Holder
+    associate Item
+
+contract CopyHolder: Holder
+    Self.(Holder).Item is Copy
+
+contract Outer
+    associate Inner is Holder
+
+contract CopyOuter: Outer
+    Self.(Outer).Inner is CopyHolder
+
+func inspect<T>(value: T.(Outer).Inner.(Holder).Item, hint: ref/T.(Outer).Inner.(CopyHolder).Item) -> i32
+    T is CopyOuter
+    let a = value
+    let b = value
+    return 0
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy inspect.param0 `T.(Outer).Inner.(Holder).Item`: lexical Proven, effect True (Proven)
+PROVE Copy inspect.param1 `ref/T.(Outer).Inner.(CopyHolder).Item`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### S5 helper chain to T.Child.Child (two)
+contract Sink
+    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        effect confined
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+        effect confined
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+group Trees
+    public func two<T>(node: T)
+        T is Tree
+        match node.child()
+            .Some(let next) => Trees.one(next@move)
+            .None => return
+    public func one<T>(node: T)
+        T is Tree
+        match node.child()
+            .Some(let next) => return
+            .None => return
+struct Holder<T>
+    T is CopyTree
+    Self is Sink
+    var node: T
+    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        Trees.two(self.node)
+        return .Ok(())
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy put.param0 `uniq/Self`: lexical Refuted, effect False (Refuted)
+PROVE Copy put.param1 `i32`: lexical Proven, effect True (Proven)
+PROVE Copy put.generated depth 0 `T`: lexical Proven, effect True (Proven)
+PROVE Copy put.generated depth 1 `T.Child`: lexical Proven, effect True (Proven)
+PROVE Copy put.generated depth 2 `T.Child.Child`: lexical Unknown, effect False (Unknown)
+PROVE Copy put.generated depth 3 `T.Child.Child.Child`: lexical Unknown, effect False (Unknown)
+FACTS of StructKoto Holder: 5 facts, 1 direct, 4 derived rows
+  D T is CopyTree
+   d[CopyTree] T.Child is CopyTree
+   d[CopyTree] T is Tree
+   d[CopyTree] T.Child is Tree
+   d[CopyTree] T is Copy
+OLD  IncompatibleContractImplementation_Kd [Ownership.EffectBound] | 23:5 `Self is Sink`
+=== Mir: Binding complete=True, issues=0
+MIR  IncompatibleContractImplementation_Kd [Ownership.EffectBound] | 23:5 `Self is Sink`
+MIR problems: 1
+
+##### S5 helper chain to T.Child (one)
+contract Sink
+    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        effect confined
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+        effect confined
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+group Trees
+    public func two<T>(node: T)
+        T is Tree
+        match node.child()
+            .Some(let next) => Trees.one(next@move)
+            .None => return
+    public func one<T>(node: T)
+        T is Tree
+        match node.child()
+            .Some(let next) => return
+            .None => return
+struct Holder<T>
+    T is CopyTree
+    Self is Sink
+    var node: T
+    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>
+        Trees.one(self.node)
+        return .Ok(())
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy put.param0 `uniq/Self`: lexical Refuted, effect False (Refuted)
+PROVE Copy put.param1 `i32`: lexical Proven, effect True (Proven)
+PROVE Copy put.generated depth 0 `T`: lexical Proven, effect True (Proven)
+PROVE Copy put.generated depth 1 `T.Child`: lexical Proven, effect True (Proven)
+PROVE Copy put.generated depth 2 `T.Child.Child`: lexical Unknown, effect False (Unknown)
+OLD  IncompatibleContractImplementation_Kd [Ownership.EffectBound] | 23:5 `Self is Sink`
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+##### S5 twice
+contract Tree
+    associate Child is Tree
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+group H
+    public func twice<T>(value: T.(Tree).Child.(Tree).Child) -> (T.(Tree).Child.(Tree).Child, T.(Tree).Child.(Tree).Child)
+        T is CopyTree
+        return (value, value)
+#####
+=== Legacy: Binding complete=True, issues=0
+PROVE Copy twice.param0 `T.(Tree).Child.(Tree).Child`: lexical Unknown, effect False (Unknown)
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 8:17 `value`
+OLD  TransferRequired_Kd [Ownership.TransferRequired] | 8:24 `value`
+OLD  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 8:24 `value`
+=== Mir: Binding complete=True, issues=0
+MIR  MovedPlace_Kd [Ownership.PossiblyMovedUse] | 8:16 `(value, value)`
+MIR problems: 1
+
+##### generation check
+contract Tree
+    associate Child is Tree
+    func child(self: ref/Self) -> Option<Self.Child>
+        effect confined
+contract CopyTree: Tree, Copy
+    Self.(Tree).Child is CopyTree
+func inspect<T>(value: T.(Tree).Child)
+    T is CopyTree
+    ()
+
+public func main() -> ()
+    ()
+#####
+=== Legacy: Binding complete=True, issues=0
+GENERATED-EQUALS-SPELLED True
+PROVE Copy inspect.param0 `T.(Tree).Child`: lexical Proven, effect True (Proven)
+=== Mir: Binding complete=True, issues=0
+MIR problems: 0
+
+INFER papb PA first, P x,z, Q y,w: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is P`
+  InvalidConstraint_Kd | 13:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 13:38 `PB.(Q).Y`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 18:38 `PA.(P).Z`
+INFER papb PA first, P x,z, Q w,y: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is P`
+  InvalidConstraint_Kd | 13:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 13:38 `PB.(Q).Y`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 18:38 `PA.(P).Z`
+INFER papb PA first, P z,x, Q y,w: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is P`
+  InvalidConstraint_Kd | 13:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 13:38 `PB.(Q).Y`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 18:38 `PA.(P).Z`
+INFER papb PA first, P z,x, Q w,y: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is P`
+  InvalidConstraint_Kd | 13:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 13:38 `PB.(Q).Y`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 18:38 `PA.(P).Z`
+INFER papb PB first, P x,z, Q y,w: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 14:38 `PA.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is P`
+  InvalidConstraint_Kd | 17:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 17:38 `PB.(Q).Y`
+INFER papb PB first, P x,z, Q w,y: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 14:38 `PA.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is P`
+  InvalidConstraint_Kd | 17:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 17:38 `PB.(Q).Y`
+INFER papb PB first, P z,x, Q y,w: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 14:38 `PA.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is P`
+  InvalidConstraint_Kd | 17:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 17:38 `PB.(Q).Y`
+INFER papb PB first, P z,x, Q w,y: complete=False; PA: verified=False; PB: verified=False
+  IncompatibleContractImplementation_Kd | 12:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func w(self: ref/Self) -> PA.(P).Z => 0`
+  InvalidConstraint_Kd | 14:38 `PA.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is P`
+  InvalidConstraint_Kd | 17:17 `public func x(self: ref/Self) -> PB.(Q).Y => 0`
+  InvalidConstraint_Kd | 17:38 `PB.(Q).Y`
+INFER alt D first, P a,b: complete=False; D: verified=False; E: verified=False
+  IncompatibleContractImplementation_Kd | 9:5 `Self is P`
+  InvalidConstraint_Kd | 11:17 `public func b(self: ref/Self) -> E.(Q).W => 0`
+  InvalidConstraint_Kd | 11:38 `E.(Q).W`
+  TypeMismatch_Kd | 11:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 13:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func w(self: ref/Self) -> D.(P).X => 0`
+  InvalidConstraint_Kd | 14:38 `D.(P).X`
+INFER alt D first, P b,a: complete=False; D: verified=False; E: verified=False
+  IncompatibleContractImplementation_Kd | 9:5 `Self is P`
+  InvalidConstraint_Kd | 11:17 `public func b(self: ref/Self) -> E.(Q).W => 0`
+  InvalidConstraint_Kd | 11:38 `E.(Q).W`
+  TypeMismatch_Kd | 11:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 13:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func w(self: ref/Self) -> D.(P).X => 0`
+  InvalidConstraint_Kd | 14:38 `D.(P).X`
+INFER alt E first, P a,b: complete=True; D: verified=True X=i32; E: verified=True W=i32
+INFER alt E first, P b,a: complete=True; D: verified=True X=i32; E: verified=True W=i32
+INFER excl A first: complete=False; A: verified=False; B: verified=False
+  AssociatedTypeInferenceFailed_Kd | 10:5 `Self is P`
+  InvalidConstraint_Kd | 11:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 11:38 `B.(Q).Y`
+  TypeMismatch_Kd | 11:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 14:5 `Self is Q`
+  InvalidConstraint_Kd | 15:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 15:38 `A.(P).Z`
+INFER excl B first: complete=False; A: verified=False; B: verified=False
+  IncompatibleContractImplementation_Kd | 10:5 `Self is Q`
+  InvalidConstraint_Kd | 11:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 11:38 `A.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 13:5 `Self is P`
+  InvalidConstraint_Kd | 14:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 14:38 `B.(Q).Y`
+INFER cyc A first: complete=False; A: verified=False; B: verified=False
+  AssociatedTypeInferenceFailed_Kd | 8:5 `Self is P`
+  InvalidConstraint_Kd | 9:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 9:38 `B.(Q).Y`
+  TypeMismatch_Kd | 9:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 11:5 `Self is Q`
+  InvalidConstraint_Kd | 12:17 `public func y(self: ref/Self) -> A.(P).X => 0`
+  InvalidConstraint_Kd | 12:38 `A.(P).X`
+  TypeMismatch_Kd | 12:49 `0`
+INFER cyc B first: complete=False; A: verified=False; B: verified=False
+  AssociatedTypeInferenceFailed_Kd | 8:5 `Self is Q`
+  InvalidConstraint_Kd | 9:17 `public func y(self: ref/Self) -> A.(P).X => 0`
+  InvalidConstraint_Kd | 9:38 `A.(P).X`
+  TypeMismatch_Kd | 9:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 11:5 `Self is P`
+  InvalidConstraint_Kd | 12:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 12:38 `B.(Q).Y`
+  TypeMismatch_Kd | 12:49 `0`
+INFER tri ABC: complete=False; A: verified=False; B: verified=False; C: verified=False
+  AssociatedTypeInferenceFailed_Kd | 10:5 `Self is P`
+  InvalidConstraint_Kd | 11:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 11:38 `B.(Q).Y`
+  TypeMismatch_Kd | 11:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 14:5 `Self is Q`
+  InvalidConstraint_Kd | 15:17 `public func y(self: ref/Self) -> C.(Q).Y => 0`
+  InvalidConstraint_Kd | 15:38 `C.(Q).Y`
+  TypeMismatch_Kd | 15:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 17:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 18:38 `A.(P).Z`
+INFER tri ACB: complete=False; A: verified=False; B: verified=False; C: verified=False
+  AssociatedTypeInferenceFailed_Kd | 10:5 `Self is P`
+  InvalidConstraint_Kd | 11:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 11:38 `B.(Q).Y`
+  TypeMismatch_Kd | 11:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 14:5 `Self is Q`
+  InvalidConstraint_Kd | 15:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 15:38 `A.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 17:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func y(self: ref/Self) -> C.(Q).Y => 0`
+  InvalidConstraint_Kd | 18:38 `C.(Q).Y`
+  TypeMismatch_Kd | 18:49 `0`
+INFER tri BAC: complete=False; A: verified=False; B: verified=False; C: verified=False
+  IncompatibleContractImplementation_Kd | 10:5 `Self is Q`
+  InvalidConstraint_Kd | 11:17 `public func y(self: ref/Self) -> C.(Q).Y => 0`
+  InvalidConstraint_Kd | 11:38 `C.(Q).Y`
+  AssociatedTypeInferenceFailed_Kd | 13:5 `Self is P`
+  InvalidConstraint_Kd | 14:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 14:38 `B.(Q).Y`
+  IncompatibleContractImplementation_Kd | 17:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 18:38 `A.(P).Z`
+INFER tri BCA: complete=False; A: verified=False; B: verified=False; C: verified=False
+  IncompatibleContractImplementation_Kd | 10:5 `Self is Q`
+  InvalidConstraint_Kd | 11:17 `public func y(self: ref/Self) -> C.(Q).Y => 0`
+  InvalidConstraint_Kd | 11:38 `C.(Q).Y`
+  IncompatibleContractImplementation_Kd | 13:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 14:38 `A.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is P`
+  InvalidConstraint_Kd | 17:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 17:38 `B.(Q).Y`
+INFER tri CAB: complete=False; A: verified=False; B: verified=False; C: verified=False
+  IncompatibleContractImplementation_Kd | 10:5 `Self is Q`
+  InvalidConstraint_Kd | 11:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 11:38 `A.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 13:5 `Self is P`
+  InvalidConstraint_Kd | 14:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 14:38 `B.(Q).Y`
+  TypeMismatch_Kd | 14:49 `0`
+  AssociatedTypeInferenceFailed_Kd | 17:5 `Self is Q`
+  InvalidConstraint_Kd | 18:17 `public func y(self: ref/Self) -> C.(Q).Y => 0`
+  InvalidConstraint_Kd | 18:38 `C.(Q).Y`
+INFER tri CBA: complete=False; A: verified=False; B: verified=False; C: verified=False
+  IncompatibleContractImplementation_Kd | 10:5 `Self is Q`
+  InvalidConstraint_Kd | 11:17 `public func y(self: ref/Self) -> A.(P).Z => 0`
+  InvalidConstraint_Kd | 11:38 `A.(P).Z`
+  AssociatedTypeInferenceFailed_Kd | 13:5 `Self is Q`
+  InvalidConstraint_Kd | 14:17 `public func y(self: ref/Self) -> C.(Q).Y => 0`
+  InvalidConstraint_Kd | 14:38 `C.(Q).Y`
+  AssociatedTypeInferenceFailed_Kd | 16:5 `Self is P`
+  InvalidConstraint_Kd | 17:17 `public func x(self: ref/Self) -> B.(Q).Y => 0`
+  InvalidConstraint_Kd | 17:38 `B.(Q).Y`
+  TypeMismatch_Kd | 17:49 `0`

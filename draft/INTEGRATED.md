@@ -807,3 +807,98 @@ to Obsolete as superseded."
   rule (plan B §1.3, §3.3). Its other sections (results and ownership, nesting, Deferred Block, migration,
   implementation plan, mapping) transfer to plan B, which revises them. Its §1 precedence over SPEC lapses with its
   closure.
+
+## 2026-10-21 — Implementation-defect plans: M69, S3, premise supply and Transferable, G170 PlanB, G172 (R4's evaluation)
+
+The owner's commit `e307e9f9` added seven plans to the reset dev (DECISIONS R4-M86), and the owner instructed R4 at its
+resume (verbatim): 「これらの文書は、実装上の問題点の修正計画書です。どのような内容か確認し、有用ならR4、R5、Binding Unitへ通達し、共有・利用してください。実装完了後は、通常通りdraft/Changesに移動してください。有用でなければ、理由を表示して、Obsoleteに移動してください。」
+for the five below (Accessor Result Contracts and As Naming Syntax are outside it). R4's planning session evaluated each
+against dev with an independent fact check (2026-10-21, probes at dev `4b36db41`; its summary, probe sources and outputs are
+copied to `artifacts/verify/20261021-r4-plans-eval/`, main checkout, Git-ignored). All five are
+useful and stay in `Proposals` as 一部取り込み (open) until implemented; none moves to `Obsolete`. No section is integrated into
+SPEC or IMPL, and no text is frozen; their text is unchanged, and the corrections below apply to it. Intake implies no
+implementation support and no owner adoption: the adoptions and holds their texts name ("adopted (PLAN)", R4-M83, R4-M84,
+R4-M85) are rolled-back records not in force on dev (R4-M86), and each plan's design choice is taken again in the design its row
+names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
+
+- **Common corrections.** Not on dev: DECISIONS R4-M82–R4-M85; the INTEGRATED entries for these five plans; `Loan.Statement`
+  (M69-1); the edit of SPEC 8.5.5 and 23.1.2; the baselines `a415c755`, `bc3fcd3f`, `8400ce72`, `3a272f3e`, `0c8ec470`,
+  `f373cd67`, `64649f97`, `338831f7`, `0ccf13ce`, `71984552`, `37184417` (all on `origin/backup/rollback-20261020-origin-dev`,
+  as are the linked `draft/Sketches/A5 Step 2/S3-M69/` option designs and review record); `artifacts/verify/20261020-g170-plan-revision/`
+  and `-g172-inference-plan/` exist nowhere. Binding and SPEC chapter 8 at dev equal those at the plans' baselines, so their
+  Binding observations carry over; line numbers drift where the rolled-back history split files.
+- **PLAN numbers.** G171, G172 and G174 are registered on dev with the meanings the evaluated plans cite. G173 is not: no
+  evaluated plan cites it (the rolled-back row's G173, `TestDiagnostics.Collect`'s first document by path, tied to S3's same-path
+  donor edit whose evidence head `74c3b8b5` is not on dev, is registered as G175), and As Naming Syntax cites "PLAN G173" for
+  another issue. Accessor Result Contracts cites "PLAN G174" for an issue other than the evaluated plans' G174; R4 or the owner
+  numbers those two plans' issues when they are taken up.
+- [M69 Default Loan Correspondence](Proposals/2026-10-20%20M69%20Default%20Loan%20Correspondence%20Plan.md) — useful (R4,
+  A5). Its A5 facts hold at dev (`Report`'s access-scope Inlined fact, `MirReport.Add`'s drop, `Conflict`'s first-clean
+  selection, an empty `Accessing.Effect`); `Loan` carries `Site`, not `Statement`. Correction: G171 is already an unsound MIR
+  acceptance, not only an integration hazard: `add(c: uniq/Counter, x: i32 = State.poke(counter@uniq))` called as
+  `State.add(counter@uniq)` in its group is accepted on the MIR, while the explicit twin reports `CallReservationConflict_Kd`
+  (shadow; the default pipeline reports `Unsupported_Kd`). The cause is R4-M69's Inlined drop; Binding's binding of an unqualified
+  group-storage borrow makes the route reachable, against R4-M69's premise. Use: PLAN G171. Option 3 is a candidate for 2e-D's copy
+  disposition (PD15 (ii)); because M69-2 must land before or with 2b-3 and PD1 puts F5 before F9, R4 proposes to take that item
+  into 2b-D's package, for the owner's approval (OQ2); it supersedes part of R4-M69, an owner-approved design, so it takes the full
+  process. An additional prototype round with G171's shapes (round 20; R4 proposes the unit name 2x-P11, not yet in the step 2 plan, which gains
+  it with its next edit) serves M69-0's proof obligation before that design
+  review; M69-1 is redone from dev if the design adopts it.
+- [S3 Closure Origin Publication](Proposals/2026-10-20%20S3%20Closure%20Origin%20Publication%20Plan.md) — useful (R4's
+  Binding views, BU reviewing). §3's probe gives the stated verdicts on dev, §2's anchors exist as described and its planned
+  components are absent; the mir pipeline also records an unpublished A5 `ComparisonLoanConflict_Kd` at `g`'s `let m = 8`
+  (a storage end, PD11's merge in 2a-2). Use: design input to 2a0-D (body-relative atom classes of captured Origins) and 2c-D
+  (C2's result formals and source rows). S3-2, S3-3, S3-4a, S3-4b and S3-5 refine 2a0-2, 2c-2, 2c-3 (with 2c-5's OQ4 gate), 2c-4
+  and 2c-6; S3-0 (gate R's source-backed prototype, taking 2x-P4's prototype and 2x-P7's cases as inputs; 2x-P7 has not run and
+  stays 2c-D's prerequisite) and S3-1 (a restructure) have no step-2 unit and run inside 2a0-D's and 2c-D's preparation; S3-6
+  (S3's closing review) is the F7 group's final review, after 2c-6; they open no separate series. Option 3 is chosen again in those designs.
+- [Canonical Premise Supply and Transferable](Proposals/2026-10-20%20Canonical%20Premise%20Supply%20and%20Transferable%20Plan.md)
+  — useful (R4's 2b; the Binding producer with BU's review). At dev no Transferable producer exists, `Core.kimi` lacks
+  `contract Transferable` while SPEC 22.1 and LIBRARY declare it, and a written `T is Transferable` is `UnresolvedBinding_Kd` (a
+  Language error for a valid form); `HoldsRaw` has one production reader (`StaticRoot`); `Register` falls through for an
+  unlisted intrinsic; G174 holds as stated. Use: T0 → 2b-D's Transferable contract (PD5): the finite per-declaration summary, the
+  site census, the default-pipeline disposition (D5/O3), the per-case proof anchor and the choice for G174; T1 → 2b-4, T2 → 2b-5,
+  T3 → 2b-8; PLAN G124's note and G174. 2b-4 and 2b-5 follow 2b-D (the step 2 plan's prerequisites), whose package needs the
+  owner's approval, so neither starts before it; R4-M86's interim hold ends with this evaluation; whether they also wait for
+  G170's supply (the rolled-back R4-M83) goes to the owner in that package. Its §§2–4 stay replaced by G170 PlanB.
+- [G170 PlanB](Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md) — useful (BU; R4 reviews the
+  A1/A4 consumers). The defect is broader than dev's PLAN G170 said: Binding's `ProveCopy` is Unknown or false for the deep
+  projection, so the default pipeline rejects `(value, value)` too (`TransferRequired_Kd`, `MovedPlace_Kd`); the unused stronger
+  spelling makes both pipelines accept; a non-recursive Contract shows the same; §2's cause sites and the six callers exist as
+  described (the causal explanation is the plan's C0 to confirm). `S5Probe.cs`'s helper chains are not G170's (no Copy-proof
+  evidence; the Transferable plan §5.3). Use: PLAN G170 restated and STATUS's Types and Contracts row; the candidate plan for
+  BU's planning (C0–C4).
+- [G172 Associated Value Inference](Proposals/2026-10-20%20G172%20Associated%20Value%20Inference%20Plan.md) — useful (BU).
+  SPEC 8.5.5's PA/PB example is rejected in both declaration orders; requirement order has no effect today, so the plan's
+  order-dependent step 2 of §1 is not needed to explain the failure (whole-batch withholding is consistent with it; untested);
+  `alt` is accepted with E first (D.X = E.W = `i32`) and rejected with D first; the exclusion chains' diagnostics change with
+  declaration order; the collecting-conformance guard is unreachable by code reading; the `InferenceProblem.Dependency` reason
+  text is truncated mid-phrase. Use: PLAN G172 and STATUS's Inference row; the candidate plan for BU's planning (G0–G4); its G1
+  fixes "depends" from SPEC 8.5.5 and 8.3.3 or reports the gap for the owner's reading (the rolled-back R4-M85 is not in force).
+- Shared on 2026-10-21 with R5's and BU's planning sessions by cross-session messages; their confirmations: BU takes G170, G172
+  and G174's Binding part after its unsound-acceptance units (bu11, G163; G170's C0 may run beside them) and will have 2b-6 treat
+  the unqualified in-group borrow as it treats the qualified one (2b-6's row names only `InvalidAssignment_Kd`); R5 reviews 2b-5's
+  MIR consumption with `StaticRoot` (AR-2) and M69's scope query in the shared `MirBody`, and its E lane takes G175.
+
+## 2026-10-21 — Introduction-site requirements for generic parameters
+
+The owner's instruction of 2026-10-20 (translated): write the formal plan, specification and implementation plan, for the
+generic-parameter constraint draft "R1"; implementation starts after R9; the plan takes precedence over SPEC and its
+references for the matters it changes, and existing specifications govern the rest; SPEC is not changed by this task;
+record the intake in INTEGRATED at commit.
+
+- [Introduction-Site Requirements and Implementation Plan](Proposals/2026-10-21%20Introduction-Site%20Requirements%20and%20Implementation%20Plan.md):
+  一部取り込み (open, intake only). A requirement on an ordinary Type slot is written on the slot (`<T is R>`), the
+  introduction-site concept `associate X is R` already uses; each Constraint Clause has one place, decided by its shape;
+  requirements on one slot are one `and` requirement, and a Constraint is a conjunct. Implementation starts after R9
+  (units GR0–GR6). By the owner's instruction, the plan takes precedence over SPEC and its references for its stated
+  changes.
+- Planned mapping (its §6): §2.1 → F.5, F.2.1, §8.1.1, §8.2.2, §13.6.4, Appendix E; §2.2–§2.3 → §7.5, §8.2.1,
+  §8.4.1–§8.4.2, §8.11.6, F.6.2–F.6.3, §6.1.4; §2.4 → §8.3.1, §8.10, §8.11.6, §10.5.2, §10.8; §2.5 → §6.1.2, §6.1.4,
+  §7.5, §8.2.3, §8.5.2, §9.1, §9.4.4, §9.5, §15.3.4; §2.6 → §8.4.1, §8.5.1, §8.5.3, §8.5.4; §2.7 → §19.1, §19.4; §2.8 →
+  §23.1.3 and the check output schema; §2.9 → F.4.3; 63 example lines in 53 declarations. Formal integration needs the
+  owner's explicit instruction and lands only inside the GR3–GR5 group merge (its §1, §4).
+- No section is integrated into SPEC or IMPL, no text is frozen, and no compiler support is claimed. Its §7 requests the
+  owner's decisions: the rules it adds to the draft, option (ii) for effect-bearing Callable parameters (the owner's
+  preliminary preference was (i)), the `length` keyword, the SyntaxForm row and repair kind, and the scope of the
+  integration instruction; it also lists open issues for PLAN after a check on the current tree.

@@ -11,9 +11,9 @@
 // argument check), its condition and abort reason.
 // Preconditions: an operand is its LLVM spelling, a local name (%...) or a constant; an integer constant is the decimal of its
 // signed value, as LlvmModuleText.WriteNumber writes it, so a literal -1 is -1 at every width (LLVM's unsigned spelling, i8 255,
-// would skip SPEC 13.3.1's -1 substitution); a floating constant is LLVM's hexadecimal double spelling; an integer Type is iN of
-// width 1 to 128. A checked conversion has a bound; a position conversion has a cast and a bound; a floating narrowing has both bounds
-// over a double source.
+// would skip SPEC 13.3.1's -1 substitution); a floating constant is LLVM's hexadecimal double spelling of the bits
+// LlvmModuleText.Hexadecimal gives, so an f32 NaN keeps its signaling bit; an integer Type is iN of width 1 to 128. A checked
+// conversion has a bound; a position conversion has a cast and a bound; a floating narrowing has both bounds over a double source.
 // Output: LLVM text written to the writer.
 // Invariants: a check names its temporaries role + Id and its failure label abort + Id, except the signed quotient's reason,
 // which the caller names; a position conversion names its temporaries role + its own Id; `select i1` appears only on a failure

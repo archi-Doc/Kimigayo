@@ -195,8 +195,9 @@ internal sealed partial class MirBuilder
         return this.Acquire(adjust, place, expected, reserves, node, into);
     }
 
-    // SPEC 3.2, 4.3.2, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its construction
-    // acquires them; a dynamic Array literal the calls of its built-in form (Collection). Not built: a fill of a length its instance decides.
+    // SPEC 3.2, 4.3.1, 4.3.3, 6.6: a Tuple, a fixed array or an enum Case value from its operands in order, an enum's payloads as its
+    // construction acquires them, a fill from its value acquired once, which every element of its Type's length copies (Fill, DECISIONS
+    // R4-M81); a dynamic Array literal the calls of its built-in form (Collection).
     private void Aggregate(MirPlace destination, Koto node, BoundType type)
     {
         var construction = BoundEnumConstruction.Of(node);
@@ -209,8 +210,7 @@ internal sealed partial class MirBuilder
         var elements = node switch
         {
             TupleLiteralKoto tuple => tuple.Elements,
-            ArrayLiteralKoto array when type is { Kind: BoundTypeKind.FixedArray } && (array.FillLength is null || type.LengthExpression is null) =>
-                array.Elements,
+            ArrayLiteralKoto array when type.Kind == BoundTypeKind.FixedArray => array.Elements,
             _ => null,
         };
         if (construction is null && elements is null)
@@ -238,24 +238,6 @@ internal sealed partial class MirBuilder
             this.arguments.Add(i < last ? this.Secure(operand, elements[i]) : operand);
         }
 
-        // SPEC 4.3.3: a fill construction acquires its value once, even for length 0, and copies it into each element.
-        if (node is ArrayLiteralKoto { FillLength: not null })
-        {
-            var value = this.arguments[start];
-            if (value.Kind != MirOperandKind.Const)
-            {
-                var once = this.Temp(type.Components[0], node);
-                this.Use(once, value, node);
-                value = MirOperand.Copy(once);
-            }
-
-            this.arguments.RemoveAt(start);
-            for (var i = 0; i < type.Length; i++)
-            {
-                this.arguments.Add(value);
-            }
-        }
-
         for (var i = 0; i < payloads.Length; i++)
         {
             var operand = this.Operand(payloads[i].Source!, payloads[i].AdaptedType ?? payloads[i].ParameterType);
@@ -266,6 +248,10 @@ internal sealed partial class MirBuilder
         if (construction is not null)
         {
             kind = MirAggregateKind.Adt;
+        }
+        else if (node is ArrayLiteralKoto { FillLength: not null })
+        {
+            kind = MirAggregateKind.Fill; // SPEC 4.3.3: its one operand, the value acquired once even for length 0, in every element.
         }
         else
         {

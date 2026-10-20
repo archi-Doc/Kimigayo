@@ -19,7 +19,7 @@
     {"Uncomment": "inspect(view)", "Expected": [{"Code": "ComparisonLoanConflict_Kd", "Line": "let view = makeResource()@ref"}], "Old": {"Records": [{"Code": "ComparisonLoanConflict_Kd", "Line": "let view = makeResource()@ref"}, {"Code": "Unsupported_Kd", "Line": "match makeHolder().item"}], "Category": "a", "Clause": "3.6 15.1.6", "Note": "The old path rejects a match Subject that is a Place in a temporary as Unsupported."}}]},
   {"Name": "4.3.3-fill-loans", "Section": "4.3.3", "Anchor": "let none = [0 of x@ref]", "Family": "F1", "Prelude": "func inspect<T>(value: ref/T) => ()\n", "Variants": [
     {"Uncomment": null, "Expected": []},
-    {"Uncomment": "x = 2", "Expected": [{"Code": "ComparisonLoanConflict_Kd", "Line": "x = 2"}], "Mir": {"Records": [], "Category": "b", "Clause": "4.3.3 15.6", "Note": "The MIR builds a fill of constant length zero as an Aggregate with no operand, so the array carries none of the value's Loans; the owner's answer Q2 of 2026-10-19 keeps them, and unit 2x-E1's fill form implements it."}}]},
+    {"Uncomment": "x = 2", "Expected": [{"Code": "ComparisonLoanConflict_Kd", "Line": "x = 2"}]}]},
   {"Name": "4.9.6-activation", "Section": "4.9.6", "Anchor": "values.sort()", "Family": "F3", "Prelude": "", "Variants": [
     {"Uncomment": null, "Expected": [{"Code": "CallActivationConflict_Kd", "Line": "values.sort()"}]}]},
   {"Name": "5.2.1-raw-place", "Section": "5.2.1", "Anchor": "let p = a@raw", "Family": "F1", "Prelude": "struct Resource\n    public var value: i32 = 0\nfunc make() -> Resource => Resource.init()\nfunc consume(value: Resource) => ()\nfunc inspect<T>(value: ref/T) => ()\n", "Variants": [
