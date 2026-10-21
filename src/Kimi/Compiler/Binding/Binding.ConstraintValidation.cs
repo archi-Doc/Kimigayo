@@ -12,9 +12,9 @@ public sealed partial class Binding
     // of an unproven target role (Check).
     private Dictionary<Koto, TypeRoleCause>? formationCauses;
 
-    // The first failed conformance a check's Error rests on: one resting on its specification, or one limited by OCC-X outside
-    // conformance verification (ResolveConformance). A consumer clears it before its proof and takes it after (TakeFailedConformance).
-    private BoundConformancePath? failedConformance;
+    // The first cause a check's Error rests on (ICheckCause): a conformance resting on its specification, or one limited by OCC-X outside
+    // conformance verification (ResolveConformance). A consumer clears it before its proof and takes it after (TakeFailedCause).
+    private ICheckCause? failedCause;
 
     // Conformance verifications and agreements in progress; inside them a conformance limited by OCC-X stays Unknown.
     private int conformanceChecks;
@@ -521,7 +521,7 @@ public sealed partial class Binding
     {
         if (proof == ConstraintProof.Error)
         {
-            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedConformance());
+            this.FailConstraint(use, diagnosticCause ?? this.TakeFailedCause());
         }
         else if (proof == ConstraintProof.Refuted)
         {
@@ -541,18 +541,18 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 23.1.2: the Use of the failed conformance that the Error a check just consumed rests on; a limit a failing check needs is
-    // published by Binding.Check.
-    private Koto? TakeFailedConformance()
+    // SPEC 23.1.2: the Use of the cause that the Error a check just consumed rests on; a limit a failing check needs is published by
+    // Binding.Check.
+    private Koto? TakeFailedCause()
     {
-        if (this.failedConformance is not { } path)
+        if (this.failedCause is not { } cause)
         {
             return null;
         }
 
-        this.failedConformance = null;
-        path.Needed |= path.Unsupported;
-        return path.Use;
+        this.failedCause = null;
+        cause.Rest();
+        return cause.Use;
     }
 
     // SPEC 8.1.1, 8.1.2, 8.7.3: the independent causes for which a Type occurrence's role or pair formation is not proven, None when

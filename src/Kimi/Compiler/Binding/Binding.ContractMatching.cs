@@ -169,7 +169,7 @@ public sealed partial class Binding
             conformance.IsVerified = false;
             if (conformance.Invalid && this.partPrerequisites.ContainsKey(conformance.Use))
             {
-                this.failedConformance ??= conformance; // A use rests on a conformance that rests on its specification.
+                this.failedCause ??= conformance; // A use rests on a conformance that rests on its specification.
             }
 
             return ConstraintProof.Error;

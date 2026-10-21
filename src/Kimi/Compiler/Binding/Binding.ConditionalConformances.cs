@@ -384,8 +384,8 @@ public sealed partial class Binding
                 var definition = this.VerifyConformance(path);
                 if (path.Unsupported && this.conformanceChecks == 0)
                 {
-                    // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedConformance).
-                    this.failedConformance ??= path;
+                    // SPEC 23.1.1, 23.1.2: a check that needs a conformance limited by OCC-X rests on its one record (TakeFailedCause).
+                    this.failedCause ??= path;
                     definition = ConstraintProof.Error;
                 }
 

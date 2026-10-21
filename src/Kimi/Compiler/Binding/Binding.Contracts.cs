@@ -158,7 +158,7 @@ public sealed partial class Binding
         }
 
         this.ResetAssociatedInference();
-        this.failedConformance = null;
+        this.failedCause = null;
         this.contractHeadersReady = false;
         this.bindingConstraintTypes = false;
         this.activeConformancePaths.Clear();
@@ -814,7 +814,7 @@ public sealed partial class Binding
         for (var i = 0; i < this.activeConformancePaths.Count; i++)
         {
             var conformance = this.activeConformancePaths[i];
-            this.failedConformance = null;
+            this.failedCause = null;
             var proof = this.VerifyConformance(conformance);
             if (final && conformance.InheritedFrom is null)
             {
@@ -835,7 +835,7 @@ public sealed partial class Binding
             {
                 if (identity.PathStorage.Count != 0)
                 {
-                    this.failedConformance = null;
+                    this.failedCause = null;
                     this.conformanceChecks++;
                     var agreement = this.VerifyConformanceAgreement(identity);
                     this.conformanceChecks--;
@@ -856,7 +856,7 @@ public sealed partial class Binding
             for (var i = 0; i < this.projectionUses.Count; i++)
             {
                 var use = this.projectionUses[i];
-                this.failedConformance = null;
+                this.failedCause = null;
                 this.RequireConstraint(use.Use, this.ProveConformance(use.Type, use.Contract, this.ConstraintScope(use.Use)), mode);
             }
         }
