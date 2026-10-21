@@ -9,9 +9,9 @@ recommended combination (`review.md` §6), which the planning session adopted as
 items taken from design B and the review's corrections.
 
 Base: `origin/dev` `ecf62815` (the designs read `92863171`; no Origin file differs). The confirmation (`confirmation.md`) probed
-`0eac4690`; dev then reached `6b436f5a` (bu14: 2b-6 (a), BU-18; bu16: 2x-R14), with no change to Origin naming. Its five blocking
-fixes, P-1 to P-5, are applied here as worded. No repository file was edited. "(H)" marks a
-reading or estimate no run checked. `B/` = `src/Kimi/Compiler/Binding/`, `M/` = `src/Kimi/Compiler/Mir/`, `T/` =
+`0eac4690`; dev then reached `6b436f5a` (bu14: 2b-6 (a), BU-18; bu16: 2x-R14), with no change to Origin naming. Its seven
+blocking fixes over two rounds, P-1 to P-7, are applied here as worded. No repository file was edited. "(H)" marks a reading or
+estimate no run checked. `B/` = `src/Kimi/Compiler/Binding/`, `M/` = `src/Kimi/Compiler/Mir/`, `T/` =
 `tests/xUnitTest/Tests/`. `rv/<name>` names a probe in the review's scratch folder (programs run on both pipelines; an atom dumper
 over Binding's rows and MIR `Ref` Types).
 
@@ -284,7 +284,7 @@ The explicit forms, and the row-6/row-7 argument above, are dormant until P42.
   2. `JudgeLocalClause`'s principal-candidate branch records no `MissingOriginBinding_Kd` in a body. The clause is a row, and
      Binding's own failing judgment is its twin.
   3. Outside a body (Field, payload, alias, signature), an unresolved slot stays `MissingOriginBinding_Kd`.
-- **Unchanged here.** `let` candidates (`SolveLocalBounds`, `MeetLocalUpperBounds`) and the contravariant-clause `Unsupported_Kd`.
+- **Unchanged here.** `let` candidates (`SolveLocalBounds`; 2x-P4 D4) and the contravariant-clause `Unsupported_Kd`.
   The latter is a valid form's located limit; OQ-1 decides it.
 - **Record correction.** The S3 demo is a located `Unsupported_Kd` on dev at `let pair` (`rv/s-demo`), not accepted as 2x-P4's
   finding 6 assumed (H). A note goes into A3/origins via 2a-5's PLAN row.
@@ -458,7 +458,7 @@ result relation. Until then it is a location/code row owned by 2c-6 (prototype `
 
 ## 9. Records
 
-**DECISIONS.** The approval entry (written at approval), "R4-M9x A5-F4's design package (2a0-D) approved", names the package,
+**DECISIONS.** The approval entry (written at approval), "R4-M94 A5-F4's design package (2a0-D) approved", names the package,
 its review and the owner's words; DEC Q6 form 1 for 2a0-2, 2a0-3a and 2a0-3b, form 2 for G:A5-F4 (2a-1a, 2a-1b, 2a-2, 2a-4,
 2a-5), and own reviews for 2a0-4 and 2x-R15; the owner's answers to OQ-1 to OQ-4, with OQ-3's departures as confirmed text; and
 a short summary of D1–D23.
@@ -493,7 +493,8 @@ acceptance (item 6).
 1. **p1.** Binding's `PathReborrowOrigin` names a Reborrow through a local's layers by the inner layer only. dev therefore accepts
    `func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a` with `var q = p; return q@follow@follow@uniq`, while SPEC
    15.6.3/15.6.5 make it Unknown (`b outlives a`); its direct twin is rejected. It is not shown to be a miscompile: 15.6.4's
-   per-argument retention keeps the caller's Loan. A5 rejects it from 2a-1a. Closes at R6-check.
+   per-argument retention keeps the caller's Loan. A5 reports it from 2a-1b (Unknown); 2a-1a forms its containment edges. Closes
+   at R6-check.
 2. **The preserves skip (OQ-2 (a)).** Binding's preserves-results containment skip (`B/Binding.ArgumentOperations.cs:563-668`)
    accepts 18 tested forms SPEC 15.6.3 makes Unknown (library and milestones 0, census (a)). A5 rejects them. 2a-4 re-expects the
    18 under OldRule now. The skip is deleted with the old path at R6-check (AR-4).
@@ -526,7 +527,7 @@ Rules common to every code unit:
 - +cen.
 - MIR tests go in new partial files `T/MirOriginsTest.cs` and `T/MirOriginsTest.Merge.cs`, at the MIR-problem layer. Each new
   rejecting test fails before its unit (dev has no stratum). Valid counterparts and pins pass before: `limitRef`, a-split, a-wf,
-  d-g161-ok, CallBorrows Proven, the S3 demo, `leak3`, `cf-g-reassign`, `rv-g-param`.
+  d-g161-ok, CallBorrows Proven, the S3 demo, `leak3`, `cf-g-reassign`.
 - View tests go in `T/OriginRowsTest.cs`.
 
 | ID | Unit | Change | Prerequisites | Verification (tests fail before) | Size (H) | Review | Hold |
@@ -538,7 +539,7 @@ Rules common to every code unit:
 | 2x-R15 | A5's Place steps (bp) | `StepClass`, `Deref`, `Walk`, `Step` move from `MirBorrows.Places.cs` into `M/Analysis/MirSteps.cs` (contract first); `Step` gains its prefix; `Through` stays | 2e-2 (E17's row), on lane C | as 2x-R1: bp triple, ledger raw rows equal, `MirAnalysisTest` | move +95/−90, +5 | R | no |
 | 2a-1a | MirOrigins: frame, rows, containment, Refuted, Reason | §6.1–§6.3 without Unknown; driver step 4 in its final order; `MirProblem.Reason`, the key, `MirFactKind.Relation` and the `int`; DIAGNOSTICS (`contained`, owners); ARCH canonical row; spec-case 15.5/0 relabelled F4; DEC | 2a0-2, 2a0-3a, 2a0-4, 2x-R5, 2x-R15, G:A5-F9 merged | Comp `MirOriginsTest`: audit-origins rows 7, 9c and 19 with twins; 15.6.5's `bad`; j-region, j-unreach; m-scope (S at the return); j-two (two problems, one subject); 15.6.4's `current`, `leak` and a capture store, SPEC 11.8's `nameRef` (S) and `limitRef` (valid). If 2b-6 (b) has landed at 2a-1a's start, each is 2b-6's located `Unsupported_Kd` naming P42, pinned; c-own; a-split and a-wf valid (raw stop); n-inner; G161 (`probe/p2` both forms, and d-g161-ok); `rv/guard-annot` (S); `rv/env-store` (S); `meet-trans`: Binding's P and the located `Unsupported_Kd` of row 9 until BU's I-1 repair, which re-expects it as S with MeetNode. MeetNode itself is pinned by a `MirOrigins` test over a view fixture with fresh-region rows, until a program reaches it; the containment edges of p1's local-layer form and of `x-skip` present (their P is 2a-1b's); the per-builder-site identity test with a Slice element, `leak3` (pinned: no MIR problem, naming §9 item 6) and `leak4` (the storage-end conflict); `rv/meet-trans-ok` (the located `Unsupported_Kd`, no S or P; ledger row (a) with I-1's PLAN row); PD31 facts; `VerifiedSpecExampleTest`, `MirAnalysisTest`; +V16 "F4 Refuted", "F4 containment"; +warm; +cen; +led. Done when the Unsatisfied rows 2x-T2 assigned pair or are (a)/(d) | +300, t+340 | G:A5-F4 | drv |
 | 2a-1b | MirOrigins: Unknown | §6.3's Unknown, §6.4: oracle use, masks, `Work`, arena, `MirDataflow.Within` | 2a-1a | Comp `MirOriginsTest`: r7-inv, r7-subst(-ok), c-detach, c-box, c-peekU, c-cut, c-pair per case, j-f, j-pick per case, j-bits (two words), n-pass, x-skip from `IteratorIndependenceTest` (P at the Reborrow), p1's local-layer form (P, a pinned (a) row), bc801917a239 (two operands), e3312717bde0 (two rows); a failed `==` is one problem; S1015 items 25, 27, 28; CallBorrows rows Proven; MIR equals Binding's direct verdict on the r7/j cases; the limit test (if no source binds within budget, `Within` driven with MirOrigins' counts and the shortfall recorded); +V16 (9) and the 64-view body; +warm; +cen; +led. Done when the Unproven rows 2x-T2 assigned pair or are (a)/(d) | +170, MirDataflow +6, t+260 | G:A5-F4 | no |
-| 2a-2 | The merge | §7: merge context, rules 1–3, `MirFactKind.Result`, `Ended` from MirBorrows' recorder; DIAGNOSTICS A6 rows with N-6's residual; DEC | 2a-1b; a PD21 response for `MirBorrows.Reports.cs` if due at 2a-2's start (2e-D's response precedes 2e-4) | Comp `MirOriginsTest.Merge`: j-bad and j-region (one Unsatisfied, no conflict); g-return; g-two (S, C at cleanup, P); `rv/guard-annot` (S kept); `rv-g-annot-esc` (S and C); `rv-g-param` (S, C and P: the DOUBLE, pinned); `cf-g-reassign` (S lost: N-6's residual, pinned); m-36f (C kept); m-write (the plan's form: the relation and the write conflict), its `var r` form, `cf/p/m-write3` (an annotated `let` initializer, a row: S and the write), and m-write4 (the relation only; the limit, pinned); m-pair; m-scope; m-scope-use; m-store; m-twice/same-root; a block, `if` and `match` result for `ResultFit`; a conflict without a Refuted twin kept; +led. Done when the a5-new storage-end rows 2x-T2 assigned go (≈ 13, H), except a conflict another live holder or storage the body does not own also takes (m-store, `cf/p/jregion2`), and their Unsatisfied rows pair | +45, t+140 | G:A5-F4 | no |
+| 2a-2 | The merge | §7: merge context, rules 1–3, `MirFactKind.Result`, `Ended` from MirBorrows' recorder; DIAGNOSTICS A6 rows with N-6's residual; DEC | 2a-1b; a PD21 response for `MirBorrows.Reports.cs` if due at 2a-2's start (2e-D's response precedes 2e-4) | Comp `MirOriginsTest.Merge`: j-bad and j-region (one Unsatisfied, no conflict); g-return; g-two (S, C at cleanup, P); `rv/guard-annot` (S kept); `rv-g-annot-esc` (S and C); `rv-g-param` (S, C and P: the DOUBLE, pinned); `cf-g-reassign` (pinned: no S at the return, N-6's residual); m-36f (C kept); m-write (the plan's form: the relation and the write conflict), its `var r` form, `cf/p/m-write3` (an annotated `let` initializer, a row: S and the write), and m-write4 (the relation only; the limit, pinned); m-pair; m-scope; m-scope-use; m-store; m-twice/same-root; a block, `if` and `match` result for `ResultFit`; a conflict without a Refuted twin kept; +led. Done when the a5-new storage-end rows 2x-T2 assigned go (≈ 13, H), except a conflict another live holder or storage the body does not own also takes (m-store, `cf/p/jregion2`), and their Unsatisfied rows pair | +45, t+140 | G:A5-F4 | no |
 | 2a-4 | Tests and target sides | The 13 test files reading `Binding.Obligations`, `JudgeOriginObligation` or `LocalRegionSources` gain MIR twins or OldRule markers (2x-T5). The 18 skip forms (`IteratorIndependenceTest` 10, `IteratorOriginEffectsTest` 5, `IteratorIndependenceEditingTest` 3) and `VirtualEffectSelectionTest`'s 2 get MIR target sides under OldRule (PD9, OQ-2). p1's acceptance under OldRule. `PairFollowTest` detach rows on MIR. `Landed += F4, F2` | 2a-2; 2x-T5 | Comp: migrated classes on both pipelines; `VerifiedSpecExampleTest`. Done when no A5-F4 rule is asserted only through old internals and the ratchets do not rise | t±220 | G:A5-F4 | no |
 | 2a-5 | Records and ledger close | §9's ARCH, PLAN, CODEMAP and STATUS; `classification.tsv`; AR-4 additions | 2a-1a–2a-4; 2a0-3b; 2a0-4 | Doc + Evid: +led. Done when the A5-F4 blocking rows 2x-T2 assigned are gone and the eight signatures report on the MIR: e3312717bde0, bc801917a239 (2a-1b); c8c1f3f534b0 (2a0-3b, valid); 1720228ea1c3 (the clause's Loan row, re-triaged here); 9b64b783b09b, cd1535825466, 53d750a49d82, 6b46c86d05a2 by their codes at 2x-T2's base (H) | docs ~45, tsv ±6 | G:A5-F4 | no |
 
