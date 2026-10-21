@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Backend;
 // arguments passed by pointer, the entry block (the prologue) and the return.
 internal sealed partial class FunctionCodegen
 {
-    private TypeLayout[] copies = []; // The copy slots %c<k>, by number.
+    private TypeLayout[] copies = []; // The copy slots %s<k>, by number.
     private int[] copyOf = []; // By operand of the body, its copy slot or -1.
     private int copyCount;
 
@@ -85,7 +85,7 @@ internal sealed partial class FunctionCodegen
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string
     // constant so passed is written into one as its record. One pass over the reached Calls' operands numbers the slots before the prologue
     // allocates them; the call writer finds an operand's by its index. The pass covers every reached Call's in-memory Copy operands, whatever
-    // its callee's row, until a later call row (C3b, C5a, C6c, C8a) uses these slots or narrows the scan.
+    // its callee's row, until a later call row (C3b, C5a, C6c) uses these slots or narrows the scan; C8a's Abort and routine rows use them.
     private void Copies()
     {
         var operands = this.body.Operands;
@@ -168,7 +168,7 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < this.copyCount; i++)
         {
-            this.WriteSlot("  %c", i, this.copies[i]);
+            this.WriteSlot("  %s", i, this.copies[i]);
         }
 
         foreach (var parameter in this.abi.Parameters)

@@ -4,8 +4,9 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a; DECISIONS R5-M89): a callee by its kind's row, the collector's
-// targets read by one forward cursor, and the one call writer, which the legacy rows, the glue items and the module's entry call too.
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C8a; DECISIONS R5-M89, R5-M92): a callee by its kind's row, the
+// collector's targets read by one forward cursor, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and
+// the module's entry call too.
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -20,7 +21,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
-    // legacy row, any other Fn callee by its target (Function); the other rows are not written yet, each at the call.
+    // legacy row, any other Fn callee by its target (Function), an intrinsic by its row's writer (FunctionCodegen.Intrinsics); the other
+    // rows are not written yet, each at the call.
     private void Call(in MirTerminator call)
     {
         var callee = call.Callee;
@@ -43,7 +45,7 @@ internal sealed partial class FunctionCodegen
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C6c loads the virtual slot.
                 return;
             case MirCalleeKind.Intrinsic:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C8a and C10a write the intrinsic rows.
+                this.Intrinsic(call);
                 return;
             default:
                 throw new InvalidOperationException($"The MIR callee kind {callee.Kind} has no code generation row.");
@@ -91,16 +93,28 @@ internal sealed partial class FunctionCodegen
     }
 
     // A call by its signature (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument), the destination's address as the result slot,
-    // the call, its value put into the destination, then the call's target, or unreachable after a call without one (SPEC 14.10.3). The
-    // operands are in the callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a
-    // pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
+    // the call site's location text for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92), then the call and its end
+    // (Finish). The operands are in the callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local,
+    // never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
     private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee)
     {
         var parameters = signature.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
+        var location = -1;
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
+            if (parameter.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
+            {
+                if (location < 0 && (location = this.Location(call.Source)) < 0)
+                {
+                    return; // Recorded.
+                }
+
+                this.arguments[i] = parameter.Kind == AbiParameterKind.Location ? new('@', location) : new('\0', this.module.Constants[location].ByteLength);
+                continue;
+            }
+
             var found = parameter.Kind == AbiParameterKind.ResultSlot ? this.Address(call.Place, out this.arguments[i])
                 : this.Argument(call.Start + ArgumentPosition(callee, parameter.LogicalIndex), parameter, out this.arguments[i]);
             if (!found)
@@ -110,9 +124,16 @@ internal sealed partial class FunctionCodegen
             }
         }
 
-        if (this.WriteCall(signature, this.arguments.AsSpan(0, parameters.Length)) is { } result && this.LoweringOf(call.Place) is { } lowering)
+        this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, parameters.Length)));
+    }
+
+    // A call's end: its value, if any, put into the destination in its storage representation, then the call's target, or unreachable
+    // after a call without one (SPEC 14.10.3).
+    private void Finish(in MirTerminator call, Value? result)
+    {
+        if (result is { } value && this.LoweringOf(call.Place) is { } lowering)
         {
-            this.Store(MirStatement.Assign(call.Place, default, call.Source), this.Widen(lowering, result));
+            this.Store(MirStatement.Assign(call.Place, default, call.Source), this.Widen(lowering, value));
         }
 
         this.output.Write(call.Target < 0 ? "  unreachable\n" : "  br ");
@@ -145,7 +166,7 @@ internal sealed partial class FunctionCodegen
 
                 return true;
             case AbiParameterKind.OwnedSlot when this.copyOf[index] >= 0 && operand.Kind == MirOperandKind.Const:
-                value = new('c', this.copyOf[index]);
+                value = new('s', this.copyOf[index]);
                 this.Text(value, (string)this.body.Consts[operand.Arg].Value!);
                 return true;
             case AbiParameterKind.OwnedSlot when this.copyOf[index] >= 0:
@@ -154,7 +175,7 @@ internal sealed partial class FunctionCodegen
                     return false;
                 }
 
-                value = new('c', this.copyOf[index]);
+                value = new('s', this.copyOf[index]);
                 this.Put(value, this.InstanceType(operand.Place)!, copied, source);
                 return true;
             case AbiParameterKind.OwnedSlot:
@@ -166,8 +187,8 @@ internal sealed partial class FunctionCodegen
 
     // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition): the console
     // writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one
-    // Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine takes the call's operands at its
-    // parameters' slots and the call site's location (Location); its result is Unit, so the destination takes nothing.
+    // Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine is called through the one call writer
+    // (Invoke): the call's operands at its parameters' slots and the call site's location; its result is Unit.
     private void Legacy(in MirTerminator call)
     {
         var symbol = call.Callee.Symbol!;
@@ -182,46 +203,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var constant = this.Location(call.Source);
-        if (constant < 0)
-        {
-            return; // Recorded.
-        }
-
-        var parameters = routine.Parameters;
-        if (this.arguments.Length < parameters.Length)
-        {
-            this.arguments = new Value[parameters.Length];
-        }
-
-        for (var i = 0; i < parameters.Length; i++)
-        {
-            switch (parameters[i].Kind)
-            {
-                case AbiParameterKind.Value or AbiParameterKind.SharedReference:
-                    var operand = this.body.Operands[call.Start + ArgumentPosition(new(symbol, MirBodyKind.Fn), parameters[i].LogicalIndex)];
-                    if (!this.Operand(operand, out this.arguments[i]))
-                    {
-                        this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-                        return;
-                    }
-
-                    break;
-                case AbiParameterKind.Location:
-                    this.arguments[i] = new('@', constant);
-                    break;
-                case AbiParameterKind.LocationLength:
-                    this.arguments[i] = new('\0', this.module.Constants[constant].ByteLength);
-                    break;
-                default:
-                    throw new InvalidOperationException($"The runtime parameter kind {parameters[i].Kind} has no argument row.");
-            }
-        }
-
-        _ = this.WriteCall(routine, this.arguments.AsSpan(0, parameters.Length));
-        this.output.Write("  br ");
-        this.WriteLabel(call.Target);
-        this.output.Write('\n');
+        this.Invoke(call, routine, new(symbol, MirBodyKind.Fn));
     }
 
     // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every

@@ -113,7 +113,7 @@ internal enum IntrinsicId : byte
     RawInitialize,
     RawSlice,
     TryAllocateBytes,
-    MoveBytes, // A byte copy whose ranges may overlap.
+    MoveBytes, // A byte copy whose ranges do not overlap (transferBytes' contract; DECISIONS R5-M18).
     Stride, // Type facts (SPEC 22.2, IMPL 21.1.3); destroying the values of a cleanup-free T generates nothing.
     DestroyValues,
     ReinterpretLoan, // shareLoan and lendLoan (SPEC 22.2).

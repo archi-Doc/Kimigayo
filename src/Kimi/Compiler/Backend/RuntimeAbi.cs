@@ -21,6 +21,10 @@ internal static class RuntimeAbi
     /// element, and below the 64 KiB that Windows never maps, so it is never allocated or released (__kimi_free skips it).</summary>
     internal const int ZeroSizedBuffer = 4096;
 
+    /// <summary>The runtime Abort's os_error for a failure without an operating system error, which the runtime does not print (it prints
+    /// only an os_error of 0 or more).</summary>
+    internal const long NoOsError = -2;
+
     internal static readonly ValueLowering Unit = new(new("void", 0, 1, 0, ReadOnlyMemory<int>.Empty), "void", null);
 
     // { data, byteLength, releaseKind }: size/stride 24, alignment 8, offsets 0/8/16 (implementation-defined, IMPL 21.1.3).

@@ -94,6 +94,14 @@ public sealed class FunctionCodegenTest
         "    return 1\nfunc keep<T>(value: T) -> T => value@move\nfunc kept() -> i32 => keep(1)\n" +
         "func count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\nfunc counted() -> i32 => count(3)\n";
 
+    // The raw memory and failure rows (R5 C8a; DECISIONS R5-M92): Raw's storage operations, raw pointer displacement and equality, null and
+    // $abort.
+    private const string Raws =
+        "func make(n: isize) -> raw/i64 => Raw.allocate<i64>(n)\nfunc put(p: raw/i64, v: i64)\n    unsafe => Raw.initialize(p, v)\n" +
+        "func view() -> Slice<i64>\n    unsafe => return Raw.slice(null@raw/i64, 0)\nfunc free(p: raw/i64)\n    unsafe => Raw.release(p)\n" +
+        "func next(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p - n\n    return q\n" +
+        "func empty(p: raw/i64) -> bool => p == null\nfunc stop() => $abort(\"stop\")\n";
+
     // A #LibraryImport call (SPEC 22.6; DECISIONS R5-M89), its C signature memoized per Write.
     private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
         "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
@@ -403,6 +411,33 @@ public sealed class FunctionCodegenTest
         },
     };
 
+    // The raw memory and failure rows' programs (R5 C8a; DECISIONS R5-M92), self-checking: storage allocated, initialized with a scalar and
+    // a Tuple, read through p[n] and a Slice, displaced and compared, then released; $abort of a constant and of a moved string, at the
+    // $abort expression; a Fail, a range selection out of bounds, at the selection (SPEC 22.5.1-22.5.2).
+    public static TheoryData<string, string, string> RawPrograms => new()
+    {
+        {
+            "RawRows",
+            "let p = Raw.allocate<i64>(3)\nvar bad: i32 = 0\nunsafe\n    Raw.initialize(p, 7)\n    Raw.initialize(p + 1, 8)\n    Raw.initialize(p + 2, 9)\n" +
+            "    let s = Raw.slice(p, 3)\n    if p[0] + p[1] + s[2] != 24 or s.length != 3 => bad = 1\n    let q = p + 2\n    if q - 1 != p + 1 => bad = 1\n" +
+            "    Raw.release(p)\nif p == null => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        {
+            "RawRowsTuple",
+            "let p = Raw.allocate<(i32, i64)>(1)\nvar bad: i32 = 0\nunsafe\n    Raw.initialize(p, (1, 2))\n    if (*p).1 != 2 => bad = 1\n" +
+            "    Raw.release(p)\nlet check = 1 / (1 - bad)\n",
+            string.Empty
+        },
+        { "AbortRowsConstant", "$abort(\"stop\")\n", "Hello.kimi:1:1: abort KIMI_E_ABORT: stop\n" },
+        { "AbortRowsMoved", "func fail(text: string) => $abort(text@move)\nfail(\"moved\")\n", "Hello.kimi:1:28: abort KIMI_E_ABORT: moved\n" },
+        {
+            "AbortRowsBounds",
+            "let a: [4 of i32] = [1, 2, 3, 4]\nvar n: isize = 5\nlet s = a[1..n]\n",
+            "Hello.kimi:3:9: abort KIMI_E_INDEX_BOUNDS: Index out of bounds\n"
+        },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
@@ -437,6 +472,11 @@ public sealed class FunctionCodegenTest
     [MemberData(nameof(CallPrograms))]
     public void CallProgramsRun(string name, string source, string stdout, string stderr)
         => ScalarEmissionTest.EmitFixture(name, source, stdout, stderr.Length == 0 ? 0 : 1, stderr);
+
+    [Theory]
+    [MemberData(nameof(RawPrograms))]
+    public void RawProgramsRun(string name, string source, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, string.Empty, stderr.Length == 0 ? 0 : 1, stderr);
 
     // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
     // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
@@ -955,15 +995,29 @@ public sealed class FunctionCodegenTest
     public void ACopyArgumentInMemoryHasACopySlot()
     {
         var text = Parse("func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)").Text;
-        Assert.Contains("  %c0 = alloca { [0 x i64], [16 x i8] }, align 8\n", text, StringComparison.Ordinal);
-        const string Copied = "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %c0, ptr align 8 %a0, i64 16, i1 false)\n  %t0 = call i64 @";
+        Assert.Contains("  %s0 = alloca { [0 x i64], [16 x i8] }, align 8\n", text, StringComparison.Ordinal);
+        const string Copied = "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %s0, ptr align 8 %a0, i64 16, i1 false)\n  %t0 = call i64 @";
         Assert.Contains(Copied, text, StringComparison.Ordinal);
         var moved = Parse("func take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)").Text;
         Assert.Matches(@"\n  call void @__kimi_f\d+\(ptr %l\d+\)\n", moved);
-        Assert.DoesNotContain("%c0", moved, StringComparison.Ordinal);
+        Assert.DoesNotContain("%s0", moved, StringComparison.Ordinal);
         var constant = Parse("func take(s: string) => ()\nfunc give() => take(\"x\")").Text;
-        Assert.Contains("  %c0 = alloca %kimi.string, align 8\n", constant, StringComparison.Ordinal);
-        Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %c0, align 8\n  call void @__kimi_f\d+\(ptr %c0\)\n", constant);
+        Assert.Contains("  %s0 = alloca %kimi.string, align 8\n", constant, StringComparison.Ordinal);
+        Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %s0, align 8\n  call void @__kimi_f\d+\(ptr %s0\)\n", constant);
+    }
+
+    // I1 (DECISIONS R5-M92): a copy slot's name is never a block's, so a function with copy slots and checks whose success labels share
+    // their numbers (c<id>) stays valid IR; R5-M89's %c<k> collided with them.
+    [Fact]
+    public void CopySlotsAndCheckLabelsNeverShareAName()
+    {
+        var text = Parse("func use(a: (i32, i64), b: (i32, i64), c: (i32, i64)) -> i64 => a.1\nfunc f(x: i32, q: (i32, i64)) -> i64\n" +
+            "    let y = x + 1\n    return use(q, q, q) + y@i64").Text;
+        var slots = Regex.Matches(text, @"\n  %(\w+) = alloca ").Select(static x => x.Groups[1].Value).ToHashSet(StringComparer.Ordinal);
+        var labels = Regex.Matches(text, @"\n(\w+):\n").Select(static x => x.Groups[1].Value);
+        Assert.Contains("s2", slots);
+        Assert.Contains("c1", labels);
+        Assert.DoesNotContain(labels, slots.Contains);
     }
 
     // An ABI requirement (IMPL 21.3.1; DECISIONS R5-M89): a slot result is written through the caller's destination, which is never one of
@@ -1000,6 +1054,56 @@ public sealed class FunctionCodegenTest
         var template = ir.Single("internal i32 (ptr)");
         Assert.Contains(template.Instructions, x => x.Opcode == "call" && x.Callee == template && x.Shape == "call i32 @(ptr %)");
         Assert.Contains(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == ir.Single("internal i32 (i32, i32)"));
+    }
+
+    // SPEC 5.6, 17.4, 22.5.2 (DECISIONS R5-M92): an intrinsic is written by its row's writer: Raw.allocate calls its routine with the
+    // element's stride and the call's location, Raw.release its routine, Raw.initialize stores the value at the storage, Raw.slice puts the
+    // record's two Fields, $abort calls the message routine with its constant's copy slot and Fail the Abort routine with its code's reason,
+    // each without a successor.
+    [Theory]
+    [InlineData("func make(n: isize) -> raw/i64 => Raw.allocate<i64>(n)", @"= call ptr @__kimi_raw_allocate\(i64 %t\d+, i64 8, ptr @\S+, i64 \d+\)\n")]
+    [InlineData("func make(n: isize) -> raw/(i32, i64) => Raw.allocate<(i32, i64)>(n)", @"= call ptr @__kimi_raw_allocate\(i64 %t\d+, i64 16, ptr @\S+")]
+    [InlineData("func free(p: raw/i64)\n    unsafe => Raw.release(p)", @"\n  call void @__kimi_free\(ptr %t\d+, ptr @\S+, i64 \d+\)\n  br ")]
+    [InlineData("func put(p: raw/i64, v: i64)\n    unsafe => Raw.initialize(p, v)", @"\n  store i64 %t\d+, ptr %t\d+, align 8\n  br ")]
+    [InlineData("func put(p: raw/(i32, i64), v: (i32, i64))\n    unsafe => Raw.initialize(p, v@move)", @"@llvm\.memcpy\.p0\.p0\.i64\(ptr align 8 %t\d+, ptr align 8 %l\d+, i64 16, i1 false\)\n  br ")]
+    [InlineData(
+        "func view() -> Slice<i64>\n    unsafe => return Raw.slice(null@raw/i64, 0)",
+        @"\n  store ptr %t\d+, ptr (%\w+), align 8\n  (%t\d+) = getelementptr i8, ptr \1, i64 8\n  store i64 0, ptr \2, align 8\n")]
+    [InlineData("func stop() => $abort(\"stop\")", @"\n  call void @__kimi_abort_message\(ptr %s0, ptr @\S+, i64 \d+\)\n  unreachable\n")]
+    [InlineData(
+        "func cut(a: ref/[4 of i32], n: isize) -> isize\n    let s = a[1..n]\n    return s.length",
+        @"\n  call void @__kimi_abort\(i32 10, ptr @\S+, i64 \d+, i64 -2\)\n  unreachable\n")]
+    public void AnIntrinsicIsWrittenByItsRow(string source, string pattern)
+        => Assert.Matches(pattern, Parse(source).Text);
+
+    // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
+    // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
+    [Theory]
+    [InlineData("func next(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p + n\n    return q", @"= mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")]
+    [InlineData("func back(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p - n\n    return q", @"= mul i64 %t\d+, -8\n")]
+    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q", @"= icmp eq ptr %t\d+, %t\d+\n")]
+    [InlineData("func empty(p: raw/i32) -> bool => p != null", @"= icmp ne ptr %t\d+, null\n")]
+    [InlineData("func none() -> raw/i32 => null", @"\n  store ptr null, ptr %l0, align 8\n")]
+    public void ARawPointerOperatorIsItsColumn(string source, string pattern)
+        => Assert.Matches(pattern, Parse(source).Text);
+
+    // SPEC 5.3: a raw pointer to a zero-sized Type is displaced by nothing, so p + n is the pointer itself.
+    [Fact]
+    public void AZeroStrideDisplacementKeepsThePointer()
+    {
+        var text = Assert.Single(ItemTexts(Analyze("func next(p: raw/(), n: isize) -> raw/()\n    var q: raw/() = null\n    unsafe => q = p + n\n    return q", OutputKind.Library), "next"));
+        Assert.DoesNotContain("getelementptr", text, StringComparison.Ordinal);
+        Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
+    }
+
+    // SPEC 22.2 (DECISIONS R5-M18, R5-M92): DictionaryStorage's byte copy is llvm.memcpy, its ranges never overlapping, and its nullable Alloc
+    // calls the runtime routine both generators define where a body calls it.
+    [Fact]
+    public void TheStorageBytePrimitivesAreTheirRows()
+    {
+        var c = Analyze("func more(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\nfunc fit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n", OutputKind.Library);
+        Assert.Contains(ItemTexts(c, "grow"), static x => Regex.IsMatch(x, @"\n  call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %t\d+, ptr %t\d+, i64 %t\d+, i1 false\)\n"));
+        Assert.Contains(ItemTexts(c, "shrinkToFit"), static x => Regex.IsMatch(x, @"= call ptr @__kimi_try_allocate\(i64 %t\d+\)\n"));
     }
 
     // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
@@ -1131,9 +1235,9 @@ public sealed class FunctionCodegenTest
     // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
-    // the static. The operator rows (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide
-    // overflow declarations; the conversion rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a,
-    // at the Cast that reads it; the place writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through
+    // the static. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
+    // have a raw pointer column since C8a (R5-M92), which writes null too; the conversion rows (DECISIONS R5-M80) leave an erasure to C5b,
+    // at its Cast; an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through
     // it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to
     // C8e, at the member, and an Array from none to C8d, at the literal. K11: an Application's function nothing calls is not generated, so
     // its form records nothing; a Library generates it.
@@ -1142,8 +1246,9 @@ public sealed class FunctionCodegenTest
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
     [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new[] { "id" })]
-    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new[] { "null@raw/i32" })]
-    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new[] { "p == q" })]
+    [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]
+    [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
+    [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new[] { "a.capacity" })]
     [InlineData("let t = (1, 2)\n", OutputKind.Application, new string[0])]
     [InlineData("let u = ()\nlet r = u@ref\n", OutputKind.Application, new string[0])]
     [InlineData("func count(d: ref/Dictionary<i32, i32>) -> isize => d.length\n", OutputKind.Library, new[] { "d.length" })]
@@ -1191,6 +1296,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Adaptations, OutputKind.Library)]
     [InlineData(Calls, OutputKind.Library)]
     [InlineData(Imports, OutputKind.Library)]
+    [InlineData(Raws, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1276,6 +1382,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Adaptations, OutputKind.Library)]
     [InlineData(Calls, OutputKind.Library)]
     [InlineData(Imports, OutputKind.Library)]
+    [InlineData(Raws, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

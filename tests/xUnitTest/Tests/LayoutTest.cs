@@ -47,6 +47,18 @@ public class LayoutTest
         Assert.Same(value, WindowsLowering.GetValue(BoundType.Primitives[type]));
     }
 
+    // DECISIONS R5-M92: no Layout alignment exceeds 16, the heap's (SPEC 5.6, 21.4.3), which Raw.allocate's row relies on in place of the
+    // old generator's refusal: every primitive's row is at most 16 and a placement takes its parts' maximum (IMPL 21.1.2), in C mode too.
+    [Fact]
+    public void NoLayoutAlignmentExceedsTheHeapAlignment()
+    {
+        var c = CompilationTestHelper.BindSuccess(
+            "struct S\n    var a: i128\n    var b: u8\n#Layout(\"C\")\nstruct C\n    var a: u128\n    var b: i8\n" +
+            "func probe(s: S, c: C, t: (i128, (u128, i8)), a: [3 of i128], o: Option<i128>) => ()");
+        Assert.All(BoundType.Primitives.Values, x => Assert.InRange(c.Layout.Of(x).Value!.Layout.Alignment, 1, 16));
+        Assert.All(Parameters(c), x => Assert.Equal(16, c.Layout.Of(x).Value!.Layout.Alignment));
+    }
+
     [Fact]
     public void UnitStringAndNeverUseTheRuntimeRecords()
     {

@@ -4842,3 +4842,46 @@ structure is recorded here by the unit that first implements it.
   program's own uncalled imports, while declaring every validated import would add the Library's `QueryPerformance*` imports to every
   module; `ForeignEmissionTest`'s two declaration rows stay pending, and by R5-M85 and R5-M6's class (d) G3 reduces them). They leave
   the list; R5's group reviews check the code against those entries.
+- **R5-M92 The raw memory and failure rows of MIR code generation and the intrinsic writer column** (2026-10-21, C lane; plan C8a,
+  package C 3.2 and §2 rows 2 and 24, SPEC 5.1, 5.3, 5.6, 17.4, 21.4.3, 22.2 and 22.5.2; the planning session's decisions on C8a's design;
+  under R5-M18, R5-M65, R5-M76, R5-M80 and R5-M89)
+  - Writer column (R5-M18's approved column, which R5-M65 staged to the first unit writing an intrinsic call): `IntrinsicRows` is one
+    row array in `IntrinsicId` order, checked once, each row with a closed `IntrinsicWriter` and its runtime `Routine`; code generation
+    switches over the writer, never over `IntrinsicId`. Rows: Routine (RawRelease's `__kimi_free`, Abort's `__kimi_abort_message`,
+    noreturn) through the one call writer (`Invoke`), whose parameter loop now passes the call's location for the Location kinds, so the
+    console writeLine row is an `Invoke` too (its own loop deleted); TryAllocate (tryAllocateBytes, the same, its definition requested);
+    Allocate (Raw.allocate: the count, the element's stride from `Layout.Of`, the location); Fail (`__kimi_abort` with the reason
+    `AbortReasons.Of` gives the code MIR carries, its one operand, and no OS error, `RuntimeAbi.NoOsError`, the runtime's -2; a code
+    outside the table is `InternalInvariant_Kd`); Initialize (the
+    value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
+    backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
+    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues; C6a MakeObj, MakeRc, MakeArc,
+    Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout; C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
+    the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan are C8a's (the planning session's mapping), but no
+    compiler function's disposition serves them and no MIR form produces them, so their rows are written with their first producer.
+  - The nullable Alloc (decision 2C; package C row 2): `__kimi_try_allocate`'s definition is the runtime's, `LlvmModuleText.TryAllocate`,
+    its marker spliced from `RuntimeAbi.TryAllocateBytes` by the checked runtime splice and defined in a module only where a body calls it,
+    by both generators: the old writer's storage byte primitives write it, byte-identical (e1025e1b), and MIR code generation requests it
+    (`ModuleCodegen.Needs.TryAllocate`). Not inline, a second copy, nor `LegacyRuntimeHelpers`' (R8-transitional). G151 closes: RawSlice's
+    permanent writer is the Slice row; `WriteRawSlice` remains the old generator's and goes with it.
+  - Raw pointers (staged here by R5-M76 and R5-M80): the operator table's sixth column, `==` and `!=` as `icmp` on `ptr`, `p + n` and
+    `p - n` a displacement entry (`mul` by the pointee's stride with its sign, then the place writer's `Offset`; a zero stride keeps the
+    pointer, null included; unchecked, SPEC 5.3); Binding admits no other pointer operator. `null` is a constant (`Value` form `n`), which
+    R5-M80's null Cast and comparisons read.
+  - Layout invariant (decision on the alignment check): no Layout alignment exceeds 16, the heap's (SPEC 21.4.3): every scalar row is at
+    most 16 and a placement takes its parts' maximum (IMPL 21.1.2), C mode too. Raw.allocate's row relies on it in place of the old
+    generator's refusal of a larger alignment (`BodyLowering.Raw.cs:47`, unreachable on windows-x64-v1), and
+    `LayoutTest.NoLayoutAlignmentExceedsTheHeapAlignment` pins it at Layout's layer. A profile whose Layout could exceed it records SPEC
+    5.6's Unsupported at compile time.
+  - Locations: Abort, Fail and the routines report `Location(call.Source)`; in a caller-location body that stays a record until C3b
+    (R5-M93). The copy slots' condition (R5-M89) is met for C8a's rows: Abort's constant message is written into one.
+  - Copy slots are spelled `%s<k>`, superseding R5-M89's `%c<k>`: a check's success label is `c<id>`, so a body with both could define
+    one name twice (invalid IR in `CopyOperationValues` and the `InheritedPlans*` fixtures, which C8a's rows made generable); the
+    regression is `FunctionCodegenTest.CopySlotsAndCheckLabelsNeverShareAName`.
+  - Restructures first, behavior unchanged: `IntrinsicRows.cs` as the indexed table, `LlvmModuleText.cs`' spellings split out,
+    `LegacyRuntimeHelpers`' storage byte primitives moved to `.Storage.cs` (d063f5ad); `RuntimeAbi.cs` gains the routines' operand slots
+    (`LogicalIndex`, which no generated text reads) without a split: its routines' initializers read its representations, and a partial
+    split leaves their order unspecified (e1025e1b).
+  - Rejected: a switch over `IntrinsicId` in code generation (a second table of the vocabulary); `memmove` (R5-M18); an inline nullable
+    Alloc or `LegacyRuntimeHelpers`' text (above); a code column in `IntrinsicRows` for Fail (it would copy `IntrinsicDisposition`'s codes);
+    copying the old 16-byte check (the invariant above makes it dead code).
