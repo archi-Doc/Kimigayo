@@ -292,9 +292,11 @@ public sealed partial class Binding
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5: a selected referent is a Place.
             MemberAccessKoto member => DeclaringType(ElementAccess.AccessType(member.Left)) is var declaring &&
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && AdtDef.IsStruct(declaring)) || declaring?.Kind == BoundTypeKind.Tuple),
-            IndexKoto index => !ElementAccess.IsSlicing(index) && (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
-                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType) ||
-                ElementAccess.IsUserIndex(index)), // SPEC 4.7.1, including a Place published by a user index; a range selection is a value
+            // SPEC 4.7.1: a user index publishes a Place, whatever its key; a range selection of a sequence is a value (SPEC 4.8.2).
+            IndexKoto index => ElementAccess.IsUserIndex(index) || (!ElementAccess.IsSlicing(index) &&
+                (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
+                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) ||
+                ReferenceTypes.IsDictionary(index.Left.BoundType))),
             _ => false,
         };
     }
@@ -311,26 +313,26 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
-    // lifetime. A newly owned temporary has exclusive writable capability, lent exclusively only when spelled or as a Receiver
-    // Expression (SPEC 7.3, 15.1.5), and a getter result only shared (SPEC 11.5). A selected referent or payload, a published
-    // Place, a user index Place (SPEC 4.7.1), a named binding and a Tuple element are Places, never temporaries. A function reference
-    // and an anonymous function construct a callable value, despite a declaration Symbol (SPEC 7).
+    // SPEC 3.4, 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
+    // lifetime. The operand is judged at the root of its path through parentheses and inline parts, as both keep a Place's
+    // classification (SPEC 3.4, 4.7.1): a root that is a Place (IsBarePlace) or names a declaration, a static Field among them, is
+    // no temporary, nor is a part of it; a part of a temporary is lent with it. A newly owned temporary has exclusive writable
+    // capability, lent exclusively only when spelled or as a Receiver Expression (SPEC 7.3, 15.1.5), and a getter result only
+    // shared (SPEC 11.5). A function reference and an anonymous function construct a callable value, despite a declaration Symbol
+    // (SPEC 7).
     private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
-        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
-            (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)))
+        var root = unwrapped;
+        while (root is BinaryKoto part && !IsGetterResult(part) && ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _))
         {
-            return false;
+            root = KotoHelper.UnwrapParentheses(part.Left);
         }
 
-        var callableValue = (source.BoundType?.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
-            unwrapped is FunctionKoto { IsAnonymous: true };
-        return (source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
+        var callableValue = (root.BoundType?.Kind == BoundTypeKind.FunctionItem && root.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
+            root is FunctionKoto { IsAnonymous: true };
+        return !IsBarePlace(root) && (root.BoundSymbol is null || callableValue || root is InvocationKoto || (!exclusive && IsGetterResult(root))) &&
             (!exclusive || (spelled && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
-            !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
-            (unwrapped is not IdentifierNameKoto || callableValue) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 
