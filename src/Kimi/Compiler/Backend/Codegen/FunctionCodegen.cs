@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76,
-// R5-M78, R5-M80, R5-M83, R5-M87, R5-M89), MIR code generation: the LLVM definition of one body item of the checked set from its validated,
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C8a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76,
+// R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92), MIR code generation: the LLVM definition of one body item of the checked set from its validated,
 // analyzed MIR body in the item's instance, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one
 // located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
@@ -19,33 +19,36 @@
 // Assign into a Place the place writer locates (FunctionCodegen.Places: a local's home, a zero-sized one's the module's zero-sized symbol,
 // and the projections, an Index with its bounds check), after its rvalue, each value put in its representation (a value in memory, a slot
 // Type other than the string's record, copied by memcpy; nothing for a zero-sized one): of a Use, from a Copy, Move or PairAcquire of such
-// a Place (a PairAcquire's two cases write the same bits) or a Bool, Integer, Float or Unit constant, or of a string constant to a string
-// Place (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point,
-// bool, char and Unit operands by the operator table (FunctionCodegen.Arithmetic), or of a numeric, wrapping, bit or raw pointer Cast by
-// the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case or fixed-array Aggregate of such operands, or
-// of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len of a fixed array, Array or Slice, or of an
-// Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues and .Aggregates; R5-M78, R5-M83, R4-M81, R5-M87); Goto, SwitchInt,
-// Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given the call
-// site's location text (SPEC 22.5.1), of a function's instance under its signature or of a #LibraryImport function under its C signature,
-// each argument by its parameter, a Copy of a value in memory and a string constant through a copy slot, the result slot the destination,
-// unreachable after a call without a target (FunctionCodegen.Calls; R5-M89); a DefaultTemplate body, its prepared inputs in slot order
-// (OrderOf); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a) and StaticInit (C7b)
-// bodies; statics (C7b); a handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e),
-// a Dictionary's (C8e) and a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); operators on
-// raw-pointer (C8a) operands and string operations (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem
-// (C5a), Location (C3b), raw-pointer (C8a) and other string constants (C8c), TypeToken constants being intrinsic operands (C6a's TypeTest,
-// C9a); calls of a requirement or a caller-location callee (C3b), a value (C5a), a virtual slot (C6c), an intrinsic (C8a, C10a), a Builtin
-// shim (C8f, C9b), a property witness (C3c) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards
-// its own (C3b); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: the dispatch (this file); the
-// function's frame: its kind's argument order, homes, copy slots, prologue and return (FunctionCodegen.Frame.cs); the place writer and the
-// loads, stores and copies through it (.Places.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs),
-// conversions (.Casts.cs), calls (.Calls.cs) and drops (.Drops.cs).
+// a Place (a PairAcquire's two cases write the same bits) or a Bool, Integer, Float or Unit constant or a raw pointer's null, or of a
+// string constant to a string Place (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer,
+// wrapping integer, floating-point, bool, char and Unit operands and a raw pointer's == and != and displacement by the operator table
+// (FunctionCodegen.Arithmetic; R5-M92), or of a numeric, wrapping, bit or raw pointer Cast by the conversion table (FunctionCodegen.Casts),
+// or of a Ref, or of a Tuple, struct, enum Case or fixed-array Aggregate of such operands, or of a Fill of one, a counted loop over its
+// instance's length, or of a Discriminant, of a Len of a fixed array, Array or Slice, or of an Adapt by the rvalue the item's view selects
+// (FunctionCodegen.Rvalues and .Aggregates; R5-M78, R5-M83, R4-M81, R5-M87); Goto, SwitchInt, Return and Unreachable; a Call of the console
+// writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1), of a
+// function's instance under its signature or of a #LibraryImport function under its C signature, each argument by its parameter, a Copy of
+// a value in memory and a string constant through a copy slot, the result slot the destination, unreachable after a call without a target
+// (FunctionCodegen.Calls; R5-M89), of an intrinsic by its row's writer (FunctionCodegen.Intrinsics: Raw's storage operations, the byte
+// copy, the nullable Alloc, $abort and Fail; R5-M92); a DefaultTemplate body, its prepared inputs in slot order (OrderOf); a Drop's Keep
+// and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a) and StaticInit (C7b) bodies; statics (C7b); a
+// handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e) and
+// a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); string operations (C8c), checked 128-bit
+// arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a) and other string constants (C8c), Location and TypeToken constants
+// being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement or a caller-location callee (C3b), a value
+// (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f, C9b), a property
+// witness (C3c) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag
+// (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: the dispatch (this file); the function's frame: its kind's argument
+// order, homes, copy slots, prologue and return (FunctionCodegen.Frame.cs); the place writer and the loads, stores and copies through it
+// (.Places.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls
+// (.Calls.cs), intrinsics (.Intrinsics.cs) and drops (.Drops.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
 // Ok are broken contracts: InternalInvariant_Kd.
 
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -197,13 +200,14 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type, Float (its IEEE bits), Unit (zero-sized).
+    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
+    // IEEE bits), Unit (zero-sized).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
         if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit))
         {
-            return false; // String other than into a string local (C8c), FnItem (C5a), Location (C3b), TypeToken (C3a).
+            return false; // String other than into a string local (C8c), FnItem (C5a), Location (C10a), TypeToken (C6a, C9a).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
@@ -218,9 +222,15 @@ internal sealed partial class FunctionCodegen
         }
 
         var type = this.collector.TypeOf(this.item, constant.Type)!;
+        if (constant.Kind == MirConstKind.Integer && type.Semantics == SemanticsKind.Raw)
+        {
+            value = new('n', 0); // SPEC 5.1: null, the one raw pointer constant.
+            return true;
+        }
+
         if (constant.Kind == MirConstKind.Integer && !type.HasIntegerArithmetic && !ReferenceEquals(type, BoundType.Char))
         {
-            return false; // A raw pointer's null (C8a).
+            return false; // A later row's Type.
         }
 
         value = lowering.Layout.Size == 0 ? default : new('\0', Signed(constant.Bits, 8 * lowering.Layout.Size));
@@ -387,8 +397,9 @@ internal sealed partial class FunctionCodegen
     // A record at a site of the body, located by the collector's rule (K package 4.9).
     private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
 
-    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the pooled constant @<name> of index Number (Prefix @), the home
-    // of local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling) or
-    // the literal integer Number (Prefix NUL).
+    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the copy slot %s<n> (Prefix s; never c, a check's success
+    // label), the pooled constant @<name> of index Number (Prefix @), the home of local Number, its address (Prefix h), the floating
+    // constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer
+    // Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 }

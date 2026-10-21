@@ -1,13 +1,7 @@
 fixture	StringFunctionCallerOrderAudit.ll	1
 fixture	StringFunctionCallerOrderWrongOrderAudit.ll	1
 fixture	StringFunctionEarlyArgumentAudit.ll	1
-test	XunitTest.RawAddressTest.WritesThroughARawPlacePartAddressReachThePart	XunitTest.RawAddressTest.WritesThroughARawPlacePartAddressReachThePart
-test	XunitTest.RawAddressTest.WritesThroughTheAddressReachThePlace	XunitTest.RawAddressTest.WritesThroughTheAddressReachThePlace
-test	XunitTest.RawPlaceAccessTest.ARawPlaceBorrowIsAReservedArgument	XunitTest.RawPlaceAccessTest.ARawPlaceBorrowIsAReservedArgument
-test	XunitTest.RawPlaceAccessTest.AReturnedRawPlaceBorrowTakesTheResultOrigin	XunitTest.RawPlaceAccessTest.AReturnedRawPlaceBorrowTakesTheResultOrigin
 test	XunitTest.RawPlaceAccessTest.AnExplicitTakeMovesAndDestroys	XunitTest.RawPlaceAccessTest.AnExplicitTakeMovesAndDestroys
-test	XunitTest.RawStorageTest.InvalidCountsAbort	XunitTest.RawStorageTest.InvalidCountsAbort(name: \"Negative\", count: \"-1\", message: \"abort KIMI_E_ARG_RANGE: Argument out of range\")
-test	XunitTest.RawStorageTest.InvalidCountsAbort	XunitTest.RawStorageTest.InvalidCountsAbort(name: \"Oversized\", count: \"4611686018427387904\", message: \"abort KIMI_E_ALLOC_SIZE: Allocation size exceeds limit\")
 test	XunitTest.RawStorageTest.SlicesViewInitializedStorage	XunitTest.RawStorageTest.SlicesViewInitializedStorage
 test	XunitTest.RawStorageTest.StorageIsAllocatedInitializedTakenAndReleased	XunitTest.RawStorageTest.StorageIsAllocatedInitializedTakenAndReleased
 test	XunitTest.RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces	XunitTest.RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces
