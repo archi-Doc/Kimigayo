@@ -1019,3 +1019,20 @@ pointer rules left open by G160) was not accepted in that review and was redone 
   representation (OQ-R3 (b)); G160 §6's diagnostic for a raw Field a `drop` releases without `during self` (OQ-R4 (a)). Planned
   mapping: §5.7 and §5.2.1 condition 3.
 - Only the lifecycle receivers' root is integrated (SPEC §15.6.5); no support is claimed.
+
+## 2026-10-22 — Abstract calls reach by paths (`preserves results` removed)
+
+The owner asked on 2026-10-22 for a scrutiny of design C (unify concrete and abstract calls under the ordinary borrowing
+rules, including the removal of `preserves results`), then: 「推奨の通り修整し、bの移行方法で進めます。正式な変更案を書き、独立レビューにかけて下さい」,
+and after the review: 「Q1 (a) P12も削除、Q2 (a) CallEffectConflict_Kdを廃止、で採択します。提案をdevにコミット・pushしてください。」
+Two independent reviewers (soundness and design; SPEC text, completeness and plan) reviewed it in three rounds; every finding is
+applied (its §13).
+
+- [Abstract Calls Reach by Paths](Proposals/2026-10-22%20Abstract%20Calls%20Reach%20by%20Paths.md): 一部取り込み (open, adopted,
+  intake only). Deletes SPEC 8.11.4 rule 1's "an abstract input may reach every Loan its Origins may denote" and everything that
+  excused or completed it: `preserves results` (8.11.3), rule 3, 8.11.5 delegation, the Callable and slot variants, Iterator's
+  bound and P12 (15.6.3:571, 15.6.4:595); `confined` stays the only effect bound. Planned mapping: its §5 (8.11 renumbered,
+  6.4.6, 12.7.1, 15.6, 15.6.3, 15.6.4, 16.3.3, 22.2, Appendices D, E, F, LIBRARY), integrated by its unit U0, which also moves it
+  to `Changes` and records its DECISIONS entries (its §10). Migration (b): a freeze exception for the old Analysis.
+- On U0, `Proposals/2026-10-16 Preserves Results by Receiver Place.md` (S2) moves to `Obsolete` as 完了 (nothing integrated).
+- Nothing is integrated yet; no support is claimed. SPECJ (being retranslated on `codex/specj-from-source`) predates this change.
