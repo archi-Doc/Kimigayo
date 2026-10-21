@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Place authority (SPEC 3.4, 3.4.3, 3.5, 3.6, 13.5.5, 15.1.5, 15.6.2): what an expression is as a Place and what its path grants.
-// - Responsibility: whether an expression is a bare Place (IsBarePlace) or a Temporary Value a borrow may materialize
-//   (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
+// - Responsibility: whether an expression is a bare Place (IsBarePlace), a static Field (IsStaticField) or a Temporary Value a borrow
+//   may materialize (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
 //   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a receiver
 //   can be exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers
 //   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle, as
@@ -292,9 +292,11 @@ public sealed partial class Binding
             ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } => true, // SPEC 13.5.5: a selected referent is a Place.
             MemberAccessKoto member => DeclaringType(ElementAccess.AccessType(member.Left)) is var declaring &&
                 ((member.BoundSymbol?.Property is { Getter.IsStandard: true } && AdtDef.IsStruct(declaring)) || declaring?.Kind == BoundTypeKind.Tuple),
-            IndexKoto index => !ElementAccess.IsSlicing(index) && (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
-                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType) ||
-                ElementAccess.IsUserIndex(index)), // SPEC 4.7.1, including a Place published by a user index; a range selection is a value
+            // SPEC 4.7.1: a user index publishes a Place, whatever its key; a range selection of a sequence is a value (SPEC 4.8.2).
+            IndexKoto index => ElementAccess.IsUserIndex(index) || (!ElementAccess.IsSlicing(index) &&
+                (index.Left.BoundType?.Kind is BoundTypeKind.FixedArray or BoundTypeKind.Slice or BoundTypeKind.Array or BoundTypeKind.Dictionary ||
+                ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) ||
+                ReferenceTypes.IsDictionary(index.Left.BoundType))),
             _ => false,
         };
     }
@@ -311,28 +313,31 @@ public sealed partial class Binding
         return type;
     }
 
-    // SPEC 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
-    // lifetime. A newly owned temporary has exclusive writable capability, lent exclusively only when spelled or as a Receiver
-    // Expression (SPEC 7.3, 15.1.5), and a getter result only shared (SPEC 11.5). A selected referent or payload, a published
-    // Place, a user index Place (SPEC 4.7.1), a named binding and a Tuple element are Places, never temporaries. A function reference
-    // and an anonymous function construct a callable value, despite a declaration Symbol (SPEC 7).
+    // SPEC 3.4, 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
+    // lifetime: an operand whose root, through parentheses and inline parts (both keep a Place's classification, SPEC 3.4, 4.7.1), is
+    // no Place (IsBarePlace, or a static Field, IsStaticField), such as a call result, a Case construction, a callable value or a getter
+    // result; a part of it is lent with it. A newly owned temporary has exclusive writable capability, lent exclusively only when
+    // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5) and not through an inline part here, and a getter result only shared
+    // (SPEC 11.5).
     private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
-        if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
-            (unwrapped is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex)))
+        var root = unwrapped;
+        while (root is BinaryKoto part && !IsGetterResult(part) && ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _))
         {
-            return false;
+            root = KotoHelper.UnwrapParentheses(part.Left);
         }
 
-        var callableValue = (source.BoundType?.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
-            unwrapped is FunctionKoto { IsAnonymous: true };
-        return (source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
-            (!exclusive || (spelled && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
-            !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
-            (unwrapped is not IdentifierNameKoto || callableValue) &&
+        return !IsBarePlace(root) && !IsStaticField(root) &&
+            (!exclusive || (spelled && !IsGetterResult(root) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
+
+    // SPEC 15.6.2, 22.4.4: a static Field, the root Place of a path through the keys of its group's storage: a group's Property read
+    // through its standard getter, named qualified or in its group. Not yet a bare Place (IsBarePlace): a Subject borrowed in place
+    // would then need the implicit static Borrow that is unimplemented (PLAN G100 (b)).
+    private static bool IsStaticField(Koto node)
+        => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: true, Symbol.Scope.Owner: GroupKoto };
 
     // SPEC 3.4.3: a member or Tuple element selected through several reference layers is reached through one reference
     // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
@@ -555,7 +560,7 @@ public sealed partial class Binding
             if (source is MemberAccessKoto access)
             {
                 // SPEC 15.6.2: a static Field is a root Place, lent as its accessors allow (above), as one named unqualified is (below).
-                if (property.Symbol.Scope.Owner is GroupKoto)
+                if (IsStaticField(access))
                 {
                     staticRoot = access;
                     return true;

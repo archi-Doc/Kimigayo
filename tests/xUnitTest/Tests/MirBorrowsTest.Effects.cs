@@ -343,12 +343,11 @@ public sealed partial class MirBorrowsTest
                     .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
     }
 
-    // SPEC 15.6.4 (R4-M92): an explicit Borrow of a static's part still binds when it is qualified (2b-D §1.5's premise does not hold at
-    // this head), and the effect rule gives it SPEC's verdict: a writer's call errs (qp1), a reader's does not (qp1r). Both are to be
-    // re-expected as Binding's located Unsupported_Kd by BU's bu15 (a static Place, parenthesized or a part, is never a Temporary Value;
-    // PLAN G189). Fail-before 2b-3: qp1 (no effect rule).
+    // SPEC 15.6.2, 15.6.4 (R4-M92; DECISIONS BU-18, BU-21): an explicit Borrow of a qualified static's part is a Place's Borrow, never a
+    // Temporary Value's, so Binding reports it as the located Unsupported_Kd (P42) in a writer's function (qp1) and a reader's (qp1r)
+    // alike, and no effect rule meets it (2b-D §1.5's premise). Fail-before bu15: both (they bound, and 2b-3's effect rule judged qp1).
     [Fact]
-    public void AQualifiedPartBorrowMeetsAWritersEffects()
+    public void AQualifiedPartBorrowIsBindingsUnsupported()
     {
         const string Qualified = """
             func qp1()
@@ -361,7 +360,8 @@ public sealed partial class MirBorrowsTest
                 inspect(r)
 
             """;
-        Assert.Equal(["qp1: State.bumpPair()"], Effects(string.Empty, Qualified));
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + Qualified);
+        Assert.Equal(["State.pair.0@ref Unsupported_Kd", "State.pair.0@ref Unsupported_Kd"], c.Binding.Issues.Select(static x => $"{x.Node} {x.Code}"));
     }
 
     // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91): a call A4 does not classify (Limit) is the located Unsupported_Kd where a live
