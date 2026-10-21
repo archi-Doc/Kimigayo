@@ -2823,6 +2823,13 @@ resumed by R4-M86 (2026-10-20).
   are all leaves recovered nothing (the review's variant), and no cheaper exact form is known, so the cost is accepted as recorded
   against exponential time on shared Types.
   Not temporary.
+- **BU-20** (2026-10-21; the BU planning session; A5 step 2 plan 2x-R14 under R4-M89, package 2b-D §3.4 and §4) The
+  intrinsic Contract table is a canonical table. `IntrinsicContract.Of` (`Binding/KimiLibraryKinds.cs`) has one row per
+  `IntrinsicKind` and the columns Judged, Declaration, SelfRequirement and ConformanceJudged. `ProveConstraint`, a
+  Contract's Self clause, `Register`, the conditional Self clause and `VerifyConformance` read it, replacing five `is`
+  chains (review A-3's open family). A new intrinsic adds a row (2b-4: Transferable). Outside it: the capability engine's
+  leaves, the `not ObjectPayload` opt-out and Copy's derivation. Open: the conditional Self clause keeps its own failure
+  code (PLAN G190). Rejected: per-column pattern methods (a new intrinsic extends each) and a flags enum (more code).
 
 ## R5 and R6 (adopted 2026-10-18)
 
