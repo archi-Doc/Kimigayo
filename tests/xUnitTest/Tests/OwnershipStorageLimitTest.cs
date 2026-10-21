@@ -74,6 +74,12 @@ public class OwnershipStorageLimitTest(ITestOutputHelper output)
             Assert.Equal(4096, issue.LimitBytes);
             Assert.Contains("func check()", issue.Source.ToString(), StringComparison.Ordinal);
             Assert.False(c.Validate(out _));
+
+            // PD12: whichever generator the process selects, the limited body is refused before generation, with no module and no
+            // Internal record (the Finalize below covers what generation reported).
+            using var module = new StringWriter();
+            Assert.False(c.WriteIr(module, out _));
+            Assert.Empty(module.ToString());
             c.ReportAnalysis();
             c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
             var result = c.Diagnostics.Finalize();
