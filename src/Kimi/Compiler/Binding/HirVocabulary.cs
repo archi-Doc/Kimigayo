@@ -14,13 +14,20 @@ namespace Kimi.Compiler;
 
 /// <summary>What the MIR builder does with a syntax node: the Op column of <see cref="HirTables"/>. The vocabulary is closed; a
 /// form no member describes keeps <see cref="Unset"/>, and the builder reports the located Unsupported. An Op is published only with
-/// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts.</summary>
+/// the facts it guarantees (<see cref="Binding.HasFacts"/>), which the builder trusts. The operations (<see cref="Binding.Operation"/>:
+/// <see cref="Literal"/>, <see cref="Field"/>, <see cref="Deref"/>, <see cref="Index"/>, <see cref="PrimitiveOp"/>, <see cref="Logical"/>,
+/// <see cref="Borrow"/>, <see cref="Convert"/> and <see cref="RuntimeTypeTest"/>) form their value or Place from Binding's selection for
+/// the node, so their Type is one of their facts; a new member states there whether it is one, and whether it is a construct whose
+/// parts deliver its value (<see cref="Binding.Construct"/>: <see cref="Block"/>, <see cref="Unsafe"/>, <see cref="Do"/>,
+/// <see cref="If"/>, <see cref="Match"/>, <see cref="Try"/> and <see cref="Loop"/>).</summary>
 /// <remarks><see cref="Syntax"/>: not evaluated (a declaration without a buildable body, a Type, a qualifier, the callee of a selected
 /// call or construction, a member name, a binder, a Pattern, which its match plan describes, the text a <c>$tryWrite</c> writes, an
 /// attribute, or the inside of an Error).
 /// <see cref="Body"/>: a function, accessor or Property whose body or initializer Binding bound, to be built. <see cref="Error"/>: Binding rejected
-/// the expression or left it unresolved, or it lacks its Op's facts, which for a node Binding resolved is a broken contract the
-/// publisher lists (<see cref="HirTables.Broken"/>); the builder replaces it whole. <see cref="Name"/>: its Res says what it reads.
+/// the expression, or it lacks its Op's facts (an operation Binding left unresolved lacks its Type; a form no member describes that
+/// Binding left unresolved has none), which for a node Binding resolved is a broken contract the publisher lists
+/// (<see cref="HirTables.Broken"/>); its value is derived, after the operands the HIR keeps (DECISIONS R5-M63, R4-M88). A construct, a
+/// statement, a call or a name Binding left unresolved keeps its Op where it has its facts. <see cref="Name"/>: its Res says what it reads.
 /// <see cref="Group"/>: evaluates its one operand (parentheses, a label, a macro, and <c>@move</c>, <c>@copy</c> or a same-Type
 /// conversion, which acquire it). <see cref="Call"/>: the calls <see cref="CallPlan.Of"/> lists. <see cref="Jump"/> and
 /// <see cref="Continue"/>: the transfer to the target the node's plan row records. <see cref="For"/>, <see cref="Try"/>,
