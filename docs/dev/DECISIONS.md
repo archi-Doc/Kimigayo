@@ -5807,3 +5807,12 @@ structure is recorded here by the unit that first implements it.
     separate Flag writer beside Keep; `icmp ne i8` beside bool's narrowing; A2 publishing points per edge or grouped per view (a change of
     held `MirDrops.cs` and of R4-M6a's order contract for no consumer need); flags as MIR locals with set and clear statements (R4-M6a:
     MIR is not rewritten).
+- **R5-M101 The owner confirms C4a-2's and C4c's departures** (owner, 2026-10-22, on the R5 planning session's explanation; verbatim
+  「R5-M96 の 2 件と R5-M100 の 1 件の逸脱を了承します。」; the consequences are the planning session's) The three departures from the
+  owner-approved package C recorded for the owner's list are confirmed: R5-M96's gate step 2 placed in `FunctionCodegen.Write`, which
+  skips only a refused body and writes every other item so their gaps are reported (against package C 3.8's place in
+  `Compilation.Generation.cs` before writing); R5-M96's arena-skipped body refused with a located `Unsupported_Kd` until A1's arena
+  problem carries its catalog arguments (PLAN G213; against package C 3.8's "that code"); and R5-M100's part glue taken from the Drop's
+  glue item's targets per level, the collector's own resolution in `DropGlue.Parts` order (against package C 3.2's `Find(MonoKey)` and
+  3.6's "the part's glue from `Find`", which would need the erased Type that code generation must not compose). They leave the list;
+  R5's group reviews check the code against those entries.
