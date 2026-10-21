@@ -5623,4 +5623,4 @@ structure is recorded here by the unit that first implements it.
   the consequences are the planning session's) The departure R5-M94 recorded for the owner's list is confirmed: under MIR code
   generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
   "stage 5 times layout", since the instance collector lays out every by-value use in stage 3 (K 4.8, R5-M37). The six stage names
-  stay, so reports remain comparable with the 49cb2b5d baseline. It leaves the list, which is empty again.
+  stay, so reports remain comparable with the 49cb2b5d baseline. It leaves the list; R5's group reviews check the code against R5-M94.
