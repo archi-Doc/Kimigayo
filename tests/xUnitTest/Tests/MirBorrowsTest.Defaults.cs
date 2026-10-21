@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A5-F9's default rules (SPEC 7.2.3, 15.6.4, 15.6.7; docs/dev/DECISIONS.md R4-M90, R4-M93, R4-M95, R4-M96): a recursive default's
+/// <summary>A5-F9's default rules (SPEC 7.2.3, 15.6.4, 15.6.7; docs/dev/DECISIONS.md R4-M90, R4-M93, R4-M96, R4-M98): a recursive default's
 /// template call carries the Loans of every preceding argument into its value (P9), and one whose slot holds raw authority beside a Loan is a
 /// located Unsupported_Kd (r3); a template's preceding parameters are the caller's slots, which it may only inspect (R26-borrow, R26-access);
 /// an omitting call ends its inspection Loans before its checks (R-a).</summary>
@@ -55,7 +55,7 @@ public sealed partial class MirBorrowsTest
         """;
 
     // Inline defaults that inspect a preceding slot (SPEC 7.2.3): copies of an existing shared borrow (same, onlyY, pickR, the generic pick
-    // and via), and an exclusive input's Reborrow kept in the result (fc, g: the template's R26-borrow, R4-M95) with its generic forms in the
+    // and via), and an exclusive input's Reborrow kept in the result (fc, g: the template's R26-borrow, R4-M98) with its generic forms in the
     // uniq case (grab, f2).
     private const string Inspecting = """
         func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
@@ -218,7 +218,7 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["live: n = 4", "hid: putb(box@ref, v@ref, 3) Unsupported_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // R26-borrow (SPEC 7.2.3, PD15 (iv); R4-M95 D3): a default's result keeps no new Borrow or Reborrow of a preceding argument, nor does
+    // R26-borrow (SPEC 7.2.3, PD15 (iv); R4-M98 D3): a default's result keeps no new Borrow or Reborrow of a preceding argument, nor does
     // storage the body does not own; the slot step (A3 E17) makes such a Borrow a Loan of the template, found at its Return in the closure
     // of σ(_0) and σ(E): DefaultAccessTest's :27 (fc) and :29–:32 (a local, a Tuple, `shared(x)`'s and `choose`'s results), a Reborrow
     // stored through a raw pointer (round 19's dt-raw-borrow, whose `p[0] = x@ref` of an i32 slot Binding rejects, UnsatisfiedOriginRelation_Kd:
@@ -250,7 +250,7 @@ public sealed partial class MirBorrowsTest
                 func outer(x: uniq/i32 during q, y: ref/i32 during q = inner(x)) => ()
                 """));
 
-    // R26-access (SPEC 7.2.3; R4-M95 D4): a default cannot modify a preceding slot or borrow it exclusively: DefaultAccessTest's :25 (fa,
+    // R26-access (SPEC 7.2.3; R4-M98 D4): a default cannot modify a preceding slot or borrow it exclusively: DefaultAccessTest's :25 (fa,
     // the reservation of increment's input) and :26 (fb, a write through the reserved input, in a view with no Loan, which the stratum still
     // checks, D5), an exclusive capture entry (round 19's dt-cap-uniq, whose `[x@uniq]` of an i32 slot Binding rejects, InvalidAssignment_Kd:
     // the Binding-valid `[x@follow@uniq]` instead), and a write that stores a Reborrow of another slot into storage the body does not own,
@@ -380,7 +380,7 @@ public sealed partial class MirBorrowsTest
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
-    // R4-M73 (R4-M95 D7): R26 records through the body hold, so a held template's (g1's loop inside the default) is the located
+    // R4-M73 (R4-M98 D7): R26 records through the body hold, so a held template's (g1's loop inside the default) is the located
     // Unsupported_Kd at the Borrow, beside the hold's own record.
     [Fact]
     public void AHeldTemplatesSlotProblemIsUnsupported()
@@ -436,7 +436,7 @@ public sealed partial class MirBorrowsTest
     // and checks, so its Moves of the slots meet none, and a copy's value keeps the Loans its slots' values carry. The 1c design's p15 (fc's
     // copy keeps a Reborrow through x's slot), its form with an implicitly acquired reservation (reservedBad, round 19's dc-reserved-bad),
     // grab's from a uniq argument (reborrowed) and a two-view generic caller's uniq view (gen, dc-gen2-bad-u) add nothing at the call: the
-    // template's Borrow is the one record (R26-borrow, R4-M95). A Loan a copy's value keeps is the caller's Language problem, also where one
+    // template's Borrow is the one record (R26-borrow, R4-M98). A Loan a copy's value keeps is the caller's Language problem, also where one
     // holder joins it with another value (joined; j1 on the path that keeps the copy; j1Clean, the copy in another holder), through a
     // generic copy (copied, copiedGeneric), a call inside the copy (called) and a result that retains the copy alone (onlyY, dc-copied);
     // an explicit argument's (given) and one another holder also keeps (both, copiedClean) stay. A destroying call's observing destruction
@@ -558,7 +558,7 @@ public sealed partial class MirBorrowsTest
 
     // R-a: a copy that only inspects its slots adds nothing at its omitting call (SPEC 7.2.3): ReceiverDefaultTest's ReservedMethod (round
     // 19's dc-reserved-inspect: a method call on the reserved input), the 1c design's fe (a read through the reserved slot), and the
-    // omissions of p13's fb and DefaultAccessTest's fa, whose templates' Access is the one record (R4-M95).
+    // omissions of p13's fb and DefaultAccessTest's fa, whose templates' Access is the one record (R4-M98).
     [Fact]
     public void AnInspectingCopyAddsNothingAtItsCall()
         => Assert.Equal(

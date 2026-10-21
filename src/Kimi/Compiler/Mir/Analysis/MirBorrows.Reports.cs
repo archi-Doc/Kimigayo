@@ -4,7 +4,7 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23, R4-M92, R4-M95): each problem recorded through MirReport under its
+// A5's problems (A3 5's A6 table, 6.4; DECISIONS R4-M57, R5-M23, R4-M92, R4-M98): each problem recorded through MirReport under its
 // requirement with its code and facts, whose codes and sites MirBorrows.Witnesses gives: the Loan's or candidate's anchor, its witness (a
 // holder's next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, its call (R4-M69); a located
@@ -65,7 +65,7 @@ internal sealed partial class MirBorrows
         this.Record(code, OwnershipRequirement.ComparisonLoanConflict, subject, this.facts.AsSpan(0, count)); // The four Loan codes' requirement.
     }
 
-    // A problem with its facts (D7, R4-M95): in a held view (R4-M73) the located Unsupported_Kd at its subject instead, except a problem whose
+    // A problem with its facts (D7, R4-M98): in a held view (R4-M73) the located Unsupported_Kd at its subject instead, except a problem whose
     // last fact is Inlined, found inside an inline default copy: its template's, which MirReport drops (R4-M69).
     private void Record(DiagnosticCode code, OwnershipRequirement requirement, SourceRef subject, ReadOnlySpan<MirFact> facts)
     {

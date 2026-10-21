@@ -3,7 +3,7 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order; whether the view has an input of a Loan-stratum producer (D5, R4-M95): a Loan, a
+// location, each with its Place's steps, in group order; whether the view has an input of a Loan-stratum producer (D5, R4-M98): a Loan, a
 // guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or a write rooted at a
 // default template's PreparedInput (R26-access); and for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are
 // on, and each static's A4 Field number.
