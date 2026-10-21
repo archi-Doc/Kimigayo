@@ -62,6 +62,38 @@ public class EffectBoundCallerTest
         Assert.Equal((nameof(DiagnosticCode.CallEffectConflict_Kd), at), (error.Code, error.Text));
     }
 
+    // SPEC 15.6.4, 15.6.3, 8.11.3 rule 1 by path (the adopted proposal Abstract Calls Reach by Paths, U1's guard rows): an abstract
+    // call's result keeps the Loans its Type's Origins name, since a projection may retain any Origin of its base and an unproven
+    // absence of retention never permits access; so a generic body that builds an Iterator from a local Borrow cannot write, borrow
+    // or re-borrow the source while an item lives, directly, through a Reborrow, by re-assigning the Iterator or through an
+    // aggregate, as the same body over a concrete conformance cannot.
+    [Theory]
+    [InlineData(true, "    let item = it.next()\n    values[0] = 5\n    inspect(item@ref)\n", "values[0] = 5")]
+    [InlineData(false, "    let item = it.next()\n    values[0] = 5\n    inspect(item@ref)\n", "values[0] = 5")]
+    [InlineData(true, "    var r = it@uniq\n    let item = r.next()\n    values[0] = 5\n    inspect(item@ref)\n", "values[0] = 5")]
+    [InlineData(false, "    var r = it@uniq\n    let item = r.next()\n    values[0] = 5\n    inspect(item@ref)\n", "values[0] = 5")]
+    [InlineData(true, "    let item = it.next()\n    it = S.start(values@uniq)\n    inspect(item@ref)\n", "it = S.start(values@uniq)")]
+    [InlineData(false, "    let item = it.next()\n    it = S.start(values@uniq)\n    inspect(item@ref)\n", "it = S.start(values@uniq)")]
+    [InlineData(true, "    let item = it.next()\n    var box = (item@move, 0)\n    values[0] = 5\n    inspect(box@ref)\n", "values[0] = 5")]
+    [InlineData(false, "    let item = it.next()\n    var box = (item@move, 0)\n    values[0] = 5\n    inspect(box@ref)\n", "values[0] = 5")]
+    public void AbstractResultsKeepTheLoansTheirOriginsName(bool generic, string body, string at)
+    {
+        const string opener = "contract Opener\n    associate Iter(o) is Iterator for uniq/Array<i32> during o\n" +
+            "    func start(values: uniq/Array<i32> during o) -> Self.Iter(o)\nstruct Concrete\n    Self is Opener\n" +
+            "    associate Opener.Iter(o) is ArrayUniqIterator<i32> during o\n" +
+            "    public func start(values: uniq/Array<i32> during o) -> ArrayUniqIterator<i32> during o => values.iterateUniq()\n" +
+            "func inspect<T>(value: ref/T) => ()\n";
+        var head = generic ? "func f<S>() -> ()\n    S is Opener\n" : "func f() -> ()\n";
+        var opened = (head + "    var values: Array<i32> = [1, 2]\n    var it = S.start(values@uniq)\n" + body).Replace("S.start", generic ? "S.start" : "Concrete.start", StringComparison.Ordinal);
+        var write = generic ? at : at.Replace("S.start", "Concrete.start", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(opener + opened + Main);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
+        var errors = TestDiagnostics.Of(c);
+        Assert.Contains(errors, x => x.Code is nameof(DiagnosticCode.ComparisonLoanConflict_Kd) or nameof(DiagnosticCode.CallActivationConflict_Kd) &&
+            x.Text is { Length: > 0 } text && write.Contains(text, StringComparison.Ordinal));
+    }
+
     // A lending item keeps the receiver borrow itself; the existing activation check reports it once.
     [Fact]
     public void ALendingItemKeepsItsActivationDiagnostic()
