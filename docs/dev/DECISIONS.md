@@ -2058,11 +2058,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     R5-M63's deferred unresolved compound Places for Field, Index, Deref and `@follow`. Unchanged: rejected compound Places keep only
     resolved operands; failed or unresolved calls, statements and constructs, and tuple/array/interpolation/dictionary/for forms stay
     under G121 (owner); Logical's kept right operand is evaluated unconditionally", and (planning session with R5) it keeps every
-    operand its form evaluates "except an unresolved construct whose value has no Type, which is replaced (G121)": a Block, Unsafe, Do,
-    If, Match or Try Binding left unresolved with no Type, since no destination Type holds a kept operand (built at `()`,
-    `return v[if c => i else => missing]` got a finding and lost the record of a move before it); a labeled do and a parenthesized
-    group stay kept. A kept-construct design the owner chooses for G121 removes the exception. `Keeps` reads the node's binding
-    state first and the parent's form Op once per parent (the walk's `unresolvedOperation`). Its kept right operand evaluated
+    operand its form evaluates "except an unresolved construct whose value has no Type, which is replaced (G121)": a construct
+    (`Binding.Construct`: Block, Unsafe, Do, If, Match, Try) Binding left unresolved with no Type, also in parentheses, since no
+    destination Type holds a kept operand (built at `()`, `return v[if c => i else => missing]` and `v[(if …)]` got a finding and lost
+    the record of a move before it; under a unary operator, `v[-(if …)]`, the operator stays kept and replaces the `if`). A labeled
+    construct stays kept, so a labeled do whose exits deliver derived values keeps its body's records (`other + label l: do`); one
+    with a typed exit under an unresolved operation is built at `()`, a validator finding: a regression from dev at
+    `v[label l: do … if c => exit to l i … exit to l missing]` (dev, deriving the whole selection, reported the move before it), and as
+    on dev at `other + label l: do (or loop) … exit to l 1`. The owner chooses between option C, G121's kept-construct design and
+    accepting it. A kept-construct design the owner chooses for G121 removes the exception. `Keeps` reads the node's binding state
+    first and the parent's form Op once per parent (the walk's `unresolvedOperation`). Its kept right operand evaluated
     unconditionally, a Logical's moves there are definite rather than possible; A1 reports a later use as `MovedPlace_Kd` either way.
   - Part 3 (`MirBuilder.Value`, from `Operand`): a value Binding gave no Type, a construct it left unresolved or a derived value, is held
     at the Type its consumer expects. It is one rule with `Unsupported(node, derived, expected)`, which held a derived value so already:
@@ -2073,13 +2078,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `MirBuilder.Rejected`'s "a value without a Type" and "a name of an Error local" terms, whose removal 9cf3bf26 staged for this rule:
     `x = 1` with `x: Missing`, a name Binding left unresolved, still needs the first; their removal needs a published fact for such a
     name (PLAN G103).
-  - Cost: one predicate test and one Type read per published node and one form Op per Error node; no allocation. Measured on the
-    prototype (mir Functional with `KIMI_MIR_DIFF`, base by a switch): b-finding's rows (BinaryKoto 44, IsKoto 12, ReturnKoto 4) gone;
-    two new A1 rows, the SPEC 14 example's own `use(p)` and `pass(x@move, x)` errors, which the `animal is Dog` finding had hidden.
-  - Residual R1 (PLAN G103): a construct Binding left untyped where nothing fixes its Type, a discard (`_ = if c => 1 else =>
-    missing`) or a parenthesized operand of an unresolved operation (`1 + (if c => take(s) else => missing)`), is held at `()`; where a
-    source has a Type the validator's finding remains, as before. Owners: Binding's Expression Type (SPEC 14.9.2 rule 2, option C) or
-    G121's kept-construct design. Opens (G121, owner): an un-annotated failed `let`, a failed match, a failed Place over a failed Place
+  - Cost: one predicate test and one Type read per published node and one form Op per Error node; no allocation. Measured (mir
+    Functional with `KIMI_MIR_DIFF`, the implementation against dev `c526ad30`, `artifacts/verify/mir-diff/2x-e2b`): b-finding's rows
+    (BinaryKoto 44, IsKoto 12, ReturnKoto 4) gone; two new A1 rows, the SPEC 14 example's own `use(p)` and `pass(x@move, x)` errors,
+    which the `animal is Dog` finding had hidden; no other row.
+  - Residual R1 (PLAN G103): a discard of a construct Binding left untyped (`_ = if c => 1 else => missing`) is held at `()`, a
+    validator finding where a source has a Type, as on dev; a labeled construct with a typed exit under an unresolved operation (above)
+    likewise, a regression from dev under a selection. A parenthesized construct under an unresolved operation (`1 + (if c => take(s)
+    else => missing)`) is replaced: no finding, its parts' problems lost as on dev (G121). Owners: Binding's Expression Type (SPEC
+    14.9.2 rule 2, option C) or G121's kept-construct design. Opens (G121, owner): an un-annotated failed `let`, a failed match, a failed Place over a failed Place
     (`make(s@move).missing.a`), and failed or unresolved calls with moving arguments.
   - Rejected: every node Binding left unresolved on a recorded error an Error (`1babec22`: constructs and statements lost children, an
     Assign's Opaque read its target, `FailureCauses` allocated per node); Binding publishing the Expression Type now (option C:

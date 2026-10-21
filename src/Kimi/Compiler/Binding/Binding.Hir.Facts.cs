@@ -22,6 +22,14 @@ public sealed partial class Binding
     internal static bool Operation(HirOp op) => op is HirOp.Literal or HirOp.Field or HirOp.Deref or HirOp.Index or HirOp.PrimitiveOp or
         HirOp.Logical or HirOp.Borrow or HirOp.Convert or HirOp.RuntimeTypeTest;
 
+    /// <summary>Gets whether an Op is a construct whose parts deliver its value into its destination (SPEC 14.2, 14.3, 14.7, 14.8, 17): a
+    /// block, an unsafe block, a do, an if, a match or a try, which, Binding having left it without a Type, needs a destination of the
+    /// Type its position fixes; an operation Binding left unresolved has none for its operands, so it replaces such an operand (DECISIONS
+    /// R4-M88, PLAN G121). A new HirOp member decides here whether it is one.</summary>
+    /// <param name="op">The Op a node's form calls for.</param>
+    /// <returns>Whether it is such a construct.</returns>
+    internal static bool Construct(HirOp op) => op is HirOp.Block or HirOp.Unsafe or HirOp.Do or HirOp.If or HirOp.Match or HirOp.Try;
+
     /// <summary>Gets whether a node has the facts the MIR builder reads for its Op: an operation its Type (<see cref="Operation"/>),
     /// every call the builder builds for it complete (each argument with its Source, a direct base call with its implementation's
     /// symbol), and per Op: a call its plan (an index's selected call; a

@@ -415,7 +415,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
     // an operand it did not resolve (`1 + (missing + once(s@move))`, a selection's index), so the problems of what it evaluates stay; one
-    // in a statement or a typed destination, `and`, a parenthesized `if` and the selection whose `if` index has no Type validate now
+    // in a statement or a typed destination, `and`, a parenthesized `if` and a selection whose `if` index, also in parentheses or under
+    // a unary operator, has no Type validate now
     // (fail-before: a finding, which stops every analysis, or, for the index, the whole selection derived). A construct, an assignment, a
     // labeled do and a default keep their forms (a typed destination keeps the Loan its branch places), an assignment's derived value
     // initializes its target, and a failed call's operands stay replaced (PLAN G121).
@@ -428,6 +429,14 @@ public sealed class MirInitTest(ITestOutputHelper output)
     [InlineData(
         Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
         "    return v[if c => i else => missing]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[(if c => i else => missing)]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[-(if c => i else => missing)]\n",
         "MovedPlace_Kd s 1")]
     [InlineData("func a<T>(b: bool, x: T, y: T = if b => x else => 0) -> () => ()\n", "DefaultArgumentMove_Kd x 1")]
     [InlineData(Take + Pair + "func f()\n    let s = \"x\"\n    var y: i32 = 0\n    y = make(s@move, s@move).missing\n", "MovedPlace_Kd s 1")]

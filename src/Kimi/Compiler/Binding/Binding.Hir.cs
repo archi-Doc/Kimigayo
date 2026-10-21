@@ -272,17 +272,18 @@ public sealed partial class Binding
 
         // SPEC 23.1.2: the children an Error keeps at their positions, evaluated in place; the others stay replaced. The parent is the child's.
         // An operation Binding left unresolved (DECISIONS R4-M88) keeps every operand its form evaluates (one Binding resolved, one it did
-        // not, an Error), except a construct whose parts deliver its value and which has no Type (a Block, Unsafe, Do, If, Match or Try
-        // Binding left unresolved): no destination Type holds a kept operand, so it stays replaced (PLAN G121's kept-construct design). A
-        // compound Place Binding rejected or did not resolve, not a broken contract, keeps each operand Binding resolved as a value or a
-        // Place, an Op with its facts (not a Type or group name, Syntax; DECISIONS R5-M63).
+        // not, an Error), except a construct, also in parentheses, that has no Type (Construct): no destination Type holds a kept operand,
+        // so it stays replaced (PLAN G121's kept-construct design). A compound Place Binding rejected or did not resolve, not a broken
+        // contract, keeps each operand Binding resolved as a value or a Place, an Op with its facts (not a Type or group name, Syntax;
+        // DECISIONS R5-M63).
         private bool Keeps(Koto child)
         {
             if (this.unresolvedOperation)
             {
                 var op = this.OpOf(child, HirPosition.Evaluated);
-                return op != HirOp.Syntax &&
-                    !(op is HirOp.Block or HirOp.Unsafe or HirOp.Do or HirOp.If or HirOp.Match or HirOp.Try && HirTables.Meaning(child) is null);
+                var inner = KotoHelper.UnwrapParentheses(child);
+                return op != HirOp.Syntax && !(Construct(ReferenceEquals(inner, child) ? op : this.OpOf(inner, HirPosition.Evaluated)) &&
+                    HirTables.Meaning(inner) is null && HirTables.Meaning(child) is null);
             }
 
             return child.BindingState == BindingState.Resolved && CompoundPlace(this.parent!) &&

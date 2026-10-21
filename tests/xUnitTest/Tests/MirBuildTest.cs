@@ -176,8 +176,8 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`/`or`, a runtime Type test, a
     // selection whose index Type it rejected, PLAN G95) is an Error node whose value is the derived Opaque, never a form built from a Type
     // that does not exist, and a construct it left unresolved is held at the Type its position fixes (SPEC 14.9.2), so each body validates
-    // without a record (fail-before: Type and Projection findings); a selection keeps no `if` index without a Type (built at `()`, it
-    // would be a finding).
+    // without a record (fail-before: Type and Projection findings); a selection keeps no `if` index without a Type, also in parentheses
+    // (built at `()`, it would be a finding).
     [Theory]
     [InlineData("'A' == 65\n", "'A' == 65")]
     [InlineData("func f<T>(x: Wrapping<T>) -> Wrapping<T>\n    T is PrimitiveInteger\n    return x + 128\n", "x + 128")]
@@ -188,6 +188,7 @@ public sealed class MirBuildTest(ITestOutputHelper output)
     [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing")]
     [InlineData("func f(c: bool) -> i32\n    return if c => 1 else => missing\n", "missing")]
     [InlineData("func f(c: bool, v: [3 of i32], i: isize) -> i32\n    return v[if c => i else => missing]\n", "v[if c => i\nelse => missing]")]
+    [InlineData("func f(c: bool, v: [3 of i32], i: isize) -> i32\n    return v[(if c => i else => missing)]\n", "v[(\n    if c => i\n    else => missing\n    )]")]
     public void OperationsBindingDidNotResolveAreDerived(string source, string opaque)
     {
         var c = Compile(source);
