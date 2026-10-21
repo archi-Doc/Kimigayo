@@ -1,8 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using System.Reflection;
-using System.Runtime.Loader;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Backend;
@@ -62,53 +60,44 @@ public sealed class PipelineSwitchTest
         Assert.Equal(CompilerCodegen.Legacy, c.Codegen);
     }
 
-    // PLAN G199: the defaults are read once, by Compilation's type initializer, which the runtime runs once, so threads making a load
-    // context's first compilations at once all get the pair the environment names. A Nullable set on its first read could be read as its
-    // default (legacy) by a thread racing the first one; no test can widen that window, so this pins the defaults as initonly fields of the
-    // type initializer and races the first compilations of a fresh load context, where Compilation's statics are new.
+    // PLAN G199: the defaults are read once, by Compilation's type initializer, which the runtime runs once, so threads making the first
+    // compilations at once all get the pair the environment names. A Nullable set on its first read could be read as its default
+    // (legacy) by a thread racing the first one; no test can widen that window, so this pins the defaults as initonly fields of the
+    // type initializer and races the first compilations of a fresh process, where Compilation's statics are new.
     [Fact]
-    public void ThreadsMakingTheFirstCompilationsAgreeOnTheDefaults()
+    public Task ThreadsMakingTheFirstCompilationsAgreeOnTheDefaults()
+        => FreshProcess.RunExplicit(typeof(PipelineSwitchTest), nameof(PipelineSwitchTest.RaceTheFirstCompilationsOfAFreshProcess));
+
+    // Runs only in the process that ThreadsMakingTheFirstCompilationsAgreeOnTheDefaults starts, where nothing reads a Compilation
+    // static before the threads make the first compilations.
+    [Fact(Explicit = true)]
+    public void RaceTheFirstCompilationsOfAFreshProcess()
     {
         foreach (var name in new[] { nameof(Compilation.DefaultPipeline), nameof(Compilation.DefaultCodegen) })
         {
             Assert.True(typeof(Compilation).GetField(name, BindingFlags.Static | BindingFlags.NonPublic) is { IsInitOnly: true }, name);
         }
 
-        var location = typeof(Compilation).Assembly.Location;
-        var context = new FreshContext(Path.GetDirectoryName(location)!);
-        try
+        const int Count = 8;
+        var (pairs, errors) = (new (CompilerPipeline, CompilerCodegen)[Count], new Exception?[Count]);
+        using var start = new Barrier(Count);
+        var threads = Enumerable.Range(0, Count).Select(i => new Thread(() =>
         {
-            var type = context.LoadFromAssemblyPath(location).GetType(typeof(Compilation).FullName!, throwOnError: true)!;
-            var create = type.GetMethod(nameof(Compilation.CreateForTest))!;
-            var pipeline = type.GetProperty(nameof(Compilation.Pipeline), BindingFlags.Instance | BindingFlags.NonPublic)!;
-            var codegen = type.GetProperty(nameof(Compilation.Codegen), BindingFlags.Instance | BindingFlags.NonPublic)!;
-            const int Count = 8;
-            var (pairs, errors) = (new (int, int)[Count], new Exception?[Count]);
-            using var start = new Barrier(Count);
-            var threads = Enumerable.Range(0, Count).Select(i => new Thread(() =>
+            try
             {
-                try
-                {
-                    start.SignalAndWait();
-                    var c = create.Invoke(null, [false]);
-                    pairs[i] = (
-                        Convert.ToInt32(pipeline.GetValue(c), CultureInfo.InvariantCulture),
-                        Convert.ToInt32(codegen.GetValue(c), CultureInfo.InvariantCulture));
-                }
-                catch (Exception e)
-                {
-                    errors[i] = e;
-                }
-            })).ToArray();
-            Array.ForEach(threads, static x => x.Start());
-            Array.ForEach(threads, static x => x.Join());
-            Assert.All(errors, Assert.Null);
-            Assert.All(pairs, static x => Assert.Equal(((int)Compilation.DefaultPipeline, (int)Compilation.DefaultCodegen), x));
-        }
-        finally
-        {
-            context.Unload();
-        }
+                start.SignalAndWait();
+                var c = Compilation.CreateForTest();
+                pairs[i] = (c.Pipeline, c.Codegen);
+            }
+            catch (Exception e)
+            {
+                errors[i] = e;
+            }
+        })).ToArray();
+        Array.ForEach(threads, static x => x.Start());
+        Array.ForEach(threads, static x => x.Join());
+        Assert.All(errors, Assert.Null);
+        Assert.All(pairs, static x => Assert.Equal((Compilation.DefaultPipeline, Compilation.DefaultCodegen), x));
     }
 
     // Only the mir pipeline marks the check identity and adds its entry to the test artifact manifest, and MIR code generation its own.
@@ -476,13 +465,5 @@ public sealed class PipelineSwitchTest
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
         c.Tests.Discover(c);
         return c.Tests.ManifestFields;
-    }
-
-    // A load context of its own for the compiler and every package beside it in the test's directory (Tinyhand's type registry is
-    // process-wide per load), the framework's from the default context.
-    private sealed class FreshContext(string directory) : AssemblyLoadContext(nameof(PipelineSwitchTest), isCollectible: true)
-    {
-        protected override Assembly? Load(AssemblyName name)
-            => Path.Combine(directory, name.Name + ".dll") is var path && File.Exists(path) ? this.LoadFromAssemblyPath(path) : null;
     }
 }
