@@ -208,17 +208,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.6: a call through a Callable input composes the actual Closure's or function item's summary at the caller; a bounded
     // input's binding owes its bound after selection, decided by the premises where they can (a missing premise, an erased Function Type)
-    // at the argument; an owner call also destroys the remaining environment.
+    // at the argument; an owner call also destroys the remaining environment. Declared before the helpers, the worker is evaluated before
+    // invoke has its atom, so the Closure's body is a read only a later evaluation makes: a dependency recorded only at a node's first
+    // evaluation would lose the failure (the 2b-7 review's mutant).
     [Theory]
-    [InlineData("42", "")]
-    [InlineData("Helpers.noisy()", "IncompatibleContractImplementation_Kd Self is Work 1")]
-    public void SummariesComposeCallbacksThroughActualArguments(string expression, string expected)
-        => Assert.Equal(
+    [InlineData("42", false, "")]
+    [InlineData("Helpers.noisy()", false, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("Helpers.noisy()", true, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void SummariesComposeCallbacksThroughActualArguments(string expression, bool workerFirst, string expected)
+    {
+        const string Helpers = "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
+            "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n";
+        var worker = $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\n";
+        Assert.Equal(
             Expected(expected),
-            Problems("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\n" +
-                "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
-                "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n" +
-                $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\n"));
+            Problems("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\n" + (workerFirst ? worker + Helpers : Helpers + worker)));
+    }
 
     [Theory]
     [InlineData("func entry() -> i32 => apply(func [] () -> i32 => 42)\n", "")]
@@ -494,10 +499,53 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
+    // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
+    // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
+    // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
+    // it in the driver's order takes a fresh A4's evaluations; and a version whose bodies Local never recorded, here one without bodies,
+    // solves no node (before, Run evaluated the previous version's nodes against it).
+    [Fact]
+    public void LocalRecordsTheProgramsVersion()
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
+            "        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var effects = new MirEffects(c.Types, cases, flow);
+        Assert.Equal([Failed], Record(lastFirst: true));
+        program.Version++;
+        Assert.Equal([Failed], Record(lastFirst: false));
+        var fresh = new MirEffects(c.Types, cases, flow);
+        Analyze(fresh, flow, cases, program, new MirReport());
+        Assert.Equal(fresh.Evaluations, effects.Evaluations);
+        effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport());
+        Assert.Equal(0, effects.Evaluations);
+
+        string[] Record(bool lastFirst)
+        {
+            var bodies = program.Bodies.ToArray();
+            for (var i = 0; i < bodies.Length; i++)
+            {
+                var body = bodies[lastFirst ? bodies.Length - 1 - i : i];
+                flow.Begin(body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    cases.Select(body, view);
+                    effects.Local(program, body, view);
+                }
+            }
+
+            var report = new MirReport();
+            effects.Run(program, report);
+            return Problems(c, report);
+        }
+    }
+
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
-    // included) linearly; a warm re-analysis of the same program allocates nothing. N is 256/512/1024 so that the program's own bodies,
-    // not the library's, fill the pooled arrays, whose doubling makes the allocation of smaller programs step (16/32/64: +336, then +9,504).
+    // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
+    // evaluations. N is 256/512/1024 so that the program's own bodies, not the library's, fill the pooled arrays, whose doubling makes the
+    // allocation of smaller programs step (16/32/64: +336, then +9,504).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("    public func step{0}() => H.{1}()\n")]
@@ -528,9 +576,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
+                program.Version++; // A new version of the same bodies, which Local starts.
                 report.Clear();
                 Analyze(effects, flow, cases, program, report);
             }));
+            Assert.Equal(evaluations[i], effects.Evaluations);
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
@@ -652,7 +702,10 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private static string[] Problems(Compilation c, MirProgram program)
     {
         Assert.Empty(program.Findings);
-        return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
-            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        return Problems(c, program.Problems);
     }
+
+    private static string[] Problems(Compilation c, MirReport report)
+        => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
+            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

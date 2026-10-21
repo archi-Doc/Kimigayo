@@ -43,7 +43,7 @@ internal sealed partial class MirEffects
     {
         this.program = program;
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
-        var count = this.nodeCount;
+        var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
         MirDataflow.Grow(ref this.atomCounts, count);

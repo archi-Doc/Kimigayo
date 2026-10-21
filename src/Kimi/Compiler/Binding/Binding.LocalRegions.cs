@@ -158,36 +158,8 @@ public sealed partial class Binding
     internal bool HasRegionBounds(BoundOrigin origin)
         => IsLocalRegion(origin) || (this.localRegions.TryGetValue(origin, out var region) && region.Parents.Count != 0);
 
-    internal bool HasRegionBounds(BoundType type)
-    {
-        if (!type.CarriesOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
-        {
-            return false;
-        }
-
-        if (type.Origin is { } origin && this.HasRegionBounds(origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (this.HasRegionBounds(type.OriginArguments[i]))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (this.HasRegionBounds(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+    // Whether an Origin of the Type's parts has region bounds; each distinct part is visited once per query (DECISIONS BU-19).
+    internal bool HasRegionBounds(BoundType type) => this.RegionBoundsPart(type, this.visitedParts.Begin(this.storageVersion));
 
     // The value that brought `source` into the region graph `region` reads, by LocalRegionSources' walk (each parent read through
     // OriginAtUse at its bound's value, meet operands expanded, a meet `region` through its region operands): the value of the bound whose
@@ -264,6 +236,37 @@ public sealed partial class Binding
     // An Origin of a Type read at a use, when it carries `origin` (CarrierOf).
     private BoundOrigin? RegionCarrier(BoundOrigin? expression, BoundOrigin origin, Koto use)
         => expression is not null && this.OriginAtUse(expression, use) is var read && this.RegionContains(read, origin) ? read : null;
+
+    private bool RegionBoundsPart(BoundType type, uint query)
+    {
+        if (!type.CarriesOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        {
+            return false;
+        }
+
+        if (type.Origin is { } origin && this.HasRegionBounds(origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (this.HasRegionBounds(type.OriginArguments[i]))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            if (this.FirstVisit(type.Components[i], query) && this.RegionBoundsPart(type.Components[i], query))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     private void ResetLocalRegions()
     {
