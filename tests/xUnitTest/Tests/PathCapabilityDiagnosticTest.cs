@@ -111,8 +111,10 @@ public class PathCapabilityDiagnosticTest
     }
 
     // SPEC 15.6.2, 15.6.4, 11.2: a static Field and its parts are lent as their accessors allow, but no analysis models static Loans (PLAN
-    // P42), so a Borrow through the Field's qualified name, in its group too, is one located Unsupported_Kd in every Borrow form (DECISIONS
-    // R4-M89 PD12 (i)); a Borrow SPEC denies (a let, a private or custom setter, a let ancestor) keeps its Language error.
+    // P42), so a written Borrow (shorthand, typed, @raw, object, case adaptation) of the Field or a Field or part below it, through the
+    // Field's qualified name and in its group too, is one located Unsupported_Kd (DECISIONS R4-M89 PD12 (i), BU-18); a Borrow SPEC denies
+    // (a let, a private or custom setter, a let ancestor) keeps its Language error. Not covered: a parenthesized operand and a shared
+    // element part (PLAN G189), Borrows through a static object handle's payload (PLAN G100).
     [Theory]
     [InlineData("        ()\nfunc f()\n    let r = State.counter@uniq\n    r@follow = 3", "State.counter@uniq", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32\n    let r = State.counter@ref\n    return r@follow", "State.counter@ref", DiagnosticCode.Unsupported_Kd)]
@@ -126,10 +128,15 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f()\n    let r = State.guarded@ref", "State.guarded@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => take(State.counter@uniq/i32)", "State.counter@uniq/i32", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.counter@raw", "State.counter@raw", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.handle@objref", "State.handle@objref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f<s/T>()\n    s is ref\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f<s/T>()\n    s is owner or ref\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.limit@uniq", "State.limit@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.guarded@uniq", "State.guarded@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.custom@uniq", "State.custom@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@uniq", "State.fixed.x@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.InvalidAssignment_Kd)]
     public void AQualifiedStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
     {
         var source = Statics + body + "\npublic func main() => ()\n";
@@ -138,12 +145,14 @@ public class PathCapabilityDiagnosticTest
     }
 
     // Reads, writes and calls through the group borrow no static Field in Binding, and an unqualified Borrow in its group binds until
-    // A5-F9 lands (DECISIONS R4-M90 PQ-1).
+    // A5-F9 lands (DECISIONS R4-M90 PQ-1). A case adaptation borrows a function reference as a Temporary Value, as `g@uniq` does.
     [Theory]
     [InlineData("        ()\nfunc f() -> i32 => State.counter + State.point.x")]
     [InlineData("        ()\nfunc f()\n    State.counter = 1\n    State.counter += 1\n    State.point.x = 3")]
     [InlineData("        State.counter += 1\nfunc f() => State.bump()")]
     [InlineData("        let r = counter@uniq\n        r@follow += 1")]
+    [InlineData("        ()\nfunc g() => ()\nfunc f<s/T>()\n    s is ref\n    _ = g@s")]
+    [InlineData("        ()\nfunc g() => ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = g@s")]
     public void StaticAccessesWithoutAQualifiedBorrowBind(string body)
     {
         var c = MinimalEmissionTest.Analyze(Statics + body + "\n");

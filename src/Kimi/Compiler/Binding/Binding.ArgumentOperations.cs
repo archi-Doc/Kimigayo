@@ -642,10 +642,6 @@ public sealed partial class Binding
         {
             // SPEC 13.5.6: an explicit borrow of a slot storing a pair application borrows that slot like a stored value.
             var exclusive = target == SemanticsKind.Uniq;
-            var unwrapped = KotoHelper.UnwrapParentheses(source);
-            // Function references and anonymous expressions construct callable values, despite retaining declaration Symbols.
-            var callableValue = (actual.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
-                unwrapped is FunctionKoto { IsAnonymous: true };
             if (this.BorrowablePlace(source, scope, exclusive))
             {
                 // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
@@ -658,7 +654,7 @@ public sealed partial class Binding
                     }
                 }
             }
-            else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation, callableValue) &&
+            else if (!BorrowableTemporary(source, exclusive, explicitBorrow || receiver, fixedExpectation) &&
                 !(target == SemanticsKind.Ref && this.KindOf(source) == ArgumentKind.Literal))
             {
                 return false;

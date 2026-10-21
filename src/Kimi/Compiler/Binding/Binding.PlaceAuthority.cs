@@ -314,8 +314,9 @@ public sealed partial class Binding
     // SPEC 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
     // lifetime. A newly owned temporary has exclusive writable capability, lent exclusively only when spelled or as a Receiver
     // Expression (SPEC 7.3, 15.1.5), and a getter result only shared (SPEC 11.5). A selected referent or payload, a published
-    // Place, a user index Place (SPEC 4.7.1), a named binding and a Tuple element are Places, never temporaries.
-    private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation, bool callableValue = false)
+    // Place, a user index Place (SPEC 4.7.1), a named binding and a Tuple element are Places, never temporaries. A function reference
+    // and an anonymous function construct a callable value, despite a declaration Symbol (SPEC 7).
+    private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
@@ -324,6 +325,8 @@ public sealed partial class Binding
             return false;
         }
 
+        var callableValue = (source.BoundType?.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
+            unwrapped is FunctionKoto { IsAnonymous: true };
         return (source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
             (!exclusive || (spelled && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
             !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
@@ -479,7 +482,9 @@ public sealed partial class Binding
         };
 
     // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field reached through its qualified
-    // name at the root of the path that lends it (SPEC 15.6.2), if any.
+    // name at the root of the path that lends it (SPEC 15.6.2), if any; a node, not a bool, as the structure limits leave this member one
+    // bool parameter, the mode. Exception until PLAN G100 (b): below a static object handle or a pair layer the walk asks BorrowablePlace
+    // (BorrowableHandle, PairCapability), so such a payload path reports no root and keeps its Language error or binds.
     private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
         staticRoot = null;

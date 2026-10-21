@@ -257,10 +257,11 @@ public sealed partial class Binding
         if (operation is ConversionBinding.Borrow or ConversionBinding.Address ||
             (operation == ConversionBinding.ObjectUpcast && target.IsObjectBorrow))
         {
+            // SPEC 13.5.6, 15.1.5: a borrowing case, shared or exclusive, borrows a Place that lends in its mode or a Temporary Value.
             var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-            if (exclusive && !this.BorrowablePlace(conversion.Left, scope, true) && !BorrowableTemporary(conversion.Left, true, true, false))
+            if (!this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
-                this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: true));
+                this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive));
                 return false;
             }
         }
