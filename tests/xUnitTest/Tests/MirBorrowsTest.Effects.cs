@@ -437,14 +437,14 @@ public sealed partial class MirBorrowsTest
 
                 """));
 
-    // R4-M73, R4-M70 (with R4-M92): an effect conflict is a Loan problem, so in a view a call's by-argument store holds it is the located
-    // Unsupported_Kd at its call (e17), and one whose Loan only a default's tainted sets hold is the located Unsupported_Kd at the omitting
-    // call (tainted). Fail-before: e17's g() and tainted; the `var xs` record is the held view's own (R4-M73), with or without the static
-    // Loan.
+    // R4-M73 (with R4-M92): an effect conflict is a Loan problem, so in a view a call's by-argument store holds it is the located
+    // Unsupported_Kd at its call (e17; the `var xs` record is the held view's own, with or without the static Loan). A static Loan a
+    // default's copy keeps meets the call's unknown effect: the Language problem at the call (copied, R-a; R4-M70's taint made it the
+    // located Unsupported_Kd at the omitting call).
     [Fact]
-    public void AHeldOrTaintedEffectIsUnsupported()
+    public void AHeldEffectIsUnsupported()
         => Assert.Equal(
-            ["e17: g() Unsupported_Kd", "e17: var xs: Array<T> = [] Unsupported_Kd", "tainted: same(counter.view()) Unsupported_Kd"],
+            ["e17: g() Unsupported_Kd", "e17: var xs: Array<T> = [] Unsupported_Kd", "copied: g()"],
             Effects("""
                     public func e17<T>(a: T, g: () -> ())
                         T is Copy
@@ -456,7 +456,7 @@ public sealed partial class MirBorrowsTest
                         g()
                         inspect(c)
                     public func same(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
-                    public func tainted(g: () -> ())
+                    public func copied(g: () -> ())
                         let r = same(counter.view())
                         g()
                         inspect(r)
