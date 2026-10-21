@@ -1091,8 +1091,8 @@ applied (its §13). The owner then instructed the R4 planning session: 「この
     through `self`, integer-made pointers, a pointer to a mutable static, a foreign call) and `Counted`'s body-local raw borrow;
     none lends a raw Place out of its body.
   - Tests and milestones generally: all 52,225 C# string-literal fragments of `tests/xUnitTest` (adjacent literals joined) and the
-    44 milestones, filtered mechanically for an unsafe context with a borrow of a dereferenced, indexed or followed Place: 24
-    fragments and one interpolated borrow, each read. Raw lends that leave their body: `FunctionDefaultTest`'s `leak` (two
+    44 milestones, filtered mechanically for an unsafe context with a borrow of a dereferenced, indexed or followed Place: 22
+    C# fragments, Milestones 7 and 27, and one interpolated borrow, each read. Raw lends that leave their body: `FunctionDefaultTest`'s `leak` (two
     programs), `LoanFieldTest`'s `Window.get`, `RawPlaceAccessTest`'s `get` (three forms), `view` and `generic<T>`, and
     `MirBorrowsTest.Defaults`' `rawRef` (into a default). Each is called concretely or only bound; none is a conformance witness,
     override, Closure or runtime-Contract implementation, and none is followed by code acting on the lent Place through the lend's

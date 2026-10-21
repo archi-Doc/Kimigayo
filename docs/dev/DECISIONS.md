@@ -702,7 +702,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   UninitializedPlace variant at a Drop needs a producer of part Drops of a maybe-uninitialized layer; none exists (the
   replacement Drop's Define clears it; U5b's receiver parts are initialized at entry) — add it with that producer), replacing the old path's Unsupported gate on a partial Move through a drop-bearing
   ancestor; check-only code is not judged (plan Appendix B C3). Rows `MirDropRow(Block, Views, Verdict, Flag, Depth, Step, Arg, Path)`
-  (Path, a part row's move path, -1 at Depth 0, added by U7 for A5, which reads it: A2 owns the fact),
+  (Path, a part row's move path, -1 at Depth 0, added by U7 for A5: removed with U7 by R4-M33's discard, `0d989e68`; no later A5
+  reads it),
   one group per Drop and view class (a group equal but for its views to the Drop's previous group is merged into it): the dropped
   Place, then under Open its child paths in pre-order with their steps (`MirMovePath` carries Kind and Arg). A body's rows are
   ordered by block, and `MirDropTable.Group(body, block, view)` is the one lookup of a Drop's group under a view, which R5 code
@@ -2822,6 +2823,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     record work folds into U4). The Complete Polonius A5 plan's §5.3 S2 row and App. A row 10 (checked by X-5) close. The 2f-S1
     sketch's G3 is moot (no Origin reach remains) and G4 is answered by SPEC 16.3.3 (a destruction in a generic body reaches Loans
     by path, never Loans on other roots).
+  - Landed on 2026-10-22 (merge `1f4952ef`): U0–U2 and AC-U1b, each with its review. U1 newly accepted on the default pipeline one
+    class SPEC 15.6.7 rejects (a reservation route's local reference rewritten during an argument, 36e; 36h, i36e and i36h were
+    accepted before U1; MIR rejects all; no miscompile in native O0/O2 runs). The owner chose (b), a recorded difference until
+    R6-check (verbatim 「推奨通りで、お願いします」): `CallReservationTest`'s pinned rows, ledger row `a5-route-write`, PLAN G217,
+    STATUS row 54. Gate item 9's ask A-7 ("A5-F6 with A5P-S2") is replaced too (R5 records its own entry). Adoption authorizes
+    U3's STYLE.md:116 and SPECJ_TERMINOLOGY.md:30 edits; a SETTLED entry on rejecting an effect bound that relates two calls is
+    the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
+    no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
+    before their next adding change. Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
+    from Binding's operation instead of the HIR column (2x-E8 decides).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
     clause for some forms (no counterexample; a counterexample to the base rule is one for concrete calls too); C with P12 (Q1 (b),
