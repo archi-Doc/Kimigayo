@@ -494,10 +494,77 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         Assert.Equal(["Unsupported_Kd Self is Sink 1"], Problems(Sink + Loud + Chain + Witness + "        _ = G<i32>.init()\n        return .Ok(())\n"));
     }
 
+    // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
+    // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
+    // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
+    // it in the driver's order takes a fresh A4's evaluations.
+    [Fact]
+    public void LocalRecordsTheProgramsVersion()
+    {
+        var c = MirBuildTest.Compile(Sink + Loud + "group G\n    public func noisy() => Console.writeLine(\"x\")\n" + Witness + "        G.noisy()\n" +
+            "        return .Ok(())\npublic func main() => ()\n");
+        var program = c.BuildMir();
+        var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+        var effects = new MirEffects(c.Types, cases, flow);
+        Assert.Equal([Failed], Record(lastFirst: true));
+        program.Version++;
+        Assert.Equal([Failed], Record(lastFirst: false));
+        var fresh = new MirEffects(c.Types, cases, flow);
+        Analyze(fresh, flow, cases, program, new MirReport());
+        Assert.Equal(fresh.Evaluations, effects.Evaluations);
+
+        string[] Record(bool lastFirst)
+        {
+            var bodies = program.Bodies.ToArray();
+            for (var i = 0; i < bodies.Length; i++)
+            {
+                var body = bodies[lastFirst ? bodies.Length - 1 - i : i];
+                flow.Begin(body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    cases.Select(body, view);
+                    effects.Local(program, body, view);
+                }
+            }
+
+            var report = new MirReport();
+            effects.Run(program, report);
+            return Problems(c, report);
+        }
+    }
+
+    // G126, V16: Compose records each (reader, node) dependency once per Run. N callers declared before their printing callee read it, and
+    // read it again once it grows, each after the others read it in between; the program's dependencies grow by one per caller (before,
+    // by two from the second caller on: a re-evaluation recorded its read again).
+    [Fact]
+    public void EachReaderIsRecordedOnce()
+    {
+        int[] callers = [1, 4];
+        var dependencies = new int[callers.Length];
+        for (var i = 0; i < callers.Length; i++)
+        {
+            var text = new StringBuilder();
+            for (var n = 0; n < callers[i]; n++)
+            {
+                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"func caller{n}() => callee()\n");
+            }
+
+            var c = MirBuildTest.Compile(text.Append("func callee() => Console.writeLine(\"x\")\npublic func main() => ()\n").ToString());
+            var program = c.BuildMir();
+            var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
+            var effects = new MirEffects(c.Types, cases, flow);
+            Analyze(effects, flow, cases, program, new MirReport());
+            dependencies[i] = effects.Dependencies;
+        }
+
+        Assert.Equal(callers[1] - callers[0], dependencies[1] - dependencies[0]);
+    }
+
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one
     // member prints), each with one problem, grow the evaluations and the cold allocation of a fresh A4 over the program (the library
-    // included) linearly; a warm re-analysis of the same program allocates nothing. N is 256/512/1024 so that the program's own bodies,
-    // not the library's, fill the pooled arrays, whose doubling makes the allocation of smaller programs step (16/32/64: +336, then +9,504).
+    // included) linearly; a warm re-analysis of the same bodies in a new version, which Local starts, allocates nothing and takes the same
+    // evaluations. N is 256/512/1024 so that the program's own bodies, not the library's, fill the pooled arrays, whose doubling makes the
+    // allocation of smaller programs step (16/32/64: +336, then +9,504).
     [Trait("Purpose", "Allocation")]
     [Theory]
     [InlineData("    public func step{0}() => H.{1}()\n")]
@@ -528,9 +595,11 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             evaluations[i] = effects.Evaluations;
             Assert.Equal(0, AllocationMeasurement.Measure(() =>
             {
+                program.Version++; // A new version of the same bodies, which Local starts.
                 report.Clear();
                 Analyze(effects, flow, cases, program, report);
             }));
+            Assert.Equal(evaluations[i], effects.Evaluations);
         }
 
         output.WriteLine($"N {string.Join(", ", sizes)}: evaluations {string.Join(", ", evaluations)}, cold A4 allocation {string.Join(", ", allocated)}");
@@ -652,7 +721,10 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     private static string[] Problems(Compilation c, MirProgram program)
     {
         Assert.Empty(program.Findings);
-        return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
-            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
+        return Problems(c, program.Problems);
     }
+
+    private static string[] Problems(Compilation c, MirReport report)
+        => [.. report.All.ToArray().Where(static x => x.Subject.Module == 0 && x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or
+            DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd).Select(x => $"{x.Code} {c.SyntaxOf(x.Subject).ToString().Split('\n')[0].Trim()} {x.Views}")];
 }

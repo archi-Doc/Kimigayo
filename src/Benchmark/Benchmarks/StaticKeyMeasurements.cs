@@ -111,8 +111,9 @@ internal static class StaticKeyMeasurements
         return text.Append(head).ToString();
     }
 
-    // One program's allocation series: each phase's bytes over fresh instances (minimum, maximum), a warm re-run of the last one, the heap
-    // a fresh instance retains after its pass, and the counts the key formula reads.
+    // One program's allocation series: each phase's bytes over fresh instances (minimum, maximum), a warm re-run of the last one (a new
+    // version of the same bodies, which Local starts), the heap a fresh instance retains after its pass, and the counts the key formula
+    // reads.
     private static object Allocations(string shape, int size, int fields)
     {
         var w = Workload.Create(shape, size, fields);
@@ -124,6 +125,7 @@ internal static class StaticKeyMeasurements
             cold[i] = Measure(effects, w);
         }
 
+        w.Program.Version++;
         var warm = Measure(effects!, w);
         var before = GC.GetTotalMemory(forceFullCollection: true);
         var kept = w.Effects();
@@ -155,6 +157,7 @@ internal static class StaticKeyMeasurements
             words,
             formulaKeyWords = nodes * words,
             evaluations = effects!.Evaluations,
+            dependencies = effects.Dependencies,
             sites = cold[0].Sites,
             unknownSites = cold[0].Unknown,
             keysReturned = cold[0].Keys,
