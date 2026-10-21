@@ -201,7 +201,11 @@ first. IntrinsicId returns to 30 at R8.
   for a Binding that selects a pair layer, including forms dev bound by value or followed structurally and ran, until R6-check
   (DECISIONS BU-14), and the owner's exception for G140 (2026-10-21): performance fixes in the old Analysis with identical
   verdicts (CleanupObservesBorrows' per-query depth-monotone memo, HasProjection's gate, AggregateCanComplete's memo,
-  VerifyBorrows' per-Place AddType set; DECISIONS BU-19).
+  VerifyBorrows' per-Place AddType set; DECISIONS BU-19), and the owner's exception for Abstract Calls Reach by Paths
+  (2026-10-22): the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
+  and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and rejects G193's
+  forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner (DECISIONS
+  R4-M106, the proposal's adoption entry).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.
