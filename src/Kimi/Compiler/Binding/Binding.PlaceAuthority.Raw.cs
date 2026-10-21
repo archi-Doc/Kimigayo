@@ -109,8 +109,8 @@ public sealed partial class Binding
         return innermost;
     }
 
-    // The layer a path dereferences: a raw pointer's Origin and step, a borrow's or a pair layer's outer Origin and mode; Dereferences
-    // is null for a pair layer whose admitted cases mix modes or admit a non-borrow (U2).
+    // The layer a path dereferences: a raw pointer's Origin and step, a borrow's outer Origin and mode, or a pair layer's with its
+    // weakest borrow case's mode (FollowStep); Dereferences is null for a pair layer admitting a non-borrow case (U2).
     private RawPath Reached(BoundType layer)
     {
         if (layer.Semantics == SemanticsKind.Raw && layer.Kind == BoundTypeKind.Semantics)
@@ -118,7 +118,7 @@ public sealed partial class Binding
             return new(true, layer.RawOrigin, this.StepOf(layer.RawOrigin) ?? RawStep.Exclusive);
         }
 
-        var mode = this.LayerStep(layer);
+        var mode = TryPairLayer(layer, out _, out _) ? FollowStep(this.LayerAdmitted(layer)) : this.LayerStep(layer);
         return new(mode is null ? null : true, this.OuterOrigin(layer), mode.GetValueOrDefault());
     }
 

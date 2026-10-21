@@ -210,4 +210,17 @@ public class RawPlaceAccessTest
     [InlineData("func choose(c: bool, a: uniq/i32, b: uniq/i32) -> uniq/i32 => if c => a else => b\nfunc f(c: bool, x: uniq/i32, y: uniq/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1", null)]
     public void ATypedPathKeepsItsBorrowsMode(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
+
+    // SPEC 5.7, 13.5.5 (design-final §4): a path through a pair follow whose admitted cases are all borrows is reached with the weakest
+    // case's mode, so a write through it is denied when any case is shared; a pair follow admitting a non-borrow case is a located
+    // Unsupported_Kd (U2), for a `during self` read and a typed path alike.
+    [Theory]
+    [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is ref or uniq\n    return x@follow@raw", null)]
+    [InlineData("func f<s/T>(x: s/i32)\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => *p = 1", "SharedPathAccess_Kd: *p")]
+    [InlineData("func f<s/T>(x: s/B)\n    s is ref or uniq\n    unsafe => *x.data = 1", "SharedPathAccess_Kd: *x.data")]
+    [InlineData("func f<s/T>(x: s/i32)\n    s is uniq\n    let p = x@follow@raw\n    unsafe => *p = 1", null)]
+    [InlineData("func f<s/T>(x: s/B) -> raw/i32\n    s is value or ref\n    return x.data", "Unsupported_Kd: x.data")]
+    [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is value or valueborrow\n    return x@follow@raw", "Unsupported_Kd: x@follow@raw")]
+    public void APairFollowIsReachedWithItsWeakestBorrowCase(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Lenses + declarations));
 }

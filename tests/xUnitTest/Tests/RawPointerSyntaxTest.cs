@@ -63,6 +63,15 @@ public class RawPointerSyntaxTest
     public void ARawOriginIsOneAtomOfABorrow(string declarations, string record)
         => Assert.Equal([record], Records(declarations));
 
+    // SPEC 5.7, 8.3.4 (design-final §4; U1): a raw layer stating the Origin of a pair input whose admitted cases mix modes or admit a
+    // non-borrow case has no one step: a located Unsupported_Kd at the annotation; one mode is the step of every case.
+    [Theory]
+    [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is ref or uniq\n    ()", "Unsupported_Kd: raw/T during a")]
+    [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is value or ref\n    ()", "Unsupported_Kd: raw/T during a")]
+    [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is ref\n    ()", null)]
+    public void APairOriginOfMixedCasesHasNoStep(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], Records(declarations));
+
     // SPEC 5.7, Fits and claims: a raw layer without `during` states an Origin every Origin outlives, so dropping or narrowing an Origin
     // is a fit and stating one is a claim, valid only in an unsafe context; elsewhere it is an Origin relation error (rulings S4), at the
     // value whose unstated Origin does not outlive the stated one. An invariant position relates both ways.

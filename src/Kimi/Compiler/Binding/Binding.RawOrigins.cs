@@ -165,6 +165,15 @@ public sealed partial class Binding
         _ => null,
     };
 
+    // The mode a path is reached with through a pair layer whose admitted cases are all borrows (design-final §4): the weakest case's,
+    // Shared when any case is a shared borrow; null when a case is no borrow (U2).
+    private static RawStep? FollowStep(SemanticsMask admitted) => admitted switch
+    {
+        _ when CasesStep(admitted) is { } step => step,
+        _ when (admitted & ~(SemanticsMask.Ref | SemanticsMask.ObjRef | SemanticsMask.Uniq | SemanticsMask.ObjUniq)) == 0 => RawStep.Shared,
+        _ => null,
+    };
+
     // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
     // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
     // recursively; any other source reaches the layers as a whole. Null when every layer receives null.
