@@ -2,13 +2,13 @@
 
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram. Output: its Problems for that version, which the analyses add through MirReport.
-// Runs them once per version, after build and validation, in a fixed order: per body, 1. A3, then 2. per view A1, then A2, a body whose
-// A1 arena exceeds the analyses' limit stopping those views (R4-M15a), then per view A4's local facts; 3. A4's summaries and obligations
-// over the program; 4. per body A5 over the views A1 and A2 completed, which A2's table publishes (MirDropTable.ViewsOf), its block order
-// and move paths built again (design A3 6.1, DECISIONS R4-M57); 5. A6 inside MirReport. Owns one instance of each analysis and their
-// shared scratch (MirCases, the one MirReach, the dataflow arena, the move paths) for the compilation's lifetime, arrays reset by counts;
-// each analysis unit adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its own loop over
-// the bodies after A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
+// Runs them once per version, after build and validation, in a fixed order: per body, 1. A3, then 2. per view A1, then A2, a body whose A1
+// arena exceeds the analyses' limit stopping those views (R4-M15a), then per view A4's local facts; 3. A4's summaries and obligations over
+// the program; 4. per body A5 over the views A1 and A2 completed, which A2's table publishes (MirDropTable.ViewsOf), its block order and
+// move paths built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92); 5. A6 inside MirReport. Owns one instance of each
+// analysis and their shared scratch (MirCases, the one MirReach, the dataflow arena, the move paths) for the compilation's lifetime, arrays
+// reset by counts; each analysis unit adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its
+// own loop over the bodies after A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or analyze a program with validator findings.
 
 namespace Kimi.Compiler.Mir;
@@ -38,7 +38,7 @@ internal sealed class MirAnalysis
         this.drops = new(this.moves, this.cases);
         this.init = new(this.flow, this.moves, this.cases, this.drops);
         this.effects = new(types, this.cases, this.flow);
-        this.borrows = new(types, this.flow, this.moves, this.cases);
+        this.borrows = new(types, this.flow, this.moves, this.cases, this.effects); // A5 reads A4's keys (R4-M92).
     }
 
     /// <summary>Analyzes a program unless this version already was: a new version starts without problems, and one with validator

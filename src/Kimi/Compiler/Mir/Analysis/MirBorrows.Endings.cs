@@ -66,10 +66,11 @@ internal sealed partial class MirBorrows
     }
 
     // The Loans destroying a Move Path in place ends (E8), those whose Places it exactly prefixes: the Loans whose groups lie in its
-    // subtree. A Place through a Deref or an index under the view, or a static's, is no Move Path.
+    // subtree. A Place through a Deref or an index under the view, or a part of a static, is no Move Path; a whole static is one, its
+    // group's Loans ended (OQ-F5-1 (a), R4-M92).
     private int Ending(MirPlace destroyed)
     {
-        if (destroyed.IsStatic)
+        if (destroyed.IsStatic && destroyed.Projection > 0)
         {
             return 0;
         }

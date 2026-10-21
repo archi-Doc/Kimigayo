@@ -2728,19 +2728,24 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         return (stratum.Borrows.Work, stratum.Borrows.Bytes);
     }
 
-    // A5 over every view of every body of a built program, as the driver's step 4 runs it over the views A1 and A2 completed (R4-M57).
-    // BuildMir has already run the driver, so a run here adds only the problems of views the driver left out and merges the others into
-    // the driver's (MirReport keeps the first problem and its facts); Work and Bytes count this instance's runs only.
+    // A5 over every view of every body of a built program, as the driver's step 4 runs it over the views A1 and A2 completed (R4-M57),
+    // after its own A4's summaries and keys of the program version (the driver's steps 2 and 3, once per version; R4-M92). BuildMir has
+    // already run the driver, so a run here adds only the problems of views the driver left out and merges the others into the driver's
+    // (MirReport keeps the first problem and its facts); Work and Bytes count this instance's A5 runs only.
     private sealed class Stratum
     {
         private readonly MirDataflow flow = new(new MirReach());
         private readonly MirMoveData moves = new();
+        private readonly MirReport obligations = new(); // A4's obligation problems, which A5 does not read.
         private readonly MirCases cases;
+        private readonly MirEffects effects;
+        private ulong version; // The program version A4 last solved.
 
         internal Stratum(TyCtxt types)
         {
             this.cases = new(types);
-            this.Borrows = new(types, this.flow, this.moves, this.cases);
+            this.effects = new(types, this.cases, this.flow);
+            this.Borrows = new(types, this.flow, this.moves, this.cases, this.effects);
         }
 
         internal MirBorrows Borrows { get; }
@@ -2755,6 +2760,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
 
         internal void Run(MirProgram program, MirBody body)
         {
+            this.Summaries(program);
             this.flow.Begin(body);
             this.moves.Build(body, this.flow);
             for (var view = 0L; view < MirCases.Count(body); view++)
@@ -2762,6 +2768,29 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 this.cases.Select(body, view);
                 this.Borrows.Run(program, body, view);
             }
+        }
+
+        // A4 over a program version it has not solved: each body's views' local facts, then the summaries and keys.
+        private void Summaries(MirProgram program)
+        {
+            if (program.Version == this.version)
+            {
+                return;
+            }
+
+            this.version = program.Version;
+            foreach (var body in program.Bodies)
+            {
+                this.flow.Begin(body);
+                for (var view = 0L; view < MirCases.Count(body); view++)
+                {
+                    this.cases.Select(body, view);
+                    this.effects.Local(program, body, view);
+                }
+            }
+
+            this.obligations.Clear();
+            this.effects.Run(program, this.obligations);
         }
     }
 }
