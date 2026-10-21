@@ -36,6 +36,7 @@ public sealed partial class MirBorrowsTest
             public func clog() -> Counter => Counter.init()
             public func tally() -> Counter => Counter.init()
             public func gx() -> Counter => Counter.init()
+            public func watch() -> Watch => Watch.init()
 
         """;
 
@@ -190,8 +191,10 @@ public sealed partial class MirBorrowsTest
 
                 """));
 
-    // ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans's e9s on a rooted body (SPEC 16.3.3; R4-M92): an erased destruction of a local, at
-    // its assignment's Drop, meets every live mutable-static Loan. Its R3 rows borrow no static Place.
+    // ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans's e9s and e9b on rooted bodies (SPEC 16.3.3, 16.4; R4-M92): an erased destruction
+    // of a local, at its assignment's Drop, meets every live mutable-static Loan (e9s); exchange is R3's way out, its Loan on the static
+    // ending at the call, so the old value's destruction, whose destructor reads the static, meets nothing (e9b; e8 at source its invalid
+    // twin). Its other rows borrow no static Place.
     [Fact]
     public void AnErasedDestructionMeetsTheLiveStaticLoansRooted()
         => Assert.Equal(
@@ -203,6 +206,9 @@ public sealed partial class MirBorrowsTest
                         let c = sc.view()
                         local = func [] () => ()
                         inspect(c)
+                    public func e9b()
+                        var sw = Root.watch()
+                        _ = Kimi.Intrinsics.exchange(sw@uniq, with: Watch.init())
 
                 """));
 
@@ -364,6 +370,7 @@ public sealed partial class MirBorrowsTest
                     inspect(ly)
 
             """ + EffectRoots);
+        Assert.Empty(c.Binding.Issues);
         var program = AnalyzeRooted(c);
         Assert.Equal(
             ["both3(g@move) ComparisonLoanConflict_Kd EffectUnknown", "w5 = W5.init() ComparisonLoanConflict_Kd EffectRead"],
@@ -583,8 +590,7 @@ public sealed partial class MirBorrowsTest
     // V16 "F5 effects" (DECISIONS R4-M92) on rooted bodies: one body with M Loans on M mutable statics live across N calls, each to a function
     // writing one of K other statics, checks each call's keys once per effect root (A4's row, the root's two bits and its candidates): the
     // work grows linearly in N at M = 4, K = 8 and within the bound's M × (holders) term in M at N = 32. A guard, not a regression: no problem
-    // arises. No staticEnsure precedes a rooted Borrow, so the shape has M checked sites fewer than its source form (2b-6w measured equal
-    // increments in N, 1,664 and 3,328, and 4,217 and 11,152 in M against the source form's 4,767 and 13,424).
+    // arises. No staticEnsure precedes a rooted Borrow, so the shape has M checked sites fewer than its source form.
     [Fact]
     public void EffectsScaleWithCallsAndStaticLoans()
     {
@@ -593,7 +599,8 @@ public sealed partial class MirBorrowsTest
             var (text, roots) = (new StringBuilder(EffectTypes).Append("group F\n"), new StringBuilder("group Root\n"));
             for (var i = 0; i < m; i++)
             {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var m{i}: Counter = Counter.init()\n    public func r{i}() -> i32 => F.m{i}.n\n");
+                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var m{i}: Counter = Counter.init()\n")
+                    .Append(System.Globalization.CultureInfo.InvariantCulture, $"    public func r{i}() -> i32 => F.m{i}.n\n");
                 roots.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public func m{i}() -> Counter => Counter.init()\n");
             }
 
@@ -673,7 +680,7 @@ public sealed partial class MirBorrowsTest
         program.Problems.Clear();
         var (bodies, stratum) = (Rooted(c, program), new Stratum(c.Types));
         Assert.Equal(0, AllocationMeasurement.Measure(() => Run(stratum, program, bodies)));
-        Assert.Equal(4, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
+        Assert.Equal(4, Sound(program).Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
     }
 
     // ACopysFailureIsItsTemplatesOnlyWithinOneEvaluation's rows that need a live static Loan, on rooted bodies (D11, D13; SPEC 7.2.3, 15.6,
@@ -777,7 +784,7 @@ public sealed partial class MirBorrowsTest
         program.Problems.Clear();
         var (bodies, stratum) = (Rooted(c, program), new Stratum(c.Types));
         Assert.Equal(0, AllocationMeasurement.Measure(() => Run(stratum, program, bodies)));
-        Assert.Contains("g171: State.add(sc@uniq) CallReservationConflict_Kd", Problems(c, program, DefaultCodes));
+        Assert.Contains("g171: State.add(sc@uniq) CallReservationConflict_Kd", Problems(c, Sound(program), DefaultCodes));
     }
 
     // The Loan problems and located Unsupported_Kd records of an effect program's rooted bodies: the prelude, the effect Types and group
@@ -798,7 +805,7 @@ public sealed partial class MirBorrowsTest
         program.Problems.Clear();
         var stratum = new Stratum(c.Types);
         Run(stratum, program, Rooted(c, program));
-        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
+        Assert.DoesNotContain(Sound(program).Problems.All.ToArray(), static x => LoanCodes.Contains(x.Code));
         return stratum.Borrows.Work;
     }
 
@@ -808,6 +815,15 @@ public sealed partial class MirBorrowsTest
         var program = c.BuildMir();
         program.Problems.Clear();
         Run(new Stratum(c.Types), program, Rooted(c, program));
+        return Sound(program);
+    }
+
+    // A program after A5's runs over its rooted bodies: the build found nothing MirValidator rejects, and no rooted copy broke a contract A5
+    // checks (InternalInvariant_Kd, which the codes the tests read leave out).
+    private static MirProgram Sound(MirProgram program)
+    {
+        Assert.Empty(program.Findings);
+        Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         return program;
     }
 
@@ -819,12 +835,13 @@ public sealed partial class MirBorrowsTest
         }
     }
 
-    // Each body of the program's own module with its stand-ins rooted at their statics, validated: a stand-in is a local a call of group Root
-    // initializes, standing for the static that function names, which a body of the program accesses. The copy leaves out the stand-in's
-    // storage statements, its initializing call and its Drop (each a Goto to its target) and roots each of its Places at the static (the
-    // stand-in has the static's Type, so its projections are the static's); every other row and the block numbers are the built body's, so
-    // A2's verdicts of the body (its Ordinal) apply. So a Borrow of a stand-in is a Borrow of its static, with no staticEnsure before it: no
-    // such ensure the source tests ran met a live Loan.
+    // Each body of the program's own module with its stand-ins rooted at their statics, validated: a stand-in is a Var or Temp local a call of
+    // group Root initializes, standing for the static that function names, which a body of the program accesses, and of its Type up to
+    // Origins (MirTypes.Agree, MIR's Type agreement). The copy leaves out the stand-in's storage statements, turns that call and the
+    // stand-in's Drop into Gotos to their targets and roots each of its Places at the static (so its projections are the static's); every
+    // other row and the block numbers are the built body's, so A2's verdicts of the body (its Ordinal) apply. So a Borrow of a stand-in is a
+    // Borrow of its static, with no staticEnsure before it: no such ensure the source tests ran met a live Loan. A4's summaries are the built
+    // program's, so a twin function's lacks its stand-ins' static accesses; no witness composes one (copies are inlined).
     private static MirBody[] Rooted(Compilation c, MirProgram program)
     {
         var statics = program.Bodies.ToArray().SelectMany(static x => x.Statics.ToArray()).DistinctBy(static x => x.Symbol).ToArray();
@@ -854,15 +871,27 @@ public sealed partial class MirBorrowsTest
 
             foreach (var block in built.Blocks)
             {
-                if (block.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Declaration.Parent: GroupKoto { Name: "Root" } } call)
+                if (Marker(block.Terminator) is { } name)
                 {
-                    roots[call.Place.Root] = body.Static(Assert.Single(statics, x => x.Symbol.Name == call.Callee.Symbol.Name)).Root;
+                    var (stand, entry) = (block.Terminator.Place, Assert.Single(statics, x => x.Symbol.Name == name));
+                    Assert.True(stand.Projection == 0 && built.Locals[stand.Root].Kind is MirLocalKind.Var or MirLocalKind.Temp);
+                    Assert.True(MirTypes.Agree(entry.Type, built.Locals[stand.Root].Type));
+                    roots[stand.Root] = body.Static(entry).Root;
                 }
             }
 
             bool StandIn(MirPlace place) => place is { Root: >= 0, Projection: 0 } && roots[place.Root] < 0;
             int Chain(int root, int id)
-                => id == 0 ? 0 : body.Project(new(root, Chain(root, built.Projections[id].Prefix)), built.Projections[id].Kind, built.Projections[id].Arg).Projection;
+            {
+                if (id == 0)
+                {
+                    return 0;
+                }
+
+                var step = built.Projections[id];
+                return body.Project(new(root, Chain(root, step.Prefix)), step.Kind, step.Arg).Projection;
+            }
+
             MirPlace Map(MirPlace place)
             {
                 var root = place.Root >= 0 ? roots[place.Root] : place.Root;
@@ -910,7 +939,7 @@ public sealed partial class MirBorrowsTest
                     }
                 }
 
-                var copied = terminator.Kind is MirTerminatorKind.Call or MirTerminatorKind.Drop && StandIn(terminator.Place)
+                var copied = Marker(terminator) is not null || (terminator.Kind == MirTerminatorKind.Drop && StandIn(terminator.Place))
                     ? MirTerminator.Goto(terminator.Target, terminator.Source, terminator.CheckTarget)
                     : terminator with { Place = Map(terminator.Place), Operand = terminator.Operand with { Place = Map(terminator.Operand.Place) } };
                 body.Terminate(b, copied);
@@ -918,5 +947,9 @@ public sealed partial class MirBorrowsTest
 
             return body;
         }
+
+        // The static a stand-in's initializing call names: a call of group Root's function of that name.
+        static string? Marker(in MirTerminator terminator) => terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol: var function } &&
+            function?.Declaration.Parent is GroupKoto { Name: "Root" } ? function.Name : null;
     }
 }
