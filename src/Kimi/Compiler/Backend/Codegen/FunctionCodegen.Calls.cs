@@ -133,8 +133,8 @@ internal sealed partial class FunctionCodegen
         this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, parameters.Length)));
     }
 
-    // A call's end: its value, if any, put into the destination in its storage representation, then the call's target, or unreachable
-    // after a call without one (SPEC 14.10.3).
+    // A call's end: its value, if any, put into the destination in its storage representation, then the call's target (Branch, after its
+    // flag points), or unreachable after a call without one (SPEC 14.10.3), which has no runtime successor and so writes no points.
     private void Finish(in MirTerminator call, Value? result)
     {
         if (result is { } value && this.LoweringOf(call.Place) is { } lowering)
@@ -142,12 +142,13 @@ internal sealed partial class FunctionCodegen
             this.Store(MirStatement.Assign(call.Place, default, call.Source), this.Widen(lowering, value));
         }
 
-        this.output.Write(call.Target < 0 ? "  unreachable\n" : "  br ");
-        if (call.Target >= 0)
+        if (call.Target < 0)
         {
-            this.WriteLabel(call.Target);
-            this.output.Write('\n');
+            this.output.Write("  unreachable\n");
+            return;
         }
+
+        this.Branch(call.Target);
     }
 
     // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition): the console

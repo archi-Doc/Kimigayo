@@ -5734,3 +5734,26 @@ structure is recorded here by the unit that first implements it.
   generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
   "stage 5 times layout", since the instance collector lays out every by-value use in stage 3 (K 4.8, R5-M37). The six stage names
   stay, so reports remain comparable with the 49cb2b5d baseline. It leaves the list; R5's group reviews check the code against R5-M94.
+- **R5-M99 Drop flags in MIR code generation (C4b)** (2026-10-22, C lane; plan C4b, package C 3.2 I2 and I6, 3.9; the planning session's
+  rulings on C4b's design (Q1-Q4); under R5-M18 form 1, R4-M6a and R5-M95)
+  - Rule (SPEC 16.2.1, 15.1, 16.3.2; R4-M6a): a value initialized or moved on some paths only is destroyed exactly where it is Initialized
+    on the path taken, by A2's flag mirroring its path's own bit. `FunctionCodegen.Flags.cs` owns the flags in code generation: each of
+    the body's flags (`MirDropTable.FlagsOf`) is a bool in bool's representation (IMPL 21.1.3: an i8 slot `%f<k>` of the entry block,
+    computed as i1), cleared at entry (I2); the item's view's points (`PointsOf`) are written where their location completes: the
+    entry's in the prologue, a statement's after it, a terminator's after its own effect and before its transfer to its runtime
+    successors (`Branch`, the one unconditional-branch writer of Goto, a Call's end and a Drop, and `Switch` before its `switch`), where
+    it holds on each successor since A1 applies a location once and `MirDataflow` has no per-edge transfer; a terminator without a
+    runtime successor (Return, Unreachable, a Call without a target) writes none (ruling Q3). One forward cursor reads them, as A2 orders
+    them by block, each view's in location order.
+  - Flag verdict: Keep and Flag are one arm, the dropped value's destruction under its row's flag (Keep's is -1, none): the flag loaded and
+    narrowed, `br i1` to `drop<id>`, the glue call, the join `dropped<id>`, then the Drop's own clear point and its branch. `Test` and
+    `Join` own "none", so C4c's child rows and own bit reuse them. Where the instance Type needs no drop (`MirTypes.MayNeedDrop`) nothing
+    is written; the slots stay (O0 text only; O2 deletes a slot nothing loads; ruling Q2). Open stays C4c's located `Unsupported_Kd`.
+  - Restructured first, behavior unchanged: parameter passing in `FunctionCodegen.Arguments.cs` (the argument order, the copy slots and
+    each argument by its parameter; ruling Q1); the Drop terminator alone in `.Drops.cs`, its call through the one destruction-call
+    writer `Destroy(routine, value, site)`.
+  - Rejected: slots only for the flags the item's view reads (a side table per item); one `[N x i8]` slot; points at successor block
+    entries (edge splitting; MIR's points are per location); points before a terminator's effect (wrong for the Drop's own clear); a
+    separate Flag writer beside Keep; `icmp ne i8` beside bool's narrowing; A2 publishing points per edge or grouped per view (a change of
+    held `MirDrops.cs` and of R4-M6a's order contract for no consumer need); flags as MIR locals with set and clear statements (R4-M6a:
+    MIR is not rewritten).

@@ -44,7 +44,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // The entry block (I2): a pointer-passed argument and the result slot are their locals' homes; one aligned alloca per other local of
-    // nonzero size; each Value argument stored into its local's slot. A parameter is its signature's (Prefix p, spelled by its name).
+    // nonzero size, per copy slot and per drop flag, cleared (FunctionCodegen.Flags); each Value argument stored into its local's slot; the
+    // entry's flag points (an argument's flag set). A parameter is its signature's (Prefix p, spelled by its name).
     private void Prologue()
     {
         var (output, parameters) = (this.output, this.abi.Parameters);
@@ -72,6 +73,7 @@ internal sealed partial class FunctionCodegen
             this.WriteSlot("  %s", i, this.copies[i]);
         }
 
+        this.FlagSlots();
         for (var i = 0; i < parameters.Length; i++)
         {
             if (parameters[i].Kind is AbiParameterKind.Value or AbiParameterKind.SharedReference)
@@ -81,6 +83,7 @@ internal sealed partial class FunctionCodegen
             }
         }
 
+        this.Points(new(0, -1));
         output.Write("  br label %b0\n");
     }
 
