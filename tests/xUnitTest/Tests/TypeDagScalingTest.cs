@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>PLAN G140, DECISIONS BU-18: an interned Type is a DAG, so the parts of a Type may be shared, and every walk over a Type's parts
+/// <summary>PLAN G140, DECISIONS BU-19: an interned Type is a DAG, so the parts of a Type may be shared, and every walk over a Type's parts
 /// decides each distinct part once per query. Checking a program whose Types share parts is then linear in the distinct parts: each
 /// scaling row sizes its shape so that a walk that re-visits shared parts meets 2^26 or more paths (hours) while the DAG walk takes
 /// milliseconds; a regression shows as a hang, which the runner's process timeout reports, as <see cref="InferenceSlotScalingTest"/>'s
@@ -67,7 +67,7 @@ public class TypeDagScalingTest
         Assert.Empty(set.Records);
     }
 
-    // DECISIONS BU-18 (R5's condition for the closing table): an edit leaves no closing answer behind, so a closure whose signature an
+    // DECISIONS BU-19 (R5's condition for the closing table): an edit leaves no closing answer behind, so a closure whose signature an
     // edit changed is instantiated again with the new signature in the next pass. The edited tree is rebound, not built (its replaced
     // declaration keeps the donor's module).
     [Fact]
@@ -127,12 +127,12 @@ public class TypeDagScalingTest
     [InlineData("enums", 31)]
     [InlineData("lets", 28)]
     [InlineData("genericLets", 26)]
-    [InlineData("originLets", 24)]
+    [InlineData("originLets", 28)]
     [InlineData("chain", 26)]
     [InlineData("chainValues", 26)]
     public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
     {
-        var c = MinimalEmissionTest.Analyze(Source(shape, size));
+        var c = OldPath(Source(shape, size));
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         if (shape.StartsWith("chain", StringComparison.Ordinal))
         {
@@ -153,7 +153,7 @@ public class TypeDagScalingTest
         var deep = $"    let d = {Nest(depth)}\n";
         var shallow = $"    let s = {Nest(10)}\n";
         var source = "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        Assert.Equal(Codes(code), Problems(OldPath(source)));
 
         static string Nest(int levels) => new string('(', levels) + "value@ref" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
     }
@@ -168,7 +168,7 @@ public class TypeDagScalingTest
         var source = "struct Observer {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + (drop ? "    drop => ()\n" : string.Empty) +
             "var value = 42\nlet t = ((Observer.init(value@ref), Observer.init(value@ref)), (Observer.init(value@ref), Observer.init(value@ref)))\n" +
             (written ? "value = 99\n" : string.Empty) + "require value > 0 else => $abort(\"x\")\n";
-        Assert.Equal(Codes(code), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        Assert.Equal(Codes(code), Problems(OldPath(source)));
     }
 
     // A ring through a handle reaches the bound, which retains the Loan; a closed instance whose Field is a projection is checked in its
@@ -180,7 +180,7 @@ public class TypeDagScalingTest
     {
         var source = "struct Node\n    public var x: i32\n    public var next: Option<rc/Node>\n    public init(x: i32)\n        self.x = x\n        self.next = .None\n" +
             "public func main() -> ()\n    var value = 42\n    let n = Node.init(x: 1)\n    let t = ((n@move, value@ref), 3)\n" + (written ? "    value = 99\n" : string.Empty) + "    return\n";
-        Assert.Equal(Codes(code), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        Assert.Equal(Codes(code), Problems(OldPath(source)));
     }
 
     [Fact]
@@ -188,7 +188,7 @@ public class TypeDagScalingTest
     {
         const string Source = "contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n    S is HasElem\n" +
             "    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\npublic func main() -> ()\n    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n    return\n";
-        Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
+        Assert.Empty(Problems(OldPath(Source)));
     }
 
     // A warm Analyze of a program whose Types share parts allocates nothing: the old analysis's answer tables keep their capacity.
@@ -196,7 +196,7 @@ public class TypeDagScalingTest
     [Trait("Purpose", "Allocation")]
     public void WarmAnalyzeOfSharedTypesAllocatesNothing()
     {
-        var c = MinimalEmissionTest.Analyze(Source("structUses", 12));
+        var c = OldPath(Source("structUses", 12));
         var valid = true;
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
@@ -284,6 +284,13 @@ public class TypeDagScalingTest
     }
 
     private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
+
+    // A checked compilation pinned to the old generator: the old analysis's rows judge its walks, and the checked set of MIR code
+    // generation would add its own resource limits on these shapes.
+    private static Compilation OldPath(string source) => MinimalEmissionTest.Analyze(source, codegen: CompilerCodegen.Legacy);
+
+    // The codes of the analysis's problems: the old path's, then the MIR's records.
+    private static string[] Problems(Compilation c) => [.. c.Problems.Select(static x => x.Code.ToString())];
 
     // The body instances of the functions whose name starts with a prefix.
     private static int Instances(CheckedSet set, string prefix)

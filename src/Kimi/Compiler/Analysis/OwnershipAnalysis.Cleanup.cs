@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class OwnershipAnalysis
 {
-    // A Place's query (DECISIONS BU-18, the owner's D5 exception): its source and context are fixed, and the answer at a depth is
+    // A Place's query (DECISIONS BU-19, the owner's D5 exception): its source and context are fixed, and the answer at a depth is
     // monotone in the depth (an observer is reachable, or a path from the depth reaches the bound), so a part keeps, within the query, the
     // greatest depth it answered false at and the least it answered true at, and a depth between them is computed: exact, at most 66
     // answers a part, so a Type's shared parts are not walked once per path.

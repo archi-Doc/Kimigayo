@@ -465,7 +465,7 @@ public sealed partial class Binding
     }
 
     // A Type with its binder's slots, lengths and pair Origins substituted. One outermost call is one query of the substitution table, its
-    // binder, arguments and lengths fixed, so a part shared within the Type is substituted once (DECISIONS BU-18).
+    // binder, arguments and lengths fixed, so a part shared within the Type is substituted once (DECISIONS BU-19).
     private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
         => this.SubstitutePart(type, binder, arguments, lengths, this.substitutedParts.Begin(this.storageVersion));
 

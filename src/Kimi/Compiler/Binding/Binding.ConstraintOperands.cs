@@ -7,7 +7,7 @@ namespace Kimi.Compiler;
 // Owns the facts of a constraint's operand Types: whether a part of an operand names a declaration whose context failed (Invalid) or is not
 // yet resolved (Unresolved), which a proof reads before it judges the proposition (JudgeConstraintAtom, the capability requests), and
 // whether a part is an associated projection (an interned constraint's HasAssociatedProjection). Each walk visits a distinct part once
-// per query (DECISIONS BU-18). Reads binding states only; never binds or reports.
+// per query (DECISIONS BU-19). Reads binding states only; never binds or reports.
 public sealed partial class Binding
 {
     private static bool InvalidDeclarationContext(Koto declaration)
@@ -43,7 +43,7 @@ public sealed partial class Binding
     }
 
     // The declaration contexts a Type's parts name: whether one is in a failed context and whether one is not yet resolved, each distinct
-    // part visited once (DECISIONS BU-18).
+    // part visited once (DECISIONS BU-19).
     private (bool Invalid, bool Unresolved) OperandContexts(BoundType type)
     {
         var found = (Invalid: false, Unresolved: false);

@@ -47,7 +47,7 @@ public sealed partial class Binding
 
     // SPEC 8.2: the closures of the instance a substitution makes closed in it: each closure its binder encloses (through anonymous
     // functions) gets the substitution as its context, its conforming Self included (DECISIONS R5-M36). One call is one query of the
-    // closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-18); a closure signature's own
+    // closing table, its instance fixed, so a part shared within the Type is closed once (DECISIONS BU-19); a closure signature's own
     // instantiation begins its own query.
     private BoundType? CloseClosureTypes(BoundType type, Subst instance) => this.ClosePart(type, instance, this.closedParts.Begin(this.storageVersion));
 

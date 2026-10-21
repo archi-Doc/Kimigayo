@@ -31,7 +31,7 @@ public enum ConstraintKind : byte
 public sealed class BoundConstraint
 {
     // `projection`: whether a part of the subject or the required Type is an associated projection, which Binding's walk decides
-    // (Binding.ContainsAssociatedProjection, DECISIONS BU-18).
+    // (Binding.ContainsAssociatedProjection, DECISIONS BU-19).
     internal BoundConstraint(ConstraintKey key, bool projection)
     {
         this.Kind = key.Kind;

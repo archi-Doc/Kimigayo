@@ -70,7 +70,7 @@ public sealed partial class OwnershipAnalysis
     }
 
     // Whether a value of the Type completes: no Never through its Tuples. A Tuple found complete is kept for the analysis, so a shared part
-    // is decided once (DECISIONS BU-18, the owner's D5 exception).
+    // is decided once (DECISIONS BU-19, the owner's D5 exception).
     private bool AggregateCanComplete(BoundType type)
     {
         if (ReferenceEquals(type, BoundType.Never))

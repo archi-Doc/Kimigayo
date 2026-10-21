@@ -458,7 +458,7 @@ public sealed partial class OwnershipBody
             if (type.Components.Count != 0 && !this.addedTypes.Add((type, bound)))
             {
                 // A part met again for this Place with this bound records only dependencies RecordDependency already holds at that
-                // mode or stronger (it only strengthens), so it returns false and nothing recurses (DECISIONS BU-18, the owner's D5
+                // mode or stronger (it only strengthens), so it returns false and nothing recurses (DECISIONS BU-19, the owner's D5
                 // exception).
                 return;
             }
@@ -853,7 +853,7 @@ public sealed partial class OwnershipBody
     }
 
     // Whether an Origin of the Type's parts is a projection, an input, an anchor or a local region. It reads Origins only, so a part that
-    // carries none has none, and a part met again in the query was answered false (DECISIONS BU-18, the owner's D5 exception).
+    // carries none has none, and a part met again in the query was answered false (DECISIONS BU-19, the owner's D5 exception).
     private bool HasProjection(BoundType type)
     {
         this.projectionParts.Clear();

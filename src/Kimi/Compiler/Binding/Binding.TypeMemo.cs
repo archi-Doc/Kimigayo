@@ -2,7 +2,7 @@
 
 namespace Kimi.Compiler;
 
-// Owns the per-query answer table of Binding's walks over a Type's parts (DECISIONS BU-18). An interned Type is a DAG, so a walk reaches
+// Owns the per-query answer table of Binding's walks over a Type's parts (DECISIONS BU-19). An interned Type is a DAG, so a walk reaches
 // a shared part along many paths; each walk that uses a table answers a function of the part and of its query's fixed inputs, so it
 // decides each distinct part once per query and stays linear in the distinct parts.
 // Input: a part and the stamp of its query. Output: the answer that query recorded for the part, if any.
