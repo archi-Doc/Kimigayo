@@ -13,8 +13,8 @@ namespace Kimi.Compiler.Backend;
 // may need a drop (MirTypes.MayNeedDrop, the rule the collector targets by) calls the item's next target, the part's glue, at the part's
 // address (Component, the aggregate writer's rule; a base at the value's own address, X1), passing the function's location on; an enum's
 // parts under one switch on its tag over the Cases holding such a part, a fixed array's element in one counted loop from the last
-// element. The other rows are their units' (C5a, C5b, C6b, C8d, C8e), one located Unsupported_Kd at the item's site; a target missing or
-// left over is a broken contract, InternalInvariant_Kd there.
+// element (Loop, Fill's loop). The other rows are their units' (C5a, C5b, C6b, C8d, C8e), one located Unsupported_Kd at the item's site; a
+// Type of a kind no glue has, or a target missing or left over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
     private readonly List<DropPart> parts = []; // DropGlue.Parts' scratch.
@@ -28,7 +28,12 @@ internal sealed partial class FunctionCodegen
     {
         var type = collector.Set.Items[item].RepresentativeType!;
         (this.collector, this.item, this.output, this.next, this.glued) = (collector, item, output, 0, 0);
-        var row = DropGlue.Row(type);
+        if (DropGlue.Row(type) is not { } row)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.
+            return;
+        }
+
         if (row is not (DropGlueRow.Release or DropGlueRow.Parts))
         {
             this.Report(DiagnosticCode.Unsupported_Kd, default); // C5a, C5b, C6b, C8d and C8e write these rows.
@@ -157,7 +162,7 @@ internal sealed partial class FunctionCodegen
                 this.Destroy(destructor, new('p', 0)); // Its receiver, the one parameter other than a location; none for a zero-sized Self.
             }
         }
-        else if (part.Index < 0)
+        else if (type.Kind == BoundTypeKind.FixedArray)
         {
             this.Elements(type, target);
         }
@@ -169,60 +174,28 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 16.3.2: a fixed array's elements by decreasing index, the element's glue in one counted i64 loop (Fill's shape, R4-M81), the
-    // k-th pass destroying element n - 1 - k; nothing for no element.
+    // SPEC 16.3.2: a fixed array's elements by decreasing index, the element's glue in the one counted loop (Loop): the k-th pass destroys
+    // element n - 1 - k, at the last element's offset less the pass's; nothing for no element.
     private void Elements(BoundType type, int target)
     {
-        if (type.Length == 0 || this.Laid(type.Components[0]) is not { } element)
+        if (type.Length > 0 && this.Laid(type.Components[0]) is { } element)
         {
-            return;
+            this.Loop(type, element, new Destroyed(target, (type.Length - 1) * element.Layout.Stride));
         }
+    }
 
-        var id = this.next;
-        var (index, next, offset, position, done) = (new Value('t', id + 1), new Value('t', id + 2), new Value('t', id + 3), new Value('t', id + 4),
-            new Value('t', id + 5));
-        this.next += 6;
-        var output = this.output;
-        Name(output, "  br label %elements", id);
-        Name(output, "\nelements", id);
-        Name(output, ":\n  br label %element", id);
-        Name(output, "\nelement", id);
-        output.Write(":\n  ");
-        this.WriteValue(index);
-        Name(output, " = phi i64 [ 0, %elements", id);
-        output.Write(" ], [ ");
-        this.WriteValue(next);
-        Name(output, ", %element", id);
-        output.Write(" ]\n  ");
+    // An i64 difference, last - offset.
+    private Value Difference(long last, Value offset)
+    {
+        var difference = new Value('t', this.next++);
+        this.output.Write("  ");
+        this.WriteValue(difference);
+        this.output.Write(" = sub i64 ");
+        WriteNumber(this.output, last);
+        this.output.Write(", ");
         this.WriteValue(offset);
-        output.Write(" = mul i64 ");
-        this.WriteValue(index);
-        output.Write(", ");
-        WriteNumber(output, element.Layout.Stride);
-        output.Write("\n  ");
-        this.WriteValue(position);
-        output.Write(" = sub i64 ");
-        WriteNumber(output, (type.Length - 1) * element.Layout.Stride);
-        output.Write(", ");
-        this.WriteValue(offset);
-        output.Write('\n');
-        this.Destroy(this.module.Glue(target), this.Offset(new('p', 0), position));
-        output.Write("  ");
-        this.WriteValue(next);
-        output.Write(" = add i64 ");
-        this.WriteValue(index);
-        output.Write(", 1\n  ");
-        this.WriteValue(done);
-        output.Write(" = icmp eq i64 ");
-        this.WriteValue(next);
-        output.Write(", ");
-        WriteNumber(output, type.Length);
-        output.Write("\n  br i1 ");
-        this.WriteValue(done);
-        Name(output, ", label %destroyed", id);
-        Name(output, ", label %element", id);
-        Name(output, "\ndestroyed", id);
-        output.Write(":\n");
+        this.output.Write('\n');
+        return difference;
     }
 
     // A call of a routine whose one parameter other than the location is the given value, the location parameters the function's own.
@@ -254,5 +227,12 @@ internal sealed partial class FunctionCodegen
 
         this.Report(DiagnosticCode.InternalInvariant_Kd, default);
         return null;
+    }
+
+    // A glue's pass over a fixed array: the element's glue at the element the pass destroys, the last first.
+    private readonly struct Destroyed(int glue, long last) : IElementPass
+    {
+        public void Write(FunctionCodegen codegen, Value offset)
+            => codegen.Destroy(codegen.module.Glue(glue), codegen.Offset(new('p', 0), codegen.Difference(last, offset)));
     }
 }

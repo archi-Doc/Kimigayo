@@ -961,7 +961,8 @@ public sealed class InstanceCollectorTest
             names.Add(TyCtxt.Name(type));
         }
 
-        Assert.Subset(names, new HashSet<string>(["Triple", "Base", "Shape", "Res", "Holder<(string, Holder<string>)>", "[2 of string]", "rc/Leaf"]));
+        Assert.Subset(names, new HashSet<string>(["Triple", "Base", "(Array<bool>, string)", "Shape", "Res", "Holder<(string, Holder<string>)>",
+            "[2 of string]", "Array<i32>", "Dictionary<string, Array<i32>>", "rc/Leaf", "closure () -> i32"]));
     }
 
     // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of

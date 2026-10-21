@@ -66,10 +66,10 @@ internal static class DropGlue
     /// (the string representation and its release kind, IMPL 21.1.3; PD18).</summary>
     internal static FunctionAbi Release => RuntimeAbi.DestroyString;
 
-    /// <summary>Gets the row of a closed Type's glue function.</summary>
-    /// <param name="type">The glue item's closed Type, one <see cref="Mir.MirTypes.MayNeedDrop"/> admits.</param>
-    /// <returns>The row.</returns>
-    internal static DropGlueRow Row(BoundType type)
+    /// <summary>Gets the row of a closed Type's glue function, by the kinds <see cref="Mir.MirTypes.MayNeedDrop"/> admits.</summary>
+    /// <param name="type">The glue item's closed Type.</param>
+    /// <returns>The row; null for a kind no glue item has, a broken contract of the glue item.</returns>
+    internal static DropGlueRow? Row(BoundType type)
     {
         if (ReferenceEquals(type, BoundType.String))
         {
@@ -78,11 +78,12 @@ internal static class DropGlue
 
         return type.Kind switch
         {
+            BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray => DropGlueRow.Parts,
             BoundTypeKind.Closure => DropGlueRow.Closure,
             BoundTypeKind.Function => DropGlueRow.Function,
             BoundTypeKind.Semantics => DropGlueRow.Handle,
             BoundTypeKind.Array or BoundTypeKind.Dictionary => DropGlueRow.Collection,
-            _ => DropGlueRow.Parts,
+            _ => null,
         };
     }
 
