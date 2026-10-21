@@ -2,15 +2,20 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's Call transfer (A3 5, Calls; E14, E16): a Call's retention rows (Rows), its callee's contract by operand position or a default
-// template's P9 rows (R4-M93), carry its inputs' values into its result or into every holder an argument's store reaches (W,
-// MirBorrows.Values), one W per output; a store of a non-empty value past a holder that passes the guard only by argument holds the view
-// (P13's interim, R4-M73); a template call whose slot holds raw authority beside a Loan is a located Unsupported_Kd (r3, R4-M93).
+// A5's Call transfer (A3 5, Calls; E14, E16): a Call's rows (MirBorrows.CallRows) carry its inputs' values into its result or into every
+// holder an argument's store reaches (W, MirBorrows.Values), one W per output.
+// Input: the state before the Call, its terminator and location, and whether the checks replay runs; the Call's rows.
+// Output: the Call's entries: its arguments' Moves, each row's value into the result or into the holders its W reaches, and the result
+// into the destination (Placed: an inline default copy's store into its slot carries the slot's default taint); Φ_E for an untied result.
+// In the forward solve, a store of a non-empty value past a holder that passes the guard only by argument holds the view (P13's interim,
+// R4-M73); in the checks replay, a default template's call whose slot holds raw authority beside a Loan is a located Unsupported_Kd (r3,
+// R4-M93).
+// Invariants: the forward solve holds the view, never the replay, which reports with the converged fact known.
+// Must not choose a Call's rows (MirBorrows.CallRows) or compute W (MirBorrows.Values).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = [];
     private bool held; // Whether the view is held (R4-M73): a Call's W stored a non-empty value past a by-argument holder in the forward solve.
-    private Retention[] rows = []; // A Call's retention rows by operand position (Rows).
 
     // Whether a value of a case Type is a borrow, through which a read reaches what it refers to (A3 5's ret): a reference or a pair layer,
     // or a view handle, whose Index is a borrow Deref (E6).
@@ -75,60 +80,6 @@ internal sealed partial class MirBorrows
         {
             this.Store(state, call.Place, this.Placed(result, call.Place, at), 0, issue: false);
         }
-    }
-
-    // A Call's retention rows by operand position, each output's together, into the scratch (A3 E14): its callee's contract (Retaining),
-    // slots to positions, with an intrinsic's row for the operand the builder adds beyond its declaration (MirDescriptors); a default
-    // template's call P9's (SPEC 7.2.3, R4-M93): its inputs are the prologue's shared borrows of the slots, and each input's Content, its
-    // slot's value, reaches the untied result; no store row (a slot that holds raw authority is r3's).
-    private ReadOnlySpan<Retention> Rows(in MirTerminator call, out bool untied)
-    {
-        var (callee, count) = (call.Callee, 0);
-        if (callee is { Kind: MirCalleeKind.Fn, Arg: > 0 })
-        {
-            MirDataflow.Grow(ref this.rows, call.Count);
-            for (var i = 0; i < call.Count; i++)
-            {
-                this.rows[count++] = new(i, RetentionKind.Content, Retention.Result);
-            }
-
-            untied = true;
-            return this.rows.AsSpan(0, count);
-        }
-
-        var retention = this.Retaining(call) is { IsLimit: false } contract ? contract : null;
-        var declared = retention is null ? default : retention.Rows;
-        untied = retention?.Untied == true;
-        MirDataflow.Grow(ref this.rows, declared.Length + 1);
-        foreach (var row in declared)
-        {
-            var output = row.Output == Retention.Result ? Retention.Result : MirCallee.Position(callee.Symbol, row.Output);
-            this.rows[count++] = new(MirCallee.Position(callee.Symbol, row.Input), row.Kind, output);
-        }
-
-        if (callee.Kind == MirCalleeKind.Intrinsic && MirDescriptors.Of((IntrinsicId)callee.Arg).Retained is >= 0 and var added)
-        {
-            this.rows[count++] = new(added, RetentionKind.Value, Retention.Result);
-        }
-
-        return this.rows.AsSpan(0, count);
-    }
-
-    // The retention a Call's contract gives: TyCtxt.Retains over the callee's declaration (an intrinsic's library declaration, E14) and
-    // Subst, or a Value callee's declared signature; none for another terminator, an intrinsic without a declaration or a default template's
-    // call. Its Limit, a contract Binding does not instantiate, retains nothing the stratum follows: the checks record a located
-    // Unsupported_Kd at the call (R4-M51).
-    private CallRetention? Retaining(in MirTerminator call)
-    {
-        var callee = call.Callee;
-        if (call.Kind != MirTerminatorKind.Call || callee is { Kind: MirCalleeKind.Intrinsic, Symbol: null } or { Kind: MirCalleeKind.Fn, Arg: > 0 })
-        {
-            return null;
-        }
-
-        return callee.Kind == MirCalleeKind.Value
-            ? types.Retains(this.TypeOf(call.Operand)!, this.body.Consts[callee.Arg].Type, this.body.Key.Decl)
-            : types.Retains(callee.Symbol!, callee.Subst, this.body.Key.Decl);
     }
 
     // ret(i, κ) (A3 5): Value, the argument's value and, for a borrow (a reference or a view handle, Borrows), a read through it; Content,
