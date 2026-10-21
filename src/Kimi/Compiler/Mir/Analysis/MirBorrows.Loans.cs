@@ -3,10 +3,12 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order; and whether the body has a guard candidate, whose guard-local Origin a check
-// follows without a Loan (E7).
+// location, each with its Place's steps, in group order; whether the body has a guard candidate, whose guard-local Origin a check follows
+// without a Loan (E7); and for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are on, whether the body
+// drops a mutable static (R3) and each static's A4 Field number.
 internal sealed partial class MirBorrows
 {
+    private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
     private bool[] named = []; // By local: whether a direct Loan names it, so it is a flow holder.
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
@@ -19,6 +21,8 @@ internal sealed partial class MirBorrows
     private int loanCount;
     private int loanStepCount;
     private bool guarded; // Whether a local's marker is a guard candidate's γ (MarkerOf).
+    private bool staticDrops; // Whether the body drops a mutable static (R3, MirBorrows.Effects).
+    private int[] fields = []; // By static: A4's number of its Field (MirEffects.Field), -1 for none.
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
     // an invocation's input), or Raw where it Copies or the statement is none.
@@ -39,7 +43,14 @@ internal sealed partial class MirBorrows
         Array.Fill(this.loanAt, -1, 0, locations);
         Array.Clear(this.borrowed, 0, keys);
         Array.Clear(this.named, 0, locals);
-        this.guarded = false;
+        MirDataflow.Grow(ref this.fields, this.body.Statics.Length);
+        for (var i = 0; i < this.body.Statics.Length; i++)
+        {
+            this.fields[i] = effects.Field(this.body.Statics[i].Symbol);
+        }
+
+        (this.guarded, this.staticDrops) = (false, false);
+        this.effectRoots.Clear();
         for (var i = 0; i < locals; i++)
         {
             this.lent[i] = new(i);
@@ -73,6 +84,8 @@ internal sealed partial class MirBorrows
                     this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, statement.Source);
                 }
             }
+
+            this.staticDrops |= this.DroppedStatic(data.Terminator) >= 0;
         }
 
         this.Order(moves.Paths.Length + this.body.Statics.Length);
@@ -152,6 +165,11 @@ internal sealed partial class MirBorrows
             Site = this.body.Subject(source),
         };
         this.loanStepCount += count;
+        if (place.IsStatic && !this.borrowed[key] && this.body.Statics[~place.Root].Mutable)
+        {
+            this.effectRoots.Add(key);
+        }
+
         this.borrowed[key] = true;
         if (root >= 0)
         {
@@ -183,7 +201,7 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets the slot it was issued into, a two-phase Loan's reservation holder (-1: none).</summary>
         internal int Holder { get; set; }
 
-        /// <summary>Gets or sets the slot a direct Loan names (-1: none).</summary>
+        /// <summary>Gets or sets the slot a direct Loan names, E's for a static's (G136 (i), R4-M92), -1 for none.</summary>
         internal int Named { get; set; }
 
         /// <summary>Gets or sets a value indicating whether it is direct: its Place passes no borrow or raw Deref.</summary>

@@ -34,9 +34,9 @@ internal sealed partial class MirBorrows
         this.sets.Clear();
         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
-        if (this.loanCount == 0 && !this.guarded)
+        if (this.loanCount == 0 && !this.guarded && !this.staticDrops)
         {
-            return; // A view without a Loan or a guard candidate has no problem (A3 6.1; E7's γ needs no Loan).
+            return; // No Loan, guard candidate or Drop of a mutable static: no problem (A3 6.1; E7's γ and R3 need no Loan).
         }
 
         this.Holders();
@@ -66,7 +66,7 @@ internal sealed partial class MirBorrows
 
     // The holders of the view (A3 3): E in slot 0, then the flow holders, whose states cross heads (MirMoveData's flow roots and the roots a
     // direct Loan names, whose states the closure and the Loans' content read anywhere), then the chain-local ones; then each Loan's
-    // reservation holder and named holder as slots.
+    // reservation holder and named holder as slots, E for a direct Loan on a static (storage the body does not own, SPEC 15.6; G136 (i)).
     private void Holders()
     {
         var locals = this.body.Locals;
@@ -95,7 +95,8 @@ internal sealed partial class MirBorrows
         for (var l = 0; l < this.loanCount; l++)
         {
             ref var loan = ref this.loans[l];
-            (loan.Holder, loan.Named) = (loan.Holder >= 0 ? this.slots[loan.Holder] : -1, loan.Named >= 0 ? this.slots[loan.Named] : -1);
+            loan.Holder = loan.Holder >= 0 ? this.slots[loan.Holder] : -1;
+            loan.Named = loan.Named >= 0 ? this.slots[loan.Named] : loan.Direct ? Escaped : -1; // A direct Loan on a static names E.
             if (loan is { Mode: MirRefKind.TwoPhaseUniq, Holder: >= 0 })
             {
                 this.reserves[loan.Holder] = true;
