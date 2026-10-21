@@ -159,7 +159,7 @@ public sealed partial class Binding
                     components[i] = Open(current.Components[i]);
                 }
 
-                return this.types.Intern(current.Kind, current.Symbol, current.Semantics, components.AsSpan(0, current.Components.Count), current.Length, origin, arguments.AsSpan(0, current.OriginArguments.Count), current.LengthExpression, current.ClosureContext, current.LengthArguments);
+                return this.types.Rebuild(current, components.AsSpan(0, current.Components.Count), origin, arguments.AsSpan(0, current.OriginArguments.Count));
             }
             finally
             {

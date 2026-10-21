@@ -210,7 +210,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (property.Type is { } completed && !completed.CarriesOrigin)
+        if (property.Type is { } completed && !completed.CarriesAnyOrigin)
         {
             return completed;
         }

@@ -37,7 +37,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.4: fresh per-call inputs and a result whose Origins, if any, are all static, so a call substitutes nothing.
     private static bool PerCallSignature(BoundType signature, Koto? own, bool any = false)
-        => (!signature.Components[1].CarriesOrigin || StaticOnly(signature.Components[1])) && PerCallInputs(signature, own, any);
+        => (!signature.Components[1].CarriesAnyOrigin || StaticOnly(signature.Components[1])) && PerCallInputs(signature, own, any);
 
     private static bool StaticOnly(BoundType type)
     {
@@ -173,9 +173,9 @@ public sealed partial class Binding
         for (var i = 0; i < inputs.Components.Count; i++)
         {
             var input = inputs.Components[i];
-            if (input.CarriesOrigin && !(IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
+            if (input.CarriesAnyOrigin && !(IsBorrow(input.Semantics) && input is { Kind: BoundTypeKind.Semantics, Components.Count: 1, OriginArguments.Count: 0, Origin.Kind: OriginKind.Input } &&
                 input.Origin.Slot == i && (any || input.Origin.Binder is FunctionTypeKoto || (own is not null && ReferenceEquals(input.Origin.Binder, own))) &&
-                !input.Components[0].CarriesOrigin))
+                !input.Components[0].CarriesAnyOrigin))
             {
                 return false;
             }
@@ -250,9 +250,7 @@ public sealed partial class Binding
             return true;
         }
 
-        if (depth > 32 || written.Kind != binding.Kind || !ReferenceEquals(written.Symbol, binding.Symbol) || written.Semantics != binding.Semantics ||
-            written.Length != binding.Length || !ReferenceEquals(written.LengthExpression, binding.LengthExpression) || !ReferenceEquals(written.ClosureContext, binding.ClosureContext) || !written.LengthArguments.AsSpan().SequenceEqual(binding.LengthArguments) ||
-            written.Components.Count != binding.Components.Count || written.OriginArguments.Count != binding.OriginArguments.Count || !Omitted(written.Origin, binding.Origin))
+        if (depth > 32 || !written.SameExceptOrigins(binding) || !Omitted(written.Origin, binding.Origin))
         {
             return false;
         }

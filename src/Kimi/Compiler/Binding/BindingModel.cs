@@ -374,8 +374,13 @@ public sealed record BoundType
     // The integer Type whose representation a wrapping integer Scalar shares (SPEC 3.1.1); the Type itself otherwise.
     private readonly BoundType underlying;
 
+    // The layer's stated Origin, one slot whose role the Semantics decides (DECISIONS BU-24): a raw layer's raw Origin (RawOrigin), any
+    // other layer's Origin (Origin). Each role is read only through its getter.
+    private readonly BoundOrigin? origin;
+
     // Whole-subtree summaries, computed once at construction (see the constructor).
     private readonly bool carriesOrigin;
+    private readonly bool carriesRawOrigin;
     private readonly bool storesOrigin;
     private readonly bool carriesOriginOrSlot;
     private readonly bool containsParameter;
@@ -390,7 +395,13 @@ public sealed record BoundType
         this.Semantics = semantics;
         this.Components = components ?? [];
         this.Length = length;
-        this.Origin = origin;
+        if (semantics == SemanticsKind.Raw && origin is not null)
+        {
+            // The raw role is written by no site yet (G160-1's formation is DECISIONS BU-24's next step); a raw layer has no Origin.
+            throw new InvalidOperationException($"A raw layer states no Origin yet: `{origin}`.");
+        }
+
+        this.origin = origin;
         this.OriginArguments = originArguments ?? [];
         this.LengthExpression = lengthExpression;
         this.LengthArguments = lengthArguments ?? [];
@@ -398,8 +409,9 @@ public sealed record BoundType
         this.underlying = this;
 
         // Components are complete before interning, so these summaries are exact and never revisited.
-        var found = origin is not null || originArguments is { Length: > 0 };
-        var slot = found || kind == BoundTypeKind.Parameter;
+        var raw = semantics == SemanticsKind.Raw && origin is not null;
+        var found = (origin is not null && !raw) || originArguments is { Length: > 0 };
+        var slot = found || raw || kind == BoundTypeKind.Parameter;
         var parameter = kind is BoundTypeKind.Parameter or BoundTypeKind.SemanticsAdaptation;
         var original = kind == BoundTypeKind.Parameter && symbol?.Kind == BindingSymbolKind.SemanticsTarget;
         var pair = original || kind is BoundTypeKind.SemanticsApplication or BoundTypeKind.SemanticsAdaptation;
@@ -408,6 +420,7 @@ public sealed record BoundType
         for (var i = 0; components is not null && i < components.Length; i++)
         {
             found |= components[i].carriesOrigin;
+            raw |= components[i].carriesRawOrigin;
             stores |= components[i].storesOrigin;
             slot |= components[i].carriesOriginOrSlot;
             parameter |= components[i].containsParameter;
@@ -416,6 +429,7 @@ public sealed record BoundType
         }
 
         this.carriesOrigin = found;
+        this.carriesRawOrigin = raw;
         this.storesOrigin = stores;
         this.carriesOriginOrSlot = slot;
         foreach (var argument in this.LengthArguments)
@@ -464,7 +478,8 @@ public sealed record BoundType
 
     public BoundLength? LengthExpression { get; }
 
-    public BoundOrigin? Origin { get; }
+    /// <summary>Gets the Origin of a borrow, handle, Slice, pair or Parameter layer; never a raw layer's (its <see cref="RawOrigin"/>).</summary>
+    public BoundOrigin? Origin => this.Semantics == SemanticsKind.Raw ? null : this.origin;
 
     public IReadOnlyList<BoundOrigin> OriginArguments { get; }
 
@@ -520,9 +535,19 @@ public sealed record BoundType
     // Function Item length bindings use declaration slots; Type slots are null. Components contain only actual Types.
     internal BoundLength?[] LengthArguments { get; } = [];
 
-    /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin.</summary>
+    /// <summary>Gets the Origin a raw layer states (SPEC 5.7; null: unstated); null on any other layer (DECISIONS BU-24).</summary>
+    internal BoundOrigin? RawOrigin => this.Semantics == SemanticsKind.Raw ? this.origin : null;
+
+    /// <summary>Gets a value indicating whether this Type or any nested component carries an Origin (<see cref="Origin"/>).</summary>
     /// <remarks>Lets Origin-only traversals skip complete Origin-free subtrees in constant time.</remarks>
     internal bool CarriesOrigin => this.carriesOrigin;
+
+    /// <summary>Gets a value indicating whether a raw layer of this subtree states an Origin (<see cref="RawOrigin"/>).</summary>
+    internal bool CarriesRawOrigin => this.carriesRawOrigin;
+
+    /// <summary>Gets a value indicating whether this subtree carries any written Origin, a raw layer's included: the gates that ask
+    /// whether a use must instantiate, wait for or compare Origins at all read it (DECISIONS BU-24).</summary>
+    internal bool CarriesAnyOrigin => this.carriesOrigin || this.carriesRawOrigin;
 
     /// <summary>Gets a value indicating whether this Type or any nested component stores an Origin in some Semantics case (SPEC 8.1.1,
     /// 15.3.7): a written Origin or Origin argument, or the implicit outer Origin <c>o</c> of an original pair layer <c>s/T</c>, which no
@@ -530,7 +555,7 @@ public sealed record BoundType
     /// <remarks>Gates the well-formedness walks, premises and obligations; inference, fits and Loans read only written Origins.</remarks>
     internal bool StoresOrigin => this.storesOrigin;
 
-    /// <summary>Gets a value indicating whether this subtree carries an Origin or a Type Parameter.</summary>
+    /// <summary>Gets a value indicating whether this subtree carries an Origin, a raw layer's included, or a Type Parameter.</summary>
     /// <remarks>Requirement accumulation only reads those two, so everything else is skippable.</remarks>
     internal bool CarriesOriginOrSlot => this.carriesOriginOrSlot;
 
@@ -569,6 +594,15 @@ public sealed record BoundType
 
     /// <inheritdoc/>
     public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
+
+    // Whether two Types agree in every part of their own layer but their Origin and Origin arguments, which each identity compares in
+    // its own way (exactly, modulo open Origins, except omitted ones). A raw layer's Origin is compared here: no identity treats it as
+    // open, omitted or inferred (DECISIONS BU-24).
+    internal bool SameExceptOrigins(BoundType other)
+        => this.Kind == other.Kind && ReferenceEquals(this.Symbol, other.Symbol) && this.Semantics == other.Semantics && this.Length == other.Length &&
+            ReferenceEquals(this.LengthExpression, other.LengthExpression) && ReferenceEquals(this.ClosureContext, other.ClosureContext) &&
+            this.LengthArguments.AsSpan().SequenceEqual(other.LengthArguments) && this.Components.Count == other.Components.Count &&
+            this.OriginArguments.Count == other.OriginArguments.Count && ReferenceEquals(this.RawOrigin, other.RawOrigin);
 
     private static NumericCategory Categorize(string name) => name switch
     {

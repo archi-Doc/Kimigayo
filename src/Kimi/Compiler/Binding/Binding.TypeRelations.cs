@@ -231,17 +231,7 @@ public sealed partial class Binding
         }
 
         return ReferenceEquals(CompatibleResult(implementation.Components[1], required.Components[1]), required.Components[1]) ? required
-            : this.types.Intern(
-                required.Kind,
-                required.Symbol,
-                required.Semantics,
-                [required.Components[0], BoundType.Never],
-                required.Length,
-                required.Origin,
-                (BoundOrigin[])required.OriginArguments,
-                required.LengthExpression,
-                required.ClosureContext,
-                required.LengthArguments);
+            : this.types.Rebuild(required, [required.Components[0], BoundType.Never], required.Origin, (BoundOrigin[])required.OriginArguments);
     }
 
     // SPEC 10.7, 15.6.1, 23.1: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th

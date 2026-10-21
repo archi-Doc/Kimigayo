@@ -280,6 +280,23 @@ public sealed class TyCtxtTest
         Assert.Equal(["uniq/i32", "s/T", "s/i32"], [TyCtxt.Name(types.Reference(SemanticsKind.Uniq, BoundType.I32)), TyCtxt.Name(pair), TyCtxt.Name(application)]);
     }
 
+    // DECISIONS BU-24: a layer's stated Origin is one slot whose role its Semantics decides: Origin never reads a raw layer's, RawOrigin
+    // only a raw layer's, and a rebuild keeps both. No site gives a raw layer an Origin yet, so the constructor rejects one.
+    [Fact]
+    public void ARawLayerKeepsItsOriginRole()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32) -> i32 => x@follow\n");
+        var types = c.Types;
+        var origin = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!.Origin!;
+        var borrow = types.Reference(SemanticsKind.Ref, BoundType.I32, origin);
+        var pointer = types.Pointer(borrow);
+        Assert.Equal((origin, null, true, false, true), (borrow.Origin, borrow.RawOrigin, borrow.CarriesOrigin, borrow.CarriesRawOrigin, borrow.CarriesAnyOrigin));
+        Assert.Equal((null, null, true, false), (pointer.Origin, pointer.RawOrigin, pointer.CarriesOrigin, pointer.CarriesRawOrigin));
+        Assert.Same(pointer, types.Rebuild(pointer, [borrow], pointer.Origin, []));
+        Assert.Same(borrow, types.Rebuild(borrow, [BoundType.I32], borrow.Origin, []));
+        Assert.Throws<InvalidOperationException>(() => types.Pointer(BoundType.I32, origin));
+    }
+
     // SPEC 6.1.3, 8.13, 8.15.1: the body of every MIR key symbol is instantiated exactly when the symbol or a declaration enclosing it has a
     // Type, Semantics or length slot, even an unused one; an Origin slot does not count. A named function nested two levels or in a block of a
     // generic function, or in a generic struct's method, is instantiated as one level is; a specialization declares no slot (SPEC 8.13.1), so a

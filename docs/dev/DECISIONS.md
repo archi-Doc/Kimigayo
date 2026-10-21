@@ -3430,6 +3430,28 @@ resumed by R4-M86 (2026-10-20).
   of Projection's meaning in every reader, the frozen old path's among them). BU-17's rejected "own slot for the receiver symbol" was a
   way to separate the helper borrow, which keeps `HelperSlot`; it stands.
 
+- **BU-24** (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
+  unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
+  role the Semantics decides (0 B; a pinned interleaved A/B of the getters against C0d's build gave warm Bind minima 35.70 against
+  35.41 ms over three milestones, inside the baseline's own 3% spread, and equal cold bytes, so B′'s +8 B field is not taken). `Origin`
+  never reads a raw layer's; `RawOrigin` only a raw layer's. `TyCtxt.Intern`'s one `origin` parameter writes the slot (ruling (a):
+  `Intern` and the constructor were at 10 parameters; rejected (b) an owner exception and (c) splitting `Intern` as its own unit;
+  CR-R2 since exempts constructors, `Intern` stays limited); `Pointer(referent, rawOrigin)` and `Rebuild`, the one keep-rebuild,
+  write the raw role. The constructor throws on an Origin given to a raw layer until G160-1's formation, then checks kinds per role.
+  Summaries: `CarriesRawOrigin`, included in `CarriesOriginOrSlot`; `CarriesAnyOrigin` at every gate that asks whether a use must
+  instantiate, wait for or compare written Origins at all (`CallResultEvidence` and the survey's expected Type, the comparison's
+  right expectation, `PerCallSignature`/`PerCallInputs`, `ClosureExpectation`, `HasUnsubstitutedOrigin`, the setter-input reuse, an
+  accessor witness's input, `FitsVerifiedTypeAt`, `MirTypes.Agree` with R4's agreement). The gates of `HasLocalRegion`,
+  `RewriteOrigins`, `SubstituteStoredOrigins` and `SubstitutePart`/`SubstituteTypeCore` take the raw bit with G160-1's raw arms; the
+  other 41 summary reads in Binding are the borrow role (inference and matching, open Origins, premises, regions, effects,
+  construction premises), and the old analysis never sees a raw Origin (Q-O3 is moot). Identity: `BoundType.SameExceptOrigins`
+  (every part of the layer but `Origin` and Origin arguments, `RawOrigin` compared exactly: no identity treats it as open, omitted or
+  inferred) is shared by `SameCompleteType`, `SameModuloOpenOrigins` and `SameExceptOmittedOrigins`. `ArchitectureRulesTest` pins
+  the self-rebuilds and the raw role's reads and writes by site. Rejected: A′ (the same field and a borrow view): a gate and the
+  rewriter it guards read different meanings (a body-local region escapes through `ResolveLocalResultOrigins`), `JudgeCallFit` skips
+  an unstated argument, its reader list misses `StoredValues`, and the frozen old analysis still sees raw Origins. G160-1 (C1b)
+  appends §0's vocabulary (`Holder`, `Shared`, `Unstated`) and the owner's decisions.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

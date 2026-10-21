@@ -14,7 +14,7 @@ public sealed partial class Binding
 
     private static bool HasUnsubstitutedOrigin(BoundType type, Koto binder)
     {
-        if (!type.CarriesOrigin)
+        if (!type.CarriesAnyOrigin)
         {
             return false;
         }

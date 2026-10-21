@@ -134,7 +134,7 @@ public sealed partial class Binding
         ? SymbolOriginSlot(symbol) : 0;
 
     internal BoundType PreparedBorrowType(Koto source, BoundType parameter)
-        => this.types.Intern(parameter.Kind, parameter.Symbol, parameter.Semantics, [parameter.Components[0]], origin: this.PreparedOrigin(source));
+        => this.types.Rebuild(parameter, [parameter.Components[0]], this.PreparedOrigin(source), []);
 
     // SPEC 4.7.1, 4.5: an exclusive borrow of a dynamic Array element lends the whole owned Array exclusively first.
     internal BoundType ExclusiveArrayHandle(Koto array)

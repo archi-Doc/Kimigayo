@@ -147,7 +147,7 @@ public sealed partial class Binding
     // and results written over a fixed Origin of the enclosing body stay as written.
     private BoundType ClosureExpectation(FunctionKoto function, BoundType expected)
     {
-        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesOrigin || FunctionTypeBinder(expected) is not { } binder ||
+        if (expected.Kind != BoundTypeKind.Function || !expected.CarriesAnyOrigin || FunctionTypeBinder(expected) is not { } binder ||
             ReferenceEquals(binder, function))
         {
             return expected;

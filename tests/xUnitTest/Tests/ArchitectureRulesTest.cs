@@ -9,6 +9,15 @@ namespace XunitTest;
 /// the stage that set it; a count may fall but never rise. A deleted construct counts as zero.</summary>
 public class ArchitectureRulesTest
 {
+    // DECISIONS BU-24's closed families (SourcePatternStaysAtItsSites).
+    private const string SelfRebuild = @"\.Intern\(\s*(\w+)\.Kind,\s*\1\.Symbol,\s*\1\.Semantics\b";
+    private const string SelfRebuildSites = "Binding/Binding.ArrayInference.cs=1;Binding/Binding.ClosureInstances.cs=1;" +
+        "Binding/Binding.LocalRegions.Types.cs=1;Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.Storage.cs=1;" +
+        "Binding/Binding.TypeRelations.Origins.cs=1;Binding/Binding.TypeRelations.cs=1;Binding/TyCtxt.Instances.cs=1;Binding/TyCtxt.cs=1";
+
+    private const string RawOriginRole = @"\.RawOrigin\b|\bPointer\((?:[^()]|\([^()]*\))*,";
+    private const string RawOriginRoleSites = "Binding/Binding.ClosureInstances.cs=1;Binding/BindingModel.cs=2;Binding/TyCtxt.cs=4";
+
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
 
@@ -36,6 +45,24 @@ public class ArchitectureRulesTest
         var expression = new Regex(regex);
         var count = SourceFiles(directory, pattern).Sum(x => expression.Count(File.ReadAllText(x)));
         Assert.True(count <= limit, $"{rule}: {count} occurrences; the limit is {limit}.");
+    }
+
+    // DECISIONS BU-24: the families of the raw Origin's representation are closed by their sites, file by file. A self-rebuild
+    // `Intern(x.Kind, x.Symbol, x.Semantics, …)` is the keep-rebuild (TyCtxt.Rebuild), the erasure (EraseParts), a mapping rewriter that
+    // G160-1 gives its raw arm (Storage, TypeRelations, OriginDeclarations, LocalRegions.Types, TypeRelations.Origins), a closure instance's
+    // context change, which passes the raw role on, or an array literal's formation, never a raw layer. The raw role (BoundType.RawOrigin,
+    // a Pointer that states one) is read and written only at its named sites; review checks the Intern calls whose Semantics is a variable.
+    [Theory]
+    [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
+    [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]
+    public void SourcePatternStaysAtItsSites(string rule, string directory, string regex, string sites)
+    {
+        var expression = new Regex(regex);
+        var root = Path.Combine(Repository.Root, directory);
+        var actual = SourceFiles(directory, "*.cs")
+            .Select(x => (Name: Path.GetRelativePath(root, x).Replace(Path.DirectorySeparatorChar, '/'), Count: expression.Count(File.ReadAllText(x))))
+            .Where(static x => x.Count != 0).Select(static x => $"{x.Name}={x.Count}").Order(StringComparer.Ordinal).ToArray();
+        Assert.True(sites.Split(';').Order(StringComparer.Ordinal).SequenceEqual(actual), $"{rule}: {string.Join(";", actual)}; the sites are {sites}.");
     }
 
     // A directory that does not exist (deleted, or not yet created) has no files.

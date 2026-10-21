@@ -1189,7 +1189,7 @@ public sealed partial class Binding
                 : !assignment && ReferenceEquals(left, BoundType.Never) ? null
                 : ReferenceTypes.IsPointer(left) && operation is KotoKind.Plus or KotoKind.Minus ? BoundType.ISize
                 : arithmetic && left is not null && (NonNumericOperand(left) || (integerOnly && NonIntegerOperand(left))) ? null
-                : comparison && comparand?.CarriesOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
+                : comparison && comparand?.CarriesAnyOrigin == true && !IsUnfittedLiteral(binary.Right) ? null
                 : comparand;
             right = this.BindExpected(binary.Right, scope, expectedRight, assignment ? binary.Left : null);
             if (assignment && kind == KotoKind.Equals && left is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1 } &&
