@@ -27,14 +27,15 @@ public sealed partial class FunctionCodegenTest
         "func leaf(v: Leaf) => ()\nfunc tuple(v: (Holder, i32, Guard)) => ()\nfunc shape(v: Shape) => ()\nfunc row(v: [3 of string]) => ()\n";
 
     // A Library's values destroyed under A2's flags (R5 C4b; DECISIONS R5-M99): an argument and a local string, each moved on one path; a
-    // zero-sized Guard declaring a drop, made by a call; a generic value at i32, which needs no drop, and at string; a pair-generic value in
-    // its owner case (Flag) and its reference case (Elide).
+    // zero-sized Guard declaring a drop, made by a call; a generic value at i32, which needs no drop, and at string; a pair-generic value
+    // replaced through its layer, whose points differ by view, in its owner case (Flag) and its uniq case (Elide).
     private const string Flags =
         "struct Guard\n    drop => ()\nfunc take(s: string) => ()\nfunc keep(g: Guard) => ()\nfunc sink<T>(x: T) => ()\n" +
         "func argument(c: bool, s: string)\n    if c => take(s@move)\nfunc local(c: bool)\n    let s = \"x\"\n    if c => take(s@move)\n" +
         "func guard(c: bool)\n    let g = Guard.init()\n    if c => keep(g@move)\nfunc give<T>(c: bool, x: T)\n    if c => sink(x@move)\n" +
-        "func view<s/T>(c: bool, v: s/T)\n    s is owner or ref\n    if c => sink(v@move)\nfunc use()\n    give(true, 1)\n    give(true, \"a\")\n" +
-        "    let k = \"k\"\n    view(true, \"b\")\n    view(true, k@ref)\n";
+        "func view<s/T>(c: bool, value: s/T, x: T)\n    s is owner or uniq\n    var v = value@move\n    v@follow = x@move\n" +
+        "    if c => sink(v@move)\nfunc use()\n    give(true, 1)\n    give(true, \"a\")\n    var k = \"k\"\n    view(true, \"b\", \"c\")\n" +
+        "    view(true, k@uniq, \"d\")\n";
 
     // A whole fixed array's indices after one element moved out, which A1 rejects (MovedPlace_Kd at a.indices) and the old analysis
     // accepts: MIR difference row a1-whole-incomplete.
@@ -108,7 +109,7 @@ public sealed partial class FunctionCodegenTest
     // R4-M6a, DECISIONS R5-M99: each of A2's flags is a bool slot of the entry block, cleared there, and the entry's flag points follow: an
     // argument moved on one path has its flag set before the first block; a body without flags has no flag slot.
     [Fact]
-    public void AFlagIsABoolSlotClearedAtEntryWhereAnArgumentsIsSet()
+    public void AFlagIsABoolSlotClearedAtEntryWhereAnArgumentIsSet()
     {
         var (c, ir) = Flagged();
         var argument = Assert.Single(FunctionsOf(ir, c, "argument"));
@@ -154,8 +155,10 @@ public sealed partial class FunctionCodegenTest
 
     // DECISIONS R5-M99, R5-M95: a Flag destroys exactly when its instance Type may need a drop: give<i32>'s keeps its flag's slot and points
     // but writes no test or destruction, give<string>'s tests its flag; a zero-sized Guard's glue is called on the zero-sized symbol and
-    // calls its destructor with no argument. A pair-generic body's points are its every view's, and only the owner case's Drop tests its
-    // flag (the reference case's verdict is Elide).
+    // calls its destructor with no argument. A pair-generic body writes only its view's points: replacing the value through its layer
+    // destroys the old one, clearing the flag, then sets it, in the owner case only (A2's [clear f0 in v0] and [set f0 in v0], which block
+    // 0's points interleave by view); every view's shared points are written once; and only the owner case's Drop tests its flag (the uniq
+    // case's verdict is Elide).
     [Fact]
     public void AFlagDestroysWhereItsInstanceMayNeedADrop()
     {
@@ -174,11 +177,11 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal("internal void ()", Assert.Single(CalleesOf(destroy.Callee!)).Signature);
 
         var views = FunctionsOf(ir, c, "view");
-        var owner = Assert.Single(views, static x => x.Signature == "internal void (i1, ptr)");
-        var reference = Assert.Single(views, x => x != owner);
-        Assert.Equal(StoresOf(owner.Instructions, Assert.Single(FlagsOf(owner))), StoresOf(reference.Instructions, Assert.Single(FlagsOf(reference))));
-        Assert.Single(owner.Blocks, static x => x.Terminator.Shape == "br i1 %, label %, label %");
-        Assert.DoesNotContain(reference.Blocks, static x => x.Terminator.Shape == "br i1 %, label %, label %");
+        var owner = Assert.Single(views, static x => x.Blocks.Any(static x => x.Terminator.Shape == "br i1 %, label %, label %"));
+        var unique = Assert.Single(views, x => x != owner);
+        var (set, clear) = ("store i8 1, ptr %, align 1", "store i8 0, ptr %, align 1");
+        Assert.Equal([clear, clear, set, clear, set, clear, clear, clear], StoresOf(owner.Instructions, Assert.Single(FlagsOf(owner))));
+        Assert.Equal([clear, clear, set, clear, clear, clear], StoresOf(unique.Instructions, Assert.Single(FlagsOf(unique))));
     }
 
     // PD12: in a body gate step 2 writes, A1 and A2 judged every runtime Drop, so one without a verdict group is a broken contract
