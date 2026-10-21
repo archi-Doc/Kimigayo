@@ -23,6 +23,10 @@ public class OriginRelationDiagnosticTest
 
     private const string Refuted = "Return or store an owned value, or a borrow of an input, instead of a borrow of storage that ends with the body";
 
+    private const string Keep = "func keep(view: ref/(Slice<i32> during s)) -> ref/(Slice<i32> during s) during view => view\n";
+
+    private const string Make = "func make(values: Slice<i32> during s) -> Slice<i32> during s => values\n";
+
     [Theory]
     [InlineData(Bad, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r", "requires the borrow local@ref outlives x, which is false", "local@ref")]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
@@ -35,6 +39,12 @@ public class OriginRelationDiagnosticTest
     [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    let c = b\n    return c@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "c@ref", "requires the borrow c@ref outlives b, which is false", "c@ref")]
     [InlineData("func g(b: ref/i32) -> ref/(ref/i32 during b) during b\n    return b@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "b@ref", "requires the borrow b@ref outlives b, which is false", "b@ref")]
     [InlineData("func pick<length N, T>(values: ref/[N of T] during source) -> ref/T during sorce\n    return values[0]@ref/T\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "values[0]@ref/T", "requires source outlives sorce, which is not proven", null)]
+    // SPEC 13.5.6, 4.8.1: a Borrow of a Slice handle borrows the handle's own storage, never the elements' source.
+    [InlineData("func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return values@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "values@ref", "requires the borrow values@ref outlives s, which is false", "values@ref")]
+    [InlineData("func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    let local = values\n    return local@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@ref", "requires the borrow local@ref outlives s, which is false", "local@ref")]
+    [InlineData("func leak(values: Slice<i32> during s) -> uniq/(Slice<i32> during s) during s\n    var local = values\n    return local@uniq\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@uniq", "requires the borrow local@uniq outlives s, which is false", "local@uniq")]
+    [InlineData(Keep + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return keep(values)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "keep(values)", "requires the borrow values outlives s, which is false", "values")]
+    [InlineData(Make + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return make(values)@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "make(values)@ref", "requires the borrow make(values)@ref outlives s, which is false", "make(values)@ref")]
     public void AnOriginOnlyFailureIsOneRelationRecord(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
@@ -71,6 +81,14 @@ public class OriginRelationDiagnosticTest
     [InlineData("func viaLocal(x: ref/i32) -> ref/i32 during x\n    let r = x\n    return r\n")]
     [InlineData("func f(b: ref/i32) -> i32\n    let rr = b@ref\n    return rr@follow@follow\n")]
     [InlineData("func f(p: ref/(ref/i32 during a) during b) -> ref/(ref/i32 during a) during b\n    return p@follow@ref\n")]
+    // SPEC 4.7.1, 4.8.1: elements and reslices of a Slice depend on its source, also through a local, a loop or a Field; a reslice
+    // of an array reached through a stored reference depends on that reference.
+    [InlineData("func first(values: Slice<i32> during s) -> ref/i32 during s\n    let local = values\n    return local[0]@ref\n")]
+    [InlineData("func tail(values: Slice<i32> during s) -> Slice<i32> during s\n    let local = values\n    return local[1..]\n")]
+    [InlineData("func find(values: Slice<i32> during s) -> ref/i32 during s\n    for v in values\n        return v\n    return values[0]@ref\n")]
+    [InlineData(Keep + "func f(values: Slice<i32> during s) -> i32\n    let kept = keep(values@ref)\n    return kept@follow[0]\n")]
+    [InlineData("struct View {s}\n    public let items: Slice<i32> during s\nfunc tail(h: View during s) -> Slice<i32> during s\n    return h.items[1..]\n")]
+    [InlineData("struct Rows {a}\n    public let r: ref/[3 of i32] during a\nfunc tail(h: Rows during a) -> Slice<i32> during a\n    return h.r[1..]\n")]
     public void AProvenRelationIsAccepted(string body)
     {
         var output = DiagnosticCorpus.Check(body + Main);
@@ -150,6 +168,18 @@ public class OriginRelationDiagnosticTest
         var errors = DiagnosticCorpus.Check(source).Diagnostics;
         Assert.Equal([nameof(DiagnosticCode.ComparisonLoanConflict_Kd), nameof(DiagnosticCode.UnprovenOriginRelation_Kd)], errors.Select(static x => x.Code));
         Assert.Equal(("n = 2", "y"), (Text(source, errors[0].Span), Text(source, errors[1].Span)));
+    }
+
+    // SPEC 13.5.6, 3.6: a Borrow of a Slice handle Loans the handle's storage: a `var` handle reassigned, or a call's temporary
+    // ending, while the Borrow is live conflicts.
+    [Theory]
+    [InlineData("func f(a: Slice<i32> during s, b: Slice<i32> during s) -> i32\n    var values = a\n    let h = values@ref\n    values = b\n    return h@follow[0]\n", "values = b")]
+    [InlineData(Make + "func f(values: Slice<i32> during s) -> i32\n    let r = make(values)@ref\n    return r@follow[0]\n", "let r = make(values)@ref")]
+    public void ABorrowOfASliceHandleLoansItsStorage(string body, string at)
+    {
+        var source = body + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.ComparisonLoanConflict_Kd), at), (error.Code, Text(source, error.Span)));
     }
 
     // SPEC 23.3: the console names the borrow and relates it, the language server sends the record with its related location,

@@ -387,6 +387,8 @@ public sealed partial class Binding
             slot is InvocationKoto)
             ? this.OriginAtom(PlaceOriginBinder(slot), OriginKind.Projection, PlaceOriginSlot(slot)) : this.PlaceOrigin(source));
 
+    // SPEC 13.5.6: the Origin of a Borrow of the Place `source` designates; a caller typing the Places reached through a receiver
+    // names one of them, never the receiver.
     private BoundOrigin PlaceOrigin(Koto source)
     {
         if (this.HelperOrigin(source) is { } helper)
@@ -419,7 +421,7 @@ public sealed partial class Binding
             return publishedElement; // SPEC 4.7.1: the element Place depends on the receiver under its contract.
         }
 
-        // A pair layer's Origin is the dependency of the reference it may hold; the Place itself is its own dependency.
+        var place = KotoHelper.UnwrapParentheses(source);
         source = PlaceOriginSource(source);
         if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } reached)
         {
@@ -428,7 +430,11 @@ public sealed partial class Binding
             return this.FollowedOrigin(reached.Left) ?? this.PlaceOrigin(reached.Left);
         }
 
-        return ElementAccess.AccessType(source) is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) ? origin
+        // SPEC 3.4.3, 4.7.1, 4.8.1: a Place reached through a reference or a Slice handle depends on that value's Origin, and a
+        // reference read in place is its referent. A pair layer's Origin is that of the reference it may hold, and a Slice handle
+        // that is itself the Place is a Place of its root, so both are their own dependency.
+        return ElementAccess.AccessType(source) is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) &&
+            (type.Kind == BoundTypeKind.Semantics || !ReferenceEquals(source, place)) ? origin
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 
