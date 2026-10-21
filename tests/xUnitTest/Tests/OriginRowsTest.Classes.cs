@@ -92,6 +92,33 @@ public sealed partial class OriginRowsTest
         Assert.NotSame(count.Origin, own.Origin);
     }
 
+    // Rows 3, 7 and 7' for an accessor's `storage` (DECISIONS R4-M101, BU's B1): a root of its Property's accessors, classed as a static
+    // Borrow formed there by mutability (SPEC 11.3.1, 11.8), or Inferred for an instance Property (it reads through the receiver).
+    [Theory]
+    [InlineData("group Api\n    public var item: i32 = 0\n        get() -> i32 => Util.pick(storage@ref, 5@ref)\n        set(value: i32) -> () => storage = value\n", "Finite")]
+    [InlineData("group Api\n    public let item: i32 = 0\n        get() -> i32 => Util.pick(storage@ref, 5@ref)\n", "Inferred")]
+    [InlineData("struct Api\n    public var item: i32 = 0\n        get() -> i32 => Util.pick(storage@ref, 5@ref)\n        set(value: i32) -> () => storage = value\n    public init() => ()\n", "Inferred")]
+    public void AnAccessorsStorageIsClassedByItsProperty(string source, string kind)
+    {
+        var c = MirBuildTest.Compile(Util + source + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        var getter = Bodies(c).Select(x => c.Types.OriginRows(BodyOf(x.Key))).Single(static x => x.Rows.Any(static y => First(y.Site) == "storage@ref"));
+        var storage = getter.Atoms[getter.Rows.First(static x => First(x.Site) == "storage@ref").Longer];
+        Assert.Equal((kind, ProjectionRole.Storage), (storage.Kind.ToString(), storage.Role));
+        Assert.Empty(c.Types.OriginFindings);
+    }
+
+    // Row 3's referent clause for a Place: the atom PlaceOrigin names for a Borrow of an expression read as its referent is Inferred.
+    [Fact]
+    public void APlaceReadThroughAReferenceIsInferred()
+    {
+        var c = MirBuildTest.Compile("func g(r: ref/i32) -> i32\n    let y: i32 = r\n    return y\n" + Main);
+        var g = BodyOf(Bodies(c).Single(static x => x.Key.Decl?.Name == "g").Key);
+        var read = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is IdentifierNameKoto && First(x) == "r" && c.Binding.ReadsReferent(x));
+        var atom = c.Types.OriginAtom(g, new BoundOrigin(OriginKind.Projection, read, 0) { Body = g }, read);
+        Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
+    }
+
     // Row 5 and the receiver's part (E5, DECISIONS R4-M103): a Closure literal's value is Fixed in its own body and a Finite temporary of
     // the body evaluating it; a Closure's call result is Fixed in it; a constructor's receiver is a Finite root of the constructor.
     [Fact]

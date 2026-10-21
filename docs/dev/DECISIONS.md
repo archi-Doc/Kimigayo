@@ -2653,6 +2653,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the layer's rows in each constructor's; D8's oracle per layer for layer rows.
   - PD21 (the planning session's first ruling on `Binding.Origins.Model.cs`): one responsibility, the Origin model's records, so no
     split exists; K1 moved the `OriginDeclaration` model into it; the next changing unit after 2a0-2 restructures it.
+  - Fix round (BU's review, ACCEPT WITH CHANGES, B1, B2, O3-O6). B1, a correction of the package's internal conflict (the planning
+    session's ruling): 2a0-D §3's validation sentence ("a mutable-static `Projection` whose binder is a static Field declaration is
+    `InternalInvariant_Kd`") is dropped, since row 7 classes that atom and SPEC 11.3.1 and 11.8 make an accessor's `storage` of a mutable
+    static valid; P42's unit checks its own binders. A Property's `storage` is a root of each of its accessors (one atom), classed by
+    rows 7 and 7' by mutability for a static and Inferred for an instance Property (row 3's referent clause). B2: the body key decides
+    composition; only a constructor's own body (Index < 0) ends with its layer's rows, never a default template. O3: row 3's referent
+    clause also classes `PlaceOrigin`'s referent atom Inferred (no census row names it, H). O4, O5: a slice is read-only for consumers
+    (`Binding.OriginRowSet`, filled through the producer's private builder); the layer is one expression (`LayerOf`), static storage one
+    test (`IsStatic`).
+  - Conditions for 2a-1a (BU's answer 1 and O7): MIR's conversion of a `MirDefKey` to an `ExecutableBody` gets a single owner in Mir,
+    which the tests use (today only the test helper `BodyOf`); MIR's inline default copies read the template's atoms in the template's
+    slice, or a warm-against-cold check settles the stamps of a Koto an edit re-parents (`BoundOrigin.Body` is set once at interning).
   - Rejected (design review): a Koto-keyed body table and a mutable enclosing link; scope chains and `Parent` walks; a per-node HIR column;
     per-body root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's
     `Definition` deadline in R4 (G210 is BU's); `ResultFit` windows now.

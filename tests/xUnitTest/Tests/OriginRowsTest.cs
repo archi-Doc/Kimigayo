@@ -202,6 +202,20 @@ public sealed partial class OriginRowsTest
         Assert.True(Entails(c, slice.Body, longer.Atom, shorter.Atom, row.CaseMask));
     }
 
+    // DECISIONS R4-M101 E4 (BU's B2): the body key decides the composition: the template of a constructor's default holds only its own rows.
+    [Fact]
+    public void AConstructorsDefaultTemplateHoldsOnlyItsOwnRows()
+    {
+        var c = MirBuildTest.Compile(FieldInit[..FieldInit.IndexOf("    public init()", StringComparison.Ordinal)] +
+            "    public init(k: i32 = Util.pick(5@ref, 6@ref)) => self.n = k\n" + Main);
+        var slices = Bodies(c).Where(IsProgramConstructor).Select(x => c.Types.OriginRows(BodyOf(x.Key))).ToList();
+        var template = Assert.Single(slices, static x => x.Body.Index == 0);
+        Assert.Equal((2, 2, false), (template.Rows.Count, template.LayerStart, template.Layer.IsBody));
+        var init = Assert.Single(slices, static x => x.Body.Index < 0);
+        Assert.Equal(("Layer:S", 2), (Describe(init.Layer), init.Rows.Count - init.LayerStart));
+        Assert.Empty(c.Types.OriginFindings);
+    }
+
     // The recorded limit of DECISIONS R4-M101 E4 (PLAN, STATUS): a layer whose struct has no constructor (its omitted base clause
     // selects none) keeps its Field-initializer rows, which no body's slice includes, so no MIR analysis judges them.
     [Fact]

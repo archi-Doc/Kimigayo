@@ -50,7 +50,7 @@ public sealed partial class Binding
         }
     }
 
-    // A body's slice, materialized on its first read this pass: its unit's rows, then for a constructor its layer's (DECISIONS R4-M101 E4).
+    // A body's slice, materialized on its first read this pass: its unit's rows, then for a constructor's own body its layer's (R4-M101 E4).
     internal OriginRowSet OriginRows(ExecutableBody body)
     {
         this.PrepareOriginRows();
@@ -68,7 +68,9 @@ public sealed partial class Binding
         var slice = this.originSlices[this.originSliceCount];
         IOriginRowSetBuilder builder = slice;
         this.originSliceIndex.Add(body, this.originSliceCount++);
-        var layer = AdtDef.IsConstructor(body.Definition) ? LayerOf(body.Definition!) : default;
+
+        // E4: the layer's initializers run in the constructor's own body, never in the template of one of its defaults (the body key decides).
+        var layer = AdtDef.IsConstructor(body.Definition) && body.Index < 0 ? LayerOf(body.Definition!) : default;
         builder.Reset(body, layer);
         this.AddOriginRows(slice, body, 1);
         builder.EndOwnRows();
@@ -153,10 +155,11 @@ public sealed partial class Binding
     // Whether an atom is a root of a body, by the body that formed it (a non-declaration binder) or by its slot's role (E5): parameter j
     // of f is a root of f's body and of each template (f, i) with j < i; a receiver and a helper borrow of their own body; an environment
     // binding and a call result of their Closure's; a Closure literal's value of the body that evaluates it; an accessor's self and value
-    // of the accessor's.
+    // of the accessor's; a Property's storage of each of its accessors' (one atom, whichever formed it first).
     private static bool RootOf(BoundOrigin atom, ProjectionRole role, ExecutableBody body) => role switch
     {
         ProjectionRole.None or ProjectionRole.Place => atom.Body == body,
+        ProjectionRole.Storage => body.Definition?.Declaration is PropertyAccessorKoto { Parent: var property } && ReferenceEquals(property, atom.Binder),
         ProjectionRole.ClosureValue => body.IsBody && EvaluatingBody(new(atom.Binder!.BoundSymbol)) == body,
         ProjectionRole.Parameter when atom.Binder is FunctionKoto => DeclaredBy(atom, body) && (body.Index < 0 || (uint)atom.Slot < (uint)body.Index),
         ProjectionRole.Receiver or ProjectionRole.Helper => DeclaredBy(atom, body) && body.Index < 0,
@@ -164,12 +167,6 @@ public sealed partial class Binding
     };
 
     private static bool DeclaredBy(BoundOrigin atom, ExecutableBody body) => body.Definition is { } symbol && ReferenceEquals(symbol.Declaration, atom.Binder);
-
-    // A Property binder's place: a stored accessor's storage reads through its receiver (Inferred, row 3's referent clause); a static's
-    // immutable storage is Inferred (row 7'); a mutable static named by its Field declaration is a broken contract (2a0-D §3's validation).
-    private static OriginAtomEntry? StorageClass(BoundOrigin atom)
-        => atom.Binder is PropertyKoto { Parent: GroupKoto } field && IsMutableDeclaration(field) ? null
-            : new(atom, OriginAtomKind.Inferred, ProjectionRole.Storage);
 
     // SPEC 15.3.6: a meet in its canonical form, operands flattened, deduplicated and ordered, static dropped (Meet).
     private BoundOrigin CanonicalOrigin(BoundOrigin origin)
@@ -360,11 +357,6 @@ public sealed partial class Binding
         }
 
         var role = RoleOf(atom);
-        if (role == ProjectionRole.Storage)
-        {
-            return StorageClass(atom);
-        }
-
         if (role is ProjectionRole.None or ProjectionRole.Place && !atom.Body.IsBody)
         {
             return null; // E5: a non-declaration atom first formed outside every body.
@@ -391,8 +383,9 @@ public sealed partial class Binding
         return new(atom, OriginAtomKind.Unclassed, role); // Row 9: another body's root seen from B.
     }
 
-    // A root's class: an inference or anchor of B Inferred (row 8); a Borrow of static storage formed in B Finite when mutable, Inferred
-    // when immutable (rows 7, 7'); any other root Finite (rows 3, 4, 5).
+    // A root's class: an inference or anchor of B Inferred (row 8); a Borrow of static storage formed in B, a site's or an accessor's
+    // `storage`, Finite when mutable, Inferred when immutable (rows 7, 7'); a place read through a reference Inferred (row 3's referent
+    // clause: a Borrow through a referent, or a stored accessor's instance `storage` through its receiver); any other root Finite (rows 3-5).
     private OriginAtomKind RootKind(BoundOrigin atom, ProjectionRole role)
     {
         if (role == ProjectionRole.None)
@@ -400,8 +393,17 @@ public sealed partial class Binding
             return OriginAtomKind.Inferred;
         }
 
-        var immutableStatic = atom.Binder!.BoundSymbol is { } symbol && IsStatic(symbol) && !IsMutableDeclaration(symbol.Declaration);
-        return role == ProjectionRole.Place && immutableStatic ? OriginAtomKind.Inferred : OriginAtomKind.Finite;
+        if (role is not (ProjectionRole.Place or ProjectionRole.Storage))
+        {
+            return OriginAtomKind.Finite;
+        }
+
+        if (atom.Binder!.BoundSymbol is { } symbol && IsStatic(symbol))
+        {
+            return IsMutableDeclaration(symbol.Declaration) ? OriginAtomKind.Finite : OriginAtomKind.Inferred;
+        }
+
+        return role == ProjectionRole.Storage || this.ReadsReferent(atom.Binder) ? OriginAtomKind.Inferred : OriginAtomKind.Finite;
     }
 
     // Rows 2, 2' and 9: a meet is one Fixed node when every operand is Fixed, an Inferred meet node otherwise, and forms no edge when an

@@ -6,7 +6,7 @@
 // Output: OriginRows, OriginAtom, UniversalRelations and OriginFindings, the broken contracts the view's validation found.
 // Invariants: built on a pass's first read and immutable after Bind but for the atoms MIR appends; every end and atom resolved at its use
 // (OriginAtUse) and meets canonical (Meet); no row from a Constraint proof (T1); a row formed with no body (a declaration's) is in no slice;
-// a constructor's slice is its own rows, then its layer's (the struct's Field initializers), which share only Fixed atoms with them.
+// a constructor's own body's slice is its rows, then its layer's (the struct's Field initializers), which share only Fixed atoms with them.
 // Must not: decode a Projection slot for MIR (only ProjectionRole leaves the view, D7), read MirBodyKind, or judge a relation.
 
 using Kimi.Compiler.Parsing;
