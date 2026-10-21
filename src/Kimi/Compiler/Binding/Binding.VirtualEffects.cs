@@ -45,14 +45,14 @@ public sealed partial class Binding
             }
 
             var original = function.IsVirtual ? function : this.virtualOverrides.TryGetValue(function, out var entry) ? entry.Slot.Original : null;
-            if (original is null || !this.virtualEffectBounds.TryGetValue(original, out var bounds) || (bounds.Confined is null && bounds.Preserves is null))
+            if (original is null || !this.virtualEffectBounds.TryGetValue(original, out var bounds) || bounds.Confined is not { } bound)
             {
                 continue;
             }
 
             var summary = rejected is null ? this.effectSummary ??= new(this) : this.destructionSummary ??= new(this);
             var scope = this.scopes[function];
-            if (summary.Check(bounds.Confined is not null, bounds.Preserves is not null, symbol, scope.ImplementationPremises ?? scope, rejected is not null, implementationBody: true))
+            if (summary.Check(symbol, scope.ImplementationPremises ?? scope, rejected is not null, implementationBody: true))
             {
                 continue;
             }
@@ -64,12 +64,6 @@ public sealed partial class Binding
                 continue;
             }
 
-            var bound = summary.Violation switch
-            {
-                EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ForeignCall or EffectViolation.StaticPointer or EffectViolation.IntegerPointer => bounds.Confined!,
-                EffectViolation.ResultLoan => bounds.Preserves!,
-                _ => bounds.Preserves ?? bounds.Confined!,
-            };
             (this.virtualEffectViolations ??= new(ReferenceEqualityComparer.Instance))[function] = new(original, bound, summary.Violation, summary.ViolationSite, summary.ViolationNode);
             if (rejected is null)
             {

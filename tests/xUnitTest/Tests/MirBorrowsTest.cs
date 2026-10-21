@@ -557,6 +557,34 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                     inspect(slot)
                 """));
 
+    // SPEC 8.11.3 rule 1 (the adopted proposal Abstract Calls Reach by Paths): an abstract call reaches its inputs' Places by path, as a
+    // concrete call does, so an earlier result kept across a later call of the same or another value is no conflict; a LendingIterator
+    // item that names `step` keeps the receiver Loan of its call, which the next call meets.
+    [Fact]
+    public void AnAbstractCallReachesByPaths()
+        => Assert.Equal(
+            ["lend: it"],
+            Problems("""
+                contract Take
+                    associate Item
+                    func take(self: uniq/Self) -> Option<Self.Item>
+                func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+                    S is Take
+                    let first = source.take()
+                    let second = source.take()
+                    return (first@move, second@move)
+                func zip<I>(left: uniq/I, right: uniq/I) -> (Option<I.Item>, Option<I.Item>)
+                    I is Iterator
+                    let a = right.next()
+                    let b = left.next()
+                    return (a@move, b@move)
+                func lend<L>(it: uniq/L)
+                    L is LendingIterator
+                    let first = it.next()
+                    let second = it.next()
+                    inspect(first)
+                """));
+
     // SPEC 15.6.4 (DECISIONS BU-1): a value stored into writable storage brings its whole Type, so Array<rc/S>.append stores the borrow
     // its element's payload holds into the Array, below the rc layer: a write of the borrowed Place while the Array is used later errs; a
     // read, or a write before the append, does not.

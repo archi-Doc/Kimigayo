@@ -9,7 +9,7 @@ namespace XunitTest;
 
 public sealed class LspEffectHoverTest : IDisposable
 {
-    private const string Source = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    F is Callable<uniq, () -> i32>\n        effect preserves results\n    return f()\npublic func main() => ()\n";
+    private const string Source = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    F is Callable<uniq, () -> i32>\n        effect confined\n    return f()\npublic func main() => ()\n";
     private readonly string directory = Path.Combine(Path.GetTempPath(), "kimi-effect-hover-" + Guid.NewGuid().ToString("N"));
 
     public void Dispose()
@@ -29,7 +29,6 @@ public sealed class LspEffectHoverTest : IDisposable
         Assert.Contains("Available bound: confined", record.Text);
         Assert.Contains("Callable: F is Callable<() -> i32>", record.Text);
         Assert.DoesNotContain("BoundType {", record.Text);
-        Assert.Contains("Available bound: preserves results", record.Text);
     }
 
     [Fact]
@@ -51,7 +50,6 @@ public sealed class LspEffectHoverTest : IDisposable
         var text = hover.GetProperty("contents").GetProperty("value").GetString();
         Assert.Contains("Call: f()", text);
         Assert.Contains("Available bound: confined", text);
-        Assert.Contains("Available bound: preserves results", text);
         Assert.Contains("Declared by: App.apply", text);
         Assert.Contains("Premise: F is Callable<() -> i32> effect confined", text);
         Assert.Contains("uniq", text);
@@ -61,9 +59,9 @@ public sealed class LspEffectHoverTest : IDisposable
         await client.ChangeAsync(main, 2, LspTestClient.Full(CheckedSource.Replace("        effect confined\n", string.Empty, StringComparison.Ordinal)));
         Assert.Equal(JsonValueKind.Null, (await Request(client, main, 5, 11)).ValueKind);
         Assert.Equal("TypeMismatch_Kd", Assert.Single((await client.PublishAsync(main)).EnumerateArray()).GetProperty("code").GetString());
-        var updated = await Request(client, main, 4, 11);
+        var updated = await Request(client, main, 3, 11);
         Assert.DoesNotContain("Available bound: confined", updated.GetProperty("contents").GetProperty("value").GetString());
-        Assert.Contains("Available bound: preserves results", updated.GetProperty("contents").GetProperty("value").GetString());
+        Assert.Contains("Available bound: none", updated.GetProperty("contents").GetProperty("value").GetString());
     }
 
     [Fact]

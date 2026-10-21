@@ -269,11 +269,9 @@ internal static class KimiLibraryCatalog
     internal static bool ManagesRepresentation(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index && Definitions[index].ManagedRepresentation;
 
-    // SPEC 4.9.6: an operation whose table row, dependency rules, allocation, Abort and input accesses form its published summary;
-    // callers and bound verification use that summary, never the private body, which is verified against it.
-    internal static bool PublishesSummary(BindingSymbol? symbol) => Row(symbol) is not null;
-
     // SPEC 4.9.6, 12.4.3: the user-code effects an operation publishes, a bodiless constructor its linked implementation's; null for none.
+    // The row, dependency rules, allocation, Abort and input accesses form its published summary; callers and bound verification use
+    // that summary, never the private body, which is verified against it.
     internal static PublishedRow? Row(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(ImplementationOf(id) ?? id) is >= 0 and var index ? Definitions[index].Row : null;
 
