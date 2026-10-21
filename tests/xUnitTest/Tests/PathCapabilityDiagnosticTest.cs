@@ -51,18 +51,32 @@ public class PathCapabilityDiagnosticTest
     // A struct Box with a computed Field, whose getter result is lent only shared (SPEC 11.5).
     private const string Box = "struct Box\n    public computed calc: i32\n        get() -> i32 => 1\n    public init() => ()\n";
 
-    // Group storage: a var and a let Field, a var and a let struct, a Tuple, a fixed array, an Array, object handles (var and let ones of a
-    // derived Type), a var whose setter is private, one whose setter is custom and a computed Field; the group's function bump has its body
-    // appended.
+    // A Contract whose required Property level is read through its getter, a getter result lent only shared (SPEC 11.1, 11.5).
+    private const string Leveled = "contract Leveled\n    property level: i32 has get, set\n";
+
+    // A struct Pt returned by mk and by Holder's computed Field cpt: Temporary Values whose Fields are lent with them (SPEC 3.4.1, 11.5).
+    private const string Made = "struct Pt\n    public var x: i32 = 0\n    public init() => ()\nfunc mk() -> Pt => Pt.init()\n" +
+        "struct Holder\n    public computed cpt: Pt\n        get() -> Pt => Pt.init()\n    public init() => ()\n";
+
+    // Enums Color and Shape (a payload of Color) and functions borrowing them or an Option<i32>, shared or exclusively.
+    private const string Cases = "enum Color\n    Red\n    Blue\nenum Shape\n    Dot(Color)\n    Box(i32, Color)\n" +
+        "func lookc(x: ref/Color) -> i32 => 1\nfunc looks(x: ref/Shape) -> i32 => 2\nfunc lo(x: ref/Option<i32>) -> i32 => 3\n" +
+        "func bumpc(x: uniq/Color) -> i32\n    x@follow = Color.Blue\n    return 4\n";
+
+    // Group storage: a var and a let Field, a var and a let struct, a Tuple, a fixed array, an Array, a Dictionary, object handles (var and
+    // let ones of a derived Type), a var whose setter is private, one whose setter is custom and computed Fields of a scalar and a struct;
+    // the group's function bump has its body appended.
     private const string Statics =
         "struct Point\n    public var x: i32 = 0\n    public init() => ()\nfunc take(x: uniq/i32) -> () => x@follow = 1\n" +
         "open struct Shape\n    public var size: i32 = 0\n    public init() => ()\nstruct Circle: Shape\n    public init() => ()\n" +
         "group State\n    public var counter: i32 = 0\n    public let limit: i32 = 5\n    public var point: Point = Point.init()\n" +
         "    public let fixed: Point = Point.init()\n    public var pair: (i32, i32) = (1, 2)\n    public var fa: [2 of i32] = [1, 2]\n" +
-        "    public var values: Array<i32> = [1, 2]\n    public var handle: obj/Point = Point.init()@obj\n" +
+        "    public var values: Array<i32> = [1, 2]\n    public var dict: Dictionary<i32, i32> = [1: 2]\n" +
+        "    public var handle: obj/Point = Point.init()@obj\n" +
         "    public var circle: obj/Circle = Circle.init()@obj\n    public let ring: obj/Circle = Circle.init()@obj\n" +
         "    public var guarded: i32 = 0\n        private set\n    public var custom: i32 = 0\n" +
-        "        set(value: i32) -> () => State.counter = value\n    public computed calc: i32\n        get() -> i32 => 1\n    public func bump()\n";
+        "        set(value: i32) -> () => State.counter = value\n    public computed calc: i32\n        get() -> i32 => 1\n" +
+        "    public computed cpt: Point\n        get() -> Point => Point.init()\n    public func bump()\n";
 
     [Theory]
     [InlineData("var values: Array<string> = [\"a\"]\nlet view = values[..]\nlet m = view[0]@move", DiagnosticCode.SharedPathAccess_Kd)]
@@ -120,6 +134,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Take + "func f() -> ()\n    let x: i32 = 1\n    take((x)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + "func f() -> ()\n    let t = (1, 2)\n    take((t).0@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Box + "func f() -> ()\n    var b = Box.init()\n    take((b.calc)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Take + Leveled + "func f<T>(t: uniq/T) -> ()\n    T is Leveled\n    take((t.level)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
@@ -133,8 +148,10 @@ public class PathCapabilityDiagnosticTest
     // Field's qualified name and in its group too, is one located Unsupported_Kd (DECISIONS R4-M89 PD12 (i), BU-18); a Borrow SPEC denies
     // (a let, a private or custom setter, a let ancestor) keeps its Language error. Parentheses and inline parts keep the Place, which is
     // never a Temporary Value (SPEC 3.4, 3.6), and a getter result is lent only shared (SPEC 11.5). Not covered: Borrows through a static
-    // object handle's payload (PLAN G100).
+    // object handle's payload and a Dictionary element, whose index borrows its static receiver implicitly (PLAN G100 (b)).
     [Theory]
+    [InlineData("        ()\nfunc f()\n    let r = State.dict[1]@ref", "State.dict[1]", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = (State.dict)[1]@ref", "(State.dict)[1]", DiagnosticCode.NoApplicableOverload_Kd)]
     [InlineData("        ()\nfunc f() => take((State.limit)@uniq)", "(State.limit)@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = (State.limit)@ref", "(State.limit)@ref", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => take((State.counter)@uniq)", "(State.counter)@uniq", DiagnosticCode.Unsupported_Kd)]
@@ -181,8 +198,11 @@ public class PathCapabilityDiagnosticTest
     }
 
     // Reads, writes and calls through the group borrow no static Field in Binding, and an unqualified Borrow in its group binds until
-    // A5-F9 lands (DECISIONS R4-M90 PQ-1). A case adaptation borrows a function reference as a Temporary Value, as `g@uniq` does.
+    // A5-F9 lands (DECISIONS R4-M90 PQ-1). A case adaptation borrows a function reference as a Temporary Value, as `g@uniq` does, and a
+    // static getter result is one too, lent shared with its parts (SPEC 3.6, 11.5).
     [Theory]
+    [InlineData("        ()\nfunc f()\n    let r = State.cpt.x@ref\n    let s = (State.cpt).x@ref\n    let t = State.calc@ref")]
+    [InlineData("        let r = calc@ref\n        let s = (calc)@ref")]
     [InlineData("        ()\nfunc f() -> i32 => State.counter + State.point.x")]
     [InlineData("        ()\nfunc f() -> i32\n    let v = (State.limit)\n    return v + (State.pair).0 + State.fa[1] + State.values[0] + (State.calc)")]
     [InlineData("        ()\nfunc f()\n    State.counter = 1\n    State.counter += 1\n    State.point.x = 3")]
@@ -229,9 +249,25 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Element + "func f(p: uniq/(obj/Point)) => p.n = 5")]
     [InlineData(Take + "func f() -> i32\n    var x: i32 = 1\n    take((x)@uniq)\n    take((one())@uniq)\n    return x")]
     [InlineData(Take + Box + "func f(b: Box) -> i32 => look((b.calc)@ref) + look(pair().0@ref) + look((pair()).1@ref)")]
+    [InlineData(Take + Made + "func f(h: Holder) -> i32 => look(mk().x@ref) + look((mk()).x@ref) + look(mk().x) + look(h.cpt.x@ref) + look((h.cpt).x@ref)")]
+    [InlineData("func lookz(x: ref/isize) -> isize => x@follow\nfunc f<length N>(a: [N of i32]) -> isize => lookz(N@ref) + lookz((N)@ref)")]
     public void OwnedAndExclusivePathsKeepTheirCapabilities(string source)
     {
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+    }
+
+    // SPEC 3.6, 6.5.2: a Case construction is a Temporary Value, qualified, in parentheses or with a nested payload, lent shared or,
+    // spelled, exclusively; it is analyzed and generated on either pipeline.
+    [Theory]
+    [InlineData(Cases + "let a = lookc((Color.Red)@ref) + lookc(Color.Red@ref) + lookc(Color.Blue) + lookc((Color.Blue))")]
+    [InlineData(Cases + "let a = bumpc((Color.Blue)@uniq) + bumpc(Color.Red@uniq)")]
+    [InlineData(Cases + "let a = lo((Option<i32>.None)@ref) + lo(Kimi.Option<i32>.None@ref) + lo(Option<i32>.Some(2)@ref)")]
+    [InlineData(Cases + "let a = looks((Shape.Box(7, Color.Red))@ref) + looks(Shape.Dot(Color.Blue)@ref)")]
+    public void ACaseConstructionIsATemporaryValue(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        var generated = c.WriteIr(TextWriter.Null, out var failure);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified && generated, MinimalEmissionTest.Describe(c, failure));
     }
 }

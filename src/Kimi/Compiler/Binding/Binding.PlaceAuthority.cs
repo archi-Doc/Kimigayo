@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // Place authority (SPEC 3.4, 3.4.3, 3.5, 3.6, 13.5.5, 15.1.5, 15.6.2): what an expression is as a Place and what its path grants.
-// - Responsibility: whether an expression is a bare Place (IsBarePlace) or a Temporary Value a borrow may materialize
-//   (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
+// - Responsibility: whether an expression is a bare Place (IsBarePlace), a static Field (IsStaticField) or a Temporary Value a borrow
+//   may materialize (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
 //   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a receiver
 //   can be exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers
 //   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle, as
@@ -314,12 +314,11 @@ public sealed partial class Binding
     }
 
     // SPEC 3.4, 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
-    // lifetime. The operand is judged at the root of its path through parentheses and inline parts, as both keep a Place's
-    // classification (SPEC 3.4, 4.7.1): a root that is a Place (IsBarePlace) or names a declaration, a static Field among them, is
-    // no temporary, nor is a part of it; a part of a temporary is lent with it. A newly owned temporary has exclusive writable
-    // capability, lent exclusively only when spelled or as a Receiver Expression (SPEC 7.3, 15.1.5), and a getter result only
-    // shared (SPEC 11.5). A function reference and an anonymous function construct a callable value, despite a declaration Symbol
-    // (SPEC 7).
+    // lifetime: an operand whose root, through parentheses and inline parts (both keep a Place's classification, SPEC 3.4, 4.7.1), is
+    // no Place (IsBarePlace, or a static Field, IsStaticField), such as a call result, a Case construction, a callable value or a getter
+    // result; a part of it is lent with it. A newly owned temporary has exclusive writable capability, lent exclusively only when
+    // spelled or as a Receiver Expression (SPEC 7.3, 15.1.5) and not through an inline part here, and a getter result only shared
+    // (SPEC 11.5).
     private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
@@ -329,12 +328,16 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(part.Left);
         }
 
-        var callableValue = (root.BoundType?.Kind == BoundTypeKind.FunctionItem && root.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
-            root is FunctionKoto { IsAnonymous: true };
-        return !IsBarePlace(root) && (root.BoundSymbol is null || callableValue || root is InvocationKoto || (!exclusive && IsGetterResult(root))) &&
-            (!exclusive || (spelled && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
+        return !IsBarePlace(root) && !IsStaticField(root) &&
+            (!exclusive || (spelled && !IsGetterResult(root) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
+
+    // SPEC 15.6.2, 22.4.4: a static Field, the root Place of a path through the keys of its group's storage: a group's Property read
+    // through its standard getter, named qualified or in its group. Not yet a bare Place (IsBarePlace): a Subject borrowed in place
+    // would then need the implicit static Borrow that is unimplemented (PLAN G100 (b)).
+    private static bool IsStaticField(Koto node)
+        => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: true, Symbol.Scope.Owner: GroupKoto };
 
     // SPEC 3.4.3: a member or Tuple element selected through several reference layers is reached through one reference
     // to the Type that declares it: shared when any layer is shared, exclusive otherwise, with the Origins of 10.2. The
@@ -557,7 +560,7 @@ public sealed partial class Binding
             if (source is MemberAccessKoto access)
             {
                 // SPEC 15.6.2: a static Field is a root Place, lent as its accessors allow (above), as one named unqualified is (below).
-                if (property.Symbol.Scope.Owner is GroupKoto)
+                if (IsStaticField(access))
                 {
                     staticRoot = access;
                     return true;

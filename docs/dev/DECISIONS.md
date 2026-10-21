@@ -2856,9 +2856,9 @@ resumed by R4-M86 (2026-10-20).
   recording nothing, and the mode loop of `CheckAdaptationRows` stops at the first failed case and keeps a `null` in a local,
   reported once by its caller; an upcast case judges its Types (`ObjectUpcastFits`, split from `BindObjectUpcast` with
   `ObjectUpcastResult`), then its Borrow, then its result, so `State.limit@s` with `s is ref or uniq` keeps the uniq case's
-  `InvalidAssignment_Kd` and `State.counter@s` is `Unsupported_Kd`. Exceptions: a parenthesized operand and a shared element part
-  bind as a Temporary Value (PLAN G189); below a static object handle or a pair layer the walk asks `BorrowablePlace` and reports no
-  root (PLAN G100 (b)). Rejected: an `AccessFailure` arm (it also names writes and Takes and has no scope for 11.2's accessor access,
+  `InvalidAssignment_Kd` and `State.counter@s` is `Unsupported_Kd`. Exceptions: below a static object handle or a pair layer the walk
+  asks `BorrowablePlace` and reports no root, and a Dictionary element's index borrows its static receiver implicitly (PLAN G100 (b));
+  a parenthesized operand and a shared element part, which bound as a Temporary Value (PLAN G189), are covered by BU-21. Rejected: an `AccessFailure` arm (it also names writes and Takes and has no scope for 11.2's accessor access,
   so a private setter's `@uniq` would become `Unsupported_Kd`); a clause per Borrow arm; a mode parameter on `BorrowablePlace`; for
   the case order, a scratch field naming the conversion (state for one feature, saved around nested adaptations; ba3dd966, replaced),
   a `ref` output (`CheckAdaptationRows` is over the parameter limit) and reordering the cases. Temporary: the `staticRoot` denial
@@ -2921,6 +2921,17 @@ resumed by R4-M86 (2026-10-20).
   chains (review A-3's open family). A new intrinsic adds a row (2b-4: Transferable). Outside it: the capability engine's
   leaves, the `not ObjectPayload` opt-out and Copy's derivation. Open: the conditional Self clause keeps its own failure
   code (PLAN G190). Rejected: per-column pattern methods (a new intrinsic extends each) and a flags enum (more code).
+- **BU-21** (2026-10-21; the BU planning session; PLAN G189, unit bu15; one design, one review, redone on its blocking finding B1) A
+  Borrow's operand is a Temporary Value exactly when its root, read through parentheses and inline parts (stopping at a getter
+  result), is no Place (SPEC 3.4, 3.6): `BorrowableTemporary` (`Binding.PlaceAuthority.cs`) refuses a root that `IsBarePlace` or
+  `IsStaticField` names a Place and admits any other (a call result, a Case construction, a callable value, a getter result, a length
+  parameter), lending a getter result only shared (SPEC 11.5) and no inline part exclusively. `IsStaticField` (a group's Property read
+  through its standard getter, qualified or in its group) is the one static-root predicate; `LendsPlace`'s static root (BU-18) reads
+  it. `IsBarePlace` takes a user index as a Place whatever its key. Why: the clauses read the written node, so `take((State.limit)@uniq)`
+  built, borrowing a copy, and a static's parts and a parenthesized computed getter were temporaries. Rejected: a static Field in
+  `IsBarePlace` (its Subject consumer would borrow `for v in State.values` in place, an implicit static Borrow that fails with
+  `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected `(Color.Red)@ref`, B1). Open:
+  `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which binds as a transfer.
 
 ## R5 and R6 (adopted 2026-10-18)
 
