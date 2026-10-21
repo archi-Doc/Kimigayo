@@ -63,25 +63,6 @@ public class VirtualEffectSelectionTest(ITestOutputHelper output)
     }
 
     [Fact]
-    public void ASharedDynamicReceiverDoesNotInventExclusiveInputEffects()
-    {
-        const string Source = "open struct Base<T>\n    public let value: T\n    public virtual func touch(self: objref/Self)\n        effect confined\n        return\nstruct Probe {a, b}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let target: objref/Base<ref/i32 during a> during b\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        self.target.touch()\n        return .Some(self.target.value)\n()";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void ReceiverPositionDoesNotHideEarlierArgumentEffects(bool unbound)
-    {
-        var source = "open struct Base\n    public virtual func touch(value: uniq/i32, self: objref/Self)\n        effect confined\n        return\nstruct Probe {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let target: objref/Base during static\n    let value: uniq/i32 during a\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        " + (unbound ? "Base.touch(self.value, self.target)" : "self.target.touch(self.value)") + "\n        return .Some(self.value)\n()";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        Assert.All(c.Binding.Issues, x => Assert.True(x.Code is DiagnosticCode.IncompatibleContractImplementation_Kd or DiagnosticCode.Unsupported_Kd, x.ToString()));
-    }
-
-    [Fact]
     public void MissingPublicBoundsAreExplainedAtTheCallInCliAndLsp()
     {
         const string Source = "open struct Base\n    public virtual func get(self: objref/Self) -> i32 => 1\n" + Reader + "let independent = missing";

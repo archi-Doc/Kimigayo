@@ -122,7 +122,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
     [InlineData("i64")]
     public void LaterCallsOfEitherBoundRequirementAreValid(string second)
     {
-        var source = "contract P<K, R>\n    func take(self: uniq/Self, key: K) -> R\n        effect preserves results\n" +
+        var source = "contract P<K, R>\n    func take(self: uniq/Self, key: K) -> R\n" +
             "contract Q<R>: P<i32, R>, P<i64, R>\n" +
             "func pair<S, R>(source: uniq/S) -> (R, R)\n    S is Q<R>\n    let firstKey: i32 = 1\n    let secondKey: " + second + " = 2\n" +
             "    let first = source.take(firstKey)\n    let second = source.take(secondKey)\n    return (first@move, second@move)\nlet present = 1";

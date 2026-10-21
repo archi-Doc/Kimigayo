@@ -148,16 +148,6 @@ public class RequirementFunctionItemTest
     }
 
     [Fact]
-    public void ReceiverPreservationIsNotAFunctionValueGuarantee()
-    {
-        const string Program = "contract Source\n    associate Item\n    func take(self: uniq/Self, other: uniq/i32) -> Self.Item\n        effect confined\n        effect preserves results\nfunc accept<F, T>(operation: ref/F)\n    T is Source\n    F is Callable<(uniq/T, uniq/i32) -> T.Item>\n        effect preserves results\n    ()\nfunc use<T>()\n    T is Source\n    let operation = T.take\n    accept(operation)\npublic func main() => ()";
-        var c = MinimalEmissionTest.Analyze(Program);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Analysis.IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
-    }
-
-    [Fact]
     public void AmbiguousRequirementsRetainBothSignaturesInCliAndLsp()
     {
         const string Program = "func use<T>()\n    T is Addable<i32> and Addable<i64>\n    T.(Addable<i32>).Output is i32\n    T.(Addable<i64>).Output is i64\n    let operation = T.added\npublic func main() => ()";

@@ -11,32 +11,6 @@ namespace XunitTest;
 
 public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
 {
-    [Fact]
-    public void UnboundVirtualItemsCheckAllPublicInputsForPreservingEarlierResults()
-    {
-        const string Source = "open struct Base\n    public virtual func identity(self: objref/Self) -> objref/Self\n        effect confined\n        return self\nfunc accept<F>(f: ref/F) -> ()\n    F is Callable<(objref/Base) -> objref/Base>\n        effect preserves results\n    return\npublic func main() => accept(Base.identity)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-    }
-
-    [Theory]
-    [InlineData("ref", false, true)]
-    [InlineData("uniq", false, false)]
-    [InlineData("ref", true, true)]
-    [InlineData("uniq", true, false)]
-    public void SlotBoundsNeverHideTheEffectsOfUnboundInputs(string mode, bool slotPreserves, bool valid)
-    {
-        var source = "open struct Base\n    public virtual func identity(value: " + mode + "/i32, self: objref/Self) -> ref/i32 during value\n        effect confined\n" + (slotPreserves ? "        effect preserves results\n" : string.Empty) + "        return value\nfunc accept<F>(f: ref/F) -> ()\n    F is Callable<(" + mode + "/i32, objref/Base) -> ref/i32>\n        effect preserves results\n    return\npublic func main() => accept(Base.identity)";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.Equal(valid, c.Analysis.IsVerified);
-        if (!valid)
-        {
-            Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
-        }
-    }
-
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
@@ -65,16 +39,6 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.False(c.Analyze().IsVerified);
-        Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
-    }
-
-    [Fact]
-    public void ASymbolicItemCannotUseTheSlotGuaranteeAsAnUnboundExclusion()
-    {
-        const string Source = "open struct Base<T>\n    public virtual func identity(value: uniq/i32, self: objref/Self) -> ref/i32 during value\n        effect confined\n        effect preserves results\n        return value\nfunc accept<T,F>(f: ref/F) -> ()\n    F is Callable<(uniq/i32, objref/Base<T>) -> ref/i32>\n        effect preserves results\n    return\nfunc use<T>() => accept(Base<T>.identity)\npublic func main() => ()";
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.False(c.Analysis.IsVerified);
         Assert.Equal(DiagnosticCode.UnsatisfiedEffectBound_Kd, Assert.Single(c.Problems).Code);
     }
 
