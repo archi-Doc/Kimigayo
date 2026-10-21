@@ -44,6 +44,10 @@ public sealed partial class Binding
         return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
     }
 
+    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
+    // is not fixed (an Unbound end counts); a fixed-fixed relation is Binding's to judge (A3 §7, until R7).
+    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter) => !FixedOrigin(longer) || !FixedOrigin(shorter);
+
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
@@ -404,19 +408,34 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var relation in declaration.Relations)
+            // A clause's rows are its owner's body's: a local's, or none for a declaration's (DECISIONS R4-M101 E1).
+            var saved = this.EnterBody(declaration.Body);
+            try
             {
-                if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
-                    (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
+                this.ValidateOriginRelations(declaration);
+            }
+            finally
+            {
+                this.formingBody = saved;
+            }
+        }
+    }
+
+    // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.
+    private void ValidateOriginRelations(OriginDeclaration declaration)
+    {
+        foreach (var relation in declaration.Relations)
+        {
+            if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
+                (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
+            {
+                if (declaration.Owner is FieldKoto)
                 {
-                    if (declaration.Owner is FieldKoto)
-                    {
-                        this.JudgeLocalClause(declaration, relation);
-                    }
-                    else
-                    {
-                        this.JudgeDeclaredRelation(relation);
-                    }
+                    this.JudgeLocalClause(declaration, relation);
+                }
+                else
+                {
+                    this.JudgeDeclaredRelation(relation);
                 }
             }
         }

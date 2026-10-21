@@ -2622,6 +2622,56 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Moved verbatim: `StepClass` and `Step` (renamed `MirStepClass` and `MirStep`, the Mir prefix of the namespace's top-level types), the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the
     walk). Rejected: a static `MirSteps` with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and
     A4 too); `MirBorrows` members made internal for `MirOrigins` (couples Origin judgment to Loan state).
+- **R4-M101 The C1-F4 view and Binding's formation context** (2026-10-22; unit 2a0-2 (K0-K3) under R4-M94's package, with the full
+  process its first round's stop started: design A (`s2-2a0-2/design.md`), design B, the design review's §5 (E1-E9) and the planning
+  session's decisions Q1 (a), P1 → E3, P2 → E6, P3, P4; one BU review, DEC Q6 form 1)
+  - E1 formation context: Binding records the executable body it is binding, an `ExecutableBody`, a body in MIR's key form
+    `(BindingSymbol? Definition, int Index)` (Index: a default template's parameter index, a module's ordinal for top-level statements,
+    whose function has no symbol; the default value is no body, a declaration). Entries set and restore it (`BindHeader` none,
+    `BindFunction` none for the signature, `(f, i)` per default, f for the body; `BindConcreteClosure` C for its body, its header and
+    captures staying the evaluating body, recorded once as `BoundClosure.EvaluatingBody`; `BindAccessorBody`; a Property's initializer
+    and fit a static's own body or the layer; `ValidateOriginRelations` per declaration). Stamps: `BindingObligation.Body` (part of a
+    row's identity), `BoundOrigin.Body` (defined for non-declaration binders), `OriginDeclaration.Body`. `ParameterVisible` reads it
+    (`defaultBindingDepth` and its `Use.Parent` walk deleted). An accessor is named by its `SignatureSymbol`; the view maps MIR's
+    Getter or Setter key (the execution function) to it, since that function is created lazily with state (a reading of E1).
+  - E2 declaration rows: a row formed with no body lies in no slice; its ends must be `Parameter`, `Input`, `Static`, `Unbound` or meets
+    of them, else `InternalInvariant_Kd` in a complete compilation. The old walk judges them until PLAN G210 (BU) gives them the
+    `Definition` deadline and a judge; then a body-origin row with no body is a broken contract. E3: signature rows are declaration rows
+    (SPEC 15.6.1, a definition's signature well-formedness is its premise), superseding the first round's ruling.
+  - E4 layer unit: rows and atoms of an instance Field's initializer belong to its struct; a constructor's slice is its own rows, then
+    its layer's (`LayerStart`), the layer found by `AdtDef`'s constructor facts, never by listing Fields; the parts share Fixed atoms
+    only (else `InternalInvariant_Kd`); layer rows are judged with the layer's oracle, the Type's public premises (Q1 (a): today's
+    verdict; which premises judge a Field initializer is reported to the owner as a SPEC gap). Recorded limit: a struct without a
+    constructor keeps its layer rows in no slice (PLAN, STATUS).
+  - E5 classes: SPEC's three kinds and Unclassed (no edge) by 2a0-D §3's precedence, roots by the forming body for non-declaration
+    binders and by slot role for declaration binders (parameters of f and of templates (f, i > j), `ReceiverSlot` and `HelperSlot`,
+    environment, `ClosureValueSlot`, `CallResultSlot`, accessor self/value, a Property's storage); "enclosing" is the chain of Closures'
+    evaluating bodies; only the view decodes slots (`ProjectionRole`). E6: no `ResultFit` in 2a0-2 (2a-2 decides W's fact, R4-M104).
+    E7: no raw guard (BU-24). E8: `ArchitectureRulesTest` rows: no Mir read of an Origin's slot, binder or forming body; one caller of
+    `OriginPremiseClosure.AddEdge`, the catalog's writer. E9: D1 (`BodyChain`, used by `JudgeCallPosition`), D2 but `ResultFit`, D4,
+    D5, D6, D8 (`UniversalRelations`, per body and per layer, agreeing with `ProvesOriginOutlives` on the census's fixed-fixed rows).
+  - Departures from R4-M94: D2 without `ResultFit` until 2a-2; D3's owner by formation, with declaration rows outside every slice and
+    the layer's rows in each constructor's; D8's oracle per layer for layer rows.
+  - PD21 (the planning session's first ruling on `Binding.Origins.Model.cs`): one responsibility, the Origin model's records, so no
+    split exists; K1 moved the `OriginDeclaration` model into it; the next changing unit after 2a0-2 restructures it.
+  - Fix round (BU's review, ACCEPT WITH CHANGES, B1, B2, O3-O6). B1, a correction of the package's internal conflict (the planning
+    session's ruling): 2a0-D §3's validation sentence ("a mutable-static `Projection` whose binder is a static Field declaration is
+    `InternalInvariant_Kd`") is dropped, since row 7 classes that atom and SPEC 11.3.1 and 11.8 make an accessor's `storage` of a mutable
+    static valid; P42's unit checks its own binders. A Property's `storage` is a root of each of its accessors (one atom), classed by
+    rows 7 and 7' by mutability for a static and Inferred for an instance Property (row 3's referent clause). B2: the body key decides
+    composition; only a constructor's own body (Index < 0) ends with its layer's rows, never a default template. O3: row 3's referent
+    clause also classes `PlaceOrigin`'s referent atom Inferred (no census row names it, H). O4, O5: a slice is read-only for consumers
+    (`Binding.OriginRowSet`, filled through the producer's private builder); the layer is one expression (`LayerOf`), static storage one
+    test (`IsStatic`). O1: a Closure header's well-formedness row whose inner Origin is omitted relates the Closure's per-call `Input`
+    to an `Inference` atom of the evaluating body (SPEC 15.3.4; e.g. `let h = func [] (p: ref/(ref/i32)) -> i32 => 1`). It is neither a
+    declaration row (E2's validation, E3) nor classifiable by 2a0-D §3 without a Closure rule. It stays in the evaluating body's slice
+    with the `Input` Unclassed (row 9), so 2a-1a reports the located `Unsupported_Kd`. 2c-D decides it (PLAN G216).
+  - Conditions for 2a-1a (BU's answer 1 and O7): MIR's conversion of a `MirDefKey` to an `ExecutableBody` gets a single owner in Mir,
+    which the tests use (today only the test helper `BodyOf`); MIR's inline default copies read the template's atoms in the template's
+    slice, or a warm-against-cold check settles the stamps of a Koto an edit re-parents (`BoundOrigin.Body` is set once at interning).
+  - Rejected (design review): a Koto-keyed body table and a mutable enclosing link; scope chains and `Parent` walks; a per-node HIR column;
+    per-body root lists; per-Field initializer slices (a second copy of `Construct`); per-constructor premises for layer rows; F1's
+    `Definition` deadline in R4 (G210 is BU's); `ResultFit` windows now.
 - **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b for C4a's gate step 2, PD12 and package C
   §3.8; R4's rulings of 2026-10-22 and its choice (b): R5 implements under a temporary hold of `MirInit.cs`, `MirDrops.cs` and
   `MirDropTest` (PLAN 26d48164), and R4 signs off before the merge)

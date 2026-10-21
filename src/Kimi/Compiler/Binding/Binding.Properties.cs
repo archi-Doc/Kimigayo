@@ -104,7 +104,15 @@ public sealed partial class Binding
         // Only an initializer can infer storage. Accessor bodies never supply its Type.
         if (property.IsStored && property.Type is null && syntax.TypeKoto is null && syntax.InitializerKoto is { } initializer)
         {
-            property.Symbol.Type = this.BindNode(initializer, scope);
+            var saved = this.EnterBody(InitializerBody(property.Symbol));
+            try
+            {
+                property.Symbol.Type = this.BindNode(initializer, scope);
+            }
+            finally
+            {
+                this.formingBody = saved;
+            }
         }
 
         this.BindAccessorSignature(property.Getter);
@@ -409,13 +417,21 @@ public sealed partial class Binding
         this.BindHeader(accessor.Property.Symbol);
         if (syntax.Body is { } body)
         {
-            var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
-            var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
-            var structural = this.ResultStructure();
-            if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
-                actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
+            var saved = this.EnterBody(new(accessor.SignatureSymbol)); // The accessor's own body (DECISIONS R4-M101 E1).
+            try
             {
-                this.Fail(body, BindingFailure.TypeMismatch);
+                var discards = ReferenceEquals(accessor.Result, BoundType.Unit);
+                var actual = this.BindNode(body, scope, discards ? null : accessor.Result);
+                var structural = this.ResultStructure();
+                if (!discards && body is not CodeBlockKoto && (KotoHelper.IsBodyExpression(body) || structural.CanComplete(body)) &&
+                    actual is not null && accessor.Result is { } result && !this.FitsTypeAt(actual, result, syntax))
+                {
+                    this.Fail(body, BindingFailure.TypeMismatch);
+                }
+            }
+            finally
+            {
+                this.formingBody = saved;
             }
         }
 
