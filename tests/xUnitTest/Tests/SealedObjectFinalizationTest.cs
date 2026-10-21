@@ -18,16 +18,23 @@ public class SealedObjectFinalizationTest
 
     // A Sealed payload's glue destroys its parts, whose handles release the next payload through the same glue (SPEC 16.3.2; package C
     // 3.6), so recursive data is destroyed node by node, each allocation released once: an rc, arc or obj chain, and an enum whose Case
-    // holds the handle to the next.
+    // holds the handle to the next. The obj nodes and the enum's items are named, so their order is fixed too: a node's destructor runs
+    // before its Fields (the next node), and a Case's payload elements go last to first (the rc tail before the item).
     public static TheoryData<string, string, int, long, string> RecursivePayloads => new()
     {
         { "Rc", RecursiveNodes, 2, 64, "node\nnode\n" },
         { "Arc", SharedObjectRuntimeTest.ArcSource(RecursiveNodes), 2, 64, "node\nnode\n" },
-        { "Obj", RecursiveNodes.Replace("Rc(", "Obj(", StringComparison.Ordinal).Replace("<rc/", "<obj/", StringComparison.Ordinal), 2, 64, "node\nnode\n" },
         {
-            "Enum", "struct Item\n    drop => Console.writeLine(\"item\")\nenum List\n    Cons(Item, rc/List)\n    Nil\n" +
-            "let nil = Kimi.Intrinsics.makeRc(List.Nil)\nlet one = Kimi.Intrinsics.makeRc(List.Cons(Item.init(), nil@move))\n" +
-            "let two = Kimi.Intrinsics.makeRc(List.Cons(Item.init(), one@move))", 3, 96, "item\nitem\n"
+            "Obj", "struct Node\n    public let name: string\n    public let next: Option<obj/Node>\n" +
+            "    public init(name: string, next: Option<obj/Node>)\n        self.name = name@move\n        self.next = next@move\n" +
+            "    drop => Console.writeLine(self.name)\nlet tail = Kimi.Intrinsics.makeObj(Node.init(\"tail\", Option<obj/Node>.None))\n" +
+            "let head = Kimi.Intrinsics.makeObj(Node.init(\"head\", Option<obj/Node>.Some(tail@move)))", 2, 112, "head\ntail\n"
+        },
+        {
+            "Enum", "struct Item\n    public let name: string\n    public init(name: string) => self.name = name@move\n" +
+            "    drop => Console.writeLine(self.name)\nenum List\n    Cons(Item, rc/List)\n    Nil\nlet nil = Kimi.Intrinsics.makeRc(List.Nil)\n" +
+            "let inner = Kimi.Intrinsics.makeRc(List.Cons(Item.init(\"inner\"), nil@move))\n" +
+            "let outer = Kimi.Intrinsics.makeRc(List.Cons(Item.init(\"outer\"), inner@move))", 3, 168, "inner\nouter\n"
         },
     };
 
