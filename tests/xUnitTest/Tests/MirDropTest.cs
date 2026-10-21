@@ -20,6 +20,10 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
     private const string Box = Resource + "struct Box\n    public var value: Resource\n    public init(value: Resource) => self.value = value@move\n" +
         "    drop => ()\n";
 
+    // A default holding ledger row a1-whole-incomplete's form (a fixed array's length read after an element's Move, SPEC 4.7.3), inline in f.
+    private const string Indices = "func probe(n: i32 = label w: do\n    let a: [2 of string] = [\"a\", \"b\"]\n    _ = a[0]@move\n" +
+        "    for i in a.indices => ()\n    exit to w 1\n) -> i32 => n\nfunc f() -> i32 => probe()\n";
+
     // SPEC 16.2.1: a value initialized on every path is destroyed (Keep); one moved on every path is not (Elide), and needs no flag.
     [Fact]
     public void KeepWhereInitializedElideWhereMoved()
@@ -152,6 +156,65 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Equal(["drop _10 -> bb11 [keep]", "drop _2 -> bb12 [keep]"], Lines("func label(n: i32) -> string => \"n=\\(n)\"\n", "label"));
     }
 
+    // DECISIONS R4-M102: the verdicts are exact only for a body A1 accepts (R4-M6a), so the table records each body's first A1 or A2 problem,
+    // A1's (a Move's later use, a default template's) and A2's (an incomplete layer with its own drop) alike; a body without one, or with
+    // only A5's (a Loan conflict, SPEC 15.6), is exact. The source's problems are given by code.
+    [Theory]
+    [InlineData(Indices, "probe", new[] { "DefaultTemplate MovedPlace_Kd a.indices", "Fn" }, "MovedPlace_Kd")]
+    [InlineData(Resource + "func f()\n    let r = make()\n    consume(r@move)\n    consume(r@move)\n", "f", new[] { "Fn MovedPlace_Kd r" }, "MovedPlace_Kd")]
+    [InlineData(
+        Box + "func f()\n    var box = Box.init(make())\n    consume(box.value@move)\n",
+        "f",
+        new[] { "Fn MovedPlace_Kd var box = Box.init(make())" },
+        "MovedPlace_Kd")]
+    [InlineData(Resource + "func f()\n    let r = make()\n", "f", new[] { "Fn" }, "")]
+    [InlineData("func f() -> i32\n    var x = 1\n    let r = x@ref\n    x = 2\n    _ = r\n    return x\n", "f", new[] { "Fn" }, "ComparisonLoanConflict_Kd")]
+    public void ABodysFirstA1OrA2ProblemMarksItsTable(string source, string name, string[] expected, string codes)
+    {
+        Assert.Equal(expected, Incomplete(source, name));
+        Assert.Equal(codes, string.Join(' ', Problems(source).Select(static x => x.Split(' ')[0])));
+    }
+
+    // DECISIONS R4-M102 (SPEC 7.2.3, R4-M69): MirReport drops a problem found in an inline default copy as its template's, but the copy's
+    // body is marked first, with the problem's own subject, the template's, so the caller's refusal shares its template's code and subject.
+    [Fact]
+    public void ACopysProblemMarksItsCallerWithItsTemplatesSubject()
+    {
+        var c = MirBuildTest.Compile(Indices);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        var problem = Assert.Single(program.Problems.All.ToArray(), static x => x.Subject.Module == 0);
+        var bodies = program.Bodies.ToArray();
+        var f = bodies.Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
+        Assert.Equal((MirBodyKind.DefaultTemplate, "a.indices"), (bodies[problem.Body].Key.Kind, c.SyntaxOf(problem.Subject).ToString()));
+        Assert.Equal((problem.Code, problem.Subject), program.Drops.Incomplete(problem.Body));
+        Assert.Equal((problem.Code, problem.Subject), program.Drops.Incomplete(f.Ordinal));
+    }
+
+    // DECISIONS R4-M102, R4-M15a: a body whose A1 arena exceeds the limit judges no view and is marked OwnershipStorageLimit_Kd at its source
+    // (N locals live across N branches, MirInitTest's form); A5's own limit (N reference locals, MirAnalysisTest's) leaves it exact.
+    [Theory]
+    [InlineData(13_500, "    var v{0} = {0}\n|    if flag => v{0} = 1\n", 0, "Fn OwnershipStorageLimit_Kd func f(flag: bool) -> i32")]
+    [InlineData(2_000, "    var r{0} = x@ref\n|    if flag => r{0} = y@ref\n|    inspect(r{0})\n", 1, "Fn")]
+    public void OnlyA1sArenaLimitMarksItsBody(int size, string line, long views, string expected)
+    {
+        var text = new StringBuilder("func inspect(value: ref/i32) => ()\nfunc f(flag: bool) -> i32\n    var x = 1\n    var y = 2\n");
+        foreach (var part in line.Split('|'))
+        {
+            for (var n = 0; n < size; n++)
+            {
+                text.AppendFormat(System.Globalization.CultureInfo.InvariantCulture, part, n);
+            }
+        }
+
+        var c = MirBuildTest.Compile(text.Append("    return x\n").ToString());
+        var program = c.BuildMir();
+        var f = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
+        Assert.Equal([Kimi.DiagnosticCode.OwnershipStorageLimit_Kd], program.Problems.All.ToArray().Where(x => x.Body == f.Ordinal).Select(static x => x.Code));
+        Assert.Equal(views, program.Drops.ViewsOf(f.Ordinal));
+        Assert.Equal(expected, Incomplete(c, program, "f")[0]);
+    }
+
     // SPEC 16.2.2 (DECISIONS R5-M50): a transfer leaving a cleanup delivers its result through a temp (written and moved at its jumps) in
     // its target's scope, not the jump's: an `exit` out of a defer body past a local with a cleanup (SPEC 16.1), through one in the scope
     // that registered the defer, and a `yield` out of an `if` arm, through one in the scope the `if` opened in, both `t`'s; a `return`
@@ -217,6 +280,23 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.True(allocated[2] - allocated[1] <= 3 * (allocated[1] - allocated[0]), $"cold analysis allocation {string.Join(", ", allocated)}");
     }
 
+    // DECISIONS R4-M102, V16: a warm rebuild of a program whose bodies are marked allocates nothing (MirBuildTest's measurement): the mark is
+    // stored with each closed body's ends, and the table keeps its storage.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmRebuildMarksWithoutAllocating()
+    {
+        var c = MirBuildTest.Compile(Indices);
+        var marked = Incomplete(c, c.BuildMir(), "f");
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            c.Binding.Bind(BindingMode.Final);
+            c.BuildMir();
+        }));
+        Assert.Equal(["Fn MovedPlace_Kd a.indices"], marked);
+        Assert.Equal(marked, Incomplete(c, c.BuildMir(), "f"));
+    }
+
     // The dump lines of a source's body named name that carry A2's output (its flags, each Drop with a verdict and each location with flag
     // points; with all, every Drop), without their statement marks and source suffixes; the source has no Binding issue.
     private static string[] Lines(string source, string name, bool all = false)
@@ -238,6 +318,21 @@ public sealed partial class MirDropTest(ITestOutputHelper output)
         Assert.Empty(MirBuildTest.Compile(source).Binding.Issues);
         return MirInitTest.Problems(source);
     }
+
+    // The first A1 or A2 problem of each body named name (DECISIONS R4-M102), by kind: "Kind Code subject", or "Kind" for an exact body;
+    // the source has no Binding issue.
+    private static string[] Incomplete(string source, string name)
+    {
+        var c = MirBuildTest.Compile(source);
+        Assert.Empty(c.Binding.Issues);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        return Incomplete(c, program, name);
+    }
+
+    private static string[] Incomplete(Compilation c, MirProgram program, string name)
+        => [.. program.Bodies.ToArray().Where(x => x.Key.Decl?.Name == name).Select(x => program.Drops.Incomplete(x.Ordinal) is { } first
+            ? $"{x.Key.Kind} {first.Code} {c.SyntaxOf(first.Subject).ToString().Split('\n')[0].Trim()}" : $"{x.Key.Kind}")];
 
     // The nodes of a source's Binding issues, each ExclusivePathTake_Kd.
     private static string[] Takes(string source)
