@@ -37,72 +37,6 @@ public sealed partial class Binding
     // SPEC 3.8 at a use whose premises and Origins the relation reads.
     internal bool IsSubtypeAt(BoundType actual, BoundType expected, Koto use) => FitsTypeCore(actual, expected, this, use);
 
-    // Only Origin restriction is inferred here. No Core conversion or common base search is
-    // introduced; every invariant position stays identical and both inputs must fit the result.
-    internal BoundType? CommonOriginType(BoundType left, BoundType right)
-    {
-        if (ReferenceEquals(left, right))
-        {
-            return left;
-        }
-
-        if (left.Kind == BoundTypeKind.Primitive || right.Kind == BoundTypeKind.Primitive || left.Kind != right.Kind || left.Symbol != right.Symbol || left.Semantics != right.Semantics || left.Length != right.Length ||
-            !ReferenceEquals(left.LengthExpression, right.LengthExpression) || !ReferenceEquals(left.ClosureContext, right.ClosureContext) || !left.LengthArguments.AsSpan().SequenceEqual(right.LengthArguments) || left.Components.Count != right.Components.Count ||
-            left.OriginArguments.Count != right.OriginArguments.Count || ((left.Origin is null) != (right.Origin is null) && !InactiveOuterOrigin(left, this, null)))
-        {
-            return null;
-        }
-
-        var components = this.RentTypes(left.Components.Count);
-        var origins = this.originScratch.Rent(left.OriginArguments.Count);
-        try
-        {
-            for (var i = 0; i < left.Components.Count; i++)
-            {
-                var covariant = !IsInvariantLayer(left, this) &&
-                    !(left.Kind == BoundTypeKind.Function && i == 0) &&
-                    (left.Kind != BoundTypeKind.Constructed || left.Symbol?.Schema?.GenericSlots[i].OriginVariance == OriginVariance.Covariant);
-                if ((covariant ? this.CommonOriginType(left.Components[i], right.Components[i]) : ReferenceEquals(left.Components[i], right.Components[i]) ? left.Components[i] : null) is not { } part)
-                {
-                    return null;
-                }
-
-                components[i] = part;
-            }
-
-            for (var i = 0; i < left.OriginArguments.Count; i++)
-            {
-                if (!ReferenceEquals(left.OriginArguments[i], right.OriginArguments[i]) && left.Symbol?.Schema?.Origins[i].Variance != OriginVariance.Covariant)
-                {
-                    return null;
-                }
-
-                origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
-            }
-
-            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, !InactiveOuterOrigin(left, this, null) && left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
-            return IsSubtype(left, result) && IsSubtype(right, result) ? result : null;
-        }
-        finally
-        {
-            this.originScratch.Return(origins, clearArray: true);
-            this.typeScratch.Return(components, clearArray: true);
-        }
-    }
-
-    // How a fit treats the outer Origins of two Types of one shape (FitOuterOrigins).
-    private enum OuterOriginFit : byte
-    {
-        // Nothing to relate: equal Origins, a slot that no admitted case stores, or an unformed pair layer.
-        None,
-
-        // `longer` outlives `shorter` in the pair slot's Semantics cases.
-        Relation,
-
-        // A difference in presence that no relation explains.
-        Mismatch,
-    }
-
     // SPEC 10.7: an implementation's result R fits a required result Q when R <: Q or R is Never, at the result's top level only: the
     // required result it is compared against.
     private static BoundType CompatibleResult(BoundType result, BoundType required) => ReferenceEquals(result, BoundType.Never) ? BoundType.Never : required;
@@ -112,22 +46,6 @@ public sealed partial class Binding
     // Semantics. A comparison without a Binding sees only the concrete layers.
     private static bool IsInvariantLayer(BoundType type, Binding? binding)
         => type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq or SemanticsKind.Raw || (binding is not null && binding.InvariantAdmitted(type));
-
-    // SPEC 8.1.2: a pair's conditional outer Origin participates only in admitted borrow cases. Internal Origins remain checked.
-    private static bool InactiveOuterOrigin(BoundType type, Binding? binding, Koto? use)
-    {
-        if (!TryAdaptationSelector(type, out var whole) || whole.Symbol is not { } selector)
-        {
-            return false;
-        }
-
-        binding ??= selector.Declaration.CodeContext.Compilation.Binding;
-        var scope = use is null ? selector.Scope : binding.ConstraintScope(use);
-        // An owner application preserves the target's borrow Origin, not the application's conditional slot.
-        var semantics = type.Kind == BoundTypeKind.SemanticsAdaptation ? binding.ResultSemantics(type, scope)
-            : binding.AdmittedSemantics(whole, scope);
-        return (semantics & SemanticsMask.Borrow) == 0;
-    }
 
     // SPEC 3.8: the relation; Never relates only to itself. `own` is the declaration whose own per-call inputs the root actual signature
     // names (SPEC 8.10); a nested Function Type's own syntax binds its inputs. `skipOrigin` leaves the outer Origin to an instantiation
@@ -213,46 +131,6 @@ public sealed partial class Binding
         bool OriginFits(BoundOrigin a, BoundOrigin b, ulong condition = 0) => instance.Actual is not null ? InstanceOutlives(a, b, instance, binding, use, 0) :
             binding is null ? OriginOutlives(a, b) : binding.FitOrigin(a, b, use!, condition);
     }
-
-    // SPEC 8.1.2, 15.6.1: the outer Origins of a fit's two Types of one shape. Two written Origins relate. Two pair layers of one binder
-    // relate their slots, the implicit `o` of an original `s/T` included, so the original `W` fits `s/T during a` when `o` outlives `a`. A
-    // pair layer that stores no slot although a borrow case is admitted is unformed: its formation failure is recorded where it is
-    // declared, so the fit derives from that failure instead of adding a mismatch. Any other difference in presence is structural.
-    // Without a Binding no failure is visible, so only written Origins relate and every other difference stays a mismatch.
-    // FitsTypeCore, CheckTypeUse, CollectCallRelations and FailedOriginRelation share this one decision.
-    private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter)
-    {
-        longer = shorter = null!;
-        if (ReferenceEquals(actual.Origin, expected.Origin) || InactiveOuterOrigin(actual, binding, use))
-        {
-            return OuterOriginFit.None;
-        }
-
-        if (actual.Origin is { } a && expected.Origin is { } b)
-        {
-            longer = a;
-            shorter = b;
-            return OuterOriginFit.Relation;
-        }
-
-        if (binding is null || !TryPairLayer(actual, out _, out _))
-        {
-            return OuterOriginFit.Mismatch;
-        }
-
-        if (binding.OuterOrigin(actual) is not { } slot || binding.OuterOrigin(expected) is not { } other)
-        {
-            return OuterOriginFit.None;
-        }
-
-        longer = slot;
-        shorter = other;
-        return OuterOriginFit.Relation;
-    }
-
-    // SPEC 15.6.5: a pair layer's slot exists only in its binder's borrow cases, whose premises the relation may use.
-    private static ulong SlotCondition(BoundType actual, Binding? binding, Koto? use)
-        => binding is not null && use is not null && actual.ContainsPairLayer ? RequiredCondition(binding.PairSlotCondition(actual, use)) : 0;
 
     // A signature whose inputs are fresh per-call borrows and whose result has no Origin or one over those inputs alone.
     private static bool PerCallShape(BoundType signature, Koto? own, bool any = false)
