@@ -987,3 +987,23 @@ Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the se
   change), the implementation direction and the departures from R4-M94. Planned mapping: §15.6.5, §14.8.3, §15.8.2. The owner's
   answers to round 1 are not applied.
 - Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
+
+## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
+
+The owner's instruction of 2026-10-21: 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」 R5's and BU's
+planning sessions checked the facts; the independent review is `Sketches/R4 Proposals 2026-10-21/review-3.md`. Candidate 4 (raw
+pointer rules left open by G160) was not accepted in that review and is being redone; it will be registered when it passes.
+
+- [Static Slots for P42](Proposals/2026-10-22%20Static%20Slots%20for%20P42.md): 一部取り込み (open, intake only), candidate 2.
+  No SPEC change: SPEC §22.4 and §15.6 already state one model (the key for storage, state and destruction; the Field for Loans and
+  effects). Proposes one static slot key, (Field, `TyCtxt.Erase` of the enclosing Subst), owned by `TyCtxt`, and one full-process
+  P42 design package before P42's units; the A5 plan's two narrowings are not adopted. Owner questions OQ-S1, OQ-S2.
+- [Layout Requirements on Type Parameters](Proposals/2026-10-22%20Layout%20Requirements%20on%20Type%20Parameters.md): 一部取り込み
+  (open, intake only), candidate 6. A′ (an intrinsic Contract for a C-layout Field that is not zero-sized, stated by generic
+  C-layout structs) against D (no change); the recommendation is D, R5's view: the collector stays at `check` for its other records,
+  so A′ buys locality for one record kind at the price of a narrowing. A first-draft item reclassifying `OversizedLayout_Kd` as
+  Resource was withdrawn (it reversed R5-M52 and IMPL 21.1.1). Owner question OQ-Y1.
+- [Lifecycle Receivers](Proposals/2026-10-22%20Lifecycle%20Receivers.md): 一部取り込み (open, intake only), candidate 5. Recommends
+  option B: §15.6.5's body-local list gains the receiver of a constructor or `drop` (bound: the body; §6.3.4's completion rule stays
+  a Loan rule); the unified "lifecycle receiver" definition is option A, corrected after the review. Owner question OQ-L1.
+- Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
