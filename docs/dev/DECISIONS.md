@@ -5703,3 +5703,9 @@ structure is recorded here by the unit that first implements it.
   - Rejected: composing the fact from `MirProblem.Body` (a second copy of the recording rules, and blind to a copy's dropped problem);
     every Ownership problem of a body (A5's would refuse programs the old analysis accepts); stopping generation at the first refusal (it
     hides independent gaps); a new argument-free Resource code for the arena (departs from PD12 and R5-M4).
+||||||| ede840f3
+- **R5-M97 The owner confirms E14's departure** (owner, 2026-10-22, on the R5 planning session's explanation; verbatim 「了承しました」;
+  the consequences are the planning session's) The departure R5-M94 recorded for the owner's list is confirmed: under MIR code
+  generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
+  "stage 5 times layout", since the instance collector lays out every by-value use in stage 3 (K 4.8, R5-M37). The six stage names
+  stay, so reports remain comparable with the 49cb2b5d baseline. It leaves the list; R5's group reviews check the code against R5-M94.
