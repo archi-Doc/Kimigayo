@@ -51,8 +51,9 @@ public sealed partial class Binding
     internal static BoundOrigin? RegionOf(BoundOrigin? origin) => origin?.Kind == OriginKind.Shared ? origin.Operands[0] : origin;
 
     // SPEC 5.7, design-final §4 (DECISIONS BU-24, R4-M105): the step of a raw Origin, read by the atom's binder. An input atom of a
-    // signature or a universal name joins the outer layers of the inputs it is the Origin of (Shared iff all are shared) and a bound
-    // aggregate slot gives its requirement; a declared slot gives its requirement (ref Shared, uniq Exclusive) and a pair's `o` its
+    // signature or a universal name joins the outer layers of the inputs it is the Origin of and the requirements of the aggregate
+    // slots it binds in them (SlotsStep; Shared iff all are shared), and a projected slot gives its requirement; a declared slot gives
+    // its requirement (ref Shared, uniq Exclusive) and a pair's `o` its
     // admitted cases; any other label, a meet included, is Exclusive, since every formation through a shared borrow wraps it in
     // Shared. Null for an atom no input borrow or slot holds, or one whose cases mix modes (U1), which formation rejects.
     internal RawStep? StepOf(BoundOrigin? origin)
@@ -78,7 +79,12 @@ public sealed partial class Binding
                 RawStep? joined = null;
                 for (var i = 0; i < InputCount(binder); i++)
                 {
-                    if (this.BoundInputType(binder, i) is { } input && ReferenceEquals(this.OuterOrigin(input), origin))
+                    if (this.BoundInputType(binder, i) is not { } input)
+                    {
+                        continue;
+                    }
+
+                    if (ReferenceEquals(this.OuterOrigin(input), origin))
                     {
                         if (this.LayerStep(input) is not { } step)
                         {
@@ -87,15 +93,14 @@ public sealed partial class Binding
 
                         joined = joined == RawStep.Exclusive ? joined : step;
                     }
+
+                    joined = SlotsStep(input, origin, joined);
                 }
 
                 return joined;
             default:
                 return RawStep.Exclusive;
         }
-
-        static RawStep? RequirementStep(LoanRequirement requirement)
-            => requirement switch { LoanRequirement.Ref => RawStep.Shared, LoanRequirement.Uniq => RawStep.Exclusive, _ => null };
     }
 
     // SPEC 5.4, 5.7: whether a conversion stating `claimed` is a fit: the premises prove that its operand's Origin, none for an
@@ -186,6 +191,30 @@ public sealed partial class Binding
         }
 
         return false;
+    }
+
+    // A slot's Loan requirement as a step: ref Shared, uniq Exclusive; none for a Phantom slot.
+    private static RawStep? RequirementStep(LoanRequirement requirement)
+        => requirement switch { LoanRequirement.Ref => RawStep.Shared, LoanRequirement.Uniq => RawStep.Exclusive, _ => null };
+
+    // `joined` with the requirement of each slot that `origin` binds as an Origin argument of a nominal Type within `type` (design-final
+    // §4: an aggregate slot an input atom binds contributes its requirement; a Phantom slot contributes none).
+    private static RawStep? SlotsStep(BoundType type, BoundOrigin origin, RawStep? joined)
+    {
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            joined = SlotsStep(type.Components[i], origin, joined);
+        }
+
+        for (var i = 0; type.Symbol?.Schema is { } schema && i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
+        {
+            if (ReferenceEquals(type.OriginArguments[i], origin) && RequirementStep(schema.Origins[i].LoanRequirement) is { } step)
+            {
+                joined = joined == RawStep.Exclusive ? joined : step;
+            }
+        }
+
+        return joined;
     }
 
     // The step of admitted Semantics cases that are all borrows of one mode; null when they mix modes or admit a non-borrow (U1).

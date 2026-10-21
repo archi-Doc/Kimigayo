@@ -3722,6 +3722,11 @@ resumed by R4-M86 (2026-10-20).
   `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (removed at R6-gen). `RawStorageTest`'s `RawOriginLegacy`
   fixtures emit and run the measured programs and B1's newly valid forms on the default pipeline. Ruling on `PublishedStep`:
   `Reached` records a located `InternalInvariant_Kd` at the dereference; `Restep`'s throw stays, unreachable by Raw Origins' contract.
+  bu23's findings (G160-3's library annotations, 2026-10-22): S1, `BindDeclarations` computes the Origin requirements before
+  `ValidateInlineLayouts` (and the C-layout and import checks after it), whose instance substitution re-steps raw Origins naming
+  slots, so a struct held inline with such a Field has its slots' steps (they faulted before). S2, `StepOf`'s input-atom row joins
+  the requirements of the aggregate slots the atom binds in its binder's inputs (`SlotsStep`, design-final §4's row; a Phantom
+  slot contributes none), so a universal name bound only as a slot argument (`source: R<E> during a`) has a step.
 
 ## R5 and R6 (adopted 2026-10-18)
 

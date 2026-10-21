@@ -440,10 +440,11 @@ public sealed partial class Binding
         this.ValidateLayoutFragments();
         this.ValidateBaseDeclarations();
         this.PrepareStorage();
+        // SPEC 5.7: the slots' requirements exist before an instance's stored Types are substituted, whose raw Origins keep their steps.
+        this.ComputeOriginRequirements();
         this.ValidateInlineLayouts();
         this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).
-        this.ComputeOriginRequirements();
         this.ValidateSignatures();
         this.PrepareVirtualOverrides();
         this.ValidateContractDeclarations();

@@ -37,6 +37,13 @@ public class RawStorageTest
         "struct Outer\n    internal var inner: Block\n    public init(fresh: raw/u8)\n        self.inner = Block.init()\n        {0}\n" +
         "func reset(fresh: raw/u8, shared: raw/u8 during static)\n    var b = Block.init()\n    {1}\n";
 
+    // A view whose raw Field states the slot a shared Loan keeps (bu23 S1), and a remainder whose raw Field states the slot an exclusive
+    // Loan keeps (S2, S3).
+    private const string View = "struct View<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+        "    public init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n";
+
+    private const string Remainder = "struct R<E> {source}\n    internal let at: raw/E during source\n    internal let loan: Loan<uniq/E during source>\n";
+
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
 
     [Fact]
@@ -323,6 +330,17 @@ public class RawStorageTest
     [InlineData("RawOriginLegacyNullPayloads", "struct Block\n    internal var data: raw/u8 during self\n    internal var pair: (raw/u8 during self, isize)\n    public init()\n        self.data = null\n        self.pair = (null, 1)\n    drop => ()\nenum Cell\n    Some(raw/u8 during self)\n    Two((raw/u8 during self, i32))\n    None\nfunc a1()\n    var b = Block.init()\n    b.pair = (null, 2)\nfunc a10()\n    let c = Cell.Two((null, 1))\nfunc a11()\n    let c = Cell.Some(null)\npublic func main()\n    a1()\n    a10()\n    a11()\n    Console.writeLine(\"NullPayloads\")", "NullPayloads\n")]
     public void RawOriginsGenerateOnTheDefaultPipeline(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", "()", StringComparison.Ordinal), stdout);
+
+    // SPEC 5.7 (design-final §4; bu23 S1, S2): a raw Field stating a slot has a step wherever its holder is held, inline in another
+    // struct (its layout is validated after the slots' requirements exist) or behind a universal name an input binds only as a slot
+    // argument (the slot's requirement is that name's step), through a `let` local and directly.
+    [Theory]
+    [InlineData(View + "struct Outer<T> {source}\n    internal let view: View<T> during source\n    public init(target: ref/T during source) => self.view = View<T>.init(target)\n" +
+        "func use(x: ref/i32) -> i32\n    let o = Outer<i32>.init(x)\n    unsafe => return *o.view.at")]
+    [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    unsafe => return source.at[0]@uniq")]
+    [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    let state = source@move\n    unsafe => return state.at[0]@uniq")]
+    public void ARawSlotHasAStepWhereverItsHolderIsHeld(string declarations)
+        => Assert.Empty(RawPointerSyntaxTest.Records(declarations));
 
     // SPEC 5.2.2, 5.6, 5.7 (D14): a borrow of a raw Place, and Raw.slice's result, lie within the Origin the pointer states, so neither
     // reaches past the borrow the pointer was read through.
