@@ -20,6 +20,11 @@ public class ArchitectureRulesTest
     [InlineData("Operator Koto subclasses", "src/Kimi/Compiler/Parsing/Koto/Expressions", "*.cs", @"\bclass\s+\w+\s*:\s*(?:Binary|Unary)Koto\b", 9)]
     [InlineData("Semantic auto-properties on Koto classes", "src/Kimi/Compiler/Parsing/Koto", "*.cs", @"\b(?:Bound[A-Z]\w*|BindingSymbol|CallPlan)\??\s+\w+\s*\{\s*get;\s*(?:(?:internal|private|protected)\s+)?set;\s*\}", 7)]
 
+    // R5 G199b: a collectible load context's collection flushes the runtime's process-wide caches (the cast cache among them) and charges
+    // their rebuild, 98,352 bytes, to whichever test's measuring thread inserts next. A test that needs the state of a fresh process
+    // runs as an Explicit test in a child process (FreshProcess).
+    [InlineData("Test load contexts and Unload calls (a collectible context's collection flushes process-wide runtime caches and charges the rebuild to another test's measuring thread; use FreshProcess)", "tests/xUnitTest", "*.cs", @"\bAssemblyLoad[C]ontext\b|\.Unload\(\)", 0)]
+
     // R3 U6: tests run and read analysis and generation through the Compilation entry points. The old path's structure is read only
     // where no entry point carries it, until the stage that replaces it: dump goldens (R4), the MIR emission (R5, R6). R4-M13a: the
     // control-flow structure is read only by LegacyRecords, and direct calls of the old control-flow entries cannot grow.
