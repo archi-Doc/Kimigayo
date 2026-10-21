@@ -93,7 +93,7 @@ internal sealed partial class MirBorrows
     // (P10), through a raw pointer or into a static E joined.
     private void Store(ulong[] state, MirPlace place, int value, int own, bool issue)
     {
-        var (count, last) = (this.Walk(place, reborrow: false, ref this.walk), -1);
+        var (count, last) = (this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk), -1);
         for (var i = 0; i < count; i++)
         {
             last = this.walk[i].Class is StepClass.Shared or StepClass.Uniq or StepClass.Raw ? i : last;

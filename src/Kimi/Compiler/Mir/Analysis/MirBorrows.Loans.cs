@@ -66,7 +66,7 @@ internal sealed partial class MirBorrows
                     continue;
                 }
 
-                this.producing |= this.Prepared(statement.Place.Root);
+                this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
@@ -84,7 +84,8 @@ internal sealed partial class MirBorrows
             }
 
             var terminator = data.Terminator;
-            this.producing |= this.DroppedStatic(terminator) >= 0 || (terminator.Kind == MirTerminatorKind.Call && this.Prepared(terminator.Place.Root));
+            this.producing |= this.DroppedStatic(terminator) >= 0 ||
+                (terminator.Kind == MirTerminatorKind.Call && MirSteps.Prepared(this.body, terminator.Place.Root));
         }
 
         this.producing |= this.loanCount > 0;
@@ -97,7 +98,7 @@ internal sealed partial class MirBorrows
     // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).
     private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
-        var count = this.Walk(place, reborrow, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
         var direct = true;
         for (var i = 0; i < count; i++)
         {

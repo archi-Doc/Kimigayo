@@ -63,7 +63,7 @@ internal sealed partial class MirBorrows
     private int Read(ulong[] state, MirPlace place)
     {
         var value = this.Root(state, place.Root);
-        var count = this.Walk(place, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
             value = this.walk[i].Class switch
@@ -81,7 +81,7 @@ internal sealed partial class MirBorrows
     private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
     {
         var (layer, parents) = (this.Root(state, place.Root), 0);
-        var count = this.Walk(place, reborrow, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
         for (var i = 0; i < count; i++)
         {
             switch (this.walk[i].Class)
