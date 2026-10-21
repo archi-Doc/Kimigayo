@@ -902,3 +902,13 @@ record the intake in INTEGRATED at commit.
   owner's decisions: the rules it adds to the draft, option (ii) for effect-bearing Callable parameters (the owner's
   preliminary preference was (i)), the `length` keyword, the SyntaxForm row and repair kind, and the scope of the
   integration instruction; it also lists open issues for PLAN after a check on the current tree.
+
+## 2026-10-21 — G160 raw storage plan
+
+- [G160 Raw Storage Kept by Declarations](Proposals/2026-10-21%20G160%20Raw%20Storage%20Kept%20by%20Declarations.md): 一部取り込み
+  (open). The planning session's plan for PLAN G160, selected from designs A and B (`Sketches/G160/`) and plan X
+  (`2026-10-21 G160 Stored Loan Destinations.md`, branch `codex/g160-storage-loan-plan`, `e76e03ae`, not on dev), after seven
+  independent review rounds (`Sketches/G160/review-1.md` to `review-7.md`, the last a records check). The in-body read side
+  became PLAN G184, and the interim for one class went to the owner after three rounds, as AGENTS requires. Nothing is integrated into SPEC or IMPL, and no
+  text is frozen. It awaits the owner's answers Q1–Q5. Q1's recommended answer adopts X's §5 declaration contract (or its minimal
+  core) as an explicit SPEC revision, which will be recorded here when it lands. Adoption implies no implementation support.

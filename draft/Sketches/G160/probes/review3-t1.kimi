@@ -1,0 +1,41 @@
+func rawReadOfHolder()
+    var y = 1
+    var w = y@ref
+    let p = w@raw
+    var z = 2
+    var q = z@ref
+    unsafe => q = *p
+    y = 5
+    inspect(q)
+func rawReadOfHolderIdx()
+    var y = 1
+    var w = y@ref
+    let p = w@raw
+    var z = 2
+    var q = z@ref
+    unsafe => q = p[0]
+    y = 5
+    inspect(q)
+func safeTwin()
+    var y = 1
+    var w = y@ref
+    var z = 2
+    var q = z@ref
+    q = w
+    y = 5
+    inspect(q)
+struct KB<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+func storeK<T>(b: uniq/KB<T>, v: T)
+    unsafe => Raw.initialize(b.p, v@move)
+func derefKill()
+    var x = 1
+    var y = 2
+    var b = KB<ref/i32>.init(p: Raw.allocate(1))
+    storeK(b@uniq, x@ref)
+    var q = y@ref
+    unsafe => q = *b.p
+    b = KB.init(p: Raw.allocate(1))
+    x = 5
+    inspect(q)

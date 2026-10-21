@@ -1,0 +1,57 @@
+struct KeptBox<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+func storeKept<T>(b: uniq/KeptBox<T>, v: T)
+    unsafe => Raw.initialize(b.p, v@move)
+func keptReadKill()
+    var x = 1
+    var y = 2
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    storeKept(b@uniq, x@ref)
+    var q = y@ref
+    unsafe => q = b.p[0]
+    b = KeptBox.init(p: Raw.allocate(1))
+    x = 5
+    inspect(q)
+func keptReadRef()
+    var x = 1
+    var y = 2
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    storeKept(b@uniq, x@ref)
+    var q = y@ref
+    let r = b@ref
+    unsafe => q = r.p[0]
+    b = KeptBox.init(p: Raw.allocate(1))
+    x = 5
+    inspect(q)
+func keptReadUniq()
+    var x = 1
+    var y = 2
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    var q = y@ref
+    let r = b@uniq
+    storeKept(r, x@ref)
+    unsafe => q = r.p[0]
+    b = KeptBox.init(p: Raw.allocate(1))
+    x = 5
+    inspect(q)
+func keptDirectDead()
+    var x = 1
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    unsafe => b.p[0] = x@ref
+    x = 5
+func keptInitDead()
+    var x = 1
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    unsafe => Raw.initialize(b.p, x@ref)
+    x = 5
+func rawArrayIter()
+    var a = Data.init()
+    let cell: raw/(ref/Data) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, a@ref)
+    let cell2: raw/(ref/Data) = Raw.allocate(1)
+    var arr: Array<raw/(ref/Data)> = [cell]
+    for p in arr
+        inspect(p)
+    arr.append(cell2)
+    inspect(arr)
