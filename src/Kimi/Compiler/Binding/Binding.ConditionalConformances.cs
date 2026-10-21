@@ -329,7 +329,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (InvalidConstraintType(type) || contract.Declaration.BindingState == BindingState.Invalid)
+        if (this.OperandContexts(type).Invalid || contract.Declaration.BindingState == BindingState.Invalid)
         {
             return ConstraintProof.Error;
         }

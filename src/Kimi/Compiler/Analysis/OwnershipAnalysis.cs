@@ -135,6 +135,8 @@ public sealed partial class OwnershipAnalysis
 
     internal void Invalidate()
     {
+        this.cleanupAnswers.Clear();
+        this.completeTuples.Clear();
         this.ClearInstances();
         this.Result = default;
         for (var i = 0; i < this.bodies.Count; i++)

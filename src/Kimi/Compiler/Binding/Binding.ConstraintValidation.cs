@@ -98,12 +98,6 @@ public sealed partial class Binding
             _ => constraint.Subject,
         };
 
-    private static bool InvalidConstraintRequirement(BoundConstraint constraint)
-        => (constraint.Contract is { } contract && InvalidDeclarationContext(contract.Declaration)) ||
-        (constraint.RequiredType is { } required && InvalidConstraintType(required)) ||
-        (constraint.Left is { } left && InvalidConstraintRequirement(left)) ||
-        (constraint.Right is { } right && InvalidConstraintRequirement(right));
-
     private static Koto? ProjectionDeclarationOwner(Koto use)
     {
         if (((Koto?)FunctionSignatureOwner(use) ?? PropertySignatureOwner(use)) is { } signature)
@@ -324,7 +318,7 @@ public sealed partial class Binding
                 changed |= previous != owner.BindingState;
             }
 
-            if (this.nodes[i] is IsKoto { BindingState: BindingState.Invalid, BoundConstraint: { } failedConstraint, Parent: DeclarationContainerKoto implementation } failed && implementation is StructKoto or EnumKoto && IsSelfConstraint(failed) && InvalidConstraintRequirement(failedConstraint))
+            if (this.nodes[i] is IsKoto { BindingState: BindingState.Invalid, BoundConstraint: { } failedConstraint, Parent: DeclarationContainerKoto implementation } failed && implementation is StructKoto or EnumKoto && IsSelfConstraint(failed) && this.InvalidConstraintRequirement(failedConstraint))
             {
                 // An invalid required declaration invalidates the implementing Type.
                 // A path-local witness failure must preserve independent conformances.

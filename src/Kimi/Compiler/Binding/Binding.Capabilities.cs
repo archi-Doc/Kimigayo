@@ -205,9 +205,10 @@ public sealed partial class Binding
 
     private ConstraintProof RequestCapability(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation = false)
     {
-        if (UnresolvedConstraintType(type))
+        var contexts = this.OperandContexts(type);
+        if (contexts.Unresolved)
         {
-            return InvalidConstraintType(type) ? ConstraintProof.Error : ConstraintProof.Unknown;
+            return contexts.Invalid ? ConstraintProof.Error : ConstraintProof.Unknown;
         }
 
         if (!this.capabilitiesReady)
@@ -312,7 +313,7 @@ public sealed partial class Binding
     private ConstraintProof ComputeCapability(CapabilityWork work)
     {
         var type = work.Type;
-        if (InvalidConstraintType(type))
+        if (this.OperandContexts(type).Invalid)
         {
             return ConstraintProof.Error;
         }
