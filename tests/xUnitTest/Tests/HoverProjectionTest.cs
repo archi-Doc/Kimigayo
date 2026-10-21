@@ -240,7 +240,6 @@ public sealed class HoverProjectionTest
         Assert.Contains("Declared by: Right", info.Effects);
         Assert.Contains("Premise: T is Left effect confined", info.Effects);
         Assert.Contains("Premise: T is Right effect confined", info.Effects);
-        Assert.DoesNotContain("Available bound: preserves results", info.Effects);
     }
 
     [Fact]

@@ -139,7 +139,7 @@ public sealed partial class Binding
             {
                 var effect = function.EffectBounds[i];
                 ref var earlier = ref (effect.Bound == EffectBoundKind.Confined ? ref confined : ref preserves);
-                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, this.scopes[function], earlier))
+                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, earlier))
                 {
                     earlier = effect;
                 }

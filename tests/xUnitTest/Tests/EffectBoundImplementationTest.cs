@@ -7,14 +7,22 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.11.4, 8.11.5: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
+// SPEC 8.11.4: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
 public class EffectBoundImplementationTest
 {
     private const string Sink = "contract Sink\n    func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        effect confined\n" +
         "group Metrics\n    public var puts: isize = 0\n    public func record() => Metrics.puts += 1\n";
 
-    private const string Source = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\n";
+    private const string Step = "contract Step\n    func step(self: uniq/Self)\n        effect confined\n";
+
+    private const string Box = "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n" +
+        "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n" +
+        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self\n        Console.writeLine(\"step\")\n        return self.value@uniq\n";
+
+    private const string Cleanup = "struct Cleanup {step}\n    let cursor: uniq/Cursor during step\n    public init(cursor: uniq/Cursor during step) => self.cursor = cursor@move\n    ";
+
+    private const string Stepped = "struct Cursor\n    Self is Step\n    public var count: i32 = 0\n    public func step(self: uniq/Self)\n        do\n            let cleanup = Cleanup.init(self)\n";
 
     private const string Main = "public func main() => ()\n";
 
@@ -54,13 +62,10 @@ public class EffectBoundImplementationTest
         }
     }
 
-    // SPEC 8.11.2, 8.11.5: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of
-    // a static initializer other than a constant (reading an immutable static is no environment effect), and a conflict that the
-    // untried exclusion of a virtual slot call producing the item might remove. A virtual call producing no item keeps its violation.
+    // SPEC 8.11.2: an effect the summary cannot classify yet is one Unsupported_Kd at the conformance: the destructions of a static
+    // initializer other than a constant (reading an immutable static is no environment effect).
     [Theory]
     [InlineData("contract Read\n    func read(self: ref/Self) -> i32\n        effect confined\ngroup G\n    public let value: i32 = 2 + 3\nstruct S\n    Self is Read\n    public func read(self: ref/Self) -> i32 => G.value\n", "Self is Read", nameof(DiagnosticCode.Unsupported_Kd))]
-    [InlineData(Source + "open struct Feed<T>\n    public init() => ()\n    public virtual func next(self: objref/Self) -> Option<T>\n        effect preserves results\n        return .None\nstruct Drain<T>\n    Self is Source\n    associate Source.Item is T\n    var inner: obj/Feed<T>\n    public init() => self.inner = Kimi.Intrinsics.makeObj(Feed<T>.init())\n    public func take(self: uniq/Self) -> Option<T> => self.inner.next()\n", "Self is Source", nameof(DiagnosticCode.Unsupported_Kd))]
-    [InlineData(Source + "contract Step\n    associate Item\n    func step(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\nopen struct Feed\n    public init() => ()\n    public virtual func next(self: objref/Self) -> Option<i32>\n        effect preserves results\n        return .None\nstruct Drain<J>\n    J is Step\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    var feed: obj/Feed\n    public func take(self: uniq/Self) -> Option<J.Item>\n        _ = self.feed.next()\n        return self.inner.step()\n", "self.feed.next()", nameof(DiagnosticCode.IncompatibleContractImplementation_Kd))]
     public void AnUnclassifiedEffectIsAnImplementationLimit(string declarations, string at, string code)
     {
         var source = declarations + Main;
@@ -88,9 +93,8 @@ public class EffectBoundImplementationTest
     }
 
     // SPEC 4.9.6: the Kimi body of each operation that publishes its summary stays within its row with abstract Type parameters,
-    // under confined and under preserves results; `K` equality is the only parameter-dependent requirement a row publishes, and the
-    // capacity and clear rows publish none at Binding (destructions are checked after ownership analysis). indexUniq lends `uniq/V`
-    // from its exclusive receiver, so its own input access affects the Loans earlier results keep and preserves results never holds.
+    // under confined; `K` equality is the only parameter-dependent requirement a row publishes, and the capacity and clear rows
+    // publish none at Binding (destructions are checked after ownership analysis).
     [Fact]
     public void PublishedOperationBodiesStayWithinTheirRows()
     {
@@ -101,7 +105,7 @@ public class EffectBoundImplementationTest
         foreach (var entry in KimiLibraryCatalog.Entries)
         {
             var operation = c.Library.GetSymbol(entry.Id)!;
-            if (!KimiLibraryCatalog.PublishesSummary(operation) || entry.Function != CompilerFunctionKind.None)
+            if (KimiLibraryCatalog.Row(operation) is null || entry.Function != CompilerFunctionKind.None)
             {
                 continue; // A compiler function's row has no Kimi body to verify.
             }
@@ -114,12 +118,8 @@ public class EffectBoundImplementationTest
             }
 
             var published = KimiLibraryCatalog.Row(operation)!.Value.Runs is null ? null : equals;
-            foreach (var (confined, preserves) in new[] { (true, false), (false, true) })
-            {
-                var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, confined, preserves, published);
-                var lends = preserves && entry.Id == KimiDeclarationId.DictionaryIndexUniq;
-                Assert.True(valid != lends && (!lends || violation == Binding.EffectViolation.ResultLoan), $"{entry.Name} (confined {confined}, preserves {preserves}): {violation} at {node}");
-            }
+            var (valid, violation, node) = c.Binding.SummarizePublishedOperation(operation, published);
+            Assert.True(valid, $"{entry.Name}: {violation} at {node}");
 
             operations++;
         }
@@ -127,75 +127,80 @@ public class EffectBoundImplementationTest
         Assert.Equal(11, operations);
     }
 
-    // SPEC 8.11.2, 22.6: a foreign call accesses only what its arguments permit, so preserves results admits it.
-    [Fact]
-    public void PreservesResultsAdmitsForeignCalls()
-    {
-        const string Declarations = "group Native\n    #LibraryImport(\"kernel32\", \"QueryPerformanceCounter\")\n    public unsafe func query(value: raw/i64) -> i32\n" +
-            "struct Polled<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n" +
-            "        let output: raw/i64 = null\n        unsafe => _ = Native.query(output)\n        return self.inner.next()\n";
-        var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-    }
-
-    // SPEC 8.11.2, 5.2.2: an access through a raw Place borrow is compared with held Loans under its anchor, which no earlier
-    // result can keep, so preserves results admits it even when the item is abstract.
-    [Fact]
-    public void PreservesResultsComparesRawAccessesUnderTheAnchor()
-    {
-        const string Declarations = "struct Counted<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    var counter: raw/isize\n" +
-            "    public func take(self: uniq/Self) -> Option<J.Item>\n        unsafe\n            let count = (*self.counter)@uniq\n            count@follow += 1\n        return self.inner.next()\n";
-        var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-    }
-
-    // SPEC 8.11.5: a call of d on a value reached through a Field path of self is compared with no Loan of an earlier result
-    // when every result Loan comes from d on that value and no value on the path is replaced; other sources are compared.
+    // SPEC 8.11.4, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
+    // helper, every specialization the call may still select (by Type, length or a compound key), the accessor or indexer a Place's use
+    // selects, and a destructor ownership analysis plans; a member no call reaches is not judged. (These forms were preserves results
+    // checks of Iterator conformances before the adopted proposal Abstract Calls Reach by Paths removed that bound.)
     [Theory]
-    [InlineData("struct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public var taken: isize = 0\n    public func take(self: uniq/Self) -> Option<J.Item>\n        self.taken += 1\n        return self.inner.next()\n", true)]
-    [InlineData("struct Numbered<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is (isize, J.Item)\n    var inner: J\n    var index: isize = 0\n    public func take(self: uniq/Self) -> Option<(isize, J.Item)>\n        match self.inner.next()\n            .Some(let item)\n                self.index += 1\n                return .Some((self.index, item@move))\n            .None => return .None\n", true)]
-    [InlineData("struct Kept<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n        let item = self.inner.next()\n        return item@move\n", true)]
-    [InlineData("struct Lent<J> {source}\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: uniq/J during source\n    public func take(self: uniq/Self) -> Option<J.Item>\n        return self.inner.next()\n", true)]
-    [InlineData("struct Wrapper<J>\n    public var iterator: J\nstruct Nested<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var wrapper: Wrapper<J>\n    public func take(self: uniq/Self) -> Option<J.Item>\n        return self.wrapper.iterator.next()\n", true)]
-    [InlineData("struct Merge<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var left: J\n    var right: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n        match self.left.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.right.next()\n", false)]
-    [InlineData("struct Swapped<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    var spare: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n        Kimi.Intrinsics.swap(self.inner@uniq, self.spare@uniq)\n        return self.inner.next()\n", false)]
-    [InlineData("struct Lending<J> {a}\n    J is LendingIterator\n    Self is Source\n    associate Source.Item is ref/i32 during a\n    var inner: J\n    let value: ref/i32 during a\n    public func take(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.value)\n", false)]
-    [InlineData("struct Plain<J>\n    J is LendingIterator\n    Self is Source\n    associate Source.Item is i32\n    var inner: J\n    public func take(self: uniq/Self) -> Option<i32>\n        _ = self.inner.next()\n        return .None\n", true)]
-    [InlineData("struct Counting\n    Self is Source\n    associate Source.Item is i32\n    var value: i32 = 0\n    public func take(self: uniq/Self) -> Option<i32>\n        self.value += 1\n        return .Some(self.value)\n", true)]
-    public void PreservesResultsTracesResultLoans(string declarations, bool valid)
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self)\n        Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update()\n", false)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self)\n        self.count += 1\n    public func step(self: uniq/Self) => self.update()\n", true)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<T>(self: uniq/Self, depth: i32)\n        if depth > 0 => self.update<T>(depth - 1)\n        Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<i32>(2)\n", false)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<T>(self: uniq/Self, depth: i32)\n        if depth > 0 => self.update<T>(depth - 1)\n        self.count += 1\n    public func step(self: uniq/Self) => self.update<i32>(2)\n", true)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.count += 1\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<T>()\n", false)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => self.count += 1\n    public func step(self: uniq/Self) => self.update<T>()\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<bool>()\n", true)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<i32>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<i32>()\n", false)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<2>()\n", true)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n    func update<length M>(self: uniq/Self) => self.count += 1\n    specialize func update<3>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<3>()\n", false)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, bool)>()\n", false)]
+    [InlineData("struct Cursor<T>\n    Self is Step\n    var count: i32 = 0\n    func update<U>(self: uniq/Self) => self.count += 1\n    specialize func update<(i32, bool)>(self: uniq/Self) => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.update<(T, i32)>()\n", true)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n        set(value: i32) -> () => Console.writeLine(\"step\")\n    public func step(self: uniq/Self) => self.count = 1\n", false)]
+    [InlineData("struct Cursor\n    Self is Step\n    var count: i32 = 0\n        set(value: i32) -> () => storage = value\n    public func step(self: uniq/Self) => self.count = 1\n", true)]
+    [InlineData(Box + "struct Cursor\n    Self is Step\n    var box: Box\n    public func step(self: uniq/Self) => self.box[0] += 1\n", false)]
+    [InlineData(Box + "struct Cursor\n    Self is Step\n    var box: Box\n    public func step(self: uniq/Self) => _ = self.box[0]\n", true)]
+    [InlineData(Cleanup + "drop => Console.writeLine(\"step\")\n" + Stepped, false)]
+    [InlineData(Cleanup + "drop => self.cursor.count += 1\n" + Stepped, true)]
+    public void ConfinedJudgesEveryReachedBody(string declarations, bool valid)
     {
-        var c = MinimalEmissionTest.Analyze(Source + declarations + Main);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var c = MinimalEmissionTest.Analyze(Step + declarations + Main);
+        var rejected = c.Binding.Issues.Any(static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd) ||
+            c.Problems.Any(static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+        Assert.True(valid != rejected, MinimalEmissionTest.Describe(c, null));
+        Assert.True(!valid || (c.Binding.Result.IsComplete && c.Analysis.IsVerified), MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 8.11.5: an earlier result that may come from an argument keeps Loans that the call of d is compared with.
-    [Fact]
-    public void PreservesResultsComparesArgumentLoans()
+    // Editing a reached helper, generic helper or selected specialization revokes the conformance, and restoring it restores the
+    // conformance and its generation, repeatedly on one compilation.
+    [Theory]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void HelperEditRevokesAndRestoresTheConformance(int kind)
     {
-        const string Declarations = "contract Refill\n    associate Item\n    func take(self: uniq/Self, spare: Option<Self.Item>) -> Option<Self.Item>\n        effect preserves results\n" +
-            "struct Topped<J>\n    J is Iterator\n    Self is Refill\n    associate Refill.Item is J.Item\n    var inner: J\n    public func take(self: uniq/Self, spare: Option<J.Item>) -> Option<J.Item>\n" +
-            "        match self.inner.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return spare@move\n";
-        var c = MinimalEmissionTest.Analyze(Declarations + Main);
-        Assert.False(c.Binding.Result.IsComplete);
-        Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-    }
+        var source = Step + "struct Cursor\n    Self is Step\n    public var count: i32 = 0\n    public init() => ()\n    func update(self: uniq/Self) => self.count += 1\n" +
+            "    public func step(self: uniq/Self) => self.update()\nvar cursor = Cursor.init()\ncursor.step()\nrequire cursor.count == 1 else => $abort(\"count\")\n";
+        if (kind != 0)
+        {
+            source = source.Replace("func update(", "func update<T>(", StringComparison.Ordinal).Replace("self.update()", "self.update<i32>()", StringComparison.Ordinal);
+        }
 
-    // SPEC 8.11.5: replacing the stepped value between calls through another member needs a new value, whose source the
-    // caller can borrow again only after the earlier results end, so the caller's own Loans reject the replacement. The Loan
-    // `drain` retains on `values` is one conflict, stated once at the activation of the new value's acquisition (SPEC 15.6.7).
-    [Fact]
-    public void AReplacementBetweenCallsMeetsTheCallerLoans()
-    {
-        const string Declarations = "struct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n" +
-            "    public init(inner: J) => self.inner = inner@move\n    public func take(self: uniq/Self) -> Option<J.Item> => self.inner.next()\n" +
-            "    public func reset(self: uniq/Self, fresh: J) => self.inner = fresh@move\n" +
-            "public func main()\n    var values = [1, 2, 3]\n    var drain = Drain<ArrayUniqIterator<i32>>.init(values.iterateUniq())\n    let first = drain.take()\n" +
-            "    drain.reset(values.iterateUniq())\n    let second = drain.take()\n    match first@move\n        .Some(let item) => item@follow += 1\n        .None => ()\n";
-        var c = MinimalEmissionTest.Analyze(Source + Declarations);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        c.ReportAnalysis();
-        var error = Assert.Single(TestDiagnostics.Of(c));
-        Assert.Equal((nameof(DiagnosticCode.CallActivationConflict_Kd), "values.iterateUniq()"), (error.Code, error.Text));
+        if (kind == 2)
+        {
+            source = source.Replace("    public func step", "    specialize func update<i32>(self: uniq/Self) => self.count += 1\n    public func step", StringComparison.Ordinal);
+        }
+
+        var c = MinimalEmissionTest.Analyze(source);
+        using var output = new StringWriter();
+        Assert.True(c.WriteIr(output, out var error), MinimalEmissionTest.Describe(c, error));
+        var function = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "update" && x.IsSpecialization == (kind == 2));
+        var original = function.ExpressionBody!;
+        var donor = ParseTestHelper.ParseSuccess(source.Replace("=> self.count += 1", "=> Console.writeLine(\"step\")", StringComparison.Ordinal));
+        var replacement = KotoTree.Walk(donor.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "update" && x.IsSpecialization == (kind == 2)).ExpressionBody!;
+        for (var i = 0; i < 3; i++)
+        {
+            Assert.True(KotoHelper.Replace(function, original, replacement));
+            output.GetStringBuilder().Clear();
+            Assert.False(c.WriteIr(output, out _));
+            Assert.Empty(output.ToString());
+            Assert.False(c.Bind().IsComplete);
+            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
+            Assert.True(KotoHelper.Replace(function, replacement, original));
+            Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+            c.Binding.CheckStartup(OutputKind.Application);
+            Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+            Assert.True(c.WriteIr(output, out error), MinimalEmissionTest.Describe(c, error));
+        }
     }
 
     // SPEC 8.11.1: the bound is the Contract's guarantee, so only Self is StableSource is checked against it.
@@ -214,9 +219,8 @@ public class EffectBoundImplementationTest
     [Fact]
     public void WarmUserEffectBoundChecksDoNotAllocate()
     {
-        const string Declarations = "struct Forward<W>\n    W is Sink\n    Self is Sink\n    var inner: W\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        return self.inner.put(value)\n" +
-            "struct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n        return self.inner.next()\n";
-        var c = MinimalEmissionTest.Analyze(Sink + Source + Declarations + Main);
+        const string Declarations = "struct Forward<W>\n    W is Sink\n    Self is Sink\n    var inner: W\n    public func put(self: uniq/Self, value: i32) -> Result<(), BufferFull>\n        return self.inner.put(value)\n";
+        var c = MinimalEmissionTest.Analyze(Sink + Declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete);
