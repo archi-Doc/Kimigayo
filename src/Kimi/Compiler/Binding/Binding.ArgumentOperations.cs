@@ -421,20 +421,29 @@ public sealed partial class Binding
             return publishedElement; // SPEC 4.7.1: the element Place depends on the receiver under its contract.
         }
 
+        // The walk stops at the value nearest the Place that carries its own Origin; a pair layer's Origin is that of the reference
+        // it may hold, so the layer itself is its own dependency.
         var place = KotoHelper.UnwrapParentheses(source);
         source = PlaceOriginSource(source);
+        var reachedThrough = !ReferenceEquals(source, place);
+        var layer = ElementAccess.AccessType(source) is { Origin: not null } type && !TryPairLayer(type, out _, out _) ? type : null;
+        if (reachedThrough && layer is { Semantics: not (SemanticsKind.Uniq or SemanticsKind.ObjUniq) })
+        {
+            // SPEC 15.6.3, 4.7.1, 4.8.1: a Place reached through a shared layer, a Slice handle or a shared reference, depends
+            // only on that layer, its last shared dereference, also when the layer is a selected referent (`r@follow[0]`).
+            return layer.Origin!;
+        }
+
         if (source is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } reached)
         {
-            // SPEC 13.5.5: a part of a selected referent (`p@follow.x`) keeps the dependencies of the reference, as the
-            // referent itself does.
+            // SPEC 13.5.5, 15.6.3: a part of any other selected referent (`p@follow.x`) keeps the dependencies of the reference,
+            // as the referent itself does.
             return this.FollowedOrigin(reached.Left) ?? this.PlaceOrigin(reached.Left);
         }
 
-        // SPEC 3.4.3, 4.7.1, 4.8.1: a Place reached through a reference or a Slice handle depends on that value's Origin, and a
-        // reference read in place is its referent. A pair layer's Origin is that of the reference it may hold, and a Slice handle
-        // that is itself the Place is a Place of its root, so both are their own dependency.
-        return ElementAccess.AccessType(source) is { Origin: { } origin } type && !TryPairLayer(type, out _, out _) &&
-            (type.Kind == BoundTypeKind.Semantics || !ReferenceEquals(source, place)) ? origin
+        // SPEC 3.4.3, 4.8.1: a reference read in place is its referent, and a Place reached through an exclusive layer stored in
+        // place depends on that layer; a Slice handle that is itself the Place is a Place of its root.
+        return layer is not null && (reachedThrough || layer.Kind == BoundTypeKind.Semantics) ? layer.Origin!
             : this.OriginAtom(PlaceOriginBinder(source), OriginKind.Projection, PlaceOriginSlot(source));
     }
 

@@ -89,6 +89,19 @@ public class OriginRelationDiagnosticTest
     [InlineData(Keep + "func f(values: Slice<i32> during s) -> i32\n    let kept = keep(values@ref)\n    return kept@follow[0]\n")]
     [InlineData("struct View {s}\n    public let items: Slice<i32> during s\nfunc tail(h: View during s) -> Slice<i32> during s\n    return h.items[1..]\n")]
     [InlineData("struct Rows {a}\n    public let r: ref/[3 of i32] during a\nfunc tail(h: Rows during a) -> Slice<i32> during a\n    return h.r[1..]\n")]
+    // SPEC 15.6.3: a Place reached through a selected shared layer, a borrowed Slice handle or a shared reference, depends only on
+    // that layer, its last shared dereference, whatever borrow reaches the layer.
+    [InlineData("func first(values: Slice<i32> during s) -> ref/i32 during s\n    let r = values@ref\n    return r@follow[0]@ref\n")]
+    [InlineData("func tail(values: Slice<i32> during s) -> Slice<i32> during s\n    let r = values@ref\n    return r@follow[1..]\n")]
+    [InlineData("func first(values: Slice<i32> during s) -> ref/i32 during s\n    var local = values\n    let u = local@uniq\n    return u@follow[0]@ref\n")]
+    [InlineData(Keep + "func first(values: Slice<i32> during s) -> ref/i32 during s\n    return keep(values)@follow[0]@ref\n")]
+    [InlineData("struct Item\n    public let name: string\nfunc name(values: Slice<Item> during s) -> ref/string during s\n    let r = values@ref\n    return r@follow[0].name@ref\n")]
+    [InlineData("func first(values: Slice<i32> during s) -> ref/i32 during s\n    match values\n        let v => return v@follow[0]@ref\n")]
+    [InlineData("func tail(values: Slice<i32> during s) -> Slice<i32> during s\n    match values\n        let v => return v@follow[1..]\n")]
+    [InlineData("func first(values: Slice<i32> during s) -> ref/i32 during s\n    let t = (values, 1)\n    match t\n        (let a, _) => return a@follow[0]@ref\n")]
+    [InlineData("func first(view: ref/(Slice<i32> during s)) -> ref/i32 during s => view@follow[0]@ref\n")]
+    [InlineData("func tail(view: ref/(Slice<i32> during s)) -> Slice<i32> during s => view@follow[1..]\n")]
+    [InlineData("func first(p: ref/(ref/[3 of i32] during a) during b) -> ref/i32 during a => p@follow[0]@ref\n")]
     public void AProvenRelationIsAccepted(string body)
     {
         var output = DiagnosticCorpus.Check(body + Main);
