@@ -165,40 +165,6 @@ public sealed partial class Binding
         _ => null,
     };
 
-    // The stored Type of a Place that is, or holds inline, a `during self` layer: a stored Field's declared Type or an element of it
-    // selected in place (a Tuple or fixed-array element), with that `field` selection; null for any other Place.
-    private static BoundType? StoredHolder(Koto place, out MemberAccessKoto field)
-    {
-        field = null!;
-        Span<int> positions = stackalloc int[16];
-        var count = 0;
-        var node = KotoHelper.UnwrapParentheses(place);
-        while (node is BinaryKoto selection and not MemberAccessKoto { BoundSymbol.Property.IsStored: true } && count < positions.Length &&
-            ElementAccess.IsSyntax(selection) && ElementAccess.TryType(selection, out _, out var position))
-        {
-            positions[count++] = Math.Max(position, 0);
-            node = KotoHelper.UnwrapParentheses(selection.Left);
-        }
-
-        if (node is not MemberAccessKoto { BoundSymbol: { Property.IsStored: true, Type: { } stored } } member)
-        {
-            return null;
-        }
-
-        for (var i = count - 1; i >= 0; i--)
-        {
-            if (stored.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray) || positions[i] >= stored.Components.Count)
-            {
-                return null;
-            }
-
-            stored = stored.Components[positions[i]];
-        }
-
-        field = member;
-        return HoldsHolder(stored) ? stored : null;
-    }
-
     // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
     // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
     // recursively; any other source reaches the layers as a whole. Null when every layer receives null.
@@ -270,13 +236,14 @@ public sealed partial class Binding
             return type;
         }
 
-        if (this.PathOrigin(place, out var origin, out var mode) is null)
+        var path = this.PathOrigin(place);
+        if (path.Dereferences is null)
         {
             this.Fail(node, BindingFailure.Unsupported);
             return null;
         }
 
-        return this.ReplaceHolder(type, origin is not null ? this.Formed(origin, mode) : null);
+        return this.ReplaceHolder(type, path.Origin is { } origin ? this.Formed(origin, path.Mode) : null);
     }
 
     private BoundType ReplaceHolder(BoundType type, BoundOrigin? image)
@@ -310,9 +277,9 @@ public sealed partial class Binding
     // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a)): through no dereference, except through `self` in the constructors and drop of the Type
     // whose inline storage holds the layer, a `during self` layer's Place admits reads, shared borrows and writes of null only; an
     // enclosing Tuple or fixed-array Place's write is one of the layer's Place. Whether `access` to `place`, writing `source`, failed
-    // at `at` (HolderWriteFailure).
+    // at `at` (HolderWriteFailure); PathOrigin publishes the stored Field and the Place's stored Type.
     private bool HolderPlaceFailure(Koto place, HolderAccess access, Koto? source, Koto at)
-        => StoredHolder(place, out var field) is { } stored && Receiver(field.Left) is null && this.PathOrigin(field, out _, out _) == false &&
+        => this.PathOrigin(place) is { Dereferences: false, Field: { } field, Stored: { } stored } && HoldsHolder(stored) && Receiver(field.Left) is null &&
             this.HolderWriteFailure(stored, access, source, at);
 
     // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. A write whose value

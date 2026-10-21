@@ -43,14 +43,15 @@ public sealed partial class Binding
             return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
         }
 
-        if (this.PathOrigin(conversion.Left, out var origin, out var mode) is null)
+        var path = this.PathOrigin(conversion.Left);
+        if (path.Dereferences is null)
         {
             return this.Fail(conversion, BindingFailure.Unsupported); // U2: a pair follow admitting a non-borrow case.
         }
 
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Address;
-        return Complete(conversion, this.types.Pointer(stored, origin is null ? null : this.Formed(origin, mode)));
+        return Complete(conversion, this.types.Pointer(stored, path.Origin is { } origin ? this.Formed(origin, path.Mode) : null));
     }
 
     // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer. SPEC 5.7: a pointer keeps its raw
@@ -90,7 +91,7 @@ public sealed partial class Binding
             return this.Fail(conversion, AccessFailure(conversion.Left));
         }
 
-        var within = this.PathOrigin(conversion.Left, out var stated, out _) == true ? RegionOf(stated) : null;
+        var within = this.PathOrigin(conversion.Left) is { Dereferences: true } path ? RegionOf(path.Origin) : null;
         var declared = ResultFunction(conversion)?.BoundSymbol?.Type is
             { Kind: BoundTypeKind.Semantics, Components: [var target], Origin: { } result } declaredResult &&
             declaredResult.Semantics == semantics && ReferenceEquals(target, referent) ? result : null;
