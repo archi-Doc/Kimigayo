@@ -27,7 +27,7 @@ internal readonly record struct PublishedRow(KimiDeclarationId? Runs = null, sby
 
 // SPEC 5.6, 5.7 (D14): an Origin relation a library operation publishes beyond its signature: its result Origin lies within the Origin
 // that the argument of parameter Within states before its fit to that parameter (Raw.slice's storage).
-internal readonly record struct OriginRow(KimiDeclarationId Id, sbyte Within);
+internal readonly record struct WithinRow(KimiDeclarationId Id, sbyte Within);
 
 /// <summary>Immutable recognition rules, shared across compilations. Stable IDs are independent of catalog and syntax order.</summary>
 internal static class KimiLibraryCatalog
@@ -41,8 +41,8 @@ internal static class KimiLibraryCatalog
     private static readonly PublishedRow Formats = new(KimiDeclarationId.Utf8Format, On: 0);
     private static readonly PublishedRow FormatsValue = new(KimiDeclarationId.Utf8Format, On: 1);
 
-    // The operations' Origin relations beyond their signatures (OriginRow), apart from their recognition entries.
-    private static readonly OriginRow[] OriginRows = [new(KimiDeclarationId.RawSlice, 0)];
+    // The operations' Origin relations beyond their signatures (WithinRow), apart from their recognition entries.
+    private static readonly WithinRow[] WithinRows = [new(KimiDeclarationId.RawSlice, 0)];
 
     private static readonly Entry[] Definitions =
     [
@@ -285,10 +285,10 @@ internal static class KimiLibraryCatalog
         => symbol?.LibraryDeclaration is { } id && Index(ImplementationOf(id) ?? id) is >= 0 and var index ? Definitions[index].Row : null;
 
     // SPEC 5.6, 5.7 (D14): the parameter whose argument's raw Origin, as stated before its fit, the operation's result Origin lies
-    // within (OriginRows); -1 for none.
+    // within (WithinRows); -1 for none.
     internal static int Within(BindingSymbol? symbol)
     {
-        foreach (var row in OriginRows)
+        foreach (var row in WithinRows)
         {
             if (symbol?.LibraryDeclaration == row.Id)
             {

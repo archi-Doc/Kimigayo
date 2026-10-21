@@ -958,13 +958,19 @@ public sealed partial class MirBorrowsTest
 
         Assign(entry, new(0), MirRvalue.Use(Constant(MirConstKind.Unit, BoundType.Unit, 0)), 18, 0);
         body.Terminate(entry, MirTerminator.Return(At(19, 0)));
-        var findings = new List<MirFinding>();
-        new MirValidator(c.Types).Validate(body, findings);
-        Assert.Empty(findings);
-        new Stratum(c.Types).Run(program, body);
+        new Stratum(c.Types).Run(program, Validated(c, body));
         var problems = program.Problems.All.ToArray();
         return [.. problems.Select((x, i) =>
             $"{x.Code} {x.Subject.Id} [{string.Join("; ", program.Problems.Facts(i).ToArray().Select(static f => $"{f.Kind} {f.Site.Id}"))}]")];
+    }
+
+    // A hand-built body, which A5 reads only once MirValidator accepts it (HandBuilt, Rooted).
+    private static MirBody Validated(Compilation c, MirBody body)
+    {
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Empty(findings);
+        return body;
     }
 
     // Copies that issue Loans: fI's default borrows its own local, and fO's copy holds fI's (depth 2).

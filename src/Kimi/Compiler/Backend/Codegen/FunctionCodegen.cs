@@ -1,13 +1,14 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73,
-// R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93), MIR code generation: the LLVM definition of one body item of the checked
-// set from its validated, analyzed MIR body in the item's instance, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one
-// located Unsupported_Kd, never wrong code.
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, C4a, package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65,
+// R5-M73, R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93, R5-M95), MIR code generation: the LLVM definition of one body item
+// of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue item by its Type's row, and the
+// coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
-// X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and analysis problems
-// (A2, R4-M6a); the compilation's Layout and runtime location texts; ModuleCodegen's signatures (Signature and Import: Abi.Of under the
-// internal and the C convention, IMPL 21.3.1), constant pool and record list.
+// X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
+// exactness (A2, R4-M6a, R4-M102: gate step 2 writes no inexact body); the compilation's Layout and runtime location texts;
+// ModuleCodegen's signatures (Signature and Import: Abi.Of under the internal and the C convention, IMPL 21.3.1), constant pool and
+// record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored into
@@ -39,17 +40,17 @@
 // and TypeToken constants being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement whose witness has no
 // body, of a value (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f,
 // C9b), a property witness (C3c) or another legacy row (C8b-C8e, C9a); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates
-// nothing. Files: the dispatch (this file); the function's frame: its kind's argument order, homes, copy slots, prologue and return
-// (FunctionCodegen.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
+// nothing. Files: the dispatch and the records (this file); the operands' and constants' values, the representations, a site's location
+// and the text's spelling (FunctionCodegen.Values.cs); the function's frame: its kind's argument order, homes, copy slots, prologue and
+// return (.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
 // (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs), intrinsics
-// (.Intrinsics.cs) and drops (.Drops.cs).
+// (.Intrinsics.cs) and drops (.Drops.cs); the DropGlue items' functions (.Glue.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
 // Ok are broken contracts: InternalInvariant_Kd.
 
 using Kimi.Compiler.Mir;
-using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
@@ -60,6 +61,7 @@ internal sealed partial class FunctionCodegen
     private readonly ModuleCodegen module;
     private readonly MirReach reach = new();
     private readonly MirCases cases; // The item's case view (X13).
+    private readonly TyCtxt typeContext; // Its Sealed proofs, which a handle's glue parts read (DropGlue.Parts).
     private Slot[] slots = []; // By local.
     private BoundType[] types = []; // By local, in the item's instance.
     private Value[] arguments = []; // A runtime call's arguments in parameter order, or a fixed-array aggregate's element values.
@@ -73,10 +75,10 @@ internal sealed partial class FunctionCodegen
     /// <summary>Initializes a new instance of the <see cref="FunctionCodegen"/> class.</summary>
     /// <param name="module">The module whose signatures and records it uses.</param>
     /// <param name="types">The Type context of the program, whose case Types the item's view selects.</param>
-    internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.cases) = (module, new(types));
+    internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.typeContext, this.cases) = (module, types, new(types));
 
     /// <summary>Writes the definition of a body item, or records why not.</summary>
-    /// <param name="program">The program, whose body the item replays and whose drop table and problems its drops read.</param>
+    /// <param name="program">The program, whose body the item replays and whose drop table its drops read.</param>
     /// <param name="collector">The collector of the checked set.</param>
     /// <param name="item">The item.</param>
     /// <param name="output">The module's buffer.</param>
@@ -84,6 +86,18 @@ internal sealed partial class FunctionCodegen
     {
         var body = program.Bodies[collector.Set.Items[item].BodyOrdinal];
         (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
+        if (program.Drops.Incomplete(body.Ordinal) is { } refusal)
+        {
+            // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so a body
+            // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
+            // code at its subject, by the location rule, and every other item is still written, so its gaps are recorded too. Interim: a
+            // body A1 skipped at the arena limit (ViewsOf 0, R4-M15a) is one located Unsupported_Kd at the body, since its problem carries
+            // no arguments for OwnershipStorageLimit_Kd; removed once A1's arena problem publishes requiredBytes, limitBytes and the table.
+            var (code, subject) = program.Drops.ViewsOf(body.Ordinal) == 0 ? (DiagnosticCode.Unsupported_Kd, body.Source) : refusal;
+            this.module.Report(code, collector.Subject(item, subject));
+            return;
+        }
+
         if (OrderOf(body.Key.Kind) == ArgumentOrder.Unwritten)
         {
             // Rows not written yet, at the body: C5a writes a Closure's environment, and C7b a static's initializer, which a constant one
@@ -113,10 +127,6 @@ internal sealed partial class FunctionCodegen
 
         output.Write("}\n");
     }
-
-    // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
-    // signed range is the negative number with the same bits.
-    private static Int128 Signed(Int128 bits, int width) => width >= 128 ? bits : (bits << (128 - width)) >> (128 - width);
 
     private void Block(int index)
     {
@@ -183,81 +193,6 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // An operand's value in its Type's representation (Read; a value in memory is its address); false for a form not covered yet. A
-    // zero-sized operand has no value. A PairAcquire Copies its Place or Reborrows it, as the item's view decides (SPEC 8.14), and both
-    // write the Place's bits in its case Type: a Reborrow of an exclusive reference is the pointer the Place holds (IMPL 21.1.3), so it
-    // needs no case decision here (DECISIONS R5-M87).
-    private bool Operand(in MirOperand operand, out Value value)
-    {
-        value = default;
-        switch (operand.Kind)
-        {
-            case MirOperandKind.Copy or MirOperandKind.Move or MirOperandKind.PairAcquire:
-                return this.Read(operand.Place, out value);
-            case MirOperandKind.Const:
-                return this.Constant(this.body.Consts[operand.Arg], out value);
-            default:
-                throw new InvalidOperationException($"The MIR operand kind {operand.Kind} has no code generation row.");
-        }
-    }
-
-    // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
-    // IEEE bits), Unit (zero-sized).
-    private bool Constant(in MirConst constant, out Value value)
-    {
-        value = default;
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit))
-        {
-            return false; // String other than into a string local (C8c), FnItem (C5a), Location (C10a), TypeToken (C6a, C9a).
-        }
-
-        if (this.Representation(constant.Type) is not { } lowering)
-        {
-            return true; // A broken contract, recorded.
-        }
-
-        if (constant.Kind == MirConstKind.Float)
-        {
-            value = new('x', Hexadecimal(constant.Bits, lowering.Layout.Size));
-            return true;
-        }
-
-        var type = this.collector.TypeOf(this.item, constant.Type)!;
-        if (constant.Kind == MirConstKind.Integer && type.Semantics == SemanticsKind.Raw)
-        {
-            value = new('n', 0); // SPEC 5.1: null, the one raw pointer constant.
-            return true;
-        }
-
-        if (constant.Kind == MirConstKind.Integer && !type.HasIntegerArithmetic && !ReferenceEquals(type, BoundType.Char))
-        {
-            return false; // A later row's Type.
-        }
-
-        value = lowering.Layout.Size == 0 ? default : new('\0', Signed(constant.Bits, 8 * lowering.Layout.Size));
-        return true;
-    }
-
-    // The representation of a Type of the body in the item's instance (I7): Laid of its instance Type.
-    private ValueLowering? Representation(BoundType type) => this.Laid(this.collector.TypeOf(this.item, type));
-
-    // The representation of a Type in the item's instance (I7); null, with InternalInvariant_Kd at the body, where TypeOf made none or Layout
-    // has none (the collector laid out every Type of an admitted item).
-    private ValueLowering? Laid(BoundType? closed)
-    {
-        if (closed is not null && this.module.Layout.Of(closed).Value is { } lowering)
-        {
-            return lowering;
-        }
-
-        this.Report(DiagnosticCode.InternalInvariant_Kd, default);
-        return null;
-    }
-
-    // The representation of a covered operand's Type: its Place's, or a constant's in the item's instance (null after a record).
-    private ValueLowering? LoweringOf(in MirOperand operand)
-        => operand.Kind == MirOperandKind.Const ? this.Representation(this.body.Consts[operand.Arg].Type) : this.LoweringOf(operand.Place);
-
     private void Terminator(in MirTerminator terminator)
     {
         switch (terminator.Kind)
@@ -285,31 +220,6 @@ internal sealed partial class FunctionCodegen
             default:
                 throw new InvalidOperationException($"The MIR terminator kind {terminator.Kind} has no code generation row.");
         }
-    }
-
-    // SPEC 22.5.1 (I5; DECISIONS R5-M93): the location a callee, a runtime routine or an Abort at a site of the body reports, IMPL 21.3.1's
-    // pair of a text and its byte length: in a caller-location body the location it received, its last two parameters (Abi.Of), which it
-    // forwards, so a failure inside it reports the user's call; elsewhere the site's text as a pooled Location constant. False after a
-    // record at a site without its source document, a broken contract.
-    private bool Location(in SourceInfo source, out Site site)
-    {
-        var count = this.abi.Parameters.Length;
-        if (this.abi.CallerLocation)
-        {
-            site = new(new('p', count - 2), new('p', count - 1));
-            return true;
-        }
-
-        site = default;
-        if (this.module.Locations.Text(this.body.Subject(source)) is not { } text)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A site of a body has its source document.
-            return false;
-        }
-
-        var constant = this.module.Constants.Intern(text, LlvmConstantKind.Location);
-        site = new(new('@', constant), new('\0', this.module.Constants[constant].ByteLength));
-        return true;
     }
 
     // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target.
@@ -348,75 +258,10 @@ internal sealed partial class FunctionCodegen
         output.Write(" ]\n");
     }
 
-    // IMPL 21.1.3: bool, the one Type whose computation (i1) and storage (i8) representations differ, widens to be stored and narrows to
-    // be computed; every other value is the same in both.
-    private Value Widen(ValueLowering lowering, Value value) => this.Convert("zext ", lowering.ComputationType, value, lowering.Layout.StorageType);
-
-    private Value Narrow(ValueLowering lowering, Value value) => this.Convert("trunc ", lowering.Layout.StorageType, value, lowering.ComputationType);
-
-    private Value Convert(string operation, string from, Value value, string to)
+    // A record at a site of a body item's body, located by the collector's rule (K package 4.9), or at a type-driven item's site (a glue's).
+    private void Report(DiagnosticCode code, in SourceInfo source)
     {
-        if (from == to)
-        {
-            return value;
-        }
-
-        var converted = new Value('t', this.next++);
-        this.output.Write("  ");
-        this.WriteValue(converted);
-        this.output.Write(" = ");
-        this.output.Write(operation);
-        this.output.Write(from);
-        this.output.Write(' ');
-        this.WriteValue(value);
-        this.output.Write(" to ");
-        this.output.Write(to);
-        this.output.Write('\n');
-        return converted;
+        var entry = this.collector.Set.Items[this.item];
+        this.module.Report(code, entry.Key.Kind == MonoKind.Body ? this.collector.Subject(this.item, this.body, source) : entry.Site);
     }
-
-    // A branch target: the label of a block, b<index> (I1).
-    private void WriteLabel(int block)
-    {
-        this.output.Write("label %b");
-        WriteNumber(this.output, block);
-    }
-
-    private void WriteValue(Value value)
-    {
-        if (value.Prefix == 'h')
-        {
-            this.WriteHome((int)value.Number);
-            return;
-        }
-
-        this.output.Write(this.Spelled(value, stackalloc char[SpellingLength]));
-    }
-
-    // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, or
-    // Spell's.
-    private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
-    {
-        if (value.Prefix is not ('@' or 'p'))
-        {
-            return Spell(value, text);
-        }
-
-        var name = value.Prefix == '@' ? this.module.Constants[(int)value.Number].Name : this.abi.Parameters[(int)value.Number].Name;
-        text[0] = value.Prefix == '@' ? '@' : '%';
-        name.CopyTo(text[1..]);
-        return text[..(name.Length + 1)];
-    }
-
-    // A record at a site of the body, located by the collector's rule (K package 4.9).
-    private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
-
-    // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
-    // the copy slot %s<n> (Prefix s; never c, a check's success label), the pooled constant @<name> of index Number (Prefix @), the home of
-    // local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the
-    // null pointer (Prefix n) or the literal integer Number (Prefix NUL).
-    private readonly record struct Value(char Prefix, Int128 Number);
-
-    // A location as IMPL 21.3.1 passes it (Location): its text's address and its byte length.
-    private readonly record struct Site(Value Text, Value Length);
 }

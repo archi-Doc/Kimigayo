@@ -8,14 +8,16 @@
 // around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
-// (__kimi_drop<item>, written by FunctionCodegen for a Type DropGlue has a row for, the string's, R5-M78; C4a the others), ClosureErasure
+// (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
+// array's (R5-M95); a Closure environment's C5a, an erased function's C5b, a handle's C6b, a collection's C8d and C8e), ClosureErasure
 // and ItemAdapter (C5b), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a
 // test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
 // Output: the complete module written to the caller's writer, or nothing and the Records of why: one Unsupported_Kd per subject of a
-// row not written yet (until the R5 plan's unit X2), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
+// row not written yet (until the R5 plan's unit X2), gate step 2's refusal of a body A1 or A2 left inexact (its problem's code at its
+// subject, FunctionCodegen.Write; DECISIONS R5-M96), InternalInvariant_Kd at a broken input contract; no record only for a broken contract
 // without a subject (an Application's startup that is no generated root), which the caller records. The caller publishes each record
 // keyed by its location (DECISIONS R5-M65). The entry's call goes through FunctionCodegen's one call writer (DECISIONS R5-M89).
 // Invariants: generation runs over every item, so every gap is recorded (SPEC 23.1.2), and the buffered text is discarded when any
@@ -226,8 +228,9 @@ internal sealed partial class ModuleCodegen
         return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
     }
 
-    /// <summary>Records a coverage row not written yet or a broken input contract at its subject, once per code and subject.</summary>
-    /// <param name="code">Unsupported_Kd or InternalInvariant_Kd.</param>
+    /// <summary>Records a coverage row not written yet, gate step 2's refusal of a body or a broken input contract at its subject, once per
+    /// code and subject.</summary>
+    /// <param name="code">Unsupported_Kd, a refused body's A1 or A2 code (DECISIONS R5-M96) or InternalInvariant_Kd.</param>
     /// <param name="subject">The located subject.</param>
     internal void Report(DiagnosticCode code, SourceRef subject)
     {

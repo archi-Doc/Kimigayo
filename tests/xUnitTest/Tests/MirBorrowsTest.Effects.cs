@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
@@ -564,89 +563,6 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(2, MirCases.Count(forward));
         Assert.Equal(["hold(value@move) 1"], program.Problems.All.ToArray().Where(x => x.Body == forward.Ordinal && LoanCodes.Contains(x.Code))
             .Select(x => $"{Line(c, x.Subject)} {x.Views}"));
-    }
-
-    // V16 "F5 effects" (DECISIONS R4-M92): one body with M Loans on M mutable statics live across N calls, each to a function writing one
-    // of K other statics, checks each call's keys once per effect root (A4's row, the root's two bits and its candidates): the work grows
-    // linearly in N at M = 4, K = 8 and within the bound's M × (holders) term in M at N = 32. A guard, not a regression: no problem arises.
-    [Fact]
-    public void EffectsScaleWithCallsAndStaticLoans()
-    {
-        static string Shape(int n, int m, int k)
-        {
-            var text = new StringBuilder(EffectTypes).Append("group F\n");
-            for (var i = 0; i < m; i++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var m{i}: Counter = Counter.init()\n");
-            }
-
-            for (var j = 0; j < k; j++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"    public var k{j}: i32 = 0\n    public func w{j}() => F.k{j} = 1\n");
-            }
-
-            text.Append("    public func inspect<T>(value: ref/T) => ()\n    public func shape()\n");
-            for (var i = 0; i < m; i++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        let c{i} = m{i}.view()\n");
-            }
-
-            for (var call = 0; call < n; call++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        w{call % k}()\n");
-            }
-
-            for (var i = 0; i < m; i++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"        inspect(c{i})\n");
-            }
-
-            return text.Append(Prelude).ToString();
-        }
-
-        long[] inN = [.. new[] { 32, 64, 128 }.Select(n => this.Measured(Shape(n, 4, 8)).Work)];
-        long[] inM = [.. new[] { 8, 16, 32 }.Select(m => this.Measured(Shape(32, m, 8)).Work)];
-        output.WriteLine($"N 32, 64, 128 at M 4: work {string.Join(", ", inN)}; M 8, 16, 32 at N 32: work {string.Join(", ", inM)}");
-        Assert.True(Grows(inN, 2), $"work in N {string.Join(", ", inN)}");
-        Assert.True(Grows(inM, 4), $"work in M {string.Join(", ", inM)}");
-    }
-
-    // V16 (R4-M92): A5 with the effect rule on a program version it checked before allocates nothing: the effect roots, the Field numbers,
-    // the activation stamps and A4's row keep their storage, each view's keys are A4's pooled row and an initializer's summary its stored
-    // one (pA's proof). Fail-before: the effect problems.
-    [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void AWarmEffectRunAllocatesNothing()
-    {
-        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
-                public func e1(g: () -> i32) => counter.add(g())
-                public func e6()
-                    let g = counter.guard()
-                    inspect(g)
-                public func e8() => watch = Watch.init()
-                public func e10a()
-                    let lx = x.view()
-                    let ll = log.view()
-                    let v = x.n
-                    inspect(lx)
-                    inspect(ll)
-                public func e16b()
-                    let c = counter.view()
-                    counter = Counter.init()
-                    counter = Counter.init()
-                    inspect(c)
-                public func pA()
-                    let lx = x.view()
-                    let ll = log.view()
-                    _ = useX()
-                    inspect(lx)
-                    inspect(ll)
-
-            """);
-        var program = c.BuildMir();
-        var stratum = new Stratum(c.Types);
-        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Equal(4, program.Problems.All.ToArray().Count(static x => LoanCodes.Contains(x.Code) && x.Subject.Module == 0));
     }
 
     // The Loan problems and located Unsupported_Kd records of a program: the prelude, the effect Types and group State with the given

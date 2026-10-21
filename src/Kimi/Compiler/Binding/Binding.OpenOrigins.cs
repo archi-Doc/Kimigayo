@@ -282,7 +282,8 @@ public sealed partial class Binding
     {
         if (!this.openOrigins.TryGetValue((source, key), out var origin))
         {
-            this.openOrigins.Add((source, key), origin = new(OriginKind.Inference, source, key) { Open = true, InputIndex = -1, IsLocalInput = localInput });
+            origin = new(OriginKind.Inference, source, key) { Open = true, InputIndex = -1, IsLocalInput = localInput, Body = this.formingBody };
+            this.openOrigins.Add((source, key), origin);
         }
 
         return origin;

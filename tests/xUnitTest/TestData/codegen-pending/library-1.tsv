@@ -1,8 +1,6 @@
 fixture	StringFunctionCallerOrderAudit.ll	1
 fixture	StringFunctionCallerOrderWrongOrderAudit.ll	1
 fixture	StringFunctionEarlyArgumentAudit.ll	1
-test	XunitTest.RawPlaceAccessTest.AnExplicitTakeMovesAndDestroys	XunitTest.RawPlaceAccessTest.AnExplicitTakeMovesAndDestroys
-test	XunitTest.RawStorageTest.SlicesViewInitializedStorage	XunitTest.RawStorageTest.SlicesViewInitializedStorage
 test	XunitTest.RawStorageTest.StorageIsAllocatedInitializedTakenAndReleased	XunitTest.RawStorageTest.StorageIsAllocatedInitializedTakenAndReleased
 test	XunitTest.RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces	XunitTest.RawStorageTest.ZeroSizedValuesOccupyTheirOwnPlaces
 test	XunitTest.StringComparisonEmissionTest.AbortStopsComparisonAndCleanup	XunitTest.StringComparisonEmissionTest.AbortStopsComparisonAndCleanup(name: \"Operand\", source: \"func echo(text: string) -> string => text@move\\nfunc fail() -> string\\n    var n = 2147483647\\n    n += 1\\n    return \\\"bad\\\"\\nlet text = \\\"held\\\"\\ntext == fail()\", line: 4, column: 5, destructions: \"held=0;bad=0\")
