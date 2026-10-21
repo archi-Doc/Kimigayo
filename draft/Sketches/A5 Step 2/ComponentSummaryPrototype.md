@@ -4,30 +4,53 @@ Draft record of unit 2x-P12 (package 2b-D §3 and §5, DECISIONS R4-M89; PLAN G1
 compiler, SPEC, test or tracked-prototype change; no verify run. "(H)" marks a reading that no run checked. Working record, not
 authority: SPEC and DECISIONS decide.
 
-Run in an empty folder outside the repository (.NET SDK 11.0.100-rc.2): `dotnet run ComponentSummaryPrototype.cs` (2,000 random
-graphs, about 10 s), or `-- -random 10000`. Exit code: Corrected's failures, 0 on both.
+Revision 1 (2026-10-21) answers the independent review (`p12-review.md`, not yet ACCEPT):
+
+- **P12-1.** F2's peel family is now a template. Three more growth shapes found by the random graphs are closed.
+- **P12-2.** The LFam cases are corrected, and the model checks SPEC 8.7.3's Object Target.
+- **Oracle.** It is tightened as the review asks.
+- **F5 (a).** The located U is demand-driven.
+- **Owner question.** A contract section and one owner proposal are added.
+
+Run in an empty folder outside the repository (.NET SDK 11.0.100-rc.2):
+
+- `dotnet run ComponentSummaryPrototype.cs` runs 2,000 random graphs in about 6 s.
+- `-- -random 10000 [-- -seed S]` runs more graphs.
+- Exit code: Corrected's failures, 0 on every run recorded here.
 
 ## Model
 
-- **Types.** A small term language: primitives; Type formals and abstract Types (`var`); projections with segments (a starred
-  segment is a family); layers whose Semantics is concrete, a pair binder, `outer(X)` (the outer Semantics of a plain formal or
-  projection X) or `outer*(X)` (every layer of X); nominal Types with Type and Origin arguments; tuples; fixed arrays; `fn`;
-  `item(...)` (bound arguments or captures); `dyn C`; `target(X)` (the pair target of a plain formal X).
-- **Program.** One program of 60 declarations: the Kimi prelude (Option, Array, Dictionary, Slice, the iterator storage, Weak,
-  Sender, FixedBuffer), the case declarations, 8 Contracts and 7 conformances. A conformance is verified without itself (SPEC
-  8.3.3), and an intrinsic parent is decided by the judgment (8.7.1).
+- **Types.** A small term language:
+  - primitives; Type formals and abstract Types (`var`);
+  - projections with segments, where a starred segment is a family;
+  - layers whose Semantics is concrete, a pair binder, or `outer(X)` (the outer Semantics of a plain formal or projection X);
+  - nominal Types with Type and Origin arguments; tuples; fixed arrays; `fn`; `item(...)` (bound arguments or captures); `dyn C`;
+  - `target(X)`, the pair target of a plain formal X;
+  - `core:sealed`, `core:open` and `core:error`, the outer core of a Type in a layer obligation.
+- **Program.** 66 declarations:
+  - the Kimi prelude: Option, Array, Dictionary, Slice, the iterator storage, Weak, Sender, FixedBuffer, Box and an open OBox;
+  - the case declarations;
+  - 9 Contracts and 7 conformances. A conformance is verified without itself (SPEC 8.3.3), and an intrinsic parent is decided by the
+    judgment (8.7.1).
 - **Summary (§3.2).** `(ExclT, ExclO, Error, Obl)` comes from one walk of a declaration's storage in its formals. It is the least
-  fixed point over all declarations, from (no, no, no, ∅), with the previous round as seed. A nominal component adds its bits,
-  walks its arguments and maps its `Obl` through [formals ↦ arguments].
+  fixed point over all declarations, from (no, no, no, ∅), seeded with the previous round.
+  - A nominal component adds its bits, walks its arguments and maps its `Obl` through [formals ↦ arguments].
+  - The walk of the declaration's own storage checks that every object form has an Object Target (8.7.3), including a pair binder
+    applied to another Type. A failure sets Error.
+- **Growth and families.** `Obl` grows only around a cycle of the projection-link graph that adds a projection step, or that passes
+  a pair target back as a whole argument (a peel).
+  - Corrected keeps a projection family as Tᵢ.Q*.s.
+  - It keeps a peel family as the template `∀m. O[$h ↦ target^(j·m)(Y)]`, where j is the number of peels per round trip (F2).
 - **Use.** `Owned(D<A,o>) = ¬ExclO ∧ o = static ∧ Owned(A) ∧ Proj[A]` and `Transferable(D<A>) = ¬ExclT ∧ Transferable(A) ∧ Obl[A]`,
-  with Error absorbing. Abstract Types are judged by the Contract-knowledge closure of the premises: exact assumption, refinement,
-  and associated-Type requirements (8.3.2).
+  with Error absorbing.
+  - Abstract Types are judged by the Contract-knowledge closure of the premises: exact assumption, refinement, and associated-Type
+    requirements (8.3.2).
+  - A use-site judgment that meets itself again contributes no exclusion (F2).
 - **Anchor (§3.5).** One verdict per static under its container's premises; A4's table maps it to an outcome.
 - **Oracles.**
   - Every case's SPEC verdict is written by hand.
   - Bounded8 enumerates the family obligations for 8 rounds and judges each by 8.3.2.
-  - On random graphs, the reference is an instantiation BFS over SPEC's components (15.2.3), cut at nominal depth 6 and 9. A query
-    whose two answers differ is skipped.
+  - On random graphs, the reference is an instantiation BFS over SPEC's components (15.2.3); see "Oracle" below.
 
 ## Rules under test
 
@@ -36,12 +59,15 @@ graphs, about 10 s), or `-- -random 10000`. Exit code: Corrected's failures, 0 o
   - An admitted set is "Proven when none [refutes]".
   - An object layer requires its target only when Sealed is Proven.
   - Families are `(Tᵢ, p, q*)` = Tᵢ.p.qᵏ, formed when a new path extends a held one, and judged by B's inductive rule.
-- **Corrected**: the package with findings F1–F5's fixes. Every case meets SPEC under it.
+  - Package also shares the model's representation fixes (the core reduction, target coverage and peel templates), so its column
+    isolates the package's wording; PairBinderOnly isolates the missing `outer(...)`.
+- **Corrected**: the package with the findings' fixes. Every case meets SPEC under it.
 - **Variants**: each changes one rule of Corrected.
   - A and B are the two designs' original rules.
   - TwoValued is the pre-P-2 wording.
   - NoneRefutes, PairBinderOnly, TargetIfSealed and FamilyPrefix are each one piece of Package.
-  - FamilyU is A's fallback; NoInternal drops the iterators' internal storage from the exemption.
+  - FamilyU is A's fallback: a projection family answers Error, and the located U is raised when a judgment reads it.
+  - NoInternal drops the iterators' internal storage from the exemption.
   - Guard is an instantiation walk with today's growth guard (`Binding.Capabilities.cs:228–245`).
   - Cap4U and Cap4P are instantiation walks with a depth cap answering U or P.
   - BodyAnchor anchors at the reading body's premises.
@@ -56,13 +82,22 @@ Owned/Transferable verdicts. The brief's cases are:
 - projections, families with and without the inductive premise, the two-declaration cycle (f7, f8), an invalid Field (c37, c38)
   and the concrete-growth negative check (f4).
 
-The modelling added these cases:
+Added by the modelling:
 
 - a pair binder bound to a plain formal (l16, l17, l23);
 - admitted sets (l20–l22) and an object layer over a refuted abstract target (l24);
 - peeling (l25–l27);
 - a conditional-conformance projection (p6–p8) and two direct projections without a cycle (p9);
 - a Layer family (f9, f10).
+
+Added in revision 1:
+
+- **P12-2.** LFam now requires `T is OTree`, where `contract OTree: Tree, ObjectPayload` supplies `Tree.Child is OTree`, and STree
+  refines OTree. f10's premise is OTree and TTree, without Sealed. f11 (`LFamBad`, the old `T is Tree` form) is E/E by 8.7.3.
+- **The review's k1–k8.**
+  - Its k9 (`s/(T, Base)`) is left out, as the review decided. It terminates here with a constant-core template.
+  - Its verdict hinges on whether a Tuple is an Object Target: 8.7.2 lists Tuples as Sealed, and the engine's ObjectPayload leaf
+    accepts one. That is outside this round.
 
 | Case | Query | Premises | SPEC | why | Package | Corrected | meets |
 | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -171,7 +206,16 @@ The modelling added these cases:
 | f7 | `Even<U>` | `U is TTree` | P/P | a two-declaration cycle | P/P | P/P | yes |
 | f8 | `Even<U>` | `U is Tree and Transferable and Owned` | U/U |  | U/U | U/U | yes |
 | f9 | `LFam<U>` | `U is STree` | P/P | obj/U.Childᵏ: Sealed and Transferable at every k | P/P | P/P | yes |
-| f10 | `LFam<U>` | `U is TTree` | P/U | U.Child's Sealed proof is unknown | P/U | P/U | yes |
+| f10 | `LFam<U>` | `U is OTree and TTree` | P/U | U.Child's Sealed proof is unknown | P/U | P/U | yes |
+| f11 | `LFamBad<U>` | `U is STree` | E/E | 8.7.3: obj/T.(Tree).Child needs an Object Target; Tree supplies no ObjectPayload | E/E | E/E | yes |
+| k1 | `Fwd2<Item>{static}` |  | P/R | SemAny<rc/Item>: a pair binder bound to a projection, s = rc | P/R | P/R | yes |
+| k2 | `Fwd2<Cfg>{static}` |  | P/P | SemAny<i32>: owner/Base | P/P | P/P | yes |
+| k3 | `Fwd2<U>{static}` | `U is THas and Transferable and Owned` | P/U | outer(U.Out) unknown | P/P **UNSOUND** | P/U | yes |
+| k4 | `PA<ref/(ref/(obj/Item) during static) during static>{static}` |  | P/R | a peel through PB: PA<obj/Item> stores obj/Base | P/P **UNSOUND** | P/R | yes |
+| k5 | `PA<ref/(ref/Item during static) during static>{static}` |  | P/P | every level owner or ref | P/P | P/P | yes |
+| k6 | `Peel3<ref/(obj/Item) during static>{static}` |  | P/R | Peel3<obj/Item> stores obj/OBox<Item>, OBox open | P/P **UNSOUND** | P/R | yes |
+| k7 | `Peel3<ref/(ref/i32 during static) during static>{static}` |  | P/P | every level ref or owner over a sealed i32 | P/P | P/P | yes |
+| k8 | `Peel3<U>{static}` | `U is Transferable and Owned` | P/U | every layer of U applied to OBox<...> | P/U | P/U | yes |
 
 ## Generic statics (§3.5)
 
@@ -219,7 +263,7 @@ as a consistency check.
 
 Rounds until no summary changes (cap 24; Bounded8 stops at 8 by design):
 
-| Rules | rounds | not converged | located U (FamilyU) | max obligations |
+| Rules | rounds | not converged | family declarations (FamilyU) | max obligations |
 | --- | --- | --- | --- | --- |
 | Corrected | 7 | — | — | 2 |
 | Package | 24 | Walk | — | 25 |
@@ -230,9 +274,9 @@ Rounds until no summary changes (cap 24; Bounded8 stops at 8 by design):
 | PairBinderOnly | 7 | — | — | 2 |
 | TargetIfSealed | 7 | — | — | 2 |
 | FamilyPrefix | 24 | Walk | — | 25 |
-| FamilyU | 7 | — | Even, LFam, Odd, TreeNode, Walk | 2 |
+| FamilyU | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | 2 |
 | NoInternal | 7 | — | — | 2 |
-| Bounded8 | 8 | Even, LFam, Odd, Peel, TreeNode, Walk | — | 16 |
+| Bounded8 | 8 | Even, LFam, LFamBad, Odd, PA, PB, Peel, Peel3, TreeNode, Walk | — | 16 |
 | Guard | 7 | — | — | 2 |
 | Cap4U | 7 | — | — | 2 |
 | Cap4P | 7 | — | — | 2 |
@@ -246,13 +290,18 @@ Corrected's summaries with obligations:
 - HoldUniq: ExclT no, ExclO no, Error no, Obl {Layer(objuniq, T)}
 - HoldArc: ExclT no, ExclO no, Error no, Obl {Layer(arc, T)}
 - HoldP: ExclT no, ExclO no, Error no, Obl {Layer(arc, T)}
-- SemHold: ExclT no, ExclO no, Error no, Obl {Layer(s, Base)}
-- SemAny: ExclT no, ExclO no, Error no, Obl {Layer(s, Base)}
-- Fwd: ExclT no, ExclO no, Error no, Obl {Layer(outer(T), Base)}
-- Peel: ExclT no, ExclO no, Error no, Obl {Layer(s, Base), Layer(outer*(T), Base)}
+- SemHold: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open)}
+- SemAny: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open)}
+- Fwd: ExclT no, ExclO no, Error no, Obl {Layer(outer(T), core:open)}
+- Peel: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open), ∀m. Layer(outer($h), core:open) with $h = target^m(T)}
+- Fwd2: ExclT no, ExclO no, Error no, Obl {T(T.(Has).Out), Layer(outer(T.(Has).Out), core:open)}
+- PA: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open), ∀m. Layer(outer($h), core:open) with $h = target^m(T)}
+- PB: ExclT no, ExclO no, Error no, Obl {∀m. Layer(outer($h), core:open) with $h = target^m(U)}
+- Peel3: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open), ∀m. Layer(outer($h), core:open) with $h = target^m(T)}
 - PHold: ExclT no, ExclO no, Error no, Obl {T(T.(Has).Out)}
 - TreeNode: ExclT no, ExclO no, Error no, Obl {T(T{.(Tree).Child}*.(Tree).Child)}
 - LFam: ExclT no, ExclO no, Error no, Obl {T(T{.(Tree).Child}*.(Tree).Child), Layer(obj, T{.(Tree).Child}*.(Tree).Child)}
+- LFamBad: ExclT no, ExclO no, Error yes, Obl {T(T{.(Tree).Child}*.(Tree).Child), Layer(obj, T{.(Tree).Child}*.(Tree).Child)}
 - Walk: ExclT no, ExclO no, Error no, Obl {T(T{.(Seq).Next}*.(Seq).Elem), T(T{.(Seq).Next}*.(Seq).Next)}
 - Even: ExclT no, ExclO no, Error no, Obl {T(T.(Tree).Child), T(T.(Tree).Child{.(Tree).Child}*.(Tree).Child)}
 - Odd: ExclT no, ExclO no, Error no, Obl {T(T{.(Tree).Child}*.(Tree).Child)}
@@ -261,159 +310,199 @@ Corrected's summaries with obligations:
 - Exempt declarations (the KimiLibraryShapeTest condition: their own storage reaches no rc, Function or view leaf): Array ExclT no, Dictionary ExclT no, Slice ExclT no, IterCursor ExclT no, ArrayIterator ExclT no
 - Package's Walk at its cap: 25 obligations, still growing; the longest is T(T.(Seq).Next^23{.(Seq).Elem}*).
 
-- **Random graphs** (no projections; 2–4 declarations with pair parameters, Origin slots and open, exempt, invalid and Owned-leaf
-  declarations; closed queries):
-  - 2,000 graphs: 36,108 queries compared, 12 inconclusive, Corrected disagreements 0, at most 5 rounds.
-  - 10,000 graphs: 179,754 compared, 72 inconclusive, 0 disagreements, at most 6 rounds.
-- **Package on 10,000 graphs:** 8 queries are UNSOUND (F1).
-- **Guard on 10,000 graphs:**
-  - Unknown for a Proven Owned in 6,710 queries and for a Proven Transferable in 409;
-  - Unknown for a Refuted Transferable in 46;
-  - misses an Error in 6.
-- **Corrected's family judgment** explores Contract-knowledge states, which are finite: they are sets of Contracts.
+- **Random graphs.** 2–4 declarations with pair parameters, Origin slots, ObjectPayload premises, and open, exempt, invalid and
+  Owned-leaf declarations; closed queries.
+  - The pair binders apply to Base, to Types built from the pair target (Box, OBox, Array, Option and random declarations), and to
+    other formals.
+  - Half the pair declarations peel.
+
+| Seed | Graphs | Compared | Inconclusive | Corrected disagreements | Most rounds | Not converged | With a peel template |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 20261021 | 2,000 | 32,088 | 4,170 | 0 | 5 | 0 | 226 |
+| 20261021 | 10,000 | 161,244 | 19,644 | 0 | 6 | 0 | 1,022 |
+| 7 | 10,000 | 159,882 | 20,064 | 0 | 6 | 0 | 1,053 |
+| 99 | 10,000 | 160,764 | 19,728 | 0 | 6 | 0 | 970 |
+
+On seed 20261021 with 10,000 graphs:
+
+- Package is UNSOUND in 2 queries (F1).
+- Guard gives Unknown for a Proven Owned in 444 queries, Unknown for a Proven Transferable in 16, and Unknown for a Refuted
+  Transferable in 3.
+- Corrected's family judgment explores Contract-knowledge states, which are finite: they are sets of Contracts.
 
 ## Variants
 
-- **Package** (§3.2 as written: no outer(...), "Proven when none does", the target only under a proven Sealed, Tᵢ.p.qᵏ): l17 P/P (UNSOUND); l21 P/P (UNSOUND); l23 P/P (UNSOUND); l26 P/P (UNSOUND); l24 P/U (U for R); f5 NT/NT (NONTERM); f6 NT/NT (NONTERM)
-- **A** (design A's summary: a formal adds nothing, no layer obligation): r12 P/P (UNSOUND); l1 P/P (UNSOUND); l3 P/P (UNSOUND); l5 P/P (UNSOUND); l7 P/P (UNSOUND); l15 P/P (UNSOUND); l17 P/P (UNSOUND); l18 P/P (UNSOUND); l23 P/P (UNSOUND); l26 P/P (UNSOUND); l27 P/P (UNSOUND); f10 P/P (UNSOUND)
-- **B** (design B's ViewTarget (obj, objref, objuniq; two-valued) and Layer(s) (rc, raw); arc continues): l7 P/P (UNSOUND); l12 P/P (UNSOUND); l15 P/P (UNSOUND); l17 P/P (UNSOUND); l18 P/R (R for U); l23 P/P (UNSOUND); l26 P/P (UNSOUND); l27 P/P (UNSOUND); f10 P/R (R for U)
+- **Package** (§3.2 as written: no outer(...), "Proven when none does", the target only under a proven Sealed, Tᵢ.p.qᵏ): l17 P/P (UNSOUND); l21 P/P (UNSOUND); l23 P/P (UNSOUND); l26 P/P (UNSOUND); l24 P/U (U for R); f5 NT/NT (NONTERM); f6 NT/NT (NONTERM); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k6 P/P (UNSOUND)
+- **A** (design A's summary: a formal adds nothing, no layer obligation): r12 P/P (UNSOUND); l1 P/P (UNSOUND); l3 P/P (UNSOUND); l5 P/P (UNSOUND); l7 P/P (UNSOUND); l15 P/P (UNSOUND); l17 P/P (UNSOUND); l18 P/P (UNSOUND); l23 P/P (UNSOUND); l26 P/P (UNSOUND); l27 P/P (UNSOUND); f10 P/P (UNSOUND); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k6 P/P (UNSOUND); k8 P/P (UNSOUND)
+- **B** (design B's ViewTarget (obj, objref, objuniq; two-valued) and Layer(s) (rc, raw); arc continues): l7 P/P (UNSOUND); l12 P/P (UNSOUND); l15 P/P (UNSOUND); l17 P/P (UNSOUND); l18 P/R (R for U); l23 P/P (UNSOUND); l26 P/P (UNSOUND); l27 P/P (UNSOUND); f10 P/R (R for U); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k6 P/P (UNSOUND); k8 P/P (UNSOUND)
 - **TwoValued** (the pre-P-2 wording: an unproven Sealed refutes): l18 P/R (R for U)
 - **NoneRefutes** (§3.2's "Proven when none does" for an admitted set): l21 P/P (UNSOUND)
-- **PairBinderOnly** (Layer(S, X) only for a pair binder S: drops outer(formal)): l17 P/P (UNSOUND); l23 P/P (UNSOUND); l26 P/P (UNSOUND)
+- **PairBinderOnly** (Layer(S, X) only for a pair binder S: drops outer(formal)): l17 P/P (UNSOUND); l23 P/P (UNSOUND); l26 P/P (UNSOUND); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k6 P/P (UNSOUND)
 - **TargetIfSealed** (§3.2's object layer: the target only when Sealed is Proven): l24 P/U (U for R)
 - **FamilyPrefix** (§3.2's family (Tᵢ, p, q*) = Tᵢ.p.qᵏ with B's inductive rule): f5 NT/NT (NONTERM); f6 NT/NT (NONTERM)
-- **FamilyU** (A's fallback: a growing projection cycle is a located U at the declaration (answers Error); peeling stays exact): f1 E/E (E for P); f2 E/E (E for U); f5 E/E (E for P); f6 E/E (E for U); f7 E/E (E for P); f8 E/E (E for U); f9 E/E (E for P); f10 E/E (E for P, E for U)
+- **FamilyU** (A's fallback: a projection family answers Error, with a located U at its declaration raised when a judgment reads it; peels stay exact): f1 E/E (E for P); f2 E/E (E for U); f5 E/E (E for P); f6 E/E (E for U); f7 E/E (E for P); f8 E/E (E for U); f9 E/E (E for P); f10 E/E (E for P, E for U). Located U raised by the judgments that read a family: Even, LFam, LFamBad, Odd, TreeNode, Walk
 - **NoInternal** (the exemption without the iterators' internal storage declarations): c27 P/R (over-strict)
 - **Bounded8** (oracle: obligations enumerated for 8 rounds, each judged by 8.3.2): every case meets SPEC
-- **Guard** (instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r12 U/R (U for P); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f5 U/U (U for P); f7 U/U (U for P); f9 U/U (U for P); f10 U/U (U for P)
-- **Cap4U** (instantiation walk, depth cap 4 answering U): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r11 U/U (U for P, U for R); r12 U/R (U for P); l26 U/R (U for P); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f5 U/U (U for P); f7 U/U (U for P); f9 U/U (U for P); f10 U/U (U for P)
-- **Cap4P** (instantiation walk, depth cap 4 answering P): r11 P/P (UNSOUND)
+- **Guard** (instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r12 U/R (U for P); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f5 U/U (U for P); f7 U/U (U for P); f9 U/U (U for P); f10 U/U (U for P); k8 U/U (U for P)
+- **Cap4U** (instantiation walk, depth cap 4 answering U): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r11 U/U (U for P, U for R); r12 U/R (U for P); l26 U/R (U for P); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f5 U/U (U for P); f7 U/U (U for P); f9 U/U (U for P); f10 U/U (U for P); k4 U/U (U for P, U for R); k5 U/U (U for P); k6 U/R (U for P); k7 U/U (U for P); k8 U/U (U for P)
+- **Cap4P** (instantiation walk, depth cap 4 answering P): r11 P/P (UNSOUND); k4 P/P (UNSOUND)
 - **BodyAnchor** (anchor: the reading body's premises (the Transferable plan §5.3)): every case meets SPEC
+
+## Oracle
+
+- **Shared code (N-1).** The random reference shares the leaf rules (`SealedOf`, `Orig`, the abstract judgments), the
+  substitution (`Bind`, `Subst`, `Resolve`) and the declarations' Error bit (invalid, or ill-formed by 8.7.3) with the model. It
+  checks the summary and its fixed point against instantiation, not the leaf rules. Only the hand cases check the leaf rules.
+- **Depth cut (N-2).** A reference walk cut at nominal depth 9 counts its unexplored part as "no exclusion", so it is deepened to 14.
+  If it is still cut (unless it found Error), or exceeds 4,000 nodes or an instance of 2,000 terms, it counts as inconclusive. These
+  are non-regular instances whose instantiation is infinite: 19,644 of 180,888 queries on seed 20261021, 5,926 of them answering P
+  within depth 14.
+- **Coverage (N-3).** Random graphs have no projections and only closed queries. F1 at an abstract use, F3 and the projection
+  families rest on the hand cases and Bounded8.
 
 ## Findings for 2b-4a and 2b-4
 
-F1, F2 and F5 change §3.2's rules, so they return to the owner (package §5, 2x-P12's row). F3 and F4 correct §3.2's wording; F6–F9
-confirm or clarify it.
+### Contract (R4-M89)
 
-### F1. A pair binder bound to a plain formal (2b-4a, unsound as written)
+| Finding | Within R4-M89's approved contract? | Record |
+| --- | --- | --- |
+| F1 with F2 | **No: owner.** New obligation forms and a second growth source; §3.2's finiteness sentence becomes false | The proposal below |
+| F3 | Yes: a correction of the package's wording (8.3.4 decides; R4-M89 approved a three-valued layer obligation) | DEC with 2b-4 |
+| F4 | Yes: 15.2.4 with 15.2.3 (the View Target is a component); no representation | DEC with 2b-4 |
+| F5 (a) | Yes: the package's named fallback, raised on demand | DEC with 2b-4a |
+| F6 | Yes: a clarification of "the target stays a component" and Error's failure path | DEC with 2b-4a |
+| F9 | Yes: in the approved package's §3.2 | — |
+| F7, F8 | Confirmations | — |
+
+### Proposal for the owner: F1 and F2, a representation change to §3.2
+
+**Add to the per-declaration summary:**
+
+1. **`outer(X)` and `target(X)`.** These name the outer Semantics and the target of a plain formal or projection X, when a
+   declaration instantiates a pair parameter with one of its own plain formals or projections.
+2. **The core reduction.** `Layer(s, X)` becomes `Layer(s, core(X))` for an X whose outer core is known. This is exact: the layer
+   rule reads X only through its Sealed proof (outer core only) and its Transferable verdict, which the walk already requires.
+3. **Peel growth.** The projection-link graph also counts a pair target passed back as a whole argument.
+   - On a growing cycle, the summary keeps the template `∀m. O[$h ↦ target^(j·m)(Y)]`, where j is the number of peels per round
+     trip.
+   - An obligation on `target(Y)` is covered by the same obligation on Y.
+   - An instance at m ≥ 1 needs no walk.
+   - At use, a template runs to the argument's layer depth, or two steps past the first abstract hole.
+4. **Use-site self-reference.** A use-site judgment that meets itself again contributes no exclusion (the least fixed point), and
+   `target(target(X))` of a context's abstract X is identified with `target(X)`.
+
+**Why:**
+
+- Without (1) the package accepts l17, l23, l26, k3, k4 and k6 (UNSOUND), and 1–2 random queries per 10,000 graphs.
+- Without (3), peels do not terminate. The cases are Peel3 (k6–k8), a cycle with two peels per round trip, and peels mixed with
+  non-regular arguments.
+- (2) and (4) are what make (1) and (3) terminate.
+- **Evidence:** 115 hand cases and 3 × 10,000 random graphs, with 0 disagreements and at most 7 rounds.
+
+**Alternative: a demand-driven located `Unsupported_Kd`, like F5 (a).** It is raised when a judgment reads a summary that would
+need `outer(X)` or that holds a peel cycle, and the answer is Error.
+
+- It needs no new obligation form: only the projection-link graph, which F5 (a) needs anyway, and a check for a pair parameter
+  instantiated with a plain formal.
+- **Cost:** every Owned or Transferable judgment of such a Type gives a located U, concrete instances included (`Fwd<obj/Item>`,
+  `Fwd<i32>`, `Peel<…>`).
+- No struct or enum in the Kimi library or the milestones declares a pair parameter (grep of `src/Kimi/Library` and
+  `tests/milestones`). So the cost today falls only on user generic code that instantiates a pair parameter with its own formal.
+
+### F1. A pair binder bound to a plain formal (2b-4a; part of the proposal)
 
 - **Cause.** §3.2 records `Layer(S, X)` when S is a pair binder. Suppose D's storage instantiates `E<s/U>` with D's plain formal T,
   or with a projection. Then s becomes T's outer Semantics and U becomes T's target, and no formal of D names either.
-- **Evidence.** Dropping the obligation accepts l17: `Fwd<obj/Item>` stores `SemAny<obj/Item>`, hence `obj/Base`. It also accepts
-  l23 and l26. On random graphs, Package is UNSOUND in 8 of 179,754 queries.
-- **Required.** The Semantics of a layer obligation is one of:
-  - concrete;
-  - a pair binder;
-  - `outer(X)`, for X a plain formal or projection.
+- **Evidence.** Dropping the obligation accepts l17 (`Fwd<obj/Item>` stores `SemAny<obj/Item>`, hence `obj/Base`), l23, k3, and
+  the peel cases l26, k4 and k6. It is UNSOUND on random graphs too.
+- **At use.** `outer(W)` is W's outer Semantics, which is owner for a non-layer W. An abstract X admits all nine Semantics, or only
+  owner when X is proven ObjectPayload or Sealed.
 
-  The pair target is `target(X)`. At use, `outer(W)` is W's outer Semantics, which is owner for a non-layer W. An abstract X admits
-  all nine Semantics, or only owner when X is proven ObjectPayload or Sealed.
+### F2. Peeling and its family (2b-4a; part of the proposal; revised for P12-1)
 
-### F2. Peeling, a second source of growth (2b-4a, non-terminating without a family)
+- **Cause.** A declaration passes its pair target back as a whole argument, as in `Peel<s/T>{a} = s/Base during a,
+  Option<obj/Peel<T>{a}>`. That peels one layer per level and adds obligations on `outer(target^k(T))` for every k.
+- **Revision 1.** The family is the review's template. `outer*` from round 1 was its constant-X case, and it looped on `Peel3`
+  (`s/OBox<T>`). The random graphs then found three more shapes, each closed by a rule of the proposal:
+  - **Peels mixed with non-regular arguments** (`s/R0<T0, R2<raw/T1>>`) grew the obligation's Type. The core reduction (2) closes
+    them. The proposal's peel cases now have constant-core templates; the template stays general for an abstract X.
+  - **Two peels per round trip** never match a one-step shift. The template step j closes them, and it is exact: it does not
+    require the layers the cycle skips.
+  - **A peel reached from outside the cycle** loops through a target that names the peeling declaration. Two rules close it:
+    - the shift is detected when the edge or the mapped declaration lies on a growing cycle;
+    - template coverage is pointwise (a deeper hole and a covered body, or a plain obligation covered by some instance); this is
+      sound because coverage is monotone through the layer rule and the admitted-set combination.
+- **Use-site rule (4).** It closes a pair binder applied to a Type that names its own declaration (`R<s/T> = s/R<T>`). There the
+  judgment of `Transferable(R<…>)` reads itself again.
+- **Result.** k6, k7 and k8 meet SPEC (P/R, P/P, P/U). Peel, PA/PB and Peel3 converge in 7 rounds. A work budget inside one fixed-point
+  step reports a runaway walk as NONTERM, and no run reaches it.
 
-- **Cause.** §3.2 says Obl grows only around a projection cycle. A declaration can also pass its pair target back as a whole
-  argument, as in `Peel<s/T>{a} = s/Base during a, Option<obj/Peel<T>{a}>`. That peels one layer per level and adds
-  `outer(target^k(T))` for every k.
-- **Evidence.** Before the fix, the first random runs did not converge on such graphs (NONTERM at round 24). Without
-  `outer(...)`, l26 is UNSOUND.
-- **Required.** This was verified on l25–l27 and on the random graphs.
-  - A pair target passed as a whole argument is a growing edge of the projection-link graph.
-  - On such a cycle, the `outer(target^k(Y))` obligations merge into `outer*(Y)`. At use, `outer*(Y)` is the conjunction of the
-    layer rule over W's layers.
-  - An obligation on `target(Y)` is covered by the same obligation on Y. The target is a component of Y, and a Sealed Y is owner,
-    so Ob(Y) ≥ Ob(target(Y)) in P < U < R.
+### F3. "Proven when none does" (2b-4; within R4-M89)
 
-### F3. "Proven when none does" (2b-4, unsound as worded)
-
-- **Evidence.** In l21, s is ref or obj and U is Transferable without a Sealed premise. The ref case proves, but the obj case is
-  Unknown. The wording gives Proven where SPEC gives Unknown. Under the anchor, that accepts a confined read whose `obj/OpenBase`
-  instance is an error.
+- **Evidence.** In l21, s is ref or obj and U is Transferable without a Sealed premise. The wording gives Proven where SPEC gives
+  Unknown. Under the anchor, that accepts a confined read whose `obj/OpenBase` instance is an error.
 - **Required (8.3.4).**
   - Proven when every admitted Semantics proves.
   - Refuted when every one refutes.
   - Otherwise Unknown, with Error absorbing.
 
-### F4. An object layer always requires its target (2b-4, precision)
+### F4. An object layer always requires its target (2b-4; within R4-M89)
 
 - **Evidence.** §3.2 says the layer is "Unknown when [the Sealed proof] is Unknown". For l24 (`obj/U` with `U is not Transferable`)
   that gives U where SPEC gives R: the View Target is an OwnedOrigins component whatever its Sealed proof (15.2.3). This is not
-  unsound, since A4 gives Limit, a located U.
-- **Required.** The layer is the Sealed condition ∧ Transferable(target). The summary walk already visits every target, so only the
-  use-site leaf over an abstract target changes.
+  unsound.
+- **Required.** The layer is the Sealed condition ∧ Transferable(target).
 
-### F5. Projection families: the package's pattern does not terminate (2b-4a, owner choice)
+### F5. Projection families: A's fallback, raised on demand (2b-4a; within R4-M89)
 
-- **Cause.** Take `Walk<T> = T.(Seq).Elem, Option<obj/Walk<T.(Seq).Next>>`. The cycle prefixes `.(Seq).Next` to every obligation,
-  so the obligations are T.Nextᵏ.Elem. `(Tᵢ, p, q*)` with "already held" detection reads T.Next.Elem as "T.Next, then Elem*" and
-  never covers them. f5 and f6 still grow at round 24, with 25 obligations.
-- **The correct shape is Tᵢ.Q*.s:** the cycle's increments apply to the base, then the direct suffix follows. Corrected forms such
-  families only on edges inside a growing SCC, and judges them by exploring Contract-knowledge states. It meets SPEC on f1–f10 and
-  agrees with Bounded8. Without the SCC condition it would over-approximate p9 (`Two<T>`).
-- **B's inductive rule** is sound as a proof rule: each Tᵢ.p.qᵏ follows by k applications of 8.3.2's refinement row, with no
-  coinduction. It is the s = ε case of that exploration.
-- **Options for the owner:**
-  - (a) A's fallback, which the package already names. Any cycle of the projection-link graph with a projection step gives a
-    located `Unsupported_Kd` at the declaration, and its answers are Error. It is registered at X-2 with the SPEC gap "15.3.5's
-    fixed point for projection families". The cycle check is cheap. FamilyU shows f1–f10 as Error (U at TreeNode, LFam, Walk, Even,
-    Odd), sound, in 7 rounds.
-  - (b) The Q*.s families with SCC-gated detection and the state judgment.
-- **Recommendation: (a).**
-  - The detection and inclusion test in (b) are heuristics, checked only on these cases and Bounded8.
-  - SCCs with nested cycles give regular sets beyond one star.
-  - No library or milestone declaration stores a projection recursively (both designs' scans, H).
+- **Cause.** The package's pattern `(Tᵢ, p, q*)` = "Tᵢ.p.qᵏ" does not terminate on `Walk<T>`. The obligations are T.Nextᵏ.Elem,
+  so the correct shape is Tᵢ.Q*.s. f5 and f6 are NONTERM under Package, with 25 obligations at round 24 and still growing.
+- Corrected's Q*.s families with the knowledge-state judgment meet SPEC on f1–f11 and agree with Bounded8. B's inductive rule is
+  sound as a proof rule. It is the s = ε case of that exploration.
+- **2b-4a takes (a), A's fallback.** A cycle of the projection-link graph with a projection step makes the declaration's answers
+  Error.
+  - The located `Unsupported_Kd` is raised when a judgment first reads the family, and recorded once per declaration. It is never
+    raised for a declaration no judgment reads. 2b-4a changes Owned on both pipelines, so a declaration-time U would reject valid
+    programs that compile today.
+  - FamilyU models this: each U (Even, LFam, LFamBad, Odd, TreeNode, Walk) is raised by a case that reads it.
+  - It is registered at X-2 with the SPEC gap "15.3.5's fixed point for projection families".
+  - The Q*.s form would need the owner, and it waits for that SPEC session. Its detection and inclusion test are heuristics, and no
+    library or milestone declaration stores a projection recursively (both designs' scans, H).
 
-  Peeling (F2) stays exact either way, because `outer*` is judged directly on W's layers.
-
-### F6. Error under rc and through nominal components (2b-4a, clarification)
+### F6. Error under rc and through nominal components (2b-4a; within R4-M89)
 
 The walk continues into every layer's target, including under `rc` and `raw`: Owned reads the target, and Error absorbs (8.3.2). A
-nominal component contributes its Error bit. So an invalid declaration reached only under `rc` makes Transferable Error, not
-Refuted. A first reference that stopped at `rc` disagreed with the summary on such random queries; SPEC's components include the
-target.
+nominal component contributes its Error bit, and that bit now includes 8.7.3's ill-formedness, which is P12-2's model check.
 
-### F7. Owned shares the summary; no guard or cap is needed (G174, 2b-4a)
+### F7. Owned shares the summary; no guard or cap is needed (G174; confirmation)
 
-- **Corrected's Owned** meets SPEC on every case, including `Chain<i32>` (r5), `Nest` (r1), `Ping` (r9) and `Fold` (p6, p7). All
-  fixed points converge in at most 7 rounds on the cases and 6 on random graphs, and no declaration holds more than 2 obligations.
-- **Today's guard (Guard)** gives Unknown Owned on 17 cases: G174's `Chain` (r5), and also `Nest`, `Ping`, `Grow`, `Fold`, `Peel`
-  and the families.
-- **A depth cap is no substitute.** Cap4P accepts r11 (UNSOUND: rc six declarations deep), and Cap4U answers U on 19 cases.
+- **Corrected's Owned** meets SPEC on every case, including `Chain<i32>` (r5), `Nest` (r1), `Ping` (r9) and `Fold` (p6, p7).
+- **Today's guard (Guard)** gives Unknown Owned on 18 cases.
+- **A depth cap is no substitute.** Cap4P accepts r11 and k4 (UNSOUND), and Cap4U answers U on 24 cases.
 - 2b-4a's planned change of `ExpandingGenericRecursionRemainsUnknownWithoutUnboundedExpansion` to Proven agrees with SPEC 15.3.5.
   The census of other growers (Copy) is not modelled.
 
-### F8. The container anchor holds (§3.5; A-2, P-2)
+### F8. The container anchor holds (§3.5; A-2, P-2; confirmation)
 
 - Closed statics (a1–a9) get exactly SPEC's verdict.
-- A generic static whose verdict depends on the instance gets Unknown, which A4 maps to Limit, a located U (a10–a14, a16, a17,
-  a20, a21). It never accepts a SPEC error and never gives a Language error for a valid read.
-- It is Proven where the container's premises prove (a15, a18, a19).
-- BodyAnchor accepts a12 (A-2, UNSOUND). TwoValued rejects a16 (a Language error for a valid read), so P-2's fix holds.
+- A generic static whose verdict depends on the instance gets Unknown, which A4 maps to Limit, a located U. It never accepts a SPEC
+  error and never gives a Language error for a valid read.
+- It is Proven where the container's premises prove.
+- BodyAnchor accepts a12 (A-2, UNSOUND), and TwoValued rejects a16 (a Language error for a valid read).
 
-### F9. The exemption (2b-4)
+### F9. The exemption (2b-4; in the approved package)
 
 The exempt table needs the declarations of the iterators' internal storage. Without them `ArrayIterator<i32>` is Refuted
-(NoInternal: c27). The exempt declarations' own summaries have no ExclT, which is the condition `KimiLibraryShapeTest` asserts.
-
-### What 2b-4a and 2b-4 implement (if the owner takes F5 (a))
-
-- **2b-4a (summary):**
-  - the representation F1 and F2 need;
-  - a walk that visits every target (F6) and propagates Excl and Error;
-  - the projection-link graph's growing SCCs (projection steps and peels);
-  - for peels, the `outer*` merge and the target coverage;
-  - for projection families, the located U at the declaration;
-  - Owned reading ExclO, Proj, Error and the instance's Origins.
-- **2b-4 (leaves and anchor):**
-  - F3's admitted-set rule and F4's object leaf;
-  - the exempt table with the iterators' internal storage (F9);
-  - the anchor as §3.5 states it (F8).
+(NoInternal: c27). The exempt declarations' own summaries have no ExclT.
 
 ## Not modelled
 
 - **Neighbouring analyses.** Copy and the census of `RequestCapability`'s other growers; G170's premise supply, where the model's
   knowledge closure is exact over its own facts; identity premises (8.2.3); A4's per-view consumption beyond the anchor table.
-- **Origins and environments.** Origin relations beyond "= static", such as `outlives` premises; associated Types' Origin
-  parameters; inherited environments, which are modelled as extra formals.
+- **Origins and environments.** Origin relations beyond "= static"; associated Types' Origin parameters; inherited environments,
+  which are modelled as extra formals.
 - **Conformances.** Verification covers associated-Type requirements and intrinsic parents only.
+- **Object Targets.** The check covers only the declaration's own storage. Opt-outs are not modelled, and a Tuple counts as an
+  Object Target, as in the engine's ObjectPayload leaf.
 - **Random graphs.** No projections, so families rely on the cases and Bounded8.
 - **Other.** Diagnostic categories, costs and allocations.

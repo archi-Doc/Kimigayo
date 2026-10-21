@@ -2,21 +2,25 @@
 // Unit 2x-P12 (A5 step 2; package 2b-D §3 and §5, DECISIONS R4-M89; PLAN G124, G174): an executable model of the per-declaration component
 // summary that Owned and Transferable share (SPEC 15.2.3, 15.2.4, 15.3.5), in its own file. Record: ComponentSummaryPrototype.md (this folder).
 //   Types    prim; var (a Type formal or an abstract Type of the context); proj (a base and segments, a segment a word of `(C).A` steps,
-//            starred in a family); layer (a concrete Semantics, a pair binder, outer(X): the outer Semantics of a plain formal or
-//            projection X, or outer*(X): every layer of X); nom (a declaration with Type and Origin arguments); tuple; [N of T]; fn (a
-//            common Function Type); item(...) (a Function Item's bound arguments or a Closure's captures); dyn C (a runtime Contract View
-//            Target); target(X) (the pair target of a plain formal X).
+//            starred in a family); layer (a concrete Semantics, a pair binder, or outer(X): the outer Semantics of a plain formal or
+//            projection X); nom (a declaration with Type and Origin arguments); tuple; [N of T]; fn (a common Function Type); item(...)
+//            (a Function Item's bound arguments or a Closure's captures); dyn C (a runtime Contract View Target); target(X) (the pair
+//            target of a plain formal X).
 //   Summary  §3.2: (ExclT, ExclO, Error, Obl) from one walk of a declaration's storage in its formals; the least fixed point over all
 //            declarations from (no, no, no, ∅). A nominal component adds its bits, walks its arguments and maps its Obl through
 //            [formals ↦ arguments]. Obl holds Transferable(P) for a projection P (the only kind Owned reads) and Layer(S, X). Obl grows
 //            only around a cycle of the projection-link graph that adds a projection step or passes a pair target back as a whole
-//            argument (a peel); Corrected keeps such a family as Tᵢ.Q*.s and outer*(Y), and an obligation on target(Y) is covered by
-//            the same obligation on Y.
+//            argument (a peel). Corrected keeps a projection family as Tᵢ.Q*.s and a peel family as the template ∀m. O[$h ↦ target^(j·m)(Y)]
+//            (j peels per round trip); an obligation on target(Y) is covered by the same obligation on Y; Layer(s, X) keeps only X's
+//            outer core (core:sealed, core:open). The direct walk checks SPEC 8.7.3's Object Target.
 //   Use      Owned(D<A,o>) = ¬ExclO ∧ o = static ∧ Owned(A) ∧ Proj[A]; Transferable(D<A>) = ¬ExclT ∧ Transferable(A) ∧ Obl[A]; Error
-//            absorbs. Abstract Types by premises: exact assumption, Contract refinement, associated-Type requirements (SPEC 8.3.2).
-//   Columns  SPEC (written by hand from SPEC), Package (§3.2 as written), Corrected (the package with this round's findings). Each
-//            variant changes one rule of Corrected. Reference: SPEC's components by an instantiation BFS, on random declaration graphs.
-// Run, in an empty folder outside the repository: dotnet run ComponentSummaryPrototype.cs [-- -random N] [-- -v]. Exit code: Corrected's
+//            absorbs. Abstract Types by premises: exact assumption, Contract refinement, associated-Type requirements (SPEC 8.3.2). A
+//            use-site judgment that meets itself again contributes no exclusion.
+//   Columns  SPEC (written by hand from SPEC), Package (§3.2's wording; it shares the representation fixes), Corrected (the package
+//            with this round's findings). Each variant changes one rule of Corrected. Reference: SPEC's components by an instantiation BFS, on random declaration graphs; it
+//            shares the leaf rules, the substitution and the declarations' Error bit with the model, so it checks the summary and the
+//            fixed point, not the leaves.
+// Run, in an empty folder outside the repository: dotnet run ComponentSummaryPrototype.cs [-- -random N] [-- -seed S] [-- -v]. Exit code: Corrected's
 // failures (cases, anchors, conformances, random disagreements).
 using System.Text.RegularExpressions;
 
@@ -43,10 +47,10 @@ sealed class Seg(string[] w, bool star)
 sealed class Sem
 {
     public static readonly string[] Nine = ["owner", "ref", "uniq", "obj", "objref", "objuniq", "rc", "arc", "raw"];
-    public string N; public bool F, Star; public Ty Of; // F: a pair binder; Of: the outer Semantics of a plain formal or projection; Star: of every layer of Of
+    public string N; public bool F; public Ty Of; // F: a pair binder; Of: the outer Semantics of a plain formal or projection
     public static Sem C(string n) => new() { N = n };
     public bool Abstract => F || Of != null;
-    public override string ToString() => Of != null ? $"outer{(Star ? "*" : "")}({Of})" : N;
+    public override string ToString() => Of != null ? $"outer({Of})" : N;
 }
 
 sealed class Ty
@@ -67,12 +71,15 @@ sealed class Ty
         return segs.Count == 0 ? b : new Ty { K = "proj", A = [b], G = [.. segs] };
     }
     public bool Starred => G.Any(g => g.Star);
+    int size = -1; // nodes of the term (shared subterms counted again), saturating; bounds the reference walk
+    public int Size => size >= 0 ? size : size = (int)Math.Min(1_000_000L, 1L + A.Sum(a => (long)a.Size) + (S?.Of?.Size ?? 0));
     public override bool Equals(object o) => o is Ty t && t.ToString() == ToString();
     public override int GetHashCode() => ToString().GetHashCode();
     public override string ToString() => key ??= K switch
     {
         "prim" or "var" => N,
         "view" => "dyn " + N,
+        "core" => $"core:{N}",
         "target" => $"target({A[0]})",
         "fn" => "fn" + Os(),
         "item" => $"item({Js(A)})",
@@ -209,7 +216,7 @@ sealed class Prog
         for (var changed = true; changed;) { changed = false; foreach (var f in F.Where(f => !f.Valid)) if (Verify(f)) f.Valid = changed = true; }
         return this;
     }
-    static IEnumerable<string> Free(Ty t) => t.K == "var" ? [t.N] : t.A.SelectMany(Free);
+    public static IEnumerable<string> Free(Ty t) => t.K == "var" ? [t.N] : t.A.SelectMany(Free);
     bool Verify(Conf f)
     {
         foreach (var k in Close([f.Contract]))
@@ -266,6 +273,7 @@ sealed class Prog
         "nom" => D[x.N].Invalid ? V.E : D[x.N].Open ? V.R : V.P,
         "layer" => x.S.N == "owner" ? SealedOf(x.A[0], sc, e) : V.R,
         "view" => V.R,
+        "core" => x.N == "sealed" ? V.P : x.N == "open" ? V.R : V.E,
         "target" => OwnerKnown(x.A[0], sc) ? SealedOf(x.A[0], sc, e) : V.U,
         "var" => Abs("Sealed", x, sc),
         "proj" => Abstract(x.A[0]) ? Abs("Sealed", x, sc) : Resolve(x, sc, e) is { } rs ? rs.Select(r => SealedOf(r, sc, e)).All() : V.E,
@@ -303,6 +311,14 @@ sealed class Prog
         for (var k = 0; k < e.Slots.Length; k++) m.O[e.Slots[k]] = k < t.O.Length ? t.O[k] : e.Slots[k];
         return m;
     }
+    // At use a context's abstract Type is never substituted again, so target(target(X)) carries the same knowledge as target(X)
+    // (no premise can name either); judgments may identify them. Never applied to a summary, whose formals are still substituted.
+    public static Ty Collapse(Ty t)
+    {
+        if (t.K == "target" && t.A[0].K == "target") return Collapse(t.A[0]);
+        var a = t.A.Select(Collapse).ToArray(); var s = t.S is { Of: { } of } ? new Sem { Of = Collapse(of) } : t.S;
+        return a.SequenceEqual(t.A) && s == t.S ? t : new Ty { K = t.K, N = t.N, A = a, O = t.O, S = s, G = t.G };
+    }
     public static Sem Outer(Ty w) => w.K == "layer" ? w.S : Abstract(w) ? new Sem { Of = w } : Sem.C("owner");
     public static Ty Target(Ty w) => w.K == "layer" ? w.A[0] : Abstract(w) ? new Ty { K = "target", A = [w] } : w;
     public Ty Subst(Ty t, Map m) => t.K switch
@@ -315,7 +331,7 @@ sealed class Prog
         "fn" => new Ty { K = "fn", O = [.. t.O.Select(o => MapO(o, m))] },
         _ => t.A.Length == 0 ? t : new Ty { K = t.K, N = t.N, A = [.. t.A.Select(a => Subst(a, m))] },
     };
-    public Sem SubstSem(Sem s, Map m) => s.Of != null ? s.Star ? new Sem { Of = Subst(s.Of, m), Star = true } : Outer(Subst(s.Of, m)) : s.F && m.S.TryGetValue(s.N, out var r) ? r : s;
+    public Sem SubstSem(Sem s, Map m) => s.Of != null ? Outer(Subst(s.Of, m)) : s.F && m.S.TryGetValue(s.N, out var r) ? r : s;
     static string MapO(string o, Map m) => m.O.TryGetValue(o, out var r) ? r : o;
 
     // Family patterns: words with each star unrolled 0..n times; membership of a word.
@@ -331,20 +347,45 @@ sealed class Prog
         var s = g[j]; var word = i + s.W.Length <= w.Length && s.W.SequenceEqual(w[i..(i + s.W.Length)]);
         return s.Star ? Match(w, g, i, j + 1) || word && Match(w, g, i + s.W.Length, j) : word && Match(w, g, i + s.W.Length, j + 1);
     }
-    // b covers a when b's words include a's, or when a is b's obligation on the pair target of b's subject: an obligation on target(Y) is
-    // implied by the same obligation on Y (the target is a component of Y; a Sealed Y is owner, so target(Y) = Y).
-    public static bool Covered(Ob a, Ob b) => a.Key == b.Key || a.Same(b) && Words(a.X.G).All(w => Match(w, b.X.G))
-        || a.Kind == b.Kind && $"{a.S}" == $"{b.S}" && a.X.K == "target" && (a.X.A[0].Equals(b.X) || Covered(new Ob { Kind = a.Kind, S = a.S, X = a.X.A[0] }, b))
-        || a.Kind == "layer" && b.Kind == "layer" && b.S.Star && a.S.Of != null && a.X.Equals(b.X) && Below(a.S.Of, b.S.Of);
-    static bool Below(Ty y, Ty top) => y.Equals(top) || y.K == "target" && Below(y.A[0], top);
+    // b covers a when a's words are among b's (families); when a is b's obligation on the pair target of b's subject (an obligation on
+    // target(Y) is implied by the same obligation on Y: the target is a component of Y, and a Sealed Y is owner, so target(Y) = Y); or
+    // when b is a peel template ∀k. O[$h ↦ target^k(Y)] and a is one of its instances, or the same template on target^j(Y).
+    public bool Covered(Ob a, Ob b)
+    {
+        if (a.Key == b.Key) return true;
+        if (b.Hole != null)
+        {
+            // Pointwise, with $h shared: a template on a deeper hole whose body b's body covers; a plain obligation one of b's instances
+            // covers. Coverage is monotone through the layer rule and the admitted-set combination, so it holds under outer($h) too.
+            if (a.Hole != null) return Depth(a.Hole, b.Hole) is var d && d >= 0 && d % b.Step == 0 && a.Step % b.Step == 0 && Covered(Body(a), Body(b));
+            var h = b.Hole;
+            for (var k = 0; k <= a.Key.Split("target(").Length; k++) { if (Covered(a, Inst(b, h))) return true; var n = Up(h, b.Step); if (n.Equals(h)) break; h = n; }
+            return false;
+        }
+        return a.Hole == null && (a.Same(b) && Words(a.X.G).All(w => Match(w, b.X.G))
+            || a.Kind == b.Kind && $"{a.S}" == $"{b.S}" && a.X.K == "target" && (a.X.A[0].Equals(b.X) || Covered(new Ob { Kind = a.Kind, S = a.S, X = a.X.A[0] }, b)));
+    }
+    static int Depth(Ty y, Ty top) => y.Equals(top) ? 0 : y.K == "target" && Depth(y.A[0], top) is var d && d >= 0 ? d + 1 : -1; // y = target^d(top)
+    public static Ty Up(Ty h, int j) { for (var i = 0; i < j; i++) h = Target(h); return h; }
+    public Ob Inst(Ob t, Ty h) => Shift(t, "$h", h);
+    static Ob Body(Ob t) => new() { Kind = t.Kind, S = t.S, X = t.X };
+    public int Level(Ob a, Ob t) // the m at which a is the template t's instance (hole target^(m·step)), or -1
+    {
+        var h = t.Hole;
+        for (var k = 0; k <= a.Key.Split("target(").Length; k++) { if (Inst(t, h).Key == a.Key) return k; var n = Up(h, t.Step); if (n.Equals(h)) break; h = n; }
+        return -1;
+    }
+    public Ob Shift(Ob t, string v, Ty to) { var m = new Map(); m.T[v] = to; return new Ob { Kind = t.Kind, S = t.S == null ? null : SubstSem(t.S, m), X = Subst(t.X, m) }; }
 }
 
-sealed class Ob // Transferable(P) for a projection P ("proj"), or Layer(S, X) ("layer")
+sealed class Ob // Transferable(P) for a projection P ("proj"), or Layer(S, X) ("layer"); with Hole, the peel template ∀m. this[$h ↦ target^(m·Step)(Hole)]
 {
-    public string Kind; public Sem S; public Ty X;
-    public string Key => Kind + "|" + S + "|" + X;
-    public bool Same(Ob o) => Kind == o.Kind && $"{S}" == $"{o.S}" && X.K == "proj" && o.X.K == "proj" && X.A[0].Equals(o.X.A[0]);
-    public override string ToString() => Kind == "proj" ? $"T({X})" : $"Layer({S}, {X})";
+    public string Kind; public Sem S; public Ty X; public Ty Hole; public int Step = 1;
+    public string Body => Kind + "|" + S + "|" + X;
+    public string Key => (Hole == null ? "" : $"∀{Hole}/{Step}:") + Body;
+    public Ob Map(Prog p, Map m) => new() { Kind = Kind, S = S == null ? null : p.SubstSem(S, m), X = p.Subst(X, m), Hole = Hole == null ? null : p.Subst(Hole, m), Step = Step };
+    public bool Same(Ob o) => Hole == null && o.Hole == null && Kind == o.Kind && $"{S}" == $"{o.S}" && X.K == "proj" && o.X.K == "proj" && X.A[0].Equals(o.X.A[0]);
+    public override string ToString() => (Hole == null ? "" : "∀m. ") + (Kind == "proj" ? $"T({X})" : $"Layer({S}, {X})") + (Hole == null ? "" : $" with $h = target^{(Step == 1 ? "m" : $"{Step}m")}({Hole})");
 }
 
 sealed class Sum
@@ -367,7 +408,8 @@ sealed class Engine
 {
     const string T = "Transferable", O = "Owned";
     public readonly Prog P; public readonly Rules R; public readonly Dictionary<string, Sum> S = new();
-    public int Rounds; public readonly HashSet<string> Div = new(), FamU = new(); readonly HashSet<string> growing = new();
+    public int Rounds; public readonly HashSet<string> Div = new(), FamU = new(); readonly HashSet<string> growing = new(), growingDecl = new(); bool direct;
+    public readonly SortedSet<string> Raised = new(); // FamilyU: the declarations whose located U a judgment raised by reading the family
     public Engine(Prog p, Rules r) { P = p; R = r; Links(); Solve(); }
 
     // The projection-link graph: (D, i) -r-> (E, j) when D's storage names E with argument j = formal i extended by projection steps r,
@@ -398,7 +440,7 @@ sealed class Engine
         bool Same(string a, string b) => reach[a].Contains(b) && reach[b].Contains(a);
         foreach (var g in edges.Where(g => Same(g.From, g.To) && edges.Any(x => x.Grows != "" && Same(x.From, g.From) && Same(x.To, g.From))))
         {
-            growing.Add(g.D + ">" + g.E);
+            growing.Add(g.D + ">" + g.E); growingDecl.Add(g.E);
             if (R.Family == "U" && edges.Any(x => x.Grows == "proj" && Same(x.From, g.From) && Same(x.To, g.From))) { FamU.Add(g.D); FamU.Add(g.E); }
         }
     }
@@ -421,15 +463,50 @@ sealed class Engine
         a.FamU.UnionWith(prev.FamU); if (FamU.Contains(d.Name)) a.FamU.Add(d.Name);
         foreach (var o in prev.Obl) a.Obl[o.Key] = o.Value; // seeding with the previous round keeps the iteration monotone
         var q = new List<(Ob O, bool C)>(); var seen = new HashSet<string>();
+        direct = true; // D's own storage text: its object forms are checked for an Object Target
         foreach (var t in d.Store) Walk(d, t, R.Exempt(d), a, q, false);
-        while (q.Count > 0)
+        direct = false;
+        for (var work = 0; q.Count > 0; )
         {
-            var batch = q.Where(x => seen.Add(x.O.Key + x.C)).OrderBy(x => x.O.X.Starred).ThenBy(x => x.O.Key.Length).ToList(); q.Clear();
-            foreach (var (o, c) in batch) if (o.Kind == "proj") Walk(d, o.X, false, a, q, c); else Layer(d, o.S, o.X, false, a, q, c);
+            if ((work += q.Count) > 2000) { Div.Add(d.Name); break; } // a walk that keeps growing inside one step: reported, never capped silently
+            var batch = q.Where(x => seen.Add(x.O.Key + x.C)).OrderBy(x => x.O.Hole != null).ThenBy(x => x.O.X.Starred).ThenBy(x => x.O.Key.Length).ToList(); q.Clear();
+            foreach (var (o, c) in batch)
+                if (o.Hole != null) Template(d, o, a, q, c);
+                else if (o.Kind == "proj") Walk(d, o.X, false, a, q, c); else Layer(d, o.S, o.X, false, a, q, c);
         }
         foreach (var o in a.Obl.Values.ToList())
-            if (a.Obl.Values.Any(b => b != o && Prog.Covered(o, b) && !(Prog.Covered(b, o) && string.CompareOrdinal(b.Key, o.Key) > 0))) a.Obl.Remove(o.Key);
+            if (a.Obl.Values.Any(b => b != o && P.Covered(o, b) && !(P.Covered(b, o) && string.CompareOrdinal(b.Key, o.Key) > 0))) a.Obl.Remove(o.Key);
         return a;
+    }
+
+    // A peel template mapped onto a hole with known layers: its instances while the hole has layers, then the template on the rest.
+    void Template(Decl d, Ob o, Sum a, List<(Ob, bool)> q, bool cyc)
+    {
+        for (var h = o.Hole; ; )
+        {
+            if (Prog.Abstract(h)) { Add(a, new Ob { Kind = o.Kind, S = o.S, X = o.S != null && o.S.Abstract ? Core(d, o.X) : o.X, Hole = h, Step = o.Step }, cyc); return; }
+            var i = P.Inst(o, h);
+            if (i.Kind == "proj") Walk(d, i.X, false, a, q, cyc); else Layer(d, i.S, i.X, false, a, q, cyc);
+            var n = Prog.Up(h, o.Step); if (n.Equals(h)) return; h = n;
+        }
+    }
+
+    // Layer(s, X) = Layer(s, core(X)) ∧ Transferable(X) when X's outer core is known: the layer rule reads X only through its Sealed proof
+    // (the outer core alone, SPEC 8.7.2) and its Transferable verdict, which the walk requires as a component (of the layer, or of the
+    // nominal's arguments for a mapped obligation). Keeping only the core stops composite Types growing inside obligations.
+    Ty Core(Decl d, Ty x) => Prog.Abstract(x) || x.K is "view" or "core" ? x : P.SealedOf(x, d.Prem, this) switch
+    {
+        V.P => new Ty { K = "core", N = "sealed" }, V.R => new Ty { K = "core", N = "open" }, V.E => new Ty { K = "core", N = "error" }, _ => x,
+    };
+
+    static string[] Adm(Decl d, string s) => d.Prem.Adm.TryGetValue(s, out var a) ? a : Sem.Nine;
+    static bool ObjectFamily(string n) => n is "obj" or "objref" or "objuniq" or "rc" or "arc";
+    // SPEC 8.7.3's Object Target: ObjectPayload proven, a runtime Contract View Target, or a pair target with pair evidence.
+    bool ObjectTarget(Decl d, Ty x)
+    {
+        if (x.K == "view") return true;
+        if (!Prog.Abstract(x)) return x.K != "layer" && !(x.K == "prim" && x.N == "Never");
+        return P.Is(x, "ObjectPayload", d.Prem, this) == V.P || x.K == "var" && d.Ps.Any(p => p.S != null && p.T == x.N && Adm(d, p.S).All(ObjectFamily));
     }
 
     void Walk(Decl d, Ty t, bool ex, Sum a, List<(Ob, bool)> q, bool cyc)
@@ -450,8 +527,10 @@ sealed class Engine
                 a.Err |= s.Err; a.XT |= s.XT; a.XO |= s.XO; a.FamU.UnionWith(s.FamU);
                 foreach (var x in t.A) Walk(d, x, false, a, q, cyc);
                 if (FamU.Contains(e.Name)) { a.Err = true; return; }
-                var m = P.Bind(e, t); var c = growing.Contains(d.Name + ">" + e.Name);
-                foreach (var o in s.Obl.Values) q.Add((new Ob { Kind = o.Kind, S = o.S == null ? null : P.SubstSem(o.S, m), X = P.Subst(o.X, m) }, c));
+                // On a growing path when the edge grows, or when E itself lies on a growing cycle (E's obligations, mapped through a target
+                // that names E again, deepen by one step per walk).
+                var m = P.Bind(e, t); var c = growing.Contains(d.Name + ">" + e.Name) || growingDecl.Contains(e.Name);
+                foreach (var o in s.Obl.Values) q.Add((o.Map(P, m), c));
                 return;
             default: foreach (var x in t.A) Walk(d, x, ex, a, q, cyc); return; // tuple, array, item
         }
@@ -460,17 +539,11 @@ sealed class Engine
     // §3.2's leaf rule in the walk; Layer(S, X) for a Semantics formal (or outer(...)) and for an object layer over a formal or projection.
     void Layer(Decl d, Sem s, Ty x, bool ex, Sum a, List<(Ob, bool)> q, bool cyc)
     {
-        if (s.Star && !Prog.Abstract(s.Of)) // outer*(Y) for a Y with known layers: each layer, then the rest
-        {
-            var y = s.Of;
-            for (; y.K == "layer"; y = y.A[0]) Layer(d, y.S, x, ex, a, q, cyc);
-            Layer(d, Prog.Abstract(y) ? new Sem { Of = y, Star = true } : Sem.C("owner"), x, ex, a, q, cyc);
-            return;
-        }
+        var own = s.F && x.K == "var" && d.PairTarget(s.N) == x.N; // s/T for the pair's own T is the argument W itself
+        if (direct && (!s.Abstract && ObjectFamily(s.N) || s.F && !own && Adm(d, s.N).Any(ObjectFamily)) && !ObjectTarget(d, x)) a.Err = true; // SPEC 8.7.3, 8.1.1
         if (s.Abstract)
         {
-            var own = s.F && x.K == "var" && d.PairTarget(s.N) == x.N; // s/T for the pair's own T is the argument W itself
-            if (!own && R.Layer != "A" && (R.Outer || s.Of == null)) Add(a, new Ob { Kind = "layer", S = s, X = x }, cyc);
+            if (!own && R.Layer != "A" && (R.Outer || s.Of == null)) Add(a, new Ob { Kind = "layer", S = s, X = Core(d, x) }, cyc);
         }
         else
             switch (s.N)
@@ -484,24 +557,25 @@ sealed class Engine
                     var sealedV = P.SealedOf(x, d.Prem, this); a.XT |= sealedV == V.R; a.Err |= sealedV == V.E;
                     break;
             }
-        Walk(d, x, ex, a, q, cyc); // the target stays a component (OwnedOrigins: referent, payload or View Target)
+        // The target stays a component (OwnedOrigins: referent, payload or View Target). An instance k ≥ 1 of a held peel template needs no
+        // walk: its target is the k-shift of instance 0's, and mapping commutes with the shift, so it yields only further instances.
+        if (!a.Obl.Values.Any(b => b.Hole != null && P.Level(new Ob { Kind = "layer", S = s, X = x }, b) >= 1)) Walk(d, x, ex, a, q, cyc);
     }
 
     void Add(Sum a, Ob o, bool cyc)
     {
-        if (a.Obl.Values.Any(b => Prog.Covered(o, b))) return;
-        if (cyc && o.Kind == "layer" && o.S.Of != null && R.Family != "plain")
-        {
-            // A peeling cycle (a pair target passed back as a whole argument): outer(target^k(Y)) for every k is outer*(Y).
-            static (Ty Core, int Depth) Peel(Ty y) { var k = 0; while (y.K == "target") { y = y.A[0]; k++; } return (y, k); }
-            var (core, depth) = Peel(o.S.Of);
-            var b = a.Obl.Values.FirstOrDefault(b => b.Kind == "layer" && b.S.Of != null && b.X.Equals(o.X) && Peel(b.S.Of).Core.Equals(core));
-            if (b != null)
+        if (a.Obl.Values.Any(b => P.Covered(o, b))) return;
+        if (cyc && o.Hole == null && R.Family != "plain")
+            // A peel cycle (a pair target passed back as a whole argument): when o is a held b with one formal v shifted to target^j(v)
+            // (j peels per round trip), keep the template ∀m. b[v ↦ target^(j·m)(v)], which covers b, o and every later level.
+            foreach (var b in a.Obl.Values.Where(b => b.Hole == null).ToList())
             {
-                var low = Peel(b.S.Of).Depth < depth ? b.S.Of : o.S.Of;
-                a.Obl.Remove(b.Key); o = new Ob { Kind = "layer", S = new Sem { Of = low, Star = true }, X = o.X };
+                var hit = Prog.Free(b.X).Concat(b.S?.Of != null ? Prog.Free(b.S.Of) : []).Distinct().Where(v => v != "$h")
+                    .SelectMany(v => Enumerable.Range(1, 4).Select(j => (v, j))).FirstOrDefault(x => P.Shift(b, x.v, Prog.Up(Ty.Var(x.v), x.j)).Key == o.Key);
+                if (hit.v == null) continue;
+                a.Obl.Remove(b.Key); var t = P.Shift(b, hit.v, Ty.Var("$h")); o = new Ob { Kind = t.Kind, S = t.S, X = t.X, Hole = Ty.Var(hit.v), Step = hit.j };
+                break;
             }
-        }
         if (cyc && o.X.K == "proj")
         {
             static List<string> Tok(Seg[] g) => g.SelectMany(s => s.Star ? new[] { s.ToString() } : s.W).ToList();
@@ -529,6 +603,7 @@ sealed class Engine
             case "prim": return V.P;
             case "fn": return tr ? V.R : t.O.Select(Orig).All();
             case "view": return tr ? V.R : V.P;
+            case "core": return V.P; // the outer core of a Type whose components the summary already requires
             case "var": return P.Abs(i, t, sc);
             case "target": var v = J(i, t.A[0], sc); return P.OwnerKnown(t.A[0], sc) || v == V.P ? v : V.U; // a component of the formal's argument
             case "proj":
@@ -540,7 +615,17 @@ sealed class Engine
         }
     }
 
+    // A use-site judgment that meets itself again (a pair binder applied to a Type built from its own declaration) contributes no
+    // exclusion there: the least fixed point from "no exclusion" (SPEC 15.3.5), with nothing cached from inside the cycle.
+    readonly HashSet<string> judging = new();
     V Nom(string i, Ty t, Scope sc)
+    {
+        t = Prog.Collapse(t); var key = $"{i}|{t}|{sc.Text}";
+        if (!judging.Add(key)) return V.P;
+        try { return NomOnce(i, t, sc); } finally { judging.Remove(key); }
+    }
+
+    V NomOnce(string i, Ty t, Scope sc)
     {
         var tr = i == T; var e = P.D[t.N]; var s = S[e.Name];
         if (Div.Contains(e.Name) && !R.IgnoreDiv) return V.NT;
@@ -548,26 +633,34 @@ sealed class Engine
         if (!tr) v = v.And(t.O.Select(Orig).All());
         var m = P.Bind(e, t);
         foreach (var a in t.A) v = v.And(J(i, a, sc));
+        if (s.FamU.Count > 0) Raised.UnionWith(s.FamU);
         foreach (var o in s.Obl.Values)
         {
             if (!tr && o.Kind != "proj") continue;
-            var x = P.Subst(o.X, m); var sem = o.S == null ? null : P.SubstSem(o.S, m);
-            v = v.And(o.Kind == "proj" ? J(i, x, sc) : R.Layer == "B" && o.S.Abstract ? (sem.N is "rc" or "raw" ? V.R : V.P) : Leaf(sem, x, sc));
+            foreach (var u in Instances(o.Map(P, m)))
+                v = v.And(u.Kind == "proj" ? J(i, u.X, sc) : R.Layer == "B" && o.S.Abstract ? (u.S.N is "rc" or "raw" ? V.R : V.P) : Leaf(u.S, u.X, sc));
         }
         return v;
+    }
+
+    // A template's instances at use: target^k of the hole until it stops changing (a concrete W has finitely many layers), or two steps
+    // past the first abstract hole (target^k(Y) for k ≥ 1 carries no premise of its own: SPEC has no syntax for one).
+    IEnumerable<Ob> Instances(Ob o)
+    {
+        if (o.Hole == null) { yield return o; yield break; }
+        var h = o.Hole; var abstractSteps = 0;
+        for (var k = 0; k < 64; k++)
+        {
+            yield return P.Inst(o, h);
+            if (Prog.Abstract(h) && ++abstractSteps > 2) yield break;
+            var n = Prog.Up(h, o.Step); if (n.Equals(h)) yield break; h = n;
+        }
     }
 
     // Transferable of s/X (SPEC 15.2.4, 3.3.1, 8.7.3): rc and raw refute; an object layer refutes over a non-Sealed target or a runtime
     // Contract View and requires the target; a Semantics formal is judged on its admitted set (SPEC 8.3.4).
     public V Leaf(Sem s, Ty x, Scope sc)
     {
-        if (s.Star)
-        {
-            var parts = new List<V>(); var y = s.Of;
-            for (; y.K == "layer"; y = y.A[0]) parts.Add(Leaf(y.S, x, sc));
-            parts.Add(Leaf(Prog.Abstract(y) ? new Sem { Of = y } : Sem.C("owner"), x, sc));
-            return parts.All();
-        }
         if (s.Abstract)
         {
             var set = s.F ? (sc.Adm.TryGetValue(s.N, out var a) ? a : Sem.Nine) : P.OwnerKnown(s.Of, sc) ? ["owner"] : Sem.Nine;
@@ -640,11 +733,12 @@ sealed class Engine
     {
         var tr = i == T; var acc = V.P; cut = false;
         var seen = new HashSet<string>(); var q = new Queue<Node>();
-        void Push(Ty t, bool ex, int depth, Node par) { if (seen.Add(t + "|" + ex)) q.Enqueue(new Node(t, ex, depth, par)); }
+        var tooBig = false;
+        void Push(Ty t, bool ex, int depth, Node par) { if (t.Size > 2000) tooBig = true; else if (seen.Add(t + "|" + ex)) q.Enqueue(new Node(t, ex, depth, par)); }
         Push(root, false, 0, null);
         while (q.Count > 0)
         {
-            if (seen.Count > 4000) return V.NT; // a walk that keeps instantiating
+            if (seen.Count > 4000 || tooBig) return V.NT; // a walk that keeps instantiating, or an instance too large to print
             var n = q.Dequeue(); var t = n.T;
             switch (t.K)
             {
@@ -670,7 +764,7 @@ sealed class Engine
                     break;
                 case "nom":
                     var e = P.D[t.N];
-                    if (e.Invalid) { acc = acc.And(V.E); break; }
+                    if (e.Invalid || S[e.Name].Err) { acc = acc.And(V.E); break; } // an invalid or ill-formed declaration (8.7.3) is Error, as Binding reports it
                     if (!tr) { if (e.OwnedLeaf) acc = acc.And(V.R); acc = acc.And(t.O.Select(Orig).All()); }
                     var d = n.Depth + 1;
                     if (mode == "ref" && d > lim) { cut = true; break; }
@@ -702,7 +796,8 @@ static class Cases
         .Decl("ownedleaf FixedBuffer", "raw/i32") // verified raw storage: TryLeafCapability refutes Owned
         .Decl("Item", "i32")
         .Decl("open Base", "i32")
-        .Decl("Box<T>", "T");
+        .Decl("Box<T>", "T")
+        .Decl("open OBox<T>", "T");
 
     public static Prog Program() => Prelude(new Prog())
         .Decl("Holder", "rc/Item").Decl("RawHolder", "raw/i32").Decl("Phantom<T>").Decl("Inner<T>", "i32").Decl("enum Msg", "i32", "rc/Item")
@@ -726,17 +821,22 @@ static class Cases
         .Decl("SemAny<s/T>{a}", "s/Base during a")
         .Decl("Fwd<T>{a}", "SemAny<T>{a}")
         .Decl("Peel<s/T>{a}", "s/Base during a", "Option<obj/Peel<T>{a}>")
+        .Decl("Fwd2<T>{a} where T is Has", "SemAny<T.(Has).Out>{a}") // the review's k1-k8
+        .Decl("PA<s/T>{a}", "s/Base during a", "Option<obj/PB<T>{a}>").Decl("PB<U>{a}", "PA<U>{a}")
+        .Decl("Peel3<s/T>{a}", "s/OBox<T> during a", "Option<obj/Peel3<T>{a}>")
         .Decl("Cfg", "i32").Decl("Leaf", "i32").Decl("Wrap<X>", "X").Decl("Pair2<X>", "X", "X")
         .Decl("PHold<T> where T is Has", "T.(Has).Out")
         .Decl("TreeNode<T> where T is Tree", "T", "Array<TreeNode<T.(Tree).Child>>")
-        .Decl("LFam<T> where T is Tree", "obj/T.(Tree).Child", "Option<obj/LFam<T.(Tree).Child>>")
+        .Decl("LFam<T> where T is OTree", "obj/T.(Tree).Child", "Option<obj/LFam<T.(Tree).Child>>")
+        .Decl("LFamBad<T> where T is Tree", "obj/T.(Tree).Child", "Option<obj/LFamBad<T.(Tree).Child>>")
         .Decl("Walk<T> where T is Seq", "T.(Seq).Elem", "Option<obj/Walk<T.(Seq).Next>>")
         .Decl("Even<T> where T is Tree", "Option<obj/Odd<T.(Tree).Child>>").Decl("Odd<T> where T is Tree", "Option<obj/Even<T.(Tree).Child>>", "T")
         .Decl("Fold<T> where T is Has", "T.(Has).Out", "Option<obj/Fold<Pair2<T>>>")
         .Decl("Two<T> where T is Seq", "T.(Seq).Elem", "T.(Seq).Next.(Seq).Elem")
         .Contract("Tree", "Tree.Child is Tree") // SPEC 8.3.3's recursive Contract
         .Contract("TTree: Tree, Transferable, Owned", "Tree.Child is TTree")
-        .Contract("STree: TTree, Sealed, ObjectPayload", "Tree.Child is STree")
+        .Contract("OTree: Tree, ObjectPayload", "Tree.Child is OTree")
+        .Contract("STree: TTree, OTree, Sealed", "Tree.Child is STree")
         .Contract("Seq", "Seq.Next is Seq")
         .Contract("TSeq: Seq", "Seq.Next is TSeq and Transferable and Owned", "Seq.Elem is Transferable and Owned")
         .Contract("Has").Contract("THas: Has", "Has.Out is Transferable and Owned").Contract("Portable: Transferable")
@@ -852,7 +952,16 @@ static class Cases
         ("f7", "family", "Even<U>", "U is TTree", "P/P", "a two-declaration cycle"),
         ("f8", "family", "Even<U>", "U is Tree and Transferable and Owned", "U/U", ""),
         ("f9", "family", "LFam<U>", "U is STree", "P/P", "obj/U.Childᵏ: Sealed and Transferable at every k"),
-        ("f10", "family", "LFam<U>", "U is TTree", "P/U", "U.Child's Sealed proof is unknown"),
+        ("f10", "family", "LFam<U>", "U is OTree and TTree", "P/U", "U.Child's Sealed proof is unknown"),
+        ("f11", "family", "LFamBad<U>", "U is STree", "E/E", "8.7.3: obj/T.(Tree).Child needs an Object Target; Tree supplies no ObjectPayload"),
+        ("k1", "review", "Fwd2<Item>{static}", "", "P/R", "SemAny<rc/Item>: a pair binder bound to a projection, s = rc"),
+        ("k2", "review", "Fwd2<Cfg>{static}", "", "P/P", "SemAny<i32>: owner/Base"),
+        ("k3", "review", "Fwd2<U>{static}", "U is THas and Transferable and Owned", "P/U", "outer(U.Out) unknown"),
+        ("k4", "review", "PA<ref/(ref/(obj/Item) during static) during static>{static}", "", "P/R", "a peel through PB: PA<obj/Item> stores obj/Base"),
+        ("k5", "review", "PA<ref/(ref/Item during static) during static>{static}", "", "P/P", "every level owner or ref"),
+        ("k6", "review", "Peel3<ref/(obj/Item) during static>{static}", "", "P/R", "Peel3<obj/Item> stores obj/OBox<Item>, OBox open"),
+        ("k7", "review", "Peel3<ref/(ref/i32 during static) during static>{static}", "", "P/P", "every level ref or owner over a sealed i32"),
+        ("k8", "review", "Peel3<U>{static}", "U is Transferable and Owned", "P/U", "every layer of U applied to OBox<...>"),
     ];
 
     // Generic statics: (id, container, static Type, reading body's extra premises, instance read, SPEC: the confined read is an error)
@@ -902,7 +1011,7 @@ static class Run
         new("PairBinderOnly", Outer: false, Note: "Layer(S, X) only for a pair binder S: drops outer(formal)"),
         new("TargetIfSealed", TargetAlways: false, Note: "§3.2's object layer: the target only when Sealed is Proven"),
         new("FamilyPrefix", Family: "prefix", Note: "§3.2's family (Tᵢ, p, q*) = Tᵢ.p.qᵏ with B's inductive rule"),
-        new("FamilyU", Family: "U", Note: "A's fallback: a growing projection cycle is a located U at the declaration (answers Error); peeling stays exact"),
+        new("FamilyU", Family: "U", Note: "A's fallback: a projection family answers Error, with a located U at its declaration raised when a judgment reads it; peels stay exact"),
         new("NoInternal", Internal: false, Note: "the exemption without the iterators' internal storage declarations"),
         new("Bounded8", Family: "plain", Cap: 8, IgnoreDiv: true, Note: "oracle: obligations enumerated for 8 rounds, each judged by 8.3.2"),
         new("Guard", Walk: "guard", Note: "instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)"),
@@ -924,7 +1033,7 @@ static class Run
         var cor = engines["Corrected"]; var fails = 0;
 
         Console.WriteLine($"# 2x-P12 component summary prototype\n\nDeclarations {p.D.Count}, Contracts {p.C.Count}, conformances {p.F.Count}, cases {Cases.All.Length}, anchors {Cases.Anchors.Length}.");
-        Console.WriteLine("\n## Fixed point (rounds until no summary changes; cap 24, Bounded8 8)\n\n| Rules | rounds | not converged | located U (FamilyU) | max obligations |\n| --- | --- | --- | --- | --- |");
+        Console.WriteLine("\n## Fixed point (rounds until no summary changes; cap 24, Bounded8 8)\n\n| Rules | rounds | not converged | family declarations (FamilyU) | max obligations |\n| --- | --- | --- | --- | --- |");
         foreach (var (name, e) in engines)
             Console.WriteLine($"| {name} | {e.Rounds} | {(e.Div.Count == 0 ? "—" : string.Join(", ", e.Div.Order()))} | {(e.FamU.Count == 0 ? "—" : string.Join(", ", e.FamU.Order()))} | {e.S.Values.Max(s => s.Obl.Count)} |");
         Console.WriteLine("\nCorrected's summaries with obligations or a family:\n");
@@ -983,64 +1092,77 @@ static class Run
                 var (o, t) = results[c.Id][v.Name]; var k = string.Join(", ", new[] { Cls(Pv(c.Spec[0]), o), Cls(Pv(c.Spec[2]), t) }.Where(x => x.Length > 0).Distinct());
                 return $"{c.Id} {S2(o, t)} ({k})";
             }).ToList();
-            Console.WriteLine($"- **{v.Name}** ({v.Note}): {(diffs.Count == 0 ? "every case meets SPEC" : string.Join("; ", diffs))}");
+            var raised = engines[v.Name].Raised.Count > 0 ? $". Located U raised by the judgments that read a family: {string.Join(", ", engines[v.Name].Raised)}" : "";
+            Console.WriteLine($"- **{v.Name}** ({v.Note}): {(diffs.Count == 0 ? "every case meets SPEC" : string.Join("; ", diffs))}{raised}");
         }
 
         var graphs = args.SkipWhile(a => a != "-random").Skip(1).Select(int.Parse).DefaultIfEmpty(2000).First();
-        fails += Rand.Check(graphs, 20261021);
+        fails += Rand.Check(graphs, args.SkipWhile(a => a != "-seed").Skip(1).Select(int.Parse).DefaultIfEmpty(20261021).First());
         Console.WriteLine($"\nCorrected failures: {fails}");
         return fails;
     }
 }
 
-// Random small declaration graphs (no projections): Corrected's summary against the instantiation reference (BFS cut at nominal depth
-// 6 and 9, at most 4,000 nodes; a query whose two answers differ, or that exceeds the nodes, is inconclusive and skipped). Closed queries only, so every answer is P, R, U (an Origin)
-// or E.
+// Random small declaration graphs (no projections): Corrected's summary against the instantiation reference (a BFS cut at nominal depth
+// 9, deepened to 14 when cut; still cut or over 4,000 nodes: inconclusive). Closed queries only, so every answer is P, R, U (an Origin) or E.
+// Pair binders apply to Base, to Types built from the pair target, and to other formals; half the pair declarations peel.
 static class Rand
 {
     static readonly string[] Args = ["i32", "Item", "Base", "rc/Item", "obj/Base", "obj/Item", "ref/i32 during static", "ref/i32 during local", "(i32, i32)", "arc/Item", "raw/i32", "Option<Item>", "Box<Base>", "Weak<rc/Item>", "fn"];
     public static int Check(int graphs, int seed)
     {
-        var rnd = new Random(seed); int queries = 0, inconclusive = 0, maxRounds = 0, bad = 0; var cls = new SortedDictionary<string, int>(); var first = new SortedDictionary<string, string>();
+        var rnd = new Random(seed); int queries = 0, inconclusive = 0, deepened = 0, cutP = 0, maxRounds = 0, pkgRounds = 0, corDiv = 0, pkgDiv = 0, peels = 0, bad = 0; var cls = new SortedDictionary<string, int>(); var first = new SortedDictionary<string, string>();
         for (var g = 0; g < graphs; g++)
         {
             var p = Cases.Prelude(new Prog()); var nd = rnd.Next(2, 5);
             var heads = Enumerable.Range(0, nd).Select(k => (Name: "R" + k, Pair: rnd.Next(3) == 0, Arity: rnd.Next(1, 3), Slot: rnd.Next(3) == 0)).ToArray();
-            string Ref(int depth, string[] formals, string slot)
+            string Ref(int depth, string[] formals, string slot, HashSet<string> objT, string first = null)
             {
                 var h = heads[rnd.Next(nd)];
-                return h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(_ => Gen(depth - 1, formals, null, slot))) + ">" + (h.Slot ? "{" + (slot ?? "static") + "}" : "");
+                return h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(j => j == 0 && first != null ? first : Gen(depth - 1, formals, null, slot, objT))) + ">" + (h.Slot ? "{" + (slot ?? "static") + "}" : "");
             }
-            string Gen(int depth, string[] formals, string pair, string slot)
+            string Gen(int depth, string[] formals, string pair, string slot, HashSet<string> objT)
             {
-                var o = slot ?? "static"; string X() => Gen(depth - 1, formals, pair, slot);
-                string Obj() => rnd.Next(4) switch { 0 => "Item", 1 => "Base", 2 => formals[rnd.Next(formals.Length)], _ => Ref(depth, formals, slot) };
-                if (depth <= 0) return rnd.Next(2) == 0 ? "i32" : formals[rnd.Next(formals.Length)];
+                var o = slot ?? "static"; string X() => Gen(depth - 1, formals, pair, slot, objT);
+                string Formal() => formals[rnd.Next(formals.Length)];
+                string Over(string f) { objT.Add(f); return f; } // an object form over a formal needs its ObjectPayload premise (SPEC 8.7.3)
+                string Obj() => rnd.Next(4) switch { 0 => "Item", 1 => "Base", 2 => Over(Formal()), _ => Ref(depth, formals, slot, objT) };
+                string PairOver() => rnd.Next(5) switch // the pair binder over Base, over a Type built from the pair target, or over another formal
+                {
+                    0 => "Base", 1 => new[] { "Box", "OBox", "Array", "Option" }[rnd.Next(4)] + "<T0>", 2 => Ref(depth, formals, slot, objT, "T0"),
+                    3 => formals.Length > 1 ? Over("T1") : "OBox<T0>", _ => $"({Ref(depth, formals, slot, objT, "T0")})",
+                };
+                if (depth <= 0) return rnd.Next(2) == 0 ? "i32" : Formal();
                 return rnd.Next(16) switch
                 {
-                    0 => "i32", 1 => formals[rnd.Next(formals.Length)], 2 => $"rc/({X()})", 3 => $"raw/({X()})", 4 => "obj/" + Obj(), 5 => "arc/" + Obj(),
-                    6 => $"objref/{Obj()} during {o}", 7 => $"ref/({X()}) during {o}", 8 => pair != null ? $"{pair}/Base during {o}" : "Base",
-                    9 => $"({X()}, {X()})", 10 => $"Option<{X()}>", 11 or 12 => Ref(depth, formals, slot), 13 => "fn", 14 => $"Array<{X()}>", _ => $"Box<{X()}>",
+                    0 => "i32", 1 => Formal(), 2 => "rc/" + Obj(), 3 => $"raw/({X()})", 4 => "obj/" + Obj(), 5 => "arc/" + Obj(),
+                    6 => $"objref/{Obj()} during {o}", 7 => $"ref/({X()}) during {o}", 8 => pair != null ? $"{pair}/{PairOver()} during {o}" : "Base",
+                    9 => $"({X()}, {X()})", 10 => $"Option<{X()}>", 11 or 12 => Ref(depth, formals, slot, objT), 13 => "fn", 14 => $"Array<{X()}>", _ => $"Box<{X()}>",
                 };
             }
             foreach (var h in heads)
             {
                 var ps = Enumerable.Range(0, h.Arity).Select(k => k == 0 && h.Pair ? "s/T0" : "T" + k).ToArray(); var formals = Enumerable.Range(0, h.Arity).Select(k => "T" + k).ToArray();
                 var flags = (rnd.Next(5) == 0 ? "open " : "") + (rnd.Next(10) == 0 ? "exempt " : "") + (rnd.Next(20) == 0 ? "ownedleaf " : "");
-                string[] store = rnd.Next(20) == 0 ? ["Missing"] : Enumerable.Range(0, rnd.Next(1, 4)).Select(_ => Gen(3, formals, h.Pair ? "s" : null, h.Slot ? "a" : null)).ToArray();
-                p.Decl($"{flags}{h.Name}<{string.Join(", ", ps)}>" + (h.Slot ? "{a}" : ""), store);
+                var objT = new HashSet<string>(); var slot = h.Slot ? "{a}" : "";
+                var store = rnd.Next(20) == 0 ? new List<string> { "Missing" } : Enumerable.Range(0, rnd.Next(1, 4)).Select(_ => Gen(3, formals, h.Pair ? "s" : null, h.Slot ? "a" : null, objT)).ToList();
+                if (h.Pair && rnd.Next(2) == 0) store.Add($"Option<obj/{h.Name}<{string.Join(", ", formals)}>{slot}>"); // a peel: the pair target passed back whole
+                p.Decl($"{flags}{h.Name}<{string.Join(", ", ps)}>{slot}" + (objT.Count > 0 ? " where " + string.Join("; ", objT.Order().Select(f => f + " is ObjectPayload")) : ""), [.. store]);
             }
             p.Done();
             var cor = new Engine(p, new Rules("Corrected")); var pkg = new Engine(p, new Rules("Package", Outer: false, AllAdmitted: false, TargetAlways: false, Family: "prefix")); var grd = new Engine(p, new Rules("Guard", Walk: "guard"));
-            maxRounds = Math.Max(maxRounds, Math.Max(cor.Rounds, pkg.Rounds));
+            maxRounds = Math.Max(maxRounds, cor.Rounds); pkgRounds = Math.Max(pkgRounds, pkg.Rounds); corDiv += cor.Div.Count > 0 ? 1 : 0; peels += cor.S.Values.Any(x => x.Obl.Values.Any(o => o.Hole != null)) ? 1 : 0; pkgDiv += pkg.Div.Count > 0 ? 1 : 0;
             foreach (var h in heads)
                 for (var k = 0; k < 3; k++)
                 {
                     var q = Parser.Parse(p, h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(_ => Args[rnd.Next(Args.Length)])) + ">" + (h.Slot ? (rnd.Next(2) == 0 ? "{static}" : "{local}") : ""));
                     foreach (var i in new[] { "Owned", "Transferable" })
                     {
-                        var r8 = cor.Expand(i, q, new Scope(), "ref", 6, out _); var r12 = cor.Expand(i, q, new Scope(), "ref", 9, out _);
-                        if (r8 != r12 || r12 == V.NT) { inconclusive++; continue; }
+                        // A walk cut at depth 9 treats its unexplored part as "no exclusion": deepen it to 14, and count it inconclusive when it is
+                        // still cut (unless it found Error, which nothing deeper changes) or exceeds 4,000 nodes.
+                        var r12 = cor.Expand(i, q, new Scope(), "ref", 9, out var cut);
+                        if (cut && r12 != V.E) { deepened++; r12 = cor.Expand(i, q, new Scope(), "ref", 14, out cut); }
+                        if (r12 == V.NT || cut && r12 != V.E) { inconclusive++; cutP += r12 == V.P ? 1 : 0; continue; }
                         queries++;
                         var c = cor.J(i, q, new Scope());
                         if (c != r12) { bad++; if (bad <= 5) Console.WriteLine($"\nRandom disagreement ({i} of `{q}`): reference {r12}, Corrected {c}\n" + string.Join("\n", p.D.Values.Where(d => d.Name.StartsWith('R')).Select(d => $"  {d.Text} = {string.Join(", ", d.Store)}"))); }
@@ -1049,8 +1171,8 @@ static class Rand
                     }
                 }
         }
-        Console.WriteLine($"\n## Random declaration graphs\n\n{graphs} graphs of 2–4 declarations (seed 20261021): {queries} closed queries compared, {inconclusive} inconclusive (depth 6 and 9 differ, or over 4,000 nodes), "
-            + $"Corrected disagreements {bad}, most fixed-point rounds {maxRounds}.\nOther rules against the reference: {(cls.Count == 0 ? "none differ" : string.Join("; ", cls.Select(x => $"{x.Key} ×{x.Value}")))}.");
+        Console.WriteLine($"\n## Random declaration graphs\n\n{graphs} graphs of 2–4 declarations (seed {seed}): {queries} closed queries compared ({deepened} reference walks cut at depth 9 deepened to 14); {inconclusive} inconclusive (still cut, {cutP} of them answering P, or over 4,000 nodes or an instance over 2,000 terms); "
+            + $"Corrected disagreements {bad}, most fixed-point rounds {maxRounds}, graphs not converged {corDiv}, graphs with a peel template {peels} (Package: {pkgRounds} rounds, {pkgDiv} graphs not converged).\nOther rules against the reference: {(cls.Count == 0 ? "none differ" : string.Join("; ", cls.Select(x => $"{x.Key} ×{x.Value}")))}.");
         foreach (var (k, v) in first) Console.WriteLine($"- first {k}: {v}");
         return bad;
     }
