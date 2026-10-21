@@ -457,11 +457,15 @@ public sealed class MirInitTest(ITestOutputHelper output)
         "    return v[(label l: do\n        if c => exit to l i\n        exit to l missing\n    )]\n",
         "MovedPlace_Kd s 1")]
 
-    // The labeled do, an operand without a Type, is replaced with its body, whose problems are lost (PLAN G121's failed construct).
+    // A labeled do or loop, an operand without a Type, is replaced with its body, whose problems are lost (PLAN G121's failed construct).
     [InlineData(
         Take + "func f() -> i32\n    let s = \"x\"\n    return other + label l: do\n        _ = once(s@move)\n        _ = once(s@move)\n" +
         "        exit to l missing\n",
         "")]
+    [InlineData(
+        Take + "func f(c: bool) -> i32\n    let s = \"x\"\n    _ = once(s@move)\n    _ = once(s@move)\n    return other + label l: loop\n" +
+        "        if c => exit to l 1\n        exit to l missing\n",
+        "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f()\n    var t: string\n    t = missing\n    _ = once(t@move)\n", "")]
     [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "UninitializedPlace_Kd self.b 1")]
     [InlineData(
