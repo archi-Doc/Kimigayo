@@ -207,12 +207,12 @@ internal sealed partial class FunctionCodegen
         this.Store(statement, result);
     }
 
-    // The failure of the check named by id, Aborting at a site's location (C1a's Location rule), spelled into text; false after a record.
+    // The failure of the check named by id, Aborting at a site's location (Location), spelled into text; false after a record.
     private bool FailureAt(int id, in SourceInfo source, Span<char> text, out ScalarCheck failure)
     {
-        var location = this.Location(source);
-        failure = location < 0 ? default : this.Failure(id, location, text);
-        return location >= 0;
+        var located = this.Location(source, out var site);
+        failure = located ? this.Failure(id, site, text) : default;
+        return located;
     }
 
     // A row of the conversion table: the LLVM cast (null: the representation is kept) and the check.

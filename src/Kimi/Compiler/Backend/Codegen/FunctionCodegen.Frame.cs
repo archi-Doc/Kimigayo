@@ -32,8 +32,7 @@ internal sealed partial class FunctionCodegen
     {
         None, // Zero-sized: no storage.
         Slot, // Its alloca, %l<local>.
-        Argument, // The pointer its caller passed, %a<slot>.
-        Result, // The result slot, %ret.
+        Parameter, // The pointer its caller passed, a pointer-passed argument or the result slot: its parameter of the signature.
     }
 
     /// <summary>Gets the order in which a body kind's Arg locals hold its parameters: the one switch over the closed MirBodyKind vocabulary
@@ -160,22 +159,18 @@ internal sealed partial class FunctionCodegen
     }
 
     // The entry block (I2): a pointer-passed argument and the result slot are their locals' homes; one aligned alloca per other local of
-    // nonzero size; each Value argument stored into its local's slot.
+    // nonzero size; each Value argument stored into its local's slot. A parameter is its signature's (Prefix p, spelled by its name).
     private void Prologue()
     {
-        var output = this.output;
+        var (output, parameters) = (this.output, this.abi.Parameters);
         output.Write(this.abi.GetDefinition(exported: false));
         output.Write("entry:\n");
-        foreach (var parameter in this.abi.Parameters)
+        for (var i = 0; i < parameters.Length; i++)
         {
-            if (parameter.Kind == AbiParameterKind.OwnedSlot)
+            if (parameters[i].Kind is AbiParameterKind.OwnedSlot or AbiParameterKind.ResultSlot)
             {
-                ref var slot = ref this.slots[this.LocalOf(parameter)];
-                slot = slot with { Home = Home.Argument, Index = parameter.LogicalIndex };
-            }
-            else if (parameter.Kind == AbiParameterKind.ResultSlot)
-            {
-                this.slots[0] = this.slots[0] with { Home = Home.Result };
+                ref var slot = ref this.slots[parameters[i].Kind == AbiParameterKind.ResultSlot ? 0 : this.LocalOf(parameters[i])];
+                slot = slot with { Home = Home.Parameter, Index = i };
             }
         }
 
@@ -192,12 +187,12 @@ internal sealed partial class FunctionCodegen
             this.WriteSlot("  %s", i, this.copies[i]);
         }
 
-        foreach (var parameter in this.abi.Parameters)
+        for (var i = 0; i < parameters.Length; i++)
         {
-            if (parameter.Kind is AbiParameterKind.Value or AbiParameterKind.SharedReference)
+            if (parameters[i].Kind is AbiParameterKind.Value or AbiParameterKind.SharedReference)
             {
-                var local = this.LocalOf(parameter);
-                this.StoreAt(new('h', local), this.slots[local].Value.Layout, this.Widen(this.slots[local].Value, new('a', parameter.LogicalIndex)));
+                var local = this.LocalOf(parameters[i]);
+                this.StoreAt(new('h', local), this.slots[local].Value.Layout, this.Widen(this.slots[local].Value, new('p', i)));
             }
         }
 
@@ -238,6 +233,6 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
     }
 
-    // A local's home and representation: Index is a pointer-passed argument's slot.
+    // A local's home and representation: Index is a Parameter home's parameter.
     private readonly record struct Slot(Home Home, int Index, ValueLowering Value);
 }

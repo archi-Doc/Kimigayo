@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C8a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73, R5-M76,
-// R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92), MIR code generation: the LLVM definition of one body item of the checked set from its validated,
-// analyzed MIR body in the item's instance, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73,
+// R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93), MIR code generation: the LLVM definition of one body item of the checked
+// set from its validated, analyzed MIR body in the item's instance, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one
 // located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and analysis problems
@@ -14,34 +14,35 @@
 // its local's slot, a pointer-passed argument and the result slot used in place, then one per copy slot (R5-M89); I3 exactly the blocks
 // MirReach.Walk(body, 0, checks: false) reaches, in index order, so code only the checks reach is never generated (SPEC 14.10.3); I4 an
 // operand is read at each use (loaded, or its address when its value is in memory); I5 a check not Proven Aborts at its site's location
-// text (SPEC 22.5.1); I7 every Type is Layout.Of(TypeOf(item, t)); I8 a call's target is the collector's at its site, read by one forward
-// cursor; I9 no nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow (nothing is generated); an
-// Assign into a Place the place writer locates (FunctionCodegen.Places: a local's home, a zero-sized one's the module's zero-sized symbol,
-// and the projections, an Index with its bounds check), after its rvalue, each value put in its representation (a value in memory, a slot
-// Type other than the string's record, copied by memcpy; nothing for a zero-sized one): of a Use, from a Copy, Move or PairAcquire of such
-// a Place (a PairAcquire's two cases write the same bits) or a Bool, Integer, Float or Unit constant or a raw pointer's null, or of a
-// string constant to a string Place (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer,
-// wrapping integer, floating-point, bool, char and Unit operands and a raw pointer's == and != and displacement by the operator table
-// (FunctionCodegen.Arithmetic; R5-M92), or of a numeric, wrapping, bit or raw pointer Cast by the conversion table (FunctionCodegen.Casts),
-// or of a Ref, or of a Tuple, struct, enum Case or fixed-array Aggregate of such operands, or of a Fill of one, a counted loop over its
-// instance's length, or of a Discriminant, of a Len of a fixed array, Array or Slice, or of an Adapt by the rvalue the item's view selects
-// (FunctionCodegen.Rvalues and .Aggregates; R5-M78, R5-M83, R4-M81, R5-M87); Goto, SwitchInt, Return and Unreachable; a Call of the console
-// writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1), of a
-// function's instance under its signature or of a #LibraryImport function under its C signature, each argument by its parameter, a Copy of
-// a value in memory and a string constant through a copy slot, the result slot the destination, unreachable after a call without a target
-// (FunctionCodegen.Calls; R5-M89), of an intrinsic by its row's writer (FunctionCodegen.Intrinsics: Raw's storage operations, the byte
-// copy, the nullable Alloc, $abort and Fail; R5-M92); a DefaultTemplate body, its prepared inputs in slot order (OrderOf); a Drop's Keep
-// and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a) and StaticInit (C7b) bodies; statics (C7b); a
-// handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e) and
-// a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); string operations (C8c), checked 128-bit
-// arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a) and other string constants (C8c), Location and TypeToken constants
-// being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement or a caller-location callee (C3b), a value
-// (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f, C9b), a property
-// witness (C3c) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag
-// (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: the dispatch (this file); the function's frame: its kind's argument
-// order, homes, copy slots, prologue and return (FunctionCodegen.Frame.cs); the place writer and the loads, stores and copies through it
-// (.Places.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls
-// (.Calls.cs), intrinsics (.Intrinsics.cs) and drops (.Drops.cs).
+// (SPEC 22.5.1; in a caller-location body the location it received, R5-M93); I7 every Type is Layout.Of(TypeOf(item, t)); I8 a call's
+// target is the collector's at its site, read by one forward cursor; I9 no nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive,
+// StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign into a Place the place writer locates (FunctionCodegen.Places: a
+// local's home, a zero-sized one's the module's zero-sized symbol, and the projections, an Index with its bounds check), after its rvalue,
+// each value put in its representation (a value in memory, a slot Type other than the string's record, copied by memcpy; nothing for a
+// zero-sized one): of a Use, from a Copy, Move or PairAcquire of such a Place (a PairAcquire's two cases write the same bits) or a Bool,
+// Integer, Float or Unit constant or a raw pointer's null, or of a string constant to a string Place (its UTF-8 bytes a pooled constant,
+// Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and Unit operands and a raw
+// pointer's == and != and displacement by the operator table (FunctionCodegen.Arithmetic; R5-M92), or of a numeric, wrapping, bit or raw
+// pointer Cast by the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case or fixed-array Aggregate of
+// such operands, or of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len of a fixed array, Array or
+// Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues and .Aggregates; R5-M78, R5-M83, R4-M81, R5-M87);
+// Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine)
+// given the call site's location text (SPEC 22.5.1), of a function's instance or a requirement's witness under its signature, a
+// caller-location callee given the call's location, or of a #LibraryImport function under its C signature, each argument by its parameter,
+// a Copy of a value in memory and a string constant through a copy slot, the result slot the destination, unreachable after a call without
+// a target (FunctionCodegen.Calls; R5-M89, R5-M93), of an intrinsic by its row's writer (FunctionCodegen.Intrinsics: Raw's storage
+// operations, the byte copy, the nullable Alloc, $abort and Fail; R5-M92); a DefaultTemplate body, its prepared inputs in slot order
+// (OrderOf); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a) and StaticInit (C7b)
+// bodies; statics (C7b); a handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e),
+// a Dictionary's (C8e) and a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); string operations
+// (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a) and other string constants (C8c), Location
+// and TypeToken constants being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement whose witness has no
+// body, of a value (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f,
+// C9b), a property witness (C3c) or another legacy row (C8b-C8e, C9a); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates
+// nothing. Files: the dispatch (this file); the function's frame: its kind's argument order, homes, copy slots, prologue and return
+// (FunctionCodegen.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
+// (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs), intrinsics
+// (.Intrinsics.cs) and drops (.Drops.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -286,24 +287,29 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 22.5.1 (I5): the location a runtime routine or an Abort at a site of the body reports, the site's text as a pooled Location
-    // constant; -1 after a record in a caller-location body, which forwards its caller's location (C3b), or at a site without its source
-    // document, a broken contract.
-    private int Location(in SourceInfo source)
+    // SPEC 22.5.1 (I5; DECISIONS R5-M93): the location a callee, a runtime routine or an Abort at a site of the body reports, IMPL 21.3.1's
+    // pair of a text and its byte length: in a caller-location body the location it received, its last two parameters (Abi.Of), which it
+    // forwards, so a failure inside it reports the user's call; elsewhere the site's text as a pooled Location constant. False after a
+    // record at a site without its source document, a broken contract.
+    private bool Location(in SourceInfo source, out Site site)
     {
+        var count = this.abi.Parameters.Length;
         if (this.abi.CallerLocation)
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, source);
-            return -1;
+            site = new(new('p', count - 2), new('p', count - 1));
+            return true;
         }
 
+        site = default;
         if (this.module.Locations.Text(this.body.Subject(source)) is not { } text)
         {
             this.Report(DiagnosticCode.InternalInvariant_Kd, source); // A site of a body has its source document.
-            return -1;
+            return false;
         }
 
-        return this.module.Constants.Intern(text, LlvmConstantKind.Location);
+        var constant = this.module.Constants.Intern(text, LlvmConstantKind.Location);
+        site = new(new('@', constant), new('\0', this.module.Constants[constant].ByteLength));
+        return true;
     }
 
     // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target.
@@ -378,28 +384,39 @@ internal sealed partial class FunctionCodegen
 
     private void WriteValue(Value value)
     {
-        if (value.Prefix == '@')
-        {
-            this.output.Write('@');
-            this.output.Write(this.module.Constants[(int)value.Number].Name);
-            return;
-        }
-
         if (value.Prefix == 'h')
         {
             this.WriteHome((int)value.Number);
             return;
         }
 
-        this.output.Write(Spell(value, stackalloc char[SpellingLength]));
+        this.output.Write(this.Spelled(value, stackalloc char[SpellingLength]));
+    }
+
+    // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, or
+    // Spell's.
+    private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
+    {
+        if (value.Prefix is not ('@' or 'p'))
+        {
+            return Spell(value, text);
+        }
+
+        var name = value.Prefix == '@' ? this.module.Constants[(int)value.Number].Name : this.abi.Parameters[(int)value.Number].Name;
+        text[0] = value.Prefix == '@' ? '@' : '%';
+        name.CopyTo(text[1..]);
+        return text[..(name.Length + 1)];
     }
 
     // A record at a site of the body, located by the collector's rule (K package 4.9).
     private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
 
-    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the copy slot %s<n> (Prefix s; never c, a check's success
-    // label), the pooled constant @<name> of index Number (Prefix @), the home of local Number, its address (Prefix h), the floating
-    // constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer
-    // Number (Prefix NUL).
+    // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
+    // the copy slot %s<n> (Prefix s; never c, a check's success label), the pooled constant @<name> of index Number (Prefix @), the home of
+    // local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the
+    // null pointer (Prefix n) or the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
+
+    // A location as IMPL 21.3.1 passes it (Location): its text's address and its byte length.
+    private readonly record struct Site(Value Text, Value Length);
 }
