@@ -3407,6 +3407,17 @@ resumed by R4-M86 (2026-10-20).
   name a declaration no written storage of the set names), option 1 (the owner's X-2 candidate). Not temporary; the guard and the
   bound keep their conditions above.
 
+- **BU-23** (2026-10-22; the BU planning session's ruling on bu20's verify-first S1, R4 agreeing; PLAN G178; unit bu20 C0c) A
+  constructor's or destructor's receiver `self` is a Place of its own: its symbol takes the reserved slot `ReceiverSlot`
+  (`int.MinValue + 2`, beside `CallResultSlot`, `ClosureValueSlot` and `HelperSlot`), so its Place's Projection is
+  `Projection[init#ReceiverSlot]` or `Projection[drop#ReceiverSlot]`, never a parameter's (it was slot 0: the first parameter's in a
+  constructor, `Projection[drop#0]` in `drop`; 2a0-D §3 row 3, Finite, renamed). No reader takes the slot as a parameter index:
+  `ParameterVisible` and `DefaultParameters.InLaterDefault` compare it unsigned, so no default sees the receiver (SPEC 7.2.3); every
+  other reader of `BindingSymbol.Slot` compares unsigned or never meets a receiver (audit in the commit). Diagnostics show the atom
+  as `self`, as the helper borrow's. G160-1's `during self` in a special receiver's body names this atom (design §13 A3). Reason:
+  two holders shared one Origin (F4's lesson), so the old analysis gave a receiver Field borrow the first parameter's Loan (G178).
+  BU-17's rejected "own slot for the receiver symbol" was a way to separate the helper borrow, which keeps `HelperSlot`; it stands.
+
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

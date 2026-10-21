@@ -11,10 +11,11 @@ internal static class DefaultParameters
     /// the parameter names the slot its call prepared, which the default can neither move nor keep a borrow of (SPEC 7.2.3).</summary>
     /// <param name="node">The node, such as a closure.</param>
     /// <param name="symbol">The parameter it reads.</param>
-    /// <returns>Whether the node is in a later default of the parameter's function.</returns>
+    /// <returns>Whether the node is in a later default of the parameter's function; never for a constructor's or destructor's receiver,
+    /// whose slot is no parameter index (Binding.ReceiverSlot).</returns>
     internal static bool InLaterDefault(Koto node, BindingSymbol symbol)
     {
-        if (symbol.Kind != BindingSymbolKind.Parameter || symbol.Scope.Owner is not FunctionKoto declaration)
+        if (symbol.Kind != BindingSymbolKind.Parameter || symbol.Scope.Owner is not FunctionKoto declaration || (uint)symbol.Slot >= (uint)declaration.Parameters.Count)
         {
             return false;
         }

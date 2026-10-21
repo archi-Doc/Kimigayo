@@ -118,6 +118,10 @@ public sealed partial class Binding
     // is always a destructor, never a value or a closure, so no reader of an environment or closure-value slot meets it.
     internal const int HelperSlot = int.MinValue + 1;
 
+    // The slot of a constructor's or destructor's receiver `self` and so the Projection slot of its Place (SPEC 6.3.4, 16.3.1;
+    // DECISIONS BU-23): no parameter index, so the receiver's Place is never a parameter's (Receiver).
+    internal const int ReceiverSlot = int.MinValue + 2;
+
     // The Projection slot that names a binding's own Place.
     internal static int SymbolOriginSlot(BindingSymbol symbol) => symbol.Kind == BindingSymbolKind.Capture ? EnvironmentSlot(symbol.Slot) : symbol.Slot;
 
