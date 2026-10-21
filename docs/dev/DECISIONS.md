@@ -2661,7 +2661,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     composition; only a constructor's own body (Index < 0) ends with its layer's rows, never a default template. O3: row 3's referent
     clause also classes `PlaceOrigin`'s referent atom Inferred (no census row names it, H). O4, O5: a slice is read-only for consumers
     (`Binding.OriginRowSet`, filled through the producer's private builder); the layer is one expression (`LayerOf`), static storage one
-    test (`IsStatic`).
+    test (`IsStatic`). O1: a Closure header's well-formedness row whose inner Origin is omitted relates the Closure's per-call `Input`
+    to an `Inference` atom of the evaluating body (SPEC 15.3.4; e.g. `let h = func [] (p: ref/(ref/i32)) -> i32 => 1`). It is neither a
+    declaration row (E2's validation, E3) nor classifiable by 2a0-D §3 without a Closure rule. It stays in the evaluating body's slice
+    with the `Input` Unclassed (row 9), so 2a-1a reports the located `Unsupported_Kd`. 2c-D decides it (PLAN G215).
   - Conditions for 2a-1a (BU's answer 1 and O7): MIR's conversion of a `MirDefKey` to an `ExecutableBody` gets a single owner in Mir,
     which the tests use (today only the test helper `BodyOf`); MIR's inline default copies read the template's atoms in the template's
     slice, or a warm-against-cold check settles the stamps of a Koto an edit re-parents (`BoundOrigin.Body` is set once at interning).

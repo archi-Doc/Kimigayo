@@ -119,6 +119,23 @@ public sealed partial class OriginRowsTest
         Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
     }
 
+    // PLAN G215's pinned limit (DECISIONS R4-M101, O1): a Closure header's well-formedness row with an omitted inner Origin relates the
+    // Closure's per-call Input to an Inference atom of the evaluating body; it stays in that body's slice with the Input Unclassed (row 9)
+    // until 2c-D decides it. In g no other row names the Inference atom; in k the call's rows do.
+    [Theory]
+    [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "g", false)]
+    [InlineData("func k(q: ref/i32) -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => p@follow@follow\n    let x = 5\n    return h(x@ref@ref)\n", "k", true)]
+    public void AClosureHeadersOmittedInnerOriginIsAPinnedLimit(string source, string body, bool namedByCalls)
+    {
+        var c = MirBuildTest.Compile(source + Main);
+        var slice = c.Types.OriginRows(BodyOf(Bodies(c).Single(x => x.Key.Decl?.Name == body).Key));
+        var header = slice.Rows.First(static x => First(x.Site) == "ref/(ref/i32)");
+        var (longer, shorter) = (slice.Atoms[header.Longer], slice.Atoms[header.Shorter]);
+        Assert.Equal((OriginKind.Inference, OriginAtomKind.Inferred), (longer.Atom.Kind, longer.Kind));
+        Assert.Equal((OriginKind.Input, OriginAtomKind.Unclassed), (shorter.Atom.Kind, shorter.Kind));
+        Assert.Equal(namedByCalls, slice.Rows.Any(x => !ReferenceEquals(x.Site, header.Site) && x.Shorter == header.Longer));
+    }
+
     // Row 5 and the receiver's part (E5, DECISIONS R4-M103): a Closure literal's value is Fixed in its own body and a Finite temporary of
     // the body evaluating it; a Closure's call result is Fixed in it; a constructor's receiver is a Finite root of the constructor.
     [Fact]

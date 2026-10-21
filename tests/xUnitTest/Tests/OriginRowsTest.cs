@@ -146,8 +146,8 @@ public sealed partial class OriginRowsTest
         Assert.Empty(c.Types.OriginFindings);
     }
 
-    // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
-    // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
+    // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit and
+    // header in its evaluating body (the header's, PLAN G215's pinned limit), a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
     // a module's top-level statements, a user loop's parentless `$for.iterator` Use.
     [Theory]
     [InlineData(EnvStore, "x@ref", "Closure")]
