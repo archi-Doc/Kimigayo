@@ -20,14 +20,14 @@ public sealed partial class Binding
     /// <param name="signature">The selected public signature.</param>
     /// <param name="receiver">The selected receiver acquisition.</param>
     /// <param name="at">The call or binding whose premises apply.</param>
-    /// <returns>The bounds available from matching clauses with an equal or stronger receiver.</returns>
+    /// <returns>Whether confined is available from matching clauses with an equal or stronger receiver; the second flag is always
+    /// false.</returns>
     internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, Koto at)
         => this.AvailableCallableEffects(type, signature, receiver, this.ConstraintScope(at));
 
     internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence = null)
     {
         var confined = false;
-        var preserves = false;
         for (var current = scope; current is not null; current = current.Parent)
         {
             if (current.Constraints is not { Invalid: false } environment)
@@ -56,13 +56,12 @@ public sealed partial class Binding
                     }
 
                     confined |= effect.Bound == EffectBoundKind.Confined;
-                    preserves |= effect.Bound == EffectBoundKind.PreservesResults;
                     evidence?.Add(new(effect, current.Owner, fact, clause));
                 }
             }
         }
 
-        return (confined, preserves);
+        return (confined, false);
     }
 
     /// <summary>Discharges selected-use bounds after ownership has supplied cleanup plans.</summary>
@@ -152,10 +151,6 @@ public sealed partial class Binding
                 else if ((kinds & (1 << (int)effect.Bound)) != 0)
                 {
                     rejection = EffectRejection.CallableDuplicate;
-                }
-                else if (effect.Bound == EffectBoundKind.PreservesResults && clause.BoundConstraint.Mask == SemanticsMask.Owner)
-                {
-                    rejection = EffectRejection.CallableReceiver;
                 }
 
                 kinds |= 1 << (int)effect.Bound;
@@ -292,7 +287,7 @@ public sealed partial class Binding
         }
 
         var summary = this.callableEffectSummary ??= new(this);
-        return summary.Check(bound == EffectBoundKind.Confined, bound == EffectBoundKind.PreservesResults, symbol, this.ConstraintScope(use), true, type, receiver)
+        return summary.Check(symbol, this.ConstraintScope(use), true, type, receiver)
             ? null : (summary.Violation, summary.ViolationNode);
     }
 

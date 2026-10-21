@@ -702,7 +702,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   UninitializedPlace variant at a Drop needs a producer of part Drops of a maybe-uninitialized layer; none exists (the
   replacement Drop's Define clears it; U5b's receiver parts are initialized at entry) — add it with that producer), replacing the old path's Unsupported gate on a partial Move through a drop-bearing
   ancestor; check-only code is not judged (plan Appendix B C3). Rows `MirDropRow(Block, Views, Verdict, Flag, Depth, Step, Arg, Path)`
-  (Path, a part row's move path, -1 at Depth 0, added by U7 for A5, which reads it: A2 owns the fact),
+  (Path, a part row's move path, -1 at Depth 0, added by U7 for A5: removed with U7 by R4-M33's discard, `0d989e68`; no later A5
+  reads it),
   one group per Drop and view class (a group equal but for its views to the Drop's previous group is merged into it): the dropped
   Place, then under Open its child paths in pre-order with their steps (`MirMovePath` carries Kind and Arg). A body's rows are
   ordered by block, and `MirDropTable.Group(body, block, view)` is the one lookup of a Drop's group under a view, which R5 code
@@ -790,7 +791,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   binding as a call through its subject with the selected receiver (the classification a call through a value makes) under the premises
   of the use's definition, with no caller view (its open pair layers admit every case, `MirCases.Deselect`) and reported in every view;
   a failure the premises decide in every view. Environment or Unknown is the row's code at its subject, else Limit is the located
-  `Unsupported_Kd`, else nothing (a Derived cause, R4-M10). A4 decides `confined` only: `preserves results` is A5-3's (U9), static
+  `Unsupported_Kd`, else nothing (a Derived cause, R4-M10). A4 decides `confined` only: `preserves results` is A5-3's (U9; superseded by R4-M106, which removes it), static
   access keys U8's and cause sites U11's, each added by its first reader. Driver: `Local` per body view after the body's A1 and A2
   (step 2, over its closed A2 table), `Run` over the program (step 3). Rejected: counting a Drop only check edges reach (the drop tree
   a `return`'s check edge leads to would destroy the values the runtime path moved: `return l@move` in a confined witness rejected);
@@ -1001,7 +1002,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     P3, P4, P10 and P11, the optional P5, P6 and P9, and S1's `within` kill; relaxations (a) and (b); S1's additions; clarifications
     c1 and c2; V16 as A3 §6.3 restates it; the Origin boundary of A3 §7; the MIR contracts of A3 §4.1; the DEC and DIAGNOSTICS
     records. Not adopted: the root-most kill and relaxation (c). Later on 2026-10-17 the owner also approved A3 §9 item 10, loss P12
-    (`desc(c)`, PLAN G113): 「承認します。」, relayed by the planning session. Where A3 departs from the plan (G3: no drop-row
+    (`desc(c)`, PLAN G113): 「承認します。」, relayed by the planning session (superseded by R4-M106: P12 deleted). Where A3 departs from the plan (G3: no drop-row
     Path), A3 governs.
     Until the SPEC revisions land, before the R4 exit, a violation of an approved loss is a located `Unsupported_Kd`. Each
     representation, contract or phase move gets its own entry in the commit that first implements it (R4-M34 onward).
@@ -1102,7 +1103,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   the Language code when the SPEC adopts the rule, and tests of the affected SPEC examples expect `Unsupported_Kd`; nothing is
   published before R6-check (shadow mode), and a library or milestone program that S1 rejects goes to O3. Not an integration: SPEC
   and INTEGRATED change only at that revision, SPECJ only on an explicit translation update, and the proposal stays open. Its
-  companion S2 ([Preserves Results by Receiver Place](../../draft/Proposals/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md))
+  companion S2 ([Preserves Results by Receiver Place](../../draft/Obsolete/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md))
   is not decided here.
 - **R4-M40** (2026-10-17; design A3 §4.1's Slice row, owner approval of its §9 item 8 on 2026-10-17, implemented on the planning
   session's instruction of the same day; its handle copy and Open amended by A3 §12 E10, G123 and G94, recorded with
@@ -1278,7 +1279,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   removed from every holder's (A3 §5's `ended` and `step`), each holder after the first with an equal state a memo hit. `Contains`,
   `Count` and `Elements` read a node; `Bytes` counts the element bytes of the nodes made, A3 §6.2's ν, which `MirBorrows.Work`
   reports. `Clear` empties the storage per body view and keeps its capacity, so a warm run allocates nothing; the memory limit stays
-  the dataflow's (R4-M15a). Its first reader is `MirBorrows` (unit 1b-2); `Map`, for disturbance (F6), comes with unit 2f.
+  the dataflow's (R4-M15a). Its first reader is `MirBorrows` (unit 1b-2); `Map`, for disturbance (F6), comes with unit 2f (superseded by R4-M106: no F6 unit).
   Review fix B3 (2026-10-18): `Range(first, count)`, memoized, interns a run of consecutive ids (the Loans a Move Path's destruction
   ends, R4-M57), and `Remove` scans its smaller operand, returning the set itself when it removes nothing.
   Rejected (A3 §3, §6.1): dense holder × Loan bits (cubic: heads × holders × Loans); a per-Loan traversal (a check walks every
@@ -1642,8 +1643,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   conflicts relation's rows `Activate` and `ActivateInPlace`. Evidence: the prototype with the rule, 332 cases, 0 unsound, 16 cases
   lose only a duplicate; the corpus loses 54 CallActivation and 10 PlacementActivation records, each with a same-anchor survivor.
   Rejected: an A6 merge by (anchor, reservation), a merge after the fact; reporting at the activation only (unsound on 38j).
-  Conditions for 2f: a Φ_c met at a receiver's formation is located at its later call (DIAGNOSTICS); a shared-receiver Φ_c takes the
-  receiver's mode, or 2f reruns this rule's prototype variant with that case.
+  Conditions for 2f (superseded by R4-M106: no Φ_c remains): a Φ_c met at a receiver's formation is located at its later call
+  (DIAGNOSTICS); a shared-receiver Φ_c takes the receiver's mode, or 2f reruns this rule's prototype variant with that case.
 - **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-6; its
   Inlined rule superseded for A5 by R4-M97 under R4-M90; A1/A2 at 2g-6, D15 staged). It
   supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's rejection of
@@ -1729,10 +1730,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
     the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
     unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
-    and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4). Both
+    and DIAGNOSTICS rule are the requirement-call rule's, is A5-F6's requirement-call effect Φ_c at the later call (SPEC 8.11.4; this half superseded by R4-M106: the code retires). Both
     supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet: unit 2b
     implements the first (none arises while no static Loan exists, since Binding rejects every borrow of group storage, PLAN G100) and
-    2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation.
+    2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation (superseded by R4-M106).
   - Defaults (superseded by R4-M90; its producers are R4-M98's): `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no
     Loan-stratum producer: in a
     template the preceding
@@ -1760,21 +1761,21 @@ and migration obligations remain in force; no numeric cap changes are authorized
     past no reference leads to storage that may (`Raw`); no vocabulary entry. One function, `MirBorrows.Writes` beside `Refs`, serves
     Binding's rows, an intrinsic's declared rows and the unknown-callee rows, one W per output, its first pass from the holders that
     pass the guard concretely, its second from the ThroughArgument ones and what only they reach. A5-F7's capture stores (2c) and
-    A5-F6's desc(c) stores (2f, G113) call it, and no refs-only store path remains.
+    A5-F6's desc(c) stores (2f, G113; superseded by R4-M106) call it, and no refs-only store path remains.
   - P13's interim (owner R4-M76, PD30; until a step-2 unit makes the guard read each part, before R4's exit, else OQ9's list), the
     owner's body hold: a (body, view) is held when a Call's W stores a non-empty value into a target reached only past a ThroughArgument
     holder, and every Loan problem the held view owns (the four Loan codes, err(destroy), err(ended)) is A5's located `Unsupported_Kd` at
     its access (`Ownership.Unsupported`), never a Language problem. Complete by construction: A5 is intraprocedural, so a conflict that
     depends on such a store is found in the view whose Call makes it. It never accepts: it reclassifies problems already found.
     - The fact has one owner: it is set wherever `Writes` returns a target past its clean count with a non-empty value, for every store
-      path (a Call's rows today; 2c's capture stores and 2f's desc(c) stores inherit it). It is set in the forward solve, never in the
+      path (a Call's rows today; 2c's capture stores and 2f's desc(c) stores, superseded by R4-M106, inherit it). It is set in the forward solve, never in the
       checks replay, reset per run, on the σ_in a Call plans with: the solve applies each reached chain last at its converged state, so
       the fact is a may-fact that includes the fixpoint's, and the replay reports with it known.
     - The grain is (body, view): a view's store changes only that view's states, `MirReport` keys a problem by (code, subject, body)
       so a Language problem and an `Unsupported_Kd` never merge, and the stratum runs each view's solve and replay before the next.
     - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via, at, reservation)`
       (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and err(destroy)), so the hold is one rule there,
-      and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c) must report through it too.
+      and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c, superseded by R4-M106) must report through it too.
     - R4-M69 governs inline default copies (superseded by R4-M97: the hold applies to every failure a body owns, a copy's at the
       omitting call; the taint by R4-M96): a Loan problem inside an Inlined scope is
       its template's and dropped whatever the hold
@@ -1828,16 +1829,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - OQ1 (a): the plan is R4's formal plan for A5 step 2, A6 and R4's exit, with its exit gate (§5.4), which refines the A5
     plan's §8 exit (R4-M35); step 2's design records go to `draft/Sketches/A5 Step 2/`. VERIFICATION names the census (2x-T1)
     for every unit the plan marks +cen.
-  - OQ2 (a): each family's design package (2a0-D, 2b-D, 2c-D, 2e-D, 2f-D, 2g-D) goes to the owner once, after its design review;
+  - OQ2 (a): each family's design package (2a0-D, 2b-D, 2c-D, 2e-D, 2f-D (superseded by R4-M106), 2g-D) goes to the owner once, after its design review;
     its approval makes it the owner-approved design of DEC Q6 form 1 for its Binding views and form 2 for its group.
-  - OQ3 (a), conditional: S2 ("Preserves Results by Receiver Place", revised by the 2f-S1 sketch) is adopted if prototype round
+  - OQ3 (a), conditional (superseded by R4-M106; S2 closed): S2 ("Preserves Results by Receiver Place", revised by the 2f-S1 sketch) is adopted if prototype round
     2x-P6 shows it sound; otherwise (b): its conformance half first, and caller rule 3 stays a located `Unsupported_Kd` at R4's
     exit (an O4 item). The proposal's revision and SPEC integration are a separate session (2f-S2); until then PD30 applies.
   - OQ4 (a): when Binding binds receiver-dependent closure-call results (2c-5), the default pipeline keeps its verdict through a
     gate in the old Analysis at the same call (`Ownership.Unsupported`), a D5 exception deleted at R6-check.
   - OQ5 (i)(a), (ii), (iii)(a) ((iii) superseded by R4-M80): R4 exits with no blocking row and no open (b) row naming an R4 unit
     or R4 G issue; a (b) row naming another owner needs the owner's approval. The proof is §5.4's: the mir ledger at the exit
-    head (0 open blocking rows, 0 unclassified signatures, Landed = 14 families with A5-F5's recorded (e) variants, A6's
+    head (0 open blocking rows, 0 unclassified signatures, Landed = 14 families (13 without A5-F6, whose place U0–U5 take: R4-M106) with A5-F5's recorded (e) variants, A6's
     contract test), stand-in tests for the codes the ledger does not compare, the census and the final review. The restated kind
     as PD18 narrows it is adopted; 2x-T3 implements it and supersedes R4-M47's clause.
   - OQ6 (a): the departures from owner-approved texts are confirmed: A4's Keys classes replace A3 §4.2's `bool` (R4-M38); C1-F4's
@@ -1899,10 +1900,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     follows its holder, as Loans do. A5 is unchanged. Until the sentence is integrated in OQ12's SPEC session, A5's Language code
     for the form stands, an exception to PD30 and to R4-M35's interim (a violation of an approved loss is a located
     `Unsupported_Kd`). Rejected: Φ_E per part (b); a hold (c). (Integrated 2026-10-19, INTEGRATED; the exception has ended.)
-  - G1 (2f-S1): (ii′). A conformance's earlier result is taken from its body (SPEC 8.11.3's "its results"), and an unclassifiable
+  - G1 (2f-S1): (ii′) (superseded by R4-M106: no earlier-result check remains). A conformance's earlier result is taken from its body (SPEC 8.11.3's "its results"), and an unclassifiable
     destruction, one in a concrete callee's summary included, conflicts with every Loan the earlier result keeps. Eight test rows
     rejected today become valid; every other rejection stays.
-  - G2 (2f-S1): (a). Values of one abstract Type share its Origin atoms for rule 1 (SPEC 8.11.4, 8.11.5's `Merge`), and c24's
+  - G2 (2f-S1): (a) (reversed by R4-M106: rule 1 has no Origin reach). Values of one abstract Type share its Origin atoms for rule 1 (SPEC 8.11.4, 8.11.5's `Merge`), and c24's
     answer also sets the conformance carrier granularity, one rule for callers and conformances. `EffectBoundCallerTest`'s rows
     `zip` and `both`, valid today, become errors; their unit cites this answer. c24's own verdict stays open (the sketch's §9).
 - **R4-M77 R5 and the Binding units paused; R4 continues alone** (owner, 2026-10-19, choosing option A of the R4 planning
@@ -2260,7 +2261,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Driver: `MirBorrows` takes `MirEffects` (`MirAnalysis`); the effect access is listed by `MirBorrows.Locations` (`Effecting`).
   - PD21 (the planning session, 2026-10-21; the plan's 2x-R9 expected it): `MirBorrows.Activations.cs` has one responsibility, the
     activation and observing-destruction checks of a location, and 2b-3's change is an argument at its two `Code`/`Report` call sites, so
-    no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D adds the caller relation there). `MirBorrows.Loans.cs`,
+    no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D adds the caller relation there; superseded by R4-M106: no
+    2f-D). `MirBorrows.Loans.cs`,
     `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7).
   - Cost: per checked site one `Keys` query per view where an effect root has a candidate or R3 applies, Θ(effect roots + their
     candidates) tests and scans, and on a conflict Θ(the body's statics + their initializers' views × ⌈2F/64⌉) for the proof; `Work`
@@ -2348,7 +2350,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     else is dropped. Recorded limits: `cf-g-reassign` loses an independent report (X-2/OQ9 list), and a guard escape into storage
     the body does not own reports both codes.
   - Owner answers: OQ-1 (c) a `let` slot as a region is a separate BU unit after G:A5-F4 (PLAN G194); OQ-2 (a) the preserves-results
-    containment skip is deleted with the old path at R6-check (PLAN G193); OQ-4 (b) as above (superseded by R4-M104); OQ-3 (a) the
+    containment skip is deleted with the old path at R6-check (PLAN G193; its timing superseded by R4-M106: U2 deletes it); OQ-4 (b) as above (superseded by R4-M104); OQ-3 (a) the
     ten departures confirmed: finite-source bitsets for A3 §7's one-witness BFS; GuardReverse at a `ResultFit` edge for PD11's
     second half and A3 E7's merge sentence (superseded by R4-M104); A3 §7's fixed-atom containment read against Binding's encoding,
     with MeetNode; three atom kinds for the plan's four; `UniversalRelations.For` per body with per-class conditions; T1 by
@@ -2532,7 +2534,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Loans' group order to `MirBorrows.Groups.cs`; a second consecutive no-split ruling refused), then D14's edit; `MirBorrows.Solve.cs`
     (three units since 2x-R1) no split, being the forward solve and replay driver into which 2e-4 adds the pre-pass and gather calls; its
     next changing unit restructures it first (`Holders()` and its fields the candidate); `MirBorrows.Activations.cs` no split (one
-    responsibility; its next changing unit restructures it first; 2x-R9 keeps its 2f-D condition); `MirBorrows.Reports.cs` no split (one
+    responsibility; its next changing unit restructures it first; 2x-R9 keeps its 2f-D condition, superseded by R4-M106);
+    `MirBorrows.Reports.cs` no split (one
     responsibility; its next changing unit restructures it first); `MirBorrows.Checks.cs` and `.Locations.cs` take their third change;
     `MirProblem.cs` counted under R4-M91's ruling; `MirBody.cs` (R5's hold) gains only `Common` and `OmittingCall`.
 - **R4-M98 A5-F9's template rules: the slot step (A3 E17), R26-borrow and R26-access** (2026-10-21; unit 2e-2 of G:A5-F9 under R4-M90,
@@ -2775,6 +2778,65 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a Place Origin (`during b`, a new Origin kind near Appendix D.4); keeping Q-O4's `Unsupported_Kd`; no Origin for a
     formed intersection (loses the Authority error) and an error for it; an error for an own-step pointer's later use (rejects
     defined programs); a broader Warning on unannotated raw Fields.
+- **R4-M106 Abstract calls reach by paths** (owner, 2026-10-22: the direction, verbatim 「推奨の通り修整し、bの移行方法で進めます。正式な変更案を書き、独立レビューにかけて下さい」;
+  after three independent review rounds the adoption, verbatim 「Q1 (a) P12も削除、Q2 (a) CallEffectConflict_Kdを廃止、で採択します。提案をdevにコミット・pushしてください。」;
+  and to the R4 planning session, verbatim 「この計画書を採用し、処理してください。3回の独立レビューに通っています。処理の流れは、推奨の通りでOKです。」)
+  The proposal is `draft/Changes/2026-10-22 Abstract Calls Reach by Paths.md` (its review record is its §13), integrated into SPEC
+  by unit U0 (INTEGRATED, 2026-10-22).
+  - Adopted: an abstract call (a requirement call without a known concrete callee, a call through a Callable-constrained value, a
+    dynamic virtual call) reaches what a concrete call reaches: the Places reachable by path from its inputs (SPEC 15.6.2), the
+    Loans its published contract lets its results and writable storage keep (15.6.4, with 15.6.3's descent) and its environment
+    effects (8.11.2). Deleted: rule 1's "an abstract input may reach every Loan its Origins may denote" and what excused or
+    completed it, `preserves results` (8.11.3) with its eligibility and conformance check, rule 3, 8.11.5's delegation, the Callable
+    and slot variants (8.11.6, 6.4.6), Iterator's bound (22.2.1, 22.2.3) and 15.6.3's exception; `confined` is the only effect
+    bound (a source that writes `preserves results` is a syntax error); 8.11.4 becomes 8.11.3 and 8.11.6 becomes 8.11.4. Q1 (a): P12
+    (15.6.3's abstract descent, 15.6.4's sentence) is deleted, so abstract and concrete descent are one rule. Q2 (a):
+    `CallEffectConflict_Kd` retires in U1 with its only producer, the old Analysis's rules 1 and 3; environment conflicts with
+    static Loans stay `ComparisonLoanConflict_Kd` (R4-M92). Migration (b), the owner's exception to the freeze (COMPILER_ARCHITECTURE
+    "Freeze (D5)", R4-M35): "the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin
+    reach, rule 3 and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and
+    rejects G193's forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner".
+    Confirmed by adoption: G193's containment skip goes in U2 (unsound: the proposal's probe p1 passes `check` and aborts at run
+    time), so its 18 tested forms become the containment errors SPEC requires.
+  - Soundness rests on L1 (generic checking over-approximates every instantiation, 8.15.1 and 15.3.7) and L2 (the concrete call rule
+    is sound under containment, 5.2.1 condition 4 and 5.2.2), argued, not proven (its §4); U5 tests L1. No program changes from
+    valid to error under SPEC apart from `preserves results` declarations. The unsafe audit's test, milestone and kind-B halves
+    (U0) found no code that only abstract calls reach acting on a Place it lent (INTEGRATED).
+  - Units and order (its §11.1): U0 (SPEC intake, the test data it invalidates, these records, the audit), U1 (the old Analysis,
+    guard rows first; spec case `8.11.3-checking-and-use`), U2 (Binding, grammar, library, STATUS; a native fixture), each with
+    its own review, land in one dev merge; then U3 (behavior-preserving vocabulary cleanup and the citation pass), U4 (ledger
+    records), U5 (the L1 check); a final review covers U0–U5. None edits `MirBorrows*`. R4's exit counts U0–U5 in place of
+    G:A5-F6: the step 2 plan's §5.4 gate item 1 without A5-F6 (`Landed` never gains F6; its one spec case is F3's) and item 9's
+    S2 clause replaced by U0–U5.
+  - Supersedes, each because rule 1's Origin reach no longer exists: R4-M74 OQ3 (a), S2's conditional adoption (S2 excused that
+    reach), and OQ2's 2f-D package; R4-M76 G1 (ii′) (no earlier-result check remains) and G2 (a) (values of one abstract Type
+    sharing Origin atoms for rule 1: reversed); R4-M35's approval of A3 §9 item 10 (P12) and INTEGRATED 2026-10-17's P12 record
+    (their justification was rule 1's reach); R4-M22's assignment of `preserves results` to A5-3 (U9), A4's `confined` unchanged;
+    R4-M72's Effects bullet's Φ_c half (`CallEffectConflict_Kd` as A5-F6's code) with the step 2 plan's PD7 (Q2); R4-M68's
+    conditions for 2f; R4-M94 OQ-2 (a)'s timing for G193's skip (U2, not R6-check: the skip is unsound once the verification goes);
+    the residues naming F6, Φ_c or 2f-D: R4-M53's `Map` for disturbance, R4-M73's desc(c) stores and Φ_c producer, the 2x-R9 2f-D
+    condition of R4-M92's and R4-M97's PD21 rulings (the proposal's §10 names R4-M98 for the second), R5-M56's `a4-preserves` and
+    `a4-callable-preserves` rows (U4 reclassifies them).
+  - The A5 step 2 plan, recorded here because its text is frozen where integrated: PD3's round 2x-P6, PD5's 2f-D, PD6's C5 units
+    2f-1 and 2f-2, PD7, PD16, PD23's stored-Φ_c reading, PD30's S2 interim, PD31's A5-F6 Φ_c call, X-5's A5-F6 prototype-parity
+    cases, the §3.6 row of 2f-1 and 2f-2 and the F6 rows 2x-P6, 2f-S1, 2f-S2, 2f-D and 2f-1 … 2f-7 are replaced by U0–U5 (2f-6's
+    record work folds into U4). The Complete Polonius A5 plan's §5.3 S2 row and App. A row 10 (checked by X-5) close. The 2f-S1
+    sketch's G3 is moot (no Origin reach remains) and G4 is answered by SPEC 16.3.3 (a destruction in a generic body reaches Loans
+    by path, never Loans on other roots).
+  - Landed on 2026-10-22 (merge `1f4952ef`): U0–U2 and AC-U1b, each with its review. U1 newly accepted on the default pipeline one
+    class SPEC 15.6.7 rejects (a reservation route's local reference rewritten during an argument, 36e; 36h, i36e and i36h were
+    accepted before U1; MIR rejects all; no miscompile in native O0/O2 runs). The owner chose (b), a recorded difference until
+    R6-check (verbatim 「推奨通りで、お願いします」): `CallReservationTest`'s pinned rows, ledger row `a5-route-write`, PLAN G217,
+    STATUS row 54. Gate item 9's ask A-7 ("A5-F6 with A5P-S2") is replaced too (R5 records its own entry). Adoption authorizes
+    U3's STYLE.md:116 and SPECJ_TERMINOLOGY.md:30 edits; a SETTLED entry on rejecting an effect bound that relates two calls is
+    the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
+    no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
+    before their next adding change. Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
+    from Binding's operation instead of the HIR column (2x-E8 decides).
+  - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
+    mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
+    clause for some forms (no counterexample; a counterexample to the base rule is one for concrete calls too); C with P12 (Q1 (b),
+    Appendix A: P12's only justification was rule 1's reach); keeping G193's skip (unsound); Q2 (b), keeping the code reserved.
 - **R4-M107 A5-F5's static-Loan witnesses on rooted MIR until P42** (2026-10-22; unit 2b-6w, `7e3d2ccf` and `340e0339`; the
   planning session's OQ-1 (c) + (b) on bu22's design, under R4-M90 PQ-1; extends R4-M97's ruling (b) to a temporary form)
   - Cause: bu22 (2b-6 (b)) makes every Borrow SPEC lends of a static-rooted Place Binding's located `Unsupported_Kd` until P42, so
@@ -4605,7 +4667,8 @@ structure is recorded here by the unit that first implements it.
   - The table stays R4's. With R4's approval its rows that read `-` on the MIR side name the requirement each recording rule names
     and take side `mir`, which reproduces their pre-Q17 matches (Q21's `a5-kept-closure` too); the A4 requirement difference is
     (d) (`a4-requirement`); the dead `a1-result` row goes; `a4-x2` (d) and `a4-preserves` (b) stay two rows, since the side
-    separates them exactly (X2's new and acceptance rows on mir, F6's missing and acceptance rows on old). Every other row takes
+    separates them exactly (X2's new and acceptance rows on mir, F6's missing and acceptance rows on old; `a4-preserves` and
+    `a4-callable-preserves` reclassified by R4-M106's U4). Every other row takes
     `*` (R4's migration condition (3)), except the nine U rows, which take `old` with R4's approval as the table owner, amending
     condition (3) for them ("this reproduces exactly and keeps them from absorbing a future MIR `Unsupported_Kd`"): each matches
     only old missing and acceptance rows, and with `*` `u-never-loop` would take a MIR-only Unsupported_Kd it never matched (at

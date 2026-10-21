@@ -30,10 +30,6 @@ public enum OwnershipPlaceKind : byte
     Payload,
     Subject,
 
-    // SPEC 8.11.4: the Loans that the Origins of one abstract input Type may denote, which only the derived effects of
-    // generic requirement calls access; no operation initializes or uses it.
-    EffectRegion,
-
     // SPEC 5.2.2: the fresh anchor of a raw Place borrow, named by its Anchor Origin. Like the referent of a borrowed parameter it
     // is external: it holds no value, and its Loans are checked only against Places derived from it. No operation uses it.
     Anchor,
@@ -215,7 +211,6 @@ public readonly record struct OwnershipIssue(Koto Source, OwnershipRequirement F
         OwnershipRequirement.CallableEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
         OwnershipRequirement.VirtualEffectBound => DiagnosticCode.UnsatisfiedEffectBound_Kd,
         OwnershipRequirement.StaticMovePathRequired => DiagnosticCode.StaticMovePathRequired_Kd,
-        OwnershipRequirement.CallEffectConflict => DiagnosticCode.CallEffectConflict_Kd,
         OwnershipRequirement.StorageLimit => DiagnosticCode.OwnershipStorageLimit_Kd,
         _ => DiagnosticCode.Unsupported_Kd,
     };
@@ -314,12 +309,6 @@ public sealed partial class OwnershipBody
 
     /// <summary>Gets or sets each definition-time conditional plan's acquired Place and the Place its Reborrow case borrows (SPEC 8.14).</summary>
 
-    /// <summary>Gets or sets the derived effects of the definition's generic requirement calls on their abstract inputs (SPEC 8.11.4).</summary>
-    internal List<OwnershipRequirementEffect>? RequirementEffects { get; set; }
-
-    /// <summary>Gets or sets the Loans the results of those calls may keep in the regions of their inputs (SPEC 8.11.4).</summary>
-    internal List<OwnershipRequirementResult>? RequirementResults { get; set; }
-
     /// <summary>Gets or sets the anchor Places of the body's raw Place borrows, each sourced at its borrow (SPEC 5.2.2).</summary>
     internal List<int>? Anchors { get; set; }
 
@@ -378,8 +367,6 @@ public sealed partial class OwnershipBody
         this.Values.Clear();
         this.Sequences.Clear();
         this.Identities?.Clear();
-        this.RequirementEffects?.Clear();
-        this.RequirementResults?.Clear();
         this.Anchors?.Clear();
         this.ValueOperands.Clear();
         this.PhiInputs.Clear();
@@ -575,19 +562,6 @@ internal readonly record struct OwnershipComparisonLoan(int Read, int Place, int
 internal readonly record struct OwnershipCallReservation(Koto Call, int Borrow = -1, int Place = -1, int Activation = -1, int Loan = -1, int Next = -1, int Loaded = -1, int Argument = -1);
 
 internal readonly record struct OwnershipCallLoans(int Call, int Result, int End, LoanRequirement ResultRequirement);
-
-// The value an input of a requirement call designates: a root Place, possibly through its first Field; a negative root when
-// unknown. Two live exclusive values are disjoint, and shared aliases only read, so effects reach another value only through
-// the same root or a dependency between roots.
-internal readonly record struct OwnershipValueIdentity(int Root, BindingSymbol? Field);
-
-// SPEC 8.11.4: a generic requirement call reaches, in Mode, every Loan that the Origins of one abstract input Type may denote
-// (the Region) through Input. Preserves holds when an available bound excludes the earlier results of the same requirement on
-// the same receiver.
-internal readonly record struct OwnershipRequirementEffect(int Call, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, bool Preserves, BindingSymbol? Contract = null);
-
-// SPEC 8.11.4: the result of a generic requirement call may keep, in Mode, Loans of a Region its call reached through Input.
-internal readonly record struct OwnershipRequirementResult(int Call, int Result, int Region, LoanRequirement Mode, object Requirement, OwnershipValueIdentity Input, OwnershipValueIdentity Receiver, BindingSymbol? Contract = null);
 
 internal readonly record struct OwnershipStringComparison(int Operation, int Left, int Right, int LeftLoan, int RightLoan, int LeftValue = -1, int RightValue = -1);
 

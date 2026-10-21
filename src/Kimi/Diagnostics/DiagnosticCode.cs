@@ -167,7 +167,6 @@ public enum DiagnosticCode
     CallReservationConflict_Kd,
     CallActivationConflict_Kd,
     PlacementActivationConflict_Kd,
-    CallEffectConflict_Kd,
 
     InvalidDependencyConfiguration_Kd,
     UnresolvedDependencyGraph_Kd,

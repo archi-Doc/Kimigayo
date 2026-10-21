@@ -6,7 +6,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.11.1, 8.11.3, 8.11.1: effect items declare bounds of their Contract; an invalid item is InvalidEffectBound_Kd
+// SPEC 8.11.1: effect items declare bounds of their Contract; an invalid item is InvalidEffectBound_Kd
 // at the item, with the cause as its Reason and the target requirement as a related location.
 public class EffectBoundDeclarationTest
 {
@@ -18,21 +18,17 @@ public class EffectBoundDeclarationTest
     public void AcceptsClausesAndSpecifications()
     {
         // The Iterator pattern: an inherited lending requirement whose item the child fixes as step-independent.
-        const string Declarations = "contract StableSource: Source\n    effect Source.take preserves results\n    effect Source.take confined\n" +
+        const string Declarations = "contract StableSource: Source\n    effect Source.take confined\n" +
             "contract View\n    func read(self: ref/Self) -> ref/i32\n        effect confined\n" +
             "contract Lending\n    associate LentItem(step) for uniq/Self during step\n    func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>\n" +
-            "contract Stepping: Lending\n    associate Item\n    associate Lending.LentItem(step) is Item\n    effect Lending.next preserves results\n" +
+            "contract Stepping: Lending\n    associate Item\n    associate Lending.LentItem(step) is Item\n    effect Lending.next confined\n" +
             "contract Indexed<K>\n    func at(self: ref/Self, key: K) -> i32\ncontract StrictIndexed: Indexed<i32>\n    effect (Indexed<i32>).at confined\n" +
-            "contract Settled: StableSource\n    effect Source.take preserves results\n";
+            "contract Settled: StableSource\n    effect Source.take confined\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]
-    [InlineData("contract Cursor\n    associate Lent(step) for uniq/Self during step\n    func advance(self: uniq/Self during step) -> Option<Self.Lent(step)>\n        effect preserves results\n", "effect preserves results", "Self.Lent(step) may depend on the receiver borrow", "receiver's Origin step")]
-    [InlineData("contract Peek\n    associate Item\n    func peek(self: ref/Self) -> Option<ref/Self.Item>\n        effect preserves results\n", "effect preserves results", "ref/Self.Item may depend on the receiver borrow", "omitted Origin")]
-    [InlineData("contract Taker\n    func take(self: Self) -> i32\n        effect preserves results\n", "effect preserves results", "take has no borrowed receiver", "borrowed receiver")]
-    [InlineData("contract Loose: Lending\n    effect Lending.next preserves results\ncontract Lending\n    associate LentItem(step) for uniq/Self during step\n    func next(self: uniq/Self during step) -> Option<Self.LentItem(step)>\n", "effect Lending.next preserves results", "Self.LentItem(step) may depend on the receiver borrow", null)]
     [InlineData("contract Bounded: Source\n    effect Source.take confined\n    effect Source.take confined\n", "effect Source.take confined", "take already has confined", "Bounded already declares confined")]
     [InlineData("contract Bounded: Source\n    effect Source.size confined\n", "effect Source.size confined", "size names 2 function requirements of Source", "exactly one")]
     [InlineData("contract Bounded: Source\n    effect Source.missing confined\n", "effect Source.missing confined", "Source has no function requirement missing", null)]
@@ -62,7 +58,7 @@ public class EffectBoundDeclarationTest
     [Fact]
     public void RelatesTheRequirementAndTheEarlierBound()
     {
-        var result = DiagnosticCorpus.Check(Source + "contract StableSource: Source\n    effect Source.take preserves results\n    effect Source.take preserves results\n" + Main);
+        var result = DiagnosticCorpus.Check(Source + "contract StableSource: Source\n    effect Source.take confined\n    effect Source.take confined\n" + Main);
         var error = Assert.Single(result.Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.InvalidEffectBound_Kd), error.Code);
         Assert.Equal(["bound", "requirement"], error.Related!.Select(static x => x.Role).ToArray());
@@ -73,8 +69,8 @@ public class EffectBoundDeclarationTest
     [Fact]
     public void WarmRebindOfEffectDeclarationsDoesNotAllocate()
     {
-        const string Declarations = "contract StableSource: Source\n    effect Source.take preserves results\n" +
-            "contract Peek\n    associate Item\n    func peek(self: ref/Self) -> Option<ref/Self.Item>\n        effect preserves results\n";
+        const string Declarations = "contract StableSource: Source\n    effect Source.take confined\n" +
+            "contract Doubled: Source\n    effect Source.size confined\n";
         var c = MinimalEmissionTest.Analyze(Source + Declarations + Main);
         Assert.False(c.Binding.Result.IsComplete);
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
