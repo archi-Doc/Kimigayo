@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, C4a, package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65,
-// R5-M73, R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93, R5-M95), MIR code generation: the LLVM definition of one body item
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, C4a, C4b, package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS
+// R5-M65, R5-M73, R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93, R5-M95, R5-M99), MIR code generation: the LLVM definition of one body item
 // of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue item by its Type's row, and the
 // coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
@@ -12,39 +12,41 @@
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored into
-// its local's slot, a pointer-passed argument and the result slot used in place, then one per copy slot (R5-M89); I3 exactly the blocks
-// MirReach.Walk(body, 0, checks: false) reaches, in index order, so code only the checks reach is never generated (SPEC 14.10.3); I4 an
-// operand is read at each use (loaded, or its address when its value is in memory); I5 a check not Proven Aborts at its site's location
-// (SPEC 22.5.1; in a caller-location body the location it received, R5-M93); I7 every Type is Layout.Of(TypeOf(item, t)); I8 a call's
-// target is the collector's at its site, read by one forward cursor; I9 no nsw, nuw or inbounds; I10 no store i1. Covered: StorageLive,
-// StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign into a Place the place writer locates (FunctionCodegen.Places: a
-// local's home, a zero-sized one's the module's zero-sized symbol, and the projections, an Index with its bounds check), after its rvalue,
-// each value put in its representation (a value in memory, a slot Type other than the string's record, copied by memcpy; nothing for a
-// zero-sized one): of a Use, from a Copy, Move or PairAcquire of such a Place (a PairAcquire's two cases write the same bits) or a Bool,
-// Integer, Float or Unit constant or a raw pointer's null, or of a string constant to a string Place (its UTF-8 bytes a pooled constant,
-// Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool, char and Unit operands and a raw
-// pointer's == and != and displacement by the operator table (FunctionCodegen.Arithmetic; R5-M92), or of a numeric, wrapping, bit or raw
-// pointer Cast by the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case or fixed-array Aggregate of
-// such operands, or of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len of a fixed array, Array or
-// Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues and .Aggregates; R5-M78, R5-M83, R4-M81, R5-M87);
-// Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime row (RuntimeAbi.WriteLine)
-// given the call site's location text (SPEC 22.5.1), of a function's instance or a requirement's witness under its signature, a
-// caller-location callee given the call's location, or of a #LibraryImport function under its C signature, each argument by its parameter,
-// a Copy of a value in memory and a string constant through a copy slot, the result slot the destination, unreachable after a call without
-// a target (FunctionCodegen.Calls; R5-M89, R5-M93), of an intrinsic by its row's writer (FunctionCodegen.Intrinsics: Raw's storage
-// operations, the byte copy, the nullable Alloc, $abort and Fail; R5-M92); a DefaultTemplate body, its prepared inputs in slot order
-// (OrderOf); a Drop's Keep and Elide verdicts (FunctionCodegen.Drops.cs; R5-M78). Rows not written yet: Closure (C5a) and StaticInit (C7b)
-// bodies; statics (C7b); a handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e),
-// a Dictionary's (C8e) and a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); string operations
-// (C8c), checked 128-bit arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a) and other string constants (C8c), Location
-// and TypeToken constants being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement whose witness has no
-// body, of a value (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f,
-// C9b), a property witness (C3c) or another legacy row (C8b-C8e, C9a); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates
-// nothing. Files: the dispatch and the records (this file); the operands' and constants' values, the representations, a site's location
-// and the text's spelling (FunctionCodegen.Values.cs); the function's frame: its kind's argument order, homes, copy slots, prologue and
-// return (.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
-// (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs), intrinsics
-// (.Intrinsics.cs) and drops (.Drops.cs); the DropGlue items' functions (.Glue.cs).
+// its local's slot, a pointer-passed argument and the result slot used in place, then one per copy slot (R5-M89) and one per drop flag,
+// cleared (R5-M99); I3 exactly the blocks MirReach.Walk(body, 0, checks: false) reaches, in index order, so code only the checks reach is
+// never generated (SPEC 14.10.3); I4 an operand is read at each use (loaded, or its address when its value is in memory); I5 a check not
+// Proven Aborts at its site's location (SPEC 22.5.1; in a caller-location body the location it received, R5-M93); I7 every Type is
+// Layout.Of(TypeOf(item, t)); I8 a call's target is the collector's at its site, read by one forward cursor; I9 no nsw, nuw or inbounds;
+// I10 no store i1. Covered: StorageLive, StorageDead, FakeRead and EndBorrow (nothing is generated); an Assign into a Place the place
+// writer locates (FunctionCodegen.Places: a local's home, a zero-sized one's the module's zero-sized symbol, and the projections, an Index
+// with its bounds check), after its rvalue, each value put in its representation (a value in memory, a slot Type other than the string's
+// record, copied by memcpy; nothing for a zero-sized one): of a Use, from a Copy, Move or PairAcquire of such a Place (a PairAcquire's two
+// cases write the same bits) or a Bool, Integer, Float or Unit constant or a raw pointer's null, or of a string constant to a string Place
+// (its UTF-8 bytes a pooled constant, Static, IMPL 21.1.3), or of a BinaryOp or UnaryOp on integer, wrapping integer, floating-point, bool,
+// char and Unit operands and a raw pointer's == and != and displacement by the operator table (FunctionCodegen.Arithmetic; R5-M92), or of a
+// numeric, wrapping, bit or raw pointer Cast by the conversion table (FunctionCodegen.Casts), or of a Ref, or of a Tuple, struct, enum Case
+// or fixed-array Aggregate of such operands, or of a Fill of one, a counted loop over its instance's length, or of a Discriminant, of a Len
+// of a fixed array, Array or Slice, or of an Adapt by the rvalue the item's view selects (FunctionCodegen.Rvalues and .Aggregates; R5-M78,
+// R5-M83, R4-M81, R5-M87); Goto, SwitchInt, Return and Unreachable; a Call of the console writeLine, a compiler function's legacy runtime
+// row (RuntimeAbi.WriteLine) given the call site's location text (SPEC 22.5.1), of a function's instance or a requirement's witness under
+// its signature, a caller-location callee given the call's location, or of a #LibraryImport function under its C signature, each argument
+// by its parameter, a Copy of a value in memory and a string constant through a copy slot, the result slot the destination, unreachable
+// after a call without a target (FunctionCodegen.Calls; R5-M89, R5-M93), of an intrinsic by its row's writer (FunctionCodegen.Intrinsics:
+// Raw's storage operations, the byte copy, the nullable Alloc, $abort and Fail; R5-M92); a DefaultTemplate body, its prepared inputs in
+// slot order (OrderOf); a Drop's Keep, Elide and Flag verdicts and A2's flag points, written where their locations complete
+// (FunctionCodegen.Drops.cs and .Flags.cs; R5-M78, R5-M99). Rows not written yet: Closure (C5a) and StaticInit (C7b) bodies; statics (C7b);
+// a handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e)
+// and a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); string operations (C8c), checked 128-bit
+// arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a) and other string constants (C8c), Location and TypeToken constants
+// being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement whose witness has no body, of a value (C5a), a
+// virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f, C9b), a property witness
+// (C3c) or another legacy row (C8b-C8e, C9a); a Drop's Open verdict (C4c). A warm write allocates nothing. Files: the dispatch, the
+// unconditional branch and the records (this file); the operands' and constants' values, the representations, a site's location and the
+// text's spelling (FunctionCodegen.Values.cs); the function's frame: homes, prologue and return (.Frame.cs); parameter passing: its kind's
+// argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place writer (.Places.cs) and the loads, stores
+// and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions
+// (.Casts.cs), calls (.Calls.cs), intrinsics (.Intrinsics.cs), drops (.Drops.cs) and drop flags (.Flags.cs); the DropGlue items' functions
+// (.Glue.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -66,10 +68,12 @@ internal sealed partial class FunctionCodegen
     private BoundType[] types = []; // By local, in the item's instance.
     private Value[] arguments = []; // A runtime call's arguments in parameter order, or a fixed-array aggregate's element values.
     private InstanceCollector collector = null!;
+    private MirProgram program = null!; // The program, whose body the item replays and whose drop table its drops read.
     private FunctionAbi abi = null!; // The item's signature.
     private MirBody body = null!;
     private TextWriter output = TextWriter.Null;
     private int item;
+    private int at; // The block being written.
     private int next; // The number of the next value %t<n>.
 
     /// <summary>Initializes a new instance of the <see cref="FunctionCodegen"/> class.</summary>
@@ -112,7 +116,7 @@ internal sealed partial class FunctionCodegen
         }
 
         _ = this.cases.Select(body, collector.Set.Items[item].View); // X13: the collector's one view of the item's body.
-        (this.abi, this.cursor) = (abi, 0);
+        (this.abi, this.cursor, this.point) = (abi, 0, 0);
         this.reach.Clear(body.Blocks.Length);
         this.reach.Walk(body, 0, checks: false);
         this.Copies();
@@ -134,9 +138,11 @@ internal sealed partial class FunctionCodegen
         this.output.Write('b');
         WriteNumber(this.output, index);
         this.output.Write(":\n");
-        foreach (var statement in this.body.Statements.Slice(block.Start, block.Count))
+        var statements = this.body.Statements.Slice(block.Start, block.Count);
+        for (var i = 0; i < statements.Length; i++)
         {
-            this.Statement(statement);
+            this.Statement(statements[i]);
+            this.Points(new(index, i));
         }
 
         this.Terminator(block.Terminator);
@@ -150,7 +156,7 @@ internal sealed partial class FunctionCodegen
                 this.Assign(statement);
                 return;
             case MirStatementKind.StorageLive or MirStatementKind.StorageDead or MirStatementKind.FakeRead or MirStatementKind.EndBorrow:
-                return; // Nothing is generated (package C 3.9); A2's flag points at them come with C4b.
+                return; // Nothing is generated (package C 3.9); A2's flag points at them follow them (Block).
             default:
                 throw new InvalidOperationException($"The MIR statement kind {statement.Kind} has no code generation row.");
         }
@@ -198,9 +204,7 @@ internal sealed partial class FunctionCodegen
         switch (terminator.Kind)
         {
             case MirTerminatorKind.Goto:
-                this.output.Write("  br ");
-                this.WriteLabel(terminator.Target);
-                this.output.Write('\n');
+                this.Branch(terminator.Target);
                 return;
             case MirTerminatorKind.SwitchInt:
                 this.Switch(terminator);
@@ -222,7 +226,17 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target.
+    // A terminator's transfer to its one runtime successor: its location's flag points (FunctionCodegen.Flags), then the branch.
+    private void Branch(int target)
+    {
+        this.Points(new(this.at, this.body.Blocks[this.at].Count));
+        this.output.Write("  br ");
+        this.WriteLabel(target);
+        this.output.Write('\n');
+    }
+
+    // A SwitchInt on its operand's stored value (bool as i8, I10): each value-target pair a case, otherwise the target; its location's flag
+    // points, which hold on every successor, before it.
     private void Switch(in MirTerminator terminator)
     {
         var operand = terminator.Operand;
@@ -237,6 +251,7 @@ internal sealed partial class FunctionCodegen
             return; // A broken contract, recorded.
         }
 
+        this.Points(new(this.at, this.body.Blocks[this.at].Count));
         var (output, type, width) = (this.output, lowering.Layout.StorageType, 8 * lowering.Layout.Size);
         output.Write("  switch ");
         output.Write(type);

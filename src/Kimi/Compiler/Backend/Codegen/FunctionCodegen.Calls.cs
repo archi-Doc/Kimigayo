@@ -6,7 +6,7 @@ namespace Kimi.Compiler.Backend;
 
 // The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a; DECISIONS R5-M89, R5-M92, R5-M93): a callee by its
 // kind's row, the collector's targets read by one forward cursor, and the one call writer, which the legacy rows, the intrinsic rows, the
-// glue items and the module's entry call too.
+// glue items and the module's entry call too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -133,8 +133,8 @@ internal sealed partial class FunctionCodegen
         this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, parameters.Length)));
     }
 
-    // A call's end: its value, if any, put into the destination in its storage representation, then the call's target, or unreachable
-    // after a call without one (SPEC 14.10.3).
+    // A call's end: its value, if any, put into the destination in its storage representation, then the call's target (Branch, after its
+    // flag points), or unreachable after a call without one (SPEC 14.10.3), which has no runtime successor and so writes no points.
     private void Finish(in MirTerminator call, Value? result)
     {
         if (result is { } value && this.LoweringOf(call.Place) is { } lowering)
@@ -142,53 +142,13 @@ internal sealed partial class FunctionCodegen
             this.Store(MirStatement.Assign(call.Place, default, call.Source), this.Widen(lowering, value));
         }
 
-        this.output.Write(call.Target < 0 ? "  unreachable\n" : "  br ");
-        if (call.Target >= 0)
+        if (call.Target < 0)
         {
-            this.WriteLabel(call.Target);
-            this.output.Write('\n');
+            this.output.Write("  unreachable\n");
+            return;
         }
-    }
 
-    // An argument for its parameter (IMPL 21.3.1): a Value or a string borrow its operand in its computation representation; an OwnedSlot
-    // the address of storage the callee owns from the call on, a Move's Place itself (a string's too, whose Read is its record), or a
-    // Copy's copy or a string constant's record in its copy slot (Copies). False for a form not covered yet.
-    private bool Argument(int index, in AbiParameter parameter, out Value value)
-    {
-        var operand = this.body.Operands[index];
-        value = default;
-        switch (parameter.Kind)
-        {
-            case AbiParameterKind.Value or AbiParameterKind.SharedReference:
-                if (!this.Operand(operand, out value))
-                {
-                    return false;
-                }
-
-                if (this.LoweringOf(operand) is { } lowering)
-                {
-                    value = this.Narrow(lowering, value);
-                }
-
-                return true;
-            case AbiParameterKind.OwnedSlot when this.copyOf[index] >= 0 && operand.Kind == MirOperandKind.Const:
-                value = new('s', this.copyOf[index]);
-                this.Text(value, (string)this.body.Consts[operand.Arg].Value!);
-                return true;
-            case AbiParameterKind.OwnedSlot when this.copyOf[index] >= 0:
-                if (!this.Read(operand.Place, out var source) || this.LoweringOf(operand.Place) is not { } copied)
-                {
-                    return false;
-                }
-
-                value = new('s', this.copyOf[index]);
-                this.Put(value, this.InstanceType(operand.Place)!, copied, source);
-                return true;
-            case AbiParameterKind.OwnedSlot:
-                return operand.Kind is MirOperandKind.Copy or MirOperandKind.Move && this.Address(operand.Place, out value);
-            default:
-                throw new InvalidOperationException($"The parameter kind {parameter.Kind} has no argument row.");
-        }
+        this.Branch(call.Target);
     }
 
     // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition): the console
