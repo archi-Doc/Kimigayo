@@ -1011,14 +1011,20 @@ pointer rules left open by G160) was not accepted in that review and was redone 
   R4-M101) and to BU's G166. Option A (a unified "lifecycle receiver" definition) is rejected (editorial, with the rule drift
   review-3 found); option C (no change) is rejected (the classification G161, G165 and G166 need would stay a reading of §6.3.4 and
   §16.3.1). No support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
-- [Raw Pointer Rules Left Open by G160](Proposals/2026-10-22%20Raw%20Pointer%20Rules%20Left%20Open%20by%20G160.md): 一部取り込み
-  (open, intake only), candidate 4, round 2 (review-rp2: ACCEPT WITH FIXES, applied; BU checked §2.1 against B′+). Recommends: a
-  `during self` layer's Place through no dereference admits reads, shared borrows and `null` writes only (OQ-R1 (a)); a formed raw
-  Origin is the outer Origin of the borrow it is formed through, whatever its form, superseding G160 D18 for formed Origins (OQ-R2
-  (a)); a Warning for an own-step pointer after its owner leaves its holder, designed in G160-4 with a change to the address
-  representation (OQ-R3 (b)); G160 §6's diagnostic for a raw Field a `drop` releases without `during self` (OQ-R4 (a)). Planned
-  mapping: §5.7 and §5.2.1 condition 3.
-- Only the lifecycle receivers' root is integrated (SPEC §15.6.5); no support is claimed.
+- `Changes/2026-10-22 Raw Pointer Rules Left Open by G160.md`: 取り込み済み (2026-10-22), candidate 4, round 2 (review-rp2: ACCEPT WITH
+  FIXES, applied; BU checked §2.1 against B′+). The owner chose OQ-R1 (a), OQ-R2 (a), OQ-R3 (b) and OQ-R4 (a) (DECISIONS R4-M105).
+  Mapping: 2.1 A → SPEC §5.7's new "Writing a Field" bullet (through a dereference, the Origin reading gives; through no
+  dereference, reads, shared borrows and `null` writes only; the repair through a borrow; Case payloads), without §2.1's sketch (a
+  new SPEC example is a diagnostic-corpus case); 2.2 A → §5.7 "Origins" (a written `o` is one atom; a formed raw Origin is the
+  outer Origin of the borrow it is formed through, whatever its form), which "Reading a Field", "Typed paths" and "Calls" read
+  unchanged. Transferred: 2.3 B to G160-4's full-process design (the own-step marker, whose change to the address representation
+  the owner approved with (b); the Warning's sentence in §5.2.1 condition 3 with that design); 2.4 A to BU's implementing unit as
+  a DIAGNOSTICS Information code, not SPEC text (the SPEC requires warnings only; other diagnostics and their codes are the
+  implementation's, §23.1.1). Rejected: a Place Origin (2.1 B), the located `Unsupported_Kd` kept (2.1 C), no Origin or an error
+  for a formed intersection (2.2 B, C), an error for an own-step pointer's later use (2.3 A), a broader Warning (2.4 B). No
+  support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- Integrated: the lifecycle receivers' root (SPEC §15.6.5) and the raw pointer rules' 2.1 A and 2.2 A (SPEC §5.7); no support is
+  claimed.
 
 ## 2026-10-22 — Abstract calls reach by paths (`preserves results` removed)
 

@@ -2370,12 +2370,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Fields, an input's borrow, static storage); `raw/T during self`, only in a struct's or enum's inline storage, the holding
     value's own storage (an own step; the Type is not Copy and counts the pointee as stored content); `raw/T` is unstated. A raw
     Origin in a signature belongs to an input's borrow, a slot or `static`. Typed paths give Origins: `P@raw` and a `during self`
-    Field read take the Origin of the last reference the path dereferences (a borrow's, or the one a raw pointer states).
-    Dropping or narrowing an Origin is a fit (`raw/T during o <: raw/T`, §3.8); any other change is a claim, only the grouped
+    Field read take the Origin of the last reference the path dereferences (a borrow's, or the one a raw pointer states). Dropping
+    or narrowing an Origin is a fit (`raw/T during o <: raw/T`, §3.8); any other change is a claim, only the grouped
     `E@(raw/U during o)` in an unsafe context (§13.5.1 admits it), else a Refuted Origin relation. A write, Take, in-place
     destruction or exclusive Borrow through a pointer whose Origin keeps only shared Loans is an error. A raw Origin is no slot use,
-    and a slot it states must not be Phantom; raw Place borrows and `Raw.slice` lie within it; no intersection; the pointer's uses
-    add no point to its region.
+    and a slot it states must not be Phantom; raw Place borrows and `Raw.slice` lie within it; no intersection (for formed Origins
+    superseded by R4-M105); the pointer's uses add no point to its region.
   - Calls (D6, D10, D15): through a raw layer with an Origin a call may store what the Referent Type of that Origin's borrow
     admits, retained as the borrow would, without a Loan; a raw parameter without one admits its pointee Type; a raw layer without
     one in a result Type (a Tuple element, an Option payload or a Type argument too) may retain every argument and reaches storage
@@ -2392,8 +2392,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     verbatim: C1 「承認 (Recommended)」, C2 「承認 (Recommended)」, C3 「エラーにする (Recommended)」), as is D15's definition after
     review B4 (the borrow an Origin belongs to, the signature restriction and `placeEntry`'s typed handle: 「承認 (Recommended)」).
   - Representations (D19; "Closed vocabularies"): A5's address, a non-conflicting set element naming a holder (a row of the
-    conflicts table), and Binding's optional raw Origin with `self` are approved. A new `BindingFailure` entry or diagnostic code
-    is decided in its unit, with the owner's approval beyond the existing limits.
+    conflicts table), and Binding's optional raw Origin with `self` are approved (the address amended by R4-M105: an own-step
+    marker). A new `BindingFailure` entry or diagnostic code is decided in its unit, with the owner's approval beyond the existing
+    limits.
   - Units: BU's G160-0 (the located `Unsupported_Kd` for the new forms, in place of the parser's `BorrowOriginSemantics_Kd` and
     `AdaptationOrigin`; the ungrouped `E@raw/U during o` keeps its syntax error `AdaptationDuring`), G160-1 and G160-2 (one design,
     full process), G160-3 (library annotations, `dictionaryStorage`'s `raw/Dictionary<K, V> during value` and `placeEntry`'s
@@ -2408,8 +2409,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     above, Q3 a STATUS limit, Q4 confirmed, Q5 addresses carried by values, which removes the widening class its interim was for;
     until G160-4 the read side stays a recorded limit (its option (iii)).
   - Rejected (the design's §7): X-decl (the owner), K′, U, marker presence, a generic marker, integrated storage Types, an implicit
-    fit, E-only raw results, liveness that ignores address-only uses, an exposure rule, Binding rows from Fields, a static Move check
-    now.
+    fit, E-only raw results, liveness that ignores address-only uses, an exposure rule, Binding rows from Fields, a static Move
+    check now (a Warning adopted by R4-M105 for G160-4).
 - **R4-M96 A5-F9's R-a: an omitting call's inspection Loans end before its checks; the default taint deleted** (2026-10-21; unit 2e-3
   of G:A5-F9 under R4-M90, the package's §4 (D10) with the design review's root set; supersedes R4-M70's default taint for inline copies
   (template calls were R4-M93's), its role-table row `PendingSlot` → taint and the candidate's two tag sets, and R4-M73's sub-bullet on
@@ -2659,6 +2660,39 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a general definition in 23.1.2 (rounds 1 and 2: required failures made optional, cycles); an arrival test by Origins
     (fixed Origins are shared names and regions are flow-insensitive); calls without the call clause (`return id(local@ref)` and
     `rv-g-param` would stay independent); R, the same rule as an implementation contract only; H, rules 1 and 2 as approved.
+- **R4-M105 Raw pointer rules left open by G160** (owner, 2026-10-22, verbatim 「以下で決定します」 with OQ-R1 「(a) 逆参照を通らない
+  書き込みは null だけ許す」, OQ-R2 「(a)」, OQ-R3 「(b) Warning」 and OQ-R4 「(a) drop で解放する Field への Information の診断」; the
+  proposal `draft/Changes/2026-10-22 Raw Pointer Rules Left Open by G160.md`, round 2, accepted with fixes in
+  `draft/Sketches/R4 Proposals 2026-10-21/review-rp2.md`)
+  - OQ-R1 (a), SPEC 5.7 "Writing a Field": a write through a dereference gives a `during self` layer the Origin that reading it
+    there gives; through no dereference, except through `self` in the Type's constructors and `drop`, the Place admits reads,
+    shared borrows and `null` writes only; every other write (a `static` source included), an exclusive borrow (also in
+    `exchange`, `swap`, `replace`) and a non-null Case payload are Origin relation errors (Language), repaired through an exclusive
+    borrow of the holding value and a claim; a write of a Tuple or fixed-array Place enclosing the layer is a write of the layer's
+    Place. BU's B′+ U3 becomes this error at U3's sites, one `RawOrigins` check each, `null` read from a published fact; no new
+    representation. Left open (PLAN G212, B′+'s located `Unsupported_Kd` until decided): an exclusive borrow of such an enclosing
+    Place (`exchange(b.pair@uniq, …)`) and a Move of the layer's Place (`b.data@move`).
+  - OQ-R2 (a), SPEC 5.7 "Origins": a raw Origin formed by a Field read, a typed path or a substitution is the outer Origin of the
+    borrow it is formed through, an intersection included; a written `o` stays one atom. Supersedes R4-M95's "no intersection" (G160
+    D18) for formed Origins only: G160 records no reason for D18, and the reconstructed one (a written intersection may belong to no
+    single borrow) does not hold for a formed one. 5.7's Authority error stays (B′+'s `Formed` wraps a shared formation as
+    `Shared(L)`). B′+: `RawStep` gains an intersection row (Exclusive); U2's intersection half and BU's substitution item 11 go.
+  - OQ-R3 (b): a Warning where an operation ends the owning value's stay in its holder (Move, Take, `exchange`, `swap`, replacement
+    or destruction of the owning value's Place or an ancestor; a call taking it by `uniq`) while a value carrying a pointer formed
+    through its own step may still be used. With (b) the owner approved the change to the owner-approved address representation
+    (R4-M95, G160 §9.2 and D1): A5's address gains an own-step marker carrying the owning value's Place, which the Warning compares
+    with the operation's Place by 15.6.2's steps (the Place or an ancestor); for Loan checking an address still conflicts with
+    nothing. G160-4 designs it under the full process, with the Warning's sentence for 5.2.1 condition 3 and any closed-vocabulary
+    entry for the owner.
+  - OQ-R4 (a): an Information diagnostic for a raw Field in a struct's or enum's inline storage that the Type's `drop` releases
+    without `during self`, repaired by stating `during self` and adding the claim at each constructor fill; not for unannotated raw
+    Fields in general (G160 D3's canonical "unstated") and not on a constructor fill; for an enum's Case payload no repair candidate
+    (OQ-R1's Case rule). A DIAGNOSTICS diagnostic, not SPEC text (the SPEC requires warnings only; other diagnostics and their codes
+    are the implementation's, 23.1.1); its code is decided in BU's implementing unit, with the owner's approval beyond the existing
+    limits (R4-M95).
+  - Rejected: a Place Origin (`during b`, a new Origin kind near Appendix D.4); keeping Q-O4's `Unsupported_Kd`; no Origin for a
+    formed intersection (loses the Authority error) and an error for it; an error for an own-step pointer's later use (rejects
+    defined programs); a broader Warning on unannotated raw Fields.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

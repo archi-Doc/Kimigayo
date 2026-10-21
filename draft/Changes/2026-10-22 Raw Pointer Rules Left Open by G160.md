@@ -1,6 +1,8 @@
 # Raw Pointer Rules Left Open by G160
 
-Status: proposal for the owner's decision, round 2; not integrated, not implemented. Date: 2026-10-22. Base: `dev` `127b6f0e`.
+Status: 取り込み済み (closed 2026-10-22). The owner chose OQ-R1 (a), OQ-R2 (a), OQ-R3 (b) and OQ-R4 (a) (verbatim 「以下で決定します」;
+DECISIONS R4-M105). Integrated into SPEC §5.7: 2.1 A and 2.2 A. Transferred: 2.3 B to G160-4's design, 2.4 A to BU's implementing
+unit (DIAGNOSTICS). Not implemented. Date: 2026-10-22. Base: `dev` `127b6f0e`.
 Written by the R4 planning session on the owner's instruction (2026-10-21): 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」
 (candidate 4). Round 1 was not accepted by its independent review (`../Sketches/R4 Proposals 2026-10-21/review-3.md`, RP-B1 …
 RP-B4); this round adopts that review's shorter formulations, and its own review (`review-rp2.md`: ACCEPT WITH FIXES, RP2-B1 …
