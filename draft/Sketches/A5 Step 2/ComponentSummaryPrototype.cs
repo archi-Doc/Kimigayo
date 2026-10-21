@@ -8,25 +8,27 @@
 //            target of a plain formal X).
 //   Summary  §3.2: (ExclT, ExclO, Error, Obl) from one walk of a declaration's storage in its formals; the least fixed point over all
 //            declarations from (no, no, no, ∅). A nominal component adds its bits, walks its arguments and maps its Obl through
-//            [formals ↦ arguments]. Obl holds Transferable(P) for a projection P (the only kind Owned reads) and Layer(S, X). Obl grows
-//            only around a cycle of the projection-link graph that adds a projection step or passes a pair target back as a whole
-//            argument (a peel). Corrected keeps a projection family as Tᵢ.Q*.s and a peel family as the template ∀m. O[$h ↦ target^(j·m)(Y)]
-//            (j peels per round trip); an obligation on target(Y) is covered by the same obligation on Y; Layer(s, X) keeps only X's
-//            outer core (core:sealed, core:open). The direct walk checks SPEC 8.7.3's Object Target.
+//            [formals ↦ arguments]. Obl holds Transferable(P) for a projection P (the only kind Owned reads) and Layer(S, X); Layer(s, X)
+//            keeps only X's outer core (core:sealed, core:open). The direct walk checks SPEC 8.7.3's Object Target.
+//   Decided  the owner's option 2 (2026-10-21): an obligation that would name outer(X) or target(X) (a pair parameter instantiated with
+//            the declaration's own plain formal or projection; every peel) is not recorded, and the declaration is the site of a located
+//            U that a Transferable judgment raises on reading it; a projection family is F5 (a)'s located U for both intrinsics.
+//            Option 1 (the X-2 candidate) keeps such obligations as outer(X)/target(X) with peel templates ∀m. O[$h ↦ target^(j·m)(Y)].
 //   Use      Owned(D<A,o>) = ¬ExclO ∧ o = static ∧ Owned(A) ∧ Proj[A]; Transferable(D<A>) = ¬ExclT ∧ Transferable(A) ∧ Obl[A]; Error
-//            absorbs. Abstract Types by premises: exact assumption, Contract refinement, associated-Type requirements (SPEC 8.3.2). A
-//            use-site judgment that meets itself again contributes no exclusion.
-//   Columns  SPEC (written by hand from SPEC), Package (§3.2's wording; it shares the representation fixes), Corrected (the package
-//            with this round's findings). Each variant changes one rule of Corrected. Reference: SPEC's components by an instantiation BFS, on random declaration graphs; it
-//            shares the leaf rules, the substitution and the declarations' Error bit with the model, so it checks the summary and the
-//            fixed point, not the leaves.
-// Run, in an empty folder outside the repository: dotnet run ComponentSummaryPrototype.cs [-- -random N] [-- -seed S] [-- -v]. Exit code: Corrected's
+//            absorbs. Abstract Types by premises: exact assumption, Contract refinement, associated-Type requirements (SPEC 8.3.2).
+//   Columns  SPEC (written by hand from SPEC), Package (§3.2's wording; it shares the core reduction), Option1, Decided (the expected
+//            verdict in parentheses where option 2 answers the located U). Each other variant changes one rule of Decided. Reference:
+//            SPEC's components by an instantiation BFS, on random declaration graphs; it shares the leaf rules, the substitution and the
+//            declarations' Error bit with the model, so it checks the summary and the fixed point, not the leaves.
+// Run, in an empty folder outside the repository: dotnet run ComponentSummaryPrototype.cs [-- -random N] [-- -seed S]. Exit code: Decided's
 // failures (cases, anchors, conformances, random disagreements).
 using System.Text.RegularExpressions;
 
 return Run.Go(args);
 
-enum V { P, U, R, E, NT } // conjunction is the maximum: Error absorbs, then Refuted, then Unknown; NT: the fixed point did not converge
+// Conjunction is the maximum: Error absorbs, then L, Refuted, Unknown. L: a located Unsupported_Kd, raised when a judgment reads a summary
+// that the decided rules leave unsupported (F5 (a), option 2); its answer is Derived, never a Language error. NT: no convergence.
+enum V { P, U, R, L, E, NT }
 
 static class Vx
 {
@@ -390,8 +392,9 @@ sealed class Ob // Transferable(P) for a projection P ("proj"), or Layer(S, X) (
 
 sealed class Sum
 {
-    public bool XT, XO, Err; public Dictionary<string, Ob> Obl = new(); public SortedSet<string> FamU = new();
-    public bool Same(Sum o) => XT == o.XT && XO == o.XO && Err == o.Err && Obl.Keys.ToHashSet().SetEquals(o.Obl.Keys) && FamU.SetEquals(o.FamU);
+    public bool XT, XO, Err, PairOwned; public Dictionary<string, Ob> Obl = new(); public SortedSet<string> FamU = new(), PairU = new();
+    public bool Same(Sum o) => XT == o.XT && XO == o.XO && Err == o.Err && PairOwned == o.PairOwned && Obl.Keys.ToHashSet().SetEquals(o.Obl.Keys)
+        && FamU.SetEquals(o.FamU) && PairU.SetEquals(o.PairU);
 }
 
 // Family: prefix = the package's (Tᵢ, p, q*) "Tᵢ.p.qᵏ", formed when a new path extends a held one; suffix = "Tᵢ.Q*.s", formed when a
@@ -399,7 +402,8 @@ sealed class Sum
 // Error); plain = no families (with IgnoreDiv: a bounded enumeration, the oracle Bounded8). Layer: obl (the package's layer
 // obligation), A (formals add nothing), B (B's ViewTarget and Layer(s)). Walk: summary, or an instantiation walk (guard, capU, capP).
 sealed record Rules(string Name, bool Outer = true, bool AllAdmitted = true, bool TargetAlways = true, string Family = "suffix", string Layer = "obl",
-    bool TwoValued = false, string Walk = "summary", int Lim = 4, bool BodyAnchor = false, int Cap = 24, bool IgnoreDiv = false, bool Internal = true, string Note = "")
+    bool TwoValued = false, string Walk = "summary", int Lim = 4, bool BodyAnchor = false, int Cap = 24, bool IgnoreDiv = false, bool Internal = true,
+    bool PairU = false, bool Core = true, string Note = "")
 {
     public bool Exempt(Decl d) => d.Exempt || d.Internal && Internal;
 }
@@ -409,7 +413,7 @@ sealed class Engine
     const string T = "Transferable", O = "Owned";
     public readonly Prog P; public readonly Rules R; public readonly Dictionary<string, Sum> S = new();
     public int Rounds; public readonly HashSet<string> Div = new(), FamU = new(); readonly HashSet<string> growing = new(), growingDecl = new(); bool direct;
-    public readonly SortedSet<string> Raised = new(); // FamilyU: the declarations whose located U a judgment raised by reading the family
+    public readonly SortedSet<string> Raised = new(); public int Reentries; // FamilyU: the declarations whose located U a judgment raised by reading the family
     public Engine(Prog p, Rules r) { P = p; R = r; Links(); Solve(); }
 
     // The projection-link graph: (D, i) -r-> (E, j) when D's storage names E with argument j = formal i extended by projection steps r,
@@ -452,15 +456,19 @@ sealed class Engine
         {
             var changed = new List<string>();
             foreach (var d in P.D.Values) { var n = Compute(d); if (!n.Same(S[d.Name])) { S[d.Name] = n; changed.Add(d.Name); } }
-            if (changed.Count == 0) return;
-            if (Rounds == R.Cap) { Div.UnionWith(changed); return; }
+            if (changed.Count == 0) break;
+            if (Rounds == R.Cap) { Div.UnionWith(changed); break; }
         }
+        // A declaration whose summary reads a non-converged one answers from a truncated summary: it is not converged either.
+        static IEnumerable<string> Names(Ty t) => (t.K == "nom" ? [t.N] : Array.Empty<string>()).Concat(t.A.SelectMany(Names));
+        for (var grew = Div.Count > 0; grew; )
+            grew = P.D.Values.Where(d => !Div.Contains(d.Name) && d.Store.SelectMany(Names).Any(Div.Contains)).Select(d => Div.Add(d.Name)).ToList().Count > 0;
     }
 
     Sum Compute(Decl d)
     {
-        var prev = S[d.Name]; var a = new Sum { XT = prev.XT, XO = prev.XO || d.OwnedLeaf, Err = prev.Err || d.Invalid || FamU.Contains(d.Name) };
-        a.FamU.UnionWith(prev.FamU); if (FamU.Contains(d.Name)) a.FamU.Add(d.Name);
+        var prev = S[d.Name]; var a = new Sum { XT = prev.XT, XO = prev.XO || d.OwnedLeaf, Err = prev.Err || d.Invalid, PairOwned = prev.PairOwned };
+        a.FamU.UnionWith(prev.FamU); if (FamU.Contains(d.Name)) a.FamU.Add(d.Name); a.PairU.UnionWith(prev.PairU);
         foreach (var o in prev.Obl) a.Obl[o.Key] = o.Value; // seeding with the previous round keeps the iteration monotone
         var q = new List<(Ob O, bool C)>(); var seen = new HashSet<string>();
         direct = true; // D's own storage text: its object forms are checked for an Object Target
@@ -484,7 +492,7 @@ sealed class Engine
     {
         for (var h = o.Hole; ; )
         {
-            if (Prog.Abstract(h)) { Add(a, new Ob { Kind = o.Kind, S = o.S, X = o.S != null && o.S.Abstract ? Core(d, o.X) : o.X, Hole = h, Step = o.Step }, cyc); return; }
+            if (Prog.Abstract(h)) { Add(a, new Ob { Kind = o.Kind, S = o.S, X = o.S != null && o.S.Abstract && R.Core ? Core(d, o.X) : o.X, Hole = h, Step = o.Step }, cyc); return; }
             var i = P.Inst(o, h);
             if (i.Kind == "proj") Walk(d, i.X, false, a, q, cyc); else Layer(d, i.S, i.X, false, a, q, cyc);
             var n = Prog.Up(h, o.Step); if (n.Equals(h)) return; h = n;
@@ -524,13 +532,22 @@ sealed class Engine
             case "layer": Layer(d, t.S, t.A[0], ex, a, q, cyc); return;
             case "nom":
                 var e = P.D[t.N]; var s = S[e.Name];
-                a.Err |= s.Err; a.XT |= s.XT; a.XO |= s.XO; a.FamU.UnionWith(s.FamU);
+                a.Err |= s.Err; a.XT |= s.XT; a.XO |= s.XO; a.FamU.UnionWith(s.FamU); a.PairU.UnionWith(s.PairU); a.PairOwned |= s.PairOwned;
                 foreach (var x in t.A) Walk(d, x, false, a, q, cyc);
-                if (FamU.Contains(e.Name)) { a.Err = true; return; }
+                if (FamU.Contains(e.Name)) return; // F5 (a): a projection family is unsupported, read on demand; its obligations are not mapped
                 // On a growing path when the edge grows, or when E itself lies on a growing cycle (E's obligations, mapped through a target
                 // that names E again, deepen by one step per walk).
                 var m = P.Bind(e, t); var c = growing.Contains(d.Name + ">" + e.Name) || growingDecl.Contains(e.Name);
-                foreach (var o in s.Obl.Values) q.Add((o.Map(P, m), c));
+                foreach (var o in s.Obl.Values)
+                {
+                    var u = o.Map(P, m);
+                    // Option 2 (owner, 2026-10-21): an obligation that would name outer(X) or target(X) (E's pair parameter instantiated with
+                    // D's own plain formal or projection, which every peel does) is not recorded; D's summary records itself as the site
+                    // of a located U for Transferable (and for Owned too if the obligation is a projection's, which Owned reads).
+                    if (R.PairU && (u.Key.Contains("outer(") || u.Key.Contains("target(")))
+                    { a.PairU.Add(d.Name); a.PairOwned |= u.Kind == "proj"; continue; }
+                    q.Add((u, c));
+                }
                 return;
             default: foreach (var x in t.A) Walk(d, x, ex, a, q, cyc); return; // tuple, array, item
         }
@@ -543,7 +560,7 @@ sealed class Engine
         if (direct && (!s.Abstract && ObjectFamily(s.N) || s.F && !own && Adm(d, s.N).Any(ObjectFamily)) && !ObjectTarget(d, x)) a.Err = true; // SPEC 8.7.3, 8.1.1
         if (s.Abstract)
         {
-            if (!own && R.Layer != "A" && (R.Outer || s.Of == null)) Add(a, new Ob { Kind = "layer", S = s, X = Core(d, x) }, cyc);
+            if (!own && R.Layer != "A" && (R.Outer || s.Of == null)) Add(a, new Ob { Kind = "layer", S = s, X = R.Core ? Core(d, x) : x }, cyc);
         }
         else
             switch (s.N)
@@ -621,7 +638,7 @@ sealed class Engine
     V Nom(string i, Ty t, Scope sc)
     {
         t = Prog.Collapse(t); var key = $"{i}|{t}|{sc.Text}";
-        if (!judging.Add(key)) return V.P;
+        if (!judging.Add(key)) { Reentries++; return V.P; }
         try { return NomOnce(i, t, sc); } finally { judging.Remove(key); }
     }
 
@@ -633,7 +650,8 @@ sealed class Engine
         if (!tr) v = v.And(t.O.Select(Orig).All());
         var m = P.Bind(e, t);
         foreach (var a in t.A) v = v.And(J(i, a, sc));
-        if (s.FamU.Count > 0) Raised.UnionWith(s.FamU);
+        if (s.FamU.Count > 0) { Raised.UnionWith(s.FamU); v = v.And(V.L); } // F5 (a): raised on read, once per declaration
+        if (tr ? s.PairU.Count > 0 : s.PairOwned) { Raised.UnionWith(s.PairU); v = v.And(V.L); } // option 2: Transferable only, in practice
         foreach (var o in s.Obl.Values)
         {
             if (!tr && o.Kind != "proj") continue;
@@ -667,6 +685,7 @@ sealed class Engine
             var vs = set.Select(n => Leaf(Sem.C(n), x, sc)).ToList();
             if (vs.Contains(V.NT)) return V.NT;
             if (vs.Contains(V.E)) return V.E;
+            if (vs.Contains(V.L)) return V.L;
             if (vs.All(v => v == V.R)) return V.R;
             return R.AllAdmitted ? (vs.All(v => v == V.P) ? V.P : V.U) : (vs.Contains(V.R) ? V.U : V.P); // the package: "Proven when none does"
         }
@@ -824,6 +843,12 @@ static class Cases
         .Decl("Fwd2<T>{a} where T is Has", "SemAny<T.(Has).Out>{a}") // the review's k1-k8
         .Decl("PA<s/T>{a}", "s/Base during a", "Option<obj/PB<T>{a}>").Decl("PB<U>{a}", "PA<U>{a}")
         .Decl("Peel3<s/T>{a}", "s/OBox<T> during a", "Option<obj/Peel3<T>{a}>")
+        .Decl("Q0<s/T>{a}", "s/Base during a", "Option<obj/Q1<T>{a}>").Decl("Q1<s/T>{a}", "Option<obj/Q2<T>{a}>").Decl("Q2<s/T>{a}", "Option<obj/Q3<T>{a}>") // review round 2
+        .Decl("Q3<s/T>{a}", "Option<obj/Q4<T>{a}>").Decl("Q4<s/T>{a}", "Option<obj/Q0<T>{a}>")
+        .Decl("IX<s/T, r/U>{a}", "s/Base during a", "Option<obj/IX<U, T>{a}>")
+        .Decl("RB<s/T>{a}", "Array<s/OBox<RB<T>{a}> during a>")
+        .Decl("PS<s/T>{a}", "s/SemAny<T>{a} during a", "Option<obj/PS<T>{a}>")
+        .Decl("G2<s/T, U>{a}", "s/OBox<U> during a", "Option<obj/G2<s/T, Box<U>>{a}>") // a pair binder over a composite that grows: no outer, no peel
         .Decl("Cfg", "i32").Decl("Leaf", "i32").Decl("Wrap<X>", "X").Decl("Pair2<X>", "X", "X")
         .Decl("PHold<T> where T is Has", "T.(Has).Out")
         .Decl("TreeNode<T> where T is Tree", "T", "Array<TreeNode<T.(Tree).Child>>")
@@ -962,6 +987,25 @@ static class Cases
         ("k6", "review", "Peel3<ref/(obj/Item) during static>{static}", "", "P/R", "Peel3<obj/Item> stores obj/OBox<Item>, OBox open"),
         ("k7", "review", "Peel3<ref/(ref/i32 during static) during static>{static}", "", "P/P", "every level ref or owner over a sealed i32"),
         ("k8", "review", "Peel3<U>{static}", "U is Transferable and Owned", "P/U", "every layer of U applied to OBox<...>"),
+        ("j1", "review2", "Q0<ref/(ref/(ref/(ref/(ref/(obj/Item) during static) during static) during static) during static) during static>{static}", "", "P/R", "five peels per round trip: Q0 at target^5 is obj/Item"),
+        ("j2", "review2", "Q0<ref/(ref/(ref/(ref/(Item) during static) during static) during static) during static>{static}", "", "P/P", "five peels, owner at target^5"),
+        ("j3", "review2", "Q0<U>{static}", "U is Transferable and Owned", "P/U", ""),
+        ("j4", "review2", "Q0<ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(obj/Item) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static>{static}", "", "P/R", "Q0 at target^30 is obj/Item (R1-1)"),
+        ("d1", "review2", "Peel<ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(ref/(obj/Item) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static) during static>{static}", "", "P/R", "Peel at depth 70: obj/Base (R1-2)"),
+        ("x1", "review2", "IX<ref/Item during static, ref/(ref/(ref/(obj/Item) during static) during static) during static>{static}", "", "P/R", "swapped peels: s at level 3 is obj"),
+        ("x2", "review2", "IX<ref/Item during static, ref/(ref/(ref/(Item) during static) during static) during static>{static}", "", "P/P", ""),
+        ("x3", "review2", "IX<U, V>{static}", "U is Transferable and Owned; V is Transferable and Owned", "P/U", ""),
+        ("b1", "review2", "RB<obj/Item>{static}", "", "P/R", "obj/OBox<RB<Item>>: OBox open"),
+        ("b2", "review2", "RB<ref/(ref/(i32) during static) during static>{static}", "", "P/P", "self-reference through Array"),
+        ("b3", "review2", "RB<ref/(obj/Item) during static>{static}", "", "P/R", "level 1 is obj"),
+        ("s1", "review2", "PS<ref/(obj/Item) during static>{static}", "", "P/R", "level 0's SemAny<obj/Item> stores obj/Base"),
+        ("s2", "review2", "PS<ref/(ref/(obj/Item) during static) during static>{static}", "", "P/R", "a walk product at level 1"),
+        ("s3", "review2", "PS<ref/(ref/(ref/(obj/Item) during static) during static) during static>{static}", "", "P/R", "a walk product at level 2"),
+        ("s4", "review2", "PS<ref/(ref/(ref/(Item) during static) during static) during static>{static}", "", "P/P", ""),
+        ("s5", "review2", "PS<U>{static}", "U is Transferable and Owned", "P/U", ""),
+        ("s6", "review2", "PS<U>{static}", "U is Transferable and Owned and ObjectPayload", "P/P", "U owner: every level owner/Base"),
+        ("g1", "review2", "G2<ref/Item during static, i32>{static}", "", "P/P", "ref/OBox<Box^k<i32>> at every level"),
+        ("g2", "review2", "G2<obj/Item, i32>{static}", "", "P/R", "obj/OBox<i32>: OBox open"),
     ];
 
     // Generic statics: (id, container, static Type, reading body's extra premises, instance read, SPEC: the confined read is an error)
@@ -1001,126 +1045,143 @@ static class Cases
 
 static class Run
 {
-    static readonly Rules Corrected = new("Corrected", Note: "the package with this round's findings applied");
+    // The decided rules: the owner's option 2 (2026-10-21) with F3, F4, F5 (a), F6 and the core reduction.
+    public static readonly Rules Decided = new("Decided", Family: "U", PairU: true, Note: "option 2 with F3, F4, F5 (a), F6 and the core reduction");
     static readonly Rules[] Variants = [
-        new("Package", Outer: false, AllAdmitted: false, TargetAlways: false, Family: "prefix", Note: "§3.2 as written: no outer(...), \"Proven when none does\", the target only under a proven Sealed, Tᵢ.p.qᵏ"),
-        new("A", Layer: "A", Note: "design A's summary: a formal adds nothing, no layer obligation"),
-        new("B", Layer: "B", Note: "design B's ViewTarget (obj, objref, objuniq; two-valued) and Layer(s) (rc, raw); arc continues"),
-        new("TwoValued", TwoValued: true, Note: "the pre-P-2 wording: an unproven Sealed refutes"),
-        new("NoneRefutes", AllAdmitted: false, Note: "§3.2's \"Proven when none does\" for an admitted set"),
-        new("PairBinderOnly", Outer: false, Note: "Layer(S, X) only for a pair binder S: drops outer(formal)"),
-        new("TargetIfSealed", TargetAlways: false, Note: "§3.2's object layer: the target only when Sealed is Proven"),
-        new("FamilyPrefix", Family: "prefix", Note: "§3.2's family (Tᵢ, p, q*) = Tᵢ.p.qᵏ with B's inductive rule"),
-        new("FamilyU", Family: "U", Note: "A's fallback: a projection family answers Error, with a located U at its declaration raised when a judgment reads it; peels stay exact"),
-        new("NoInternal", Internal: false, Note: "the exemption without the iterators' internal storage declarations"),
-        new("Bounded8", Family: "plain", Cap: 8, IgnoreDiv: true, Note: "oracle: obligations enumerated for 8 rounds, each judged by 8.3.2"),
-        new("Guard", Walk: "guard", Note: "instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)"),
-        new("Cap4U", Walk: "capU", Note: "instantiation walk, depth cap 4 answering U"),
-        new("Cap4P", Walk: "capP", Note: "instantiation walk, depth cap 4 answering P"),
-        new("BodyAnchor", BodyAnchor: true, Note: "anchor: the reading body's premises (the Transferable plan §5.3)"),
+        new("Option1", Note: "option 1, the X-2 candidate: outer(X)/target(X), the core reduction, peel templates (step j ≤ 4 and 64 instances at use: R1-1, R1-2 open), the use-site rule, Q*.s families"),
+        new("Package", Outer: false, AllAdmitted: false, TargetAlways: false, Family: "prefix", Note: "§3.2 as written (sharing the model's core reduction and coverage): no outer(...), \"Proven when none does\", the target only under a proven Sealed, Tᵢ.p.qᵏ"),
+        Decided with { Name = "PairBinderOnly", PairU = false, Outer = false, Note = "option 2 without its U: an obligation that would name outer(X) or target(X) is dropped" },
+        Decided with { Name = "NoCore", Core = false, Note = "option 2 without the core reduction" },
+        Decided with { Name = "A", Layer = "A", Note = "design A's summary: a formal adds nothing, no layer obligation" },
+        Decided with { Name = "B", Layer = "B", Note = "design B's ViewTarget (obj, objref, objuniq; two-valued) and Layer(s) (rc, raw); arc continues" },
+        Decided with { Name = "TwoValued", TwoValued = true, Note = "the pre-P-2 wording: an unproven Sealed refutes" },
+        Decided with { Name = "NoneRefutes", AllAdmitted = false, Note = "§3.2's \"Proven when none does\" for an admitted set" },
+        Decided with { Name = "TargetIfSealed", TargetAlways = false, Note = "§3.2's object layer: the target only when Sealed is Proven" },
+        Decided with { Name = "FamilyPrefix", Family = "prefix", Note = "§3.2's family (Tᵢ, p, q*) = Tᵢ.p.qᵏ with B's inductive rule" },
+        Decided with { Name = "FamilyQs", Family = "suffix", Note = "F5 (b): Tᵢ.Q*.s families with the knowledge-state judgment" },
+        Decided with { Name = "NoInternal", Internal = false, Note = "the exemption without the iterators' internal storage declarations" },
+        Decided with { Name = "Bounded8", Family = "plain", Cap = 8, IgnoreDiv = true, Note = "oracle for families: obligations enumerated for 8 rounds, each judged by 8.3.2" },
+        Decided with { Name = "Guard", Walk = "guard", Note = "instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)" },
+        Decided with { Name = "Cap4U", Walk = "capU", Note = "instantiation walk, depth cap 4 answering U" },
+        Decided with { Name = "Cap4P", Walk = "capP", Note = "instantiation walk, depth cap 4 answering P" },
+        Decided with { Name = "BodyAnchor", BodyAnchor = true, Note = "anchor: the reading body's premises (the Transferable plan §5.3)" },
     ];
+    // Option 2's located U, listed by hand: Transferable of a Type whose summary would need outer(X) or target(X) (a pair parameter
+    // instantiated with the declaration's own plain formal or projection, which every peel is), and both intrinsics under a projection
+    // family (F5 (a)). Every other verdict must equal SPEC's.
+    static readonly HashSet<string> PairCases = ["l16", "l17", "l23", "l25", "l26", "l27", "k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "j1", "j2", "j3", "j4", "d1",
+        "x1", "x2", "x3", "b1", "b2", "b3", "s1", "s2", "s3", "s4", "s5", "s6"];
+    static readonly HashSet<string> FamilyCases = ["f1", "f2", "f5", "f6", "f7", "f8", "f9", "f10"];
+    static (V O, V T) Expected(string id, V o, V t) => (FamilyCases.Contains(id) ? V.L : o, FamilyCases.Contains(id) || PairCases.Contains(id) ? V.L : t);
     static string S2(V o, V t) => $"{o}/{t}";
     static V Pv(char c) => c switch { 'P' => V.P, 'U' => V.U, 'R' => V.R, _ => V.E };
-    public static string Cls(V spec, V got) => got == spec ? "" : got == V.NT ? "NONTERM" : spec != V.P && got == V.P ? "UNSOUND" : spec == V.P && got == V.R ? "over-strict"
-        : spec == V.E ? "misses Error" : $"{got} for {spec}";
+    public static string Cls(V spec, V got) => got == spec ? "" : got == V.L ? "located U" : got == V.NT ? "NONTERM" : spec != V.P && got == V.P ? "UNSOUND"
+        : spec == V.P && got == V.R ? "over-strict" : spec == V.E ? "misses Error" : $"{got} for {spec}";
 
     public static int Go(string[] args)
     {
         Console.OutputEncoding = System.Text.Encoding.UTF8;
-        var verbose = args.Contains("-v");
         var p = Cases.Program();
-        var engines = new[] { Corrected }.Concat(Variants).ToDictionary(r => r.Name, r => new Engine(p, r));
-        var cor = engines["Corrected"]; var fails = 0;
+        var engines = new[] { Decided }.Concat(Variants).ToDictionary(r => r.Name, r => new Engine(p, r));
+        var dec = engines["Decided"]; var fails = 0;
 
         Console.WriteLine($"# 2x-P12 component summary prototype\n\nDeclarations {p.D.Count}, Contracts {p.C.Count}, conformances {p.F.Count}, cases {Cases.All.Length}, anchors {Cases.Anchors.Length}.");
-        Console.WriteLine("\n## Fixed point (rounds until no summary changes; cap 24, Bounded8 8)\n\n| Rules | rounds | not converged | family declarations (FamilyU) | max obligations |\n| --- | --- | --- | --- | --- |");
+        Console.WriteLine("\n## Fixed point (rounds until no summary changes; cap 24, Bounded8 8; not converged includes every reader of one)\n\n| Rules | rounds | not converged | located U: families | located U: pair sites | max obligations | templates |\n| --- | --- | --- | --- | --- | --- | --- |");
         foreach (var (name, e) in engines)
-            Console.WriteLine($"| {name} | {e.Rounds} | {(e.Div.Count == 0 ? "—" : string.Join(", ", e.Div.Order()))} | {(e.FamU.Count == 0 ? "—" : string.Join(", ", e.FamU.Order()))} | {e.S.Values.Max(s => s.Obl.Count)} |");
-        Console.WriteLine("\nCorrected's summaries with obligations or a family:\n");
-        foreach (var (name, s) in cor.S.Where(x => x.Value.Obl.Count > 0 || x.Value.XT && p.D[x.Key].Ps.Count > 0 && verbose))
-            Console.WriteLine($"- {name}: ExclT {(s.XT ? "yes" : "no")}, ExclO {(s.XO ? "yes" : "no")}, Error {(s.Err ? "yes" : "no")}, Obl {{{string.Join(", ", s.Obl.Values.Select(o => o.ToString()))}}}");
-        Console.WriteLine($"- Exempt declarations (the KimiLibraryShapeTest condition: their own storage reaches no rc, Function or view leaf): {string.Join(", ", p.D.Values.Where(d => d.Exempt || d.Internal).Select(d => $"{d.Name} ExclT {(cor.S[d.Name].XT ? "**yes**" : "no")}"))}");
+            Console.WriteLine($"| {name} | {e.Rounds} | {(e.Div.Count == 0 ? "—" : string.Join(", ", e.Div.Order()))} | {(e.FamU.Count == 0 ? "—" : string.Join(", ", e.FamU.Order()))} | "
+                + $"{string.Join(", ", e.S.Where(x => x.Value.PairU.Contains(x.Key)).Select(x => x.Key).DefaultIfEmpty("—"))} | {e.S.Values.Max(s => s.Obl.Count)} | {e.S.Values.Sum(s => s.Obl.Values.Count(o => o.Hole != null))} |");
+        Console.WriteLine("\nDecided's summaries with obligations or a located-U site:\n");
+        foreach (var (name, s) in dec.S.Where(x => x.Value.Obl.Count > 0 || x.Value.PairU.Count > 0 || x.Value.FamU.Count > 0))
+            Console.WriteLine($"- {name}: ExclT {(s.XT ? "yes" : "no")}, ExclO {(s.XO ? "yes" : "no")}, Error {(s.Err ? "yes" : "no")}, Obl {{{string.Join(", ", s.Obl.Values.Select(o => o.ToString()))}}}"
+                + (s.FamU.Count > 0 ? $", family U {{{string.Join(", ", s.FamU)}}}" : "") + (s.PairU.Count > 0 ? $", pair U {{{string.Join(", ", s.PairU)}}}{(s.PairOwned ? " (Owned too)" : "")}" : ""));
+        Console.WriteLine($"- Exempt declarations (the KimiLibraryShapeTest condition: their own storage reaches no rc, Function or view leaf): {string.Join(", ", p.D.Values.Where(d => d.Exempt || d.Internal).Select(d => $"{d.Name} ExclT {(dec.S[d.Name].XT ? "**yes**" : "no")}"))}");
         var walk = engines["Package"].S["Walk"];
         var longest = walk.Obl.Values.MaxBy(o => o.Key.Length);
         Console.WriteLine($"- Package's Walk at its cap: {walk.Obl.Count} obligations, still growing; the longest is T(T.(Seq).Next^{longest.X.G[0].W.Length}{longest.X.G[^1]}).");
 
-        Console.WriteLine("\n## Cases (Owned/Transferable)\n\n| Case | Query | Premises | SPEC | why | Package | Corrected | meets |\n| --- | --- | --- | --- | --- | --- | --- | --- |");
+        Console.WriteLine("\n## Cases (Owned/Transferable; L: a located Unsupported_Kd)\n\n| Case | Query | Premises | SPEC | why | Package | Option1 | Decided (expected) | meets |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- |");
         var results = new Dictionary<string, Dictionary<string, (V O, V T)>>();
+        int located = 0, exactOwned = 0;
         foreach (var c in Cases.All)
         {
             var q = Parser.Parse(p, c.Q); var sc = Scope.Parse(p, c.Ctx); var so = Pv(c.Spec[0]); var st = Pv(c.Spec[2]);
             var r = results[c.Id] = engines.ToDictionary(e => e.Key, e => (e.Value.Eval("Owned", q, sc), e.Value.Eval("Transferable", q, sc)));
             string Mark(string n) { var (o, t) = r[n]; var k = string.Join(", ", new[] { Cls(so, o), Cls(st, t) }.Where(x => x.Length > 0).Distinct()); return S2(o, t) + (k.Length > 0 ? $" **{k}**" : ""); }
-            var ok = r["Corrected"] == (so, st); fails += ok ? 0 : 1;
-            Console.WriteLine($"| {c.Id} | `{c.Q}` | {(c.Ctx.Length > 0 ? $"`{c.Ctx}`" : "")} | {c.Spec} | {c.Why} | {Mark("Package")} | {Mark("Corrected")} | {(ok ? "yes" : "**NO**")} |");
+            var expected = Expected(c.Id, so, st); var ok = r["Decided"] == expected; fails += ok ? 0 : 1;
+            located += r["Decided"].T == V.L ? 1 : 0; exactOwned += r["Decided"].O == so ? 1 : 0;
+            Console.WriteLine($"| {c.Id} | `{c.Q}` | {(c.Ctx.Length > 0 ? $"`{c.Ctx}`" : "")} | {c.Spec} | {c.Why} | {Mark("Package")} | {Mark("Option1")} | {S2(r["Decided"].O, r["Decided"].T)}"
+                + $"{(expected == (so, st) ? "" : $" ({S2(expected.O, expected.T)})")} | {(ok ? "yes" : "**NO**")} |");
         }
+        Console.WriteLine($"\nDecided: Transferable answers the located U on {located} cases (the pair cases and the families listed by hand), Owned equals SPEC on {exactOwned} of "
+            + $"{Cases.All.Length} (the others: F5 (a)'s families), every other verdict equals SPEC; use-site re-entries {dec.Reentries}; peel templates "
+            + $"{dec.S.Values.Sum(s => s.Obl.Values.Count(o => o.Hole != null))}; located U raised at {string.Join(", ", dec.Raised)}.");
 
         Console.WriteLine("\n## Generic statics (§3.5's anchor; A4: Proven nothing, Refuted Environment, Unknown Limit = located U, Error Derived)\n");
-        Console.WriteLine("| Read | Container | Static's Type | Body premises | Instance | SPEC (instance's verdict) | Corrected | BodyAnchor | TwoValued | Package |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
+        Console.WriteLine("| Read | Container | Static's Type | Body premises | Instance | SPEC (instance's verdict) | Decided | BodyAnchor | TwoValued | Package |\n| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |");
         foreach (var a in Cases.Anchors)
         {
             var d = Prog.Head(a.Container, out var w); d.Prem = Scope.Parse(p, w);
             var ty = Parser.Parse(p, a.Type); var body = Scope.Parse(p, a.Body);
             var inst = a.Args.Length == 0 ? ty : p.Subst(ty, p.Bind(d, Ty.Nom(d.Name, [Parser.Parse(p, a.Args)])));
-            var iv = cor.J("Transferable", inst, body); var consistent = iv != V.P == a.Err; fails += consistent ? 0 : 1;
+            var iv = dec.J("Transferable", inst, body); var consistent = iv != V.P == a.Err; fails += consistent ? 0 : 1;
             string Out(string rn)
             {
                 var e = engines[rn]; var v = e.J("Transferable", ty, e.R.BodyAnchor ? d.Prem.Plus(body) : d.Prem);
-                var o = v switch { V.P => "valid", V.R => "error", V.U => "U", V.E => "derived", _ => "NT" };
+                var o = v switch { V.P => "valid", V.R => "error", V.U => "U", V.L => "U (located)", V.E => "derived", _ => "NT" };
                 var bad = a.Err && o == "valid" ? " **UNSOUND**" : !a.Err && o == "error" ? " **OVERSTRICT**" : d.Ps.Count == 0 && o == "U" ? " **U at a closed Type**" : "";
-                if (rn == "Corrected" && bad.Length > 0) fails++;
+                if (rn == "Decided" && bad.Length > 0) fails++;
                 return $"{v} → {o}{bad}";
             }
-            Console.WriteLine($"| {a.Id} | `{d.Name}` | `{a.Type}` | {a.Body} | {(a.Args.Length > 0 ? $"`{d.Name}<{a.Args}>`" : "")} | {(a.Err ? "error" : "valid")} ({iv}{(consistent ? "" : " **NO**")}) | {Out("Corrected")} | {Out("BodyAnchor")} | {Out("TwoValued")} | {Out("Package")} |");
+            Console.WriteLine($"| {a.Id} | `{d.Name}` | `{a.Type}` | {a.Body} | {(a.Args.Length > 0 ? $"`{d.Name}<{a.Args}>`" : "")} | {(a.Err ? "error" : "valid")} ({iv}{(consistent ? "" : " **NO**")}) | {Out("Decided")} | {Out("BodyAnchor")} | {Out("TwoValued")} | {Out("Package")} |");
         }
 
         Console.WriteLine("\n## Conformances (verified without themselves, SPEC 8.3.3; an intrinsic parent by the judgment, 8.7.1)\n\n| Conformance | SPEC | model |\n| --- | --- | --- |");
         foreach (var (text, valid, why) in Cases.Confs)
         {
             var f = p.F.First(f => f.Text == text);
-            var got = f.Valid && p.Close([f.Contract]).Where(c => c is "Transferable" or "Owned").All(c => cor.J(c, Ty.Nom(f.Decl, [.. f.Ps.Select(Ty.Var)]), f.When) == V.P);
+            var got = f.Valid && p.Close([f.Contract]).Where(c => c is "Transferable" or "Owned").All(c => dec.J(c, Ty.Nom(f.Decl, [.. f.Ps.Select(Ty.Var)]), f.When) == V.P);
             fails += got == valid ? 0 : 1;
             Console.WriteLine($"| `{text}` | {(valid ? "accepted" : "rejected")}{(why.Length > 0 ? ": " + why : "")} | {(got ? "accepted" : "rejected")}{(got == valid ? "" : " **NO**")} |");
         }
         Console.WriteLine("| `struct Claim` with `Self is Transferable` | rejected at the clause (8.7.1) | the summary ignores the clause; c36 is Refuted |");
 
-        Console.WriteLine("\n## Variants (cases whose verdict differs from SPEC)\n");
+        Console.WriteLine("\n## Variants (cases where a variant differs from Decided; its verdict, then its class against SPEC)\n");
         foreach (var v in Variants)
         {
-            var diffs = Cases.All.Where(c => results[c.Id][v.Name] != (Pv(c.Spec[0]), Pv(c.Spec[2]))).Select(c =>
+            var diffs = Cases.All.Where(c => results[c.Id][v.Name] != results[c.Id]["Decided"]).Select(c =>
             {
                 var (o, t) = results[c.Id][v.Name]; var k = string.Join(", ", new[] { Cls(Pv(c.Spec[0]), o), Cls(Pv(c.Spec[2]), t) }.Where(x => x.Length > 0).Distinct());
-                return $"{c.Id} {S2(o, t)} ({k})";
+                return $"{c.Id} {S2(o, t)}{(k.Length > 0 ? $" ({k})" : " (SPEC)")}";
             }).ToList();
-            var raised = engines[v.Name].Raised.Count > 0 ? $". Located U raised by the judgments that read a family: {string.Join(", ", engines[v.Name].Raised)}" : "";
-            Console.WriteLine($"- **{v.Name}** ({v.Note}): {(diffs.Count == 0 ? "every case meets SPEC" : string.Join("; ", diffs))}{raised}");
+            Console.WriteLine($"- **{v.Name}** ({v.Note}): {(diffs.Count == 0 ? "as Decided on every case" : string.Join("; ", diffs))}");
         }
 
         var graphs = args.SkipWhile(a => a != "-random").Skip(1).Select(int.Parse).DefaultIfEmpty(2000).First();
         fails += Rand.Check(graphs, args.SkipWhile(a => a != "-seed").Skip(1).Select(int.Parse).DefaultIfEmpty(20261021).First());
-        Console.WriteLine($"\nCorrected failures: {fails}");
+        Console.WriteLine($"\nDecided failures: {fails}");
         return fails;
     }
 }
 
-// Random small declaration graphs (no projections): Corrected's summary against the instantiation reference (a BFS cut at nominal depth
-// 9, deepened to 14 when cut; still cut or over 4,000 nodes: inconclusive). Closed queries only, so every answer is P, R, U (an Origin) or E.
-// Pair binders apply to Base, to Types built from the pair target, and to other formals; half the pair declarations peel.
+// Random declaration graphs (no projections): Decided's summary against the instantiation reference (a BFS cut at nominal depth 9,
+// deepened to 100 when cut; still cut, over 4,000 nodes or an instance over 2,000 terms: inconclusive). Closed queries, so every answer
+// is P, R, U (an Origin), E, or Decided's located U (Transferable only). Graphs: 2–4 declarations, or a ring of 5–8 peeling pair
+// declarations (a quarter of the graphs). Pair binders apply to Base, to Types built from the pair target and to other formals; half the
+// pair declarations peel. A fifth of the query arguments carry 2–80 ref layers.
 static class Rand
 {
     static readonly string[] Args = ["i32", "Item", "Base", "rc/Item", "obj/Base", "obj/Item", "ref/i32 during static", "ref/i32 during local", "(i32, i32)", "arc/Item", "raw/i32", "Option<Item>", "Box<Base>", "Weak<rc/Item>", "fn"];
     public static int Check(int graphs, int seed)
     {
-        var rnd = new Random(seed); int queries = 0, inconclusive = 0, deepened = 0, cutP = 0, maxRounds = 0, pkgRounds = 0, corDiv = 0, pkgDiv = 0, peels = 0, bad = 0; var cls = new SortedDictionary<string, int>(); var first = new SortedDictionary<string, string>();
+        var rnd = new Random(seed); var cls = new SortedDictionary<string, int>(); var first = new SortedDictionary<string, string>(); var locatedBy = new SortedDictionary<string, int>();
+        int queries = 0, inconclusive = 0, deepened = 0, maxRounds = 0, decDiv = 0, opt1Rounds = 0, opt1Div = 0, templates = 0, reentries = 0, pairGraphs = 0, rings = 0, deep = 0, bad = 0;
         for (var g = 0; g < graphs; g++)
         {
-            var p = Cases.Prelude(new Prog()); var nd = rnd.Next(2, 5);
-            var heads = Enumerable.Range(0, nd).Select(k => (Name: "R" + k, Pair: rnd.Next(3) == 0, Arity: rnd.Next(1, 3), Slot: rnd.Next(3) == 0)).ToArray();
+            var p = Cases.Prelude(new Prog()); var ring = rnd.Next(4) == 0; var nd = ring ? rnd.Next(5, 9) : rnd.Next(2, 5); rings += ring ? 1 : 0;
+            var heads = Enumerable.Range(0, nd).Select(k => (Name: "R" + k, Pair: ring || rnd.Next(3) == 0, Arity: rnd.Next(1, 3), Slot: rnd.Next(3) == 0)).ToArray();
+            string Apply(int j, string slot, Func<int, string> arg) { var h = heads[j]; return h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(arg)) + ">" + (h.Slot ? "{" + (slot ?? "static") + "}" : ""); }
             string Ref(int depth, string[] formals, string slot, HashSet<string> objT, string first = null)
-            {
-                var h = heads[rnd.Next(nd)];
-                return h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(j => j == 0 && first != null ? first : Gen(depth - 1, formals, null, slot, objT))) + ">" + (h.Slot ? "{" + (slot ?? "static") + "}" : "");
-            }
+                => Apply(rnd.Next(nd), slot, j => j == 0 && first != null ? first : Gen(depth - 1, formals, null, slot, objT));
             string Gen(int depth, string[] formals, string pair, string slot, HashSet<string> objT)
             {
                 var o = slot ?? "static"; string X() => Gen(depth - 1, formals, pair, slot, objT);
@@ -1140,39 +1201,59 @@ static class Rand
                     9 => $"({X()}, {X()})", 10 => $"Option<{X()}>", 11 or 12 => Ref(depth, formals, slot, objT), 13 => "fn", 14 => $"Array<{X()}>", _ => $"Box<{X()}>",
                 };
             }
-            foreach (var h in heads)
+            for (var k = 0; k < nd; k++)
             {
-                var ps = Enumerable.Range(0, h.Arity).Select(k => k == 0 && h.Pair ? "s/T0" : "T" + k).ToArray(); var formals = Enumerable.Range(0, h.Arity).Select(k => "T" + k).ToArray();
+                var h = heads[k];
+                var ps = Enumerable.Range(0, h.Arity).Select(j => j == 0 && h.Pair ? "s/T0" : "T" + j).ToArray(); var formals = Enumerable.Range(0, h.Arity).Select(j => "T" + j).ToArray();
                 var flags = (rnd.Next(5) == 0 ? "open " : "") + (rnd.Next(10) == 0 ? "exempt " : "") + (rnd.Next(20) == 0 ? "ownedleaf " : "");
-                var objT = new HashSet<string>(); var slot = h.Slot ? "{a}" : "";
-                var store = rnd.Next(20) == 0 ? new List<string> { "Missing" } : Enumerable.Range(0, rnd.Next(1, 4)).Select(_ => Gen(3, formals, h.Pair ? "s" : null, h.Slot ? "a" : null, objT)).ToList();
-                if (h.Pair && rnd.Next(2) == 0) store.Add($"Option<obj/{h.Name}<{string.Join(", ", formals)}>{slot}>"); // a peel: the pair target passed back whole
+                var objT = new HashSet<string>(); var slot = h.Slot ? "{a}" : ""; var sl = h.Slot ? "a" : null;
+                var store = rnd.Next(20) == 0 ? new List<string> { "Missing" } : Enumerable.Range(0, rnd.Next(1, ring ? 3 : 4)).Select(_ => Gen(ring ? 2 : 3, formals, h.Pair ? "s" : null, sl, objT)).ToList();
+                if (ring) store.Add($"Option<obj/{Apply((k + 1) % nd, sl, j => j == 0 ? "T0" : formals[j % formals.Length])}>"); // the ring: the pair target passed on whole
+                else if (h.Pair && rnd.Next(2) == 0) store.Add($"Option<obj/{h.Name}<{string.Join(", ", formals)}>{slot}>"); // a self peel
                 p.Decl($"{flags}{h.Name}<{string.Join(", ", ps)}>{slot}" + (objT.Count > 0 ? " where " + string.Join("; ", objT.Order().Select(f => f + " is ObjectPayload")) : ""), [.. store]);
             }
             p.Done();
-            var cor = new Engine(p, new Rules("Corrected")); var pkg = new Engine(p, new Rules("Package", Outer: false, AllAdmitted: false, TargetAlways: false, Family: "prefix")); var grd = new Engine(p, new Rules("Guard", Walk: "guard"));
-            maxRounds = Math.Max(maxRounds, cor.Rounds); pkgRounds = Math.Max(pkgRounds, pkg.Rounds); corDiv += cor.Div.Count > 0 ? 1 : 0; peels += cor.S.Values.Any(x => x.Obl.Values.Any(o => o.Hole != null)) ? 1 : 0; pkgDiv += pkg.Div.Count > 0 ? 1 : 0;
-            foreach (var h in heads)
-                for (var k = 0; k < 3; k++)
+            var dec = new Engine(p, Run.Decided); var opt1 = new Engine(p, new Rules("Option1")); var pkg = new Engine(p, new Rules("Package", Outer: false, AllAdmitted: false, TargetAlways: false, Family: "prefix"));
+            var grd = new Engine(p, Run.Decided with { Name = "Guard", Walk = "guard" });
+            maxRounds = Math.Max(maxRounds, dec.Rounds); decDiv += dec.Div.Count > 0 ? 1 : 0; opt1Rounds = Math.Max(opt1Rounds, opt1.Rounds); opt1Div += opt1.Div.Count > 0 ? 1 : 0;
+            templates += dec.S.Values.Sum(x => x.Obl.Values.Count(o => o.Hole != null)); pairGraphs += dec.S.Values.Any(x => x.PairU.Count > 0) ? 1 : 0;
+            string Arg() { var a = Args[rnd.Next(Args.Length)]; if (rnd.Next(5) != 0) return a; deep++; var n = rnd.Next(2, 81); for (var j = 0; j < n; j++) a = $"ref/({a}) during static"; return a; }
+            for (var k = 0; k < nd; k++)
+                for (var r = 0; r < (ring ? 1 : 3); r++)
                 {
-                    var q = Parser.Parse(p, h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(_ => Args[rnd.Next(Args.Length)])) + ">" + (h.Slot ? (rnd.Next(2) == 0 ? "{static}" : "{local}") : ""));
+                    var h = heads[k];
+                    var q = Parser.Parse(p, h.Name + "<" + string.Join(", ", Enumerable.Range(0, h.Arity).Select(_ => Arg())) + ">" + (h.Slot ? (rnd.Next(2) == 0 ? "{static}" : "{local}") : ""));
                     foreach (var i in new[] { "Owned", "Transferable" })
                     {
-                        // A walk cut at depth 9 treats its unexplored part as "no exclusion": deepen it to 14, and count it inconclusive when it is
-                        // still cut (unless it found Error, which nothing deeper changes) or exceeds 4,000 nodes.
-                        var r12 = cor.Expand(i, q, new Scope(), "ref", 9, out var cut);
-                        if (cut && r12 != V.E) { deepened++; r12 = cor.Expand(i, q, new Scope(), "ref", 14, out cut); }
-                        if (r12 == V.NT || cut && r12 != V.E) { inconclusive++; cutP += r12 == V.P ? 1 : 0; continue; }
+                        // A walk cut at depth 9 treats its unexplored part as "no exclusion": deepen it to 100, and count it inconclusive when it
+                        // is still cut (unless it found Error, which nothing deeper changes) or exceeds its node or term limits.
+                        var reference = dec.Expand(i, q, new Scope(), "ref", 9, out var cut);
+                        if (cut && reference != V.E) { deepened++; reference = dec.Expand(i, q, new Scope(), "ref", 100, out cut); }
+                        if (reference == V.NT || cut && reference != V.E) { inconclusive++; continue; }
                         queries++;
-                        var c = cor.J(i, q, new Scope());
-                        if (c != r12) { bad++; if (bad <= 5) Console.WriteLine($"\nRandom disagreement ({i} of `{q}`): reference {r12}, Corrected {c}\n" + string.Join("\n", p.D.Values.Where(d => d.Name.StartsWith('R')).Select(d => $"  {d.Text} = {string.Join(", ", d.Store)}"))); }
-                        void Count(string name, V v) { if (v != r12) { var key = $"{name}: {i} {Run.Cls(r12, v)}"; cls[key] = cls.GetValueOrDefault(key) + 1; first.TryAdd(key, $"`{q}` with " + string.Join("; ", p.D.Values.Where(d => d.Name.StartsWith('R')).Select(d => $"`{d.Text} = {string.Join(", ", d.Store)}`"))); } }
-                        Count("Package", pkg.J(i, q, new Scope())); Count("Guard", grd.Eval(i, q, new Scope()));
+                        var c = dec.J(i, q, new Scope());
+                        if (c == V.L && i == "Transferable") { var key = reference.ToString(); locatedBy[key] = locatedBy.GetValueOrDefault(key) + 1; }
+                        else if (c != reference)
+                        {
+                            bad++;
+                            if (bad <= 5) Console.WriteLine($"\nRandom disagreement ({i} of `{q}`): reference {reference}, Decided {c}\n" + string.Join("\n", p.D.Values.Where(d => d.Name.StartsWith('R')).Select(d => $"  {d.Text} = {string.Join(", ", d.Store)}")));
+                        }
+                        void Count(string name, V v)
+                        {
+                            if (v == reference) return;
+                            var key = $"{name}: {i} {Run.Cls(reference, v)}"; cls[key] = cls.GetValueOrDefault(key) + 1;
+                            first.TryAdd(key, $"`{(q.ToString().Length > 160 ? q.ToString()[..160] + "…" : q)}` with " + string.Join("; ", p.D.Values.Where(d => d.Name.StartsWith('R')).Select(d => $"`{d.Text} = {string.Join(", ", d.Store)}`")));
+                        }
+                        Count("Option1", opt1.J(i, q, new Scope())); Count("Package", pkg.J(i, q, new Scope())); Count("Guard", grd.Eval(i, q, new Scope()));
                     }
                 }
+            reentries += dec.Reentries;
         }
-        Console.WriteLine($"\n## Random declaration graphs\n\n{graphs} graphs of 2–4 declarations (seed {seed}): {queries} closed queries compared ({deepened} reference walks cut at depth 9 deepened to 14); {inconclusive} inconclusive (still cut, {cutP} of them answering P, or over 4,000 nodes or an instance over 2,000 terms); "
-            + $"Corrected disagreements {bad}, most fixed-point rounds {maxRounds}, graphs not converged {corDiv}, graphs with a peel template {peels} (Package: {pkgRounds} rounds, {pkgDiv} graphs not converged).\nOther rules against the reference: {(cls.Count == 0 ? "none differ" : string.Join("; ", cls.Select(x => $"{x.Key} ×{x.Value}")))}.");
+        Console.WriteLine($"\n## Random declaration graphs\n\n{graphs} graphs (seed {seed}; {rings} rings of 5–8 peeling declarations; {deep} query arguments with 2–80 ref layers): {queries} closed queries compared "
+            + $"({deepened} reference walks cut at depth 9 deepened to 100); {inconclusive} inconclusive (still cut, or over the node or term limits). Decided: disagreements {bad}; "
+            + $"Transferable's located U {locatedBy.Values.Sum()} times (reference {string.Join(", ", locatedBy.Select(x => $"{x.Key} ×{x.Value}"))}); most fixed-point rounds {maxRounds}, "
+            + $"graphs not converged {decDiv}, graphs with a pair site {pairGraphs}, peel templates {templates}, use-site re-entries {reentries}. Option1: most rounds {opt1Rounds}, graphs not converged {opt1Div}.\n"
+            + $"Other rules against the reference: {(cls.Count == 0 ? "none differ" : string.Join("; ", cls.Select(x => $"{x.Key} ×{x.Value}")))}.");
         foreach (var (k, v) in first) Console.WriteLine($"- first {k}: {v}");
         return bad;
     }
