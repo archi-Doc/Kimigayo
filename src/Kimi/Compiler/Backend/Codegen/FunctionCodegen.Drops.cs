@@ -40,11 +40,11 @@ internal sealed partial class FunctionCodegen
         this.arguments = this.arguments.Length < parameters ? new Value[parameters] : this.arguments;
         for (var i = 0; i < parameters; i++)
         {
-            this.arguments[i] = new('a', i);
+            this.arguments[i] = new('p', i);
         }
 
-        this.output = output;
-        output.Write(this.module.Glue(item).GetDefinition(exported: false));
+        (this.output, this.abi) = (output, this.module.Glue(item));
+        output.Write(this.abi.GetDefinition(exported: false));
         output.Write("entry:\n");
         _ = this.WriteCall(release, this.arguments.AsSpan(0, parameters));
         output.Write("  ret void\n}\n");

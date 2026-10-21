@@ -39,8 +39,8 @@
 // (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f, C9b), a property
 // witness (C3c) or another legacy row (C8b-C8e, C9a); the locations of a caller-location body, which forwards its own (C3b); a Drop's Flag
 // (C4b) and Open (C4c) verdicts. A warm write allocates nothing. Files: the dispatch (this file); the function's frame: its kind's argument
-// order, homes, copy slots, prologue and return (FunctionCodegen.Frame.cs); the place writer and the loads, stores and copies through it
-// (.Places.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls
+// order, homes, copy slots, prologue and return (FunctionCodegen.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies
+// through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls
 // (.Calls.cs), intrinsics (.Intrinsics.cs) and drops (.Drops.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
@@ -391,15 +391,22 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
+        if (value.Prefix == 'p')
+        {
+            this.output.Write('%');
+            this.output.Write(this.abi.Parameters[(int)value.Number].Name);
+            return;
+        }
+
         this.output.Write(Spell(value, stackalloc char[SpellingLength]));
     }
 
     // A record at a site of the body, located by the collector's rule (K package 4.9).
     private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
 
-    // A value of the text: %t<n> (Prefix t), the argument %a<n> (Prefix a), the copy slot %s<n> (Prefix s; never c, a check's success
-    // label), the pooled constant @<name> of index Number (Prefix @), the home of local Number, its address (Prefix h), the floating
-    // constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer
-    // Number (Prefix NUL).
+    // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
+    // the copy slot %s<n> (Prefix s; never c, a check's success label), the pooled constant @<name> of index Number (Prefix @), the home of
+    // local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the
+    // null pointer (Prefix n) or the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 }
