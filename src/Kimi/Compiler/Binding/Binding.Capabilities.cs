@@ -150,6 +150,16 @@ public sealed partial class Binding
         return false;
     }
 
+    // Whether a capability judgment reads a Type's declaration (a struct, enum or other container) rather than its parts (SPEC 4.5: a
+    // collection by its element Types, whatever its Symbol).
+    private static bool JudgedByDeclaration(BoundType type)
+        => type.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Symbol?.Declaration is DeclarationContainerKoto;
+
+    // A requirement Item's Contract reference: metadata, of which only the bound Type arguments are retained bindings.
+    private static BoundType? RequirementReference(BoundType type)
+        => type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && type.Components.Count > 1
+            ? type.Components[1] : null;
+
     private static FunctionTypeKoto? OwnFunctionBinder(BoundType type, BoundType signature)
     {
         if (type.Origin is { Kind: OriginKind.Input, Binder: FunctionTypeKoto binder } && ReferenceEquals(binder.BoundType, signature))
@@ -466,43 +476,35 @@ public sealed partial class Binding
             }
 
             var owned = ConstraintProof.Proven;
-            for (var i = 0; i < work.Type.Components.Count; i++)
+            foreach (var (part, _) in new CapabilityParts(work.Type))
             {
-                owned = CombineProof(owned, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
+                owned = CombineProof(owned, this.RequestCapability(part, work.Intrinsic, work.Scope), true);
             }
 
             return owned;
         }
 
-        if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)
+        if (JudgedByDeclaration(work.Type))
         {
-            return this.SummaryCapability(work, container);
+            return this.SummaryCapability(work, (DeclarationContainerKoto)work.Type.Symbol!.Declaration);
         }
 
         var result = ConstraintProof.Proven;
-        for (var i = 0; i < work.Type.Components.Count; i++)
+        foreach (var (part, argument) in new CapabilityParts(work.Type))
         {
-            if (work.Type.Kind == BoundTypeKind.FunctionItem && work.Type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && i == 1)
+            var proof = argument ? this.RequestCapability(part, work.Intrinsic, work.Scope)
+                : this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, part, contract: work.Intrinsic)), work.Scope);
+            result = CombineProof(result, proof, true);
+        }
+
+        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && RequirementReference(work.Type) is { } reference)
+        {
+            for (var a = 0; a < reference.OriginArguments.Count; a++)
             {
-                // The Contract reference is metadata; only its bound Type arguments are retained bindings.
-                var reference = work.Type.Components[i];
-                for (var a = 0; a < reference.Components.Count; a++)
-                {
-                    result = CombineProof(result, this.RequestCapability(reference.Components[a], work.Intrinsic, work.Scope), true);
-                }
-
-                if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned)
-                {
-                    for (var a = 0; a < reference.OriginArguments.Count; a++)
-                    {
-                        result = CombineProof(result, reference.OriginArguments[a] is { } origin && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
-                    }
-                }
-
-                continue;
+                var origin = reference.OriginArguments[a];
+                var outlives = origin is not null && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner);
+                result = CombineProof(result, outlives ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
             }
-
-            result = CombineProof(result, this.ProveConstraint(this.InternConstraint(new(ConstraintKind.Contract, work.Type.Components[i], contract: work.Intrinsic)), work.Scope), true);
         }
 
         return result;
@@ -608,6 +610,49 @@ public sealed partial class Binding
         }
 
         return positive && negative ? ConstraintProof.Error : positive ? ConstraintProof.Proven : negative ? ConstraintProof.Refuted : ConstraintProof.Unknown;
+    }
+
+    // The parts a capability judgment decomposes a Type into when no declaration judges it (SPEC 15.2.3): its components, a requirement
+    // Item's Contract reference replaced by that reference's Type arguments (Argument). StructuralCapability and the component summaries'
+    // walk read this one enumeration.
+    private ref struct CapabilityParts(BoundType type)
+    {
+        private readonly BoundType type = type;
+        private readonly BoundType? reference = RequirementReference(type);
+        private int index = -1;
+        private int argument = -1;
+
+        public (BoundType Part, bool Argument) Current { readonly get; private set; }
+
+        public readonly CapabilityParts GetEnumerator() => this;
+
+        public bool MoveNext()
+        {
+            if (this.argument >= 0 && ++this.argument < this.reference!.Components.Count)
+            {
+                this.Current = (this.reference.Components[this.argument], true);
+                return true;
+            }
+
+            this.argument = -1;
+            while (++this.index < this.type.Components.Count)
+            {
+                if (this.index != 1 || this.reference is null)
+                {
+                    this.Current = (this.type.Components[this.index], false);
+                    return true;
+                }
+
+                if (this.reference.Components.Count != 0)
+                {
+                    this.argument = 0;
+                    this.Current = (this.reference.Components[0], true);
+                    return true;
+                }
+            }
+
+            return false;
+        }
     }
 
     private sealed class CapabilityWork(BoundType type, BindingSymbol intrinsic, BindingScope scope, bool derivation)

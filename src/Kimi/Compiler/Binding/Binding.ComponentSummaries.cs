@@ -339,9 +339,9 @@ public sealed partial class Binding
             return; // A formal or the pair target: required as a Type argument.
         }
 
-        if (type.Kind is not (BoundTypeKind.Array or BoundTypeKind.Dictionary) && type.Symbol?.Declaration is DeclarationContainerKoto)
+        if (JudgedByDeclaration(type))
         {
-            if (type.Symbol.Adt is null)
+            if (type.Symbol!.Adt is null)
             {
                 summary.Unresolved = true;
                 return;
@@ -351,21 +351,9 @@ public sealed partial class Binding
             return;
         }
 
-        for (var i = 0; i < type.Components.Count; i++)
+        foreach (var (part, _) in new CapabilityParts(type))
         {
-            // A requirement Item's Contract reference is metadata; only its bound Type arguments are retained bindings.
-            var component = type.Components[i];
-            if (type.Kind == BoundTypeKind.FunctionItem && type.Symbol?.Declaration is FunctionKoto { IsRequirement: true } && i == 1)
-            {
-                for (var a = 0; a < component.Components.Count; a++)
-                {
-                    this.Walk(summary, component.Components[a], stored, query);
-                }
-
-                continue;
-            }
-
-            this.Walk(summary, component, stored, query);
+            this.Walk(summary, part, stored, query);
         }
     }
 
