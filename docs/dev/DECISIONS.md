@@ -421,7 +421,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
 
 ## R4 (accepted 2026-10-11)
 
-- **R4-M1** Shadow: under `mir` the old path still decides acceptance, Problems and diagnostics. The analyses run once
+- **R4-M1** (superseded for generation-time refusals under sel by R5-M96) Shadow: under `mir` the old path still decides acceptance,
+  Problems and diagnostics. The analyses run once
   per program version after build and validation (`MirBuilder.Build`, then `MirAnalysis.Run`); MIR problems stay
   unpublished on `MirProgram` until R6 unit a; an analysis exception fails the test. Rejected: MIR deciding codes in R4
   (duplicate records and test churn twice).
@@ -2621,6 +2622,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Moved verbatim: `StepClass` and `Step` (renamed `MirStepClass` and `MirStep`, the Mir prefix of the namespace's top-level types), the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the
     walk). Rejected: a static `MirSteps` with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and
     A4 too); `MirBorrows` members made internal for `MirOrigins` (couples Origin judgment to Loan state).
+- **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b for C4a's gate step 2, PD12 and package C
+  §3.8; R4's rulings of 2026-10-22 and its choice (b): R5 implements under a temporary hold of `MirInit.cs`, `MirDrops.cs` and
+  `MirDropTest` (PLAN 26d48164), and R4 signs off before the merge)
+  - Adopted: `MirDropTable.Incomplete(body) → (DiagnosticCode Code, SourceRef Subject)?`, first-wins per body, stored with the body's
+    ends at `Close` beside `ViewsOf` (pooled, a warm rebuild 0 B). R4-M6a makes A2's verdicts exact only for a body A1 accepts, so a
+    consumer reads which body's table is inexact, and with what.
+  - Setters, where each analysis forms its problem, before `MirReport.Add`, which is unchanged: A1's `Transfer.Add` (every state rule's
+    problem) and its arena stop (R4-M15a: `OwnershipStorageLimit_Kd` at `body.Source`, `ViewsOf` 0); A2's incomplete layer
+    (`MovedPlace_Kd` in `MirDrops.Tree`); both through `MirDrops.Incomplete`. A3, A4 and A5 set none (PD12, R5-M4): A5's arena
+    `StorageLimit` leaves a body exact.
+  - Inline copies: the analyzed (caller) body is marked with the problem's own subject, the template's (R4-M69, R4-M97), so a copy's
+    refusal shares its template's (code, subject) although `MirReport.Add` drops the problem (probe d2: a default holding ledger row
+    a1-whole-incomplete's form).
+  - Why not `MirProblem.Body` (R4-M71): A1, A2 and A5 share requirements (`PossiblyMovedUse` A1's and A2's, `StorageLimit` A1's and A5's
+    arena), and `MirReport.Add` drops a copy's problem.
+  - Rejected: a requirement list in the consumer (a second copy of the recording rules; R4-M67's rejection stands); every Ownership
+    problem of the body (A5's would refuse programs the old analysis accepts, R5-M4); the driver's count of problems added between A3
+    and A2's end (C4a's fallback F2′, which misses a copy-only failure).
+  - PD21 (R4, 2026-10-22, the first ruling on each): `MirInit.cs` (1c-1, 1c-6, 1c-8) and `MirDrops.cs` (1c-1, 1c-2, 1c-6, 1c-8) are due;
+    each has one responsibility (A1's per-view initialization and Move dataflow; A2's drop verdicts and table) and no split exists, so
+    A-2b's lines go in without a restructure; the next changing unit of each restructures it first. DIAGNOSTICS is unchanged.
 - **R4-M103 Static slots for P42, layout requirements kept, lifecycle receivers' Borrows body-local** (owner, 2026-10-22, on three R4
   proposals written at the owner's instruction 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」; answers
   OQ-S1 (a), OQ-S2 (a), OQ-Y1 (d), OQ-L1 (b); review `draft/Sketches/R4 Proposals 2026-10-21/review-3.md`)
@@ -5170,7 +5192,7 @@ structure is recorded here by the unit that first implements it.
     analyses recorded no problem whose requirement is in the Ownership partition: A1 with its arena record, A2 and, conservatively, A4
     and A5. A3's control-flow problems do not gate (PD12). The check runs once per program version. Otherwise the Drop is one
     location-only `Unsupported_Kd` at its location in the Emission partition. A runtime Drop without a group in a program it passes
-    is `InternalInvariant_Kd` (PD12). Removal: C4a's per-body gate step 2, which records the problem's own code at its subject (package
+    is `InternalInvariant_Kd` (PD12). Removal (done by R5-M96): C4a's per-body gate step 2, which records the problem's own code at its subject (package
     §3.8) once R4's 1c-8 publishes `MirProblem.Body` (G125). It must attribute an inline copy's problem, which R4's 1c-6 reports as its
     template's, to the caller body.
   - Kept: C2b keeps the projected and zero-sized `Ref`s (the zero-sized address symbol) and the other rvalues; C4a the glue of the
@@ -5517,7 +5539,7 @@ structure is recorded here by the unit that first implements it.
     a code outside the table is `InternalInvariant_Kd`); Initialize (the
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
-    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues; C6a MakeObj, MakeRc, MakeArc,
+    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout; C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
     the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
@@ -5619,3 +5641,65 @@ structure is recorded here by the unit that first implements it.
   - Rejected: an internal prepare/write split of `Generate` for the benchmark (a seam without semantics, whose prepare would be the
     gate, roots and mark, not layout); the benchmark copying GenerateMir's steps (a second copy of the gate); a sel-only shape filter
     (a shape allowlist for one interim use); a separate E14b for the comparison.
+- **R5-M95 The drop glue of MIR code generation, one level per Type (C4a-1)** (2026-10-21, C lane; plan C4a, package C 3.6 and §4's C4a
+  row, X3 and X27, PD18; the planning session's decisions on C4a's design and its split; under R5-M18 form 1, R5-M60 and R5-M78)
+  - Rows: `DropGlue.Row` gives a closed Type's glue row, which `FunctionCodegen.Glue.cs` writes: a string's calls the runtime release
+    with the glue's own parameters (R5-M78); a struct's, Tuple's, enum's or fixed array's destroys one level, its parts in destruction
+    order from `DropGlue.Parts`, the enumeration the collector targets from (X27), each read target once: a struct that declares a drop
+    calls its destructor instance alone, its receiver the value (none for a zero-sized Self; PD18, R4-M6b); otherwise each part whose
+    instance Type may need a drop (`MirTypes.MayNeedDrop`, the collector's rule) calls the part's glue at its address from the aggregate
+    writer's `Component` (a base at the value's own address, X1), passing the glue's location on; an enum's parts under one switch on its
+    i32 tag over the Cases holding such a part; a fixed array's element in one counted loop from the last element (Fill's shape, R4-M81).
+    A Closure environment's row is C5a's, an erased function's C5b's, a handle's C6b's, a collection's C8d's and C8e's, each one located
+    `Unsupported_Kd` at the glue item's site, where a glue function's records now lie. A target missing or left over is
+    `InternalInvariant_Kd`.
+  - `DropPart` gains its position, (Ordinal, Index) in the aggregate writer's numbering (a struct's base 0 and its Fields after it, a
+    Tuple's or a Case payload's elements under the Case's ordinal; -1 for a fixed array's element, standing for every element, and for a
+    part without one), so the writer addresses the parts `Parts` gives. This closes PLAN G157 (6) with
+    `InstanceCollectorTest.DropGluePartsAgreeWithTheDestructionWalk`: over a glue Type of each kind the destruction walk's direct descents
+    are the parts in reverse, a struct's base last and an enum's Case payloads each reversed. One enumeration of both in Mir is rejected:
+    it changes the held `MirTypes` and a shared representation (the full process) for a fact the agreement test holds.
+  - `DestroyValues` has no MIR producer (no compiler function's disposition serves it; R4-M63's "never built", the K package's
+    "producer-less until R8"), so its row is written with its first producer, as `Stride`'s and `ReinterpretLoan`'s (PLAN G198); R5-M92's
+    "C4a DestroyValues" yields.
+  - Split (the planning session, 2026-10-21): C4a-1 lands the glue; gate step 2 waits for the per-body fact its owner publishes (ask
+    A-2b, `MirDropTable.Incomplete`; F1), which C4a-2 reads, so R5-M78's program-wide stand-in stays until then: it is sound (it refuses
+    every Drop of a program whose MIR analyses recorded an Ownership problem), and a per-body gate composed from `MirProblem.Body` would
+    need a second copy of A1's and A2's recording rules and would miss an inline copy's problem, which `MirReport.Add` drops as its
+    template's (C4a's design §0).
+  - Rejected: reusing the old generator's `__kimi_drop_aggregate`, which also destroys the Fields after a destructor (PD18); the writer
+    walking a Type itself beside `Parts` (a second enumeration, X27); glue text in `DropGlue` (its contract; R5-M86 confirmed the writer
+    in FunctionCodegen); inlining a part's glue into its parent's (no function per Type, X3, and text growing with nesting); writing the
+    collection and handle rows through the legacy helpers here (C6b's and C8d's/C8e's rows).
+- **R5-M96 Gate step 2 of MIR code generation over A2's per-body fact (C4a-2)** (2026-10-22, C lane; plan C4a, PD12, package C 3.8 and
+  3.9, R5-M4; the planning session's rulings on C4a's design (F1), its split (R5-M95), Q2 and the arena interim; under R5-M18 form 1)
+  - Rule (PD12): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so MIR code generation writes no body A1 or A2 left inexact.
+    The fact is `MirDropTable.Incomplete(body)` (ask A-2b, R4-M102): A1's or A2's first problem in the body, an inline copy's included,
+    which marks its caller although `MirReport.Add` drops it as its template's. A3's, A4's and A5's problems do not refuse (R5-M4).
+  - Place: `FunctionCodegen.Write`, as each Generated body item is written: by the Q2 ruling the gate skips only the refused body and
+    writes every other item, so their gaps are recorded too (package C 3.9, SPEC 23.1.2), and no module is written; step 1 still stops
+    before writing, since its records already reject at check. Departure (for the owner's departures list): package C 3.8 places step 2
+    in `Compilation.Generation.cs` before writing.
+  - Record: the problem's own code at its subject, in the Emission partition with the `Emission` requirement (R5-M4, R5-M65); never
+    `InternalInvariant_Kd`. A runtime Drop with no group in a written body stays `InternalInvariant_Kd` (package C 3.2 I6). The subject
+    goes through the new `InstanceCollector.Subject(item, SourceRef)` overload, which keeps a root module's subject and else takes the
+    item's site, but does not apply KD12's move out of an inlined default template outside the root modules (`Located`), since the fact
+    carries no scope. Unreachable today: the only non-root module is the Kimi library, which declares no default parameter. Removal:
+    `Incomplete` carries the scope or location and the gate calls `Subject(item, body, source)`, the overload deleted (R5's PLAN row
+    with R4's ask A-2c).
+  - Interim (the planning session, 2026-10-22): a body A1 skipped at the arena limit (`ViewsOf` 0, R4-M15a, R4-M67) is one located
+    `Unsupported_Kd` at the body. Departure (for the owner's departures list): package C 3.8's refusal carries that problem's code. The
+    reason: `OwnershipStorageLimit_Kd` takes `requiredBytes`, `limitBytes` and the `table` evidence, which
+    neither the fact nor A1's arena problem carries. Removal: A1's arena problem carries its arguments, published to the gate and to H3;
+    the gate then records `OwnershipStorageLimit_Kd` with them. Every other fact's code (A1's and A2's arity-0 Language codes) is recorded
+    as it is.
+  - Supersedes R4-M1 for generation-time refusals under sel: an MIR analysis problem refuses generation as a typed Emission record (G0
+    extends it to the default pipeline). Removed at H5, when MIR decides acceptance and such a program is rejected at check.
+  - Reachability: no program the old analysis accepts reaches the arena branch before G2/H5 (the old arena trips first in every probed
+    shape; C4s); the A1/A2-problem branch is reached, by MIR difference row a1-whole-incomplete (legacy generation fails with
+    `GenerationFailed_Kd`) and by the same form in an inline default copy (probe d2), both `FunctionCodegenTest` rows.
+  - Deleted: R5-M78's program-wide stand-in (`Exact()`, `exactVersion`, `exact` and its paragraph), its temporary structure; its test
+    `AnOwnershipProblemOfTheProgramLeavesItsDropsUnwritten`, replaced by the gate's rows.
+  - Rejected: composing the fact from `MirProblem.Body` (a second copy of the recording rules, and blind to a copy's dropped problem);
+    every Ownership problem of a body (A5's would refuse programs the old analysis accepts); stopping generation at the first refusal (it
+    hides independent gaps); a new argument-free Resource code for the arena (departs from PD12 and R5-M4).

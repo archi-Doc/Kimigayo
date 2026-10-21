@@ -55,7 +55,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.TryAllocate, RuntimeAbi.TryAllocateBytes),
         new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Copy, null),
         new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
-        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true, IntrinsicWriter.Unwritten, null), // C4a.
+        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (PLAN G198).
         new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
         new(IntrinsicId.Abort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
         new(IntrinsicId.Fail, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Fail, RuntimeAbi.Abort),

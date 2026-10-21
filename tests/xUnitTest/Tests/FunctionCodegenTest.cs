@@ -16,7 +16,7 @@ namespace XunitTest;
 /// slots, runtime-reached blocks, the Places of its place writer and the forms the frame covers, and a form not covered yet is one located
 /// <c>Unsupported_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
 /// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
-public sealed class FunctionCodegenTest
+public sealed partial class FunctionCodegenTest
 {
     private const string Branches =
         "func choose(flag: bool, a: i64, b: i64) -> i64\n    if flag => return a\n    return b\nfunc nested(first: bool, second: bool) -> char\n" +
@@ -29,10 +29,6 @@ public sealed class FunctionCodegenTest
 
     private const string Strings =
         "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n";
-
-    // Two literals' temporaries, one on a conditional path, each borrowed and destroyed (Keep), and a string never initialized (Elide).
-    private const string Drops =
-        "Console.writeLine(\"a\")\nlet s: string\nlet flag = true\nif flag\n    Console.writeLine(\"b\")\n";
 
     private const string Arithmetic =
         "func f(a: i32, b: i32) -> i32 => a / b + a % b - (a << b) * 3\nfunc g(a: Wrapping<u8>, c: char) -> bool => -a > 3 and not (c < 'z')\n";
@@ -520,66 +516,6 @@ public sealed class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
-    }
-
-    // DECISIONS R5-M78, R4-M6a: a Ref stores its local's address; a Keep Drop calls the dropped Type's glue once, on the Place's address, and
-    // an Elide Drop nothing, so each string a path initializes is destroyed exactly once and the one never initialized is not; the string's
-    // glue item calls the runtime release with its own parameters (PD18).
-    [Fact]
-    public void EachInitializedStringIsDestroyedOnce()
-    {
-        var ir = GeneratedIr.Parse(Generate(Drops));
-        var body = ir.Startup;
-        var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
-        var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
-            .Select(static x => Assert.Single(x.Operands)).ToArray();
-        var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
-        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
-        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
-        Assert.Equal(3, strings.Length);
-        Assert.Equal(2, literals.Distinct().Count());
-        Assert.Equal(literals, borrows);
-        Assert.Equal(2, writes.Length);
-        Assert.Equal(literals, drops.Select(static x => x.Operands[0]));
-        Assert.All(drops, static x => Assert.Equal("call void @(ptr %, ptr @, i64 15)", x.Shape));
-        var glue = Assert.Single(drops.Select(static x => x.Callee).Distinct())!;
-        Assert.Equal(["call void @(ptr %, ptr %, i64 %)", "ret void"], glue.Instructions.Select(static x => x.Shape));
-        Assert.Same(ir.Function("__kimi_destroy_string"), glue.Instructions[0].Callee);
-        Assert.Equal(glue.Parameters, glue.Instructions[0].Operands);
-    }
-
-    // Gate step 2's stand-in (DECISIONS R5-M78): A2's verdicts are exact only for programs A1 accepts (R4-M6a), and under sel the old analysis
-    // decides acceptance, so a program whose MIR analyses recorded an Ownership problem writes no Drop: each is one located Unsupported_Kd; a
-    // control-flow problem (A3) does not gate. No program the old analysis accepts and the frame covers holds such a problem yet (ledger row
-    // a1-whole-incomplete needs a fixed array, and the arena-skipped bodies are rejected first), so the problem is added to the version's
-    // report.
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void AnOwnershipProblemOfTheProgramLeavesItsDropsUnwritten(bool ownership, bool written)
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var requirement = ownership ? DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse) : DiagnosticRequirement.ControlFlow;
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, program.Bodies[0].Source, 0, 1));
-        using var writer = new StringWriter();
-        Assert.Equal(written, c.Generate(writer));
-        Assert.Equal(written ? [] : [("Unsupported_Kd", (string?)"\"a\"")], Records(c));
-    }
-
-    // PD12: in a program the stand-in passes, A1 and A2 judged every runtime Drop, so one without a verdict group is a broken contract
-    // (InternalInvariant_Kd at the Drop); the program's one drop row is moved to another block to make it so.
-    [Fact]
-    public void ARuntimeDropWithoutAVerdictIsABrokenContract()
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
-        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
-        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
     }
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
@@ -1402,6 +1338,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Raws, OutputKind.Library)]
     [InlineData(RequirementWitnesses, OutputKind.Application)]
     [InlineData(CallerLocations, OutputKind.Application)]
+    [InlineData(Glues, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1490,6 +1427,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Raws, OutputKind.Library)]
     [InlineData(RequirementWitnesses, OutputKind.Application)]
     [InlineData(CallerLocations, OutputKind.Application)]
+    [InlineData(Glues, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

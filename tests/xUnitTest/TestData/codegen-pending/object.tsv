@@ -321,7 +321,6 @@ test	XunitTest.SharedIterationTest.TupleComponentsCopyValuesAndBorrowNonCopyStor
 test	XunitTest.SharedIterationTest.TupleComponentsCopyValuesAndBorrowNonCopyStorage	XunitTest.SharedIterationTest.TupleComponentsCopyValuesAndBorrowNonCopyStorage(dynamic: True)
 test	XunitTest.SharedMatchTest.ASelectedArmCanReplaceTheOwnerAfterItsLastBorrowedUse	XunitTest.SharedMatchTest.ASelectedArmCanReplaceTheOwnerAfterItsLastBorrowedUse
 test	XunitTest.SharedMatchTest.BareStringSubjectAndWholeBindingRetainItsOwner	XunitTest.SharedMatchTest.BareStringSubjectAndWholeBindingRetainItsOwner
-test	XunitTest.SharedMatchTest.CopyPayloadSnapshotAndDestructibleBorrowKeepSeparateResponsibilities	XunitTest.SharedMatchTest.CopyPayloadSnapshotAndDestructibleBorrowKeepSeparateResponsibilities
 test	XunitTest.SharedMatchTest.InactiveEnumPayloadDoesNotDereferenceItsStorage	XunitTest.SharedMatchTest.InactiveEnumPayloadDoesNotDereferenceItsStorage
 test	XunitTest.SharedMatchTest.LiteralPatternsInspectOneReference	XunitTest.SharedMatchTest.LiteralPatternsInspectOneReference(name: \"String\", value: \"\\\"hello\\\"\", arms: \"\\\"other\\\" => $abort(\\\"wrong\\\")\\n    \\\"hello\\\" => Console.writeLine(\\\"ok\\\")\\n    _ => $abort(\\\"missing\\\")\")
 test	XunitTest.SharedMatchTest.NestedReferencePatternsFollowTheirOwnAddresses	XunitTest.SharedMatchTest.NestedReferencePatternsFollowTheirOwnAddresses(explicitIntersection: False)
