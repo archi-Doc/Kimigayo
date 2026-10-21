@@ -2725,6 +2725,32 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: a Place Origin (`during b`, a new Origin kind near Appendix D.4); keeping Q-O4's `Unsupported_Kd`; no Origin for a
     formed intersection (loses the Authority error) and an error for it; an error for an own-step pointer's later use (rejects
     defined programs); a broader Warning on unannotated raw Fields.
+- **R4-M107 A5-F5's static-Loan witnesses on rooted MIR until P42** (2026-10-22; unit 2b-6w, `7e3d2ccf` and `340e0339`; the
+  planning session's OQ-1 (c) + (b) on bu22's design, under R4-M90 PQ-1; extends R4-M97's ruling (b) to a temporary form)
+  - Cause: bu22 (2b-6 (b)) makes every Borrow SPEC lends of a static-rooted Place Binding's located `Unsupported_Kd` until P42, so
+    no source program but 2b-D §1.5's out-of-scope forms reaches A5 with a live Loan on a static Place.
+  - Mechanism (tests only, `MirBorrowsTest.Rooted.cs`): each witness program is its source test's text with each static Borrow's
+    Place replaced by a stand-in, a whole Var or Temp local that a call of group `Root` initializes, named after its static, whose
+    Type agrees with the static's (`MirTypes.Agree`: up to Origins). `Rooted` copies each module-0 body, leaves out the stand-in's
+    StorageLive/StorageDead, turns the Root call and the stand-in's Drop into Gotos and roots each of the stand-in's Places at the
+    static (`MirBody.Static`, projections re-interned from the static's Type); every other row, the block numbers and the Ordinal
+    are kept, so A2's verdict rows and A4's summaries are the built body's. `MirValidator` accepts each copy (`Validated`, shared
+    with `HandBuilt`); A5 runs over it after A4's run on the built program, and each run asserts no validator finding and no
+    `InternalInvariant_Kd` (`Sound`).
+  - Premises: no staticEnsure precedes a rooted Borrow, and every such ensure in the source tests meets no live Loan; each deciding
+    ensure (e10a, e10d–e10f, pB) is a real static access. A twin function's own A4 summary lacks its stand-ins' static accesses, and
+    no witness composes one (template copies are inlined). The Types that remain twin-side differ only by Origins, which A5 does not
+    judge.
+  - Witnesses: R4-M92's R1, W6, A6 row 1, sets and Unknown, the initialization proof and Unproved, Limit and Derived, G136 (i) and
+    (ii), and R3's exchange way out (e9b); R4-M73's hold, R4-M87's widening, PD31's facts and R4-M11's views; R4-M97's caller-owned
+    copy rows; V16's F5 guard (`EffectsScaleWithCallsAndStaticLoans`, same N, M, K and bounds) and the warm 0 B checks.
+  - Removal condition: P42's static-Borrow unit moves each witness back to its source test and deletes `MirBorrowsTest.Rooted.cs`.
+    Before that, a change that makes A5 read a property the copies lack, or makes MirValidator require an ensure before a static
+    access, first adds an entry superseding this one.
+  - Rejected: bodies written row by row as `HandBuilt`'s; label-block stand-ins in expression defaults (a check edge leaves
+    `NextUse` no Use); a stand-in Type check by identity (it fails where Origins legitimately differ); re-expecting the source tests
+    with vacuous guards (OQ-1 (a)).
+  - PD21: `MirBorrowsTest.Defaults.cs`'s edit extracts `Validated` and adds no responsibility; no restructure.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
