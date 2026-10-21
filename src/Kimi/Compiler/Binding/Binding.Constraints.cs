@@ -123,47 +123,6 @@ public sealed partial class Binding
         (constraint.Left is { } left && DependentConstraint(left, contractSelf)) ||
         (constraint.Right is { } right && DependentConstraint(right, contractSelf));
 
-    private static bool InvalidConstraintType(BoundType type)
-    {
-        if (type.Symbol is { } symbol && InvalidDeclarationContext(symbol.Declaration))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (InvalidConstraintType(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool UnresolvedConstraintType(BoundType type)
-    {
-        if (type.Symbol is { } symbol && UnresolvedTypeDeclarationContext(symbol.Declaration))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (UnresolvedConstraintType(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool UnresolvedConstraintOperand(BoundConstraint constraint)
-        => (constraint.Subject is { } subject && UnresolvedConstraintType(subject)) ||
-        (constraint.RequiredType is { } required && UnresolvedConstraintType(required)) ||
-        (constraint.Contract is { } contract && UnresolvedTypeDeclarationContext(contract.Declaration));
-
     private bool AvailableContractPremise(BindingSymbol contract)
     {
         // Ancestors is already the deduplicated transitive closure. Recurse only through
