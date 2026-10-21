@@ -69,10 +69,10 @@ internal sealed partial class MirBorrows
         {
             var loan = this.loans[reservation];
             var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
-            var taking = Activation(this.slots[local]);
-            if (this.Conflict(loan.Root, steps, loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate, taking) is var c and not None)
+            var (taking, kind) = (Activation(this.slots[local]), loan.Destroying ? AccessKind.ActivateInPlace : AccessKind.Activate);
+            if (this.Conflict(loan.Root, steps, kind, taking) is var c and not None)
             {
-                this.Report(this.Code(this.candidates[c], code), c, taking, at, reservation);
+                this.Report(this.Code(this.candidates[c], kind, code), c, taking, at, reservation, null);
             }
 
             if (loan.Destroying)
@@ -100,7 +100,7 @@ internal sealed partial class MirBorrows
         var steps = this.loanSteps.AsSpan(loan.Start, loan.Count);
         if (kind == AccessKind.Observe && this.Conflict(loan.Root, steps, AccessKind.ObservePast, taking) is var c and not None)
         {
-            this.Report(this.Code(this.candidates[c], DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation);
+            this.Report(this.Code(this.candidates[c], AccessKind.ObservePast, DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, reservation, null);
         }
     }
 

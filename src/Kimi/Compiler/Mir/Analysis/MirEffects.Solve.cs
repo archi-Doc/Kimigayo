@@ -51,7 +51,7 @@ internal sealed partial class MirEffects
         MirDataflow.Grow(ref this.queued, (count + 63) >> 6);
         MirDataflow.Grow(ref this.readers, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
-        var words = ((2 * this.fields.Count) + 63) >> 6;
+        var words = ((2 * this.fieldIds.Count) + 63) >> 6;
         MirDataflow.Grow(ref this.keys, count * words);
         MirDataflow.Grow(ref this.keyScratch, words);
         this.keys.AsSpan(0, count * words).Clear();

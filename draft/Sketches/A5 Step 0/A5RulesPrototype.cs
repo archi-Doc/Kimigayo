@@ -315,7 +315,7 @@ if (args.Contains("-r17")) return Round17();
 // exclusive Loan (R3) and staticEnsure under PD12 (R4) on R17Hold, with G136's lemma and G124's Transferable. Checks: (i) the earlier cases
 // keep R17Hold's outcome under R18; (ii) each round-18 case meets its expected outcome under R18; (iii) G136: R18 and R18StaticEnds give
 // one verdict everywhere; (iv) each G124 case's Transferable gives its SPEC verdict. -r18 prints only this; its exit code counts the failures.
-var round18Variants = new[] { Abl.R18NoW6, Abl.R18LiveOnly, Abl.R18NoR3, Abl.R18Merged, Abl.R18EnsureExact, Abl.R18EnsureByField, Abl.R18EnsureIgnored, Abl.R18StaticEnds };
+var round18Variants = new[] { Abl.R18NoW6, Abl.R18LiveOnly, Abl.R18NoR3, Abl.R18Merged, Abl.R18EnsureExact, Abl.R18EnsureByField, Abl.R18EnsureIgnored, Abl.R18StaticEnds, Abl.R18EnsureClosed };
 var round18Modes = round18Variants.Prepend(Abl.R18).ToArray();
 int Round18()
 {
@@ -830,6 +830,7 @@ enum Abl { None, KillKeepOnly, NoMaterialize, SyntacticAccess, NoAuthority, NoCl
     R18EnsureExact,   // P42's exact rule: a live Loan proves its own key initialized (Case.StaticKey), so its initializer does not run
     R18EnsureByField, // P5 read as a proof: any live Loan on the ensured Field proves it initialized
     R18EnsureIgnored, // no proof: an ensure always takes its initializer's keys
+    R18EnsureClosed,  // design A (2b-D): a closed Field's live Loan proves it initialized (one key); a generic Field's is R18's located U
     R18StaticEnds,    // G136 the other way: a static's whole write ends its Loans as a Move Path's does (E8's PrefixKill)
     // Round 19 (ER-defaults, A5-F9): on R18, E15, R26-borrow, R26-access, P9's rows with the raw-pointer row, and R-a without R4-M70's taint (R19); each
     // variant replaces or removes one of them:
@@ -1120,7 +1121,7 @@ class Analysis
     bool Defaults => (Tainting || X is Abl.R17Hold or Abl.R17PerPart || Effects) && (!R19Mode || X is Abl.R19Taint or Abl.R19InlinedDrop);
     // Round 18: the effect rules, on R17Hold (rule G, the body hold, the default taint). Round 19 runs on them.
     bool Effects => X is Abl.R18 or Abl.R18NoW6 or Abl.R18LiveOnly or Abl.R18NoR3 or Abl.R18Merged or Abl.R18EnsureExact or Abl.R18EnsureByField
-        or Abl.R18EnsureIgnored or Abl.R18StaticEnds || R19Mode;
+        or Abl.R18EnsureIgnored or Abl.R18StaticEnds or Abl.R18EnsureClosed || R19Mode;
     // Round 19 (A5-F9): the defaults rules; R-a's ending, the template call's rows and the raw-pointer row by variant.
     bool R19Mode => X is Abl.R19 or Abl.R19Taint or Abl.R19InlinedDrop or Abl.R19NoEnding or Abl.R19SlotsOnly or Abl.R19ValueRows or Abl.R19NoRawRow
         or Abl.R19SharedStep or Abl.R19ReturnOnly or Abl.R19AccessAll or Abl.R19RawAccess || R20Mode;
@@ -1816,7 +1817,7 @@ class Analysis
                 // the Loan's key is not known to be the ensured one, so a conflict that proof would decide is the located Unsupported_Kd.
                 bool proof = n.Ensure != null && X != Abl.R18EnsureIgnored
                     && F.Any(t => Static(t.L) == n.Ensure && (X != Abl.R18EnsureExact || Enc.StaticKey.GetValueOrDefault(t.L, "") == n.EnsureKey));
-                if (!(proof && X is Abl.R18EnsureExact or Abl.R18EnsureByField))
+                if (!(proof && (X is Abl.R18EnsureExact or Abl.R18EnsureByField || X == Abl.R18EnsureClosed && string.IsNullOrEmpty(n.EnsureKey))))
                 {
                     var hits = new List<(string H, string L)>();
                     foreach (var (h, l) in F)
@@ -6414,7 +6415,7 @@ static class R18
     public static IEnumerable<Case> All() => [Compound("e1"), Compound("e2"), Compound("e3"), LiveUniq(), Receiver("e4", read: true),
         Receiver("e5", read: false), MovedArgument(), TwoFailures(), DropHolder("e6", write: true), DropHolder("e7", write: false),
         OwnDrop("e8"), OwnDrop("e8b"), OwnDrop("e8c"), Erased("e9"), Erased("e9b"), Erased("e9s"),
-        Ensure("e10a"), Ensure("e10b"), Ensure("e10c"), Ensure("e10d"), Run("e11", both: true), Run("e11b", both: false),
+        Ensure("e10a"), Ensure("e10b"), Ensure("e10c"), Ensure("e10d"), Ensure("e10e"), EnsureJoin(), Run("e11", both: true), Run("e11b", both: false),
         Classes("e12a"), Classes("e12b"), Classes("e12c"), Classes("e13a"), Classes("e13b"), Classes("e14"),
         Generic("e15", copy: false), Generic("e15b", copy: true), Lemma("e16a"), Lemma("e16b"), Lemma("e16c"), Held()];
 
@@ -6425,16 +6426,19 @@ static class R18
         return c;
     }
 
-    // e1-e3 (SPEC 13.7.2, 15.6.4): `State.count += f()` reserves State.count in $w at locate and activates Lw at the write; the right-hand
-    // call's effects meet Lw, shared in its holder: g's unknown effects and w's write conflict with it, m's read does not.
+    // e1-e3 (SPEC 15.6.4, 15.6.7): `State.counter.add(f())` reserves its receiver State.counter in $w, located first, and activates Lw at
+    // add's call; the argument's call's effects meet Lw, shared in its holder: g's unknown effects and w's write conflict with it, m's read
+    // does not. Corrected by unit 2b-3: these cases first modelled `State.count += f()` with the writeback's reservation pending during
+    // f(), an evaluation-order error, since SPEC 13.7.2 secures the right operand before it locates and reserves the target, so that form
+    // meets nothing (valid).
     static Case Compound(string id)
     {
-        var (call, what) = id switch { "e1" => ("$v = g()", "g a common Function value: unknown effects"), "e2" => ("$v = m()", "m reads State.count"), _ => ("$v = w()", "w writes State.count") };
-        var c = S(id, $"`State.count += {call[5..]}` ({what})", Count);
-        c.N("$w = TwoPhaseUniq(State.count) (writeback)").Def("$w").Borrow("Lw", Count, Uniq, "$w", reserve: true);
+        var (call, what) = id switch { "e1" => ("$v = g()", "g a common Function value: unknown effects"), "e2" => ("$v = m()", "m reads State.counter"), _ => ("$v = w()", "w writes State.counter") };
+        var c = S(id, $"`State.counter.add({call[5..]})` ({what})", Counter);
+        c.N("$w = TwoPhaseUniq(State.counter) (receiver)").Def("$w").Borrow("Lw", Counter, Uniq, "$w", reserve: true);
         var n = c.N(call).Def("$v");
-        if (id == "e1") n.Fx(unknown: true); else n.Key(Count, write: id == "e3");
-        c.N("(*$w) = (*$w) + $v (activates Lw)").A(K.Read, "$w.*").Activate("Lw").Through("$w.*", "$v");
+        if (id == "e1") n.Fx(unknown: true); else n.Key(Counter, write: id == "e3");
+        c.N("add($w, $v) (activates Lw)").A(K.Read, "$w.*").Activate("Lw").Through("$w.*", "$v");
         return id == "e2" ? c.Valid() : c.Error(call);
     }
 
@@ -6542,14 +6546,14 @@ static class R18
     // proof decides, the ensure is a located Unsupported_Kd. e10b: no proof; e10c: nothing for the initializer to meet. P42 for lx and ll.
     static Case Ensure(string id)
     {
-        bool proof = id != "e10b", other = id != "e10c", generic = id == "e10d";
-        string f = generic ? CacheX : Xs, xi = generic ? "Cache<i32>.S.x" : "State.x", xe = generic ? "Cache<string>.S.x" : "State.x";
+        bool proof = id != "e10b", other = id != "e10c", generic = id is "e10d" or "e10e", same = id == "e10e";
+        string f = generic ? CacheX : Xs, xi = generic && !same ? "Cache<i32>.S.x" : generic ? "Cache<string>.S.x" : "State.x", xe = generic ? "Cache<string>.S.x" : "State.x";
         var c = S(id, (proof ? $"`var lx = {xi}@ref; " : "`") + (other ? "var ll = State.log@ref; " : "") + $"let v = {xe}; inspect(…)` (x's initializer writes State.log)", f, Log);
         if (proof)
         {
-            c.N($"staticEnsure({xi})").StaticEnsure(f, generic ? "i32" : "").Key(Log, write: true);
+            c.N($"staticEnsure({xi})").StaticEnsure(f, generic ? (same ? "string" : "i32") : "").Key(Log, write: true);
             c.N($"var lx = {xi}@ref").Def("lx").Borrow("Lx", f, Ref, "lx");
-            if (generic) c.StaticKey["Lx"] = "i32";
+            if (generic) c.StaticKey["Lx"] = same ? "string" : "i32";
         }
         if (other) c.N("var ll = State.log@ref").Def("ll").Borrow("Ll", Log, Ref, "ll");
         var ensure = $"staticEnsure({xe}) for `let v`";
@@ -6558,6 +6562,25 @@ static class R18
         c.N("inspect(lx), inspect(ll)").Use(new[] { proof ? "lx" : null, other ? "ll" : null }.Where(x => x != null).ToArray());
         if (proof && other) c.UnsuppAt = [ensure];
         return id == "e10b" ? c.Error(ensure) : id == "e10d" ? c.Error() : c.Valid();
+    }
+
+    // Reviewer's join case (2b-D package check): lx carries x's Loan on one path only; on the else path State.x is never accessed, so
+    // the ensure's initializer may run there and write State.log while ll lives (a may-live Loan proves nothing on a path it is absent from).
+    static Case EnsureJoin()
+    {
+        var c = S("e10f", "`var o = 1; var lx = o@ref; if k => (lx = State.x@ref); var ll = State.log@ref; let v = State.x; inspect(…)` (x's initializer writes State.log)", Xs, Log);
+        c.N("var o = 1").Def("o");
+        c.N("var lx = o@ref").Def("lx").Borrow("Lo", "o", Ref, "lx");
+        c.N("if k").Goto("staticEnsure(State.x) for `lx =`", "var ll = State.log@ref");
+        c.N("staticEnsure(State.x) for `lx =`").StaticEnsure(Xs, "").Key(Log, write: true);
+        c.N("lx = State.x@ref").Def("lx").Borrow("Lx", Xs, Ref, "lx");
+        c.N("var ll = State.log@ref").Def("ll").Borrow("Ll", Log, Ref, "ll");
+        var ensure = "staticEnsure(State.x) for `let v`";
+        c.N(ensure).StaticEnsure(Xs, "").Key(Log, write: true);
+        c.N("let v = State.x").Def("v").A(K.Read, Xs);
+        c.N("inspect(lx), inspect(ll)").Use("lx", "ll");
+        c.UnsuppAt = [ensure];
+        return c.Error();
     }
 
     // e11, e11b: SPEC 15.6.4's `run`: g's unknown effects meet c's Loan on the mutable State.count, never l's on the immutable State.limit.

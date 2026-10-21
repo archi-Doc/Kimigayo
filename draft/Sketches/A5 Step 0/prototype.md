@@ -39,7 +39,7 @@ dotnet run proto.cs -- -r19      # only round 19 (ER-defaults, A5-F9); exit code
 dotnet run proto.cs -- -r20      # only round 20 (template ownership in copies, G171); exit code = its failures; -v adds every fact
 ```
 
-- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 7,787 lines after round 20.
+- `proto.cs` is a single-file app for .NET SDK 11.0.100-rc.2, 7,810 lines after round 20 and unit 2b-3's round 18 record.
 - The first run takes about 30 s, mostly compilation; evaluation is a naive fixpoint.
 - `out.txt` holds the last `-v` run.
 
@@ -1505,14 +1505,15 @@ P42. e1–e5, e8–e9, e15 and their twins use implicit Loans (a writeback, a st
   A5 cannot tell that Loan's key from the ensured one, so a conflict of the initializer's keys that the proof would decide is the located
   `Unsupported_Kd` at the ensure. Without a live Loan on the Field, the keys are ordinary effects.
 
-**Cases.** The round has 34 cases: the audit's e1–e16 with lettered twins, the two F5 SPEC examples and e17. Each case states its SPEC
-verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
+**Cases.** The round has 36 cases: the audit's e1–e16 with lettered twins, the two F5 SPEC examples, e17, and e10e and e10f (added by
+the 2b-D package's design A and review, recorded by unit 2b-3). Each case states its SPEC verdict and R18's expected outcome. U is the
+located `Unsupported_Kd`.
 
 | Case | Program | SPEC | R18 | Checks |
 | --- | --- | --- | --- | --- |
-| e1 | `State.count += g()`, g a common Function value | error | error at g() | Unknown vs the writeback's reservation (shared) |
-| e2 | `State.count += m()`, m reads State.count | valid | valid | a read key vs a reservation in its holder |
-| e3 | `State.count += w()`, w writes State.count | error | error at w() | a write key, any mode |
+| e1 | `State.counter.add(g())`, g a common Function value | error | error at g() | Unknown vs the receiver's reservation (shared) |
+| e2 | `State.counter.add(m())`, m reads State.counter | valid | valid | a read key vs a reservation in its holder |
+| e3 | `State.counter.add(w())`, w writes State.counter | error | error at w() | a write key, any mode |
 | e2u | `var u = State.count@uniq; m(); u@follow = 1` (P42) | error | error at m() | a read key vs a live uniq Loan |
 | e4 | `State.counter.bump()`, bump reads State.counter by name | error | error at the call | W6 |
 | e5 | the same, bump touches no static | valid | valid | |
@@ -1530,6 +1531,8 @@ verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
 | e10b | the same without lx | error | error at the ensure | no proof |
 | e10c | the same without ll | valid | valid | nothing to meet |
 | e10d | lx on `Cache<i32>.S.x`, the ensure of `Cache<string>.S.x` (P42) | error | U at the ensure | P5 hides the other key |
+| e10e | lx and the ensure on one key, `Cache<string>.S.x` (P42) | valid | U at the ensure | P5 hides that the keys are one |
+| e10f | `var o = 1; var lx = o@ref; if k => (lx = State.x@ref); var ll = State.log@ref; let v = State.x; inspect(…)` (P42) | error | U at the ensure | the proof under may-liveness: lx carries x's Loan on one path only |
 | e11 | SPEC 15.6.4's `run` | error | error at g() | Unknown; l's immutable Loan unaffected |
 | e11b | `run` with l alone | valid | valid | |
 | e12a | `let c = State.count@ref; f(); inspect(c)`, f past A4's Limit, f reads (P42) | valid | U at f() | Limit |
@@ -1544,6 +1547,11 @@ verdict and R18's expected outcome. U is the located `Unsupported_Kd`.
 | e16b | the same with a second write `State.count = 6` (P42) | error | error at both writes | G136; finding 5 |
 | e16c | c dead at the write (P42) | valid | valid | G136 |
 | e17 | e11's conflict in a held body (round 16's closureRoute prefix; P42) | error | U at g() | R4-M73: the hold covers err(effect) |
+
+**Correction (unit 2b-3, 2026-10-21).** e1–e3 first modelled `State.count += f()` with the writeback's reservation pending during
+`f()`: an evaluation-order error. SPEC 13.7.2 secures the right operand before it locates and reserves the target (the MIR builder's
+`Update` does so), so that form meets nothing and is valid. The model's shape, a reservation pending while an argument's call runs, is
+the receiver form now named; its outcomes are unchanged. 2b-3's MIR test asserts the compound form valid and the receiver form's codes.
 
 **Run.** `-r18` reports 0 failures:
 
@@ -1560,9 +1568,10 @@ The full output and the `-v`, `-r13`, `-r15`, `-r16`, `-r17` and `-cases` output
 | `R18LiveOnly` (live-after holders and E only) | e4, e4m, e6 accepted: **UNSOUND** |
 | `R18NoR3` | e8, e9 accepted: **UNSOUND**; e8c valid |
 | `R18Merged` (G93's `bool`: Limit and Derived as Unknown) | Language errors at e8c and e12a (SPEC-valid) and at e13a (derived; R4-M10 drops it) |
-| `R18EnsureExact` (P42's key identity) | e10a valid, e10d error: SPEC's verdict in all four ensure cases |
-| `R18EnsureByField` (any live Loan on the Field as the proof) | e10a valid; e10d accepted: **UNSOUND** |
-| `R18EnsureIgnored` (no proof) | e10a error (over-strict); e10d error |
+| `R18EnsureExact` (P42's key identity) | e10a valid, e10d error, e10e valid; e10f accepted: **UNSOUND** |
+| `R18EnsureByField` (any live Loan on the Field as the proof) | e10a valid, e10e valid; e10d, e10f accepted: **UNSOUND** |
+| `R18EnsureIgnored` (no proof) | e10a, e10e error (over-strict); e10d, e10f error |
+| `R18EnsureClosed` (design A's closed-key proof; design B's `R18EnsureKeyed` is the same rule) | e10a valid; e10f accepted: **UNSOUND** |
 | `R18StaticEnds` (a static's whole write ends its Loans) | e16b: an error at the first write only |
 
 **G124 (`R18G`).** A confined witness's read of an immutable static is an environment effect unless the static's Type is proven
@@ -1601,7 +1610,9 @@ Transferable (SPEC 8.11.2; Unknown is unproven). `R18G.Transferable` follows SPE
 4. **PD12 (ii) is the only sound choice under P5 that keeps e10a free of a Language error.**
    - Taking any live Loan on the Field as the proof accepts e10d, which is unsound.
    - Ignoring the proof rejects e10a, which is over-strict.
-   - P42's key identity (`R18EnsureExact`) gives SPEC's verdict.
+   - Amended (the 2b-D review's P-1, recorded by unit 2b-3): P42's key identity (`R18EnsureExact`) and the closed-key proof
+     (`R18EnsureClosed`, `R18EnsureKeyed`) accept e10f, which is unsound: liveness is a may-property, so a Loan carried on one path proves
+     nothing on a path where the Field was never accessed. PD12 (ii) as written stays for every key (DECISIONS R4-M89 OQ-F5-6, R4-M92).
 5. **G136's lemma holds for verdicts but not for problems (a decision).** No verdict changes with the ending. But in e16b the compiler's
    rule (a static's write ends nothing) gives a second `ComparisonLoanConflict_Kd` at `State.count = 6`. `MirBorrows.Reports` takes the
    access as the subject, so R4-M71's key keeps both records.
@@ -1719,7 +1730,7 @@ other record). Borrow and Access are the two DefaultArgument codes; U is the loc
 
 **Run.** `-r19` reports 0 failures:
 
-- (i) The 459 earlier cases (425 plus round 18's 34) report the same (Loan, access) multiset under R19 as under R18, and none changes its
+- (i) The 459 earlier cases (425 plus round 18's 34 of then; 461 with e10e and e10f) report the same (Loan, access) multiset under R19 as under R18, and none changes its
   outcome. R4-M70's every-set rule made no earlier conflict `Unsupported_Kd`: each earlier default encoding also keeps the Loan in a clean
   holder.
 - (ii) Every round-19 case meets R19's expected outcome. None is unsound or over-strict against SPEC there, except dc-raw-hid-x, which G160
@@ -1860,8 +1871,8 @@ it omits. Each caller's templates are rows of `-r20`'s table with their own verd
 
 **Run.** `-r20` reports 0 failures:
 
-- (i) None of the 506 earlier cases has a Loan problem inside a copy: R19 drops nothing there. So R20Own and every variant keep R19's (Loan, access) multiset
-  and outcome in all 506.
+- (i) None of the 506 earlier cases (508 since unit 2b-3's e10e and e10f) has a Loan problem inside a copy: R19 drops nothing there. So R20Own and every
+  variant keep R19's (Loan, access) multiset and outcome in all of them.
 - (ii) Every round-20 case meets its expected outcome under R20Own, except the three loop cases (dt20-loop, dc20-loop, dc20-loop-nested), which record
   finding 2 and are checked to reproduce it.
 - (iii) R20Own omits 15 failures. Its templates report 12 of them, the loop cases' three not. The run lists each omission and its template.

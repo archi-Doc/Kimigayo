@@ -89,6 +89,22 @@ internal static class AbortReasons
             .Replace("{{abort_reason_count}}", count, StringComparison.Ordinal);
     }
 
+    /// <summary>Gets the reason of a fixed SPEC 22.5.2 code, whose text begins with the code and a colon.</summary>
+    /// <param name="code">The code, such as KIMI_E_INDEX_BOUNDS.</param>
+    /// <returns>The reason, or -1 for a code without one.</returns>
+    internal static int Of(string code)
+    {
+        foreach (var reason in Reasons)
+        {
+            if (reason.Text.Length > code.Length && reason.Text[code.Length] == ':' && reason.Text.StartsWith(code, StringComparison.Ordinal))
+            {
+                return reason.Id;
+            }
+        }
+
+        return -1;
+    }
+
     // Whether the text is printable ASCII without " or \, so an LLVM c"..." constant holds it unescaped.
     private static bool IsPlain(string text)
     {
