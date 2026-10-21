@@ -131,22 +131,18 @@ public class CallableEffectBoundTest
         }
     }
 
-    // With preserves results, excluding the earlier result of the same Callable value needs value identity across replacement,
-    // an implementation limit (reduction regression R1g): the later call is one located Unsupported_Kd.
+    // SPEC 8.11.4, 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a call through a Callable-constrained value reaches by
+    // path what its receiver and arguments reach; an earlier result that keeps no Loan of those Places does not conflict with a later
+    // call of the same value, with or without a bound (CallEffectConflict_Kd and R1g's Unsupported_Kd before the adoption).
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public void EarlierResultsRequirePreservation(bool bounded)
+    public void LaterCallsOfACallableValueReachByPaths(bool bounded)
     {
         var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
             (bounded ? "        effect preserves results\n" : string.Empty) +
             "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
-        var diagnostic = AssertSecondCall(source, bounded ? "Unsupported_Kd" : "CallEffectConflict_Kd", "next(source)");
-        if (!bounded)
-        {
-            Assert.Contains("Callable Constraint", diagnostic.Message);
-            Assert.Equal(["call", "loan"], diagnostic.Related!.Select(static r => r.Role));
-        }
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     [Theory]
@@ -394,27 +390,20 @@ public class CallableEffectBoundTest
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
 
-    // A replaced value is another callable value, so the guarantee no longer excludes the earlier result; whether the value was
-    // replaced is the same limit as above, while a call through a different value is the specified conflict.
+    // SPEC 8.11.4, 8.11.3 (the adopted proposal): nothing relates two calls, so the same, a replaced or another Callable value makes
+    // no difference (R1g's Unsupported_Kd and CallEffectConflict_Kd before the adoption).
     [Theory]
-    [InlineData("    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
-    [InlineData("    f = two@move\n    let second = f(source)\n", "Unsupported_Kd", "f(source)")]
-    [InlineData("    var g = two@move\n    let second = g(source)\n", "CallEffectConflict_Kd", "g(source)")]
-    public void ReplacingTheCallableCannotReuseTheEarlierValuesGuarantee(string second, string code, string call)
+    [InlineData("    let second = f(source)\n")]
+    [InlineData("    f = two@move\n    let second = f(source)\n")]
+    [InlineData("    var g = two@move\n    let second = g(source)\n")]
+    public void ReplacingTheCallableChangesNoVerdict(string second)
     {
         var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n        effect preserves results\n    var f = one@move\n    let first = f(source)\n" +
             second + "    return (first@move, second@move)\npublic func main() => ()\n";
-        AssertSecondCall(source, code, call);
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
-
-    private static CheckDiagnostic AssertSecondCall(string source, string code, string call)
-    {
-        var diagnostic = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal((code, source.LastIndexOf(call, StringComparison.Ordinal), call.Length), (diagnostic.Code, diagnostic.Span!.Value.Start, diagnostic.Span.Value.Length));
-        return diagnostic;
-    }
 }
