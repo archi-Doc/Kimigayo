@@ -8,6 +8,7 @@ public sealed partial class OwnershipAnalysis
 {
     private readonly Dictionary<BoundType, bool> supportedTypes = new(ReferenceEqualityComparer.Instance);
     private readonly List<BoundType> visitingTypes = new();
+    private readonly HashSet<BoundType> completeTuples = new(ReferenceEqualityComparer.Instance);
 
     private static int TypeDepth(BoundType type)
     {
@@ -18,27 +19,6 @@ public sealed partial class OwnershipAnalysis
         }
 
         return depth + 1;
-    }
-
-    private static bool AggregateCanComplete(BoundType type)
-    {
-        if (ReferenceEquals(type, BoundType.Never))
-        {
-            return false;
-        }
-
-        if (type.Kind == BoundTypeKind.Tuple)
-        {
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (!AggregateCanComplete(type.Components[i]))
-                {
-                    return false;
-                }
-            }
-        }
-
-        return true;
     }
 
     // Storage without bytes: unit, empty or all-zero-sized structs, Tuples and closures, and fixed arrays of
@@ -87,6 +67,31 @@ public sealed partial class OwnershipAnalysis
         }
 
         return false;
+    }
+
+    // Whether a value of the Type completes: no Never through its Tuples. A Tuple found complete is kept for the analysis, so a shared part
+    // is decided once (DECISIONS BU-18, the owner's D5 exception).
+    private bool AggregateCanComplete(BoundType type)
+    {
+        if (ReferenceEquals(type, BoundType.Never))
+        {
+            return false;
+        }
+
+        if (type.Kind == BoundTypeKind.Tuple && !this.completeTuples.Contains(type))
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                if (!this.AggregateCanComplete(type.Components[i]))
+                {
+                    return false;
+                }
+            }
+
+            this.completeTuples.Add(type);
+        }
+
+        return true;
     }
 
     // This is a conservative subset gate, not the language's finite-storage validation.
@@ -281,7 +286,7 @@ public sealed partial class OwnershipAnalysis
 
     private int ConstructAggregate(Koto source, IReadOnlyList<Koto> elements)
     {
-        if (source.BoundType is { } sourceType && !AggregateCanComplete(sourceType))
+        if (source.BoundType is { } sourceType && !this.AggregateCanComplete(sourceType))
         {
             // Binding retains Never components in a tuple's inferred Type. Such a
             // tuple has no completed representation; earlier acquired temporaries

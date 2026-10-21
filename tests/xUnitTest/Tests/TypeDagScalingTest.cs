@@ -118,6 +118,90 @@ public class TypeDagScalingTest
         Assert.Equal(["UnresolvedBinding_Kd", "UnprovenConstraint_Kd"], DiagnosticCorpus.Check(Source).Diagnostics.Select(static x => x.Code));
     }
 
+    // The old analysis's walks (the owner's D5 exception): whether a cleanup observes Loans over shared struct, enum and Tuple parts,
+    // generic ones too, Origin projections and Loan dependencies over shared Origin-carrying parts, the completion of shared Tuples; for
+    // the instance chains also the old Emission's instance analyses.
+    [Theory]
+    [InlineData("structs", 28)]
+    [InlineData("structUses", 24)]
+    [InlineData("enums", 31)]
+    [InlineData("lets", 28)]
+    [InlineData("genericLets", 26)]
+    [InlineData("originLets", 24)]
+    [InlineData("chain", 26)]
+    [InlineData("chainValues", 26)]
+    public void OldAnalysisWalksAreLinearInDistinctParts(string shape, int size)
+    {
+        var c = MinimalEmissionTest.Analyze(Source(shape, size));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        if (shape.StartsWith("chain", StringComparison.Ordinal))
+        {
+            Assert.True(c.WriteIr(TextWriter.Null, out var failure), MinimalEmissionTest.Describe(c, failure));
+        }
+    }
+
+    // SPEC 15.6.6: a part shared at depth 0 and 60 or 70 levels down a Tuple keeps the bound's verdict in either order: at 70 a later
+    // write conflicts with the Loan the bound retains, at 60 it does not.
+    [Theory]
+    [InlineData(60, false, true, "")]
+    [InlineData(60, true, true, "")]
+    [InlineData(70, false, false, "")]
+    [InlineData(70, false, true, "ComparisonLoanConflict_Kd")]
+    [InlineData(70, true, true, "ComparisonLoanConflict_Kd")]
+    public void ADeepSharedPartKeepsTheBoundsVerdict(int depth, bool shallowFirst, bool written, string code)
+    {
+        var deep = $"    let d = {Nest(depth)}\n";
+        var shallow = $"    let s = {Nest(10)}\n";
+        var source = "public func main() -> ()\n    var value = 42\n" + (shallowFirst ? shallow + deep : deep + shallow) + (written ? "    value = 99\n" : string.Empty) + "    return\n";
+        Assert.Equal(Codes(code), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+
+        static string Nest(int levels) => new string('(', levels) + "value@ref" + string.Concat(Enumerable.Range(0, levels).Select(static i => $", {i})"));
+    }
+
+    // SPEC 16.3.1: the drop of a struct shared in a Tuple observes its Loans, so a later write conflicts; without a drop it does not.
+    [Theory]
+    [InlineData(false, true, "")]
+    [InlineData(true, false, "")]
+    [InlineData(true, true, "ComparisonLoanConflict_Kd")]
+    public void ADropThroughASharedPartObservesItsLoans(bool drop, bool written, string code)
+    {
+        var source = "struct Observer {a}\n    public let value: ref/i32 during a\n    public init(value: ref/i32 during a) => self.value = value\n" + (drop ? "    drop => ()\n" : string.Empty) +
+            "var value = 42\nlet t = ((Observer.init(value@ref), Observer.init(value@ref)), (Observer.init(value@ref), Observer.init(value@ref)))\n" +
+            (written ? "value = 99\n" : string.Empty) + "require value > 0 else => $abort(\"x\")\n";
+        Assert.Equal(Codes(code), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    // A ring through a handle reaches the bound, which retains the Loan; a closed instance whose Field is a projection is checked in its
+    // Place's context.
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "ComparisonLoanConflict_Kd")]
+    public void ARingThroughAHandleRetainsTheLoan(bool written, string code)
+    {
+        var source = "struct Node\n    public var x: i32\n    public var next: Option<rc/Node>\n    public init(x: i32)\n        self.x = x\n        self.next = .None\n" +
+            "public func main() -> ()\n    var value = 42\n    let n = Node.init(x: 1)\n    let t = ((n@move, value@ref), 3)\n" + (written ? "    value = 99\n" : string.Empty) + "    return\n";
+        Assert.Equal(Codes(code), DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+    }
+
+    [Fact]
+    public void AnInstanceWithAProjectionFieldChecks()
+    {
+        const string Source = "contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\nstruct W<S>\n    S is HasElem\n" +
+            "    public var e: S.Element\n    public init(e: S.Element) => self.e = e@move\npublic func main() -> ()\n    let w = W<Src>.init(e: 1)\n    let p = (w@move, 2)\n    return\n";
+        Assert.Empty(DiagnosticCorpus.Check(Source).Diagnostics);
+    }
+
+    // A warm Analyze of a program whose Types share parts allocates nothing: the old analysis's answer tables keep their capacity.
+    [Fact]
+    [Trait("Purpose", "Allocation")]
+    public void WarmAnalyzeOfSharedTypesAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze(Source("structUses", 12));
+        var valid = true;
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Analyze().IsVerified));
+        Assert.True(valid, MinimalEmissionTest.Describe(c, null));
+    }
+
     // A warm rebind of a program whose Types share parts allocates nothing: the answer tables keep their capacity.
     [Fact]
     [Trait("Purpose", "Allocation")]
@@ -130,13 +214,45 @@ public class TypeDagScalingTest
         Assert.True(complete, MinimalEmissionTest.Describe(c, null));
     }
 
-    // The source of a shape: a chain of generic functions, each calling the next with the Tuple of two of its argument (PLAN G153 (2)),
-    // passing a value or nothing; a body whose locals pair the previous local, over i32 or a Copy parameter.
+    // The source of a shape: structs storing the previous struct twice (PLAN G140), with constructions, a path read, a move and a drop;
+    // enums whose two Cases carry the previous enum (storage linear in the size); a chain of generic functions, each calling the next with
+    // the Tuple of two of its argument (PLAN G153 (2)), passing a value or nothing; a body whose locals pair the previous local, over i32,
+    // a Copy parameter or a borrow.
     internal static string Source(string shape, int size)
     {
         var text = new System.Text.StringBuilder();
         switch (shape)
         {
+            case "structs" or "structUses":
+                text.Append("struct L0\n    public var x: i32\n    public init(x: i32)\n        self.x = x\n");
+                for (var i = 1; i <= size; i++)
+                {
+                    text.Append($"struct L{i}\n    public var a: L{i - 1}\n    public var b: L{i - 1}\n    public init(a: L{i - 1}, b: L{i - 1})\n        self.a = a@move\n        self.b = b@move\n");
+                }
+
+                if (shape == "structs")
+                {
+                    return text.Append("public func main() -> ()\n    return\n").ToString();
+                }
+
+                text.Append("func mk0() -> L0 => L0.init(x: 1)\n");
+                for (var i = 1; i <= size; i++)
+                {
+                    text.Append($"func mk{i}() -> L{i} => L{i}.init(a: mk{i - 1}(), b: mk{i - 1}())\n");
+                }
+
+                return text.Append($"func read(v: ref/L{size}) -> i32 => v{string.Concat(Enumerable.Repeat(".a", size))}.x\nfunc pass(v: L{size}) -> L{size} => v@move\n")
+                    .Append($"func sink(v: L{size}) -> () => ()\npublic func main() -> ()\n    let v = pass(mk{size}())\n    let r = read(v)\n    sink(v@move)\n    return\n").ToString();
+            case "enums":
+                text.Append("enum E0\n    Z(i32)\n");
+                for (var i = 1; i <= size; i++)
+                {
+                    text.Append($"enum E{i}\n    A(E{i - 1})\n    B(E{i - 1})\n");
+                }
+
+                var value = string.Concat(Enumerable.Range(1, size).Reverse().Select(static i => $"E{i}.A(")) + "E0.Z(1)" + new string(')', size);
+                return text.Append($"func pass(v: E{size}) -> E{size} => v@move\nfunc sink(v: E{size}) -> () => ()\nfunc mk() -> E{size} => {value}\n")
+                    .Append("public func main() -> ()\n    sink(pass(mk()))\n    return\n").ToString();
             case "chain":
                 for (var i = 0; i < size; i++)
                 {
@@ -152,15 +268,22 @@ public class TypeDagScalingTest
 
                 return text.Append($"func f{size}<T>(x: T) -> ()\n    return\npublic func main() -> ()\n    f0<i32>(1)\n    return\n").ToString();
             default:
-                text.Append(shape == "genericLets" ? "func f<T>(t: T) -> ()\n    T is Copy\n" : "func f(t: i32) -> ()\n").Append("    let a0 = (t, t)\n");
+                text.Append(shape switch
+                {
+                    "genericLets" => "func f<T>(t: T) -> ()\n    T is Copy\n",
+                    "originLets" => "func f(t: ref/i32) -> ()\n",
+                    _ => "func f(t: i32) -> ()\n",
+                }).Append("    let a0 = (t, t)\n");
                 for (var i = 1; i < size; i++)
                 {
                     text.Append($"    let a{i} = (a{i - 1}, a{i - 1})\n");
                 }
 
-                return text.Append("    return\npublic func main() -> ()\n    f(1)\n    return\n").ToString();
+                return text.Append(shape == "originLets" ? "    return\npublic func main() -> ()\n    let x = 1\n    f(x@ref)\n    return\n" : "    return\npublic func main() -> ()\n    f(1)\n    return\n").ToString();
         }
     }
+
+    private static string[] Codes(string code) => code.Length == 0 ? [] : [code];
 
     // The body instances of the functions whose name starts with a prefix.
     private static int Instances(CheckedSet set, string prefix)

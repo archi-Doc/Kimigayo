@@ -18,6 +18,8 @@ public sealed partial class OwnershipBody
     // SPEC 15.6.5: each destroyed root and holder already reported, and the work list of the carrying-definition walk.
     private readonly List<(int Root, int Holder)> destroyedLoans = new();
     private readonly List<int> carryingWork = new();
+    private readonly HashSet<BoundType> projectionParts = new(ReferenceEqualityComparer.Instance); // HasProjection's query.
+    private readonly HashSet<(BoundType Type, LoanRequirement Bound)> addedTypes = new(); // VerifyBorrows' AddType, per Place.
 
     // SPEC 15.6.3: each retention through an exclusive reference, in operation order: a store's referent (StoredReferent) or a
     // call's writable argument and the Place it borrows take the stored or passed Place's Loans at the operation, under the
@@ -100,7 +102,7 @@ public sealed partial class OwnershipBody
         var dependent = this.RequirementResults is { Count: > 0 };
         for (var p = 0; p < count && !dependent; p++)
         {
-            dependent = HasProjection(this.Places[p].Type) || this.IsExclusiveBorrowInput(p);
+            dependent = this.HasProjection(this.Places[p].Type) || this.IsExclusiveBorrowInput(p);
         }
 
         if (!dependent)
@@ -141,6 +143,7 @@ public sealed partial class OwnershipBody
 
             if (!this.inspectionBorrows[p])
             {
+                this.addedTypes.Clear();
                 AddType(p, this.Places[p].Type);
             }
         }
@@ -452,6 +455,14 @@ public sealed partial class OwnershipBody
 
         void AddType(int place, BoundType type, LoanRequirement bound = LoanRequirement.Uniq)
         {
+            if (type.Components.Count != 0 && !this.addedTypes.Add((type, bound)))
+            {
+                // A part met again for this Place with this bound records only dependencies RecordDependency already holds at that
+                // mode or stronger (it only strengthens), so it returns false and nothing recurses (DECISIONS BU-18, the owner's D5
+                // exception).
+                return;
+            }
+
             if (type.Kind == BoundTypeKind.Function)
             {
                 return; // SPEC 7.7.4: a common Function value holds no Loan; its signature's Origins constrain its calls only.
@@ -778,32 +789,6 @@ public sealed partial class OwnershipBody
         }
     }
 
-    private static bool HasProjection(BoundType type)
-    {
-        if (ContainsProjection(type.Origin))
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.OriginArguments.Count; i++)
-        {
-            if (ContainsProjection(type.OriginArguments[i]))
-            {
-                return true;
-            }
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (HasProjection(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     private static bool ContainsProjection(BoundOrigin? origin)
     {
         if (origin is not null && (Binding.IsLocalRegion(origin) || origin.Kind is OriginKind.Projection or OriginKind.Input or OriginKind.Anchor))
@@ -865,6 +850,46 @@ public sealed partial class OwnershipBody
 
             level = parent;
         }
+    }
+
+    // Whether an Origin of the Type's parts is a projection, an input, an anchor or a local region. It reads Origins only, so a part that
+    // carries none has none, and a part met again in the query was answered false (DECISIONS BU-18, the owner's D5 exception).
+    private bool HasProjection(BoundType type)
+    {
+        this.projectionParts.Clear();
+        return this.HasProjectionPart(type);
+    }
+
+    private bool HasProjectionPart(BoundType type)
+    {
+        if (!type.CarriesOrigin)
+        {
+            return false;
+        }
+
+        if (ContainsProjection(type.Origin))
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.OriginArguments.Count; i++)
+        {
+            if (ContainsProjection(type.OriginArguments[i]))
+            {
+                return true;
+            }
+        }
+
+        for (var i = 0; i < type.Components.Count; i++)
+        {
+            var part = type.Components[i];
+            if ((part.Components.Count == 0 || this.projectionParts.Add(part)) && this.HasProjectionPart(part))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // SPEC 8.11.4: a generic requirement call's derived effects reach every Loan that its abstract inputs' Types may denote,
@@ -2796,7 +2821,7 @@ public sealed partial class OwnershipBody
             {
                 var input = this.Operations[argumentInput.Entry];
                 if (input.Kind == OwnershipOperationKind.CallEntry && input.Place >= 0 && this.Places[input.Place].Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.Uniq, Components.Count: 1, Origin: { Kind: OriginKind.Projection } origin } argument &&
-                    HasProjection(argument.Components[0]) && Binding.ContainsOrigin(result, origin) && !this.IsWholeReferentOrigin(origin))
+                    this.HasProjection(argument.Components[0]) && Binding.ContainsOrigin(result, origin) && !this.IsWholeReferentOrigin(origin))
                 {
                     (this.wholeReferentOrigins ??= new()).Add(origin);
                 }
