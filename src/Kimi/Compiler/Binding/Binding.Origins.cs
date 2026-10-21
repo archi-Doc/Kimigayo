@@ -696,25 +696,26 @@ public sealed partial class Binding
 
             if (meet is not null)
             {
-                if (!guaranteedBorrow && (requirement == LoanRequirement.Uniq || (aggregateSlot >= 0 && !OwnedWithoutConditionalBorrows())))
+                if (!guaranteedBorrow && requirement == LoanRequirement.Uniq)
                 {
                     this.Fail(use, BindingFailure.MissingOrigin);
                     return null;
                 }
 
-                return meet;
+                return !guaranteedBorrow && aggregateSlot >= 0 && OwnedWithoutConditionalBorrows() is not ConstraintProof.Proven and var unowned
+                    ? this.MissingOrigin(use, unowned) : meet;
             }
 
             if (requirement != LoanRequirement.Uniq)
             {
                 if (aggregateSlot >= 0)
                 {
+                    this.failedCause = null;
                     for (var i = 0; i < inputCount; i++)
                     {
-                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) != ConstraintProof.Proven)
+                        if (this.BoundInputType(context.Owner, i) is { } input && this.ProveOwned(input, use) is not ConstraintProof.Proven and var proof)
                         {
-                            this.Fail(use, BindingFailure.MissingOrigin);
-                            return null;
+                            return this.MissingOrigin(use, proof);
                         }
                     }
                 }
@@ -732,8 +733,9 @@ public sealed partial class Binding
         this.Fail(use, BindingFailure.MissingOrigin);
         return null;
 
-        bool OwnedWithoutConditionalBorrows()
+        ConstraintProof OwnedWithoutConditionalBorrows()
         {
+            this.failedCause = null;
             var count = InputCount(context.Owner);
             for (var i = 0; i < count; i++)
             {
@@ -743,14 +745,29 @@ public sealed partial class Binding
                     input = input.Components[0];
                 }
 
-                if (input is not null && this.ProveOwned(input, use) != ConstraintProof.Proven)
+                if (input is not null && this.ProveOwned(input, use) is not ConstraintProof.Proven and var proof)
                 {
-                    return false;
+                    return proof;
                 }
             }
 
-            return true;
+            return ConstraintProof.Proven;
         }
+    }
+
+    // SPEC 15.4.2, 23.1.2: a result Origin needs its inputs Owned; one that is not is a missing Origin, unless its Error rests on a cause.
+    private BoundOrigin? MissingOrigin(Koto use, ConstraintProof unowned)
+    {
+        if (unowned == ConstraintProof.Error && this.TakeFailedCause() is { } cause)
+        {
+            this.CompleteDependent(use, cause);
+        }
+        else
+        {
+            this.Fail(use, BindingFailure.MissingOrigin);
+        }
+
+        return null;
     }
 
     private void AddObligation(BindingObligation obligation)

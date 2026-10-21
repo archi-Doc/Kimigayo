@@ -179,6 +179,7 @@ public sealed partial class Binding
             var function = this.Function;
             var constructor = function.IsConstructor;
             var arguments = constructor ? this.Types.AsSpan(0, CallSlotCount(function)) : slots;
+            var outer = binding.BeginProof(); // A candidate's applicability is one conjunction (DECISIONS BU-22).
             var proof = binding.CheckConstraints(
                 function.TypeConstraints,
                 function,
@@ -213,7 +214,7 @@ public sealed partial class Binding
                 proof = CombineProof(proof, this.SlotProof(slots, i, unbound), true);
             }
 
-            return CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true);
+            return binding.EndProof(outer, CombineProof(proof, binding.ProveMemberConditions(function.BoundSymbol!, this.DeclaringType, this.Scope), true));
         }
 
         // SPEC 10.7, 10.8, 15.3.6: a callable value at a common Function Type that fits only once its per-call input is instantiated at

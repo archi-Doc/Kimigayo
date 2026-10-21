@@ -576,7 +576,7 @@ public sealed partial class Binding
         }
     }
 
-    private ConstraintProof ProveConstraint(BoundConstraint proposition, BindingScope scope)
+    private ConstraintProof ProveProposition(BoundConstraint proposition, BindingScope scope)
     {
         var positive = false;
         var negative = false;
