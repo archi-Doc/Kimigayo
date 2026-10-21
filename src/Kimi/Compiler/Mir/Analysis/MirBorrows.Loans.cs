@@ -14,7 +14,7 @@ internal sealed partial class MirBorrows
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
     private Loan[] loans = [];
-    private Step[] loanSteps = []; // The Loans' Places, each a run.
+    private MirStep[] loanSteps = []; // The Loans' Places, each a run.
     private int[] loanAt = []; // By location (Location): the Loan its Ref or Reborrowing PairAcquire issues, or -1.
     private int loanCount;
     private int loanStepCount;
@@ -66,7 +66,7 @@ internal sealed partial class MirBorrows
                     continue;
                 }
 
-                this.producing |= this.Prepared(statement.Place.Root);
+                this.producing |= MirSteps.Prepared(this.body, statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
@@ -84,7 +84,8 @@ internal sealed partial class MirBorrows
             }
 
             var terminator = data.Terminator;
-            this.producing |= this.DroppedStatic(terminator) >= 0 || (terminator.Kind == MirTerminatorKind.Call && this.Prepared(terminator.Place.Root));
+            this.producing |= this.DroppedStatic(terminator) >= 0 ||
+                (terminator.Kind == MirTerminatorKind.Call && MirSteps.Prepared(this.body, terminator.Place.Root));
         }
 
         this.producing |= this.loanCount > 0;
@@ -97,16 +98,16 @@ internal sealed partial class MirBorrows
     // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).
     private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
-        var count = this.Walk(place, reborrow, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
         var direct = true;
         for (var i = 0; i < count; i++)
         {
-            if (this.walk[i].Class == StepClass.Shared)
+            if (this.walk[i].Class == MirStepClass.Shared)
             {
                 return -1;
             }
 
-            direct &= this.walk[i].Class is not (StepClass.Uniq or StepClass.Raw);
+            direct &= this.walk[i].Class is not (MirStepClass.Uniq or MirStepClass.Raw);
         }
 
         MirDataflow.Grow(ref this.loans, this.loanCount + 1);

@@ -2576,6 +2576,40 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
     `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
     for the Inlined exception.
+- **R4-M99 Closure calls follow the receiver rules** (owner, 2026-10-21, on the R4 planning session's proposal written at the
+  owner's instruction 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」;
+  answers OQ-C1 (a) and OQ-C2 (a)) The proposal is `draft/Proposals/2026-10-21 Closure Calls as Receiver Calls.md`; its review is
+  `draft/Sketches/R4 Proposals 2026-10-21/review-1.md`.
+  - Adopted: a Closure body is checked against its call receiver (SPEC 7.7.3) as an instance function's body is against its
+    receiver, its environment bindings being Fields of the receiver's referent (15.6.5), so result Origins, containment (15.6.3) and
+    retention (15.6.4) follow the receiver rules; 15.8.2's five-row table becomes a restatement. §7.7.2's per-call permissions, §7.7.3's
+    per-case minimum receiver and the Closure Type (§3.2.1, its captures and fixed signature Origins) are unchanged. Meant to change
+    no verdict.
+  - Basis of 2c-D (A5-F7): the closure contract's Origin part is the receiver rule per admitted case; 2c-2's retention, 2c-5's
+    receiver substitution and 2c-6's result edges follow it; the C1-F4 view's row 4 interim (R4-M94) is replaced in 2c-D by the
+    receiver's classes; S3's C2 formation classifies sources by 15.6.3's containment walk instead of the five rows.
+  - Order: 2x-P7 adds a derivation column (its cases, the examples of 7.7 and 15.8.2, the review's Consuming `var` forms and a
+    no-capture closure with a fixed signature Origin under `T is Owned`); any verdict difference returns to the owner. Then one SPEC
+    session integrates 15.8.2, 15.6.5 and 7.7.4 before 2c-D's design review.
+  - Rejected: the receiver in an annotated result's elision (OQ-C2 (a): closures with borrowed parameters would fit no Callable or
+    common Function Type; `{environment}` stays in Appendix D.2); the A5 plan's optional narrowing "closure results never depend on
+    the call receiver"; the round-1 definition of the Closure Type as a structural Type with the call as an instance function (two
+    verdict changes found in review: Consuming `var` bindings, a no-capture closure's fixed Origins). The owner answered on the round-1
+    text; the narrower formulation keeps option A's intent.
+  - Numbering: R4-M100 is 2x-R15's (on its branch); 2a0-2's entry becomes R4-M101.
+- **R4-M100 A5's Place steps as a canonical component** (2026-10-21; unit 2x-R15 under R4-M94 D12 and the package's §10 row;
+  behavior-preserving)
+  - `MirSteps` (`Mir/Analysis/MirSteps.cs`) owns `MirStepClass`, `MirStep` and `Walk`: a Place's projections under the selected view as
+    classed steps, root first (A3 3, E13 (4), E17). `MirBorrows` reads it now and `MirOrigins` from 2a-1a (D14). Its inputs are
+    explicit: the body (per call), `MirCases` (at construction) and the roles of the body's locals; it reads none of `MirBorrows`'
+    state. `Prepared(body, root)`, E17's slot-step test, moved there from `MirBorrows.Defaults` so that one function answers it
+    (`SlotRooted` and the pre-pass call it). E17's row (R4-M98's `StepClass.Inline` in `MirBorrows.Walk`) is `MirSteps.Walk`'s, `MirStepClass.Inline`.
+  - `MirStep` gains `Prefix`, the projection id of the Place prefix the step applies to (0 at the root; the whole Place for a Reborrow's
+    added Deref): a Deref's class and a pair layer's are read from its case Type, which is the layer Type D14's containment edge
+    needs. `Class` follows `Kind` in the record so that `MirStep` stays 12 bytes.
+  - Moved verbatim: `StepClass` and `Step` (renamed `MirStepClass` and `MirStep`, the Mir prefix of the namespace's top-level types), the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the
+    walk). Rejected: a static `MirSteps` with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and
+    A4 too); `MirBorrows` members made internal for `MirOrigins` (couples Origin judgment to Loan state).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

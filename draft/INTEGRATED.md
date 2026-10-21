@@ -963,3 +963,19 @@ the owner's confirmation of C1–C3; the review is `Sketches/G160/raw-origins-re
 - `Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`: 完了. Nothing was integrated. Q1's declaration statement was
   rejected by the owner; its shapes, probes (`Sketches/G160/probes/`) and call-side analysis are taken over by the design above,
   which answers Q1–Q5 (DECISIONS R4-M95). The file moved with only its status paragraph replaced.
+
+## 2026-10-21 — Closure calls as receiver calls (R4)
+
+The owner's instruction of 2026-10-21, after R4's list of SPEC improvement candidates in its area: 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」
+Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`. The second proposal (candidate 3) was not accepted in
+that review and is being redone; it will be registered when it passes.
+
+- [Closure Calls as Receiver Calls](Proposals/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
+  intake only); adopted by the owner (OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99). One sentence in §15.8.2: a Closure body is checked
+  against its call receiver as an instance function's body is, its environment bindings being Fields of the receiver's referent,
+  so results, containment and retention follow the receiver rules; the five-row table becomes a restatement. §7.7.2, §7.7.3 and
+  the Closure Type are unchanged; the receiver stays out of an annotated result's elision, and `{environment}` stays in Appendix
+  D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
+  option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
+  §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
+- Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
