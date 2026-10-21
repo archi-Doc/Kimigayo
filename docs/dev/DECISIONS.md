@@ -1857,7 +1857,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - OQ11 (b): until R6-check, Binding keeps its records of relations through local regions or inferred ends, adds their rows and
     labels those records with A5's requirement `Ownership.UnprovenOrigin` (code and span unchanged) until H11; the ledger
     compares each record with A5's problem. Assigned by R4-M94 to 2a0-3a (position rows at recorded body chains; the twin's Opaque
-    limit recorded).
+    limit recorded). The label is superseded by R4-M108: the record keeps `Binding.OriginRelation`.
   - OQ12 (a): S3's clarification of SPEC 15.3.6 ("A variable's bounds are followed through other variables to fixed or finite
     Origins and `static`. If none is reached, the variable has no candidate") is made as a SPEC revision before 2a0-3b.
     R4-M94 assigns it to 2a0-3b at the plan's letter; a `let` slot as a region (D4) is BU's later unit (OQ-1 (c), PLAN G194).
@@ -2333,10 +2333,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     view (an `ArchitectureRulesTest` row, G163). One owner of fixed–fixed entailment: the premise catalog and
     `OriginPremiseClosure`, read per body by `UniversalRelations.For`, with an agreement test until R7.
   - Boundary: 2a0-3a forms position rows at the body chains Binding records (non-call fits; a local's clause in `JudgeLocalClause`)
-    and labels the twin `Ownership.UnprovenOrigin`; a new default-pipeline record stops the unit; the twin's Opaque limit (a Borrow
-    formed inside the failed node) is recorded; at H11 non-call rows become verdict-independent. 2a0-3b at the plan's letter
-    (no-candidate variables are body regions; "no principal candidate" is the clause's relation judgment). 2a0-4 splits the
-    ledger by owner.
+    and labels the twin `Ownership.UnprovenOrigin` (the label superseded by R4-M108); a new default-pipeline record stops the unit;
+    the twin's Opaque limit (a Borrow formed inside the failed node) is recorded; at H11 non-call rows become verdict-independent.
+    2a0-3b at the plan's letter (no-candidate variables are body regions; "no principal candidate" is the clause's relation
+    judgment). 2a0-4 splits the ledger by owner.
   - `MirOrigins` (2a-1a, 2a-1b), a canonical component: step 4 per body runs `Judge` (all classes), then `MirBorrows` per view,
     then `Record`; containment per borrow layer through the shared classifier `MirSteps` (2x-R15), up to the first shared layer,
     stopping at a raw Deref; MeetNode; Refuted by finite-source and Unknown by fixed-source bitsets; Reason `(Longer, Shorter,
@@ -2801,6 +2801,41 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `NextUse` no Use); a stand-in Type check by identity (it fails where Origins legitimately differ); re-expecting the source tests
     with vacuous guards (OQ-1 (a)).
   - PD21: `MirBorrowsTest.Defaults.cs`'s edit extracts `Validated` and adds no responsibility; no restructure.
+- **R4-M108 Rows at Binding's recorded body chains; the record keeps its label** (2026-10-22; unit 2a0-3a under R4-M94's package;
+  after the unit's stop, the owner chose its recommendations M1-A and M2-(i), relayed by the R4 planning session, verbatim
+  「推奨通りで、お願いします」; one BU review, DEC Q6 form 1)
+  - Rule (SPEC 15.6.1, 15.6.5; 2a0-D D1, D9): a relation Binding records at a body chain (an end, resolved at its use, is not fixed;
+    `Binding.BodyChain`, an `Unbound` end included) is also rows of the body Binding forms it in, which A5 judges: at a non-call fit
+    (`RecordOriginFitFailure`) every position of the fit through `CheckTypeUse`, once, when a recorded chain is a body chain; at a
+    local's clause (`JudgeLocalClause`) the clause's row when its record is a body chain (a finite end over a fixed one; local regions
+    and inferred shorter ends were rows already). `FailedDeclaredRelation`, shared with `JudgeDeclaredRelation`, is unchanged; a
+    fixed-fixed record has no row (Binding's until R7). Binding's other relation records: call positions are rows without a record
+    (2a0-2), declaration clauses are fixed-fixed, no principal candidate is 2a0-3b's. Until H11 a non-call fit has rows only where
+    Binding records a failure (R4-M94 OQ-3 (10)).
+  - Departure from R4-M74 OQ11 (b) and 2a0-D D9, D11 and §5.1 item 4: the record (the twin) keeps `Binding.OriginRelation`, its code
+    and location; no `Twin` field, no label branch. The label cannot hold: a requirement carries its partition and `Koto.Report`
+    records under it; Binding reports before `Compilation.Analyze`, whose `OwnershipAnalysis.Analyze` invalidates the Ownership
+    partition before its incomplete-Binding return, on both pipelines; derived records name a failed node's key as `Binding(failure)`
+    (`CauseKeys`, `PrerequisiteKeys`), so a relabelled record leaves them unexplained; DIAGNOSTICS rule 1 has a requirement judged by
+    its own partition's phase. Probe (SPEC 15.6.5's `bad`, the label set at the report site): on legacy and mir its
+    `UnsatisfiedOriginRelation_Kd` at `local@ref` vanished and `PrerequisiteUnavailable_Kd` appeared at `return local@ref`. The
+    ledger already pairs `Binding(OriginRelation)` records with A5's `Ownership(UnprovenOrigin)` problems (renamed at H5); 2a0-4
+    splits a twin from a fixed-fixed Binding record by a published fact.
+  - N-3 (a failed relation adds no constraint, SPEC 15.6.1): the rows change no default-pipeline record (diagnostic snapshot, 0
+    differences; the ledger keeps every raw row of the base run and adds only the records of the unit's new tests, in existing (b)
+    signatures).
+  - The Closure result (M2-(i)): an inferred Closure result over call-local storage (`Binding.Closures.cs`, `CallLocalOrigin`) keeps
+    Binding's record without a row until A5-F7's 2c-6 judges closure results on the MIR (R5-M63's finding A); it is on 2c-D's list
+    and goes with `CallLocalOrigin` at H11.
+  - H11's list (AR-4, with R5): the twins, found by `BodyChain` at the two sites; `RecordOriginFitFailure`'s `Fail(node, Unsupported)`
+    gate; non-call fits' rows independent of Binding's verdict, as `JudgeCallPosition`'s, including the positions `CheckTypeUse` does
+    not decompose (a Function Type component; none among the suite's 52 recorded fits); the Closure result with `CallLocalOrigin`.
+  - The Opaque limit (OQ-B3, as R4-M104 left it): a twin's node is an Opaque in the MIR; values it reads keep their Loans, but a
+    Borrow formed inside it is not built, so an independent conflict on that Loan is lost when the twin's relation is Unknown (an
+    Unknown relation derives nothing under W); m-write4's single report conforms (R4-M104).
+  - Rejected: the label under an Ownership key in the Binding partition (a partition other than its requirement's, against rule 1,
+    with every failure key made twin-aware); the twins published by the old ownership analysis (a responsibility moved across
+    phases); a row for the Closure result now (2c-6's result relation).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

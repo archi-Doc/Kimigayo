@@ -14,7 +14,8 @@ namespace Kimi.Compiler;
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
 //   other chains through RecordMoreRelation, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
-//   or fails it Unsupported, and returns whether a position failed.
+//   or fails it Unsupported, and returns whether a position failed; a record at a body chain adds the fit's position rows
+//   (CheckTypeUse, DECISIONS R4-M108).
 // - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state; an
 //   `outlives` record names a failing operand's chain, the whole longer end only when no operand fails alone; `relationScratch`
 //   is empty when RecordOriginFitFailure returns.
@@ -28,11 +29,13 @@ public sealed partial class Binding
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records. A position the relation judge fails records every failed chain; a position that is only unproven is recorded when an
     // end is unresolved and is otherwise Unsupported. Either is a dependent of a failed Origin environment instead, the first only
-    // when no failed chain is Refuted.
+    // when no failed chain is Refuted. A record at a body chain (2a0-D D1, ends resolved at the use) also has every position of the fit
+    // as a row of its body (CheckTypeUse's obligations), which A5 judges; the record stays Binding's until H11 (DECISIONS R4-M108).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
         var all = this.relationScratch;
         all.Clear();
+        OriginRelationFact recorded;
         if (this.FailedOriginRelation(actual, expected, node, OriginVariance.Covariant, judged: true, all: all) is { } relation)
         {
             if (!relation.Refuted && this.FailedOriginEnvironment(node) is { } cause)
@@ -51,22 +54,9 @@ public sealed partial class Binding
                 }
             }
 
-            // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
-            var failed = node.BindingFailure == BindingFailure.None;
-            for (var i = 0; i < all.Count && failed; i++)
-            {
-                if (!all[i].Equals(relation))
-                {
-                    this.RecordMoreRelation(node, all[i] with { At = at, Destination = expected });
-                }
-            }
-
-            all.Clear();
-            this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, relation with { At = at, Destination = expected });
-            return true;
+            recorded = relation;
         }
-
-        if (this.FailedOriginRelation(actual, expected, node, OriginVariance.Covariant) is { } unproven)
+        else if (this.FailedOriginRelation(actual, expected, node, OriginVariance.Covariant) is { } unproven)
         {
             if (this.FailedOriginEnvironment(node) is { } cause)
             {
@@ -76,19 +66,39 @@ public sealed partial class Binding
 
             // No concrete lifetime was refuted above. An unresolved end without an identified failed contract remains
             // an independent proof failure; it must not be hidden by the presence of an unrelated declaration error.
-            if (unproven.Longer.Kind == OriginKind.Unbound || unproven.Shorter.Kind == OriginKind.Unbound)
-            {
-                this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, unproven with { At = at, Destination = expected });
-            }
-            else
+            if (unproven.Longer.Kind != OriginKind.Unbound && unproven.Shorter.Kind != OriginKind.Unbound)
             {
                 this.Fail(node, BindingFailure.Unsupported);
+                return true;
             }
 
-            return true;
+            all.Add(recorded = unproven);
+        }
+        else
+        {
+            return false;
         }
 
-        return false;
+        // SPEC 15.6.1: every failed chain is reported; the records other than the node's own are published with it.
+        var failed = node.BindingFailure == BindingFailure.None;
+        var rows = false;
+        for (var i = 0; i < all.Count && failed; i++)
+        {
+            rows |= BodyChain(this.OriginAtUse(all[i].Longer, node), this.OriginAtUse(all[i].Shorter, node));
+            if (!all[i].Equals(recorded))
+            {
+                this.RecordMoreRelation(node, all[i] with { At = at, Destination = expected });
+            }
+        }
+
+        all.Clear();
+        this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = expected });
+        if (rows)
+        {
+            _ = this.CheckTypeUse(actual, expected, node);
+        }
+
+        return true;
     }
 
     // SPEC 15.6.1: the first Origin position of a fit, in the order of the outer borrow layer, the Semantics target, then slots and
