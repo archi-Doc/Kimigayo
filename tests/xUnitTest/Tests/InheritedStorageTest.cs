@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -98,6 +99,47 @@ public class InheritedStorageTest
         }
 
         Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)));
+    }
+
+    // SPEC 6.3.4, 16.3.1, 15.6.5: the construction and the destruction receiver are Places of their own, never a parameter: a borrow of
+    // a receiver Field and a borrow of the first parameter have distinct Origins, and both receivers take one reserved receiver slot.
+    [Fact]
+    public void TheSpecialReceiversArePlacesOfTheirOwn()
+    {
+        var c = MinimalEmissionTest.Analyze("struct S\n    var n: i32\n    public init(x: i32)\n        self.n = x\n        let a = self.n@ref\n" +
+            "        let b = x@ref\n        _ = a\n        _ = b\n    drop\n        let c = self.n@ref\n        _ = c\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var borrows = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>()
+            .Select(static x => (Text: x.ToString(), Origin: x.TypeOf()!.Origin!)).ToArray();
+        var receiver = borrows.Where(static x => x.Text == "self.n@ref").Select(static x => x.Origin).ToArray();
+        var parameter = Assert.Single(borrows, static x => x.Text == "x@ref").Origin;
+        Assert.Equal(2, receiver.Length);
+        Assert.NotSame(receiver[0], parameter);
+        Assert.All(receiver, static x => Assert.Equal(Binding.ReceiverSlot, x.Slot));
+    }
+
+    // SPEC 6.3.4, 15.6.5: a borrow of a construction receiver's Field is no borrow of a parameter, so moving a parameter while the
+    // borrow lives is valid, whatever the parameter's position.
+    [Theory]
+    [InlineData("start: string, other: i32")]
+    [InlineData("other: i32, start: string")]
+    public void AReceiverFieldBorrowIsNoBorrowOfAParameter(string parameters)
+    {
+        var source = "group Audit\n    public func see<T>(value: ref/T) => ()\n    public func consume(s: string) => ()\nstruct Tally\n    var count: i32\n" +
+            "    var total: i32\n    public init(" + parameters + ")\n        self.count = other\n        self.total = 0\n        let b = self.count@ref\n" +
+            "        Audit.consume(start@move)\n        Audit.see(b)\npublic func main() => ()\n";
+        Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
+    }
+
+    // SPEC 7.2.3, 6.3.4: a default sees only the parameters before its own; the construction receiver is no parameter, in any position.
+    [Theory]
+    [InlineData("public init(a: i32 = self.n)")]
+    [InlineData("public init(a: i32, b: i32 = self.n)")]
+    public void ADefaultDoesNotSeeTheConstructionReceiver(string header)
+    {
+        var source = "struct S\n    var n: i32\n    " + header + "\n        self.n = 1\npublic func main() => ()\n";
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnresolvedBinding_Kd), source.IndexOf("self.n)", StringComparison.Ordinal)), (error.Code, error.Span!.Value.Start));
     }
 
     [Trait("Purpose", "Allocation")]

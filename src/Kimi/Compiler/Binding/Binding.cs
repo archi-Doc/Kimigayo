@@ -981,16 +981,7 @@ public sealed partial class Binding
             }
 
             this.SettleSpecificationLinks();
-
-            // SPEC 23.1.1: an inherited conformance limited by OCC-X is reported once, at the derived Type's base clause, when a failing
-            // check rested on it; an explicit one was reported at its declaration (ValidateConformances).
-            for (var i = 0; i < this.activeConformancePaths.Count; i++)
-            {
-                if (this.activeConformancePaths[i] is { Needed: true } path)
-                {
-                    this.Fail(path.Use, BindingFailure.Unsupported);
-                }
-            }
+            this.PublishNeededLimits();
         }
 
         var resolved = 0;
@@ -1156,7 +1147,7 @@ public sealed partial class Binding
             }
         }
 
-        return new(mode, resolved, unresolved, invalid);
+        return new(mode, resolved, unresolved, invalid + this.PublishSites());
     }
 
     private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)

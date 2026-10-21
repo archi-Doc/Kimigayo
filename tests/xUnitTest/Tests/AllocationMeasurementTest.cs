@@ -1,7 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using System.Buffers;
-using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Xunit;
@@ -84,26 +83,8 @@ public class AllocationMeasurementTest
     // RAM), where a full collection empties every thread's pooled buffers; it runs TrimsUnderHighPressure there.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public async Task DiscardsWindowsWhosePooledAllocationsFollowTrims()
-    {
-        var start = new ProcessStartInfo(Path.ChangeExtension(typeof(AllocationMeasurementTest).Assembly.Location, ".exe"), ["-method", "XunitTest.AllocationMeasurementTest.TrimsUnderHighPressure", "-explicit", "only"])
-        {
-            UseShellExecute = false,
-            CreateNoWindow = true,
-            RedirectStandardOutput = true,
-        };
-        start.Environment["DOTNET_GCHighMemPercent"] = "0xA";
-        using var probe = Process.Start(start)!;
-        var report = probe.StandardOutput.ReadToEndAsync(TestContext.Current.CancellationToken);
-        if (!probe.WaitForExit(TimeSpan.FromMinutes(5)))
-        {
-            probe.Kill(entireProcessTree: true);
-            probe.WaitForExit();
-        }
-
-        var text = await report;
-        Assert.True(probe.ExitCode == 0 && text.Contains("Total: 1, Errors: 0, Failed: 0, Skipped: 0, Not Run: 0", StringComparison.Ordinal), text);
-    }
+    public Task DiscardsWindowsWhosePooledAllocationsFollowTrims()
+        => FreshProcess.RunExplicit(typeof(AllocationMeasurementTest), nameof(AllocationMeasurementTest.TrimsUnderHighPressure), ("DOTNET_GCHighMemPercent", "0xA"));
 
     // Under High memory pressure: a full collection before the first measured operation's Rent invalidates that window and
     // the next measures nothing; one before every operation's Rent invalidates all three windows, (4 + 12) + (4 + 28) +

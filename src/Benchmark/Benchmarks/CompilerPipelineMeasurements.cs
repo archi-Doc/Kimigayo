@@ -68,7 +68,7 @@ internal static class CompilerPipelineMeasurements
         {
             schemaVersion = 3,
             measuredAtUtc = DateTimeOffset.UtcNow,
-            compiler = Compilation.CompilerVersion,
+            compiler = Compilation.CompilerIdentity,
             benchmarkModule = typeof(CompilerPipelineMeasurements).Module.ModuleVersionId,
             runtime = RuntimeInformation.FrameworkDescription,
             os = RuntimeInformation.OSDescription,
@@ -94,6 +94,7 @@ internal static class CompilerPipelineMeasurements
     {
         Span<long> timestamps = stackalloc long[CompilerPipelineBenchmark.Boundaries];
         Span<long> allocations = stackalloc long[CompilerPipelineBenchmark.Boundaries];
+        Console.WriteLine($"Compiler pipeline check: {Compilation.CompilerIdentity}");
         foreach (var benchmark in Inputs())
         {
             benchmark.Setup();
@@ -103,10 +104,10 @@ internal static class CompilerPipelineMeasurements
                 var compilation = benchmark.Compile(measured, timestamps, allocations);
                 ValidateBoundaries(timestamps, allocations);
 
-                // The split internal API must produce exactly the same IR as the public emitter.
+                // The measured stages must produce exactly the IR of the public generation entry under the same selector.
                 using var expected = new StringWriter();
-                Require(compilation.Emission.WriteIr(expected, out var failure), failure);
-                Require(measured.GetStringBuilder().Length > 0 && measured.ToString() == expected.ToString(), "Split emission changed the public IR output.");
+                Require(compilation.WriteIr(expected, out var failure), failure);
+                Require(measured.GetStringBuilder().Length > 0 && measured.ToString() == expected.ToString(), "The measured IR differs from the public WriteIr.");
                 using var uninstrumented = new StringWriter();
                 benchmark.Compile(uninstrumented);
                 Require(measured.ToString() == uninstrumented.ToString(), "Instrumentation changed compilation output.");

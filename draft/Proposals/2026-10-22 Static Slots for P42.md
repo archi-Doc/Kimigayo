@@ -1,6 +1,7 @@
 # Static Slots for P42
 
-Status: proposal for the owner's decision; not integrated, not implemented. Date: 2026-10-22. Base: `dev` `4902dd3c`. Written by
+Status: adopted by the owner (2026-10-22, OQ-S1 (a), OQ-S2 (a); DECISIONS R4-M103); not implemented. Integrated: none (no SPEC
+change). Open: the key and the package, transferred to P42's design package when it exists, after which this file closes. Date: 2026-10-22. Base: `dev` `4902dd3c`. Written by
 the R4 planning session on the owner's instruction (2026-10-21): 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」
 (candidate 2). It proposes no SPEC change: on a closer reading, SPEC already states one model of static storage (§1). It proposes
 how P42's design is organized, and answers two optional SPEC narrowings recorded in the A5 plan. No unit waits for it before P42,

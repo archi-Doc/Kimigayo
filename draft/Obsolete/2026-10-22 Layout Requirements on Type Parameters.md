@@ -1,6 +1,6 @@
 # Layout Requirements on Type Parameters
 
-Status: proposal for the owner's decision; not integrated, not implemented. Date: 2026-10-22. Base: `dev` `4902dd3c`. Written by
+Status: 完了 (closed 2026-10-22): the owner chose D, no change (OQ-Y1 (d); DECISIONS R4-M103). Nothing is integrated. Date: 2026-10-22. Base: `dev` `4902dd3c`. Written by
 the R4 planning session on the owner's instruction (2026-10-21): 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」
 (candidate 6). This is R5's area (the instance collector, layout and code generation). R5's planning session reviewed the first
 draft (2026-10-22): its facts are corrected here, its third item is withdrawn (§3), and R5's recommendation is D, no change (§4).

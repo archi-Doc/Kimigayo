@@ -1,21 +1,19 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
 // The computation behind TyCtxt.Retains, under its contract (TyCtxt.Retention.cs): a contract's Origin atoms and carriers, the premises
 // its callee's body is checked under in one premise environment (its instantiated own part, then the premise catalog's walk outward
-// from its binder's parent), the relations of its erased callables, and one closure from each output atom.
+// from its binder's parent), the relations of its erased callables, and the rows (Binding.Retention.Rows.cs).
 public sealed partial class Binding
 {
-    // The occurrences in the contract being computed (RetentionAtom), the erased callable Types it names, each carrier's node and the
-    // rows, reused.
+    // The occurrences in the contract being computed (RetentionAtom), the erased callable Types it names and each carrier's node,
+    // reused.
     private readonly List<RetentionAtom> retentionAtoms = new();
     private readonly List<BoundType> retentionCallables = new();
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
-    private readonly List<Retention> retentionRows = new();
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
@@ -56,10 +54,6 @@ public sealed partial class Binding
     // Origins, which only its own syntax binds and no nested signature names (SPEC 8.10, 15.3.4).
     private static bool IsFixed(in RetentionAtom atom)
         => atom.Carrier is not null || atom.Origin is { Kind: not OriginKind.Static } and not { Kind: OriginKind.Input, Binder: FunctionTypeKoto };
-
-    // An input retained through one of its occurrences: Value over Content.
-    private static void Mark(RetentionKind?[] kinds, in RetentionAtom atom)
-        => kinds[atom.Input] = atom.Kind == RetentionKind.Value ? RetentionKind.Value : kinds[atom.Input] ?? RetentionKind.Content;
 
     // A borrow of storage a value of the Type refers to, with its outer Origin and referent: a ref, uniq, objref or objuniq layer; a
     // pair layer whose binder admits only those, a borrow in each admitted case, its slot the outer Origin (SPEC 8.1.2) and exclusive when
@@ -298,7 +292,7 @@ public sealed partial class Binding
             {
                 if ((atoms[j].Input == Retention.Result || atoms[j].Writable) && IsFixed(atoms[j]))
                 {
-                    environment.Closure.AddEdge(longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
+                    AddPremiseEdge(environment, longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
                 }
             }
         }
@@ -333,76 +327,11 @@ public sealed partial class Binding
             nodes[i] = this.AtomNode(environment, atoms[i]);
             if (atoms[i] is { Carrier: not null, Layer: { } layer })
             {
-                environment.Closure.AddEdge(nodes[i], this.PremiseNode(environment, layer), OriginPremiseRule.Input);
+                AddPremiseEdge(environment, nodes[i], this.PremiseNode(environment, layer), OriginPremiseRule.Input);
             }
         }
 
         return nodes;
-    }
-
-    // One closure from each output atom (OriginPremiseClosure, every Semantics case's premises followed) marks the inputs whose atoms it
-    // reaches, Value over Content, a carrier's through its node. The result is untied when one of its non-static atoms marks no input. The
-    // work is what the closures reach, each node with its incoming premises once per closure.
-    private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, int inputCount)
-    {
-        // The sources at a node, linked atom indexes.
-        var atoms = this.retentionAtoms;
-        var first = new int[environment.Closure.NodeCount];
-        var next = new int[atoms.Count];
-        Array.Fill(first, -1);
-        for (var i = 0; i < atoms.Count; i++)
-        {
-            if (atoms[i].Input >= 0)
-            {
-                (next[i], first[nodes[i]]) = (first[nodes[i]], i);
-            }
-        }
-
-        var rows = this.retentionRows;
-        rows.Clear();
-        var untied = false;
-        var kinds = new RetentionKind?[inputCount];
-        for (var output = Retention.Result; output < inputCount; output++)
-        {
-            Array.Clear(kinds);
-            for (var i = 0; i < atoms.Count; i++)
-            {
-                if (atoms[i].Input == output && (output == Retention.Result || atoms[i].Writable))
-                {
-                    var tied = this.MarkClosure(environment.Closure, nodes[i], first, next, kinds);
-                    untied |= output == Retention.Result && !tied && atoms[i].Origin?.Kind != OriginKind.Static;
-                }
-            }
-
-            for (var i = 0; i < inputCount; i++)
-            {
-                if (kinds[i] is { } kind)
-                {
-                    rows.Add(new(i, kind, output));
-                }
-            }
-        }
-
-        return new(rows.ToArray(), untied);
-    }
-
-    // The closure from one target node, marking the inputs whose atoms it reaches; whether it marked one.
-    private bool MarkClosure(OriginPremiseClosure closure, int target, int[] first, int[] next, RetentionKind?[] kinds)
-    {
-        var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();
-        closure.Close(target, -1, ulong.MaxValue);
-        this.OriginProofMetrics?.Closure(closure, this.originPremiseDepth > 1, Stopwatch.GetTimestamp() - start);
-        var tied = false;
-        for (var k = 0; k < closure.LastWork.Insertions; k++)
-        {
-            for (var source = first[closure.ReachedNode(k)]; source >= 0; source = next[source])
-            {
-                Mark(kinds, this.retentionAtoms[source]);
-                tied = true;
-            }
-        }
-
-        return tied;
     }
 
     // An Origin atom or a carrier of an input or of the result (Retention.Result): the kind it gives the input, whether it is writable

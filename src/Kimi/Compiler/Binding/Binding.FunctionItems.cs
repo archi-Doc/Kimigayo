@@ -286,7 +286,7 @@ public sealed partial class Binding
         }
 
         var container = this.ReferenceContainer(use, symbol);
-        this.failedConformance = null;
+        this.failedCause = null;
         var proof = this.ReferenceArgumentProof((FunctionKoto)symbol.Declaration, [], scope, container, failureUse: use);
         if (proof != ConstraintProof.Proven)
         {
@@ -405,7 +405,7 @@ public sealed partial class Binding
             }
 
             var container = this.ReferenceContainer(use, selected);
-            this.failedConformance = null;
+            this.failedCause = null;
             var proof = this.ReferenceArgumentProof(target, arguments, scope, container, lengths, use);
             if (proof != ConstraintProof.Proven)
             {

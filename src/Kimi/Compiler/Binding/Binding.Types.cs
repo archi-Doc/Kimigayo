@@ -52,14 +52,13 @@ public sealed partial class Binding
             root = parent;
         }
 
-        if (!ReferenceEquals(root, function.Body) && !ReferenceEquals(root, function.ExpressionBody))
+        // SPEC 7.2.3: in a default, only the parameters before its own; a constructor's or destructor's receiver, whose slot is no
+        // parameter index (ReceiverSlot), is none. A use in the body is below no default.
+        for (var i = 0; i < function.Parameters.Count; i++)
         {
-            for (var i = 0; i < function.Parameters.Count; i++)
+            if (ReferenceEquals(root, function.Parameters[i].DefaultValue))
             {
-                if (ReferenceEquals(root, function.Parameters[i].DefaultValue))
-                {
-                    return candidate.Slot < i;
-                }
+                return (uint)candidate.Slot < (uint)i;
             }
         }
 

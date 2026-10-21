@@ -404,7 +404,7 @@ public sealed partial class Binding
             var pendingProof = false;
             Koto? invalid = null;
             var error = false;
-            this.failedConformance = null;
+            this.failedCause = null;
             for (var candidate = ReferenceCandidate(symbol); candidate is not null; candidate = ReferenceCandidate(candidate.Next), index++)
             {
                 this.BindHeader(candidate);
@@ -446,7 +446,7 @@ public sealed partial class Binding
 
             if (error)
             {
-                return (invalid ?? this.TakeFailedConformance()) is { } cause ? this.CompleteDependent(use, cause) : this.Fail(use, BindingFailure.InvalidConstraint);
+                return (invalid ?? this.TakeFailedCause()) is { } cause ? this.CompleteDependent(use, cause) : this.Fail(use, BindingFailure.InvalidConstraint);
             }
 
             if (pendingProof)

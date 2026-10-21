@@ -113,7 +113,7 @@ public sealed partial class Binding
 
     // SPEC 16.3.1: the Origin of the helper borrow, a borrow of the whole receiver of a row with Whole (the destruction row): the
     // destructor's HelperSlot Projection (H), so every value that carries the helper borrow carries H (SPEC 15.6), while the receiver's
-    // parts keep its own Projection; null for any other place. PlaceOrigin and SlotOrigin ask it first.
+    // parts keep its own Projection, its ReceiverSlot; null for any other place. PlaceOrigin and SlotOrigin ask it first.
     private BoundOrigin? HelperOrigin(Koto place)
         => KotoHelper.UnwrapParentheses(place) is IdentifierNameKoto { BoundSymbol: { Declaration: FunctionKoto function } symbol } &&
             Receiver(symbol) is { Whole: true } ? this.OriginAtom(function, OriginKind.Projection, HelperSlot) : null;
@@ -269,7 +269,7 @@ public sealed partial class Binding
 
         if (!this.specialReceivers.TryGetValue(function, out var receiver))
         {
-            this.specialReceivers.Add(function, receiver = new("self", BindingSymbolKind.Parameter, function, scope));
+            this.specialReceivers.Add(function, receiver = new("self", BindingSymbolKind.Parameter, function, scope) { Slot = ReceiverSlot });
         }
 
         receiver.Scope = scope;

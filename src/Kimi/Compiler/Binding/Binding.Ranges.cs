@@ -173,7 +173,7 @@ public sealed partial class Binding
             if (direct)
             {
                 this.SharedElementView(source.Left);
-                result = Complete(source, this.types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
+                result = Complete(source, this.types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source)));
                 return true;
             }
 
@@ -243,7 +243,7 @@ public sealed partial class Binding
 
         this.resolvedSlices.Add(source);
         this.SharedElementView(source.Left);
-        result = Complete(source, this.types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source.Left)));
+        result = Complete(source, this.types.Intern(BoundTypeKind.Slice, null, SemanticsKind.Owner, [element], origin: this.PlaceOrigin(source)));
         return true;
     }
 
