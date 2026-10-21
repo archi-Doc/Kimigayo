@@ -16,7 +16,7 @@ namespace XunitTest;
 /// slots, runtime-reached blocks, the Places of its place writer and the forms the frame covers, and a form not covered yet is one located
 /// <c>Unsupported_Kd</c> with no module. The fixtures run under the process's generators (the old one by default, MIR code generation
 /// under <c>-Pipeline mir -Codegen mir</c>); the other tests select MIR code generation themselves.</summary>
-public sealed class FunctionCodegenTest
+public sealed partial class FunctionCodegenTest
 {
     private const string Branches =
         "func choose(flag: bool, a: i64, b: i64) -> i64\n    if flag => return a\n    return b\nfunc nested(first: bool, second: bool) -> char\n" +
@@ -29,19 +29,6 @@ public sealed class FunctionCodegenTest
 
     private const string Strings =
         "func show(text: ref/string) => Console.writeLine(text)\nfunc greeting() -> string => \"Hi\"\nfunc nothing(flag: bool) -> string => \"\"\n";
-
-    // Two literals' temporaries, one on a conditional path, each borrowed and destroyed (Keep), and a string never initialized (Elide).
-    private const string Drops =
-        "Console.writeLine(\"a\")\nlet s: string\nlet flag = true\nif flag\n    Console.writeLine(\"b\")\n";
-
-    // A Library's parameters, each destroyed by its Type's glue (R5 C4a; DECISIONS R5-M95): a derived struct with a string, an i32 and a
-    // zero-sized Guard Field and a base, a Tuple, an enum with an empty Case and a fixed array; Guard and Holder declare drops.
-    private const string Glues =
-        "struct Guard\n    drop => ()\nstruct Holder\n    var s: string\n    public init(s: string) => self.s = s@move\n    drop => ()\n" +
-        "open struct Base\n    public var b: string\n    protected init(b: string) => self.b = b@move\nstruct Leaf : Base\n    public var x: string\n" +
-        "    public var n: i32\n    public var y: Guard\n    public init(x: string, b: string) : base(b@move)\n        self.x = x@move\n" +
-        "        self.n = 1\n        self.y = Guard.init()\nenum Shape\n    Pair(string, i32, Guard)\n    Empty\n    One(Holder)\n" +
-        "func leaf(v: Leaf) => ()\nfunc tuple(v: (Holder, i32, Guard)) => ()\nfunc shape(v: Shape) => ()\nfunc row(v: [3 of string]) => ()\n";
 
     private const string Arithmetic =
         "func f(a: i32, b: i32) -> i32 => a / b + a % b - (a << b) * 3\nfunc g(a: Wrapping<u8>, c: char) -> bool => -a > 3 and not (c < 'z')\n";
@@ -529,99 +516,6 @@ public sealed class FunctionCodegenTest
         Assert.Equal(
             "store %kimi.string { ptr null, i64 0, i8 0 }, ptr %, align 8",
             Assert.Single(ir.Single("internal void (ptr, i1)").Instructions, static x => x.Opcode == "store" && x.Shape.Contains("kimi.string")).Shape);
-    }
-
-    // DECISIONS R5-M78, R4-M6a: a Ref stores its local's address; a Keep Drop calls the dropped Type's glue once, on the Place's address, and
-    // an Elide Drop nothing, so each string a path initializes is destroyed exactly once and the one never initialized is not; the string's
-    // glue item calls the runtime release with its own parameters (PD18).
-    [Fact]
-    public void EachInitializedStringIsDestroyedOnce()
-    {
-        var ir = GeneratedIr.Parse(Generate(Drops));
-        var body = ir.Startup;
-        var strings = body.Instructions.Where(static x => x.Shape == "alloca %kimi.string, align 8").ToArray();
-        var literals = body.Instructions.Where(static x => x.Opcode == "store" && x.Shape.StartsWith("store %kimi.string", StringComparison.Ordinal))
-            .Select(static x => Assert.Single(x.Operands)).ToArray();
-        var borrows = body.Instructions.Where(static x => x.Shape == "store ptr %, ptr %, align 8").Select(static x => x.Operands[0]).ToArray();
-        var writes = body.Instructions.Where(x => x.Opcode == "call" && x.Callee == ir.Function("__kimi_write_line")).ToArray();
-        var drops = body.Instructions.Where(x => x.Opcode == "call" && x.Callee != ir.Function("__kimi_write_line")).ToArray();
-        Assert.Equal(3, strings.Length);
-        Assert.Equal(2, literals.Distinct().Count());
-        Assert.Equal(literals, borrows);
-        Assert.Equal(2, writes.Length);
-        Assert.Equal(literals, drops.Select(static x => x.Operands[0]));
-        Assert.All(drops, static x => Assert.Equal("call void @(ptr %, ptr @, i64 15)", x.Shape));
-        var glue = Assert.Single(drops.Select(static x => x.Callee).Distinct())!;
-        Assert.Equal(["call void @(ptr %, ptr %, i64 %)", "ret void"], glue.Instructions.Select(static x => x.Shape));
-        Assert.Same(ir.Function("__kimi_destroy_string"), glue.Instructions[0].Callee);
-        Assert.Equal(glue.Parameters, glue.Instructions[0].Operands);
-    }
-
-    // SPEC 16.3.2, PD18, R4-M6b (R5 C4a; DECISIONS R5-M95): a glue destroys one level of its Type in destruction order, each part that may
-    // need a drop through that part's glue at its address: a derived struct's Fields last to first, the i32 none, then its base at the
-    // value's own address (X1); a Tuple's elements by decreasing index; an enum's active Case under one switch on its i32 tag at the value's
-    // address, its payload last to first, the empty Case nothing; a fixed array's elements from the last in one loop; a struct that declares
-    // a drop its destructor alone, on the value's address or, zero-sized, with no argument; a string the runtime release.
-    [Fact]
-    public void ADropGlueDestroysOneLevelInDestructionOrder()
-    {
-        var c = Analyze(Glues, OutputKind.Library);
-        var ir = GeneratedIr.Parse(Generate(c));
-        var (leaf, tuple, shape, row) = (GlueOf(ir, c, "leaf"), GlueOf(ir, c, "tuple"), GlueOf(ir, c, "shape"), GlueOf(ir, c, "row"));
-        var (guard, text, parent) = (CalleesOf(leaf)[0], CalleesOf(leaf)[1], CalleesOf(leaf)[2]);
-        var holder = CalleesOf(tuple)[1];
-        Assert.Equal([guard, text, parent], CalleesOf(leaf));
-        Assert.Same(leaf.Parameters[0], CallsOf(leaf)[2].Operands[0]);
-        Assert.Equal([text], CalleesOf(parent));
-        Assert.Same(parent.Parameters[0], CallsOf(parent)[0].Operands[0]);
-        Assert.Equal([ir.Function("__kimi_destroy_string")], CalleesOf(text));
-        Assert.Equal(text.Parameters, CallsOf(text)[0].Operands);
-        Assert.Equal("internal void ()", Assert.Single(CalleesOf(guard)).Signature);
-        Assert.Equal("internal void (ptr)", Assert.Single(CalleesOf(holder)).Signature);
-        Assert.Same(holder.Parameters[0], Assert.Single(CallsOf(holder)).Operands[0]);
-        Assert.Equal([guard, holder], CalleesOf(tuple));
-        var entry = shape.Blocks[0];
-        Assert.Same(shape.Parameters[0], Assert.Single(entry.Instructions, static x => x.Opcode == "load").Operands[0]);
-        Assert.Equal("switch i32 %, label % [ i32 0, label % i32 2, label % ]", entry.Terminator.Shape);
-        Assert.Equal([guard, text], CalleesOf(entry.Successors[1].Instructions));
-        Assert.Equal([holder], CalleesOf(entry.Successors[2].Instructions));
-        Assert.Equal([text], CalleesOf(row));
-        Assert.Contains(row.Instructions, static x => x.Shape == "sub i64 48, %");
-        Assert.Contains(row.Instructions, static x => x.Shape == "icmp eq i64 %, 3");
-    }
-
-    // Gate step 2's stand-in (DECISIONS R5-M78): A2's verdicts are exact only for programs A1 accepts (R4-M6a), and under sel the old analysis
-    // decides acceptance, so a program whose MIR analyses recorded an Ownership problem writes no Drop: each is one located Unsupported_Kd; a
-    // control-flow problem (A3) does not gate. No program the old analysis accepts and the frame covers holds such a problem yet (ledger row
-    // a1-whole-incomplete needs a fixed array, and the arena-skipped bodies are rejected first), so the problem is added to the version's
-    // report.
-    [Theory]
-    [InlineData(true, false)]
-    [InlineData(false, true)]
-    public void AnOwnershipProblemOfTheProgramLeavesItsDropsUnwritten(bool ownership, bool written)
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var requirement = ownership ? DiagnosticRequirement.Ownership(OwnershipRequirement.PossiblyMovedUse) : DiagnosticRequirement.ControlFlow;
-        program.Problems.Add(new(DiagnosticCode.MovedPlace_Kd, requirement, program.Bodies[0].Source, 0, 1));
-        using var writer = new StringWriter();
-        Assert.Equal(written, c.Generate(writer));
-        Assert.Equal(written ? [] : [("Unsupported_Kd", (string?)"\"a\"")], Records(c));
-    }
-
-    // PD12: in a program the stand-in passes, A1 and A2 judged every runtime Drop, so one without a verdict group is a broken contract
-    // (InternalInvariant_Kd at the Drop); the program's one drop row is moved to another block to make it so.
-    [Fact]
-    public void ARuntimeDropWithoutAVerdictIsABrokenContract()
-    {
-        var c = Analyze("Console.writeLine(\"a\")\n");
-        var program = c.BuildMir();
-        var body = program.Bodies.ToArray().Single(static x => x.Key is { Kind: MirBodyKind.Fn, Decl: null });
-        var first = program.Bodies.ToArray().Take(body.Ordinal).Sum(x => program.Drops.RowsOf(x.Ordinal).Length);
-        var row = Assert.Single(program.Drops.RowsOf(body.Ordinal).ToArray());
-        program.Drops.Rows[first] = row with { Block = body.Blocks.Length };
-        Assert.False(c.Generate(TextWriter.Null));
-        Assert.Equal([("InternalInvariant_Kd", (string?)"\"a\"")], Records(c));
     }
 
     // The operator rows (R5 C1a; DECISIONS R5-M76; SPEC 13.3.1, IMPL 21.3.3): a checked integer operation is its overflow intrinsic, whose
@@ -1617,17 +1511,6 @@ public sealed class FunctionCodegenTest
         Assert.Contains(Constant(location), text);
         return abort;
     }
-
-    // The glue a Library function's body calls on its parameter (its one DropGlue call).
-    private static IrFunction GlueOf(GeneratedIr ir, Compilation c, string name)
-        => ir.Function(Regex.Match(Assert.Single(ItemTexts(c, name)), @"call void @(__kimi_drop\d+)\(").Groups[1].Value);
-
-    // A function's calls, and their callees in order.
-    private static IrValue[] CallsOf(IrFunction function) => [.. function.Instructions.Where(static x => x.Opcode == "call")];
-
-    private static IrFunction[] CalleesOf(IrFunction function) => CalleesOf(function.Instructions);
-
-    private static IrFunction[] CalleesOf(List<IrValue> instructions) => [.. instructions.Where(static x => x.Opcode == "call").Select(static x => x.Callee!)];
 
     private static string Generate(Compilation c)
     {

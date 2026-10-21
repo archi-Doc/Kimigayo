@@ -12,6 +12,9 @@
 // records). They are analysis Errors that check publishes (Compilation.Pipeline.cs), so the refusal adds none. MIR code generation then
 // needs the deciding analysis's acceptance (Accepts, SPEC 23.2.2, which Project's check reads too); the old generator checks its own
 // inputs (LlvmEmitter's CheckInputs).
+// Gate, step 2 (PD12; DECISIONS R5-M96): applied as each body item is written (FunctionCodegen.Write): a body A1 or A2 left inexact
+// (MirDropTable.Incomplete, R4-M102) is not written and its problem's code is recorded at its subject, every other item still written so
+// its gaps are recorded too, and no module (package C 3.8, 3.9); until H5, which decides acceptance by MIR.
 // Generated (R5 K11, K package 4.10, DECISIONS R5-M77): MIR code generation writes exactly the checked set's items the output requires, the
 // closure of its output roots over runtime targets (CheckedSet.Mark): an Application's startup body, a test build's discovered tests (the
 // catalog Project discovers after acceptance, never discovered again here) or a Library's every root but the body of a closed virtual or
@@ -23,7 +26,7 @@
 // and src/Benchmark (three stage measurements of the old generator; the pipeline benchmark generates through this entry under sel, R5-M94)
 // run the old generator without the gate, under sel too. One ModuleCodegen per compilation keeps MIR code generation's storage.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
-// generator under sel. C4a-2 adds gate step 2 here (R5-M95: it reads the per-body fact A1 and A2 publish).
+// generator under sel.
 
 using System.Runtime.InteropServices;
 using Kimi.Diagnostics;

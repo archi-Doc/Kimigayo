@@ -5,9 +5,10 @@
 // of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue item by its Type's row, and the
 // coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
-// X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and analysis problems
-// (A2, R4-M6a); the compilation's Layout and runtime location texts; ModuleCodegen's signatures (Signature and Import: Abi.Of under the
-// internal and the C convention, IMPL 21.3.1), constant pool and record list.
+// X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
+// exactness (A2, R4-M6a, R4-M102: gate step 2 writes no inexact body); the compilation's Layout and runtime location texts;
+// ModuleCodegen's signatures (Signature and Import: Abi.Of under the internal and the C convention, IMPL 21.3.1), constant pool and
+// record list.
 // Output: the definition text appended to the module's buffer; records through ModuleCodegen.Report.
 // Invariants (design 2 2.2): I1 deterministic: blocks b<index>, slots %l<local>, values %t<n> numbered per function; I2 one aligned alloca
 // per local of nonzero size in the entry block, bool stored as i8 (IMPL 21.1.3), none for a zero-sized local, a Value argument stored into
@@ -77,7 +78,7 @@ internal sealed partial class FunctionCodegen
     internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.typeContext, this.cases) = (module, types, new(types));
 
     /// <summary>Writes the definition of a body item, or records why not.</summary>
-    /// <param name="program">The program, whose body the item replays and whose drop table and problems its drops read.</param>
+    /// <param name="program">The program, whose body the item replays and whose drop table its drops read.</param>
     /// <param name="collector">The collector of the checked set.</param>
     /// <param name="item">The item.</param>
     /// <param name="output">The module's buffer.</param>
@@ -85,6 +86,18 @@ internal sealed partial class FunctionCodegen
     {
         var body = program.Bodies[collector.Set.Items[item].BodyOrdinal];
         (this.program, this.collector, this.item, this.body, this.output, this.next) = (program, collector, item, body, output, 0);
+        if (program.Drops.Incomplete(body.Ordinal) is { } refusal)
+        {
+            // Gate step 2 (PD12, package C 3.8; DECISIONS R5-M96): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so a body
+            // A1 or A2 left inexact (R4-M102: an inline copy's problem marks its caller) is not written; its refusal is that problem's own
+            // code at its subject, by the location rule, and every other item is still written, so its gaps are recorded too. Interim: a
+            // body A1 skipped at the arena limit (ViewsOf 0, R4-M15a) is one located Unsupported_Kd at the body, since its problem carries
+            // no arguments for OwnershipStorageLimit_Kd; removed once A1's arena problem publishes requiredBytes, limitBytes and the table.
+            var (code, subject) = program.Drops.ViewsOf(body.Ordinal) == 0 ? (DiagnosticCode.Unsupported_Kd, body.Source) : refusal;
+            this.module.Report(code, collector.Subject(item, subject));
+            return;
+        }
+
         if (OrderOf(body.Key.Kind) == ArgumentOrder.Unwritten)
         {
             // Rows not written yet, at the body: C5a writes a Closure's environment, and C7b a static's initializer, which a constant one
