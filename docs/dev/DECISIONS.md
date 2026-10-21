@@ -2349,6 +2349,63 @@ and migration obligations remain in force; no numeric cap changes are authorized
     premises; environment atoms Inferred before 2c-6 (`env-store` accepted on the MIR); the static row before the enclosing-binder
     row, and a callee's atoms classed Fixed; a merge by Loan membership or by Borrow alone; GuardReverse without the `ResultFit`
     condition (OQ-4 (a)).
+- **R4-M95 G160 and G184: raw reach and raw Origins** (owner, 2026-10-21, in a conversation with the planning session; verbatim
+  「推奨の仕様で結構です。」 and 「残りの判断事項はすべて推奨どおりで確定します。」, on R4's exit 「案aで決定します。」, on the spelling
+  `during self` 「OKです。」; the owner rejected the G160 plan's declaration statement, 「unsafe storage p of T via loan なんて、私の言語的
+  許容範囲をオールト越えしている。」; PLAN G160, G184, G147 (1)) The design is `draft/Changes/2026-10-21 G160 Raw Reach and Raw Origins.md`
+  (its D1–D20, C1–C3 and units; one independent review round with a re-check, `draft/Sketches/G160/raw-origins-review-1.md`),
+  integrated into SPEC §3.3.2, §3.8, §5 (new §5.7), §8.1.2, §8.11.4, §13.5.1, §13.5.3, §15.2–§15.6, §22.6 and Appendix E, with
+  LIBRARY's `Raw.slice` row (INTEGRATED, 2026-10-21). In short:
+  - Reach (D1, D2): a value carries the holders it addresses beside its Loans. `P@raw` addresses `P`'s root holder when `P` is
+    reached through no reference, raw pointers included, and otherwise carries what a Borrow of `P` would without its Loan (past a
+    raw pointer, what that pointer reaches); a pointer read from a `during self` Field reaches what `@raw` of its storage would;
+    Copies, displacements and raw conversions keep addresses. An address conflicts with nothing and grants no authority; a holder
+    an address names is used wherever the address is (no address/content distinction); §5.2.1 condition 4 counts raw pointers. A
+    raw pointer that reaches no holder (a `Raw.allocate` result) reaches storage the body does not own.
+  - Raw Origins (D3–D5, D11, D13–D18): `raw/T during o` addresses storage that the borrow `o` belongs to covers (a slot's keeping
+    Fields, an input's borrow, static storage); `raw/T during self`, only in a struct's or enum's inline storage, the holding
+    value's own storage (an own step; the Type is not Copy and counts the pointee as stored content); `raw/T` is unstated. A raw
+    Origin in a signature belongs to an input's borrow, a slot or `static`. Typed paths give Origins: `P@raw` and a `during self`
+    Field read take the Origin of the last reference the path dereferences (a borrow's, or the one a raw pointer states).
+    Dropping or narrowing an Origin is a fit (`raw/T during o <: raw/T`, §3.8); any other change is a claim, only the grouped
+    `E@(raw/U during o)` in an unsafe context (§13.5.1 admits it), else a Refuted Origin relation. A write, Take, in-place
+    destruction or exclusive Borrow through a pointer whose Origin keeps only shared Loans is an error. A raw Origin is no slot use,
+    and a slot it states must not be Phantom; raw Place borrows and `Raw.slice` lie within it; no intersection; the pointer's uses
+    add no point to its region.
+  - Calls (D6, D10, D15): through a raw layer with an Origin a call may store what the Referent Type of that Origin's borrow
+    admits, retained as the borrow would, without a Loan; a raw parameter without one admits its pointee Type; a raw layer without
+    one in a result Type (a Tuple element, an Option payload or a Type argument too) may retain every argument and reaches storage
+    the body does not own; §8.11.4 rule 1 covers raw layers, inside abstract parts too.
+  - Authority (D7, D8, D12): a raw pointer read past a shared layer, or past a raw pointer whose Origin keeps only shared Loans,
+    has no write authority, so a call writes through no raw layer reached past one and Binding needs no rows from Fields for
+    shape (d); own-step authority (object payloads, `during self` storage) lasts while the owning value stays in its holder (an
+    obligation); condition 5: an access that reads or writes a Loan-carrying value acts in a holder the pointer reaches or in
+    storage the body does not own, which covers integer-restored pointers and pointers hidden in a nominal result's Fields.
+  - C1 (D12's wording: no write authority past a shared layer, in place of 「Origin が uniq のときだけ書ける」; its cost under
+    either wording: `Dictionary.insertOrReplace` and `DictionaryStorage.removeEntry`, which G160-3 rewrites), C2 (condition 5 as the
+    general rule, an obligation on clients with no diagnostic) and C3 (D11's error covers exclusive Borrows) are the planning
+    session's correction, addition and extension, confirmed by the owner (2026-10-21, answering the planning session's questions
+    verbatim: C1 「承認 (Recommended)」, C2 「承認 (Recommended)」, C3 「エラーにする (Recommended)」), as is D15's definition after
+    review B4 (the borrow an Origin belongs to, the signature restriction and `placeEntry`'s typed handle: 「承認 (Recommended)」).
+  - Representations (D19; "Closed vocabularies"): A5's address, a non-conflicting set element naming a holder (a row of the
+    conflicts table), and Binding's optional raw Origin with `self` are approved. A new `BindingFailure` entry or diagnostic code
+    is decided in its unit, with the owner's approval beyond the existing limits.
+  - Units: BU's G160-0 (the located `Unsupported_Kd` for the new forms, in place of the parser's `BorrowOriginSemantics_Kd` and
+    `AdaptationOrigin`; the ungrouped `E@raw/U during o` keeps its syntax error `AdaptationDuring`), G160-1 and G160-2 (one design,
+    full process), G160-3 (library annotations, `dictionaryStorage`'s `raw/Dictionary<K, V> during value` and `placeEntry`'s
+    `raw/Dictionary<K, V>` handle for G147 (1), `Dictionary.tryInsert`, `insertOrReplace` and `DictionaryStorage.removeEntry`
+    rewritten to search first and take the exclusive handle afterwards (C1; review R2-B1), the compiler-supplied constructions'
+    contracts); R4's G160-4 (A5, full process) and G160-5 (records). R4's
+    exit waits for G160-0 to G160-5 (D20, option (a); COMPILER_ARCHITECTURE's stage ledger). Until then G160 and G184 stay recorded
+    unsound acceptances, the default pipeline keeps its verdicts until R6-check (D9), and the parser's Language errors for the new
+    forms are a recorded limit (STATUS).
+  - G160-4's entry supersedes R4-M36's "a raw pointer … hold[s] none", R4-M73's `Raw` bullet and A3 E16's raw clause. The G160 plan
+    (`draft/Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`, 完了) is answered: Q1 raw Origins, Q2 the SPEC rule
+    above, Q3 a STATUS limit, Q4 confirmed, Q5 addresses carried by values, which removes the widening class its interim was for;
+    until G160-4 the read side stays a recorded limit (its option (iii)).
+  - Rejected (the design's §7): X-decl (the owner), K′, U, marker presence, a generic marker, integrated storage Types, an implicit
+    fit, E-only raw results, liveness that ignores address-only uses, an exposure rule, Binding rows from Fields, a static Move check
+    now.
 - **R4-M95 A5-F9's template rules: the slot step (A3 E17), R26-borrow and R26-access** (2026-10-21; unit 2e-2 of G:A5-F9 under R4-M90,
   the package's §2 (D1–D7) and its precedence table, with the planning session's rulings of 2026-10-21; supersedes R4-M72's Defaults
   bullet and its view skip's form)
@@ -3146,13 +3203,14 @@ resumed by R4-M86 (2026-10-20).
   recording nothing, and the mode loop of `CheckAdaptationRows` stops at the first failed case and keeps a `null` in a local,
   reported once by its caller; an upcast case judges its Types (`ObjectUpcastFits`, split from `BindObjectUpcast` with
   `ObjectUpcastResult`), then its Borrow, then its result, so `State.limit@s` with `s is ref or uniq` keeps the uniq case's
-  `InvalidAssignment_Kd` and `State.counter@s` is `Unsupported_Kd`. Exceptions: a parenthesized operand and a shared element part
-  bind as a Temporary Value (PLAN G189); below a static object handle or a pair layer the walk asks `BorrowablePlace` and reports no
-  root (PLAN G100 (b)). Rejected: an `AccessFailure` arm (it also names writes and Takes and has no scope for 11.2's accessor access,
-  so a private setter's `@uniq` would become `Unsupported_Kd`); a clause per Borrow arm; a mode parameter on `BorrowablePlace`; for
-  the case order, a scratch field naming the conversion (state for one feature, saved around nested adaptations; ba3dd966, replaced),
-  a `ref` output (`CheckAdaptationRows` is over the parameter limit) and reordering the cases. Temporary: the `staticRoot` denial
-  goes when P42 models static Loans; part (b) extends it to the unqualified name in the group after G:A5-F9.
+  `InvalidAssignment_Kd` and `State.counter@s` is `Unsupported_Kd`. Exceptions: below a static object handle or a pair layer the
+  walk asks `BorrowablePlace` and reports no root, and a Dictionary element's index borrows its static receiver implicitly (PLAN
+  G100 (b)); a parenthesized operand and a shared element part, which bound as a Temporary Value (PLAN G189), are covered by BU-21.
+  Rejected: an `AccessFailure` arm (it also names writes and Takes and has no scope for 11.2's accessor access, so a private
+  setter's `@uniq` would become `Unsupported_Kd`); a clause per Borrow arm; a mode parameter on `BorrowablePlace`; for the case
+  order, a scratch field naming the conversion (state for one feature, saved around nested adaptations; ba3dd966, replaced), a `ref`
+  output (`CheckAdaptationRows` is over the parameter limit) and reordering the cases. Temporary: the `staticRoot` denial goes when
+  P42 models static Loans; part (b) extends it to the unqualified name in the group after G:A5-F9.
 - **BU-19** (2026-10-21; the BU planning session; PLAN G140 and G153 (2)'s Tuple chains; one design and one independent review,
   APPROVE WITH CHANGES; R5 consented to BU holding `Binding.ClosureInstances.cs`) An interned Type is a DAG (identity is equality),
   and a struct's or enum's parts reached through `AdtDef` add sharing; a walk that re-visits a shared part costs one visit per path,
@@ -3211,6 +3269,19 @@ resumed by R4-M86 (2026-10-20).
   chains (review A-3's open family). A new intrinsic adds a row (2b-4: Transferable). Outside it: the capability engine's
   leaves, the `not ObjectPayload` opt-out and Copy's derivation. Open: the conditional Self clause keeps its own failure
   code (PLAN G190). Rejected: per-column pattern methods (a new intrinsic extends each) and a flags enum (more code).
+- **BU-21** (2026-10-21; the BU planning session; PLAN G189, unit bu15; one design, one review, redone on its blocking finding B1) A
+  Borrow's operand is a Temporary Value exactly when its root, read through parentheses and inline parts (stopping at a getter
+  result), is no Place (SPEC 3.4, 3.6): `BorrowableTemporary` (`Binding.PlaceAuthority.cs`) refuses a root that `IsBarePlace` or
+  `IsStaticField` names a Place and admits any other (a call result, a Case construction, a callable value, a getter result, a length
+  parameter), lending a getter result only shared (SPEC 11.5); its refusal of an exclusive borrow through an inline part
+  (`pair().0@uniq`) is an implementation limit reported as a Language error (PLAN G203), not part of the rule. `IsStaticField` (a
+  group's Property read through its standard getter, qualified or in its group) is the one static-root predicate; `LendsPlace`'s
+  static root (BU-18) reads it. `IsBarePlace` takes a user index as a Place whatever its key. Why: the clauses read the written node,
+  so `take((State.limit)@uniq)` built, borrowing a copy, and a static's parts and a parenthesized computed getter were temporaries.
+  Rejected: a static Field in `IsBarePlace` (its Subject consumer would borrow `for v in State.values` in place, an implicit static
+  Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
+  `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
+  binds as a transfer (PLAN G100).
 
 ## R5 and R6 (adopted 2026-10-18)
 

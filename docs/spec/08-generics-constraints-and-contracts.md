@@ -21,7 +21,7 @@ Before splitting, aliases, completed projections, grouping and redundant `owner/
 | `ref`, `uniq` | Complete Referent Type; `uniq` also needs exclusive acquisition and Loans | yes |
 | `obj`, `rc`, `arc` | Object Target ([§8.7.3](#873-objectpayload)) | none |
 | `objref`, `objuniq` | Object Target | yes |
-| `raw` | Complete pointee Type; no lifetime guarantee | none |
+| `raw` | Complete pointee Type; no lifetime guarantee | none in a pair, so a `raw/T during o` argument fits by dropping its Origin; a concrete `raw` layer may state one ([§5.7](05-raw-pointers-and-unsafe-memory.md#57-raw-pointer-origins)) |
 
 A missing outer Origin erases no payload dependency: in `ref/(View<i32>{v}) during b`, `v.source` belongs to the inner Type.
 
@@ -786,7 +786,7 @@ A conformance supplies evidence ([§8.3.2](#832-proof-rules)) once its implement
 
 A requirement call without a known concrete callee uses the bounds that the Contracts proven by its premises declare for the requirement, never bounds of implementations. Its effects, in implementation checks and at callers, are:
 
-1. *Through inputs:* every Place reachable from the receiver and arguments in each parameter's access mode, only shared past a shared layer ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)); an abstract input may reach every Loan its Origins may denote; destroying an owned handle argument adds [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
+1. *Through inputs:* every Place reachable from the receiver and arguments in each parameter's access mode, only shared past a shared layer ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)), raw layers included, also inside an abstract part ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)); an abstract input may reach every Loan its Origins may denote; destroying an owned handle argument adds [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
 2. *Environment:* none with `confined`; otherwise unknown, affecting static Loans as [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) states. A task call is also compared with static Loans ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
 3. *Earlier results:* with `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded.
 
