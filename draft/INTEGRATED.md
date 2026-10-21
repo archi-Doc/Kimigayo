@@ -852,6 +852,9 @@ names, with the owner's package approval (R4-M74 OQ2) or under BU's planning.
   and 2c-6; S3-0 (gate R's source-backed prototype, taking 2x-P4's prototype and 2x-P7's cases as inputs; 2x-P7 has not run and
   stays 2c-D's prerequisite) and S3-1 (a restructure) have no step-2 unit and run inside 2a0-D's and 2c-D's preparation; S3-6
   (S3's closing review) is the F7 group's final review, after 2c-6; they open no separate series. Option 3 is chosen again in those designs.
+  2a0-D (DECISIONS R4-M94) took S3's body-relative atom classes (an atom whose binder lies in an enclosing body is Fixed;
+  environment bindings Finite until 2c-6) and modelled S3's `f` and `g` in its prototype; S3-0's gate R and S3-1 did not run
+  there and stay in 2c-D's preparation.
 - [Canonical Premise Supply and Transferable](Proposals/2026-10-20%20Canonical%20Premise%20Supply%20and%20Transferable%20Plan.md)
   — useful (R4's 2b; the Binding producer with BU's review). At dev no Transferable producer exists, `Core.kimi` lacks
   `contract Transferable` while SPEC 22.1 and LIBRARY declare it, and a written `T is Transferable` is `UnresolvedBinding_Kd` (a

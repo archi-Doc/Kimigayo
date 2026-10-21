@@ -17,7 +17,7 @@ public class VerifiedSpecExampleTest
     internal static readonly string[] Families = ["Binding", "A1", "A3", "A4", "F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10"];
 
     /// <summary>The deciders whose rules have landed on the MIR; a rule unit adds its family when it lands.</summary>
-    internal static readonly string[] Landed = ["Binding", "A1", "A3", "A4", "F1", "F3"];
+    internal static readonly string[] Landed = ["Binding", "A1", "A3", "A4", "F1", "F3", "F5"];
 
     private const string Document = "Hello.kimi";
 
