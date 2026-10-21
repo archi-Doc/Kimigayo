@@ -350,11 +350,31 @@ public sealed class FunctionCodegenTest
         { "RvalueString", "let t = \"moved\"\nlet u = t@move\nConsole.writeLine(u)\n", "moved\n" },
     };
 
-    // The call rows' programs (R5 C3a; DECISIONS R5-M89), self-checking: recursion; Tuple arguments and results, a Copy argument kept
+    // A requirement's witnesses (SPEC 8.6.3-8.6.4; DECISIONS R5-M93): a conformance's body, an inherited one and a generic Type's instance.
+    private const string RequirementWitnesses =
+        "contract Shape\n    func area(self: ref/Self) -> i32\nstruct Square\n    Self is Shape\n    public var side: i32\n" +
+        "    public init(side: i32) => self.side = side\n    public func area(self: ref/Self) -> i32 => self.side * self.side\n" +
+        "public open struct Base\n    public var side: i32 = 2\n    public func area(self: ref/Self) -> i32 => self.side\npublic struct Leaf : Base\n" +
+        "    Self is Shape\n    public init() => ()\nstruct Box<T>\n    Self is Shape when T is Copy\n    public var value: T\n" +
+        "    public init(value: T) => self.value = value@move\n    public func area(self: ref/Self) -> i32 => 4\nfunc measure<T>(x: ref/T) -> i32\n" +
+        "    T is Shape\n    return x.area()\nlet square = Square.init(3)\nlet leaf = Leaf.init()\nlet box = Box<i64>.init(5)\nvar bad: i32 = 0\n" +
+        "if measure(square) != 9 or measure(leaf) != 2 or measure(box) != 4 => bad = 1\nlet check = 1 / (1 - bad)\n";
+
+    // A Contract property a computed property's accessors witness (SPEC 8.6.4; DECISIONS R5-M93).
+    private const string RequirementAccessors =
+        "contract Counted\n    property count: i32 has get, set\nstruct Gauge\n    Self is Counted\n    var stored: i32 = 2\n    public computed count: i32\n" +
+        "        get() -> i32 => self.stored\n        set(value: i32) -> () => self.stored = value\n    public init() => ()\n" +
+        "func bump<T>(x: uniq/T) -> i32\n    T is Counted\n    x.count = x.count + 1\n    return x.count\nvar gauge = Gauge.init()\nvar bad: i32 = 0\n" +
+        "if bump(gauge@uniq) != 3 or gauge.count != 3 => bad = 1\nlet check = 1 / (1 - bad)\n";
+
+    // A caller-location library function's call (SPEC 22.5.1; DECISIONS R5-M93): Range.iterate, which RangeIterator.starting's Fail follows.
+    private const string CallerLocations = "let r = 3..1\nlet it = r.iterate()\n";
+
+    // The call rows' programs (R5 C3a, C3b; DECISIONS R5-M89, R5-M93), self-checking: recursion; Tuple arguments and results, a Copy argument kept
     // independent of its source while the call writes the source through an exclusive borrow (the ABI result-slot and copy rules); a string
     // moved into and out of a call; generic instances; defaults, a recursive one through its template; a pair binder's function in its
     // owner and its uniq case (tests/mir/cases.kimi's keep, moved here from C2b); a #LibraryImport call; a diverging callee's Abort at its
-    // site (SPEC 22.5.1).
+    // site (SPEC 22.5.1); requirement calls of each witness kind.
     public static TheoryData<string, string, string, string> CallPrograms => new()
     {
         {
@@ -409,6 +429,8 @@ public sealed class FunctionCodegenTest
             string.Empty,
             "Hello.kimi:2:13: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"
         },
+        { "CallRequirementWitnesses", RequirementWitnesses, string.Empty, string.Empty },
+        { "CallRequirementAccessors", RequirementAccessors, string.Empty, string.Empty },
     };
 
     // The raw memory and failure rows' programs (R5 C8a; DECISIONS R5-M92), self-checking: storage allocated, initialized with a scalar and
@@ -988,6 +1010,38 @@ public sealed class FunctionCodegenTest
         Assert.DoesNotContain("inbounds", text, StringComparison.Ordinal);
     }
 
+    // SPEC 8.6.3-8.6.4 (DECISIONS R5-M93): a requirement call calls the witness the collector targets at it, under the witness's own
+    // signature: measure's three instances call the three area bodies (a conformance's, an inherited one, a generic Type's instance), and
+    // bump calls the computed property's Getter, Setter and Getter.
+    [Fact]
+    public void ARequirementCallCallsItsWitness()
+    {
+        var c = Analyze(RequirementWitnesses);
+        var areas = ItemTexts(c, "area");
+        var callees = ItemTexts(c, "measure").Select(static x => Regex.Match(x, @"= call i32 @(__kimi_f\d+)\(ptr %t\d+\)\n").Groups[1].Value).ToArray();
+        Assert.Equal(3, callees.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(callees, x => Assert.Single(areas, y => y.StartsWith($"define internal i32 @{x}(ptr %a0) ", StringComparison.Ordinal)));
+        var bump = Assert.Single(ItemTexts(Analyze(RequirementAccessors), "bump"));
+        Assert.Equal(3, Regex.Matches(bump, @"\n  (?:%t\d+ = )?call (?:i32|void) @__kimi_f\d+\(ptr %t\d+").Count);
+    }
+
+    // SPEC 22.5.1 (DECISIONS R5-M93): a caller-location library function receives its caller's location as its last two parameters, which
+    // the user's call passes as its site's text (Hello.kimi:2:10, 15 bytes), and every location it reports is the one it received:
+    // Range.iterate forwards it to RangeIterator.starting, whose Fail Aborts at it, and no body with those parameters names a pooled one.
+    [Fact]
+    public void ACallerLocationBodyReportsTheLocationItReceived()
+    {
+        var text = Generate(CallerLocations);
+        Assert.Matches(@"\n  call void @__kimi_f\d+\(ptr %l\d+, ptr %t\d+, ptr @__kimi_location, i64 15\)\n", text);
+        const string Received = @"\ndefine internal [^\n]* @__kimi_f\d+\([^\n]*, ptr %location, i64 %location_length\) #0 \{\n(?:[^}\n][^\n]*\n)*\}\n";
+        var received = Regex.Matches(text, Received).Select(static x => x.Value).ToArray();
+        Assert.Equal(2, received.Length);
+        Assert.All(received, static x => Assert.DoesNotContain("@__kimi_location", x, StringComparison.Ordinal));
+        Assert.Single(received, static x => Regex.IsMatch(x, @"\n  call void @__kimi_f\d+\([^\n]*, ptr %location, i64 %location_length\)\n"));
+        var fail = $"\n  call void @__kimi_abort(i32 {AbortReasons.Of("KIMI_E_ARG_RANGE")}, ptr %location, i64 %location_length, i64 -2)\n";
+        Assert.Single(received, x => x.Contains(fail, StringComparison.Ordinal));
+    }
+
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory passed by pointer is copied into a copy slot, an alloca of
     // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3);
     // a moved string's Place is passed itself, its record never loaded.
@@ -1145,8 +1199,8 @@ public sealed class FunctionCodegenTest
     }
 
     // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
-    // requests, once per symbol; an import no call reaches is not declared; a caller-location library callee is C3b's row, one located
-    // record at the call.
+    // requests, once per symbol; an import no call reaches is not declared. A caller-location library callee is called since C3b (R5-M93),
+    // and Dictionary.reserve's body still holds a row not written yet, one record at the user's call (K package 4.9).
     [Fact]
     public void AnImportIsCalledByItsCSignature()
     {
@@ -1268,8 +1322,9 @@ public sealed class FunctionCodegenTest
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
     // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
-    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89); a requirement's call is C3b's,
-    // at the call, a property witness's too; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
+    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89), a requirement's since C3b
+    // (R5-M93), whose witness a Builtin shim (C8f), a property witness (C3c) or one without a body (PLAN G157 (10)) is one record at the
+    // call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
     // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
@@ -1301,6 +1356,16 @@ public sealed class FunctionCodegenTest
         "func same<T>(a: T, b: T) -> bool\n    T is Equatable\n    return a == b\nfunc use() -> bool => same(1, 2)\n",
         OutputKind.Library,
         new[] { "a == b" })]
+    [InlineData(
+        "contract Counted\n    property count: i32 has get, set\nstruct Tally\n    Self is Counted\n    public var count: i32 = 1\n    public init() => ()\n" +
+        "func read<T>(x: ref/T) -> i32\n    T is Counted\n    return x.count\nfunc use(t: ref/Tally) -> i32 => read(t)\n",
+        OutputKind.Library,
+        new[] { "x.count" })]
+    [InlineData(
+        "func room<W>(w: uniq/W) -> i32\n    W is BufferWriter\n    match w.reserve(4)\n        .Ok(_) => return 1\n        .Err(_) => return 0\n" +
+        "func use(heap: uniq/Text.HeapBuffer) -> i32 => room(heap)\n",
+        OutputKind.Library,
+        new[] { "w.reserve(4)" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
     [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
@@ -1335,6 +1400,8 @@ public sealed class FunctionCodegenTest
     [InlineData(Calls, OutputKind.Library)]
     [InlineData(Imports, OutputKind.Library)]
     [InlineData(Raws, OutputKind.Library)]
+    [InlineData(RequirementWitnesses, OutputKind.Application)]
+    [InlineData(CallerLocations, OutputKind.Application)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1421,6 +1488,8 @@ public sealed class FunctionCodegenTest
     [InlineData(Calls, OutputKind.Library)]
     [InlineData(Imports, OutputKind.Library)]
     [InlineData(Raws, OutputKind.Library)]
+    [InlineData(RequirementWitnesses, OutputKind.Application)]
+    [InlineData(CallerLocations, OutputKind.Application)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

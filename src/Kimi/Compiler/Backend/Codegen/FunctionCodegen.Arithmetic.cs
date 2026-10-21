@@ -204,8 +204,8 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var location = check == Check.None ? -1 : this.Location(statement.Source);
-        if (check != Check.None && location < 0)
+        Site site = default;
+        if (check != Check.None && !this.Location(statement.Source, out site))
         {
             return; // Recorded.
         }
@@ -219,13 +219,13 @@ internal sealed partial class FunctionCodegen
             entry.Right ?? Spell(right.Value, text.Slice(SpellingLength, SpellingLength)),
             Spell(result, text[(2 * SpellingLength)..]),
             comparison: rvalue.Kind == MirRvalueKind.BinaryOp && rvalue.Op >= (byte)MirBinaryOp.Eq);
-        this.Write(check, operation, (int)result.Number, location, right.Lowering.ComputationType);
+        this.Write(check, operation, (int)result.Number, site, right.Lowering.ComputationType);
         this.Store(statement, this.Widen(target, result));
     }
 
     // An operation with its check and failure block, named by its result's number id (%checked<id>, abort<id>, the success label
-    // c<id>), which Aborts at the pooled location constant; countType is a shift count's Type.
-    private void Write(Check check, in ScalarOperation operation, int id, int location, string countType)
+    // c<id>), which Aborts at its site's location; countType is a shift count's Type.
+    private void Write(Check check, in ScalarOperation operation, int id, Site site, string countType)
     {
         if (check == Check.None)
         {
@@ -233,7 +233,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var failure = this.Failure(id, location, stackalloc char[3 * SpellingLength]);
+        var failure = this.Failure(id, site, stackalloc char[3 * SpellingLength]);
         switch (check)
         {
             case Check.Overflow:
@@ -256,19 +256,13 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // The failure of a check named by the number id (abort<id>, the success label c<id>), which Aborts at the pooled location constant
-    // (SPEC 22.5.1), spelled into text (3 * SpellingLength characters).
-    private ScalarCheck Failure(int id, int location, Span<char> text)
-    {
-        var success = Spell(new('c', id), text[..SpellingLength]);
-        var constant = this.module.Constants[location];
-        var address = text.Slice(SpellingLength, SpellingLength);
-        address[0] = '@';
-        constant.Name.CopyTo(address[1..]);
-        var length = text[(2 * SpellingLength)..];
-        constant.ByteLength.TryFormat(length, out var digits, default, CultureInfo.InvariantCulture);
-        return new ScalarCheck(id, success, address[..(constant.Name.Length + 1)], length[..digits]);
-    }
+    // The failure of a check named by the number id (abort<id>, the success label c<id>), which Aborts at its site's location (SPEC 22.5.1,
+    // Location), spelled into text (3 * SpellingLength characters).
+    private ScalarCheck Failure(int id, Site site, Span<char> text) => new(
+        id,
+        Spell(new('c', id), text[..SpellingLength]),
+        this.Spelled(site.Text, text.Slice(SpellingLength, SpellingLength)),
+        this.Spelled(site.Length, text[(2 * SpellingLength)..]));
 
     // SPEC 5.3: p + n and p - n displace a raw pointer by n * stride(T) bytes, T's stride in the item's instance, unchecked (overflow is
     // undefined behavior); a zero stride keeps the pointer, null included. The bytes go through the place writer's Offset.
