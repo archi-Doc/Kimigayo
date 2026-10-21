@@ -166,10 +166,10 @@ public sealed partial class Binding
     };
 
     // The stored Type of a Place that is, or holds inline, a `during self` layer: a stored Field's declared Type or an element of it
-    // selected in place (a Tuple or fixed-array element), with `holder` the value holding the Field; null for any other Place.
-    private static BoundType? StoredHolder(Koto place, out Koto holder)
+    // selected in place (a Tuple or fixed-array element), with that `field` selection; null for any other Place.
+    private static BoundType? StoredHolder(Koto place, out MemberAccessKoto field)
     {
-        holder = place;
+        field = null!;
         Span<int> positions = stackalloc int[16];
         var count = 0;
         var node = KotoHelper.UnwrapParentheses(place);
@@ -180,7 +180,7 @@ public sealed partial class Binding
             node = KotoHelper.UnwrapParentheses(selection.Left);
         }
 
-        if (node is not MemberAccessKoto { BoundSymbol: { Property.IsStored: true, Type: { } stored } } field)
+        if (node is not MemberAccessKoto { BoundSymbol: { Property.IsStored: true, Type: { } stored } } member)
         {
             return null;
         }
@@ -195,7 +195,7 @@ public sealed partial class Binding
             stored = stored.Components[positions[i]];
         }
 
-        holder = field.Left;
+        field = member;
         return HoldsHolder(stored) ? stored : null;
     }
 
@@ -234,17 +234,17 @@ public sealed partial class Binding
     private BoundOrigin Restep(BoundOrigin raw, BoundOrigin image)
         => raw.Kind is OriginKind.Holder or OriginKind.Static || ReferenceEquals(image, RegionOf(raw)) ? raw : this.Formed(image, this.StepOf(raw) ?? RawStep.Exclusive);
 
-    // SPEC 5.7, Reading a Field: a `during self` layer read from `holder`, the value holding it, states the Origin of the last borrow
-    // or raw pointer the holder's path dereferences (PathOrigin), formed with that dereference's mode, the special receiver's in a
-    // constructor or drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
-    private BoundType? ReadHolder(BoundType type, Koto holder, Koto node)
+    // SPEC 5.7, Reading a Field: a `during self` layer read at `place` (a Field, or a Subject a payload is selected from in place)
+    // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), formed with that dereference's mode, the
+    // special receiver's in a constructor or drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
+    private BoundType? ReadHolder(BoundType type, Koto place, Koto node)
     {
         if (!type.CarriesRawOrigin || !HoldsHolder(type))
         {
             return type;
         }
 
-        if (this.PathOrigin(holder, out var origin, out var mode) is null)
+        if (this.PathOrigin(place, out var origin, out var mode) is null)
         {
             this.Fail(node, BindingFailure.Unsupported);
             return null;
@@ -286,7 +286,7 @@ public sealed partial class Binding
     // enclosing Tuple or fixed-array Place's write is one of the layer's Place. Whether `access` to `place`, writing `source`, failed
     // at `at` (HolderWriteFailure).
     private bool HolderPlaceFailure(Koto place, HolderAccess access, Koto? source, Koto at)
-        => StoredHolder(place, out var holder) is { } stored && Receiver(holder) is null && this.PathOrigin(holder, out _, out _) == false &&
+        => StoredHolder(place, out var field) is { } stored && Receiver(field.Left) is null && this.PathOrigin(field, out _, out _) == false &&
             this.HolderWriteFailure(stored, access, source, at);
 
     // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. A null written to
@@ -310,6 +310,24 @@ public sealed partial class Binding
         var longer = RegionOf(source?.BoundType?.RawOrigin) ?? BoundOrigin.Unstated;
         this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, new OriginRelationFact(at, longer, BoundOrigin.Holder, false, stored, true));
         return true;
+    }
+
+    // SPEC 5.6, 5.7 (D14): the region the argument of a callee's Within parameter (KimiLibraryCatalog.Within) states before its fit to
+    // the parameter, with that argument; null when the callee has no such parameter or the argument states none.
+    private BoundOrigin? StatedWithin(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, out Koto argument)
+    {
+        argument = null!;
+        var within = KimiLibraryCatalog.Within(selected.BoundSymbol);
+        for (var i = 0; i < operations.Length && within >= 0; i++)
+        {
+            if (operations[i] is { ParameterIndex: var parameter, Source: { } source, AdaptedType.RawOrigin: { } stated } && parameter == within)
+            {
+                argument = source;
+                return RegionOf(stated);
+            }
+        }
+
+        return null;
     }
 
     // SPEC 5.7 (D17, D18; design-final §5): the Origin a raw layer's `during` writes, one atom: never a meet or Origin arguments.

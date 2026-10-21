@@ -3590,6 +3590,14 @@ resumed by R4-M86 (2026-10-20).
   `PlaceOriginSource` keeps its own walk, since old Emission reads it and it walks forms `NextPathStep` treats as roots (an Array range
   selection); claim and borrow repair candidates. Rejected: a located `Unsupported_Kd` at the substituting node for a meet (item 11,
   superseded by OQ-R2 (a)); deciding `self`'s exemption by the receiver atom (a borrow of a receiver part carries it too).
+  C2 (authority and containment, SPEC 5.7, 5.2.2, 5.6): `PathAuthority` gains its raw arm (a `RawFollow` step whose pointer steps
+  Shared is a shared layer, any other ends the walk), which `Writable`, `OffersTake`, `BorrowRawPlace` and `BorrowableTemporary`
+  read, so a write, Take or exclusive borrow through a pointer whose Origin keeps only shared Loans is `SharedPathAccess_Kd`.
+  `PathOrigin` takes the Place (a member's, a borrowed element's or an inline part's innermost layer of the Type it is selected from),
+  read by `ReadHolder`, the allowlist and `BorrowRawPlace`, whose anchor meets the pointer's region and whose declared result it must
+  outlive. `KimiLibraryCatalog.Entry` gains the column `Within` (the parameter whose argument's pre-fit raw Origin the result lies
+  within; `Raw.slice`'s storage), judged with the callee's clauses. The repair candidates (the claim; the borrow and claim) need
+  `Repair.*` kinds the SPEC 23.3 schema does not have (open).
 
 ## R5 and R6 (adopted 2026-10-18)
 

@@ -261,4 +261,14 @@ public class RawStorageTest
         Assert.Equal(kind, read.Kind);
         Assert.Equal(OriginKind.Intersection, Binding.RegionOf(read)!.Kind);
     }
+
+    // SPEC 5.2.2, 5.6, 5.7 (D14): a borrow of a raw Place, and Raw.slice's result, lie within the Origin the pointer states, so neither
+    // reaches past the borrow the pointer was read through.
+    [Theory]
+    [InlineData("func f(b: ref/Buffer<i32>) -> ref/i32 during static\n    unsafe => return b.data[0]@ref", "UnprovenOriginRelation_Kd: b.data[0]@ref")]
+    [InlineData("func f(b: ref/Buffer<i32>) -> Slice<i32> during static\n    unsafe => return Raw.slice(b.data, b.length)", "UnprovenOriginRelation_Kd: b.data")]
+    [InlineData("func f(b: ref/Buffer<i32>) -> ref/i32 during b\n    unsafe => return b.data[0]@ref", null)]
+    [InlineData("func f(b: ref/Buffer<i32>) -> Slice<i32> during b\n    unsafe => return Raw.slice(b.data, b.length)", null)]
+    public void ARawPlaceBorrowLiesWithinThePointersOrigin(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Buffer + declarations));
 }

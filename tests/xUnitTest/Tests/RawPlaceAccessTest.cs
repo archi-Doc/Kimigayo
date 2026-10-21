@@ -16,6 +16,14 @@ public class RawPlaceAccessTest
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
     private const string View = "struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\n";
 
+    // SPEC 5.7's Lens, whose slot keeps a shared Loan, its exclusive twin ULens, a struct pointee and a `during self` holder.
+    private const string Lenses = "struct P\n    public var f: i32\n    public init() => self.f = 0\n" +
+        "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+        "    internal init(target: ref/T during source, at: raw/T during source)\n        self.at = at\n        self.loan = Loan.init(target)\n" +
+        "struct ULens<T> {source}\n    internal let loan: Loan<uniq/T during source>\n    internal let at: raw/T during source\n" +
+        "    internal init(target: uniq/T during source, at: raw/T during source)\n        self.at = at\n        self.loan = Loan.init(target)\n" +
+        "struct B\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n";
+
     [Theory]
     [InlineData("let taken = *pointer")]
     [InlineData("let taken = pointer[0]")]
@@ -159,4 +167,29 @@ public class RawPlaceAccessTest
     [InlineData("func run(pointer: raw/Resource, count: isize) -> i32\n    var total: i32 = 0\n    var i: isize = 0\n    while i < count\n        unsafe\n            let item = pointer[i]@uniq\n            item.value += 1\n            total += item.value\n        i += 1\n    return total\n")]
     public void AccessesAfterTheDerivedLoansEndAreValid(string function)
         => Assert.Empty(DiagnosticCorpus.Check(Resource + View + function + "public func main() => ()\n").Diagnostics);
+
+    // SPEC 5.7 (Authority): a write, Take, in-place destruction or exclusive borrow of a raw Place is a SharedPathAccess error when the
+    // pointer's Origin keeps only shared Loans: a slot whose Loan requirement is ref (Lens.source), however the lens is held, or a
+    // shared borrow's Origin reached through `ref` (dataOf's input, `choose`'s meet); reads and shared borrows stay valid.
+    [Theory]
+    [InlineData("func f(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0", "SharedPathAccess_Kd: *lens.at")]
+    [InlineData("func f(lens: uniq/Lens<i32>)\n    unsafe => *lens.at += 1", "SharedPathAccess_Kd: *lens.at")]
+    [InlineData("func f(lens: uniq/Lens<P>)\n    unsafe => (*lens.at).f = 1", "SharedPathAccess_Kd: (*lens.at).f")]
+    [InlineData("func f(lens: uniq/Lens<P>)\n    unsafe => _ = (*lens.at)@move", "SharedPathAccess_Kd: (*lens.at)@move")]
+    [InlineData("func f(lens: uniq/Lens<P>) -> uniq/P during lens\n    unsafe => return (*lens.at)@uniq", "SharedPathAccess_Kd: (*lens.at)@uniq")]
+    [InlineData("func f(lens: uniq/Lens<obj/P>)\n    unsafe => _ = (*lens.at)@objuniq", "SharedPathAccess_Kd: (*lens.at)@objuniq")]
+    [InlineData("func dataOf(b: ref/Lens<i32>) -> raw/i32 during b => b.at\nfunc f(y: uniq/Lens<i32>)\n    unsafe => *dataOf(y) = 1", "SharedPathAccess_Kd: *dataOf(y)")]
+    [InlineData("func choose(c: bool, a: ref/B, b: ref/B) -> ref/B => if c => a else => b\nfunc f(c: bool, x: ref/B, y: ref/B)\n    unsafe => *choose(c, x, y).data = 1", "SharedPathAccess_Kd: *choose(c, x, y).data")]
+    public void ASharedRawOriginDeniesWriteTakeAndExclusiveBorrow(string declarations, string record)
+        => Assert.Equal([record], RawPointerSyntaxTest.Records(Lenses + declarations));
+
+    [Theory]
+    [InlineData("func f(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at")]
+    [InlineData("func f(lens: uniq/Lens<P>) -> ref/P during lens\n    unsafe => return (*lens.at)@ref")]
+    [InlineData("func f(lens: ref/ULens<i32>)\n    unsafe => *lens.at = 0")]
+    [InlineData("func f(lens: uniq/ULens<P>)\n    unsafe => _ = (*lens.at)@move")]
+    [InlineData("func f(y: uniq/B)\n    unsafe => *y.data = 1")]
+    [InlineData("func choose(c: bool, a: uniq/B, b: uniq/B) -> uniq/B => if c => a else => b\nfunc f(c: bool, x: uniq/B, y: uniq/B)\n    unsafe => *choose(c, x, y).data = 1")]
+    public void AnExclusiveOrUnstatedRawOriginGrantsWrite(string declarations)
+        => Assert.Empty(RawPointerSyntaxTest.Records(Lenses + declarations));
 }

@@ -164,6 +164,12 @@ public sealed partial class Binding
                 this.JudgeCallPosition(at, longer, shorter, relation.Equality, null, relation.Syntax, declared: true);
             }
         }
+
+        if (this.StatedWithin(selected, operations, out var storage) is { } within && selected.BoundSymbol!.Type?.Origin is { } result)
+        {
+            // SPEC 5.6, 5.7 (D14): the result of an operation whose catalog row names Within lies within the Origin its argument states.
+            this.JudgeCallPosition(storage, within, this.SubstituteClauseOrigin(result, selected, origins, inputs, declaringType), false, null, null);
+        }
     }
 
     // SPEC 15.6.4 step 3: an Origin of a callee's declared relation (an accessor's, its binder's) as a call substitutes it: the declaring

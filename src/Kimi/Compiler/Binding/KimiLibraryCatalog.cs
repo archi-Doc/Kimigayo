@@ -209,7 +209,7 @@ internal static class KimiLibraryCatalog
         new(KimiDeclarationId.RawAllocate, "allocate", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawAllocate),
         new(KimiDeclarationId.RawRelease, "release", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawRelease),
         new(KimiDeclarationId.RawInitialize, "initialize", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawInitialize),
-        new(KimiDeclarationId.RawSlice, "slice", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawSlice),
+        new(KimiDeclarationId.RawSlice, "slice", KimiLibraryContainer.Raw, Function: CompilerFunctionKind.RawSlice, Within: 0),
         // SPEC 15.3.5: the zero-sized dependency Field Core.
         new(KimiDeclarationId.Loan, "Loan", ManagedRepresentation: true),
         // Ordinary source bodies carry private diagnostic context; their public signatures remain ordinary source.
@@ -276,6 +276,11 @@ internal static class KimiLibraryCatalog
     // SPEC 4.9.6, 12.4.3: the user-code effects an operation publishes, a bodiless constructor its linked implementation's; null for none.
     internal static PublishedRow? Row(BindingSymbol? symbol)
         => symbol?.LibraryDeclaration is { } id && Index(ImplementationOf(id) ?? id) is >= 0 and var index ? Definitions[index].Row : null;
+
+    // SPEC 5.6, 5.7 (D14): the parameter whose argument's raw Origin, as stated before its fit, the operation's result Origin lies
+    // within (Raw.slice's storage); -1 for none.
+    internal static int Within(BindingSymbol? symbol)
+        => symbol?.LibraryDeclaration is { } id && Index(id) is >= 0 and var index ? Definitions[index].Within : -1;
 
     internal static int Index(KimiDeclarationId id) => (uint)id < (uint)Indices.Length ? Indices[(int)id] : -1;
 
@@ -359,7 +364,8 @@ internal static class KimiLibraryCatalog
         string? Owner = null,
         bool ManagedRepresentation = false,
         PublishedRow? Row = null,
-        KimiDeclarationId? Implementation = null)
+        KimiDeclarationId? Implementation = null,
+        sbyte Within = -1)
     {
         internal bool IsFunction => this.SourceFunction || this.Function != CompilerFunctionKind.None || this.Container == KimiLibraryContainer.Intrinsics || this.Implementation is not null;
     }

@@ -828,7 +828,7 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
-                return Complete(node, symbol.Type is { } field ? this.ReadHolder(field, ((MemberAccessKoto)node).Left, node) : null);
+                return Complete(node, symbol.Type is { } field ? this.ReadHolder(field, node, node) : null);
             }
 
             var operation = write ? property.Setter : property.Getter;
@@ -910,7 +910,7 @@ public sealed partial class Binding
             this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
         }
 
-        return Complete(node, node is MemberAccessKoto read && type is not null ? this.ReadHolder(type, read.Left, node) : type);
+        return Complete(node, node is MemberAccessKoto && type is not null ? this.ReadHolder(type, node, node) : type);
     }
 
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)

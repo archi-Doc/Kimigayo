@@ -74,12 +74,32 @@ public sealed partial class Binding
 
     // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its referent is a fresh anchor, so the result Origin has no
     // upper bound and is fitted to the expected Type, result or storage destination: a returned borrow takes the declared result's
-    // Origin, and any other one is the anchor, which fits every destination while its Loan is checked under the anchor.
+    // Origin, and any other one is the anchor, which fits every destination while its Loan is checked under the anchor. SPEC 5.7:
+    // through a pointer that states an Origin the borrow lies within it (the anchor meets it, and a declared result is outlived by
+    // it), and an exclusive borrow through a pointer whose Origin keeps only shared Loans is denied.
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
-        var origin = ResultFunction(conversion)?.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components: [var declared], Origin: { } result } declaredResult &&
-            declaredResult.Semantics == semantics && ReferenceEquals(declared, referent) ? result : this.OriginAtom(conversion, OriginKind.Anchor, 0, "anchor");
+        if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
+        {
+            return this.Fail(conversion, AccessFailure(conversion.Left));
+        }
+
+        var within = this.PathOrigin(conversion.Left, out var stated, out _) == true ? RegionOf(stated) : null;
+        var declared = ResultFunction(conversion)?.BoundSymbol?.Type is
+            { Kind: BoundTypeKind.Semantics, Components: [var target], Origin: { } result } declaredResult &&
+            declaredResult.Semantics == semantics && ReferenceEquals(target, referent) ? result : null;
+        var origin = declared ?? this.OriginAtom(conversion, OriginKind.Anchor, 0, "anchor");
+        if (declared is null && within is not null)
+        {
+            origin = this.Meet(origin, within);
+        }
+
         var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
+        if (declared is not null && within is not null && !OriginOutlives(within, declared))
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, conversion, BindingDeadline.BodyOrigins, borrowed, within, declared));
+        }
+
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Borrow;
         return Complete(conversion, borrowed);

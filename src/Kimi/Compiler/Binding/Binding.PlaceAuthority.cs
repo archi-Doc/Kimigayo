@@ -172,6 +172,11 @@ public sealed partial class Binding
                 case PathStep.Receiver:
                     bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
                     return Receiver(source)?.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
+                case PathStep.RawFollow:
+                    // SPEC 5.7 (Authority), 15.6.2: a raw pointer whose Origin keeps only shared Loans is a shared layer; any other raw
+                    // dereference ends the walk with the authority reached so far, which condition 3 of SPEC 5.2.1 bounds.
+                    bindingDenies = denied;
+                    return source.CodeContext.Compilation.Binding.StepOf(next.BoundType?.RawOrigin) == RawStep.Shared ? SemanticsKind.Ref : authority;
                 default:
                     bindingDenies = denied;
                     return authority;
@@ -193,9 +198,10 @@ public sealed partial class Binding
         return authority;
     }
 
-    // SPEC 3.4.3, 4.7.1, 4.8.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's forms
-    // that PathAuthority walks: what `source` selects, and next, the node it selects from (`source` itself at a root, a guard
-    // candidate or a special receiver).
+    // SPEC 3.4.3, 4.7.1, 4.8.2, 5.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's
+    // forms that PathAuthority and PathOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
+    // root, a guard candidate or a special receiver). Exception until R6-gen: PlaceOriginSource keeps its own walk, which the old
+    // Emission reads and which also passes forms this treats as roots (an Array range selection).
     private static PathStep NextPathStep(Koto source, out Koto next)
     {
         next = source;
@@ -251,15 +257,16 @@ public sealed partial class Binding
             return true; // The accessor's Receiver Expression checks its own capability.
         }
 
-        // SPEC 5.2: binding mutability does not decide pointee write permission.
+        // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission; a pointer whose Origin keeps only shared Loans
+        // does (PathAuthority's raw arm).
         if (node is DereferenceKoto dereference)
         {
-            return ReferenceTypes.IsPointer(dereference.Operand.BoundType);
+            return ReferenceTypes.IsPointer(dereference.Operand.BoundType) && !ReachedThroughShared(node);
         }
 
         if ((node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)) || ElementAccess.IsPointerPath(node))
         {
-            return true;
+            return !ReachedThroughShared(node);
         }
 
         if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || ReachedThroughShared(node))
@@ -413,6 +420,11 @@ public sealed partial class Binding
     private static bool OffersTake(Koto source)
     {
         var place = KotoHelper.UnwrapParentheses(source);
+        if (ElementAccess.IsRawPlace(place))
+        {
+            return !ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless its pointer keeps only shared Loans.
+        }
+
         return !IsBarePlace(place) || (PathAuthority(place, out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
     }
 
@@ -463,8 +475,10 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(part.Left);
         }
 
+        // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
         return !IsBarePlace(root) && !IsStaticField(root) &&
-            (!exclusive || (spelled && !IsGetterResult(root) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
+            (!exclusive ||
+                (spelled && !IsGetterResult(root) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)) && !ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 
