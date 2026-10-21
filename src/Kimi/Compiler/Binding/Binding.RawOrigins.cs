@@ -199,8 +199,34 @@ public sealed partial class Binding
         return HoldsHolder(stored) ? stored : null;
     }
 
-    // SPEC 5.1: a null value, the one literal of a raw pointer Type.
-    private static bool IsNullValue(Koto source) => KotoHelper.UnwrapParentheses(source) is NullLiteralKoto;
+    // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
+    // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
+    // recursively; any other source reaches the layers as a whole. Null when every layer receives null.
+    private static Koto? NonNullAtLayers(BoundType stored, Koto source)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        if (stored.RawOrigin?.Kind == OriginKind.Holder)
+        {
+            return source is NullLiteralKoto ? null : source;
+        }
+
+        var elements = (stored.Kind, source) switch
+        {
+            (BoundTypeKind.Tuple, TupleLiteralKoto tuple) => tuple.Elements,
+            (BoundTypeKind.FixedArray, ArrayLiteralKoto array) => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            var part = stored.Components[stored.Kind == BoundTypeKind.FixedArray ? 0 : i];
+            if (HoldsHolder(part) && NonNullAtLayers(part, elements[i]) is { } written)
+            {
+                return written;
+            }
+        }
+
+        return elements is null ? source : null;
+    }
 
     // The step of a borrow or pair layer (SPEC 5.7, D11): shared for ref and objref, exclusive for uniq and objuniq, and a pair layer's
     // when its admitted cases are borrows of one mode; null for any other layer.
@@ -289,26 +315,28 @@ public sealed partial class Binding
         => StoredHolder(place, out var field) is { } stored && Receiver(field.Left) is null && this.PathOrigin(field, out _, out _) == false &&
             this.HolderWriteFailure(stored, access, source, at);
 
-    // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. A null written to
-    // the layer's Place itself is admitted. Any other write, and an exclusive borrow of the layer's Place, records an Origin relation
-    // failure at `at` and forms no relation: the holder's storage, which no Origin expression names, outlives no Origin a source
-    // states. A Move of the layer's Place, and an exclusive borrow of an enclosing one, are located Unsupported_Kd (PLAN G212).
+    // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. A write whose value
+    // puts null in every layer is admitted (NonNullAtLayers). Any other write, an update and an exclusive borrow of the layer's Place
+    // record an Origin relation failure at `at` and form no relation: the holder's storage, which no Origin expression names, outlives
+    // no Origin. Its longer end is the Origin of the value reaching the layer, none for an update or a borrow, which admit the Place's
+    // read Type. A Move of the layer's Place, and an exclusive borrow of an enclosing one, are located Unsupported_Kd (PLAN G212).
     private bool HolderWriteFailure(BoundType stored, HolderAccess access, Koto? source, Koto at)
     {
-        var layer = stored.RawOrigin is not null;
-        if (access == HolderAccess.Write && layer && source is not null && IsNullValue(source))
+        var written = access == HolderAccess.Write && source is not null ? NonNullAtLayers(stored, source) : null;
+        if (access == HolderAccess.Write && written is null)
         {
             return false;
         }
 
-        if (access == HolderAccess.Move || (access == HolderAccess.ExclusiveBorrow && !layer))
+        if (access == HolderAccess.Move || (access == HolderAccess.ExclusiveBorrow && stored.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
         {
             this.Fail(at, BindingFailure.Unsupported);
             return true;
         }
 
-        var longer = RegionOf(source?.BoundType?.RawOrigin) ?? BoundOrigin.Unstated;
-        this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, new OriginRelationFact(at, longer, BoundOrigin.Holder, false, stored, true));
+        var longer = RegionOf(written?.BoundType?.RawOrigin) ?? BoundOrigin.Unstated;
+        var relation = new OriginRelationFact(at, longer, BoundOrigin.Holder, Equality: false, stored, Refuted: true);
+        this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, relation);
         return true;
     }
 

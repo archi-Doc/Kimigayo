@@ -32,9 +32,10 @@ public class RawStorageTest
 
     // A struct holding `during self` layers alone and in a Tuple, and an enum with a `during self` payload (SPEC 5.7, DECISIONS R4-M105).
     private const string Block = "struct Block\n    internal var data: raw/u8 during self\n    internal var pair: (raw/u8 during self, isize)\n" +
+        "    internal var arr: [2 of raw/u8 during self]\n" +
         "    public init()\n        unsafe\n            self.data = Raw.allocate<u8>(1)@(raw/u8 during self)\n            self.pair = (Raw.allocate<u8>(1)@(raw/u8 during self), 1)\n" +
-        "    drop => unsafe => Raw.release(self.data)\n" +
-        "enum Cell\n    Some(raw/u8 during self)\n    None\n" +
+        "        self.arr = [null, null]\n    drop => unsafe => Raw.release(self.data)\n" +
+        "enum Cell\n    Some(raw/u8 during self)\n    Two((raw/u8 during self, i32))\n    None\n" +
         "struct Outer\n    internal var inner: Block\n    public init(fresh: raw/u8)\n        self.inner = Block.init()\n        {0}\n" +
         "func reset(fresh: raw/u8, shared: raw/u8 during static)\n    var b = Block.init()\n    {1}\n";
 
@@ -228,7 +229,11 @@ public class RawStorageTest
     [InlineData("()", "unsafe => b.data += 1", "UnsatisfiedOriginRelation_Kd: b.data += 1")]
     [InlineData("()", "let w = b.data@uniq", "UnsatisfiedOriginRelation_Kd: b.data@uniq")]
     [InlineData("()", "b.pair = (fresh, 1)", "UnsatisfiedOriginRelation_Kd: b.pair = (fresh, 1)")]
+    [InlineData("()", "b.pair = (b.data, 1)", "UnsatisfiedOriginRelation_Kd: b.pair = (b.data, 1)")]
+    [InlineData("()", "b.arr = [null, fresh]", "UnsatisfiedOriginRelation_Kd: b.arr = [null, fresh]")]
+    [InlineData("()", "let q = b.pair\n    b.pair = q", "UnsatisfiedOriginRelation_Kd: b.pair = q")]
     [InlineData("()", "let c = Cell.Some(fresh)", "UnsatisfiedOriginRelation_Kd: fresh")]
+    [InlineData("()", "let c = Cell.Two((fresh, 1))", "UnsatisfiedOriginRelation_Kd: (fresh, 1)")]
     [InlineData("self.inner.data = fresh", "()", "UnsatisfiedOriginRelation_Kd: self.inner.data = fresh")]
     [InlineData("()", "let w = b.pair@uniq", "Unsupported_Kd: b.pair@uniq")]
     [InlineData("()", "let w = b.data@move", "Unsupported_Kd: b.data@move")]
@@ -240,10 +245,30 @@ public class RawStorageTest
     [InlineData("()", "let w = b.data@ref")]
     [InlineData("()", "let p: raw/u8 = b.data")]
     [InlineData("()", "let c = Cell.Some(null)")]
+    [InlineData("()", "b.pair = (null, 2)")]
+    [InlineData("()", "b.arr = [null, null]")]
+    [InlineData("()", "b.arr = [2 of null]")]
+    [InlineData("()", "let c = Cell.Two((null, 1))")]
     [InlineData("()", "let r = b@uniq\n    unsafe => r.data = fresh@(raw/u8 during r)")]
-    [InlineData("()", "let c = Cell.Some(null)\n    let p: raw/u8 = match c@ref\n        Cell.Some(let q) => q@follow\n        Cell.None => null")]
+    [InlineData("()", "let c = Cell.Some(null)\n    let p: raw/u8 = match c@ref\n        Cell.Some(let q) => q@follow\n        Cell.Two((let q, _)) => q@follow\n        Cell.None => null")]
     public void ASelfLayerAdmitsReadsSharedBorrowsAndNull(string construction, string use)
         => Assert.Empty(RawPointerSyntaxTest.Records(Block.Replace("{0}", construction, StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal)));
+
+    // SPEC 5.7, 15.6.1, 23.1 (rulings S4): the record's longer end is the Origin of the value that reaches the layer, an aggregate
+    // literal's element at the layer's position included; a pointer without `during`, also the one an update or an exclusive borrow
+    // admits (the Place's read Type, which states none), shows the Unstated end as omitted.
+    [Theory]
+    [InlineData("b.data = fresh", "requires the omitted Origin of a raw pointer without `during` outlives self, which is false")]
+    [InlineData("b.pair = (fresh, 1)", "requires the omitted Origin of a raw pointer without `during` outlives self, which is false")]
+    [InlineData("b.pair = (shared, 1)", "requires static outlives self, which is false")]
+    [InlineData("let c = Cell.Two((shared, 1))", "requires static outlives self, which is false")]
+    [InlineData("let w = b.data@uniq", "requires the omitted Origin of a raw pointer without `during` outlives self, which is false")]
+    public void ASelfLayerRecordShowsTheValueReachingTheLayer(string use, string label)
+    {
+        var source = Block.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", use, StringComparison.Ordinal) + "public func main() => ()\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), label), (record.Code, record.Label));
+    }
 
     // SPEC 5.7 (DECISIONS R4-M105, OQ-R2 (a)): a Field read through a borrow states the borrow's outer Origin, a meet included, formed
     // with the borrow's mode: a shared one keeps the shared view, so authority stays shared; an exclusive one is the meet itself.
