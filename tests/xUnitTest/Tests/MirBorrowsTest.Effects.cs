@@ -346,7 +346,7 @@ public sealed partial class MirBorrowsTest
     // SPEC 15.6.4 (R4-M92): an explicit Borrow of a static's part still binds when it is qualified (2b-D §1.5's premise does not hold at
     // this head), and the effect rule gives it SPEC's verdict: a writer's call errs (qp1), a reader's does not (qp1r). Both are to be
     // re-expected as Binding's located Unsupported_Kd by BU's bu15 (a static Place, parenthesized or a part, is never a Temporary Value;
-    // PLAN row by that title). Fail-before 2b-3: qp1 (no effect rule).
+    // PLAN G189). Fail-before 2b-3: qp1 (no effect rule).
     [Fact]
     public void AQualifiedPartBorrowMeetsAWritersEffects()
     {
