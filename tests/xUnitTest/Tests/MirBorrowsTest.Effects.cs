@@ -43,6 +43,12 @@ public sealed partial class MirBorrowsTest
             public var n: i32 = 0
             public init() => ()
             drop => _ = State.x.n
+        struct W5
+            public var n: i32 = 0
+            public init() => ()
+            drop
+                _ = State.y5.n
+                _ = State.w5.n
         struct Quiet
             public var n: i32 = 0
             public init() => ()
@@ -61,6 +67,9 @@ public sealed partial class MirBorrowsTest
             public var d: Counter = State.makeD()
             public var x2: Counter = State.makeX2()
             public let lim2: Counter = State.makeL()
+            public let y5: Counter = State.makeY5()
+            public var w5: W5 = W5.init()
+            public var pair: (i32, i32) = (1, 2)
             public var watch: Watch = Watch.init()
             public var quiet: Quiet = Quiet.init()
             public var limited: Limited = Limited.init()
@@ -80,6 +89,14 @@ public sealed partial class MirBorrowsTest
             public func makeL() -> Counter
                 log = Counter.init()
                 return Counter.init()
+            public func makeY5() -> Counter
+                let f: () -> () = func [] () => ()
+                return Counter.init()
+            public func both3(g: () -> ())
+                _ = useLim()
+                g()
+            public func bumpPair() => State.pair = (3, 4)
+            public func readPair() -> i32 => State.pair.1
             public func useX() -> i32 => State.x.n
             public func useLim() -> i32 => State.lim2.n
             public func writeLog() => State.log = Counter.init()
@@ -295,6 +312,57 @@ public sealed partial class MirBorrowsTest
                         inspect(ll)
 
                 """));
+
+    // SPEC 15.6.4, PD12 (ii) (R4-M92, the group review's R2-B1): the proof makes a conflict U only where every effect that would decide
+    // it lies in a proved initializer; the first effect outside it decides the Language problem: multiImm's call runs the proved lim2's
+    // initializer, which writes log, and an unknown g, which meets ll on its own (EffectUnknown); r3Unproved's destructor runs the proved
+    // immutable y5's initializer, whose erased destruction is unknown, and reads w5 itself while w5 is destroyed (R3, EffectRead).
+    // Fail-before: each (U on 483ba38d).
+    [Fact]
+    public void AnUnprovedEffectStillDecides()
+    {
+        var c = MirBuildTest.Compile(Prelude + EffectTypes + """
+                public func multiImm(g: () -> ())
+                    let lm = lim2.view()
+                    let ll = log.view()
+                    both3(g@move)
+                    inspect(lm)
+                    inspect(ll)
+                public func r3Unproved()
+                    let ly = y5.view()
+                    w5 = W5.init()
+                    inspect(ly)
+
+            """);
+        var program = Analyze(c);
+        Assert.Equal(
+            ["both3(g@move) ComparisonLoanConflict_Kd EffectUnknown", "w5 = W5.init() ComparisonLoanConflict_Kd EffectRead"],
+            program.Problems.All.ToArray().Select((x, i) => (x, i))
+                .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
+                .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
+                    .Where(static k => k is MirFactKind.EffectRead or MirFactKind.EffectWrite or MirFactKind.EffectUnknown))}"));
+    }
+
+    // SPEC 15.6.4 (R4-M92): an explicit Borrow of a static's part still binds when it is qualified (2b-D §1.5's premise does not hold at
+    // this head), and the effect rule gives it SPEC's verdict: a writer's call errs (qp1), a reader's does not (qp1r). Both are to be
+    // re-expected as Binding's located Unsupported_Kd by BU's bu15 (a static Place, parenthesized or a part, is never a Temporary Value;
+    // PLAN row by that title). Fail-before 2b-3: qp1 (no effect rule).
+    [Fact]
+    public void AQualifiedPartBorrowMeetsAWritersEffects()
+    {
+        const string Qualified = """
+            func qp1()
+                let r = State.pair.0@ref
+                State.bumpPair()
+                inspect(r)
+            func qp1r()
+                let r = State.pair.0@ref
+                _ = State.readPair()
+                inspect(r)
+
+            """;
+        Assert.Equal(["qp1: State.bumpPair()"], Effects(string.Empty, Qualified));
+    }
 
     // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91): a call A4 does not classify (Limit) is the located Unsupported_Kd where a live
     // mutable-static Loan would be met (e12a) and nothing where none is (e12b), Unknown beside it decides (e12c); a callee's dependent of an

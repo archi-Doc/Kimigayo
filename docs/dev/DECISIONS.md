@@ -2144,12 +2144,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Initialization proof (SPEC 15.6.4, 22.4.3; PD12 (ii) as written; the planning session's clarification of R4-M89 on the group
     review's B1, 2026-10-21): "a live Loan anchored to a Field proves that Field initialized" holds wherever a first access is
     composed, since every first access is an ensure and A4 composes each initializer into every site that may run it (R4-M38). So at
-    every Call and Drop, ensures included, an R1 or R3 conflict whose deciding effect (a write or read key, or Unknown) lies in the
-    summary of the initializer of a static d with a candidate in the effect set, in any mode, is the located `Unsupported_Kd` at the
-    site, where the site may first-access d: d is immutable (its accesses carry no key), the site's row has a key of d, or the site is
-    d's own staticEnsure (`MirProgram.StaticInit`; an ensure carries no key of its own static, R4-M38, so without this e10a, e10e and
-    e10f would be errors). A site that never reaches d keeps a direct conflict as the error (`direct`). The set is a may-set, so the
-    proof decides nothing exactly (e10f; OQ-F5-6 (a)). A4 publishes `MirEffects.Summary(body, view, out classes)`, a body view's row and
+    every Call and Drop, ensures included, an R1 or R3 conflict where every effect that would decide it (a write or read key, or
+    Unknown) lies in the summary of the initializer of a static d with a candidate in the effect set, in any mode, is the located
+    `Unsupported_Kd` at the site; the first effect outside it decides the Language problem (`Unproved`; the group review's R2-B1:
+    `multiImm`, a proved initializer's write beside an unknown call, stays the error with `EffectUnknown`). The site must be one that may
+    first-access d: d is immutable (its accesses carry no key), the site's row has a key of d, or the site is d's own staticEnsure
+    (`MirProgram.StaticInit`; an ensure carries no key of its own static, R4-M38, so without this e10a, e10e and e10f would be errors).
+    A site that never reaches a mutable d keeps a direct conflict as the error (`direct`). A key the site may produce both directly and
+    through a proved initializer counts as proved, since keys do not record their source (P5). The set is a may-set, so the proof
+    decides nothing exactly (e10f; OQ-F5-6 (a)). A4 publishes `MirEffects.Summary(body, view, out classes)`, a body view's row and
     classes over its existing storage, an atom it keeps counted as Unknown (warm 0 B). Before the review the proof was consulted only at
     the body's own ensure of the static (Language errors on SPEC-valid pA, pB, pQ: a call that reads x, the ensure of x2 whose
     initializer reads d, a call that reads an immutable static); that special case, its slot decoding and `Met`'s bool are deleted.
@@ -2162,6 +2165,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Unsupported producers registered for X-2 (PD28): A4's Limit at a site with a live mutable-static Loan no key meets (and R3's with
     the Limit alone), until A4 classifies the effect; the initialization proof, until OQ-F5-6's clarification and a must-carry fact (P42
     alone does not decide it). A static without its initializer is a broken builder contract, `InternalInvariant_Kd`.
+  - Limit of the proof (the group review's R2-N1): for an immutable d the proof applies at every site, since A4 keys no immutable
+    static and A5 cannot tell whether the site reaches d; so `let lm = lim2.view(); let ll = log.view(); let v = e3.n`, whose ensured
+    initializer writes log and never reaches lim2, is U where SPEC errs (sound: U still rejects). Removed when A4 keys immutable-static
+    accesses, or at P42; registered under X-2's proof producer.
   - Tests: Binding accepts the implicit static Loans of a group's own members only (a receiver reserved or shared with a retained
     result, an argument's adaptation), so 2b-3's programs are group members, which R4-M90's PQ-1 re-expects when 2b-6's unqualified part
     lands; the qualified receiver and argument forms are `NoApplicableOverload_Kd`, a `for` over a static moves it, a `match` on one is
