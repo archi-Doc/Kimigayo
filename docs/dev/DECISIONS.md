@@ -2621,6 +2621,27 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Moved verbatim: `StepClass` and `Step` (renamed `MirStepClass` and `MirStep`, the Mir prefix of the namespace's top-level types), the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the
     walk). Rejected: a static `MirSteps` with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and
     A4 too); `MirBorrows` members made internal for `MirOrigins` (couples Origin judgment to Loan state).
+- **R4-M102 A2's table publishes a body's first A1 or A2 problem** (2026-10-22; R5's ask A-2b for C4a's gate step 2, PD12 and package C
+  §3.8; R4's rulings of 2026-10-22 and its choice (b): R5 implements under a temporary hold of `MirInit.cs`, `MirDrops.cs` and
+  `MirDropTest` (PLAN 26d48164), and R4 signs off before the merge)
+  - Adopted: `MirDropTable.Incomplete(body) → (DiagnosticCode Code, SourceRef Subject)?`, first-wins per body, stored with the body's
+    ends at `Close` beside `ViewsOf` (pooled, a warm rebuild 0 B). R4-M6a makes A2's verdicts exact only for a body A1 accepts, so a
+    consumer reads which body's table is inexact, and with what.
+  - Setters, where each analysis forms its problem, before `MirReport.Add`, which is unchanged: A1's `Transfer.Add` (every state rule's
+    problem) and its arena stop (R4-M15a: `OwnershipStorageLimit_Kd` at `body.Source`, `ViewsOf` 0); A2's incomplete layer
+    (`MovedPlace_Kd` in `MirDrops.Tree`); both through `MirDrops.Incomplete`. A3, A4 and A5 set none (PD12, R5-M4): A5's arena
+    `StorageLimit` leaves a body exact.
+  - Inline copies: the analyzed (caller) body is marked with the problem's own subject, the template's (R4-M69, R4-M97), so a copy's
+    refusal shares its template's (code, subject) although `MirReport.Add` drops the problem (probe d2: a default holding ledger row
+    a1-whole-incomplete's form).
+  - Why not `MirProblem.Body` (R4-M71): A1, A2 and A5 share requirements (`PossiblyMovedUse` A1's and A2's, `StorageLimit` A1's and A5's
+    arena), and `MirReport.Add` drops a copy's problem.
+  - Rejected: a requirement list in the consumer (a second copy of the recording rules; R4-M67's rejection stands); every Ownership
+    problem of the body (A5's would refuse programs the old analysis accepts, R5-M4); the driver's count of problems added between A3
+    and A2's end (C4a's fallback F2′, which misses a copy-only failure).
+  - PD21 (R4, 2026-10-22, the first ruling on each): `MirInit.cs` (1c-1, 1c-6, 1c-8) and `MirDrops.cs` (1c-1, 1c-2, 1c-6, 1c-8) are due;
+    each has one responsibility (A1's per-view initialization and Move dataflow; A2's drop verdicts and table) and no split exists, so
+    A-2b's lines go in without a restructure; the next changing unit of each restructures it first. DIAGNOSTICS is unchanged.
 - **R4-M103 Static slots for P42, layout requirements kept, lifecycle receivers' Borrows body-local** (owner, 2026-10-22, on three R4
   proposals written at the owner's instruction 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」; answers
   OQ-S1 (a), OQ-S2 (a), OQ-Y1 (d), OQ-L1 (b); review `draft/Sketches/R4 Proposals 2026-10-21/review-3.md`)
