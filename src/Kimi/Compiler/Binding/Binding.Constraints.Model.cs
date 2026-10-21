@@ -30,7 +30,9 @@ public enum ConstraintKind : byte
 /// <summary>An immutable, compilation-interned proposition. Types and symbols retain their binding identities.</summary>
 public sealed class BoundConstraint
 {
-    internal BoundConstraint(ConstraintKey key)
+    // `projection`: whether a part of the subject or the required Type is an associated projection, which Binding's walk decides
+    // (Binding.ContainsAssociatedProjection, DECISIONS BU-18).
+    internal BoundConstraint(ConstraintKey key, bool projection)
     {
         this.Kind = key.Kind;
         this.Subject = key.Subject;
@@ -39,7 +41,7 @@ public sealed class BoundConstraint
         this.Mask = key.Mask;
         this.Left = key.Left;
         this.Right = key.Right;
-        this.HasAssociatedProjection = ContainsProjection(key.Subject) || ContainsProjection(key.RequiredType) || key.Left?.HasAssociatedProjection == true || key.Right?.HasAssociatedProjection == true;
+        this.HasAssociatedProjection = projection || key.Left?.HasAssociatedProjection == true || key.Right?.HasAssociatedProjection == true;
         this.HasUnresolved = key.Kind == ConstraintKind.Unresolved || key.Left?.HasUnresolved == true || key.Right?.HasUnresolved == true;
     }
 
@@ -63,29 +65,6 @@ public sealed class BoundConstraint
     internal bool HasAssociatedProjection { get; }
 
     internal bool HasUnresolved { get; }
-
-    private static bool ContainsProjection(BoundType? type)
-    {
-        if (type is null)
-        {
-            return false;
-        }
-
-        if (type.Kind == BoundTypeKind.AssociatedProjection)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            if (ContainsProjection(type.Components[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
 }
 
 // Do not recursively hash a proposition DAG; operands are compared by interned identity.

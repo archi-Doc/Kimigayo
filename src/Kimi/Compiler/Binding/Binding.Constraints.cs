@@ -178,12 +178,13 @@ public sealed partial class Binding
 
     private ConstraintProof JudgeConstraintAtom(BoundConstraint proposition, BindingScope scope)
     {
-        if (InvalidConstraintType(proposition.Subject!) || (proposition.RequiredType is { } required && InvalidConstraintType(required)) || (proposition.Contract is { } contractSymbol && InvalidDeclarationContext(contractSymbol.Declaration)))
+        var contexts = this.OperandContexts(proposition);
+        if (contexts.Invalid)
         {
             return ConstraintProof.Error;
         }
 
-        if (UnresolvedConstraintOperand(proposition))
+        if (contexts.Unresolved)
         {
             return ConstraintProof.Unknown;
         }
@@ -252,7 +253,7 @@ public sealed partial class Binding
     {
         if (!this.constraints.TryGetValue(key, out var result))
         {
-            result = new(key);
+            result = new(key, this.ContainsAssociatedProjection(key.Subject) || this.ContainsAssociatedProjection(key.RequiredType));
             this.constraints.Add(key, result);
         }
 
@@ -631,7 +632,7 @@ public sealed partial class Binding
 
         positive |= structural == ConstraintProof.Proven;
         negative |= structural == ConstraintProof.Refuted;
-        if (structural != ConstraintProof.Error && (positive || negative) && UnresolvedConstraintOperand(proposition))
+        if (structural != ConstraintProof.Error && (positive || negative) && this.OperandContexts(proposition).Unresolved)
         {
             return ConstraintProof.Unknown;
         }

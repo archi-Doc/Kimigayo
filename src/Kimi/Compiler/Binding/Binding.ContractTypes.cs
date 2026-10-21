@@ -10,8 +10,16 @@ namespace Kimi.Compiler;
 public sealed partial class Binding
 {
     /// <summary>Substitutes Contract Self and normalizes completed associated identities without performing member selection.</summary>
+    /// <remarks>A Type with neither an abstract part nor an Origin is its own image: the environment substitutes slots and Origins, a
+    /// Contract's Self is a Parameter and normalization rewrites only abstract kinds, so a shared closed part is never walked
+    /// (DECISIONS BU-18).</remarks>
     private BoundType ContractType(BoundType type, BindingScope scope, BoundType? self = null, bool normalize = true)
     {
+        if (!type.HasAbstractPart && !type.CarriesOrigin)
+        {
+            return type;
+        }
+
         if (this.collectingAssociated is not { } batch)
         {
             return this.ContractTypeCore(type, scope, self, normalize);
