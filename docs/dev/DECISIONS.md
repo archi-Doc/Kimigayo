@@ -2331,19 +2331,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
     stopping at a raw Deref; MeetNode; Refuted by finite-source and Unknown by fixed-source bitsets; Reason `(Longer, Shorter,
     Equality)` on `MirProblem` and in `MirReport`'s key, facts `Anchor`, `Relation`, `Result`; `MirDataflow.Within` decides the
     byte limit. G161 is decided by 2a-1a's Refuted rule.
-  - Merge (2a-2): rule 1 drops a storage-end conflict with the `Result` fact in the views where its Anchor's atom is refuted at a
-    `ResultFit` row (PD11's first half, per atom); rule 2 (OQ-4 (b)) drops a guard-sourced `UnsatisfiedOriginRelation_Kd` whose
-    last edge is a `ResultFit` row in the views where its candidate has an err(ended); nothing else is dropped. Recorded limits:
-    `cf-g-reassign` loses an independent report (X-2/OQ9 list), and a guard escape into storage the body does not own reports both
-    codes.
-  - Owner answers: OQ-1 (c) a `let` slot as a region is a separate BU unit after G:A5-F4 (PLAN G194); OQ-2 (a) the
-    preserves-results containment skip is deleted with the old path at R6-check (PLAN G193); OQ-4 (b) as above; OQ-3 (a) the ten
-    departures confirmed: finite-source bitsets for A3 §7's one-witness BFS; GuardReverse at a `ResultFit` edge for PD11's second
-    half and A3 E7's merge sentence; A3 §7's fixed-atom containment read against Binding's encoding, with MeetNode; three atom
-    kinds for the plan's four; `UniversalRelations.For` per body with per-class conditions; T1 by construction; 2a-3 folded;
-    rows partitioned at formation, no alias rows; PD11's first half per atom; 2a0-3a's non-call rows only where Binding records a
-    failure until H11. Closed without an answer: OQ-B1 (T1 holds by construction), OQ-B3 (the twin's Opaque limit follows from
-    OQ11 (b)), OQ-B5 (static Borrow atoms are per site on dev).
+  - Merge (2a-2; superseded by R4-M104): rule 1 drops a storage-end conflict with the `Result` fact in the views where its Anchor's
+    atom is refuted at a `ResultFit` row (PD11's first half, per atom); rule 2 (OQ-4 (b)) drops a guard-sourced
+    `UnsatisfiedOriginRelation_Kd` whose last edge is a `ResultFit` row in the views where its candidate has an err(ended); nothing
+    else is dropped. Recorded limits: `cf-g-reassign` loses an independent report (X-2/OQ9 list), and a guard escape into storage
+    the body does not own reports both codes.
+  - Owner answers: OQ-1 (c) a `let` slot as a region is a separate BU unit after G:A5-F4 (PLAN G194); OQ-2 (a) the preserves-results
+    containment skip is deleted with the old path at R6-check (PLAN G193); OQ-4 (b) as above (superseded by R4-M104); OQ-3 (a) the
+    ten departures confirmed: finite-source bitsets for A3 §7's one-witness BFS; GuardReverse at a `ResultFit` edge for PD11's
+    second half and A3 E7's merge sentence (superseded by R4-M104); A3 §7's fixed-atom containment read against Binding's encoding,
+    with MeetNode; three atom kinds for the plan's four; `UniversalRelations.For` per body with per-class conditions; T1 by
+    construction; 2a-3 folded; rows partitioned at formation, no alias rows; PD11's first half per atom (superseded by R4-M104);
+    2a0-3a's non-call rows only where Binding records a failure until H11. Closed without an answer: OQ-B1 (T1 holds by
+    construction), OQ-B3 (the twin's Opaque limit follows from OQ11 (b)), OQ-B5 (static Borrow atoms are per site on dev).
   - PLAN rows: G192 (a local-layer Reborrow accepted on the default pipeline), G193, G194, G195 (a callee's meet judged with its
     own atoms), G196 (a `Slice` handle Borrow named by the handle's Origin: unsound on both pipelines, BU's repair) and G197 (SPEC
     11.8's valid `limitRef` rejected).
@@ -2632,6 +2632,33 @@ and migration obligations remain in force; no numeric cap changes are authorized
     classification. Not adopted: a unified "lifecycle receiver" definition (editorial,
     with rule-drift risk the review found).
   - Numbering: R4-M101 is reserved for 2a0-2; R4-M102 is on R5's branch `claude/r5-a2b` (A-2b).
+- **R4-M104 A Loan conflict caused only by Refuted relations (W)** (owner, 2026-10-22, after two rounds of a general definition were
+  not accepted: 「P2は、W：個別規則に決定します」; the proposal `draft/Proposals/2026-10-21 Failures Caused Only by Other Failures.md`,
+  accepted in its round-3 review with fixes, a re-check and a confirmation, `draft/Sketches/R4 Proposals 2026-10-21/review-p2r3.md`)
+  - Adopted for SPEC 15.6.5 (cited from 14.8.3 and 15.8.2), the proposal's sentence: "A Loan conflict on the Loan of a Borrow whose
+    finite Origin Refuted chains carry to fixed Origins is caused only by the Refuted relations of those chains (23.1.2) when every
+    value that carries the Loan and may be used after the access is the result or storage the body does not own and received the
+    Loan only as the borrow or a Copy or Reborrow of it (15.6), stored into a part with a fixed Origin; a call's result, or storage
+    the call writes, that may retain such a value as an argument counts as a Copy of it (15.6.4)." The arrival is decided by what
+    carries the Loan, not by Origins: a value read from a holder, or an aggregate holding the borrow, is not a Copy, and a
+    whole-value Move of the borrow is the borrow. Relations are never derived, so there is no cycle; Unproven relations derive
+    nothing; 23.1.2's general term stays undefined. The rule changes which records are derived, not any verdict.
+  - Supersedes, for 2a-2 and 2g-5, because R4-M94's rules match by atom, candidate and view and so lose an independent report
+    (`cf-g-reassign`) and report one failure twice (`rv-g-param`), its recorded limits, and two rounds found no general definition:
+    R4-M94's merge rules 1 and 2 (2a0-D §7), OQ-4 (b) and OQ-3 items (2) and (9); PD11's first half, and its second half with A3
+    E7's merge sentence, which rule 2 had replaced (W records these conflicts as derived instead of dropping them); 2a0-D §5.1's
+    m-write4 expectation (its pinned test stays, as a conforming result), its planned STATUS record and H11's item; 2a0-D §10's
+    2a-2 done-condition exception and the expectations of m-store, jregion2, m-twice/same-root, g-return, `rv-g-param` and
+    `cf-g-reassign`; 2a0-D §9's planned records of N-6's residual and the DOUBLE; 2g-5's A5-F4 and A5-F7 escape parts. The
+    PreparedInput pair stays grouping. Updates that travel with 2a-2: DIAGNOSTICS §4.3's "Other ownership problems of the function
+    stay direct" gains this derived kind, and its invariant if H3 keeps the Loan code (R5's contract); PLAN G113's E12 sentence.
+  - Order: a prototype round over 2a-2's list and the proposal's §3 rows with its repair check (a difference returns to the owner);
+    then one SPEC session before 2a-2's design review; 2a-2's merge part takes the full process, starting from the proposal's
+    direction (H): MirBorrows' direct bit per (Loan, holder), the per-store fixed-part check and the link from a MIR transfer to its
+    relation row; R5 reviews H3's publication of MIR-to-MIR causes (DIAGNOSTICS §4.3's invariant).
+  - Rejected: a general definition in 23.1.2 (rounds 1 and 2: required failures made optional, cycles); an arrival test by Origins
+    (fixed Origins are shared names and regions are flow-insensitive); calls without the call clause (`return id(local@ref)` and
+    `rv-g-param` would stay independent); R, the same rule as an implementation contract only; H, rules 1 and 2 as approved.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -983,9 +983,9 @@ Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the se
   definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
   between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
   as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
-  Round 3 writes W out for review: the sentence, the readings of 2a-2's cases (m-write4's write conflict becomes derived, a named
-  change), the implementation direction and the departures from R4-M94. Planned mapping: §15.6.5, §14.8.3, §15.8.2. The owner's
-  answers to round 1 are not applied.
+  Round 3 writes W out; it passed its review with fixes, a re-check and a confirmation
+  (`Sketches/R4 Proposals 2026-10-21/review-p2r3.md`), and DECISIONS R4-M104 adopts it. Planned mapping, after the prototype round
+  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied.
 - Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
 
 ## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
