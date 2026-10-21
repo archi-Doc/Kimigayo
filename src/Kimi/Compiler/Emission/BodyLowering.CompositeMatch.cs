@@ -143,7 +143,8 @@ internal sealed partial class BodyLowering
 
                 offset += shape.PayloadOffset;
                 shape = cases[selected.Ordinal];
-                type = AdtDef.CaseTypes(type)![selected.Ordinal];
+                // D5 exception (the owner's Q-O3; DECISIONS BU-24): a declared payload Type states no raw Origin. Removed at R6-gen.
+                type = this.matchBody!.Function.CodeContext.Compilation.Binding.WithoutRawOrigins(AdtDef.CaseTypes(type)![selected.Ordinal])!;
             }
             else if (parent.Kind != BoundPatternKind.Tuple)
             {

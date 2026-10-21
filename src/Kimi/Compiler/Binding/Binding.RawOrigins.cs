@@ -29,12 +29,16 @@ internal enum RawStep : byte
 //   the label's own step is not), the step of a raw Origin (StepOf), the region one names (RegionOf), a substituted one (Restep, G1:
 //   it keeps the step of the Origin it replaces), the Origin a `during self` layer is read with at a Place (ReadHolder), a layer's
 //   OwnedOrigins member (OwnedOrigin), the relations with an unstated end (UnstatedRelation, rulings S4), and the allowlist of a
-//   `during self` layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)).
+//   `during self` layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)). D5 exception (the owner's Q-O3,
+//   DECISIONS BU-24): the old paths' view of a Type, every raw layer's Origin dropped (WithoutRawOrigins), read only at their Type
+//   intake and removed with them (the old analysis's at R6-check, Emission's at R6-gen).
 // - Inputs: bound Types; a signature's input Types and a declaration's schema after the requirement fixed point (StepOf); PathOrigin.
 // - Outputs: raw Origins, steps, relation verdicts and the OriginRelation failure facts of the allowlist.
 // - Invariants: Shared(L) is interned per L and occurs only as a raw layer's Origin; Holder only in stored shapes, which every read
 //   replaces; Unstated only in relations and their records, never in a Type; RegionOf maps Shared(L) to L before any relation is
-//   formed, so no premise, obligation or row names Shared, Holder or Unstated (design-final §13 A2).
+//   formed, so no premise, obligation or row names Shared, Holder or Unstated (design-final §13 A2). A published raw Origin always
+//   has a step (formation reports an Origin StepOf cannot classify, InvalidRawOrigin, and a mixed pair follow states its shared view,
+//   FollowStep): PublishedStep's throw is unreachable, and Reached records InternalInvariant_Kd at the dereference.
 // - Prohibitions: no region, Loan or retention facts, no Place walk of its own (PathOrigin is PlaceAuthority's), no message text.
 public sealed partial class Binding
 {
@@ -98,6 +102,34 @@ public sealed partial class Binding
     // unstated pointer or an address, outlives the claimed one.
     internal bool ClaimFits(ConversionKoto claim, BoundOrigin claimed)
         => this.ProvesOriginOutlives(RegionOf(claim.Left.BoundType?.RawOrigin) ?? BoundOrigin.Unstated, RegionOf(claimed)!, claim);
+
+    // D5 exception (the owner's Q-O3, 2026-10-22; DECISIONS BU-24): the old paths' view of a Type, with every raw layer's Origin
+    // dropped. The old analysis and Emission compare Types by reference, so they read each Type through this view at their Type
+    // intake (OwnershipAnalysis.Place, OwnershipBody.Resolve, Emission's AdtDef.CaseTypes reads); removed with them (R6-check, R6-gen).
+    internal BoundType? WithoutRawOrigins(BoundType? type)
+    {
+        if (type is null || !type.CarriesRawOrigin)
+        {
+            return type;
+        }
+
+        var components = this.RentTypes(type.Components.Count);
+        try
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.WithoutRawOrigins(type.Components[i])!;
+            }
+
+            var parts = components.AsSpan(0, type.Components.Count);
+            return type.Kind == BoundTypeKind.Semantics && type.Semantics == SemanticsKind.Raw
+                ? this.types.Pointer(parts[0]) : this.types.Rebuild(type, parts, type.Origin, (BoundOrigin[])type.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
 
     // SPEC 15.2.3, 5.7: a layer's member of OwnedOrigins: its Origin, or its raw Origin's region other than `self`.
     private static BoundOrigin? OwnedOrigin(BoundType type) => type.Origin ?? (type.RawOrigin is { Kind: not OriginKind.Holder } raw ? RegionOf(raw) : null);
@@ -230,9 +262,8 @@ public sealed partial class Binding
         return shared;
     }
 
-    // The step of a published raw Origin (design-final §7.3): total, since formation reports an Origin StepOf cannot classify
-    // (InvalidRawOrigin) and every formation through a mixed pair follow states its shared view (FollowStep), so none is a broken
-    // contract that ends the analysis without recovery.
+    // The step of a published raw Origin, which a rewriter's image keeps (design-final §7.3): total by the contract above; a raw Origin
+    // without one is a broken contract that ends the analysis, since a rewriter has no node to locate it at.
     private RawStep PublishedStep(BoundOrigin? raw)
         => this.StepOf(raw) ?? throw new InvalidOperationException($"The published raw Origin `{raw}` has no step (InternalInvariant).");
 

@@ -154,7 +154,8 @@ internal sealed partial class BodyLowering
                 }
 
                 layout = cases[selected.Ordinal];
-                type = AdtDef.CaseTypes(type)![selected.Ordinal];
+                // D5 exception (the owner's Q-O3; DECISIONS BU-24): a declared payload Type states no raw Origin. Removed at R6-gen.
+                type = body.Function.CodeContext.Compilation.Binding.WithoutRawOrigins(AdtDef.CaseTypes(type)![selected.Ordinal])!;
                 offset = ownerLayout.PayloadOffset;
             }
             else if (ownerLayout.Cases is not null || body.Places[plan.Place].Source is not (TupleLiteralKoto or ArrayLiteralKoto or DictionaryLiteralKoto))
@@ -218,7 +219,8 @@ internal sealed partial class BodyLowering
                 }
 
                 shape = cases[selected.Ordinal];
-                type = AdtDef.CaseTypes(type)![selected.Ordinal];
+                // D5 exception (the owner's Q-O3; DECISIONS BU-24): a declared payload Type states no raw Origin. Removed at R6-gen.
+                type = body.Function.CodeContext.Compilation.Binding.WithoutRawOrigins(AdtDef.CaseTypes(type)![selected.Ordinal])!;
                 offset = owner.PayloadOffset;
             }
             else if (type.Kind != BoundTypeKind.Tuple)

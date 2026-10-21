@@ -3612,8 +3612,18 @@ resumed by R4-M86 (2026-10-20).
   `Restep` has no node for a located `InternalInvariant_Kd`. R4 agreed to C1b's lines in `JudgeCallFit` and `JudgeOriginAtoms`.
   Q-O3 is not moot (correcting C1a and C3 above): the old paths compare a stored Field's or Case's Type (`Holder`) with the read
   node's Type by reference, so legacy code generation of a `during self` layer, and of a comparison of pointers stating different
-  Origins, is `GenerationFailed_Kd` (Internal). Measured over 176 programs (30 such); erasing raw Origins at
-  `OwnershipAnalysis.Place`, `OwnershipBody.Resolve` and Emission's `AdtDef.CaseTypes` reads makes all 30 run; Q-O3 is with the owner.
+  Origins, is `GenerationFailed_Kd` (Internal). Measured (q-o3-measure, 2026-10-22): 176 programs (126 test programs of the raw
+  classes, the review's 38 probes, 7 SPEC §5.4–§5.7 programs, 5 Case and holder programs); no program the pre-C1b compiler emitted
+  changed; 30 checked clean and failed legacy emission (24 at `ValidateValues`' Alias fit, 3 at `TryBorrowedPathOffset`, 2 at a Case
+  payload's Type, then the composite match, 1 at a scalar comparison's operand Types); erasing at the three intakes below made all
+  30 emit and run with their expected output and changed no other verdict or output; erasing at the Place intake alone broke 28
+  programs that emitted.
+  Q-O3 (owner, directly, 2026-10-22): 「D5 例外を認める (推奨)」. D5 exception: the old paths read every Type through
+  `Binding.WithoutRawOrigins` (one view: every raw layer's Origin dropped) at their Type intake: `OwnershipAnalysis.Place` and
+  `OwnershipBody.Resolve` together (removed with the old analysis at R6-check) and Emission's `AdtDef.CaseTypes` reads in
+  `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (removed at R6-gen). `RawStorageTest`'s `RawOriginLegacy`
+  fixtures emit and run the measured programs and B1's newly valid forms on the default pipeline. Ruling on `PublishedStep`:
+  `Reached` records a located `InternalInvariant_Kd` at the dereference; `Restep`'s throw stays, unreachable by Raw Origins' contract.
 
 ## R5 and R6 (adopted 2026-10-18)
 

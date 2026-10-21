@@ -202,7 +202,9 @@ first. IntrinsicId returns to 30 at R8.
   for a Binding that selects a pair layer, including forms dev bound by value or followed structurally and ran, until R6-check
   (DECISIONS BU-14), and the owner's exception for G140 (2026-10-21): performance fixes in the old Analysis with identical
   verdicts (CleanupObservesBorrows' per-query depth-monotone memo, HasProjection's gate, AggregateCanComplete's memo,
-  VerifyBorrows' per-Place AddType set; DECISIONS BU-19).
+  VerifyBorrows' per-Place AddType set; DECISIONS BU-19), and the owner's exception for Q-O3 of G160 (2026-10-22): the old
+  paths read Types without raw Origins (`Binding.WithoutRawOrigins`) at `OwnershipAnalysis.Place` and `OwnershipBody.Resolve` until
+  R6-check and at Emission's `AdtDef.CaseTypes` reads until R6-gen (DECISIONS BU-24).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.

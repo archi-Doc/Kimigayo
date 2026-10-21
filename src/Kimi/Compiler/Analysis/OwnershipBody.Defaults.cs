@@ -280,7 +280,10 @@ public sealed partial class OwnershipBody
 
     // SPEC 7.2.3, 8.15: declared information is interpreted once per stage, in a fixed order: the context's call, recorded when
     // its interval began and already composing every enclosing default's substitution, then the body's case or instance.
-    internal BoundType? Resolve(BoundType? type, InterpretationContext context) => this.Concrete(this.SubstituteDefaults(type, context));
+    // D5 exception (the owner's Q-O3; DECISIONS BU-24): the Type read states no raw Origin, as a Place's does. Removed with the old
+    // analysis (R6-check).
+    internal BoundType? Resolve(BoundType? type, InterpretationContext context)
+        => this.Function.CodeContext.Compilation.Binding.WithoutRawOrigins(this.Concrete(this.SubstituteDefaults(type, context)));
 
     // The default stage alone, for a consumer that applies its own closed call instead of this body's case or instance.
     internal BoundType? SubstituteDefaults(BoundType? type, InterpretationContext context)

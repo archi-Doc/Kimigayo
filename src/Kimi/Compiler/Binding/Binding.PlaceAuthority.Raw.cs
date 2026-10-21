@@ -78,17 +78,17 @@ public sealed partial class Binding
         switch (step)
         {
             case PathStep.Follow when next.BoundType is { } followed && this.LayerStep(followed) is not null:
-                return this.Reached(followed);
+                return this.Reached(followed, source);
             case PathStep.PairFollow or PathStep.RawFollow when next.BoundType is { } layer:
-                return this.Reached(layer);
+                return this.Reached(layer, source);
             case PathStep.UserIndex when ElementAccess.IndexerCall(source, exclusive: false)?.BoundType is { } element:
-                return this.Reached(element);
+                return this.Reached(element, source);
             case PathStep.SliceElement:
                 return new(true, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin, RawStep.Shared);
             case PathStep.Receiver when source.BoundSymbol is { } receiver:
                 return new(false, this.ReceiverOrigin(receiver), RawStep.Exclusive);
             case PathStep.Member or PathStep.BorrowedElement or PathStep.InlinePart when this.InnermostLayer(next.BoundType) is { } layer:
-                return this.Reached(layer);
+                return this.Reached(layer, source);
             case PathStep.Follow or PathStep.BorrowedElement or PathStep.ArrayElement or PathStep.Member or PathStep.InlinePart:
                 return null;
             default:
@@ -110,12 +110,20 @@ public sealed partial class Binding
     }
 
     // The layer a path dereferences: a raw pointer's Origin and step, a borrow's outer Origin and mode, or a pair layer's with its
-    // weakest borrow case's mode (FollowStep); Dereferences is null for a pair layer admitting a non-borrow case (U2).
-    private RawPath Reached(BoundType layer)
+    // weakest borrow case's mode (FollowStep); Dereferences is null for a pair layer admitting a non-borrow case (U2). A raw Origin
+    // without a step breaks RawOrigins' contract: InternalInvariant_Kd at the dereference `at`.
+    private RawPath Reached(BoundType layer, Koto at)
     {
         if (layer.Semantics == SemanticsKind.Raw && layer.Kind == BoundTypeKind.Semantics)
         {
-            return new(true, layer.RawOrigin, this.PublishedStep(layer.RawOrigin));
+            var raw = layer.RawOrigin;
+            if (this.StepOf(raw) is not { } step)
+            {
+                this.Fail(at, BindingFailure.Internal);
+                return new(true, raw, RawStep.Unstated);
+            }
+
+            return new(true, raw, step);
         }
 
         var mode = TryPairLayer(layer, out _, out _) ? FollowStep(this.LayerAdmitted(layer)) : this.LayerStep(layer);
