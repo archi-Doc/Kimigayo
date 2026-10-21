@@ -292,7 +292,7 @@ public sealed partial class Binding
             {
                 if ((atoms[j].Input == Retention.Result || atoms[j].Writable) && IsFixed(atoms[j]))
                 {
-                    environment.Closure.AddEdge(longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
+                    AddPremiseEdge(environment, longer, this.AtomNode(environment, atoms[j]), OriginPremiseRule.Input);
                 }
             }
         }
@@ -327,7 +327,7 @@ public sealed partial class Binding
             nodes[i] = this.AtomNode(environment, atoms[i]);
             if (atoms[i] is { Carrier: not null, Layer: { } layer })
             {
-                environment.Closure.AddEdge(nodes[i], this.PremiseNode(environment, layer), OriginPremiseRule.Input);
+                AddPremiseEdge(environment, nodes[i], this.PremiseNode(environment, layer), OriginPremiseRule.Input);
             }
         }
 

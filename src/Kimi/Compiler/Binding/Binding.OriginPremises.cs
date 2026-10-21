@@ -35,6 +35,12 @@ public sealed partial class Binding
         }
     }
 
+    // The one writer of the premise graph's edges, by node: `longer` outlives `shorter` under `rule` in the Semantics cases
+    // `condition` (none: every case). The catalog's premises (AddPremise, AddStoredPremises) and retention's carrier and erased-callable
+    // relations (Binding.Retention.cs) all write through it.
+    private static void AddPremiseEdge(OriginPremiseEnvironment environment, int longer, int shorter, OriginPremiseRule rule, ulong condition = 0)
+        => environment.Closure.AddEdge(longer, shorter, rule, condition);
+
     // SPEC 15.3.6 (PLAN G74): whether the premises visible at `use` entail `longer outlives shorter`, both resolved at the use.
     // The structural instances of reflexivity, `static`, anchors and meets (I1-I4) answer first. Otherwise one environment
     // collects the catalog's premises (OriginPremiseRule) as the edges of a finite graph over the Origin expressions they name,
@@ -132,10 +138,10 @@ public sealed partial class Binding
     {
         var a = this.PremiseNode(environment, longer);
         var b = this.PremiseNode(environment, shorter);
-        environment.Closure.AddEdge(a, b, rule);
+        AddPremiseEdge(environment, a, b, rule);
         if (equality)
         {
-            environment.Closure.AddEdge(b, a, rule);
+            AddPremiseEdge(environment, b, a, rule);
         }
     }
 
@@ -308,12 +314,12 @@ public sealed partial class Binding
 
         if (this.StoredSlot(type, environment.Use, out var slot) is { } origin)
         {
-            environment.Closure.AddEdge(this.PremiseNode(environment, origin), shorter, rule, condition | slot);
+            AddPremiseEdge(environment, this.PremiseNode(environment, origin), shorter, rule, condition | slot);
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            environment.Closure.AddEdge(this.PremiseNode(environment, type.OriginArguments[i]), shorter, rule, condition);
+            AddPremiseEdge(environment, this.PremiseNode(environment, type.OriginArguments[i]), shorter, rule, condition);
         }
 
         for (var i = 0; i < type.Components.Count; i++)
