@@ -1,8 +1,8 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns compiler/library identities and the disposition of each compiler operation.
-// Input: CompilerFunctionKind. Output: a Kimigayo implementation, intrinsic or shim disposition.
-// Each operation has one disposition; temporary intrinsics keep their recorded removal stage.
+// Owns compiler/library identities, the disposition of each compiler operation and the intrinsic Contract table.
+// Input: CompilerFunctionKind; IntrinsicKind. Output: a Kimigayo implementation, intrinsic or shim disposition; an intrinsic Contract's row.
+// Each operation has one disposition and each intrinsic Contract one row; temporary intrinsics keep their recorded removal stage.
 // Must not create a second intrinsic allowlist or hand-written library path.
 
 using Kimi.Compiler.Parsing;
@@ -20,6 +20,40 @@ public enum IntrinsicKind : byte
     Sealed,
     ObjectPayload,
     PrimitiveInteger,
+}
+
+// The intrinsic Contract table (SPEC 8.7.1; DECISIONS R4-M89, package 2b-D §3.4): how Binding decides each compiler-intrinsic Contract.
+// Input: an IntrinsicKind. Output: its row, which ProveConstraint, a Contract's Self clause, a struct's or enum's Self clause (plain
+// or conditional) and conformance verification read.
+// Invariants: one row per IntrinsicKind, None (a declared Contract) included; a new intrinsic adds a row, never a case at a reader.
+// Must not: judge a capability (the capability engine's) or decide a conformance's members (contract matching's).
+
+/// <summary>A row of the intrinsic Contract table.</summary>
+internal readonly record struct IntrinsicContract
+{
+    /// <summary>Gets a value indicating whether the capability engine judges <c>T is K</c> (SPEC 8.7.2–8.7.4, 15.2.3).</summary>
+    internal bool Judged { get; init; }
+
+    /// <summary>Gets the failure of <c>Self is K</c> in a struct or enum declaration; None when it declares a conformance (SPEC 8.7.1).</summary>
+    internal BindingFailure Declaration { get; init; }
+
+    /// <summary>Gets a value indicating whether a Contract's <c>Self is K</c> is a requirement and a premise (SPEC 8.7.1, 8.7.3).</summary>
+    internal bool SelfRequirement { get; init; }
+
+    /// <summary>Gets a value indicating whether a conformance to K, declared or an ancestor's, is decided by the judgment, not by matching.</summary>
+    internal bool ConformanceJudged { get; init; }
+
+    internal static IntrinsicContract Of(IntrinsicKind kind) => kind switch
+    {
+        IntrinsicKind.None => default,
+        IntrinsicKind.Copy => new() { Judged = true, SelfRequirement = true, ConformanceJudged = true }, // Derived Copy (SPEC 3.5.2).
+        IntrinsicKind.Owned => new() { Judged = true, SelfRequirement = true, ConformanceJudged = true }, // A checked assertion.
+        IntrinsicKind.Callable => new() { Declaration = BindingFailure.InvalidConstraint }, // Bound as a Callable Constraint, never a Contract one.
+        IntrinsicKind.Sealed => new() { Judged = true, Declaration = BindingFailure.InvalidConstraint, ConformanceJudged = true },
+        IntrinsicKind.ObjectPayload => new() { Judged = true, Declaration = BindingFailure.InvalidSelfClause, SelfRequirement = true }, // Never granted.
+        IntrinsicKind.PrimitiveInteger => new() { Judged = true, Declaration = BindingFailure.ClosedContractConformance }, // Twelve integer Types (8.7.4).
+        _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+    };
 }
 
 /// <summary>Identifies a compiler-provided language function implementation.</summary>
