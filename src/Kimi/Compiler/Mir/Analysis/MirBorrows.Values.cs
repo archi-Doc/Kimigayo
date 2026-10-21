@@ -63,13 +63,13 @@ internal sealed partial class MirBorrows
     private int Read(ulong[] state, MirPlace place)
     {
         var value = this.Root(state, place.Root);
-        var count = this.Walk(place, reborrow: false, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
             value = this.walk[i].Class switch
             {
-                StepClass.Shared or StepClass.Uniq => this.Content(state, value),
-                StepClass.Raw => this.escapedSet,
+                MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, value),
+                MirStepClass.Raw => this.escapedSet,
                 _ => value,
             };
         }
@@ -81,18 +81,18 @@ internal sealed partial class MirBorrows
     private (int Value, int Own) Issued(ulong[] state, MirPlace place, bool reborrow, int loan)
     {
         var (layer, parents) = (this.Root(state, place.Root), 0);
-        var count = this.Walk(place, reborrow, ref this.walk);
+        var count = this.placeSteps.Walk(this.body, place, reborrow, ref this.walk);
         for (var i = 0; i < count; i++)
         {
             switch (this.walk[i].Class)
             {
-                case StepClass.Shared:
+                case MirStepClass.Shared:
                     (parents, layer) = (layer, this.Content(state, layer));
                     break;
-                case StepClass.Uniq:
+                case MirStepClass.Uniq:
                     (parents, layer) = (this.sets.Union(parents, layer), this.Content(state, layer));
                     break;
-                case StepClass.Raw:
+                case MirStepClass.Raw:
                     (parents, layer) = (this.sets.Union(parents, this.escapedSet), this.escapedSet);
                     break;
             }

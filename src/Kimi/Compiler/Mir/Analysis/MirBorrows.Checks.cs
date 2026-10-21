@@ -35,7 +35,7 @@ internal sealed partial class MirBorrows
 
     // Two steps after equal prefixes may select the same storage (A3 3): a runtime index meets every index; distinct Fields, constant
     // indices, bases and Downcasts are disjoint.
-    private static bool Meets(in Step left, in Step right)
+    private static bool Meets(in MirStep left, in MirStep right)
     {
         if (left.Kind == MirProjectionKind.Index || right.Kind == MirProjectionKind.Index)
         {
@@ -48,7 +48,7 @@ internal sealed partial class MirBorrows
 
     // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none: one whose failure its template
     // owns, by the operation's scope and reservation (-1: none), is skipped and the scan goes on (D11), so it hides no later one.
-    private int Conflict(int root, ReadOnlySpan<Step> steps, AccessKind kind, int taking, int scope, int reservation)
+    private int Conflict(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking, int scope, int reservation)
     {
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
@@ -65,7 +65,7 @@ internal sealed partial class MirBorrows
     // destruction or write key with any mode (err(destroy) too), a read, shared borrow or read key with a unique one, an activation with
     // one shared in the holder found (R4-M68: an exclusive Loan that hits the reservation was met where the later Borrow was formed or
     // activated, SPEC 15.6.7).
-    private bool Conflicts(int c, int root, ReadOnlySpan<Step> steps, AccessKind kind, int taking)
+    private bool Conflicts(int c, int root, ReadOnlySpan<MirStep> steps, AccessKind kind, int taking)
     {
         ref readonly var candidate = ref this.candidates[c];
         this.Work++;
@@ -77,7 +77,7 @@ internal sealed partial class MirBorrows
     // hits(A, X, k) (A3 5, E1, E3): within(A, X), or within(X, A) where the access is deep, or no borrow or raw Deref of X lies below A, or
     // it writes, destroys or activates in place a prefix of a Loan that sits in its reservation holder across borrow Derefs (E1, SPEC
     // 15.6.7); err(destroy) hits what a deep access does and the write does not (E11).
-    private bool Hits(int root, ReadOnlySpan<Step> steps, AccessKind kind, in Candidate candidate)
+    private bool Hits(int root, ReadOnlySpan<MirStep> steps, AccessKind kind, in Candidate candidate)
     {
         ref readonly var loan = ref this.loans[candidate.Loan];
         if (root != loan.Root)
@@ -103,7 +103,7 @@ internal sealed partial class MirBorrows
         var route = kind is AccessKind.Write or AccessKind.Destroy or AccessKind.ActivateInPlace or AccessKind.ObservePast && this.Reserved(candidate, kind);
         for (var i = steps.Length; i < loan.Count; i++)
         {
-            if (this.loanSteps[loan.Start + i].Class is var step && (step == StepClass.Raw || (!route && step is StepClass.Shared or StepClass.Uniq)))
+            if (this.loanSteps[loan.Start + i].Class is var step && (step == MirStepClass.Raw || (!route && step is MirStepClass.Shared or MirStepClass.Uniq)))
             {
                 return past;
             }
