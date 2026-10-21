@@ -41,12 +41,17 @@ public class PathCapabilityDiagnosticTest
     // subscripts select index, which shares the element (SPEC 4.7.1, 15.1.5; DECISIONS BU-13).
     private const string LetEntries = "func f(value: uniq/Point during a)\n    let entries: Dictionary<i32, uniq/Point during a> = [1: value@move]\n";
 
-    // Group storage: a var and a let Field, a var and a let struct, a Tuple, an object handle, a var whose setter is private and one
-    // whose setter is custom; the group's function bump has its body appended.
+    // An object Type D derived from B, for an upcast (SPEC 13.6.2).
+    private const string Upcast = "open struct B\n    public init() => ()\nstruct D: B\n    public init() => ()\n";
+
+    // Group storage: a var and a let Field, a var and a let struct, a Tuple, object handles (var and let ones of a derived Type), a var
+    // whose setter is private and one whose setter is custom; the group's function bump has its body appended.
     private const string Statics =
         "struct Point\n    public var x: i32 = 0\n    public init() => ()\nfunc take(x: uniq/i32) -> () => x@follow = 1\n" +
+        "open struct Shape\n    public var size: i32 = 0\n    public init() => ()\nstruct Circle: Shape\n    public init() => ()\n" +
         "group State\n    public var counter: i32 = 0\n    public let limit: i32 = 5\n    public var point: Point = Point.init()\n" +
         "    public let fixed: Point = Point.init()\n    public var pair: (i32, i32) = (1, 2)\n    public var handle: obj/Point = Point.init()@obj\n" +
+        "    public var circle: obj/Circle = Circle.init()@obj\n    public let ring: obj/Circle = Circle.init()@obj\n" +
         "    public var guarded: i32 = 0\n        private set\n    public var custom: i32 = 0\n" +
         "        set(value: i32) -> () => State.counter = value\n    public func bump()\n";
 
@@ -61,6 +66,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("func f(v: ref/i32) -> uniq/i32 during v => v@follow@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f(v: ref/i32) -> uniq/i32 during v => v@follow@uniq/i32", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) -> uniq/i32 during r => r.n@uniq/i32", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(Upcast + "func f(r: ref/(obj/D))\n    let x = r@follow@objuniq/B", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nview[0] = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) -> string => r.f@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f(x: i32) => x = 2", DiagnosticCode.InvalidAssignment_Kd)]
@@ -129,6 +135,8 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f() => take(State.counter@uniq/i32)", "State.counter@uniq/i32", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.counter@raw", "State.counter@raw", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.handle@objref", "State.handle@objref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.circle@objref/Shape", "State.circle@objref/Shape", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.circle@objuniq/Shape", "State.circle@objuniq/Shape", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is ref\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is owner or ref\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.counter@s", "State.counter@s", DiagnosticCode.Unsupported_Kd)]
@@ -139,6 +147,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f()\n    let r = State.custom@uniq", "State.custom@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@uniq", "State.fixed.x@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.ring@objuniq/Shape", "State.ring@objuniq/Shape", DiagnosticCode.InvalidAssignment_Kd)]
     public void AQualifiedStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
     {
         var source = Statics + body + "\npublic func main() => ()\n";

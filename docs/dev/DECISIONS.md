@@ -2775,22 +2775,24 @@ resumed by R4-M86 (2026-10-20).
 - **BU-18** (2026-10-21; the BU planning session; A5 step 2 plan unit 2b-6 (a) under R4-M89 PD12 (i) and R4-M90 PQ-1, PLAN G100; one
   design, one review (ACCEPT WITH NON-BLOCKING; its follow-up below)) A written Borrow that SPEC lends of a static Field reached
   through its qualified name, or of a Field or element below it (SPEC 15.6.2's static root, 15.6.4, 11.2), is Binding's located
-  `Unsupported_Kd`, in the forms routed through `BorrowFailure`: `@ref`, `@uniq`, typed (`@uniq/i32`), `@raw`, `@objref`, `@objuniq`
-  and a case adaptation (`State.counter@s`), as an argument and inside the group (`State.counter@uniq`, `State.point.x@uniq`,
-  `State.pair.0@uniq`, `State.values[0]@uniq`). Representation (`Binding.PlaceAuthority`): `LendsPlace`, the former
-  `BorrowablePlace`, decides as SPEC lends, a static Field being a root Place lent as its accessors allow, and reports that root
-  (`staticRoot`, a node because the member's one bool parameter is the mode); `BorrowablePlace`, which every other consumer reads,
-  lends only without one, so nothing newly binds; `BorrowFailure` is the one diagnostic for a written Borrow it denies, read by those
-  arms in place of their ternaries and literals: `Unsupported_Kd` for a lent static root, else `AccessFailure` (exclusive) or
-  `InvalidAssignment_Kd` (shared). A case adaptation's shared case gets the lending check its exclusive case had, and
-  `BorrowableTemporary` decides that a function reference or an anonymous function is a Temporary Value (formerly passed in by one
-  caller), so `g@s` binds in every case as `g@uniq` does. A Borrow SPEC denies keeps its Language error (`State.limit@uniq`, a
-  private or custom setter's `@uniq`, a Field of a `let` static). Changed codes: a typed exclusive borrow gets the shorthand's
-  (`v@follow@uniq/i32` through `ref/i32` `SharedPathAccess_Kd`, a constructor's `self.total@uniq/i32` BU-15's `Unsupported_Kd`; both
-  were `InvalidAssignment_Kd`); `g@s`, `s` admitting `uniq`, binds (was `InvalidAssignment_Kd`); a case adaptation reports
-  `Unsupported_Kd` only when no case violates SPEC: a case returns `null` (`bool?`) when it holds but for a Borrow `BorrowFailure`
-  names `Unsupported_Kd`, recording nothing, and the mode loop of `CheckAdaptationRows` stops at the first failed case and keeps a
-  `null` in a local, reported once by its caller, so `State.limit@s` with `s is ref or uniq` keeps the uniq case's
+  `Unsupported_Kd`, in the forms routed through `BorrowFailure`: `@ref`, `@uniq`, typed (`@uniq/i32`), `@raw`, `@objref`, `@objuniq`,
+  an object upcast (`State.circle@objref/Shape`) and a case adaptation (`State.counter@s`), as an argument and inside the group
+  (`State.counter@uniq`, `State.point.x@uniq`, `State.pair.0@uniq`, `State.values[0]@uniq`). Representation
+  (`Binding.PlaceAuthority`): `LendsPlace`, the former `BorrowablePlace`, decides as SPEC lends, a static Field being a root Place
+  lent as its accessors allow, and reports that root (`staticRoot`, a node because the member's one bool parameter is the mode);
+  `BorrowablePlace`, which every other consumer reads, lends only without one, so nothing newly binds; `BorrowFailure` is the one
+  diagnostic for a written Borrow it denies, read by those arms in place of their ternaries and literals: `Unsupported_Kd` for a lent
+  static root, else `AccessFailure` (exclusive) or `InvalidAssignment_Kd` (shared). A case adaptation's shared case gets the lending
+  check its exclusive case had, and `BorrowableTemporary` decides that a function reference or an anonymous function is a Temporary
+  Value (formerly passed in by one caller), so `g@s` binds in every case as `g@uniq` does. A Borrow SPEC denies keeps its Language
+  error (`State.limit@uniq`, a private or custom setter's `@uniq`, a Field of a `let` static). Changed codes: a typed exclusive
+  borrow gets the shorthand's (`v@follow@uniq/i32` through `ref/i32` `SharedPathAccess_Kd`, a constructor's `self.total@uniq/i32`
+  BU-15's `Unsupported_Kd`; both were `InvalidAssignment_Kd`), as does a typed object upcast (`r@follow@objuniq/B` through
+  `ref/(obj/D)`); `g@s`, `s` admitting `uniq`, binds (was `InvalidAssignment_Kd`); a case adaptation reports `Unsupported_Kd` only
+  when no case violates SPEC: a case returns `null` (`bool?`) when it holds but for a Borrow `BorrowFailure` names `Unsupported_Kd`,
+  recording nothing, and the mode loop of `CheckAdaptationRows` stops at the first failed case and keeps a `null` in a local,
+  reported once by its caller; an upcast case judges its Types (`ObjectUpcastFits`, split from `BindObjectUpcast` with
+  `ObjectUpcastResult`), then its Borrow, then its result, so `State.limit@s` with `s is ref or uniq` keeps the uniq case's
   `InvalidAssignment_Kd` and `State.counter@s` is `Unsupported_Kd`. Exceptions: a parenthesized operand and a shared element part
   bind as a Temporary Value (PLAN G189); below a static object handle or a pair layer the walk asks `BorrowablePlace` and reports no
   root (PLAN G100 (b)). Rejected: an `AccessFailure` arm (it also names writes and Takes and has no scope for 11.2's accessor access,

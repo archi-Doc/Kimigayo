@@ -261,7 +261,8 @@ public sealed partial class Binding
             }
         }
 
-        if (operation == ConversionBinding.ObjectUpcast && this.BindObjectUpcast(conversion, scope, source, target) is null)
+        // An upcast's Types are judged before its Borrow, whose Place may only be unsupported (null), and its result after.
+        if (operation == ConversionBinding.ObjectUpcast && !this.ObjectUpcastFits(conversion, source, target))
         {
             return false;
         }
@@ -289,6 +290,6 @@ public sealed partial class Binding
             return false;
         }
 
-        return true;
+        return operation != ConversionBinding.ObjectUpcast || this.ObjectUpcastResult(conversion, scope, source, target) is not null;
     }
 }
