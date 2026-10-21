@@ -24,8 +24,8 @@ public sealed partial class Binding
 
     /// <summary>Gets whether an Op is a construct whose parts deliver its value into its destination (SPEC 14.2, 14.3, 14.7, 14.8, 17): a
     /// block, an unsafe block, a do, an if, a match or a try, which, Binding having left it without a Type, needs a destination of the
-    /// Type its position fixes; an operation Binding left unresolved has none for its operands, so it replaces such an operand (DECISIONS
-    /// R4-M88, PLAN G121). A new HirOp member decides here whether it is one.</summary>
+    /// Type its position fixes; an operation Binding left unresolved has none for its operands, so it replaces such an operand, also a
+    /// labeled one (DECISIONS R4-M88, PLAN G121). A new HirOp member decides here whether it is one.</summary>
     /// <param name="op">The Op a node's form calls for.</param>
     /// <returns>Whether it is such a construct.</returns>
     internal static bool Construct(HirOp op) => op is HirOp.Block or HirOp.Unsafe or HirOp.Do or HirOp.If or HirOp.Match or HirOp.Try;

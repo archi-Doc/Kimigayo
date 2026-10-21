@@ -2059,14 +2059,13 @@ and migration obligations remain in force; no numeric cap changes are authorized
     resolved operands; failed or unresolved calls, statements and constructs, and tuple/array/interpolation/dictionary/for forms stay
     under G121 (owner); Logical's kept right operand is evaluated unconditionally", and (planning session with R5) it keeps every
     operand its form evaluates "except an unresolved construct whose value has no Type, which is replaced (G121)": a construct
-    (`Binding.Construct`: Block, Unsafe, Do, If, Match, Try) Binding left unresolved with no Type, also in parentheses, since no
-    destination Type holds a kept operand (built at `()`, `return v[if c => i else => missing]` and `v[(if …)]` got a finding and lost
-    the record of a move before it; under a unary operator, `v[-(if …)]`, the operator stays kept and replaces the `if`). A labeled
-    construct stays kept, so a labeled do whose exits deliver derived values keeps its body's records (`other + label l: do`); one
-    with a typed exit under an unresolved operation is built at `()`, a validator finding: a regression from dev at
-    `v[label l: do … if c => exit to l i … exit to l missing]` (dev, deriving the whole selection, reported the move before it), and as
-    on dev at `other + label l: do (or loop) … exit to l 1`. The owner chooses between option C, G121's kept-construct design and
-    accepting it. A kept-construct design the owner chooses for G121 removes the exception. `Keeps` reads the node's binding state
+    (`Binding.Construct`: Block, Unsafe, Do, If, Match, Try) Binding left unresolved with no Type, also in parentheses or labeled,
+    since no destination Type holds a kept operand (built at `()`, `return v[if c => i else => missing]`, `v[(if …)]` and
+    `v[label l: do … if c => exit to l i … exit to l missing]` got a finding and lost the record of a move before it; under a unary
+    operator, `v[-(if …)]`, the operator stays kept and replaces the `if`). The labeled case is the owner's choice (2026-10-21,
+    verbatim 「置き換えて取り込む（推奨）」, the question relayed by R5's planning session): a labeled do whose exits deliver derived
+    values is replaced too, its body's problems lost (`other + label l: do … exit to l missing`), PLAN G121's failed-construct
+    residual. A kept-construct design the owner chooses for G121 removes the exception. `Keeps` reads the node's binding state
     first and the parent's form Op once per parent (the walk's `unresolvedOperation`). Its kept right operand evaluated
     unconditionally, a Logical's moves there are definite rather than possible; A1 reports a later use as `MovedPlace_Kd` either way.
   - Part 3 (`MirBuilder.Value`, from `Operand`): a value Binding gave no Type, a construct it left unresolved or a derived value, is held
@@ -2083,17 +2082,18 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (BinaryKoto 44, IsKoto 12, ReturnKoto 4) gone; two new A1 rows, the SPEC 14 example's own `use(p)` and `pass(x@move, x)` errors,
     which the `animal is Dog` finding had hidden; no other row.
   - Residual R1 (PLAN G103): a discard of a construct Binding left untyped (`_ = if c => 1 else => missing`) is held at `()`, a
-    validator finding where a source has a Type, as on dev; a labeled construct with a typed exit under an unresolved operation (above)
-    likewise, a regression from dev under a selection. A parenthesized construct under an unresolved operation (`1 + (if c => take(s)
-    else => missing)`) is replaced: no finding, its parts' problems lost as on dev (G121). Owners: Binding's Expression Type (SPEC
-    14.9.2 rule 2, option C) or G121's kept-construct design. Opens (G121, owner): an un-annotated failed `let`, a failed match, a failed Place over a failed Place
-    (`make(s@move).missing.a`), and failed or unresolved calls with moving arguments.
+    validator finding where a source has a Type, as on dev; so is a labeled `loop` with a typed exit under an unresolved operation
+    (`other + label l: loop … exit to l 1`, as on dev: a loop is not a `Construct`). A construct under an unresolved operation, also
+    in parentheses or labeled, is replaced: no finding, its parts' problems lost (G121). Owners: Binding's Expression Type (SPEC
+    14.9.2 rule 2, option C) or G121's kept-construct design. Opens (G121, owner): an un-annotated failed `let`, a failed match, a
+    failed Place over a failed Place (`make(s@move).missing.a`), and failed or unresolved calls with moving arguments.
   - Rejected: every node Binding left unresolved on a recorded error an Error (`1babec22`: constructs and statements lost children, an
     Assign's Opaque read its target, `FailureCauses` allocated per node); Binding publishing the Expression Type now (option C:
     owner and BU scope, and rule 1 is still needed: `'A' == 65` has no operator for any Type); a MIR marker for a Type Binding did not
     form (a vocabulary entry that weakens the validator; still needs rule 1); the builder deciding derived operations (a second copy of
-    the publisher's decision); rule 2 keeping only resolved operands, or only resolved and derived ones (both lose records the base
-    reported: `once(s@move) + missing`, `other + label l: do`); Name as an operation (above); building every untyped construct's parts
+    the publisher's decision); rule 2 keeping only resolved operands (loses records the base reported:
+    `once(s@move) + missing`, `1 + (missing + once(s@move))`); keeping a labeled construct operand (a finding at `v[label l: do …]`,
+    a regression from dev; the owner's choice above); Name as an operation (above); building every untyped construct's parts
     for effect (drops the Loan a typed destination receives: `let r: ref/i32 = if c => x@ref else => missing`); a new-Error test by
     node state (reaches unresolved calls, G121); building an untyped construct operand's parts for effect (G121's kept-construct design,
     owner-reserved).
@@ -4210,7 +4210,7 @@ structure is recorded here by the unit that first implements it.
   next change.
   - R5-M84 extends the kept-operand rule: an Opaque site names a part already built by its Place's root, never by its syntax.
   - R4-M88 decides its deferred unresolved compound Places and amends its kept operands: an operation Binding left
-    unresolved keeps every operand its form evaluates but an unresolved construct without a Type.
+    unresolved keeps every operand its form evaluates but an unresolved construct without a Type, also labeled.
 - **R5-M70 Requirement Item, formatting, writer and comparison-leaf edges of the checked set** (2026-10-19, K lane; plan K6b, the K
   package's §4.3 Builtin row and §4.5 rows 2, 5, 6, 12 and 13, package F §4.5-§4.6, R5-M30; under R5-M18, R5-M61, R5-M67 and R5-M68;
   DEC Q6 form 1; the planning session accepted the Item reference rule and granted K6b `Binding.RequirementInstances.cs`) What a

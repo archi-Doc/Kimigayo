@@ -415,11 +415,11 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
     // an operand it did not resolve (`1 + (missing + once(s@move))`, a selection's index), so the problems of what it evaluates stay; one
-    // in a statement or a typed destination, `and`, a parenthesized `if` and a selection whose `if` index, also in parentheses or under
-    // a unary operator, has no Type validate now
-    // (fail-before: a finding, which stops every analysis, or, for the index, the whole selection derived). A construct, an assignment, a
-    // labeled do and a default keep their forms (a typed destination keeps the Loan its branch places), an assignment's derived value
-    // initializes its target, and a failed call's operands stay replaced (PLAN G121).
+    // in a statement or a typed destination, `and`, a parenthesized `if` and a selection whose `if` or labeled do index, also in
+    // parentheses or under a unary operator, has no Type validate now (fail-before: a finding, which stops every analysis, or, for the
+    // index, the whole selection derived), such an operand replaced with its parts. A construct, an assignment, a labeled do and a default
+    // keep their forms elsewhere (a typed destination keeps the Loan its branch places), an assignment's derived value initializes its
+    // target, and a failed call's operands stay replaced (PLAN G121).
     [Theory]
     [InlineData(Take + "func f(c: bool) -> bool\n    let s = \"x\"\n    return take(s@move, s@move) == 1 and missing\n", "MovedPlace_Kd s 1")]
     [InlineData(Take + "func f()\n    let s = \"x\"\n    _ = once(s@move) + missing\n    let t = s@move\n", "MovedPlace_Kd s 1")]
@@ -449,9 +449,19 @@ public sealed class MirInitTest(ITestOutputHelper output)
         "func index(a: string) -> isize => 1\nfunc f(v: [3 of i32])\n    let s = \"x\"\n    _ = (v[index(s@move)].missing)\n    let t = s@move\n",
         "MovedPlace_Kd s 1")]
     [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[label l: do\n        if c => exit to l i\n        exit to l missing\n    ]\n",
+        "MovedPlace_Kd s 1")]
+    [InlineData(
+        Take + "func f(c: bool, v: [3 of i32], i: isize) -> i32\n    let s = \"x\"\n    let a = once(s@move)\n    let b = once(s@move)\n" +
+        "    return v[(label l: do\n        if c => exit to l i\n        exit to l missing\n    )]\n",
+        "MovedPlace_Kd s 1")]
+
+    // The labeled do, an operand without a Type, is replaced with its body, whose problems are lost (PLAN G121's failed construct).
+    [InlineData(
         Take + "func f() -> i32\n    let s = \"x\"\n    return other + label l: do\n        _ = once(s@move)\n        _ = once(s@move)\n" +
         "        exit to l missing\n",
-        "MovedPlace_Kd s 1")]
+        "")]
     [InlineData(Take + "func f()\n    var t: string\n    t = missing\n    _ = once(t@move)\n", "")]
     [InlineData("struct S\n    var a: i32\n    public computed b: i32\n        get() -> i32 => 5\n    public init()\n        self.a = self.b\n", "UninitializedPlace_Kd self.b 1")]
     [InlineData(
