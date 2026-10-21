@@ -2063,8 +2063,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     left unresolved with no Type, also in parentheses or labeled, since no destination Type holds a kept operand (built at `()`,
     `return v[if c => i else => missing]`, `v[(if …)]` and `v[label l: do … if c => exit to l i … exit to l missing]` got a finding
     and lost the record of a move before it; under a unary operator, `v[-(if …)]`, the operator stays kept and replaces the `if`). The
-    labeled do is the owner's choice (2026-10-21, verbatim 「置き換えて取り込む（推奨）」, the question relayed by R5's planning session): an untyped
-    unresolved labeled do is replaced too, its body's problems lost (`other + label l: do … exit to l missing`), PLAN G121's
+    labeled do is the owner's choice (2026-10-21, verbatim 「置き換えて取り込む（推奨）」, the question relayed by R5's planning session;
+    confirmed to R4's planning session by the owner, 2026-10-21, 「了承します」): an untyped unresolved labeled do is replaced too, its body's problems lost (`other + label l: do … exit to l missing`), PLAN G121's
     failed-construct residual. `Loop` joins `Construct` by meaning, a planning-session decision: a loop's exits deliver its value
     (SPEC 14.6.3; a `for` or `while` gives Unit, 14.6.1), so the same replacement follows for an untyped loop, labeled or not
     (`other + label l: loop … exit to l 1` is no longer a finding). A kept-construct design the owner chooses for G121 removes the
