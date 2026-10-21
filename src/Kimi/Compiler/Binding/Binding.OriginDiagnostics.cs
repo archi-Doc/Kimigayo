@@ -240,6 +240,18 @@ public sealed partial class Binding
 
     // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
     // Type's header and listing the declared slots.
+    // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements), with that slot related.
+    private bool ReportInvalidOriginSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
+    {
+        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var slot) != true)
+        {
+            return false;
+        }
+
+        node.Report(requirement, code, evidence: [$"static cannot supply uniq for Origin slot {slot!.Name}"], note: $"Origin slot {slot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
+        return true;
+    }
+
     private bool ReportAbsentSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (this.absentSlotProjections?.TryGetValue(node, out var type) != true || node is not MemberAccessKoto { Right: IdentifierNameKoto slot } ||

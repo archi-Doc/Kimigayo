@@ -889,9 +889,9 @@ public sealed partial class Binding
         {
             ReportArity(issue.Node, arity, requirement, issue.Code);
         }
-        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.invalidStaticOriginSlots?.TryGetValue(issue.Node, out var invalidSlot) == true)
+        else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, requirement, issue.Code))
         {
-            issue.Node.Report(requirement, issue.Code, evidence: [$"static cannot supply uniq for Origin slot {invalidSlot.Name}"], note: $"Origin slot {invalidSlot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", invalidSlot.Origin.Binder!, invalidSlot.Span, "requires uniq")]);
+            // SPEC 15.2.3: an Origin slot the written binding cannot supply, at the annotation.
         }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {
