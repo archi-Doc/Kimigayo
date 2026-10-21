@@ -935,7 +935,7 @@ public sealed partial class Binding
         }
         else if (this.captureFailures?.TryGetValue(issue.Node, out var entry) == true)
         {
-            this.ReportCaptureEntry(issue.Node, entry.Capture, entry.Type, entry.Source, requirement, issue.Code);
+            this.ReportCaptureEntry(issue.Node, entry, requirement, issue.Code);
         }
         else if (this.writeTargets?.TryGetValue(issue.Node, out var target) == true)
         {

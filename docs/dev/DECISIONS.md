@@ -2807,6 +2807,47 @@ resumed by R4-M86 (2026-10-20).
   `Unsupported_Kd` (D5). Tuple and fixed-array elements through a pair layer stay Binding's `Unsupported_Kd` (`Binding.Elements`).
   Library, milestones and the diagnostic corpus unchanged. Open: PLAN G164 (valid element writes below a pair-layer receiver) and
   G179 (a user index through a pair layer). Not temporary.
+- **BU-17** (2026-10-21; the BU planning session; PLAN G163 under the full process: designs A and B, the chosen design, a design
+  review (APPROVE WITH CHANGES), two revisions after the implementer's robustness rows, design review round 2 (APPROVE WITH
+  CHANGES); the owner's answers of 2026-10-21) SPEC 16.3.1's helper borrow, a shared borrow of the whole destruction receiver, is
+  never captured. Representation: its Origin is `H = Projection[drop#HelperSlot]` (`HelperSlot = int.MinValue + 1`, beside
+  `CallResultSlot` and `ClosureValueSlot`; the binder is always a destructor, never a value or a Closure, so no reader of an
+  environment or closure-value slot meets it). The receiver table decides it: `HelperOrigin` (`Binding.Structs`) answers for the
+  bare receiver of a row with `Whole: true`, which now also means "a borrow of the whole receiver is the helper borrow"; `PlaceOrigin`
+  and `SlotOrigin` ask it first, so every value that carries the helper borrow (SPEC 15.6: Copies, retaining call results such as
+  `self.me()` and `Audit.same(self)`, aggregates, Closures, Pattern bindings of `match self`, Borrows through it such as
+  `w.buffer@ref`) carries H, while the receiver's parts keep `Projection[drop#0]` (`self.buffer@ref` stays capturable). Display: H
+  shows as `self`. No new `OriginKind`, code, requirement or `BindingFailure`. Rule: a Closure created in a drop body cannot capture
+  a binding whose Type carries H, read on Origins without flow (`CarrierOf` in `Binding.LocalRegions`: an Origin the Type names, or a
+  local region with H among its sources through `RegionContains(OriginAtUse(o, use), H)`). Judged where its facts are decided:
+  (1) where the capture is made, over the facts recorded so far: an explicit entry fails its Closure at the entry, as `[self]` does
+  (`FailHelperEntry`), and an omitted list's use fails at the use, one record per use, as contextual `self` does
+  (`Binding.Captures.FailHelperUse`); (2) once the destructor's body is bound (`JudgeHelperCaptures`, from `BindFunction`), only a
+  `var` region that gained an H-carrying source after an accepted capture: that source fails, the value whose bound enters H into the
+  region graph that reaches the binding, relating each capture it reaches (`capture`) and the declaration; the Closure stays
+  resolved. Both judge only where H is interned for that destructor (a lookup, never interning to check), but step (1)'s test
+  itself runs at every explicit entry and implicit use of every Closure in the program (a walk to the enclosing destructor,
+  allocating nothing; the unit's Bind A/B within noise). `LocalRegionSourceUse` became the evidence form of `LocalRegionSources` (each parent read through
+  `OriginAtUse` at its bound, meet operands expanded), so a carrier `CarrierOf` finds always has a source use; step (2)'s
+  fallback is `InternalInvariant_Kd` without recovery. Step (1) relates that use as `borrow` when it is not the binding's own
+  initializer. The owner's readings: OQ1 a Borrow reached through the helper borrow cannot be captured; OQ2 judged on Origins,
+  flow-insensitively, so a `var` whose region the helper borrow bounds, even by a later assignment or in a loop, cannot be
+  captured; OQ3 a local aggregate (`arr.append(self@ref)`, `let t = (self@ref, 1)`) is not "stored", which means storage that
+  outlives the body, already a Refuted Origin relation, so no store rule; N5 a Closure value a helper returns holding the helper
+  borrow (`let g = mk(self@ref); g()`) is a local holder and valid, and `func [g] …` is rejected. A Closure argument rejected at its
+  capture is not judged again at its erasure (one failure per node). R4's boundaries: no A5 part (A5 reads no atom slot; a rejected
+  capture is the rejected node's Opaque, R4-M70 option P); a store of the helper borrow or a Field borrow into the receiver's own
+  storage stays G161 (R4's A5 rule); 2a0-D's asks (PLAN G161: an atom-identity row for `self@ref` in a drop, and no A5-F4 rule
+  reading a Projection's slot as a symbol slot); `let x = self` and `(self, 1)` are R4-M4's TransferRequired gap (H1). Rejected: a new
+  `OriginKind` (a copy of Projection's meaning in every reader, the frozen old path's among them); per-Borrow finite Origins (changes
+  the old path's identity, A5-F4 and every meet); an A5 Loan rule (capture legality is Binding's, SPEC 7.7.2); a syntactic
+  initializer test (misses call results, meets, regions, aggregates); a store rule (OQ3); a capture-time judgment alone (misses a
+  `var` assigned after the capture, OQ2); giving the receiver symbol its own slot (parts reach the same root; constructors collide
+  with parameter 0, G178); failing the Closure at the body's end (round 1: other nodes had consumed the resolved Closure, so
+  `Binding.Check`'s re-proof of a resolved call's Callable constraint through the Resolved-only `BoundClosure` added an
+  `InvalidConstraint_Kd` at `Audit.see(f@ref)` and the MIR an `Unsupported_Kd` at `let h = f`); failing a capture-site node at the
+  body's end (an explicit entry has no node: `CaptureKoto` is a struct, and an unused entry `func [w] () => ()` has no use either).
+  Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 
@@ -4600,12 +4641,13 @@ structure is recorded here by the unit that first implements it.
   unless the selector's one reading (`Compilation.DefaultCodegen`) is MIR's, and fails when the two are equal. Refining PD10's
   `Expect(target, legacy, item, class)` (package C row 22), the item is one `Deviation(Id, Class, Item, Clause, Reason)` of the
   `CodegenDeviations` catalog: Class OQ7's (a), (d) or (e) (R5-M6), Item a DECISIONS entry, Clause SPEC sections; `CodegenDeviationTest`
-  checks each and that an `Expect` names it (M7 counts them). First: `instance-capability-at-check` (d; R5-M41; SPEC 23.2.2), sel's
-  check-time record of R5-M54, which the old generator reports at generation. Its tests (K13a's `GenericGenerationDiagnosticTest`
-  rows, `PrimitiveIntegerTest`'s wide division, `PipelineSwitchTest`'s test command) run check and generation in every run; the old
-  generator's own refusal facts are checked on a compilation pinned to it and go at G2 with the legacy values. The pin needs the
-  `Codegen` setter G4 removes, so R5-M73's pinned depth test (`InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`) goes by G4 at the
-  latest. The native half lands with its first native consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal
+  checks each and that an `Expect` names it (M7 counts them). First: `checked-set-at-check` (d; R5-M41; SPEC 23.2.2), sel's check-time
+  records of the checked set, R5-M54's capability records and (K13b) R5-M40's and R5-M44's resource limits, which the old generator
+  reports at generation. Its tests (K13a's `GenericGenerationDiagnosticTest` rows, `PrimitiveIntegerTest`'s wide division,
+  `PipelineSwitchTest`'s test command, K13b's limit rows) run check and generation in every run; the old generator's own refusal facts
+  are checked on a compilation pinned to it and go at G2 with the legacy values. The pin needs the `Codegen` setter G4 removes, so every
+  test pinned to the old generator (R5-M73's depth test `InstanceCollectorTest.TheDepthLimitCountsPlacedLevels`, K13a's and K13b's
+  pins) goes by G4 at the latest. The native half lands with its first native consumer (C5a or C7b): the fixture writers write `<stem>.deviation`, byte-equal
   in both runs, the JSON of the entry and the legacy and target stdout, exit and stderr; `compare-fixtures.ps1` counts a differing
   fixture as deviating only when both runs carry the same `.deviation` and each run's output matches its side.
   - Rejected: per-test pipeline branches and xfail markers (PD10); item and class as arguments (declared at each use); the native

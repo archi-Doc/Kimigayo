@@ -57,11 +57,29 @@ internal enum DeviationClass
 /// <summary>The deviation catalog: one entry per decided item, which every expectation of that item names (M7 counts the entries).</summary>
 internal static class CodegenDeviations
 {
-    /// <summary>K13a: an instance's operation the backend does not generate (R5-M54) rejects at check under MIR code generation.</summary>
-    internal static readonly Deviation InstanceCapabilityAtCheck = new(
-        "instance-capability-at-check",
+    /// <summary>K13a, K13b: a record of the checked set, an instance's operation the backend does not generate (R5-M54) or a generation
+    /// resource limit (R5-M40, R5-M44), rejects at check under MIR code generation.</summary>
+    internal static readonly Deviation CheckedSetAtCheck = new(
+        "checked-set-at-check",
         DeviationClass.D,
         "R5-M41",
         "23.2.2",
         "Under MIR code generation check reports the checked set's records; the old generator accepts the program and refuses it at generation.");
+
+    /// <summary>K13b: a use of an inferred C-layout instance storing a zero-sized Field is InvalidCLayout_Kd at check under MIR code
+    /// generation.</summary>
+    internal static readonly Deviation InferredCLayoutAtCheck = new(
+        "inferred-clayout-at-check",
+        DeviationClass.A,
+        "R5-M55",
+        "6.7.1 8.15.3",
+        "MIR code generation reports the Language error at check; the old generator accepts the program and reports a resource limit at generation. Native outcomes stay equal.");
+
+    /// <summary>K13b: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at check under MIR code generation.</summary>
+    internal static readonly Deviation OversizedLayoutAtCheck = new(
+        "oversized-layout-at-check",
+        DeviationClass.A,
+        "R5-M52",
+        "8.15.3 23.2.2",
+        "MIR code generation reports the Language error at check; the old generator accepts the program and reports its size limit at generation. Native outcomes stay equal (R5-M52: no R5-M6 row); this entry covers the diagnostic expectation R5-M85's form introduced.");
 }

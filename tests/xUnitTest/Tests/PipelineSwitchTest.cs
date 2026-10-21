@@ -180,7 +180,7 @@ public sealed class PipelineSwitchTest
             const string Half = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\n";
             project.AddSource("main.kimi", Half + "#Test\nfunc wide()\n    let result = half(10@i128)\n");
             var c = project.PrepareTests(TestContext.Current.CancellationToken);
-            Assert.Equal(Codegen.Expect(true, false, CodegenDeviations.InstanceCapabilityAtCheck), c is null);
+            Assert.Equal(Codegen.Expect(true, false, CodegenDeviations.CheckedSetAtCheck), c is null);
             var stem = Path.Combine(directory, "tests");
             var paths = new ArtifactPaths(stem + ".ll", stem + ".link.json", stem + ".link.build.json", stem + ".O2");
             Assert.False(c is not null && project.PublishArtifacts(c, paths, null, out _));
@@ -232,7 +232,7 @@ public sealed class PipelineSwitchTest
             var project = new Project(new Kimigayo(console)) { Name = "oversized", Directory = directory };
             project.AddSource("main.kimi", Over + "\nlet x = 1\n");
             Assert.False(await project.Generate(TestContext.Current.CancellationToken));
-            Assert.Contains("GenerationResourceLimit_Kd", console.Text, StringComparison.Ordinal);
+            Assert.Contains(Codegen.Expect("OversizedLayout_Kd", "GenerationResourceLimit_Kd", CodegenDeviations.OversizedLayoutAtCheck), console.Text, StringComparison.Ordinal);
         }
         finally
         {

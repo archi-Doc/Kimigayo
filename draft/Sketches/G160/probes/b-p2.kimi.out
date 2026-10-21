@@ -1,0 +1,6 @@
+valueBox: var y = 2
+valueOnly: x = 5
+valueOnly: var y = 2
+valueRR: x = 5
+valueRR: var y = 2
+tupleHolder: var y = 2

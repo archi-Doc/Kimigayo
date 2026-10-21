@@ -74,7 +74,7 @@ public class PrimitiveIntegerTest
         const string Source = "func half<T>(value: T) -> T\n    T is PrimitiveInteger\n    return value / 2\nlet a = half(10)\nlet b = half(10@i128)";
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        Assert.True(c.Analyze().IsVerified == Codegen.Expect(false, true, CodegenDeviations.InstanceCapabilityAtCheck), MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analyze().IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
         c.ReportAnalysis();
         Assert.False(c.Generate(TextWriter.Null));
 

@@ -1,0 +1,12 @@
+aCallTwin: var y = 2
+aDirectTwin: x = 5
+aDirectTwin: var y = 2
+aRawOnlyTwin: x = 5
+aRawOnlyTwin: var y = 2
+bRawRaw: var y = 2
+cRawShared: var y = 2
+cRawSharedLive: x = 5
+cRawSharedLive: var y = 2
+rawValue: x = 5
+rawValue: var y = 2
+rawInit: x = 2

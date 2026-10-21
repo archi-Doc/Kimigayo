@@ -1,0 +1,28 @@
+struct KeptBox<T>
+    public var p: raw/T
+    public init(p: raw/T) => self.p = p
+    public func get(self: ref/Self) -> ref/T during self
+        unsafe => return self.p[0]@ref
+func pushShared<T>(b: ref/KeptBox<T>, v: T)
+    unsafe => Raw.initialize(b.p, v@move)
+func keptShared()
+    var x = 1
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    pushShared(b@ref, x@ref)
+    x = 5
+    inspect(b.get())
+func keptStore()
+    var x = 1
+    var b = KeptBox<ref/i32>.init(p: Raw.allocate(1))
+    let s = b@uniq
+    unsafe => Raw.initialize(s.p, x@ref)
+    x = 5
+    inspect(b.get())
+func sliceRaw(s: Slice<raw/(ref/i32 during a)>, v: ref/i32 during a)
+    unsafe => s[0][0] = v
+func viaSlice()
+    var x = 1
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    var arr: Array<raw/(ref/i32)> = [cell]
+    sliceRaw(arr.slice(), x@ref)
+    x = 5

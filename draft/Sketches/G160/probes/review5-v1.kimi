@@ -1,0 +1,17 @@
+contract Src
+    associate Item
+struct RefSrc {a}
+    Self is Src
+    associate Src.Item is ref/i32 during a
+    public init() => ()
+struct PD<S>
+    S is Src
+    let data: raw/(S.Src.Item)
+    public init() => self.data = Raw.allocate(1)
+    public func put(self: uniq/Self, v: S.Src.Item)
+        unsafe => Raw.initialize(self.data, v@move)
+func projOwner()
+    var x = 1
+    var d = PD<RefSrc>.init()
+    d.put(x@ref)
+    x = 5
