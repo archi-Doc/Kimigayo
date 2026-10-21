@@ -1,13 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Compiler;
+using Kimi.Compiler.Mir;
 using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A5-F9's default rules (SPEC 7.2.3, 15.6.4, 15.6.7; docs/dev/DECISIONS.md R4-M90, R4-M93, R4-M95): a recursive default's template
-/// call carries the Loans of every preceding argument into its value (P9), and one whose slot holds raw authority beside a Loan is a located
-/// Unsupported_Kd (r3); a template's preceding parameters are the caller's slots, which it may only inspect (R26-borrow, R26-access).</summary>
+/// <summary>A5-F9's default rules (SPEC 7.2.3, 15.6.4, 15.6.7; docs/dev/DECISIONS.md R4-M90, R4-M93, R4-M95, R4-M96): a recursive default's
+/// template call carries the Loans of every preceding argument into its value (P9), and one whose slot holds raw authority beside a Loan is a
+/// located Unsupported_Kd (r3); a template's preceding parameters are the caller's slots, which it may only inspect (R26-borrow, R26-access);
+/// an omitting call ends its inspection Loans before its checks (R-a).</summary>
 public sealed partial class MirBorrowsTest
 {
     // Recursive defaults: a generic one, a Function-typed one, one with a reserved input and a Loan-capable value (rr, round 19's
@@ -48,6 +51,52 @@ public sealed partial class MirBorrowsTest
                 exit to w 0
             exit to w putb(b, x, n - 1)
         ) -> i32 => y
+
+        """;
+
+    // Inline defaults that inspect a preceding slot (SPEC 7.2.3): copies of an existing shared borrow (same, onlyY, pickR, the generic pick
+    // and via), and an exclusive input's Reborrow kept in the result (fc, g: the template's R26-borrow, R4-M95) with its generic forms in the
+    // uniq case (grab, f2).
+    private const string Inspecting = """
+        func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+        func same(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
+        func first(x: ref/i32 during a, y: i32 = 0) -> ref/i32 during a => x
+        func onlyY(x: ref/i32 during q, y: ref/i32 during p = x) -> ref/i32 during p
+            origin q outlives p
+            return y
+        func pickR(a: ref/i32 during p, b: ref/i32 during p = a) -> ref/i32 during p => b
+        func pick<s/T>(a: s/T, b: s/T = a) -> s/T
+            s is owner or ref
+            T is Copy
+            return b
+        func grab<s/T>(a: s/T, b: s/T = a) -> i32
+            s is ref or uniq
+            return 0
+        func id<s/T>(x: s/T) -> s/T
+            s is owner or ref
+            T is Copy
+            return x
+        func via<s/T>(a: s/T, b: s/T = id(a)) -> s/T
+            s is owner or ref
+            T is Copy
+            return b
+        func f2<s/T>(x: s/T, y: s/T = x) -> ()
+            s is ref or uniq
+            return
+        struct Counter
+            public var n: i32 = 3
+            public func g(self: uniq/Self, d: ref/Counter during self = self) => ()
+
+        """;
+
+    // ReceiverDefaultTest's ReservedMethod: a default calling a method on a reserved input.
+    private const string Inspected = """
+        struct Meter
+            public var raw: i32 = 4
+            public func read(self) -> i32 => self.raw
+        func fm(m: uniq/Meter, value: i32 = m.read()) -> i32
+            m.raw = value + 1
+            return value
 
         """;
 
@@ -381,6 +430,219 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(
             ["fc: x DefaultArgumentBorrow_Kd", "fb: x@follow = 9 DefaultArgumentAccess_Kd", "excl: x DefaultArgumentBorrow_Kd"],
             Problems(c, program, DefaultCodes));
+    }
+
+    // R-a (SPEC 7.2.3, 15.6.7; R4-M90 D10): an omitting call ends its inspection Loans, those of the pending slots it moves, before its plan
+    // and checks, so its Moves of the slots meet none, and a copy's value keeps the Loans its slots' values carry. The 1c design's p15 (fc's
+    // copy keeps a Reborrow through x's slot), its form with an implicitly acquired reservation (reservedBad, round 19's dc-reserved-bad),
+    // grab's from a uniq argument (reborrowed) and a two-view generic caller's uniq view (gen, dc-gen2-bad-u) add nothing at the call: the
+    // template's Borrow is the one record (R26-borrow, R4-M95). A Loan a copy's value keeps is the caller's Language problem, also where one
+    // holder joins it with another value (joined; j1 on the path that keeps the copy; j1Clean, the copy in another holder), through a
+    // generic copy (copied, copiedGeneric), a call inside the copy (called) and a result that retains the copy alone (onlyY, dc-copied);
+    // an explicit argument's (given) and one another holder also keeps (both, copiedClean) stay. A destroying call's observing destruction
+    // (err(destroy)) reports the Loan whichever holder comes first (dz, dzSwapped). A copied existing borrow keeps its caller Loan, the
+    // problem's anchor (copied). R4-M70's default taint made each copied conflict a located Unsupported_Kd at the omitting call before.
+    [Fact]
+    public void AnOmittingCallEndsItsInspectionLoans()
+    {
+        var c = MirBuildTest.Compile(Prelude + Inspecting + """
+            func p15()
+                var n = 3
+                fc(n@uniq)
+            func reservedBad()
+                var counter = Counter.init()
+                counter.g()
+            func reborrowed(u: uniq/i32) -> i32 => grab(u)
+            func gen<s/T>(v: s/T)
+                s is ref or uniq
+                f2(v)
+            func both()
+                var k = 1
+                let p = k@ref
+                let r = same(p)
+                k = 2
+                inspect(r)
+                inspect(p)
+            func joined()
+                var k = 1
+                let r = same(k@ref)
+                k = 2
+                inspect(r)
+            func j1(c: bool)
+                var x = 1
+                var o = 2
+                let r = x@ref
+                var h = r
+                if c
+                    h = pickR(o@ref)
+                x = 2
+                inspect(h)
+            func j1Clean(c: bool)
+                var x = 1
+                var o = 2
+                let r = x@ref
+                var h = r
+                var g = o@ref
+                if c
+                    g = pickR(o@ref)
+                x = 2
+                inspect(h)
+                inspect(g)
+            func given()
+                var k = 1
+                let r = first(k@ref)
+                k = 2
+                inspect(r)
+            func copied()
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(y)
+            func copiedClean()
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(r)
+                inspect(y)
+            func copiedGeneric<s/T>(z: s/T)
+                s is owner or ref
+                T is Copy
+                var k = 1
+                let r = k@ref
+                let y = pick(r)
+                k = 2
+                inspect(y)
+            func called()
+                var k = 1
+                let r = k@ref
+                let y = via(r)
+                k = 2
+                inspect(y)
+            func copiedY()
+                var k = 1
+                let r = onlyY(k@ref)
+                k = 2
+                inspect(r)
+            func dz()
+                var x: Array<i32> = [1, 2]
+                var y: Array<i32> = [3]
+                var s = C.init(r: x@uniq)
+                let t = same(s.r@follow[0]@ref)
+                let u = s.r@follow[0]@ref
+                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                inspect(t)
+                inspect(u)
+            func dzSwapped()
+                var x: Array<i32> = [1, 2]
+                var y: Array<i32> = [3]
+                var s = C.init(r: x@uniq)
+                let u = s.r@follow[0]@ref
+                let t = same(s.r@follow[0]@ref)
+                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
+                inspect(t)
+                inspect(u)
+            """);
+        var program = Analyze(c);
+        Assert.Equal(
+            [
+                "g: self DefaultArgumentBorrow_Kd", "fc: x DefaultArgumentBorrow_Kd", "grab: a DefaultArgumentBorrow_Kd", "f2: x DefaultArgumentBorrow_Kd",
+                "both: k = 2", "joined: k = 2", "j1: x = 2", "j1Clean: x = 2", "given: k = 2", "copied: k = 2", "copiedClean: k = 2",
+                "copiedGeneric: k = 2", "called: k = 2", "copiedY: k = 2", "dz: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))",
+                "dzSwapped: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))",
+            ],
+            Problems(c, program, DefaultCodes));
+        Assert.Equal(["Anchor k@ref", "Use inspect(y)"], FactsOf(c, program, "copied"));
+    }
+
+    // R-a: a copy that only inspects its slots adds nothing at its omitting call (SPEC 7.2.3): ReceiverDefaultTest's ReservedMethod (round
+    // 19's dc-reserved-inspect: a method call on the reserved input), the 1c design's fe (a read through the reserved slot), and the
+    // omissions of p13's fb and DefaultAccessTest's fa, whose templates' Access is the one record (R4-M95).
+    [Fact]
+    public void AnInspectingCopyAddsNothingAtItsCall()
+        => Assert.Equal(
+            ["fb: x@follow = 9 DefaultArgumentAccess_Kd", "fa: x DefaultArgumentAccess_Kd"],
+            AllProblems(Inspected + """
+                func fe(x: uniq/i32, y: i32 = x@follow) => ()
+                func fb(x: uniq/i32, y: i32 = label work: do
+                    x@follow = 9
+                    exit to work 1
+                ) => ()
+                func increment(x: uniq/i32) -> i32
+                    x@follow += 1
+                    return x@follow
+                func fa(x: uniq/i32, y: i32 = increment(x)) => ()
+                func reservedInspect()
+                    var m = Meter.init()
+                    _ = fm(m@uniq)
+                func pe()
+                    var m = 4
+                    fe(m@uniq)
+                func p13()
+                    var n = 3
+                    fb(n@uniq)
+                func omittedFa()
+                    var n = 1
+                    fa(n@uniq)
+                """));
+
+    // R-a's root set (R4-M90 D10, the design review's B form): every argument of an omitting call is its moved pending slot, a reserved one's
+    // reservation moved into its slot, so the prologue's inspection is a shared Borrow of a PendingSlot the call moves: ReceiverDefaultTest's
+    // ReservedMethod shape, a method call on the reserved input.
+    [Fact]
+    public void AnInspectionBorrowsAPendingSlot()
+    {
+        var c = MirBuildTest.Compile(Prelude + Inspected + "func reservedInspect()\n    var m = Meter.init()\n    _ = fm(m@uniq)\n");
+        var body = Body(Analyze(c), "reservedInspect");
+        var call = body.Blocks.ToArray().Select(x => x.Terminator).Single(x => x is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "fm" });
+        var moved = body.Operands.Slice(call.Start, call.Count).ToArray();
+        Assert.All(moved, x => Assert.Equal(
+            MirLocalRole.PendingSlot,
+            x is { Kind: MirOperandKind.Move, Place.Projection: 0 } ? body.Locals[x.Place.Root].Role : default));
+        var inspection = Assert.Single(
+            body.Statements.ToArray(),
+            x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Ref, Op: (byte)MirRefKind.Shared, Place.Projection: 0 } } &&
+                body.Locals[x.Rvalue.Place.Root].Role == MirLocalRole.PendingSlot);
+        Assert.Equal(moved[0].Place, inspection.Rvalue.Place);
+    }
+
+    // V16 "F9 omitting calls" (A3 6.2; VERIFICATION has no V16 table): N omitting calls in one body, each moving a slot its default inspected.
+    // R-a's term is one memoized Remove per holder at each such call in every solve pass and in the replay (E8's dense term, N × holders);
+    // it replaces the taint's two scope walks per pending-slot store. The shape's work is dense, as E8's ended points × holders are (2e-3
+    // measured 92,830, 108,960, 165,923; 91,673, 104,859, 149,790 with the taint before).
+    [Fact]
+    public void AnOmittingCallsWorkStaysDense()
+    {
+        const string Shape = "func fI(a: ref/i32, n: i32 = size(a)) -> i32 => n\nfunc shape()\n    var x = 1\n«N:    _ = fI(x@ref)\n»";
+        long[] work = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Expand(Shape, n, 0)).Work)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", work)}");
+        Assert.True(Grows(work, 5), $"work {string.Join(", ", work)}");
+    }
+
+    // V16: R-a's endings allocate nothing on a program version A5 checked before.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AnOmittingCallsWarmRunAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Prelude + Inspecting + "func joined()\n    var k = 1\n    let r = same(k@ref)\n    k = 2\n    inspect(r)\n" +
+            "func p15()\n    var n = 3\n    fc(n@uniq)\n");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Equal(
+            [
+                "g: self DefaultArgumentBorrow_Kd", "fc: x DefaultArgumentBorrow_Kd", "grab: a DefaultArgumentBorrow_Kd", "f2: x DefaultArgumentBorrow_Kd",
+                "joined: k = 2",
+            ],
+            Problems(c, program, DefaultCodes));
+    }
+
+    // A function's one problem's facts: kind and its site's first line.
+    private static string[] FactsOf(Compilation c, MirProgram program, string function)
+    {
+        var problem = Array.FindIndex(program.Problems.All.ToArray(), x => program.Bodies[x.Body].Key.Decl?.Name == function);
+        return [.. program.Problems.Facts(problem).ToArray().Select(x => $"{x.Kind} {Line(c, x.Site)}")];
     }
 
     // The codes of A5's Loan stratum, its template rules and its located Unsupported_Kd.

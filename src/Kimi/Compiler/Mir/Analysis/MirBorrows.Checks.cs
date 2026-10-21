@@ -3,10 +3,9 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's conflicts relation (A3 5's hits and conflicts, with E1, E3, E11, R4-M68 and R4-M92): what an access does (AccessKind), a Call's or
-// Drop's effect rows included; the Loan of its check set on the access's root it conflicts with, by mode (a reservation the call
-// activates is unique at its effect rows, W6), by the order of clean and default-tainted Loans (R4-M70) and syntactically by Place
-// prefix, with the route rule for a Loan in its reservation holder; and err(ended) (E7): at a guard candidate's EndBorrow, a value live
-// after it that keeps its guard-local Origin.
+// Drop's effect rows included; the first Loan of its check set on the access's root it conflicts with, by mode (a reservation the call
+// activates is unique at its effect rows, W6) and syntactically by Place prefix, with the route rule for a Loan in its reservation holder;
+// and err(ended) (E7): at a guard candidate's EndBorrow, a value live after it that keeps its guard-local Origin.
 // Must not list or classify a location's accesses (MirBorrows.Locations) or record a problem (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -46,25 +45,18 @@ internal sealed partial class MirBorrows
         return left.Kind == right.Kind && (left.Kind == MirProjectionKind.Deref || left.Arg == right.Arg);
     }
 
-    // The Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none. The first that sets without a
-    // default taint hold is the access's Language problem; only where none is, the first other (R4-M70).
+    // The first Loan on an access's root in its check set (Takes) it conflicts with (Conflicts), None for none.
     private int Conflict(int root, ReadOnlySpan<Step> steps, AccessKind kind, int taking)
     {
-        var tainted = None;
         for (var c = this.First(root); c != None; c = this.candidates[c].Next)
         {
             if (this.Conflicts(c, root, steps, kind, taking))
             {
-                if (this.candidates[c].Clean.Takes(taking))
-                {
-                    return c;
-                }
-
-                tainted = tainted == None ? c : tainted;
+                return c;
             }
         }
 
-        return tainted;
+        return None;
     }
 
     // Whether a candidate of an access's check set conflicts with it (A3 5's conflicts and hits): a write, Move, exclusive borrow,

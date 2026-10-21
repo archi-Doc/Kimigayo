@@ -5,8 +5,7 @@ namespace Kimi.Compiler.Mir;
 // A5's transfer per statement kind (A3 5, Carrying, with E3): a location's effect planned on the state before it as entries, which the
 // checks replay reads, then committed (MirBorrows.Solve): a storage statement or EndBorrow clears its root, an Assign stores its value,
 // its issued Reborrow's or its rvalue's, into its Place after the Moves it makes, and a Call's are MirBorrows.Calls'. A store adds the
-// markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7), and a pending slot's default
-// taint to the value an inline default copy places into it (Placed, R4-M70; a template call's value carries none, R4-M93).
+// markers its destination's role gives (MarkerOf): γ_H to the Loans issued into a guard candidate H (E7).
 internal sealed partial class MirBorrows
 {
     private const byte Cleared = 0;
@@ -56,24 +55,8 @@ internal sealed partial class MirBorrows
 
             this.Moves(rvalue.Start, rvalue.Count);
             var issue = rvalue.Kind == MirRvalueKind.Ref || this.Reborrowing(statement) != MirRefKind.Raw;
-            this.Store(state, statement.Place, this.Placed(value, statement.Place, new(block, index)), own, issue);
+            this.Store(state, statement.Place, value, own, issue);
         }
-    }
-
-    // A value a location places into a Place, with the default taint of the pending slot D it fills where the location is an inline default
-    // copy's store into D (R4-M70, until A5-F9's R-a, unit 2e-3), D lying outside the copy's Inlined scope (the slots of a call inside the
-    // copy lie inside it); a default template's Call into D adds none (R4-M93).
-    private int Placed(int value, MirPlace place, MirLocation at)
-    {
-        if (place is not { Projection: 0, Root: >= 0 } || this.MarkerOf(place.Root) != Marker.Taint)
-        {
-            return value;
-        }
-
-        this.Work += 2; // The two scope walks (A3 6.2).
-        var copy = this.body.Inlining(this.Source(at).Scope);
-        var evaluates = copy >= 0 && copy != this.body.Inlining(this.body.Locals[place.Root].Source.Scope);
-        return evaluates ? this.sets.Add(value, Markers + place.Root) : value;
     }
 
     private void Commit(ulong[] state)

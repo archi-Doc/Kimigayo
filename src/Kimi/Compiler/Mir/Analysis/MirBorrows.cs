@@ -17,7 +17,7 @@
 // - a Call's contract rows, P9's among them: MirBorrows.CallRows; their transfer, with r3: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
 // - a default template's slot step, R26-borrow and R26-access: MirBorrows.Defaults;
-// - the problems' codes and facts, the default taint's Unsupported_Kd and the held view: MirBorrows.Reports.
+// - the problems' codes and facts and the held view: MirBorrows.Reports.
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own,
 // static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans and markers, which never conflict
 // and no ending removes (Φ_E, and the per-local markers of the role table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded
@@ -30,8 +30,9 @@
 // holder's seed, that holder left out; all from one gather per location. A two-phase Loan is shared only in its reservation holder, where a
 // write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path it exactly
 // prefixes (E8), a whole static's included, after the checks and the transfer: the Loans are ordered by the Move Path of their Places'
-// longest inline prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A holder a direct Loan names keeps
-// its state at every head.
+// longest inline prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A Call that moves a pending slot
+// ends the Loans of its Move Path's subtree, a default's inspection Loans, before its plan and checks (R-a, R4-M96). A holder a direct
+// Loan names keeps its state at every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
 
 namespace Kimi.Compiler.Mir;
@@ -63,7 +64,6 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     {
         None,
         Guard, // A guard candidate H's γ_H (E7): on the Loans issued into H; at H's EndBorrow a value that keeps it escapes (err(ended)).
-        Taint, // A pending slot D's default taint (until A5-F9's R-a, unit 2e-3): on the value an inline copy places into D (Placed).
     }
 
     /// <summary>Gets the work of the runs (A3 6.2): the pre-pass's walks, transfers, both problems' slot joins, the holders of each point
@@ -80,7 +80,6 @@ internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMove
     private Marker MarkerOf(int local) => this.body.Locals[local].Role switch
     {
         MirLocalRole.GuardCandidate => Marker.Guard,
-        MirLocalRole.PendingSlot => Marker.Taint,
         _ => Marker.None,
     };
 

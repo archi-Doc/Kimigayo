@@ -4,9 +4,10 @@ namespace Kimi.Compiler.Mir;
 
 // A5's Call transfer (A3 5, Calls; E14, E16): a Call's rows (MirBorrows.CallRows) carry its inputs' values into its result or into every
 // holder an argument's store reaches (W, MirBorrows.Values), one W per output.
-// Input: the state before the Call, its terminator and location, and whether the checks replay runs; the Call's rows.
+// Input: the state before the Call, its inspection Loans ended (R-a, MirBorrows.Endings), its terminator and location, and whether the
+// checks replay runs; the Call's rows.
 // Output: the Call's entries: its arguments' Moves, each row's value into the result or into the holders its W reaches, and the result
-// into the destination (Placed: an inline default copy's store into its slot carries the slot's default taint); Φ_E for an untied result.
+// into the destination; Φ_E for an untied result.
 // In the forward solve, a store of a non-empty value past a holder that passes the guard only by argument holds the view (P13's interim,
 // R4-M73); in the checks replay, a default template's call whose slot holds raw authority beside a Loan is a located Unsupported_Kd (r3,
 // R4-M93).
@@ -22,12 +23,11 @@ internal sealed partial class MirBorrows
     private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
     // A Call at a location (A3 5, Calls; E14, E16): its arguments' Moves, then each row of its retention (Rows) into the result or into
-    // W of an argument's value, then the result into the destination (Placed: an inline default copy's store into its slot carries the
-    // slot's default taint); Φ_E for an untied result. A Value callee's environment, its value or what a reference to it refers to, reaches
-    // the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the forward solve, never in the checks replay, a
-    // non-empty value that W stores past a by-argument holder holds the view (R4-M73): the solve applies every chain at its converged state,
-    // so the fact includes the fixpoint's, and the replay reports with it known. In the replay, a default template's call whose slot holds
-    // raw authority beside a Loan is a located Unsupported_Kd at the call (r3, R4-M93).
+    // W of an argument's value, then the result into the destination; Φ_E for an untied result. A Value callee's environment, its value or
+    // what a reference to it refers to, reaches the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the
+    // forward solve, never in the checks replay, a non-empty value that W stores past a by-argument holder holds the view (R4-M73): the solve
+    // applies every chain at its converged state, so the fact includes the fixpoint's, and the replay reports with it known. In the replay, a
+    // default template's call whose slot holds raw authority beside a Loan is a located Unsupported_Kd at the call (r3, R4-M93).
     private void Call(ulong[] state, MirLocation at, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
@@ -78,7 +78,7 @@ internal sealed partial class MirBorrows
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         if (call.Target >= 0)
         {
-            this.Store(state, call.Place, this.Placed(result, call.Place, at), 0, issue: false);
+            this.Store(state, call.Place, result, 0, issue: false);
         }
     }
 

@@ -1664,16 +1664,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     record), so a Loan problem found only through one never arises: R4-M10's "derived and dropped", by construction. A Loan another
     route reaches stays checked (SPEC 23.1.2; the design review's o7, j1 and op5). No `Opaque` or `Derived` fact kind and no drop rule
     in `MirReport.Add`; 2g gets no derived Loan records from Opaque sites, which DIAGNOSTICS suppresses beside their causes anyway.
-  - Default taint (temporary; A5-F9, unit 2e, deletes it; deleted by R4-M90's R-a (template calls 2e-1, copies 2e-3); template calls by R4-M93):
+  - Default taint (temporary; A5-F9, unit 2e, deletes it; deleted by R4-M90's R-a (template calls 2e-1, copies 2e-3); template calls by R4-M93,
+    copies by R4-M96):
     a value a default's evaluation places into its pending slot D carries D's marker: a default template's Call result, or an inline copy's store into D, a pending slot outside the copy's Inlined scope (the
     slots of a call inside the copy lie inside it, and an explicit argument's slot is no default's). A Loan conflict whose Loan only
     sets with a taint hold in the access's check set ("every set") is A5's located `Unsupported_Kd` at D's source, the omitting call,
     requirement `Ownership.Unsupported`, with no fact, never a Language problem. A Loan that a set without a taint also holds stays the
     Language problem, and an access reports such a Loan before a tainted one. A holder that joins a tainted and a clean value is
     tainted (T2's join imprecision): its Language error becomes `Unsupported_Kd` until F9, accepted.
-  - Representation: the per-local marker range (element 1 + L for local L) has its contract as a role table, `MirBorrows.MarkerOf`:
-    `GuardCandidate` → γ_H (E7), `PendingSlot` → the default taint. A candidate keeps its tags apart for the sets with and without a
-    taint, so the check "found only through tainted sets" reads the table once and a later taint kind adds a row (G148's P13 interim,
+  - Representation (the `PendingSlot` row and the two tag sets deleted by R4-M96): the per-local marker range (element 1 + L for local L)
+    has its contract as a role table, `MirBorrows.MarkerOf`: `GuardCandidate` → γ_H (E7), `PendingSlot` → the default taint. A candidate
+    keeps its tags apart for the sets with and without a taint, so the check "found only through tainted sets" reads the table once and a later taint kind adds a row (G148's P13 interim,
     R4-M76). err(destroy) is the conflicts relation's row `ObservePast` (what a deep access hits and the destroying activation's write
     does not, in every mode), so it too reports a clean Loan before a tainted one; its own candidate loop, a second copy of the rule that
     let the first holder decide, is deleted (group 1c's final review, B1).
@@ -1763,7 +1764,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
       and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c) must report through it too.
     - R4-M69 governs inline default copies (superseded by R4-M90 (2e-4; the taint 2e-3)): a Loan problem inside an Inlined scope is
       its template's and dropped whatever the hold
-      says; the hold reclassifies only problems the held view owns. R4-M70's default taint is unchanged: a Loan only default-tainted
+      says; the hold reclassifies only problems the held view owns. R4-M70's default taint is unchanged (superseded by R4-M96: no taint;
+      a copied conflict is the held caller's own, the hold's `Unsupported_Kd` at its access): a Loan only default-tainted
       sets hold stays the `Unsupported_Kd` at the omitting call, also in a held view (one record per problem).
     - Cost, accepted by the owner: a held view's Language problems that do not depend on the store become `Unsupported_Kd` too
       (MirBorrowsTest's cleanRoute append, g1's array end, hold<C>, p139d), in E and every holder alike, until the per-part guard.
@@ -1784,7 +1786,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Diagnostics rule forbids). Prototype round 17: 425 cases, every conflict that depends on a by-argument store `Unsupported_Kd`, every
     view not held unchanged, every (Loan, access) rule G reports reported once; 26 held, 11 of them losing an independent Language
     error (draft/Sketches/A5 Step 2/body-hold.md).
-  - Default-taint records (R17-N3; superseded by R4-M90 (2e-1 for template calls, 2e-3 for copies)): R4-M70's closure route is of
+  - Default-taint records (R17-N3; superseded by R4-M90 (2e-1 for template calls, 2e-3 for copies): R4-M93 and R4-M96): R4-M70's closure route is of
     the same class as its
     recorded err(ended) limit. An inline copy is
     precise and its result or slot is tied to the explicit argument by Origin, so its Language errors through that route are right per
@@ -2399,6 +2401,49 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
     `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
     for the Inlined exception.
+- **R4-M96 A5-F9's R-a: an omitting call's inspection Loans end before its checks; the default taint deleted** (2026-10-21; unit 2e-3
+  of G:A5-F9 under R4-M90, the package's §4 (D10) with the design review's root set; supersedes R4-M70's default taint for inline copies
+  (template calls were R4-M93's), its role-table row `PendingSlot` → taint and the candidate's two tag sets, and R4-M73's sub-bullet on
+  R4-M70's taint and its "Default-taint records" bullet)
+  - Rule (SPEC 7.2.3: "Inspection Loans end before callee entry"; 15.6.7): for a Call that moves a PendingSlot s (an operand `Move` of the
+    whole root s), the Loans of s's Move Path subtree end before the Call's plan and checks, in the forward solve and the replay. Every
+    argument of an omitting call is its moved pending slot (`MirBuilder.Call` routes each explicit argument through `Pending`, a reserved
+    one's reservation formed in or moved into its slot; each default's value is `Move(slot)`), so these are exactly the prologue's
+    inspection Loans. A template call's inputs are prologue temps (role None), so P9's Content rows still read σ(slot). The root set is
+    PendingSlot roots only (the design review's choice; a reservation-holder clause adds no root), pinned by a test of the root kind in
+    ReceiverDefaultTest's ReservedMethod shape.
+  - Representation: one set per block (`MirBorrows.Endings`' `inspected`: E8's `Subtree` and `MirLoanSets.Range`, one run per moved slot,
+    their union), beside E8's per-location `ended`; `Carry` removes it from every holder before the terminator's `Plan` through the one
+    removal E8 uses (`End`). No vocabulary entry, no per-head state.
+  - Deleted: `Marker.Taint` and `MarkerOf`'s PendingSlot row (the role table keeps Guard); `Flow.Placed` and its calls in `Flow.Plan` and
+    `Calls.Call`; the candidate's second `Tags`, its `Taint` and the scan's taint; `Checks.Conflict`'s tainted fallback (an access reports
+    its first conflicting candidate); `Reports.Report`'s taint branch, the only `Unsupported_Kd` at a pending slot's source; DIAGNOSTICS'
+    taint row.
+  - Verdicts (SPEC 7.2.3, 15.6): a copy's value keeps the Loans its slots' values carry (`Issued`'s parents), so a copied existing borrow
+    keeps its caller Loan and a conflict on it is the caller's Language problem where R4-M70 gave the located `Unsupported_Kd` at the
+    omitting call: round 19's dc-j1, dc-joined and dc-copied, the 1c design's `copied`, `copiedGeneric` and `called`, and an unknown effect
+    against a copied static Loan (at the call). A value that keeps a caller Loan only through an ended inspection Loan comes only from an
+    invalid template, which R26-borrow reports at its declaration (dc-p15, dc-reserved-bad, dc-gen2-bad-u, `reborrowed`): the omitting call
+    adds nothing. Inspecting copies stay valid (dc-reserved-inspect, dc-fe, dc-p13, dc-fa). A held caller's copied conflict is the hold's
+    `Unsupported_Kd` at its access (`heldDefault`'s `k = 2`, before at the call). A Loan found in several holders is witnessed by the first
+    found (the 1c design's `copiedClean` now names `inspect(y)`, a valid witness; the preference for a clean holder left with the taint).
+  - Left: `MirBorrows.Activations.cs`' err(destroy) comment "so a clean Loan is reported first (R4-M70)" is vacuous now; the file is due
+    (PD21), so 2e-4 drops the clause under its ruling. PLAN G136 N7 closes with 2e-5's records.
+  - Ledger (mir Functional with `KIMI_MIR_DIFF`, against a base run at the unit's start): BorrowedDefaultTest's
+    `CopiedExternalLoansRemainLiveAfterTheCall` (48f5bd793398) pairs: the copy taint's `Unsupported_Kd` at `f(n@ref)` goes and the old
+    path's `n = 9` becomes both; no other row moved (3,061 rows → 3,060; a5-defaults' new U signature 4 → 3 rows, the
+    `CallRetention.Limit` records of G128 left; open blocking rows 239 → 239).
+  - Cost: per Call one operand scan in the pre-pass, per moved slot one memoized `Range` and union; per omitting call with inspection
+    Loans one memoized `Remove` per holder in each solve pass and in the replay (E8's dense term); deleted: two scope walks per pending-slot
+    store and the second tag set per candidate. Corpus (the library, the 44 milestones, the 31 goldens) Work +0.33 %, set bytes −0.04 %
+    (Release, against the unit's base). V16 "F9 omitting calls" (`MirBorrowsTest.AnOmittingCallsWorkStaysDense`, N omitting calls in one
+    body, each moving a slot its default inspected; VERIFICATION has no V16 table): dense, as E8's ended points × holders, 92,830,
+    108,960, 165,923 at N = 16, 32, 64 (91,673, 104,859, 149,790 with the taint). Warm 0 B. Census: no problem.
+  - Rejected (the package's §4, round 19): `R19Taint` (the interim: `Unsupported_Kd` for Language errors, records at invalid copies'
+    calls); `R19InlinedDrop` (unsound on dc-j1, dc-joined, dc-copied); `R19NoEnding` (second records); a builder `EndBorrow` (E8 ends only
+    Loans rooted at what is destroyed); reservation-holder roots (dead code).
+  - PD21: `MirBorrows.Solve.cs` and `MirBorrows.Reports.cs` take their third changing unit (2b-3, 2e-2, 2e-3); Reports.cs's ruling or
+    split is due before 2e-4 (the package), Solve.cs's before its next change.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

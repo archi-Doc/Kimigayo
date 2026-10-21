@@ -8,31 +8,22 @@ namespace Kimi.Compiler.Mir;
 // requirement with its code and facts, whose codes and sites MirBorrows.Witnesses gives: the Loan's or candidate's anchor, its witness (a
 // holder's next use in its chain, the location for a value an access takes, a transit value's or E's store; none for a destruction's own
 // hold, R3), an activation's reservation, the static Field an effect met and, inside an inline default copy, its call (R4-M69); a located
-// Unsupported_Kd where the stratum classifies nothing, at the source of the pending slot whose default taint every set holding a conflict's
-// Loan carries (R4-M70, until A5-F9's R-a), and in a held view at every Loan problem's subject (P13's interim, R4-M73, until the guard reads
-// each part). Every Loan-problem producer records through Record(code, requirement, subject, facts), so the hold is one rule there: a Loan
+// Unsupported_Kd where the stratum classifies nothing, and in a held view at every Loan problem's subject (P13's interim, R4-M73, until the
+// guard reads each part). Every Loan-problem producer records through Record(code, requirement, subject, facts), so the hold is one rule there: a Loan
 // conflict through Report(code, anchor, via, at, reservation, effect), A5-F9's template rules (MirBorrows.Defaults) with their parameter.
 // Must not decide a conflict (MirBorrows.Checks), derive a requirement from a code, or apply a derived-problem rule (MirReport's).
 internal sealed partial class MirBorrows
 {
     private readonly MirFact[] facts = new MirFact[5];
 
-    // A conflicting candidate's problem: where only sets with a default taint hold it in the check set, A5's located Unsupported_Kd at the
-    // source of the first taint's pending slot, the omitting call (R4-M70, never a Language problem until A5-F9 checks defaults); else its
-    // Loan's anchor, and its witness among the sets without a taint (E13 (6)): a holder it was found live in (for an activation, other than
-    // its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92).
+    // A conflicting candidate's problem: its Loan's anchor, and its witness (E13 (6)): a holder it was found live in (for an activation, other
+    // than its own), else the location, whose operation uses the value that carries it; and the static Field an effect met (R4-M92).
     private void Report(DiagnosticCode code, int candidate, int taking, MirLocation at, int reservation, MirFact? effect)
     {
         ref readonly var found = ref this.candidates[candidate];
-        var clean = found.Clean;
-        if (!clean.Takes(taking))
-        {
-            this.Unsupported(this.body.Subject(this.body.Locals[found.Taint - Markers].Source));
-            return;
-        }
-
-        var live = taking <= Activating ? (clean.Flags & Based) != 0 && Activation(clean.Via) != taking : (clean.Flags & (Based | Stored)) != 0;
-        this.Report(code, this.loans[found.Loan].Site, live ? clean.Via : Taken, at, reservation, effect);
+        var tags = found.Tags;
+        var live = taking <= Activating ? (tags.Flags & Based) != 0 && Activation(tags.Via) != taking : (tags.Flags & (Based | Stored)) != 0;
+        this.Report(code, this.loans[found.Loan].Site, live ? tags.Via : Taken, at, reservation, effect);
     }
 
     // A Loan problem at a location with its facts (A3 6.4): the anchor of the Loan, guard candidate or destruction; its witness, a holder's
