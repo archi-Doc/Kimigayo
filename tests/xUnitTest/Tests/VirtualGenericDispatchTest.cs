@@ -50,35 +50,49 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("VirtualGenericDispatchFactory", Source, string.Empty);
     }
 
+    // A finite descriptor cycle reuses its instances. The growing key's refusal is GrowingDescriptorKeysAreResourceDiagnosed (K13c); this
+    // name drops "AndRejectGrowingKeys" when the method leaves the codegen pending ledger, whose row names it until then.
     [Fact]
     public void DescriptorDependenciesReuseFiniteCyclesAndRejectGrowingKeys()
+        => ScalarEmissionTest.EmitFixture("VirtualGenericDispatchCycle", DependencyProgram("i32"), string.Empty);
+
+    // A growing descriptor key is a Resource record. Check, then generation, as a build runs them: MIR code generation reports it at check
+    // at the creation (K13c, DECISIONS R5-M74), and the old generator's note names the generated dependencies.
+    [Fact]
+    public void GrowingDescriptorKeysAreResourceDiagnosed()
     {
-        var finite = DependencyProgram("i32");
-        ScalarEmissionTest.EmitFixture("VirtualGenericDispatchCycle", finite, string.Empty);
+        var source = DependencyProgram("Next<T>");
         var path = Path.GetFullPath("virtual-growing-table.kimi");
-        var c = MinimalEmissionTest.Analyze(DependencyProgram("Next<T>"), path);
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.True(c.Analysis.IsVerified == Codegen.Expect(false, true, CodegenDeviations.CheckedSetAtCheck), MinimalEmissionTest.Describe(c, null));
+        c.ReportAnalysis();
         using var ir = new StringWriter();
-        Assert.False(c.WriteIr(ir, out var failure));
+        Assert.False(c.Generate(ir));
         Assert.Empty(ir.ToString());
-        Assert.True(c.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains("substitutions", failure, StringComparison.Ordinal);
-        c.Emission.ReportFailure(failure);
         Assert.Contains(TestDiagnostics.Of(c), x => x.Code == "GenerationResourceLimit_Kd");
         c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
         var result = c.Diagnostics.Finalize(last: DiagnosticPartition.Emission);
         var record = Assert.Single(result.Diagnostics);
-        Assert.Equal(DiagnosticCategory.Resource, record.Category);
-        Assert.Contains("generated dependencies", record.Note, StringComparison.Ordinal);
+        Assert.Equal(("GenerationResourceLimit_Kd", DiagnosticCategory.Resource), (record.Code, record.Category));
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
+        Assert.Contains(Codegen.Expect("Leaf<Next<T>>.init()@obj", "generated dependencies", CodegenDeviations.CheckedSetAtCheck), console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {
             var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
-            Assert.Contains("generated dependencies", sent.Message, StringComparison.Ordinal);
+            Assert.Contains(Codegen.Expect(record.Message, "generated dependencies", CodegenDeviations.CheckedSetAtCheck), sent.Message, StringComparison.Ordinal);
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
+
+        // The old generator's resource failure and its record's note, on a compilation pinned to it until G2 (DECISIONS R5-M85).
+        var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
+        Assert.False(old.Generate(TextWriter.Null));
+        Assert.True(old.Emission.FailureIsResourceLimit);
+        var note = Assert.Single(TestDiagnostics.Of(old)).Note;
+        Assert.Contains("substitutions", note, StringComparison.Ordinal);
+        Assert.Contains("generated dependencies", note, StringComparison.Ordinal);
     }
 
     [Fact]
