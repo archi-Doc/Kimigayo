@@ -141,7 +141,7 @@ Members and files outside the old Analysis/Emission paths stay within these limi
 
 | Measure | Limit |
 | --- | --- |
-| Parameters per member | 6, of which at most 2 optional, 1 `out` and 1 `bool`; a constructor has no count limit (owner, 2026-10-22; DECISIONS CR-R2) |
+| Parameters per member | 6, of which at most 2 optional, 1 `out` and 1 `bool`; a constructor has no count limit, and its optional, `out` and `bool` limits still apply (owner, 2026-10-22; DECISIONS CR-R2) |
 | `bool` literal arguments | Passed by name |
 | Failure text returned through `out string` | None; record a typed Problem instead |
 | Statements per member | 60 |

@@ -110,7 +110,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
 - **CR-R2 Constructors are exempt from the parameter-count limit** (2026-10-22, owner, direct, verbatim:
   「コンストラクタの引数上限は撤廃します。6個は、コンストラクタ以外に適用します。」).
   - Reading: the count of 6 parameters no longer applies to a constructor; it applies to every other member. The sub-limits (at most
-    2 optional, 1 `out` and 1 `bool`) are unchanged (the planning session's reading; the owner may correct it).
+    2 optional, 1 `out` and 1 `bool`) are unchanged (confirmed by the owner, 2026-10-22, to R4, relayed by R4:
+    「「コンストラクタの引数上限の撤廃」について、推奨の内容でOKです。」).
+  - Reason (owner): constructors tend to take many parameters, and many parameters there rarely lead to an inefficient structure. A
+    constructor that wires many components is watched by the dependency rules and by review, which the count no longer signals.
   - Trigger: `BoundType`'s constructor and `TyCtxt.Intern` were both at 10 parameters when G160 added the raw Origin (unit bu20, C1a).
     Methods such as `Intern` stay limited: being over the limit, they may not grow (C1a keeps one `origin` parameter at `Intern`).
 
