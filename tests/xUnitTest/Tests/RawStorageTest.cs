@@ -342,6 +342,16 @@ public class RawStorageTest
     public void ARawSlotHasAStepWhereverItsHolderIsHeld(string declarations)
         => Assert.Empty(RawPointerSyntaxTest.Records(declarations));
 
+    // SPEC 5.2.2, 15.6.5 (bu23 S3): a raw Place borrow's Origin is its anchor, an inferred region, met with the pointer's Origin; the
+    // meet outlives an Origin when each operand does, so a borrow kept in a local and then returned has the direct form's verdict: valid
+    // through a `var` local whose region's source is the input, an error through a local's own borrow.
+    [Theory]
+    [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    var state = source@move\n    unsafe\n        let item = state.at[0]@uniq\n        return item@move", null)]
+    [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    var state = source@move\n    unsafe => return state.at[0]@uniq", null)]
+    [InlineData("func bad(x: uniq/i32) -> uniq/i32 during x\n    var n: i32 = 1\n    let r = n@uniq\n    let p = r@follow@raw\n    unsafe\n        let item = p[0]@uniq\n        return item@move", "UnsatisfiedOriginRelation_Kd: item@move")]
+    public void AKeptRawPlaceBorrowHasTheDirectFormsVerdict(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
+
     // SPEC 5.2.2, 5.6, 5.7 (D14): a borrow of a raw Place, and Raw.slice's result, lie within the Origin the pointer states, so neither
     // reaches past the borrow the pointer was read through.
     [Theory]

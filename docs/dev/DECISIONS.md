@@ -3727,6 +3727,10 @@ resumed by R4-M86 (2026-10-20).
   slots, so a struct held inline with such a Field has its slots' steps (they faulted before). S2, `StepOf`'s input-atom row joins
   the requirements of the aggregate slots the atom binds in its binder's inputs (`SlotsStep`, design-final §4's row; a Phantom
   slot contributes none), so a universal name bound only as a slot argument (`source: R<E> during a`) has a step.
+  S3, the judge (`JudgeOriginRelation`) judges a meet that its premises do not prove operand by operand, the worst deciding (SPEC
+  15.6.5; as `OriginOutlives` and `VerifiedRegionOutlives` read a meet): a raw Place borrow kept in a local is the meet of its
+  anchor, an inferred region (SPEC 5.2.2), and the pointer's Origin, which was refuted whole when that Origin was a `var` local's
+  region, since the anchor counted as body-local; now it has the direct return's verdict.
 
 ## R5 and R6 (adopted 2026-10-18)
 
