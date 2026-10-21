@@ -93,17 +93,24 @@ internal sealed partial class FunctionCodegen
     }
 
     // A call by its signature (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument), the destination's address as the result slot,
-    // the call site's location text for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92), then the call and its end
-    // (Finish). The operands are in the callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local,
-    // never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
-    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee)
+    // the call site's location text for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92), a slot-less Value parameter's
+    // the next of the given values (a runtime routine's stride or reason), then the call and its end (Finish). The operands are in the
+    // callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a pointer argument: a
+    // Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
+    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given = default)
     {
         var parameters = signature.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
-        var location = -1;
+        var (location, next) = (-1, 0);
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
+            if (parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 })
+            {
+                this.arguments[i] = given[next++];
+                continue;
+            }
+
             if (parameter.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
                 if (location < 0 && (location = this.Location(call.Source)) < 0)

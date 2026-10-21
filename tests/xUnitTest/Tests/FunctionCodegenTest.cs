@@ -1065,7 +1065,9 @@ public sealed class FunctionCodegenTest
     [InlineData("func make(n: isize) -> raw/(i32, i64) => Raw.allocate<(i32, i64)>(n)", @"= call ptr @__kimi_raw_allocate\(i64 %t\d+, i64 16, ptr @\S+")]
     [InlineData("func free(p: raw/i64)\n    unsafe => Raw.release(p)", @"\n  call void @__kimi_free\(ptr %t\d+, ptr @\S+, i64 \d+\)\n  br ")]
     [InlineData("func put(p: raw/i64, v: i64)\n    unsafe => Raw.initialize(p, v)", @"\n  store i64 %t\d+, ptr %t\d+, align 8\n  br ")]
-    [InlineData("func put(p: raw/(i32, i64), v: (i32, i64))\n    unsafe => Raw.initialize(p, v@move)", @"@llvm\.memcpy\.p0\.p0\.i64\(ptr align 8 %t\d+, ptr align 8 %l\d+, i64 16, i1 false\)\n  br ")]
+    [InlineData(
+        "func put(p: raw/(i32, i64), v: (i32, i64))\n    unsafe => Raw.initialize(p, v@move)",
+        @"@llvm\.memcpy\.p0\.p0\.i64\(ptr align 8 %t\d+, ptr align 8 %l\d+, i64 16, i1 false\)\n  br ")]
     [InlineData(
         "func view() -> Slice<i64>\n    unsafe => return Raw.slice(null@raw/i64, 0)",
         @"\n  store ptr %t\d+, ptr (%\w+), align 8\n  (%t\d+) = getelementptr i8, ptr \1, i64 8\n  store i64 0, ptr \2, align 8\n")]
@@ -1079,7 +1081,9 @@ public sealed class FunctionCodegenTest
     // SPEC 5.1, 5.3 (DECISIONS R5-M92): p + n and p - n displace a raw pointer by n * stride(T) through the place writer's byte offset, a zero
     // stride keeping the pointer; == and != compare addresses, null the one pointer constant.
     [Theory]
-    [InlineData("func next(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p + n\n    return q", @"= mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")]
+    [InlineData(
+        "func next(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p + n\n    return q",
+        @"= mul i64 %t\d+, 8\n  %t\d+ = getelementptr i8, ptr %t\d+, i64 %t\d+\n")]
     [InlineData("func back(p: raw/i64, n: isize) -> raw/i64\n    var q: raw/i64 = null\n    unsafe => q = p - n\n    return q", @"= mul i64 %t\d+, -8\n")]
     [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q", @"= icmp eq ptr %t\d+, %t\d+\n")]
     [InlineData("func empty(p: raw/i32) -> bool => p != null", @"= icmp ne ptr %t\d+, null\n")]
@@ -1091,7 +1095,8 @@ public sealed class FunctionCodegenTest
     [Fact]
     public void AZeroStrideDisplacementKeepsThePointer()
     {
-        var text = Assert.Single(ItemTexts(Analyze("func next(p: raw/(), n: isize) -> raw/()\n    var q: raw/() = null\n    unsafe => q = p + n\n    return q", OutputKind.Library), "next"));
+        const string Source = "func next(p: raw/(), n: isize) -> raw/()\n    var q: raw/() = null\n    unsafe => q = p + n\n    return q";
+        var text = Assert.Single(ItemTexts(Analyze(Source, OutputKind.Library), "next"));
         Assert.DoesNotContain("getelementptr", text, StringComparison.Ordinal);
         Assert.DoesNotContain(" = mul ", text, StringComparison.Ordinal);
     }
@@ -1101,9 +1106,42 @@ public sealed class FunctionCodegenTest
     [Fact]
     public void TheStorageBytePrimitivesAreTheirRows()
     {
-        var c = Analyze("func more(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\nfunc fit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n", OutputKind.Library);
-        Assert.Contains(ItemTexts(c, "grow"), static x => Regex.IsMatch(x, @"\n  call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %t\d+, ptr %t\d+, i64 %t\d+, i1 false\)\n"));
+        const string Source = "func more(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\nfunc fit(d: uniq/Dictionary<i32, i32>) => d.shrinkToFit()\n";
+        var c = Analyze(Source, OutputKind.Library);
+        const string Copy = @"\n  call void @llvm\.memcpy\.p0\.p0\.i64\(ptr %t\d+, ptr %t\d+, i64 %t\d+, i1 false\)\n";
+        Assert.Contains(ItemTexts(c, "grow"), static x => Regex.IsMatch(x, Copy));
         Assert.Contains(ItemTexts(c, "shrinkToFit"), static x => Regex.IsMatch(x, @"= call ptr @__kimi_try_allocate\(i64 %t\d+\)\n"));
+    }
+
+    // SPEC 21.4.3, 22.2 (DECISIONS R5-M92): the nullable Alloc's definition is one runtime text spliced from its FunctionAbi, which a module
+    // whose bodies call it defines exactly once; the old generator writes that text (its pin goes by G4; MIR code generation's first such
+    // module is C8e's, through the same text).
+    [Fact]
+    public void TheNullableAllocIsDefinedOnceFromItsOneText()
+    {
+        var definition = RuntimeAbi.TryAllocateBytes.GetDefinition(exported: false);
+        Assert.StartsWith(definition, LlvmModuleText.TryAllocate, StringComparison.Ordinal);
+        Assert.Single(Regex.Matches(LlvmModuleText.TryAllocate, Regex.Escape(definition)));
+        var c = MinimalEmissionTest.Analyze("var d: Dictionary<i32, i32> = [1: 2]\nd.shrinkToFit()\n", codegen: CompilerCodegen.Legacy);
+        var ir = CompilationTestHelper.WriteIr(c);
+        Assert.Single(Regex.Matches(ir, Regex.Escape(definition)));
+        Assert.Contains(LlvmModuleText.TryAllocate, ir, StringComparison.Ordinal);
+    }
+
+    // SPEC 22.5.2 (DECISIONS R5-M92): each of the 7 fixed codes MIR's Fail carries, the five the served compiler functions name and the
+    // builder's duplicate key and format codes, names its Abort reason (AbortReasons.Of), whose text begins with the code.
+    [Fact]
+    public void EveryMirFailCodeHasAReason()
+    {
+        CompilerFunctionKind[] served =
+        [
+            CompilerFunctionKind.StorageIndexBounds, CompilerFunctionKind.StorageMissingDictionaryKey, CompilerFunctionKind.StorageArgumentOutOfRange,
+            CompilerFunctionKind.StorageCountOverflow, CompilerFunctionKind.StorageAllocationSizeExceeded,
+        ];
+        string[] codes = [.. served.Select(static x => IntrinsicDisposition.Of(x).Code!), "KIMI_E_DUPLICATE_KEY", "KIMI_E_FORMAT"];
+        Assert.Equal(7, codes.Distinct().Count());
+        Assert.All(codes, static x => Assert.StartsWith(x + ":", AbortReasons.All[AbortReasons.Of(x)].Text, StringComparison.Ordinal));
+        Assert.Equal(-1, AbortReasons.Of("KIMI_E_UNKNOWN"));
     }
 
     // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
@@ -1237,10 +1275,10 @@ public sealed class FunctionCodegenTest
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
     // the static. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
     // have a raw pointer column since C8a (R5-M92), which writes null too; the conversion rows (DECISIONS R5-M80) leave an erasure to C5b,
-    // at its Cast; an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through
-    // it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to
-    // C8e, at the member, and an Array from none to C8d, at the literal. K11: an Application's function nothing calls is not generated, so
-    // its form records nothing; a Library generates it.
+    // at its Cast; an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
+    // leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
+    // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from none to C8d, at the
+    // literal. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]

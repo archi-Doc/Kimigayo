@@ -48,37 +48,21 @@ internal sealed partial class FunctionCodegen
     }
 
     // SPEC 5.6: Raw.allocate<T>(count) through its routine (__kimi_raw_allocate), which checks the count and the byte size and gives a
-    // nonnull aligned address for zero bytes: the count, T's stride in the item's instance, the call's location. No Layout alignment
-    // exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused.
+    // nonnull aligned address for zero bytes: the count, T's stride in the item's instance (its one slot-less parameter), the call's location.
+    // No Layout alignment exceeds the heap's 16 (DECISIONS R5-M92), so no T is refused.
     private void Allocate(in MirTerminator call, FunctionAbi routine)
     {
-        var parameters = routine.Parameters;
-        this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
         if (this.InstanceType(call.Place) is not { Components: [var element] } || this.Laid(element) is not { } stored)
         {
             return; // A broken contract, recorded.
         }
 
-        if (!this.Argument(call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), 0), parameters[0], out this.arguments[0]))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-            return;
-        }
-
-        var location = this.Location(call.Source);
-        if (location < 0)
-        {
-            return; // Recorded.
-        }
-
-        this.arguments[1] = new('\0', stored.Layout.Stride);
-        this.arguments[2] = new('@', location);
-        this.arguments[3] = new('\0', this.module.Constants[location].ByteLength);
-        this.Finish(call, this.WriteCall(routine, this.arguments.AsSpan(0, parameters.Length)));
+        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), [new('\0', stored.Layout.Stride)]);
     }
 
-    // SPEC 17.4, 22.5.2: a Fail Aborts with its fixed code's reason (AbortReasons.Of; its one operand, the code, names a reason or the
-    // MIR is broken) at the call's location, with no OS error (RuntimeAbi.NoOsError); it has no successor.
+    // SPEC 17.4, 22.5.2: a Fail Aborts through the runtime Abort with its fixed code's reason (AbortReasons.Of; its one operand, the code,
+    // names a reason or the MIR is broken) and no OS error (RuntimeAbi.NoOsError), the routine's slot-less parameters, at the call's
+    // location; it has no successor.
     private void Fail(in MirTerminator call, FunctionAbi routine)
     {
         var code = this.body.Operands[call.Start];
@@ -88,18 +72,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        var location = this.Location(call.Source);
-        if (location < 0)
-        {
-            return; // Recorded.
-        }
-
-        this.arguments = this.arguments.Length < routine.Parameters.Length ? new Value[routine.Parameters.Length] : this.arguments;
-        this.arguments[0] = new('\0', reason);
-        this.arguments[1] = new('@', location);
-        this.arguments[2] = new('\0', this.module.Constants[location].ByteLength);
-        this.arguments[3] = new('\0', RuntimeAbi.NoOsError);
-        this.Finish(call, this.WriteCall(routine, this.arguments.AsSpan(0, routine.Parameters.Length)));
+        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn), [new('\0', reason), new('\0', RuntimeAbi.NoOsError)]);
     }
 
     // SPEC 5.6: Raw.initialize(storage, value) moves the value into the storage, which holds none, so nothing is destroyed: the value put

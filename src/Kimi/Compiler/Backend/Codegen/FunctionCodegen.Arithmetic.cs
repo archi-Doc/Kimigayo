@@ -31,28 +31,51 @@ internal sealed partial class FunctionCodegen
     // Reflexive: the result on equal operands, a comparison of Unit's one value.
     private static readonly Row[] Rows = Complete(
     [
-        new([new("sadd", Check.Overflow), new("uadd", Check.Overflow), new("add"), new("add"), new("fadd"), new("gep", Displacement: 1)]), // Add
-        new([new("ssub", Check.Overflow), new("usub", Check.Overflow), new("sub"), new("sub"), new("fsub"), new("gep", Displacement: -1)]), // Sub
-        new([new("smul", Check.Overflow), new("umul", Check.Overflow), new("mul"), new("mul"), new("fmul"), default]), // Mul
         new(
-            [new("sdiv", Check.SignedQuotient), new("udiv", Check.Zero), new("sdiv", Check.WrappingQuotient), new("udiv", Check.Zero), new("fdiv"),
-                default]), // Div
-        new([new("srem", Check.Zero), new("urem", Check.Zero), new("srem", Check.Zero), new("urem", Check.Zero), default, default]), // Rem
-        new([new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), new("shl", Check.Shift), default, default]), // Shl
-        new([new("ashr", Check.Shift), new("lshr", Check.Shift), new("ashr", Check.Shift), new("lshr", Check.Shift), default, default]), // Shr
-        new([new("and"), new("and"), new("and"), new("and"), default, default]), // BitAnd
-        new([new("or"), new("or"), new("or"), new("or"), default, default]), // BitOr
-        new([new("xor"), new("xor"), new("xor"), new("xor"), default, default]), // BitXor
-        new([new("eq"), new("eq"), new("eq"), new("eq"), new("oeq"), new("eq")], Reflexive: true), // Eq
-        new([new("ne"), new("ne"), new("ne"), new("ne"), new("une"), new("ne")]), // Ne
-        new([new("slt"), new("ult"), new("slt"), new("ult"), new("olt"), default]), // Lt
-        new([new("sle"), new("ule"), new("sle"), new("ule"), new("ole"), default], Reflexive: true), // Le
-        new([new("sgt"), new("ugt"), new("sgt"), new("ugt"), new("ogt"), default]), // Gt
-        new([new("sge"), new("uge"), new("sge"), new("uge"), new("oge"), default], Reflexive: true), // Ge
+            [new("sadd", Check.Overflow, 0), new("uadd", Check.Overflow, 0), new("add", Check.None, 0), new("add", Check.None, 0), new("fadd", Check.None, 0),
+                new("gep", Check.None, 1)]), // Add
         new(
-            [new("ssub", Check.Overflow, Left: "0"), new("usub", Check.Overflow, Left: "0"), new("sub", Left: "0"), new("sub", Left: "0"), new("fneg"),
-                default]), // Neg
-        new([new("xor", Right: "-1"), new("xor", Right: "-1"), new("xor", Right: "-1"), new("xor", Right: "-1"), default, default]), // Not
+            [new("ssub", Check.Overflow, 0), new("usub", Check.Overflow, 0), new("sub", Check.None, 0), new("sub", Check.None, 0), new("fsub", Check.None, 0),
+                new("gep", Check.None, -1)]), // Sub
+        new(
+            [new("smul", Check.Overflow, 0), new("umul", Check.Overflow, 0), new("mul", Check.None, 0), new("mul", Check.None, 0), new("fmul", Check.None, 0),
+                default]), // Mul
+        new(
+            [new("sdiv", Check.SignedQuotient, 0), new("udiv", Check.Zero, 0), new("sdiv", Check.WrappingQuotient, 0), new("udiv", Check.Zero, 0),
+                new("fdiv", Check.None, 0), default]), // Div
+        new([new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), new("srem", Check.Zero, 0), new("urem", Check.Zero, 0), default, default]), // Rem
+        new([new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), new("shl", Check.Shift, 0), default, default]), // Shl
+        new([new("ashr", Check.Shift, 0), new("lshr", Check.Shift, 0), new("ashr", Check.Shift, 0), new("lshr", Check.Shift, 0), default, default]), // Shr
+        new([new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), new("and", Check.None, 0), default, default]), // BitAnd
+        new([new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), new("or", Check.None, 0), default, default]), // BitOr
+        new([new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), new("xor", Check.None, 0), default, default]), // BitXor
+        new(
+            [new("eq", Check.None, 0), new("eq", Check.None, 0), new("eq", Check.None, 0), new("eq", Check.None, 0), new("oeq", Check.None, 0),
+                new("eq", Check.None, 0)],
+            Reflexive: true), // Eq
+        new(
+            [new("ne", Check.None, 0), new("ne", Check.None, 0), new("ne", Check.None, 0), new("ne", Check.None, 0), new("une", Check.None, 0),
+                new("ne", Check.None, 0)]), // Ne
+        new(
+            [new("slt", Check.None, 0), new("ult", Check.None, 0), new("slt", Check.None, 0), new("ult", Check.None, 0), new("olt", Check.None, 0),
+                default]), // Lt
+        new(
+            [new("sle", Check.None, 0), new("ule", Check.None, 0), new("sle", Check.None, 0), new("ule", Check.None, 0), new("ole", Check.None, 0),
+                default],
+            Reflexive: true), // Le
+        new(
+            [new("sgt", Check.None, 0), new("ugt", Check.None, 0), new("sgt", Check.None, 0), new("ugt", Check.None, 0), new("ogt", Check.None, 0),
+                default]), // Gt
+        new(
+            [new("sge", Check.None, 0), new("uge", Check.None, 0), new("sge", Check.None, 0), new("uge", Check.None, 0), new("oge", Check.None, 0),
+                default],
+            Reflexive: true), // Ge
+        new(
+            [new("ssub", Check.Overflow, 0, Left: "0"), new("usub", Check.Overflow, 0, Left: "0"), new("sub", Check.None, 0, Left: "0"),
+                new("sub", Check.None, 0, Left: "0"), new("fneg", Check.None, 0), default]), // Neg
+        new(
+            [new("xor", Check.None, 0, Right: "-1"), new("xor", Check.None, 0, Right: "-1"), new("xor", Check.None, 0, Right: "-1"),
+                new("xor", Check.None, 0, Right: "-1"), default, default]), // Not
     ]);
 
     // SPEC 13.3.1's checks, each one LlvmScalarText writer.
@@ -302,7 +325,7 @@ internal sealed partial class FunctionCodegen
 
     // An entry of the table: the LLVM operator (null: no row yet), the check, a unary operator's fixed operand and a raw pointer
     // displacement's sign.
-    private readonly record struct Entry(string? Operator, Check Check = Check.None, string? Left = null, string? Right = null, sbyte Displacement = 0);
+    private readonly record struct Entry(string? Operator, Check Check, sbyte Displacement, string? Left = null, string? Right = null);
 
     // A row of the table: the entries by column and the result on equal operands.
     private readonly record struct Row(Entry[] Entries, bool Reflexive = false);

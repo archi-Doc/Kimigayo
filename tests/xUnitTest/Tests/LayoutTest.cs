@@ -48,7 +48,8 @@ public class LayoutTest
     }
 
     // DECISIONS R5-M92: no Layout alignment exceeds 16, the heap's (SPEC 5.6, 21.4.3), which Raw.allocate's row relies on in place of the
-    // old generator's refusal: every primitive's row is at most 16 and a placement takes its parts' maximum (IMPL 21.1.2), in C mode too.
+    // old generator's refusal: every row is at most 16 (the primitives', a borrow's, a raw pointer's, a handle's, a function value's and
+    // the sequence handles') and a placement takes its parts' maximum (IMPL 21.1.2), in C mode too.
     [Fact]
     public void NoLayoutAlignmentExceedsTheHeapAlignment()
     {
@@ -57,6 +58,9 @@ public class LayoutTest
             "func probe(s: S, c: C, t: (i128, (u128, i8)), a: [3 of i128], o: Option<i128>) => ()");
         Assert.All(BoundType.Primitives.Values, x => Assert.InRange(c.Layout.Of(x).Value!.Layout.Alignment, 1, 16));
         Assert.All(Parameters(c), x => Assert.Equal(16, c.Layout.Of(x).Value!.Layout.Alignment));
+        var rows = CompilationTestHelper.BindSuccess(
+            "func probe(r: ref/i32, p: raw/i32, h: obj/i32, f: (i32) -> i32, s: Slice<i32>, a: Array<i32>, d: Dictionary<i32, i32>) => ()");
+        Assert.All(Parameters(rows), x => Assert.InRange(rows.Layout.Of(x).Value!.Layout.Alignment, 1, 16));
     }
 
     [Fact]

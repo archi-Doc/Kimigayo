@@ -40,8 +40,7 @@ internal enum IntrinsicWriter : byte
 /// <param name="LaysOutType">Whether the call's Type argument is a by-value use (K package 4.8).</param>
 /// <param name="Writer">How code generation writes a call.</param>
 /// <param name="Routine">The runtime routine the writer calls, if any.</param>
-internal readonly record struct IntrinsicRow(
-    IntrinsicId Id, IntrinsicTarget Target, bool LaysOutType = false, IntrinsicWriter Writer = IntrinsicWriter.Unwritten, FunctionAbi? Routine = null);
+internal readonly record struct IntrinsicRow(IntrinsicId Id, IntrinsicTarget Target, bool LaysOutType, IntrinsicWriter Writer, FunctionAbi? Routine);
 
 /// <summary>The intrinsic table of the Backend: one row per <see cref="IntrinsicId"/>.</summary>
 internal static class IntrinsicRows
@@ -50,38 +49,39 @@ internal static class IntrinsicRows
     private static readonly IntrinsicRow[] Rows = Complete(
     [
         new(IntrinsicId.RawAllocate, IntrinsicTarget.None, LaysOutType: true, IntrinsicWriter.Allocate, RuntimeAbi.RawAllocate),
-        new(IntrinsicId.RawRelease, IntrinsicTarget.None, Writer: IntrinsicWriter.Routine, Routine: RuntimeAbi.StorageRelease),
-        new(IntrinsicId.RawInitialize, IntrinsicTarget.None, Writer: IntrinsicWriter.Initialize),
-        new(IntrinsicId.RawSlice, IntrinsicTarget.None, Writer: IntrinsicWriter.Slice),
-        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, Writer: IntrinsicWriter.TryAllocate, Routine: RuntimeAbi.TryAllocateBytes),
-        new(IntrinsicId.MoveBytes, IntrinsicTarget.None, Writer: IntrinsicWriter.Copy),
-        new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true), // C8a's once a compiler function serves it (none does yet).
-        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true), // C4a.
-        new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None), // C8a's once a compiler function serves it (none does yet).
-        new(IntrinsicId.Abort, IntrinsicTarget.None, Writer: IntrinsicWriter.Routine, Routine: RuntimeAbi.AbortMessage),
-        new(IntrinsicId.Fail, IntrinsicTarget.None, Writer: IntrinsicWriter.Fail, Routine: RuntimeAbi.Abort),
-        new(IntrinsicId.WriteStdout, IntrinsicTarget.None), // C9a.
-        new(IntrinsicId.FormatFloat, IntrinsicTarget.None), // C9b.
-        new(IntrinsicId.ErasedWriter, IntrinsicTarget.Witness), // C9b.
-        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None), // C9b.
-        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None), // C9b.
-        new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor), // C6a.
-        new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor), // C6a.
-        new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor), // C6a.
-        new(IntrinsicId.Clone, IntrinsicTarget.None), // Payload-independent (IMPL 21.1.3); C6a.
-        new(IntrinsicId.TypeTest, IntrinsicTarget.None), // Acquires nothing (SPEC 13.6.4); C6a numbers its target (R5-M74).
-        new(IntrinsicId.TestObserve, IntrinsicTarget.None), // C10a.
-        new(IntrinsicId.TestMessage, IntrinsicTarget.None), // C10a.
-        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None), // C10a.
-        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None), // C10a.
-        new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None), // C10b.
-        new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None), // C10b.
-        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None), // C10a.
-        new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit), // C7.
-        new(IntrinsicId.Capacity, IntrinsicTarget.None), // C8d.
-        new(IntrinsicId.FormatBuffer, IntrinsicTarget.None), // C9c.
-        new(IntrinsicId.FormatHint, IntrinsicTarget.None), // C9c.
-        new(IntrinsicId.FormatFinish, IntrinsicTarget.None), // C9c.
+        new(IntrinsicId.RawRelease, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.StorageRelease),
+        new(IntrinsicId.RawInitialize, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Initialize, null),
+        new(IntrinsicId.RawSlice, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Slice, null),
+        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.TryAllocate, RuntimeAbi.TryAllocateBytes),
+        new(IntrinsicId.MoveBytes, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Copy, null),
+        new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
+        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true, IntrinsicWriter.Unwritten, null), // C4a.
+        new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // No MIR producer yet (an open PLAN row).
+        new(IntrinsicId.Abort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Routine, RuntimeAbi.AbortMessage),
+        new(IntrinsicId.Fail, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Fail, RuntimeAbi.Abort),
+        new(IntrinsicId.WriteStdout, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9a.
+        new(IntrinsicId.FormatFloat, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
+        new(IntrinsicId.ErasedWriter, IntrinsicTarget.Witness, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
+        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
+        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9b.
+        new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
+        new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
+        new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
+        new(IntrinsicId.Clone, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // Payload-independent (IMPL 21.1.3); C6a.
+        // TypeTest acquires nothing (SPEC 13.6.4); C6a numbers its target (R5-M74).
+        new(IntrinsicId.TypeTest, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C6a.
+        new(IntrinsicId.TestObserve, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestMessage, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
+        new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
+        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
+        new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C7.
+        new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C8d.
+        new(IntrinsicId.FormatBuffer, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
+        new(IntrinsicId.FormatHint, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
+        new(IntrinsicId.FormatFinish, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
     ]);
 
     /// <summary>Gets the row of an intrinsic.</summary>

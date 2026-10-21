@@ -39,7 +39,7 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi Abort = new(
         "__kimi_abort",
         Unit.ComputationType,
-        [new("i32", "reason"), new("ptr", "location"), new("i64", "location_length"), new("i64", "os_error")]) { NoReturn = true };
+        [new("i32", "reason"), Location, LocationLength, new("i64", "os_error")]) { NoReturn = true };
 
     // Hidden diagnostic context follows the ordinary parameters (SPEC 21.3.1, 22.5.1).
     internal static readonly AbiParameter[] OwnedStringParameters =
@@ -70,7 +70,10 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi ArrayInit = new("__kimi_array_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
-    internal static readonly FunctionAbi RawAllocate = new("__kimi_raw_allocate", "ptr", [new("i64", "count"), new("i64", "stride"), Location, LocationLength]);
+
+    internal static readonly FunctionAbi RawAllocate =
+        new("__kimi_raw_allocate", "ptr", [new("i64", "count", AbiParameterKind.Value, 0), new("i64", "stride"), Location, LocationLength]);
+
     internal static readonly FunctionAbi StorageRelease =
         new("__kimi_free", Unit.ComputationType, [new("ptr", "storage", AbiParameterKind.Value, 0), Location, LocationLength]);
 

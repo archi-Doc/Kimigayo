@@ -75,9 +75,6 @@ internal static partial class LlvmScalarText
     // The condition of a check that the compiler proved: the failure block stays unreachable.
     internal const string ProvenValid = "false";
 
-    // A check failure carries no operating-system error (the runtime reports one only when it is nonnegative).
-    private const string NoOsError = "-2";
-
     // A role followed by an int.
     private const int NameLength = 32;
 
@@ -347,7 +344,9 @@ internal static partial class LlvmScalarText
         WriteArgument(output, "(", abort.Parameters[0], reason);
         WriteArgument(output, ", ", abort.Parameters[1], check.Location);
         WriteArgument(output, ", ", abort.Parameters[2], check.LocationLength);
-        WriteArgument(output, ", ", abort.Parameters[3], NoOsError);
+        Span<char> error = stackalloc char[20];
+        RuntimeAbi.NoOsError.TryFormat(error, out var length, default, CultureInfo.InvariantCulture);
+        WriteArgument(output, ", ", abort.Parameters[3], error[..length]);
         output.Write(")\n  unreachable\n");
         output.Write(check.Success[1..]);
         output.Write(":\n");

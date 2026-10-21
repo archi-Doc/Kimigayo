@@ -4805,7 +4805,8 @@ structure is recorded here by the unit that first implements it.
     the module entry's calls too (`__kimi_start` calls its startup root through it, `WriteEntryCall`). A call inside a caller-location
     body is written when its callee takes no location: only a CallerLocation callee forwards one (SPEC 22.5.1), which C3b's row writes.
   - Copy slots (SPEC 3.5 with IMPL 21.3.1, the planning session's decision): a Copy of a value in memory (R5-M87's copy form) that a
-    runtime-reached Call passes by pointer, which the callee owns from the call on, is copied into a copy slot `%c<k>`, an aligned
+    runtime-reached Call passes by pointer, which the callee owns from the call on, is copied into a copy slot `%c<k>` (R5-M92 replaces the
+    copy slots' spelling, `%s<k>`, and narrows their scan to OwnedSlot parameters), an aligned
     alloca of the caller's entry block, so the callee never sees its source change (`f(s, s@uniq)`); one pre-scan of the reached blocks'
     Calls, after `MirReach.Walk` and before the prologue, numbers them; it covers every reached Call's in-memory Copy operands, whatever
     its callee's row, until a later call row (C3b, C5a, C6c, C8a) uses these slots or narrows the scan (its stated condition). A string
@@ -4886,14 +4887,18 @@ structure is recorded here by the unit that first implements it.
     noreturn) through the one call writer (`Invoke`), whose parameter loop now passes the call's location for the Location kinds, so the
     console writeLine row is an `Invoke` too (its own loop deleted); TryAllocate (tryAllocateBytes, the same, its definition requested);
     Allocate (Raw.allocate: the count, the element's stride from `Layout.Of`, the location); Fail (`__kimi_abort` with the reason
-    `AbortReasons.Of` gives the code MIR carries, its one operand, and no OS error, `RuntimeAbi.NoOsError`, the runtime's -2; a code
-    outside the table is `InternalInvariant_Kd`); Initialize (the
+    `AbortReasons.Of` gives the code MIR carries, its one operand, and no OS error, `RuntimeAbi.NoOsError`, the runtime's -2, which
+    `LlvmScalarText`'s check failures read too, its own copy deleted; the runtime template's and the old Emission's literals stay, D5;
+    a code outside the table is `InternalInvariant_Kd`); Initialize (the
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
     comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues; C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout; C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
-    the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan are C8a's (the planning session's mapping), but no
-    compiler function's disposition serves them and no MIR form produces them, so their rows are written with their first producer.
+    the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
+    disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
+    `Invoke`, which takes the values of a routine's slot-less parameters (the stride; the reason and the OS error) in order, the runtime
+    Abort's location parameters being its Location kinds; an `IntrinsicRow` and the operator table's `Entry` state every column but the
+    unary operand (ARCH: at most two optional parameters).
   - The nullable Alloc (decision 2C; package C row 2): `__kimi_try_allocate`'s definition is the runtime's, `LlvmModuleText.TryAllocate`,
     its marker spliced from `RuntimeAbi.TryAllocateBytes` by the checked runtime splice and defined in a module only where a body calls it,
     by both generators: the old writer's storage byte primitives write it, byte-identical (e1025e1b), and MIR code generation requests it
@@ -4903,20 +4908,25 @@ structure is recorded here by the unit that first implements it.
     `p - n` a displacement entry (`mul` by the pointee's stride with its sign, then the place writer's `Offset`; a zero stride keeps the
     pointer, null included; unchecked, SPEC 5.3); Binding admits no other pointer operator. `null` is a constant (`Value` form `n`), which
     R5-M80's null Cast and comparisons read.
-  - Layout invariant (decision on the alignment check): no Layout alignment exceeds 16, the heap's (SPEC 21.4.3): every scalar row is at
-    most 16 and a placement takes its parts' maximum (IMPL 21.1.2), C mode too. Raw.allocate's row relies on it in place of the old
+  - Layout invariant (decision on the alignment check): no Layout alignment exceeds 16, the heap's (SPEC 21.4.3): every row is at most 16
+    (the primitives', a borrow's, a raw pointer's, a handle's, a function value's, the sequence handles') and a placement takes its parts'
+    maximum (IMPL 21.1.2), C mode too; Layout's contract states it. Raw.allocate's row relies on it in place of the old
     generator's refusal of a larger alignment (`BodyLowering.Raw.cs:47`, unreachable on windows-x64-v1), and
     `LayoutTest.NoLayoutAlignmentExceedsTheHeapAlignment` pins it at Layout's layer. A profile whose Layout could exceed it records SPEC
     5.6's Unsupported at compile time.
   - Locations: Abort, Fail and the routines report `Location(call.Source)`; in a caller-location body that stays a record until C3b
-    (R5-M93). The copy slots' condition (R5-M89) is met for C8a's rows: Abort's constant message is written into one.
+    (R5-M93). The copy slots' condition (R5-M89) is met by narrowing the scan: the operands a Call passes to an OwnedSlot parameter, every
+    in-memory operand of a body callee (a slot Type is passed by pointer) and an intrinsic's only through its row's routine, so Abort's
+    constant message has one and a Fail's code or Raw.initialize's value none.
   - Copy slots are spelled `%s<k>`, superseding R5-M89's `%c<k>`: a check's success label is `c<id>`, so a body with both could define
     one name twice (invalid IR in `CopyOperationValues` and the `InheritedPlans*` fixtures, which C8a's rows made generable); the
     regression is `FunctionCodegenTest.CopySlotsAndCheckLabelsNeverShareAName`.
   - Restructures first, behavior unchanged: `IntrinsicRows.cs` as the indexed table, `LlvmModuleText.cs`' spellings split out,
-    `LegacyRuntimeHelpers`' storage byte primitives moved to `.Storage.cs` (d063f5ad); `RuntimeAbi.cs` gains the routines' operand slots
-    (`LogicalIndex`, which no generated text reads) without a split: its routines' initializers read its representations, and a partial
-    split leaves their order unspecified (e1025e1b).
+    `LegacyRuntimeHelpers`' storage byte primitives moved to `.Storage.cs` (d063f5ad); `LlvmScalarText`'s conversions moved to
+    `.Conversions.cs` before its abort writer reads `RuntimeAbi.NoOsError`. `RuntimeAbi.cs`'s due restructure is a keep (the planning
+    session's ruling, as R4's 2x-R10 for `MirLoanSets.cs`): it has one responsibility, and its routines read its representations at
+    static initialization, whose order a partial split would leave unspecified; it gains the routines' operand slots and Location kinds,
+    which no generated text reads (e1025e1b and the review fold).
   - Rejected: a switch over `IntrinsicId` in code generation (a second table of the vocabulary); `memmove` (R5-M18); an inline nullable
     Alloc or `LegacyRuntimeHelpers`' text (above); a code column in `IntrinsicRows` for Fail (it would copy `IntrinsicDisposition`'s codes);
     copying the old 16-byte check (the invariant above makes it dead code).
