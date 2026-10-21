@@ -1,0 +1,17 @@
+Performance prerequisite: behavior-preserving matching split
+Baseline: 152dda6280891411714f0fe706fd033856655610
+Build: dotnet build draft/Sketches/G170/C1/proto/G170C1.csproj -c Release -o temp/g170-c1-{baseline,split}
+Checks: fixed; order 12 6301 (G170_THREADS=2)
+fixed: 94 PASS, FAILURES 0; output identical between baseline and split
+order: 48 requests / 164 limit-boundary runs, 0 differences, 0 unexpected outcomes; output identical
+Prototype-only evidence: outside solution inputs; no Unit/Session Verify claim or verify-commit association.
+Baseline raw Solver.cs SHA256: 496D94BB0D9C10AC8A1253DA0F28BF0DA281F84F7ABCF84606F0990BBB72A535
+Raw output SHA256:
+temp/g170-c1-baseline-fixed.txt 21ED04A3B6085A9C8F3DC10BD11385DE684EB7163BE8E14FEBB9D91EBC2742D6
+temp/g170-c1-split-fixed.txt 21ED04A3B6085A9C8F3DC10BD11385DE684EB7163BE8E14FEBB9D91EBC2742D6
+temp/g170-c1-baseline-order.txt C0F9703E059432690A1BB95AF6E5B08B1B79615B4FAC2843C2F054AA500C6676
+temp/g170-c1-split-order.txt C0F9703E059432690A1BB95AF6E5B08B1B79615B4FAC2843C2F054AA500C6676
+Independent split review: ACCEPT; 179 baseline top-level members /179 moved members; zero changed texts ignoring comments/whitespace.
+Candidate raw SHA256 and Git-normalized blob:
+draft/Sketches/G170/C1/proto/Solver.cs SHA256=31DD6177F58B84087AA6D77B9DA72CB2BBE415D4AA8159F73DE1B740E229F248 blob=fad0faa5561ba9d9502d94e91dd5e3ddeb967bc5
+draft/Sketches/G170/C1/proto/Solver.Matching.cs SHA256=C14858AC5BFCBF2652AE46E9E3537AAA7F50B805C3CB57381FFFE836FC23449E blob=1997463dfb090b91607c1b873a63edb9e88d7752
