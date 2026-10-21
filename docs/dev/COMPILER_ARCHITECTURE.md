@@ -196,7 +196,9 @@ first. IntrinsicId returns to 30 at R8.
   for 2x-E7 (re-approved on its corrected premise): a guard in the old analysis reports `Unsupported_Kd` for a Pattern Binding
   that borrows a part of an owned Subject or item past a pair layer admitting owner (`OwnedPart` with access other than Owned) and
   for a Binding that selects a pair layer, including forms dev bound by value or followed structurally and ran, until R6-check
-  (DECISIONS BU-14).
+  (DECISIONS BU-14), and the owner's exception for G140 (2026-10-21): performance fixes in the old Analysis with identical
+  verdicts (CleanupObservesBorrows' per-query depth-monotone memo, HasProjection's gate, AggregateCanComplete's memo,
+  VerifyBorrows' per-Place AddType set; DECISIONS BU-19).
 - **Size.** Code size has no caps, stage ceilings or forecasts (DECISIONS Q5). Each compiler commit states its net size
   change per area, and stage exits record area sizes (AGENTS). `ArchitectureRulesTest` retains its no-growth ratchets.
 - **Missing facts (R3–R5).** Binding publishes a fact the MIR side lacks as a small view; Mir never re-derives it.
