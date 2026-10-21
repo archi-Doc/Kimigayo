@@ -899,7 +899,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   `OriginInference`/`TypeOrigins` and `IsInvariantLayer` (no `obj`, Q3) on these views, and `Binding.CallableProofs` and
   `Binding.Constraints`' signature selection on `Callable` (stage ledger). Owner exception (user, 2026-10-12): the 30-Binding-lines
   guideline is waived for U7 up to about 150 lines (from about 70); measured +140 lines, +924 tokens (U7a +54, U7k +17, U7c +1,
-  U7 +68).
+  U7 +68). Its view list where it applies (`OriginAtom.Of`, `UniversalRelations.For`): the C1-F4 view of R4-M94 (2a0-2).
 - **R4-M26** (2026-10-12, planning session; U6c) A selected call (`CallPlan`) and a substitution (`Subst`) hold one length entry per
   slot, parallel to their Type arguments, the Implementation Selection Key's form (SPEC 8.13.3, IMPL 21.3). Their constructors
   (`CallPlan.Set`, `TyCtxt.Intern`) establish it: a producer passes no lengths (the target has no length slot) or one per slot, and a
@@ -1055,7 +1055,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   accepting every Type with a `Never` part (an open family; `Agree` also decides the builder's layers). Not temporary.
   The `RawSlice` backing and C8 landed later (R4-M40, R4-M41).
 - **R4-M38** (2026-10-17; design A3 §4.2, owner approval of P5 and of its §9 item 8 on 2026-10-17; its `(Field, Write)` list and
-  `bool` superseded by R4-M89 (unit 2b-1: the key row per view, classes as R4-M74 OQ6)) A4's static keys for A5.
+  `bool` superseded by R4-M89 and R4-M91 (unit 2b-1: the key row per view, classes as R4-M74 OQ6)) A4's static keys for A5.
   `MirEffects.Keys(body, view, block, out unknown)`: the mutable static Fields a Call or a Drop may access through what it runs, each
   once and written where any access writes it, from the summaries the last `Run` solved; `unknown` where A4 does not classify what it
   runs (an Unknown effect, an atom left abstract under the body's premises, resolved at once as for an obligation, a Limit, or a
@@ -1710,8 +1710,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   and `ended`, A3 §6.1's view skip and the unit E7 and E12 name for their merge, R4-M10's placement of the Access and Borrow codes in
   A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
   - Effects (clarified by R4-M89: a Loan found only in a reservation holder that the call does not activate is
-    `CallReservationConflict_Kd` (A6 row 1); "none
-    arises" overlooked implicit static reservations (`tests/mir/statics.mir:178`)): err(effect), a static or unknown-environment
+    `CallReservationConflict_Kd` (A6 row 1); implemented by R4-M92; "none
+    arises" overlooked implicit static reservations, such as a receiver reserved while an argument's call runs, R4-M92's
+    `counter.add(g())`): err(effect), a static or unknown-environment
     effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
     the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
     unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
@@ -1728,7 +1729,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     DIAGNOSTICS' escaped borrows; no guard-local code exists (A3 §9 item 9's DIAGNOSTICS record).
   - Merge: E7's and E12's merge (the `destroy` conflict on a Loan `_0` carries whose Borrow the Origin stratum refuted, and err(ended)
     where γ_H reaches `_0`) moves from unit 1c to 2a (2a-2, completed by 2g-5; the step-2 plan's PD11), since the Refuted relations it
-    reads come from the Origin stratum (A5-F4).
+    reads come from the Origin stratum (A5-F4). Restated by R4-M94 (2a-2).
   - View skip (unit 1c-3): `MirBorrows.Run` skips a body view only when it has no Loan and no guard candidate, since E7's γ needs no
     Loan; A3 §6.1's skip of a view without a Loan accepted a guard value escaping in a Loan-free view (the design review's r02, an
     unsound acceptance). The root flags only select the accesses checked.
@@ -1838,9 +1839,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (the old gate's identity in the raw row, X-1a) only where a row's verdict stays unknown.
   - OQ11 (b): until R6-check, Binding keeps its records of relations through local regions or inferred ends, adds their rows and
     labels those records with A5's requirement `Ownership.UnprovenOrigin` (code and span unchanged) until H11; the ledger
-    compares each record with A5's problem.
+    compares each record with A5's problem. Assigned by R4-M94 to 2a0-3a (position rows at recorded body chains; the twin's Opaque
+    limit recorded).
   - OQ12 (a): S3's clarification of SPEC 15.3.6 ("A variable's bounds are followed through other variables to fixed or finite
     Origins and `static`. If none is reached, the variable has no candidate") is made as a SPEC revision before 2a0-3b.
+    R4-M94 assigns it to 2a0-3b at the plan's letter; a `let` slot as a region (D4) is BU's later unit (OQ-1 (c), PLAN G194).
   - OQ13 (a) (superseded in part by R4-M76): S5 is adopted: an effect atom on an associated projection that grows under
     polymorphic recursion widens to an unclassifiable effect. 2x-S5 still writes the proposal and its review; a review finding
     that changes the rule returns to the owner. Its SPEC integration is a separate SPEC session after that review, as 2f-S2 is for
@@ -2154,6 +2157,156 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Inlined rule replaced for A5 (A1/A2 follow in 2e-4 if 2x-R7 and a `MirDrops.cs` response are ready, else in 2g-6), R4-M73's
     "R4-M69 governs inline default copies" sub-bullet and R4-M72's Defaults bullet superseded, and R4-M72's A6 table gains the row
     above; the rolled-back M69 plan's exclusion of that relocation is not in force.
+- **R4-M91 A4's key row and its per-view query** (2026-10-21; unit 2b-1 of G:A5-F5 under R4-M89, the package's §2.1 and OQ-F5-5
+  item 1; group review; supersedes R4-M38's `(Field, Write)` list and its `bool`, the classes as R4-M74 OQ6 (a) confirmed)
+  - `MirEffects.Keys(body, view, block, out classes)` returns the site's key row: ⌈2F/64⌉ words over the version's F mutable static
+    Fields, bit 2f a read and 2f + 1 a write of the Field A4 numbers f, a read bit beside its write bit read as the write (R4-M38's
+    rule). The row is A4's scratch, valid until the next query or `Run`. `MirEffects.Field(symbol)` gives f, −1 for a static that is
+    not mutable or that no body of the version accesses; a borrowed mutable static always has one (its Ref is a static effect `Local`
+    records), so the layout stays A4's.
+  - `classes` are the site's `Unknown`, `Limit` and `Derived` bits, kept apart and now internal constants: for A5's effect rule
+    (2b-3) Unknown meets every key, a Limit is a located `Unsupported_Kd`, a Derived site reports nothing by itself (R4-M10).
+  - The query selects the view it is given, so a body's views are never collapsed (R4-M11); a caller reselects its own afterwards.
+  - Deleted: the `accessed` list, its enumeration loop and its result buffer, and the list of each number's Field, which only that
+    loop read (`fieldIds` counts the Fields). A query costs Θ(terminator inputs + composed views × ⌈2F/64⌉), no longer Θ(keys
+    reached) (2b-2: 2,098,176 listed keys over 4,826 sites at ring N = 2,048, F = 1,024). The key storage is unchanged (2b-2).
+    `Benchmark --static-keys` before and after: sites, classified sites and the keys the rows name equal in all 60 cells, Run bytes
+    equal, Local bytes 296–16,568 B lower where F > 0, the queries' bytes 0 (were up to 32,920 B).
+  - Rejected: the list (A5 would pay Θ(keys reached) per site and match keys by symbol); a stored per-site record (R4-M38: +36–60 %
+    cold A4 allocation); a union over a views mask (collapses views, the 2b-D review's B-2). Not temporary.
+  - Recorded here for lane C (the planning session, 2026-10-21): 2x-R13 moved `MirBorrows.Checks.cs`'s location driver (`Check`,
+    `Accessing`, `Accessed`, `Dropping`, `Destruction`, `Borrowing`) to `MirBorrows.Locations.cs`, behavior-preserving, `.Checks.cs`
+    keeping the conflicts relation; and ruled that `MirProblem.cs`, due by count (`Inlined`, 1c-6; `Body` and `NoBody`, 1c-8;
+    reworded comments), has no split: the problem and fact records with their fact kinds are one responsibility.
+- **R4-M92 A5's effect rule: err(effect), R3 and the initialization proof; G136's static items** (2026-10-21; unit 2b-3 of G:A5-F5
+  under R4-M89, the package's §1; group review, whose B1 the planning session ruled within R4-M89 (below); clarifies R4-M72's effect
+  row as R4-M89 reads it; G136 (i) replaces PD12 (iv)'s lemma; G136 (ii) is OQ-F5-1 (a))
+  - Rule (SPEC 15.6.4, 15.6.2): at a Call or a Drop, each mutable static a Loan of the view is on (an effect root) with a candidate in
+    the effect set is accessed whole and shallow through two rows of the conflicts relation, `EffectWrite` (a write key or A4's Unknown,
+    any mode) and `EffectRead` (a read key, a unique Loan). A Loan past a raw or shared Deref is not reached; in safe code a static's Loan
+    has neither (E3; no `uniq` static, 15.2.3), so this is 15.6.4's per-Field granularity. A4's Limit without Unknown, where a candidate a
+    write would meet is met by no key, is a located `Unsupported_Kd` at the site (a limit record, kept in copies); Derived reports nothing
+    by itself (R4-M10), keys beside it stay checked. Keys are queried per view (R4-M91): a run that stands for several views records each
+    problem with the views whose keys give it (R4-M11).
+  - Sets (a reading of A3 E13 (1)(b)): a Call's effect set is `Takes(n − 1)`, the live holders it does not overwrite, E and every
+    operand's value, no holder left out (round 18: `R18LiveOnly` is unsound on e4, e4m, e6); a Drop's is `TakesValue` (val(X) at every
+    Drop). One effect access is listed after the location's own accesses, so the one gather takes its values; the rule runs last.
+  - W6 (SPEC 15.6.7): at a call's effect rows a reservation the call activates is unique. One predicate, `Unique(candidate, kind)`, is
+    read by the mode test and by `Code`, which takes the access kind; the operands' own accesses and the activations still see a
+    reservation shared in its holder. The effect rule stamps the reservations a location activates once, so the predicate is O(1).
+  - Codes: an effect problem is `ComparisonLoanConflict_Kd` at the call or Drop, except one whose Loan is found only in a reservation
+    holder the call does not activate: `CallReservationConflict_Kd` by the A6 table's row 1, through `Code` (e1, an argument's call while
+    the receiver is reserved: `counter.add(g())`). An activation's conflict and an effect conflict on one Loan are two problems (e4c).
+    Round 18's e1 program, `State.count += g()`, secures `g()` before it reserves the target (SPEC 13.7.2, `MirBuilder.Update`), so it is
+    valid; the prototype's row is corrected as an evaluation-order error of the model.
+  - Facts (PD31): `MirFactKind` gains `EffectRead`, `EffectWrite` and `EffectUnknown` (not an ARCH-closed vocabulary), one per problem,
+    what decided it (a write key, else Unknown, else the read key), sited at the met Field's declaration (its StaticInit body's source);
+    `Report` takes it as an argument, a fifth fact slot.
+  - R3 (SPEC 16.4 with 16.3.1, 16.3.3): a Drop of a mutable static whose own read or write key on it, or Unknown, is
+    `ComparisonLoanConflict_Kd` at the Drop, anchored at it, with the effect fact and no witness; Limit alone, a located `Unsupported_Kd`.
+    No Loan is issued. It reports through `Report`, so the view skip becomes "no Loan, no guard candidate and no Drop of a mutable
+    static", and the hold stays one rule.
+  - Initialization proof (SPEC 15.6.4, 22.4.3; PD12 (ii) as written; the planning session's clarification of R4-M89 on the group
+    review's B1, 2026-10-21): "a live Loan anchored to a Field proves that Field initialized" holds wherever a first access is
+    composed, since every first access is an ensure and A4 composes each initializer into every site that may run it (R4-M38). So at
+    every Call and Drop, ensures included, an R1 or R3 conflict where every effect that would decide it (a write or read key, or
+    Unknown) lies in the summary of the initializer of a static d with a candidate in the effect set, in any mode, is the located
+    `Unsupported_Kd` at the site; the first effect outside it decides the Language problem (`Unproved`; the group review's R2-B1:
+    `multiImm`, a proved initializer's write beside an unknown call, stays the error with `EffectUnknown`). The site must be one that may
+    first-access d: d is immutable (its accesses carry no key), the site's row has a key of d, or the site is d's own staticEnsure
+    (`MirProgram.StaticInit`; an ensure carries no key of its own static, R4-M38, so without this e10a, e10e and e10f would be errors).
+    A site that never reaches a mutable d keeps a direct conflict as the error (`direct`). A key the site may produce both directly and
+    through a proved initializer counts as proved, since keys do not record their source (P5). The set is a may-set, so the proof
+    decides nothing exactly (e10f; OQ-F5-6 (a)). A4 publishes `MirEffects.Summary(body, view, out classes)`, a body view's row and
+    classes over its existing storage, an atom it keeps counted as Unknown (warm 0 B). Before the review the proof was consulted only at
+    the body's own ensure of the static (Language errors on SPEC-valid pA, pB, pQ: a call that reads x, the ensure of x2 whose
+    initializer reads d, a call that reads an immutable static); that special case, its slot decoding and `Met`'s bool are deleted.
+  - G136 (i): a direct Loan on a static names E (`Holders`; W's step from E is `MirWrites.None`), storage the body does not own (SPEC
+    15.6), so a call's store through a static's borrow lands in E as a parameter's does (`refs.append(y@ref); y = 2` errs; it went nowhere
+    before); check sets do not change, since σ(E) is in each.
+  - G136 (ii) (OQ-F5-1 (a)): a whole write of a static ends its Field's Loans (`Ending`), a part write none; e16b reports once.
+  - G171 interim: an effect conflict found in an inline default copy carries the Inlined fact and is dropped, as every copy-found
+    conflict, until 2e-4 (unsound for a caller's Loan, shadow only, no regression); Limit and proof records stay in copies.
+  - Unsupported producers registered for X-2 (PD28): A4's Limit at a site with a live mutable-static Loan no key meets (and R3's with
+    the Limit alone), until A4 classifies the effect; the initialization proof, until OQ-F5-6's clarification and a must-carry fact (P42
+    alone does not decide it). A static without its initializer is a broken builder contract, `InternalInvariant_Kd`.
+  - Limit of the proof (the group review's R2-N1): for an immutable d the proof applies at every site, since A4 keys no immutable
+    static and A5 cannot tell whether the site reaches d; so `let lm = lim2.view(); let ll = log.view(); let v = e3.n`, whose ensured
+    initializer writes log and never reaches lim2, is U where SPEC errs (sound: U still rejects). Removed when A4 keys immutable-static
+    accesses, or at P42; registered under X-2's proof producer.
+  - Tests: Binding accepts the implicit static Loans of a group's own members only (a receiver reserved or shared with a retained
+    result, an argument's adaptation), so 2b-3's programs are group members, which R4-M90's PQ-1 re-expects when 2b-6's unqualified part
+    lands; the qualified receiver and argument forms are `NoApplicableOverload_Kd`, a `for` over a static moves it, a `match` on one is
+    Opaque. Census (`MirCensusTest`): no A5 problem in the library, the milestones (42's `Registry.replaced` Drop runs no key) or the
+    goldens.
+  - Driver: `MirBorrows` takes `MirEffects` (`MirAnalysis`); the effect access is listed by `MirBorrows.Locations` (`Effecting`).
+  - PD21 (the planning session, 2026-10-21; the plan's 2x-R9 expected it): `MirBorrows.Activations.cs` has one responsibility, the
+    activation and observing-destruction checks of a location, and 2b-3's change is an argument at its two `Code`/`Report` call sites, so
+    no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D adds the caller relation there). `MirBorrows.Loans.cs`,
+    `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7).
+  - Cost: per checked site one `Keys` query per view where an effect root has a candidate or R3 applies, Θ(effect roots + their
+    candidates) tests and scans, and on a conflict Θ(the body's statics + their initializers' views × ⌈2F/64⌉) for the proof; `Work`
+    counts the row's words, the bit tests, the reservations stamped and the statics the proof scans; Field numbers per view and the
+    stamps, pooled; warm 0 B. The query's own composition, Θ(terminator inputs + composed views × ⌈2F/64⌉), is A4's and uncounted (A4
+    has no work counter; 2b-2 measured it). V16 "F5 effects" lives in `MirBorrowsTest.EffectsScaleWithCallsAndStaticLoans` (VERIFICATION
+    has no V16 table): linear in N calls at M = 4, K = 8; within the M × sites term in M at N = 32.
+  - Rejected: W6 as a gather pass marking activated reservations unique (a new pass and taking, and the bucket order would decide
+    `EffectWrite`'s candidate); a site row `Effect` in `AccessKind` (not a relation row); a deep reach (equivalent in safe code); R3 as an
+    issued Loan (no value carries it); the closed-key ensure (`R18EnsureClosed`, `R18EnsureKeyed`: unsound on e10f); keeping `Code`'s and
+    `Report`'s signatures (a second statement of row 1 outside `Code`, an optional parameter); the proof at any site regardless of
+    whether it may first-access d (the error of a site that never reaches d would become a U, `direct`). Not temporary, except the
+    proof's and the Limit's `Unsupported_Kd` (OQ-F5-6, P42; AGENTS Diagnostics).
+- **R4-M94 A5-F4's design package (2a0-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
+  「推奨どおり承認 (推奨)」
+  to the package with OQ-3 (a), and to the other questions verbatim: OQ-1 「(c) 別の BU 単位で後日 (推奨)」, OQ-2 「(a) R6-check で削除
+  (推奨)」, OQ-4 「(b) 条件を足す (推奨)」; R4-M74 OQ2) The package is `draft/Sketches/A5 Step 2/2a0-D-package.md` (design A as
+  the base with parts of B; the design review, with real-compiler probes, and the independent confirmation's two rounds, whose
+  blocking items P-1 to P-7 were applied, are in `2a0-D-review.md`). Units: the Binding view units 2a0-2, 2a0-3a and 2a0-3b take
+  DEC Q6 form 1 (one BU review each, PD6); G:A5-F4's 2a-1a, 2a-1b, 2a-2, 2a-4 and 2a-5 take form 2 (one group review; 2a-3 is
+  folded into 2a-1a); 2a0-4 and the new 2x-R15 (A5's Place steps, behavior-preserving) take their own reviews. In short:
+  - Rows (2a0-2): a relation is a body chain when an end, resolved at its use, is not fixed (`Binding.BodyChain`, the call test);
+    rows `(Site, Longer, Shorter, Equality, Source, Clause, Destination, CaseMask)` with `ResultFit` set by Binding where it
+    validates a body result; each row owned by the executable body Binding binds it in (function, Closure, accessor, default
+    template by Binding's default index, static initializer), recorded at formation, never from `Use.Parent` (the parentless
+    `$for.iterator` Use); resolution at use instead of alias rows, meets keyed by their canonical operand set; T1 by construction.
+  - `OriginAtom.Of`: SPEC's three kinds by a first-match precedence table (the package's §3): the body's contract → Fixed; meets
+    by operands; the body's roots, default templates' prepared inputs included → Finite; environment bindings Finite until 2c-6;
+    binders in an enclosing body → Fixed; static Borrows formed in the body by mutability; `Inference`, `Anchor` → Inferred; an
+    `Unbound` end or another declaration's universal atom (PLAN G195) → a located `Unsupported_Kd`. Slots are decoded only by the
+    view (an `ArchitectureRulesTest` row, G163). One owner of fixed–fixed entailment: the premise catalog and
+    `OriginPremiseClosure`, read per body by `UniversalRelations.For`, with an agreement test until R7.
+  - Boundary: 2a0-3a forms position rows at the body chains Binding records (non-call fits; a local's clause in `JudgeLocalClause`)
+    and labels the twin `Ownership.UnprovenOrigin`; a new default-pipeline record stops the unit; the twin's Opaque limit (a Borrow
+    formed inside the failed node) is recorded; at H11 non-call rows become verdict-independent. 2a0-3b at the plan's letter
+    (no-candidate variables are body regions; "no principal candidate" is the clause's relation judgment). 2a0-4 splits the
+    ledger by owner.
+  - `MirOrigins` (2a-1a, 2a-1b), a canonical component: step 4 per body runs `Judge` (all classes), then `MirBorrows` per view,
+    then `Record`; containment per borrow layer through the shared classifier `MirSteps` (2x-R15), up to the first shared layer,
+    stopping at a raw Deref; MeetNode; Refuted by finite-source and Unknown by fixed-source bitsets; Reason `(Longer, Shorter,
+    Equality)` on `MirProblem` and in `MirReport`'s key, facts `Anchor`, `Relation`, `Result`; `MirDataflow.Within` decides the
+    byte limit. G161 is decided by 2a-1a's Refuted rule.
+  - Merge (2a-2): rule 1 drops a storage-end conflict with the `Result` fact in the views where its Anchor's atom is refuted at a
+    `ResultFit` row (PD11's first half, per atom); rule 2 (OQ-4 (b)) drops a guard-sourced `UnsatisfiedOriginRelation_Kd` whose
+    last edge is a `ResultFit` row in the views where its candidate has an err(ended); nothing else is dropped. Recorded limits:
+    `cf-g-reassign` loses an independent report (X-2/OQ9 list), and a guard escape into storage the body does not own reports both
+    codes.
+  - Owner answers: OQ-1 (c) a `let` slot as a region is a separate BU unit after G:A5-F4 (PLAN G194); OQ-2 (a) the
+    preserves-results containment skip is deleted with the old path at R6-check (PLAN G193); OQ-4 (b) as above; OQ-3 (a) the ten
+    departures confirmed: finite-source bitsets for A3 §7's one-witness BFS; GuardReverse at a `ResultFit` edge for PD11's second
+    half and A3 E7's merge sentence; A3 §7's fixed-atom containment read against Binding's encoding, with MeetNode; three atom
+    kinds for the plan's four; `UniversalRelations.For` per body with per-class conditions; T1 by construction; 2a-3 folded;
+    rows partitioned at formation, no alias rows; PD11's first half per atom; 2a0-3a's non-call rows only where Binding records a
+    failure until H11. Closed without an answer: OQ-B1 (T1 holds by construction), OQ-B3 (the twin's Opaque limit follows from
+    OQ11 (b)), OQ-B5 (static Borrow atoms are per site on dev).
+  - PLAN rows: G192 (a local-layer Reborrow accepted on the default pipeline), G193, G194, G195 (a callee's meet judged with its
+    own atoms), G196 (a `Slice` handle Borrow named by the handle's Origin: unsound on both pipelines, BU's repair) and G197 (SPEC
+    11.8's valid `limitRef` rejected).
+  - Rejected: B's unconditional guard drop (`guard-annot` accepted on the MIR); twin rows from Binding's chain facts instead of the
+    fit's positions; a `NoBody` slice, a body taken from `Use.Parent` or from the Site; every `let` slot a region now (OQ-1 (a));
+    MIR reading `Binding.Obligations` itself; a phase switch in `ProvesOriginOutlives` and a MIR-side `Entails` over copied
+    premises; environment atoms Inferred before 2c-6 (`env-store` accepted on the MIR); the static row before the enclosing-binder
+    row, and a callee's atoms classed Fixed; a merge by Loan membership or by Borrow alone; GuardReverse without the `ResultFit`
+    condition (OQ-4 (a)).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

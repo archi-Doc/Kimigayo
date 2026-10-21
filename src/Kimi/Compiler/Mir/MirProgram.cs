@@ -65,8 +65,15 @@ internal sealed class MirProgram
     /// <param name="body">The calling body.</param>
     /// <param name="operand">The staticEnsure call's operand.</param>
     /// <returns>The body, null only when the contract is broken.</returns>
-    internal MirBody? StaticInit(MirBody body, in MirOperand operand)
-        => this[new(body.Statics[(int)body.Consts[operand.Arg].Bits].Symbol, MirBodyKind.StaticInit)];
+    internal MirBody? StaticInit(MirBody body, in MirOperand operand) => this.StaticInit(body, (int)body.Consts[operand.Arg].Bits);
+
+    /// <summary>Gets the initializer of a static a body accesses: the StaticInit body of the static at an index of the body's statics. The
+    /// builder builds one for every static a body accesses, so a consumer treats null as a broken contract
+    /// (<c>InternalInvariant_Kd</c>).</summary>
+    /// <param name="body">The accessing body.</param>
+    /// <param name="slot">The static's index in <see cref="MirBody.Statics"/>.</param>
+    /// <returns>The body, null only when the contract is broken.</returns>
+    internal MirBody? StaticInit(MirBody body, int slot) => this[new(body.Statics[slot].Symbol, MirBodyKind.StaticInit)];
 
     internal void Clear()
     {

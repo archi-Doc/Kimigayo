@@ -3,10 +3,12 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's location driver (A3 5, Check sets and err(conflict), with E5 and E13 (1)): at each location of the checks replay, its accesses of
-// borrowed roots, each classified by what it does (MirBorrows.Checks' AccessKind) and with the check set it takes, and the reservations it
-// activates; one gather of their check sets (MirBorrows.CheckSets); each access compared with the Loans on its root by the conflicts
-// relation, its first conflict recorded by MirBorrows.Reports; then a guard candidate's EndBorrow (err(ended)), a call's retention Limit
-// and the location's activations (MirBorrows.Activations).
+// borrowed roots, each classified by what it does (MirBorrows.Checks' AccessKind) and with the check set it takes, a Call's or Drop's
+// effect access after them (MirBorrows.Effects), and the reservations it activates; one gather of their check sets (MirBorrows.CheckSets);
+// each access compared with the Loans on its root by the conflicts relation, its first conflict recorded by MirBorrows.Reports; then a
+// guard candidate's EndBorrow (err(ended)), a call's retention Limit, the location's activations (MirBorrows.Activations) and last its
+// effects (MirBorrows.Effects, whose keys select other case views). Its classifiers Dropping and Destruction are also read by
+// MirBorrows.Liveness and MirBorrows.Activations.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -14,8 +16,8 @@ internal sealed partial class MirBorrows
     private Step[] accessSteps = [];
     private int accessCount;
 
-    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow and its activations, on the
-    // check sets of one gather; the first conflicting Loan of each access is its problem.
+    // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
+    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -23,6 +25,8 @@ internal sealed partial class MirBorrows
         var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
         var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
+        var accessed = this.accessCount; // The location's own accesses; its effect access follows them.
+        this.Effecting(block, index);
         this.Reserving(state, at);
         var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.MarkerOf(guard) == Marker.Guard;
         if (this.accessCount + this.reserving.Count > 0 || ended)
@@ -30,7 +34,7 @@ internal sealed partial class MirBorrows
             this.Gather(state, at, this.entryCount);
         }
 
-        for (var a = 0; a < this.accessCount; a++)
+        for (var a = 0; a < accessed; a++)
         {
             var access = this.accesses[a];
             if (access.Kind == AccessKind.Unclassified)
@@ -42,7 +46,7 @@ internal sealed partial class MirBorrows
             var count = this.Walk(access.Place, access.Reborrow, ref this.accessSteps);
             if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking) is var c and not None)
             {
-                this.Report(this.Code(this.candidates[c], DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1);
+                this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);
             }
         }
 
@@ -57,6 +61,10 @@ internal sealed partial class MirBorrows
         }
 
         this.Activations(at);
+        if (accessed < this.accessCount)
+        {
+            this.Effects(at, this.accesses[accessed].Taking);
+        }
     }
 
     // How a Drop under the view destroys its Place (A3 5's access, R4-M6): observing what it holds where its case Type observes and A2 keeps
@@ -94,6 +102,31 @@ internal sealed partial class MirBorrows
 
         var loan = this.loanAt[this.Location(at.Block, at.Index)];
         return loan >= 0 && this.loans[loan].Destroying ? AccessKind.Read : AccessKind.SharedBorrow;
+    }
+
+    // A location's effect access, listed after its own accesses so that the one gather takes its values (MirBorrows.Effects checks it): at a
+    // Call or a Drop of a view with an effect root, or at a Drop of a mutable static (R3), a Call's set its last operand's (TakesStores
+    // without one: its result carries no Loan of its own), a Drop's its value's (TakesValue). It is listed as the widest row; the rule
+    // gives each root its own.
+    private void Effecting(int block, int index)
+    {
+        ref readonly var data = ref this.body.Blocks[block];
+        var terminator = data.Terminator;
+        if (index < data.Count || terminator.Kind is not (MirTerminatorKind.Call or MirTerminatorKind.Drop) ||
+            (this.effectRoots.Count == 0 && this.DroppedStatic(terminator) < 0))
+        {
+            return;
+        }
+
+        var taking = TakesValue;
+        if (terminator.Kind == MirTerminatorKind.Call)
+        {
+            var operands = terminator.Count + (terminator.Callee.Kind == MirCalleeKind.Value ? 1 : 0);
+            taking = operands > 0 ? operands - 1 : TakesStores;
+        }
+
+        MirDataflow.Grow(ref this.accesses, this.accessCount + 1);
+        this.accesses[this.accessCount++] = new(terminator.Place, AccessKind.EffectWrite, false, taking);
     }
 
     private void Accessed(in Access access)

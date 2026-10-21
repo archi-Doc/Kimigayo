@@ -1,13 +1,17 @@
 # 2a0-D package: A5-F4, Origin relations and the Binding boundary
 
+**Approved** by the owner on 2026-10-21 (DECISIONS R4-M94), verbatim 「推奨どおり承認 (推奨)」, with the answers OQ-1 (c),
+OQ-2 (a), OQ-3 (a) and OQ-4 (b) (§11). The text below applies them. References to `review.md`, `confirmation.md`, the designs and
+the `rv/`, `cf/` probe folders name files kept outside the repository; the review and its confirmation are in `2a0-D-review.md`.
+
 The design reviewer consolidated this package on the planning session's instruction (2026-10-21). It writes out the review's
 recommended combination (`review.md` §6), which the planning session adopted as written: design A is the base, folded with the
 items taken from design B and the review's corrections.
 
 Base: `origin/dev` `ecf62815` (the designs read `92863171`; no Origin file differs). The confirmation (`confirmation.md`) probed
-`0eac4690`; dev then reached `6b436f5a` (bu14: 2b-6 (a), BU-18; bu16: 2x-R14), with no change to Origin naming. Its five blocking
-fixes, P-1 to P-5, are applied here as worded. No repository file was edited. "(H)" marks a
-reading or estimate no run checked. `B/` = `src/Kimi/Compiler/Binding/`, `M/` = `src/Kimi/Compiler/Mir/`, `T/` =
+`0eac4690`; dev then reached `6b436f5a` (bu14: 2b-6 (a), BU-18; bu16: 2x-R14), with no change to Origin naming. Its seven
+blocking fixes over two rounds, P-1 to P-7, are applied here as worded. No repository file was edited. "(H)" marks a reading or
+estimate no run checked. `B/` = `src/Kimi/Compiler/Binding/`, `M/` = `src/Kimi/Compiler/Mir/`, `T/` =
 `tests/xUnitTest/Tests/`. `rv/<name>` names a probe in the review's scratch folder (programs run on both pipelines; an atom dumper
 over Binding's rows and MIR `Ref` Types).
 
@@ -44,7 +48,7 @@ over Binding's rows and MIR `Ref` Types).
 | D19 | **Edge states.** An `Unbound` end, or another declaration's universal atom (I-1), gives a located `Unsupported_Kd` in a complete compilation. Environment atoms are Finite until 2c-6 | 15.6.5, 15.8.2 | A (Unbound), B (env; R: A-2) | 2a-1a |
 | D20 | **Memory.** `MirDataflow.Within(long words)` is the one byte-limit decision, called by `Prepare` and `MirOrigins` | — | B | 2a-1b |
 | D21 | **Merge rule 1 (destroy half).** By the `Result` fact and a Refuted chain ending at a `ResultFit` row, per atom | 15.6.5, 23.1.2 | A | 2a-2 |
-| D22 | **Merge rule 2.** Conditional GuardReverse; N-6 per OQ-4 | 14.8.3, 23.1.2 | A (R: B-1, N-6) | 2a-2 |
+| D22 | **Merge rule 2.** GuardReverse at a `ResultFit` edge (OQ-4 (b)); N-6's residual (`cf-g-reassign`) recorded | 14.8.3, 23.1.2 | A (R: B-1, N-6; OQ-4 (b)) | 2a-2 |
 | D23 | **G161 is A5-F4's**, decided by the Refuted rule over dev's existing call-position rows | 16.3.1, 15.6.4 | A, B | 2a-1a |
 
 ## 1. Required meaning (SPEC)
@@ -280,7 +284,7 @@ The explicit forms, and the row-6/row-7 argument above, are dormant until P42.
   2. `JudgeLocalClause`'s principal-candidate branch records no `MissingOriginBinding_Kd` in a body. The clause is a row, and
      Binding's own failing judgment is its twin.
   3. Outside a body (Field, payload, alias, signature), an unresolved slot stays `MissingOriginBinding_Kd`.
-- **Unchanged here.** `let` candidates (`SolveLocalBounds`, `MeetLocalUpperBounds`) and the contravariant-clause `Unsupported_Kd`.
+- **Unchanged here.** `let` candidates (`SolveLocalBounds`; 2x-P4 D4) and the contravariant-clause `Unsupported_Kd`.
   The latter is a valid form's located limit; OQ-1 decides it.
 - **Record correction.** The S3 demo is a located `Unsupported_Kd` on dev at `let pair` (`rv/s-demo`), not accepted as 2x-P4's
   finding 6 assumed (H). A note goes into A3/origins via 2a-5's PLAN row.
@@ -415,10 +419,10 @@ Prototype scaling (2x-P4, unchanged in both re-runs): Work/(N_o + E_o·⌈F/64�
    - The rule works by atom: two Borrows of one local root share `Projection[x]` (prototype `m-twice`, `same-root`), and static
      Borrows are per site.
    - Confirmed by 2x-P4: dropping by Borrow alone loses m-write and m-scope-use, and dropping by Loan membership accepts 36f.
-2. **Rule 2 (guard half: conditional GuardReverse).**
+2. **Rule 2 (guard half: GuardReverse at a `ResultFit` edge; OQ-4 (b)).**
    - Every err(ended) stays.
-   - An `UnsatisfiedOriginRelation_Kd` whose Anchor Ref's destination is a `GuardCandidate` local loses the views in which
-     MirBorrows recorded an err(ended) for that candidate.
+   - An `UnsatisfiedOriginRelation_Kd` whose Anchor Ref's destination is a `GuardCandidate` local, and whose last edge is a
+     `ResultFit` row, loses the views in which MirBorrows recorded an err(ended) for that candidate.
    - It supersedes PD11's second half and A3 E7's merge sentence (2x-P4 D2).
    - An unconditional drop is rejected. `rv/guard-annot` (`var t: ref/i32 during a`, guard `keep(t@uniq, v)`) is rejected on dev
      and has no err(ended). The unconditional drop would accept it on the MIR (reviewer prototype: UNSOUND on `g-annot`).
@@ -427,13 +431,14 @@ Prototype scaling (2x-P4, unchanged in both re-runs): Work/(N_o + E_o·⌈F/64�
 **Mechanism.** `MirReport` gains a per-body merge context: `RefutedAtResult` (atom → views), written by `Judge`, and `Ended`
 (candidate → views), written by MirBorrows' err(ended) recorder. `Add` applies rules 1 and 2 to arriving problems.
 
-**N-6 (OQ-4).** A candidate that escapes (err(ended)) and also has an independent non-escaping Refuted relation loses that
-report under rule 2 as written (`rv-g-annot-esc`: LOST; ok under PD11, which instead loses g-two). The program stays rejected,
-but SPEC 23.1.2 wants the independent failure reported.
-- Under OQ-4 (a), N-6 is a recorded limit: a pinned test, a ledger class, the X-2/OQ9 list, DIAGNOSTICS' A6 merge row and STATUS.
-- Under OQ-4 (b), rule 2 adds "and its last edge is a `ResultFit` row". `rv-g-annot-esc`'s report stays; `cf-g-reassign`'s
-  (g-two with `saved = fb2` before `return saved`) is still lost (pinned). A guard escape into
-  storage the body does not own reports both codes (`rv-g-param`, a derived report; prototype `rv/protoA/runA4.txt`).
+**N-6 (OQ-4 (b)).** Without the `ResultFit` condition, a candidate that escapes (err(ended)) and also has an independent
+non-escaping Refuted relation would lose that report (`rv-g-annot-esc`). With it, the report stays.
+- The residual is a Refuted relation at a `ResultFit` row whose returned value no longer carries the candidate's Loan while the
+  candidate escapes elsewhere (`cf-g-reassign`: g-two with `saved = fb2` before `return saved`). It is still lost and pinned,
+  recorded in DIAGNOSTICS' A6 merge row and STATUS, with a ledger class, on the X-2/OQ9 list. The program stays rejected.
+- A guard escape into storage the body does not own reports both codes (`rv-g-param`; a derived report, SPEC 23.1.2), against
+  A3 E12's "one failure, one code" (prototype `rv/protoA/runA4.txt`).
+- A Loan-stratum flow fact (OQ-4 (c), not prototyped) would close the residual later.
 
 **S3's finding.** `g`'s storage-end `ComparisonLoanConflict_Kd` at `let m = 8` is rule 1's input once 2c-6 publishes the closure
 result relation. Until then it is a location/code row owned by 2c-6 (prototype `s3-g-meet`).
@@ -453,7 +458,7 @@ result relation. Until then it is a location/code row owned by 2c-6 (prototype `
 
 ## 9. Records
 
-**DECISIONS.** The approval entry (written at approval), "R4-M9x A5-F4's design package (2a0-D) approved", names the package,
+**DECISIONS.** The approval entry (written at approval), "R4-M94 A5-F4's design package (2a0-D) approved", names the package,
 its review and the owner's words; DEC Q6 form 1 for 2a0-2, 2a0-3a and 2a0-3b, form 2 for G:A5-F4 (2a-1a, 2a-1b, 2a-2, 2a-4,
 2a-5), and own reviews for 2a0-4 and 2x-R15; the owner's answers to OQ-1 to OQ-4, with OQ-3's departures as confirmed text; and
 a short summary of D1–D23.
@@ -469,10 +474,10 @@ Unit entries, each written by its first implementing unit:
 | 2x-R15 | A5's Place steps as a canonical component |
 | 2a-1a | MirOrigins as a canonical component; the step-4 order; D1 bitsets; MeetNode; Reason in the key (PD10 met, 2a-3 folded); E4 over Binding's encoding with the raw stop and the Slice layer; the environment interim with removal unit 2c-6; `Unbound`'s located `Unsupported_Kd` |
 | 2a-1b | The Unknown oracle; `MirDataflow.Within` |
-| 2a-2 | The merge contract (rules 1–3): PD11's first half read per atom with the `Result` fact and a `ResultFit` row; PD11's second half and A3 E7's merge sentence superseded; N-6 per OQ-4 |
+| 2a-2 | The merge contract (rules 1–3): PD11's first half read per atom with the `Result` fact and a `ResultFit` row; PD11's second half and A3 E7's merge sentence superseded by GuardReverse at a `ResultFit` edge (OQ-4 (b)); N-6's residual |
 
 **DIAGNOSTICS.** The Origin-relations paragraph gets the twins and A5's owners, the `contained` source (SPEC 15.6.3), and the S3
-wording for "no principal candidate". The A6 table gets the two merge rows and N-6. The contravariant-clause sentence stays until OQ-1's unit.
+wording for "no principal candidate". The A6 table gets the two merge rows and N-6's residual. The contravariant-clause sentence stays until OQ-1's unit.
 
 **ARCH.** Canonical rows for the C1-F4 view ("Binding facts for MIR"), `MirOrigins` and `MirSteps`; the driver's step-4 sentence.
 
@@ -480,25 +485,26 @@ wording for "no principal candidate". The A6 table gets the two merge rows and N
 
 **STATUS.** The Origin boundary row: Binding judges fixed–fixed directly until R7; A5 judges every row in shadow; the twin's
 Opaque limit (a Borrow formed inside the failed node is not built, so `slot@follow = x@ref; x = 2` reports only the relation
-until H11; values the node reads keep their Loans); N-6 per OQ-4; the skip per OQ-2; p1's acceptance; the Slice handle
+until H11; values the node reads keep their Loans); N-6's residual (`cf-g-reassign`) and rule 2's DOUBLE (OQ-4 (b)); the skip per OQ-2 (a); p1's acceptance; the Slice handle
 acceptance (item 6).
 
-**PLAN** (new G numbers from dev's next free; written by 2a-5 unless noted):
+**PLAN** (written with the approval records: item 1 G192, 2 G193, 3 G194, 4 G195, 6 G196, 7 G197; item 5 by 2a-5):
 
 1. **p1.** Binding's `PathReborrowOrigin` names a Reborrow through a local's layers by the inner layer only. dev therefore accepts
    `func f(p: uniq/(uniq/i32 during a) during b) -> uniq/i32 during a` with `var q = p; return q@follow@follow@uniq`, while SPEC
    15.6.3/15.6.5 make it Unknown (`b outlives a`); its direct twin is rejected. It is not shown to be a miscompile: 15.6.4's
-   per-argument retention keeps the caller's Loan. A5 rejects it from 2a-1a. Closes at R6-check. Written by 2a-1a.
+   per-argument retention keeps the caller's Loan. A5 reports it from 2a-1b (Unknown); 2a-1a forms its containment edges. Closes
+   at R6-check.
 2. **The preserves skip (OQ-2 (a)).** Binding's preserves-results containment skip (`B/Binding.ArgumentOperations.cs:563-668`)
    accepts 18 tested forms SPEC 15.6.3 makes Unknown (library and milestones 0, census (a)). A5 rejects them. 2a-4 re-expects the
    18 under OldRule now. The skip is deleted with the old path at R6-check (AR-4).
 3. **D4 (OQ-1 (c)).** Binding gives a `let` local's omitted slot a declaration-time candidate. SPEC 15.6.5/15.4.4 make it an
    inferred region constrained by later uses (2x-P4 D4). No dev program was found that this rejects with a Language error although
    valid (H); the S3 demo is a located `Unsupported_Kd`. BU's unit, with its own full process and census, after G:A5-F4.
-4. **The meet defect.** `rv/meet-trans-ok`'s Binding defect (§8; BU). Written at approval.
+4. **The meet defect.** `rv/meet-trans-ok`'s Binding defect (§8; BU).
 5. **G56.** The sentence "a Binding-level relation stops ownership analysis" is unchanged under OQ11 (b) until H11, with the
    twin's Opaque limit added. G161 is closed by 2a-1a, and its constructor half stays G166's.
-6. **Slice handle Borrows (P-4; owner BU; written at approval).** `PlaceOrigin` names `values@ref` of a `Slice` local or
+6. **Slice handle Borrows (P-4; owner BU).** `PlaceOrigin` names `values@ref` of a `Slice` local or
    parameter by the handle's `source`.
    - `leak3` is accepted on both pipelines and by A5: `func leak3(values: Slice<i32> during s) -> ref/(Slice<i32> during s)
      during s` with body `return values@ref`.
@@ -506,7 +512,7 @@ acceptance (item 6).
 
    This is a miscompile under PD9 (SPEC 4.8.1, 15.6.5). The repair is a BU unit that names the Borrow by the root's `Projection`,
    with OQ7 (a)'s census, before R6-check.
-7. **`limitRef` (P-3; owner BU, P42; written at approval).** dev rejects SPEC 11.8's valid in-group `limitRef` (`return
+7. **`limitRef` (P-3; owner BU, P42).** dev rejects SPEC 11.8's valid in-group `limitRef` (`return
    limit@ref`, a `let` static, `during static`) with S (Binding's record, `cf/p/st-imm`). It becomes 2b-6 (b)'s U, and P42 must
    give the valid verdict.
 
@@ -521,7 +527,7 @@ Rules common to every code unit:
 - +cen.
 - MIR tests go in new partial files `T/MirOriginsTest.cs` and `T/MirOriginsTest.Merge.cs`, at the MIR-problem layer. Each new
   rejecting test fails before its unit (dev has no stratum). Valid counterparts and pins pass before: `limitRef`, a-split, a-wf,
-  d-g161-ok, CallBorrows Proven, the S3 demo, `leak3`, N-6.
+  d-g161-ok, CallBorrows Proven, the S3 demo, `leak3`, `cf-g-reassign`.
 - View tests go in `T/OriginRowsTest.cs`.
 
 | ID | Unit | Change | Prerequisites | Verification (tests fail before) | Size (H) | Review | Hold |
@@ -533,7 +539,7 @@ Rules common to every code unit:
 | 2x-R15 | A5's Place steps (bp) | `StepClass`, `Deref`, `Walk`, `Step` move from `MirBorrows.Places.cs` into `M/Analysis/MirSteps.cs` (contract first); `Step` gains its prefix; `Through` stays | 2e-2 (E17's row), on lane C | as 2x-R1: bp triple, ledger raw rows equal, `MirAnalysisTest` | move +95/−90, +5 | R | no |
 | 2a-1a | MirOrigins: frame, rows, containment, Refuted, Reason | §6.1–§6.3 without Unknown; driver step 4 in its final order; `MirProblem.Reason`, the key, `MirFactKind.Relation` and the `int`; DIAGNOSTICS (`contained`, owners); ARCH canonical row; spec-case 15.5/0 relabelled F4; DEC | 2a0-2, 2a0-3a, 2a0-4, 2x-R5, 2x-R15, G:A5-F9 merged | Comp `MirOriginsTest`: audit-origins rows 7, 9c and 19 with twins; 15.6.5's `bad`; j-region, j-unreach; m-scope (S at the return); j-two (two problems, one subject); 15.6.4's `current`, `leak` and a capture store, SPEC 11.8's `nameRef` (S) and `limitRef` (valid). If 2b-6 (b) has landed at 2a-1a's start, each is 2b-6's located `Unsupported_Kd` naming P42, pinned; c-own; a-split and a-wf valid (raw stop); n-inner; G161 (`probe/p2` both forms, and d-g161-ok); `rv/guard-annot` (S); `rv/env-store` (S); `meet-trans`: Binding's P and the located `Unsupported_Kd` of row 9 until BU's I-1 repair, which re-expects it as S with MeetNode. MeetNode itself is pinned by a `MirOrigins` test over a view fixture with fresh-region rows, until a program reaches it; the containment edges of p1's local-layer form and of `x-skip` present (their P is 2a-1b's); the per-builder-site identity test with a Slice element, `leak3` (pinned: no MIR problem, naming §9 item 6) and `leak4` (the storage-end conflict); `rv/meet-trans-ok` (the located `Unsupported_Kd`, no S or P; ledger row (a) with I-1's PLAN row); PD31 facts; `VerifiedSpecExampleTest`, `MirAnalysisTest`; +V16 "F4 Refuted", "F4 containment"; +warm; +cen; +led. Done when the Unsatisfied rows 2x-T2 assigned pair or are (a)/(d) | +300, t+340 | G:A5-F4 | drv |
 | 2a-1b | MirOrigins: Unknown | §6.3's Unknown, §6.4: oracle use, masks, `Work`, arena, `MirDataflow.Within` | 2a-1a | Comp `MirOriginsTest`: r7-inv, r7-subst(-ok), c-detach, c-box, c-peekU, c-cut, c-pair per case, j-f, j-pick per case, j-bits (two words), n-pass, x-skip from `IteratorIndependenceTest` (P at the Reborrow), p1's local-layer form (P, a pinned (a) row), bc801917a239 (two operands), e3312717bde0 (two rows); a failed `==` is one problem; S1015 items 25, 27, 28; CallBorrows rows Proven; MIR equals Binding's direct verdict on the r7/j cases; the limit test (if no source binds within budget, `Within` driven with MirOrigins' counts and the shortfall recorded); +V16 (9) and the 64-view body; +warm; +cen; +led. Done when the Unproven rows 2x-T2 assigned pair or are (a)/(d) | +170, MirDataflow +6, t+260 | G:A5-F4 | no |
-| 2a-2 | The merge | §7: merge context, rules 1–3, `MirFactKind.Result`, `Ended` from MirBorrows' recorder; DIAGNOSTICS A6 rows with N-6; DEC | 2a-1b; a PD21 response for `MirBorrows.Reports.cs` if due at 2a-2's start (2e-D's response precedes 2e-4) | Comp `MirOriginsTest.Merge`: j-bad and j-region (one Unsatisfied, no conflict); g-return; g-two (S, C at cleanup, P); `rv/guard-annot` (S kept); `rv-g-annot-esc` (per OQ-4: (a) S lost, pinned; (b) S and C); `rv-g-param` (per OQ-4: (a) C and P; (b) S, C and P, pinned); `cf-g-reassign` (per OQ-4: (a) and (b) S lost, pinned); m-36f (C kept); m-write (the plan's form: the relation and the write conflict), its `var r` form, `cf/p/m-write3` (an annotated `let` initializer, a row: S and the write), and m-write4 (the relation only; the limit, pinned); m-pair; m-scope; m-scope-use; m-store; m-twice/same-root; a block, `if` and `match` result for `ResultFit`; a conflict without a Refuted twin kept; +led. Done when the a5-new storage-end rows 2x-T2 assigned go (≈ 13, H), except a conflict another live holder or storage the body does not own also takes (m-store, `cf/p/jregion2`), and their Unsatisfied rows pair | +45, t+140 | G:A5-F4 | no |
+| 2a-2 | The merge | §7: merge context, rules 1–3, `MirFactKind.Result`, `Ended` from MirBorrows' recorder; DIAGNOSTICS A6 rows with N-6's residual; DEC | 2a-1b; a PD21 response for `MirBorrows.Reports.cs` if due at 2a-2's start (2e-D's response precedes 2e-4) | Comp `MirOriginsTest.Merge`: j-bad and j-region (one Unsatisfied, no conflict); g-return; g-two (S, C at cleanup, P); `rv/guard-annot` (S kept); `rv-g-annot-esc` (S and C); `rv-g-param` (S, C and P: the DOUBLE, pinned); `cf-g-reassign` (pinned: no S at the return, N-6's residual); m-36f (C kept); m-write (the plan's form: the relation and the write conflict), its `var r` form, `cf/p/m-write3` (an annotated `let` initializer, a row: S and the write), and m-write4 (the relation only; the limit, pinned); m-pair; m-scope; m-scope-use; m-store; m-twice/same-root; a block, `if` and `match` result for `ResultFit`; a conflict without a Refuted twin kept; +led. Done when the a5-new storage-end rows 2x-T2 assigned go (≈ 13, H), except a conflict another live holder or storage the body does not own also takes (m-store, `cf/p/jregion2`), and their Unsatisfied rows pair | +45, t+140 | G:A5-F4 | no |
 | 2a-4 | Tests and target sides | The 13 test files reading `Binding.Obligations`, `JudgeOriginObligation` or `LocalRegionSources` gain MIR twins or OldRule markers (2x-T5). The 18 skip forms (`IteratorIndependenceTest` 10, `IteratorOriginEffectsTest` 5, `IteratorIndependenceEditingTest` 3) and `VirtualEffectSelectionTest`'s 2 get MIR target sides under OldRule (PD9, OQ-2). p1's acceptance under OldRule. `PairFollowTest` detach rows on MIR. `Landed += F4, F2` | 2a-2; 2x-T5 | Comp: migrated classes on both pipelines; `VerifiedSpecExampleTest`. Done when no A5-F4 rule is asserted only through old internals and the ratchets do not rise | t±220 | G:A5-F4 | no |
 | 2a-5 | Records and ledger close | §9's ARCH, PLAN, CODEMAP and STATUS; `classification.tsv`; AR-4 additions | 2a-1a–2a-4; 2a0-3b; 2a0-4 | Doc + Evid: +led. Done when the A5-F4 blocking rows 2x-T2 assigned are gone and the eight signatures report on the MIR: e3312717bde0, bc801917a239 (2a-1b); c8c1f3f534b0 (2a0-3b, valid); 1720228ea1c3 (the clause's Loan row, re-triaged here); 9b64b783b09b, cd1535825466, 53d750a49d82, 6b46c86d05a2 by their codes at 2x-T2's base (H) | docs ~45, tsv ±6 | G:A5-F4 | no |
 
@@ -553,14 +559,17 @@ takes a ruling or a split of the derived-problem rules (bp); `MirProblem.cs` is 
 obligations. The oracle extracts once per body with fixed rows. +cold and +warm measure it; the `CallBorrows` rows of library
 bodies dominate the oracle's count.
 
-## 11. Owner questions (with OQ2's package approval)
+## 11. Owner questions (answered 2026-10-21, DECISIONS R4-M94)
+
+The owner's answers, verbatim: OQ-1 「(c) 別の BU 単位で後日 (推奨)」; OQ-2 「(a) R6-check で削除 (推奨)」; OQ-3 (a), within
+「推奨どおり承認 (推奨)」; OQ-4 「(b) 条件を足す (推奨)」.
 
 | ID | Question | Options | Recommendation |
 | --- | --- | --- | --- |
-| OQ-1 (A's OQ-F4-1, B's OQ-B4) | SPEC 15.6.5 makes an unannotated local's slot an inferred region, and 15.4.4 lets later uses constrain it. Binding gives a `let` slot a declaration-time candidate (2x-P4 D4). Should every body-local omitted slot become a region? | (a) Now, in 2a0-3b: one representation for one concept, but every `let` borrow local's Binding representation and old-analysis verdict change on the default pipeline under D5 (H). (b) A SPEC clarification that the declaration fixes the candidate. This narrows SPEC 15.4.4's "later uses constrain them" to fit the implementation, which AGENTS forbids without a SPEC rationale; it leaves the S3 demo a located `Unsupported_Kd` and makes the D4 forms errors by SPEC. (c) A separate BU unit with its own full-process design and census, after G:A5-F4, with a PLAN row meanwhile | **(c)**. A cross-phase representation change needs its own design. No dev program was found that D4 rejects with a Language error although valid (H; the S3 demo is a located `Unsupported_Kd`), so the plan-letter 2a0-3b costs no known soundness |
-| OQ-2 (A's OQ-F4-2, B's OQ-B2, census Q5) | Binding's preserves-results containment skip accepts 18 tested forms that SPEC 15.6.3 makes Unknown (library and milestones 0; not miscompiles, census (a)). A5 rejects them from 2a-1a | (a) Delete it at R6-check with the old path (AR-4). The 18 Unknown acceptances stay on the default pipeline until then, and 2a-4 re-expects them under OldRule now. (b) Delete it now in a BU-reviewed Binding unit (−55; the 18 tests and one fixture re-expected; OQ7 (a)). (c) A SPEC proposal exempting `preserves results` bodies. (d) Hold: the skip stays on the default pipeline and A5 still rejects the forms in shadow, but their ledger rows and the 18 tests' target sides stay unclassified, and the skip has no removal stage, until the owner decides | **(a)**: no default-pipeline change during the freeze, and SPEC's letter on the MIR. (b) if the owner wants both pipelines aligned before R6-check |
-| OQ-3 (A's OQ-F4-3, extended) | Confirm the departures from owner-approved texts as one list (OQ6's pattern) | (a) Confirm all: (1) A3 §7's one-witness BFS → finite-source bitsets (D1); (2) PD11's second half and A3 E7's merge sentence → conditional GuardReverse (2x-P4 D2); (3) A3 §7's "edges between fixed atoms are entailed by Binding's meet" read as containment edges judged against Binding's encoding, plus MeetNode; (4) the plan's `OriginAtom.Of` kinds (Fixed, FiniteBody, FiniteStatic, Inferred) → SPEC's three with §3's precedence; (5) `UniversalRelations.For(definition, case)` → per body with per-class conditions; (6) T1 by construction; (7) 2a-3 folded into 2a-1a; (8) rows partitioned at formation, no alias rows; (9) PD11's first half, "whose Borrow the Origin stratum refuted", read per atom with the `Result` fact and a `ResultFit` row (§7 rule 1); (10) 2a0-3a adds non-call fits' rows only where Binding records a failure until H11, while the plan's 2a0-3a row says "`JudgeCallPosition`'s pattern … every inner chain has a row" (§5.1's H11 end state restores it). (b) Per item | **(a)** |
-| OQ-4 (N-6) | Rule 2 (GuardReverse) loses an independent failure when one guard candidate both escapes (err(ended)) and has a separate non-escaping Refuted relation (`rv-g-annot-esc`). SPEC 23.1.2 says each independent failed requirement is reported; the program stays rejected | (a) Accept as a recorded limit: a pinned test, a ledger class for its LOST row, and registration on the X-2/OQ9 list. (b) A rule variant that keeps `rv-g-annot-esc`'s report: rule 2 drops a guard-sourced Refuted problem only when its last edge is a `ResultFit` row. Prototype (`rv/protoA/runA4.txt`): `rv-g-annot-esc` ok, every other case unchanged, but `rv-g-param` (a candidate stored through a parameter's referent) reports both codes for one failure (DOUBLE). It still loses an independent Refuted relation at a `ResultFit` row whose returned value no longer carries the candidate's Loan while the candidate escapes elsewhere (`cf-g-reassign`: `saved = fb2` before `return saved`; LOST under (a) and (b), ok under PD11, which loses g-two). (b) narrows N-6 and does not close it. The DOUBLE is a derived report SPEC 23.1.2 leaves implementation-defined, but it departs from A3 E12's "one failure, one code". (c) A Loan-stratum flow fact (2x-P4's option (b)): drop only when the Refuted chain's fixed end is reached through a holder err(ended) witnesses; exact (H; not prototyped), but a new fact in MirBorrows | **(b)**. SPEC 23.1.2 is the authority and (b) drops strictly less than (a), so it adds no acceptance. Its cost is a second code only for guard escapes into storage the body does not own. If (b) is chosen, §7 rule 2 gains the `ResultFit` condition, 2a-2 tests `rv-g-annot-esc` for both codes and pins `rv-g-param`'s two codes, and OQ-3 (2) reads "GuardReverse at a `ResultFit` edge". Under (a), the package text applies as written |
+| OQ-1 (A's OQ-F4-1, B's OQ-B4) | SPEC 15.6.5 makes an unannotated local's slot an inferred region, and 15.4.4 lets later uses constrain it. Binding gives a `let` slot a declaration-time candidate (2x-P4 D4). Should every body-local omitted slot become a region? | (a) Now, in 2a0-3b: one representation for one concept, but every `let` borrow local's Binding representation and old-analysis verdict change on the default pipeline under D5 (H). (b) A SPEC clarification that the declaration fixes the candidate. This narrows SPEC 15.4.4's "later uses constrain them" to fit the implementation, which AGENTS forbids without a SPEC rationale; it leaves the S3 demo a located `Unsupported_Kd` and makes the D4 forms errors by SPEC. (c) A separate BU unit with its own full-process design and census, after G:A5-F4, with a PLAN row meanwhile | **(c)**, answered. A cross-phase representation change needs its own design. No dev program was found that D4 rejects with a Language error although valid (H; the S3 demo is a located `Unsupported_Kd`), so the plan-letter 2a0-3b costs no known soundness |
+| OQ-2 (A's OQ-F4-2, B's OQ-B2, census Q5) | Binding's preserves-results containment skip accepts 18 tested forms that SPEC 15.6.3 makes Unknown (library and milestones 0; not miscompiles, census (a)). A5 rejects them from 2a-1a | (a) Delete it at R6-check with the old path (AR-4). The 18 Unknown acceptances stay on the default pipeline until then, and 2a-4 re-expects them under OldRule now. (b) Delete it now in a BU-reviewed Binding unit (−55; the 18 tests and one fixture re-expected; OQ7 (a)). (c) A SPEC proposal exempting `preserves results` bodies. (d) Hold: the skip stays on the default pipeline and A5 still rejects the forms in shadow, but their ledger rows and the 18 tests' target sides stay unclassified, and the skip has no removal stage, until the owner decides | **(a)**, answered: no default-pipeline change during the freeze, and SPEC's letter on the MIR. (b) if the owner wants both pipelines aligned before R6-check |
+| OQ-3 (A's OQ-F4-3, extended) | Confirm the departures from owner-approved texts as one list (OQ6's pattern) | (a) Confirm all: (1) A3 §7's one-witness BFS → finite-source bitsets (D1); (2) PD11's second half and A3 E7's merge sentence → GuardReverse at a `ResultFit` edge (2x-P4 D2; OQ-4 (b)); (3) A3 §7's "edges between fixed atoms are entailed by Binding's meet" read as containment edges judged against Binding's encoding, plus MeetNode; (4) the plan's `OriginAtom.Of` kinds (Fixed, FiniteBody, FiniteStatic, Inferred) → SPEC's three with §3's precedence; (5) `UniversalRelations.For(definition, case)` → per body with per-class conditions; (6) T1 by construction; (7) 2a-3 folded into 2a-1a; (8) rows partitioned at formation, no alias rows; (9) PD11's first half, "whose Borrow the Origin stratum refuted", read per atom with the `Result` fact and a `ResultFit` row (§7 rule 1); (10) 2a0-3a adds non-call fits' rows only where Binding records a failure until H11, while the plan's 2a0-3a row says "`JudgeCallPosition`'s pattern … every inner chain has a row" (§5.1's H11 end state restores it). (b) Per item | **(a)**, answered |
+| OQ-4 (N-6) | Rule 2 (GuardReverse) loses an independent failure when one guard candidate both escapes (err(ended)) and has a separate non-escaping Refuted relation (`rv-g-annot-esc`). SPEC 23.1.2 says each independent failed requirement is reported; the program stays rejected | (a) Accept as a recorded limit: a pinned test, a ledger class for its LOST row, and registration on the X-2/OQ9 list. (b) A rule variant that keeps `rv-g-annot-esc`'s report: rule 2 drops a guard-sourced Refuted problem only when its last edge is a `ResultFit` row. Prototype (`rv/protoA/runA4.txt`): `rv-g-annot-esc` ok, every other case unchanged, but `rv-g-param` (a candidate stored through a parameter's referent) reports both codes for one failure (DOUBLE). It still loses an independent Refuted relation at a `ResultFit` row whose returned value no longer carries the candidate's Loan while the candidate escapes elsewhere (`cf-g-reassign`: `saved = fb2` before `return saved`; LOST under (a) and (b), ok under PD11, which loses g-two). (b) narrows N-6 and does not close it. The DOUBLE is a derived report SPEC 23.1.2 leaves implementation-defined, but it departs from A3 E12's "one failure, one code". (c) A Loan-stratum flow fact (2x-P4's option (b)): drop only when the Refuted chain's fixed end is reached through a holder err(ended) witnesses; exact (H; not prototyped), but a new fact in MirBorrows | **(b)**, answered. SPEC 23.1.2 is the authority and (b) drops strictly less than (a), so it adds no acceptance. Its cost is a second code only for guard escapes into storage the body does not own. Applied in §7 rule 2, 2a-2's tests and OQ-3 (2); N-6's residual is recorded (§7) |
 
 Closed without an owner answer:
 - **OQ-B1 (T1).** The 3 overlaps are one clause at two different uses, which T1 does not exclude. T1 holds by construction and is

@@ -1,32 +1,34 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M63, R4-M66) per body and Semantics
-// case view.
+// Owns A5's Loan stratum (SPEC 15.6–15.8; design A3 3, 5 and 6 with its errata; DECISIONS R4-M57, R4-M63, R4-M66, R4-M92) per body and
+// Semantics case view.
 // Input: a validated body, its dataflow (MirDataflow, begun) and move paths (MirMoveData, built), the selected view (MirCases), A2's
 // verdicts (MirProgram.Drops), Binding's call retention (TyCtxt.Retains, an intrinsic's declaration included, with the intrinsic table's
-// retained operand, MirDescriptors) and published rows (TyCtxt.Published). Output: each Loan
-// conflict at its access or activation, coded by A3 5's A6 table (CallReservationConflict_Kd for a Loan in its reservation holder,
-// CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the writeback write, else
-// ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow), with the Loan's
-// anchor, its witness's next use or the store that carries it, an activation's reservation and an inline default copy's call (R4-M69) as
-// facts, and Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound, CallRetention.Limit), a
-// limit record without that fact, or at a default's omitting call for a conflict whose Loan only sets with its default taint hold (R4-M70),
-// and in a view a Call holds (its W stored a value past a holder that passes the guard only by argument, P13's interim, R4-M73) every other
-// Loan problem as Unsupported_Kd at its access, through MirReport; and Work, the steps it took (A3 6.2).
-// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own; its
-// state is a MirLoanSets node of Loans and markers, which never conflict and no ending removes (Φ_E, and the per-local markers of the role
-// table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded error, so it carries none of its roots' Loans (R4-M70). A
-// Loan exists per non-raw Ref site, and per PairAcquire the view makes a Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no
-// shared borrow Deref (E3), named by its whole Place; access is syntactic, by Place prefix. A check reads holders, never Loan ids: the
-// holders live after the access but those it overwrites, E, and the values the access takes (E13 (1): an operand's, its operation's
-// operands' values up to it and roots after it in evaluation order; a borrow's R2 parents and E5's seed; an observing destruction's
-// value; another access's, the values it stores into a live holder, transit, and E5's seed), closed through the holders their direct
-// Loans name; an activation the operation's operands' values and its reservation holder's seed, that holder left out, all from one gather
-// per location. A two-phase Loan is shared only in its reservation
-// holder, where a write or destruction of a prefix of its Place reaches it (E1). Destroying a Move Path in place ends every Loan whose path
-// it exactly prefixes (E8), after the checks and the transfer: the Loans are ordered by the Move Path of their Places' longest inline
-// prefixes (MirMoveData's pre-order), so those of a path's subtree are one run of ids. A holder a direct Loan names keeps its state at
-// every head.
+// retained operand, MirDescriptors) and published rows (TyCtxt.Published), and A4's key rows of the program version (MirEffects.Keys).
+// Output: each Loan conflict at its access, activation or Call's or Drop's effects (MirBorrows.Effects), coded by A3 5's A6 table
+// (CallReservationConflict_Kd for a Loan in its reservation holder, CallActivationConflict_Kd or PlacementActivationConflict_Kd for an
+// activation at a Call or at the writeback write, else ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's
+// guard-local Origin past its EndBorrow and for a destruction of a static whose own effects touch it), with the Loan's anchor, its
+// witness's next use or the store that carries it, an activation's reservation, the static Field an effect met and an inline default
+// copy's call (R4-M69) as facts, and Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound,
+// CallRetention.Limit, A4's Limit, a live Loan's initialization proof), a limit record without that fact, or at a default's omitting call
+// for a conflict whose Loan only sets with its default taint hold (R4-M70), and in a view a Call holds (its W stored a value past a holder
+// that passes the guard only by argument, P13's interim, R4-M73) every other Loan problem as Unsupported_Kd at its access, through
+// MirReport; and Work, the steps it took (A3 6.2).
+// Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own,
+// static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans and markers, which never conflict
+// and no ending removes (Φ_E, and the per-local markers of the role table, Marker). An Opaque site's value is {Φ_E}: it rests on a recorded
+// error, so it carries none of its roots' Loans (R4-M70). A Loan exists per non-raw Ref site, and per PairAcquire the view makes a
+// Reborrow, in its Use's marked mode (E13 (4)), whose Place passes no shared borrow Deref (E3), named by its whole Place; access is
+// syntactic, by Place prefix. A check reads holders, never Loan ids: the holders live after the access but those it overwrites, E, and the
+// values the access takes (E13 (1): an operand's, its operation's operands' values up to it and roots after it in evaluation order; a
+// borrow's R2 parents and E5's seed; an observing destruction's value; another access's, the values it stores into a live holder, transit,
+// and E5's seed), closed through the holders their direct Loans name; an activation the operation's operands' values and its reservation
+// holder's seed, that holder left out; a Call's effects every operand's value, no holder left out, and a Drop's its value; all from one
+// gather per location. A two-phase Loan is shared only in its reservation holder, where a write or destruction of a prefix of its Place
+// reaches it (E1). Destroying a Move Path in place ends every Loan whose path it exactly prefixes (E8), a whole static's included, after
+// the checks and the transfer: the Loans are ordered by the Move Path of their Places' longest inline prefixes (MirMoveData's pre-order),
+// so those of a path's subtree are one run of ids. A holder a direct Loan names keeps its state at every head.
 // Must not read syntax or HIR, judge Origins, re-derive retention or Move Paths, intern projections, or copy the body per view.
 
 namespace Kimi.Compiler.Mir;
@@ -37,7 +39,8 @@ namespace Kimi.Compiler.Mir;
 /// <param name="flow">The dataflow, begun with the body.</param>
 /// <param name="moves">The move paths, built for the body.</param>
 /// <param name="cases">The Semantics case views, a view of the body selected.</param>
-internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMoveData moves, MirCases cases)
+/// <param name="effects">A4, whose last run's key rows the effect rule reads.</param>
+internal sealed partial class MirBorrows(TyCtxt types, MirDataflow flow, MirMoveData moves, MirCases cases, MirEffects effects)
 {
     private const int Escaped = 0; // E's slot, and the element of the marker Φ_E.
     private const int Markers = 1; // The element of local 0's marker, after Φ_E: local L's is Markers + L, which its role decides (Marker).
