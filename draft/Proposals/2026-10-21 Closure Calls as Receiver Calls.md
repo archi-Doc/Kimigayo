@@ -129,7 +129,9 @@ No example changes (H). The examples of §7.7 and §15.8.2 stay compiled tests (
 - **Binding.** At 2c-5 the receiver substitution replaces `CallResultOrigin`, `ResultFixedForCall`'s environment scan and the
   receiver-dependent `Unsupported_Kd`; the deletions are counted in that unit.
 - **MIR builder.** The closure receiver becomes an input with its Origin, the gap S3 §2 records.
-- **R5.** Closure code generation already passes the environment as the receiver (H); R5's planning session is asked to confirm.
+- **R5.** Confirmed by R5's planning session (2026-10-22): the ABI both code generators share (`Backend/Abi.cs`, R5-M58) puts a
+  closure body's environment first, the receiver position, and code generation reads no Origins, so the sentence changes nothing
+  there. MIR code generation emits closure environments and Value-callee calls from R5's unit C5a, which follows the same ABI.
 - **Default pipeline.** No change before R6-check (D5).
 
 ## 7. Principles

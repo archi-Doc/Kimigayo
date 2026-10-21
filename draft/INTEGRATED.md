@@ -967,8 +967,8 @@ the owner's confirmation of C1–C3; the review is `Sketches/G160/raw-origins-re
 ## 2026-10-21 — Closure calls as receiver calls (R4)
 
 The owner's instruction of 2026-10-21, after R4's list of SPEC improvement candidates in its area: 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」
-Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`. The second proposal (candidate 3) was not accepted in
-that review and is being redone; it will be registered when it passes.
+Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the second proposal's round 2 is reviewed in
+`review-2.md`.
 
 - [Closure Calls as Receiver Calls](Proposals/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
   intake only); adopted by the owner (OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99). One sentence in §15.8.2: a Closure body is checked
@@ -978,4 +978,32 @@ that review and is being redone; it will be registered when it passes.
   D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
   option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
   §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
+- [Failures Caused Only by Other Failures](Proposals/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
+  一部取り込み (open, intake only), candidate 3. Round 1 ("Escapes and Derived Failures", not kept) and round 2 (a general
+  definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
+  between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
+  as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
+  Round 3 writes W out for review: the sentence, the readings of 2a-2's cases (m-write4's write conflict becomes derived, a named
+  change), the implementation direction and the departures from R4-M94. Planned mapping: §15.6.5, §14.8.3, §15.8.2. The owner's
+  answers to round 1 are not applied.
+- Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
+
+## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
+
+The owner's instruction of 2026-10-21: 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」 R5's and BU's
+planning sessions checked the facts; the independent review is `Sketches/R4 Proposals 2026-10-21/review-3.md`. Candidate 4 (raw
+pointer rules left open by G160) was not accepted in that review and is being redone; it will be registered when it passes.
+
+- [Static Slots for P42](Proposals/2026-10-22%20Static%20Slots%20for%20P42.md): 一部取り込み (open, intake only), candidate 2.
+  No SPEC change: SPEC §22.4 and §15.6 already state one model (the key for storage, state and destruction; the Field for Loans and
+  effects). Proposes one static slot key, (Field, `TyCtxt.Erase` of the enclosing Subst), owned by `TyCtxt`, and one full-process
+  P42 design package before P42's units; the A5 plan's two narrowings are not adopted. Owner questions OQ-S1, OQ-S2.
+- [Layout Requirements on Type Parameters](Proposals/2026-10-22%20Layout%20Requirements%20on%20Type%20Parameters.md): 一部取り込み
+  (open, intake only), candidate 6. A′ (an intrinsic Contract for a C-layout Field that is not zero-sized, stated by generic
+  C-layout structs) against D (no change); the recommendation is D, R5's view: the collector stays at `check` for its other records,
+  so A′ buys locality for one record kind at the price of a narrowing. A first-draft item reclassifying `OversizedLayout_Kd` as
+  Resource was withdrawn (it reversed R5-M52 and IMPL 21.1.1). Owner question OQ-Y1.
+- [Lifecycle Receivers](Proposals/2026-10-22%20Lifecycle%20Receivers.md): 一部取り込み (open, intake only), candidate 5. Recommends
+  option B: §15.6.5's body-local list gains the receiver of a constructor or `drop` (bound: the body; §6.3.4's completion rule stays
+  a Loan rule); the unified "lifecycle receiver" definition is option A, corrected after the review. Owner question OQ-L1.
 - Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
