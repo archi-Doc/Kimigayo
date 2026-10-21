@@ -23,6 +23,24 @@ public sealed partial class Binding
     private int originSliceCount;
     private ulong originRowsVersion;
 
+    // The producer's access to a slice it fills; consumers read a slice only through its read-only members (immutable after Bind).
+    private interface IOriginRowSetBuilder
+    {
+        List<OriginRow> Rows { get; }
+
+        List<OriginAtomEntry> Atoms { get; }
+
+        // Each atom's table index, and the parts (1 own, 2 layer) whose rows name it.
+        Dictionary<BoundOrigin, int> Index { get; }
+
+        List<byte> Parts { get; }
+
+        void Reset(ExecutableBody body, ExecutableBody layer);
+
+        // Ends the body's own rows: the layer's rows, if any, follow.
+        void EndOwnRows();
+    }
+
     internal IReadOnlyList<Koto> OriginFindings
     {
         get
@@ -48,22 +66,23 @@ public sealed partial class Binding
         }
 
         var slice = this.originSlices[this.originSliceCount];
+        IOriginRowSetBuilder builder = slice;
         this.originSliceIndex.Add(body, this.originSliceCount++);
-        var layer = AdtDef.IsConstructor(body.Definition) ? new ExecutableBody(body.Definition!.Scope.Owner.BoundSymbol) : default;
-        slice.Reset(body, layer);
+        var layer = AdtDef.IsConstructor(body.Definition) ? LayerOf(body.Definition!) : default;
+        builder.Reset(body, layer);
         this.AddOriginRows(slice, body, 1);
-        slice.LayerStart = slice.RowList.Count;
+        builder.EndOwnRows();
         if (layer.IsBody)
         {
             this.AddOriginRows(slice, layer, 2);
         }
 
-        for (var i = 0; i < slice.AtomList.Count; i++)
+        for (var i = 0; i < slice.Atoms.Count; i++)
         {
             // E4: the parts share Fixed atoms only, so a chain never crosses from one oracle's part to the other's.
-            if (slice.Parts[i] == 3 && slice.AtomList[i].Kind != OriginAtomKind.Fixed)
+            if (builder.Parts[i] == 3 && slice.Atoms[i].Kind != OriginAtomKind.Fixed)
             {
-                this.OriginFinding(slice.RowList[slice.LayerStart].Site);
+                this.OriginFinding(slice.Rows[slice.LayerStart].Site);
             }
         }
 
@@ -74,7 +93,7 @@ public sealed partial class Binding
     internal OriginAtomEntry OriginAtomIn(ExecutableBody body, BoundOrigin origin, Koto site)
     {
         var slice = this.OriginRows(body);
-        return slice.AtomList[this.InternAtom(slice, this.CanonicalOrigin(this.OriginAtUse(origin, site)), site, 0)];
+        return slice.Atoms[this.InternAtom(slice, this.CanonicalOrigin(this.OriginAtUse(origin, site)), site, 0)];
     }
 
     // A body's fixed-fixed oracle (2a0-D §4, D8): one premise environment rented at the body's root, the catalog's premises from there
@@ -292,32 +311,34 @@ public sealed partial class Binding
             return;
         }
 
+        IOriginRowSetBuilder builder = slice;
         foreach (var draft in this.originUnits[index])
         {
             var longer = this.InternAtom(slice, draft.Longer, draft.Site, part);
             var shorter = this.InternAtom(slice, draft.Shorter, draft.Site, part);
-            slice.RowList.Add(new(draft.Site, longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
+            builder.Rows.Add(new(draft.Site, longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
         }
     }
 
     // An atom's index in the slice's table, classed on its first appearance; a class no precedence row gives is a broken contract.
     private int InternAtom(OriginRowSet slice, BoundOrigin atom, Koto site, byte part)
     {
-        if (!slice.Index.TryGetValue(atom, out var index))
+        IOriginRowSetBuilder builder = slice;
+        if (!builder.Index.TryGetValue(atom, out var index))
         {
-            index = slice.AtomList.Count;
-            slice.Index.Add(atom, index);
+            index = builder.Atoms.Count;
+            builder.Index.Add(atom, index);
             if (this.ClassifyAtom(atom, slice) is not { } entry)
             {
                 this.OriginFinding(site);
                 entry = new(atom, OriginAtomKind.Unclassed, RoleOf(atom));
             }
 
-            slice.AtomList.Add(entry);
-            slice.Parts.Add(0);
+            builder.Atoms.Add(entry);
+            builder.Parts.Add(0);
         }
 
-        slice.Parts[index] |= part;
+        builder.Parts[index] |= part;
         return index;
     }
 
@@ -379,8 +400,7 @@ public sealed partial class Binding
             return OriginAtomKind.Inferred;
         }
 
-        var immutableStatic = atom.Binder!.BoundSymbol is { Kind: BindingSymbolKind.Property, Scope.Owner: GroupKoto } field &&
-            !IsMutableDeclaration(field.Declaration);
+        var immutableStatic = atom.Binder!.BoundSymbol is { } symbol && IsStatic(symbol) && !IsMutableDeclaration(symbol.Declaration);
         return role == ProjectionRole.Place && immutableStatic ? OriginAtomKind.Inferred : OriginAtomKind.Finite;
     }
 
@@ -494,6 +514,45 @@ public sealed partial class Binding
         private OriginPremiseEnvironment Rented()
             => this.environment is { } rented && this.version == binding.originStateVersion ? rented
                 : throw new InvalidOperationException("A body's fixed-fixed oracle is used after its disposal or after a change of Origin state.");
+    }
+
+    /// <summary>A body's slice of the view: its rows, a constructor's layer rows from <see cref="LayerStart"/>, and its atom table.</summary>
+    internal sealed class OriginRowSet : IOriginRowSetBuilder
+    {
+        private readonly List<OriginRow> rows = [];
+        private readonly List<OriginAtomEntry> atoms = [];
+        private readonly Dictionary<BoundOrigin, int> index = new(ReferenceEqualityComparer.Instance);
+        private readonly List<byte> parts = [];
+
+        List<OriginRow> IOriginRowSetBuilder.Rows => this.rows;
+
+        List<OriginAtomEntry> IOriginRowSetBuilder.Atoms => this.atoms;
+
+        Dictionary<BoundOrigin, int> IOriginRowSetBuilder.Index => this.index;
+
+        List<byte> IOriginRowSetBuilder.Parts => this.parts;
+
+        internal ExecutableBody Body { get; private set; }
+
+        /// <summary>Gets the layer whose rows follow <see cref="LayerStart"/>, judged with its oracle (DECISIONS R4-M101 E4); no body when none.</summary>
+        internal ExecutableBody Layer { get; private set; }
+
+        internal int LayerStart { get; private set; }
+
+        internal IReadOnlyList<OriginRow> Rows => this.rows;
+
+        internal IReadOnlyList<OriginAtomEntry> Atoms => this.atoms;
+
+        void IOriginRowSetBuilder.Reset(ExecutableBody body, ExecutableBody layer)
+        {
+            (this.Body, this.Layer, this.LayerStart) = (body, layer, 0);
+            this.rows.Clear();
+            this.atoms.Clear();
+            this.index.Clear();
+            this.parts.Clear();
+        }
+
+        void IOriginRowSetBuilder.EndOwnRows() => this.LayerStart = this.rows.Count;
     }
 
     // A row of a body's unit before its slice indexes its ends.

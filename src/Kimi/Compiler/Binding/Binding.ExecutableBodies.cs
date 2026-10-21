@@ -47,8 +47,13 @@ public sealed partial class Binding
 
     // A Property's initializer (SPEC 11.8, 6.3.3): a static Property's own body, or for an instance Field the layer unit, the Field
     // initializers of its struct layer, which MIR builds into each constructor of that layer (DECISIONS R4-M101 E4).
-    private static ExecutableBody InitializerBody(BindingSymbol property)
-        => property.Scope.Owner is GroupKoto ? new(property) : new(property.Scope.Owner.BoundSymbol);
+    private static ExecutableBody InitializerBody(BindingSymbol property) => IsStatic(property) ? new(property) : LayerOf(property);
+
+    // The layer unit of a struct's member (an instance Field or a constructor): its struct, the one body key of the layer's initializers.
+    private static ExecutableBody LayerOf(BindingSymbol member) => new(member.Scope.Owner.BoundSymbol);
+
+    // SPEC 11.8: whether a Property is static storage, a group's (TypeContext's storage test).
+    private static bool IsStatic(BindingSymbol? property) => property is { Kind: BindingSymbolKind.Property, Scope.Owner: GroupKoto };
 
     // Enters a body, or with the default value a declaration, and returns the context it replaces, which the entry restores.
     private ExecutableBody EnterBody(ExecutableBody body)

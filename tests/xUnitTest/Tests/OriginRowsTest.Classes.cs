@@ -114,7 +114,7 @@ public sealed partial class OriginRowsTest
     }
 
     // The row of a body (by its definition's name; "" for the Closure) at a site.
-    private static (OriginRowSet Slice, OriginRow Row) RowAt(string source, string body, string site)
+    private static (Binding.OriginRowSet Slice, OriginRow Row) RowAt(string source, string body, string site)
     {
         var c = MirBuildTest.Compile(source + Main);
         var key = Bodies(c).First(x => (body.Length == 0 ? IsProgramClosure(x) : x.Key.Decl?.Name == body) && Has(c, x.Key, site)).Key;

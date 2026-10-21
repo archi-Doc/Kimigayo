@@ -66,45 +66,10 @@ internal readonly record struct OriginRow(
 /// <summary>An atom of a body's table with its class there.</summary>
 internal readonly record struct OriginAtomEntry(BoundOrigin Atom, OriginAtomKind Kind, ProjectionRole Role);
 
-/// <summary>A body's slice of the view: its rows, a constructor's layer rows from <see cref="LayerStart"/>, and its atom table.</summary>
-internal sealed class OriginRowSet
-{
-    internal ExecutableBody Body { get; private set; }
-
-    /// <summary>Gets the layer whose rows follow <see cref="LayerStart"/>, judged with its oracle (DECISIONS R4-M101 E4); no body when none.</summary>
-    internal ExecutableBody Layer { get; private set; }
-
-    internal int LayerStart { get; set; }
-
-    internal IReadOnlyList<OriginRow> Rows => this.RowList;
-
-    internal IReadOnlyList<OriginAtomEntry> Atoms => this.AtomList;
-
-    internal List<OriginRow> RowList { get; } = [];
-
-    internal List<OriginAtomEntry> AtomList { get; } = [];
-
-    // Each atom's table index, and the parts (1 own, 2 layer) whose rows name it.
-    internal Dictionary<BoundOrigin, int> Index { get; } = new(ReferenceEqualityComparer.Instance);
-
-    internal List<byte> Parts { get; } = [];
-
-    internal bool Owns(ExecutableBody body) => body.IsBody && (body == this.Body || body == this.Layer);
-
-    internal void Reset(ExecutableBody body, ExecutableBody layer)
-    {
-        (this.Body, this.Layer, this.LayerStart) = (body, layer, 0);
-        this.RowList.Clear();
-        this.AtomList.Clear();
-        this.Index.Clear();
-        this.Parts.Clear();
-    }
-}
-
 internal sealed partial class TyCtxt
 {
     // SPEC 15.6.1: a body's rows and atom table, a constructor's followed by its layer's.
-    internal OriginRowSet OriginRows(ExecutableBody body) => binding.OriginRows(body);
+    internal Binding.OriginRowSet OriginRows(ExecutableBody body) => binding.OriginRows(body);
 
     // SPEC 15.6.5: an atom's class in a body, resolved at its use and appended to the body's table when no row names it.
     internal OriginAtomEntry OriginAtom(ExecutableBody body, BoundOrigin origin, Koto site) => binding.OriginAtomIn(body, origin, site);

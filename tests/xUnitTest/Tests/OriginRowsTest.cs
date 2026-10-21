@@ -18,13 +18,15 @@ public sealed partial class OriginRowsTest
 
     private const string Pick = "func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
 
+    // Pick in a group, for callers a top-level function does not reach (a group's or struct's member).
+    private const string Util = "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n";
+
     // A Closure storing a Borrow of an environment binding through a captured exclusive reference (2a0-D's rv/env-store).
     private const string EnvStore = "func store(target: uniq/(ref/i32 during t), value: ref/i32 during t) -> ()\n    target@follow = value\n" +
         "func g(x: i32, target: uniq/(ref/i32 during t)) -> ()\n    var f = func [x, target] () => store(target, value: x@ref)\n    f()\n";
 
     // A struct whose Field initializer forms rows, with two constructors (2a0-D F2; the review's f2-init-two-ctors).
-    private const string FieldInit = "group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" +
-        "struct S\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n    public init() => ()\n    public init(k: i32) => self.n = k\n";
+    private const string FieldInit = Util + "struct S\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n    public init() => ()\n    public init(k: i32) => self.n = k\n";
 
     // A Field initializer's local annotation needing `b outlives a`, which only the constructor's parameter implies (the review's probes).
     private const string InitPremise = "struct Pair {a, b}\n    public let p: ref/i32 during a\n    public var n: i32 = if true\n" +
@@ -132,6 +134,18 @@ public sealed partial class OriginRowsTest
         Assert.Empty(c.Types.OriginFindings);
     }
 
+    // DECISIONS R4-M101 E3 for a specialization: its signature's well-formedness rows are a declaration's, formed with no body.
+    [Fact]
+    public void ASpecializationsSignatureRowsAreADeclarations()
+    {
+        var c = MirBuildTest.Compile("func f<T>(x: ref/(ref/T during b) during a) -> i32 => 0\n" +
+            "specialize func f<i32>(x: ref/(ref/i32 during b) during a) -> i32 => 1\n" + Main);
+        var rows = Rows(c, false).Where(static x => Within(x.Use, static y => y is FunctionKoto { IsSpecialization: true })).ToList();
+        Assert.NotEmpty(rows);
+        Assert.All(rows, static x => Assert.False(x.Body.IsBody, $"{x.Use}"));
+        Assert.Empty(c.Types.OriginFindings);
+    }
+
     // DECISIONS R4-M101 E1 (2a0-D D3): a row is the body's Binding binds it in: a function's, a Closure's body, a Closure literal's fit in
     // its evaluating body, a getter's and a `for` in it, a default as its template, a static initializer, a Field initializer as its layer,
     // a module's top-level statements, a user loop's parentless `$for.iterator` Use.
@@ -142,7 +156,7 @@ public sealed partial class OriginRowsTest
     [InlineData(Pick + "func g(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n", "3@ref", "Default:g:0")]
     [InlineData(Pick + "func h(n: i32, f: () -> i32 = func [] () => pick(7@ref, 8@ref)) -> i32 => f()\n", "7@ref", "Closure")]
     [InlineData("func g() -> i32\n    let h = func [] (p: ref/(ref/i32)) -> i32 => 1\n    return 0\n", "ref/(ref/i32)", "Fn:g")]
-    [InlineData("group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\ngroup G\n    public let n: i32 = Util.pick(3@ref, 4@ref)\n", "3@ref", "Static:n")]
+    [InlineData(Util + "group G\n    public let n: i32 = Util.pick(3@ref, 4@ref)\n", "3@ref", "Static:n")]
     [InlineData(FieldInit, "3@ref", "Layer:S")]
     [InlineData(Pick + "let v = pick(3@ref, 4@ref)\n", "3@ref", "TopLevel")]
     [InlineData("func total(values: Slice<i32>) -> i32\n    var sum = 0\n    for v in values\n        sum = sum + v@follow\n    return sum\n", "$for.iterator", "Fn:total")]
@@ -193,8 +207,7 @@ public sealed partial class OriginRowsTest
     [Fact]
     public void AConstructorlessLayersRowsLieInNoBodysSlice()
     {
-        var c = MirBuildTest.Compile("group Util\n    public func pick(x: ref/i32 during s, y: ref/i32 during s) -> i32 => x@follow\n" +
-            "open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\n" +
+        var c = MirBuildTest.Compile(Util + "open struct Base\n    protected init(a: i32 = 1) => ()\n    protected init(b: string = \"x\") => ()\n" +
             "struct Leaf: Base\n    public var n: i32 = Util.pick(3@ref, 4@ref)\n" + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
         var leaf = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(static x => x.Name == "Leaf").SymbolOf()!;
@@ -310,14 +323,15 @@ public sealed partial class OriginRowsTest
         Assert.Equal(complete, c.Binding.Result.IsComplete);
     }
 
-    // Immutable after Bind and pooled: a warm rebind and the view's reads (slices, atoms, an oracle) allocate nothing.
+    // Immutable after Bind and pooled: a warm rebind and the view's reads (slices, atoms, an oracle) allocate nothing, and the rebind
+    // stamps each row and atom with the same body.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmRebindAndTheViewsReadsAllocateNothing()
     {
         var c = MirBuildTest.Compile(EnvStore + FieldInit + Pick + "func h(a: i32 = pick(3@ref, 4@ref)) -> i32 => a\n" + Main);
         var bodies = c.BuildMir().Bodies.ToArray().Select(static x => BodyOf(x.Key)).ToArray();
-        var counts = Read();
+        var (counts, rowStamps, atomStamps) = (Read(), RowStamps(), AtomStamps());
         Assert.Equal(counts, Read());
         Assert.Equal(0, AllocationMeasurement.Measure(() =>
         {
@@ -325,6 +339,13 @@ public sealed partial class OriginRowsTest
             _ = Read();
         }));
         Assert.Equal(counts, Read());
+        Assert.Equal(rowStamps, RowStamps());
+        Assert.Equal(atomStamps, AtomStamps());
+
+        ExecutableBody[] RowStamps() => [.. Rows(c, false).Select(static x => x.Body)];
+
+        (BoundOrigin Atom, ExecutableBody Body, OriginAtomKind Kind)[] AtomStamps()
+            => [.. bodies.SelectMany(x => c.Types.OriginRows(x).Atoms).Select(static x => (x.Atom, x.Atom.Body, x.Kind))];
 
         int Read()
         {
