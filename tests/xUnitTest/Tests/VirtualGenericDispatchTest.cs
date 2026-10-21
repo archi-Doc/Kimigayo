@@ -50,7 +50,8 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
         ScalarEmissionTest.EmitFixture("VirtualGenericDispatchFactory", Source, string.Empty);
     }
 
-    // A finite descriptor cycle reuses its instances. The growing key's refusal is GrowingDescriptorKeysAreResourceDiagnosed (K13c).
+    // A finite descriptor cycle reuses its instances. The growing key's refusal is GrowingDescriptorKeysAreResourceDiagnosed (K13c); this
+    // name drops "AndRejectGrowingKeys" when the method leaves the codegen pending ledger, whose row names it until then.
     [Fact]
     public void DescriptorDependenciesReuseFiniteCyclesAndRejectGrowingKeys()
         => ScalarEmissionTest.EmitFixture("VirtualGenericDispatchCycle", DependencyProgram("i32"), string.Empty);
@@ -85,11 +86,13 @@ public class VirtualGenericDispatchTest(ITestOutputHelper output)
             output.WriteLine(System.Text.Json.JsonSerializer.Serialize(sent));
         }
 
-        // The old generator's failure text, on a compilation pinned to it until G2 (DECISIONS R5-M85).
+        // The old generator's resource failure and its record's note, on a compilation pinned to it until G2 (DECISIONS R5-M85).
         var old = MinimalEmissionTest.Analyze(source, path, CompilerCodegen.Legacy);
-        Assert.False(old.WriteIr(TextWriter.Null, out var failure));
-        Assert.True(old.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains("substitutions", failure, StringComparison.Ordinal);
+        Assert.False(old.Generate(TextWriter.Null));
+        Assert.True(old.Emission.FailureIsResourceLimit);
+        var note = Assert.Single(TestDiagnostics.Of(old)).Note;
+        Assert.Contains("substitutions", note, StringComparison.Ordinal);
+        Assert.Contains("generated dependencies", note, StringComparison.Ordinal);
     }
 
     [Fact]
