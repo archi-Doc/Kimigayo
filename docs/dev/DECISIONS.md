@@ -5398,3 +5398,33 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a "forwarded" sentinel that each location writer tests (a sentinel and a branch per consumer); hidden location operands
     from the MIR builder (a held builder change, where package C names them code generation's); `%a<slot>` kept with a forwarded form of
     its own (option B, a second naming rule).
+
+- **R5-M94 The compiler pipeline benchmark under MIR code generation** (2026-10-21, E lane; plan E14 and PD26, package C 3.13, plan
+  §5.3 item 10; the planning session's rulings on E14's design; under R5-M37, R5-M65 and R5-M77)
+  - Stage map: PD26's six names stay, so `benchmark-o2-corpus.ps1`'s stage-name comparison holds. Stages 1 and 2 are unchanged; stage 3
+    is `BuildMir`, which under sel also runs the instance collector, whose layout obligations lay out every by-value use of an admitted
+    item (K 4.8, R5-M37); stage 4 is `Compilation.Analyze()`; under sel stage 5 is empty and stage 6 is `Compilation.WriteIr`, the
+    generation entry (gate, output roots, mark, `ModuleCodegen`). Under legacy and the mir pipeline stages 5 and 6 stay the old
+    generator's `TryPrepare` and `WriteIr`. The benchmark reads the published `Compilation.Codegen`; G7 deletes the old branch with the
+    split-IR check.
+  - Stage 4 calls `Compilation.Analyze()`, not `Ownership.Analyze()`: the generation gate needs the program `Analyze` keeps, which under
+    the mir pipeline re-reads stage 3's memoized MIR (PublishHir and version checks); under legacy it is the same work, with equal
+    per-stage allocation (E14's A/B). It anticipates H9's reads through `Compilation.Analyze()`.
+  - Check: the measured IR must equal the public `Compilation.WriteIr` under the same selector. It compared with `Emission.WriteIr`,
+    the old emitter, so under sel it never tested MIR code generation. An input sel does not generate fails closed. Until C8e, the sel
+    check passes Scalar and Branching and fails at Generic size 1 (`for` over an Array, Array, Dictionary and the `tryGet` match are
+    Unsupported_Kd), which is the expected state, not a pass.
+  - Report: `compiler` is `Compilation.CompilerIdentity`, `CompilerVersion` with its module id plus `[mir]` or `[mir, codegen mir]`, so it
+    still identifies the build and names the configuration. Schema 3, the stage names and the inputs are unchanged; the harness
+    compares only those, so reports of the 49cb2b5d baseline stay comparable.
+  - Departure (for the owner's departures list): PD26 and C-design-2 say that under sel stage 5 times layout. No layout step follows
+    collection: K 4.8 and R5-M37 make the collector lay out every by-value use in stage 3, and code generation reads Layout and Abi
+    from their memos inside `Write`, so stage 5 is empty under sel. Cost: none; the stage names stay.
+  - The comparison moves to X1 (package C 3.13's "recorded by E14 and X1"; plan §5.3 item 10): E14 provides the instrument and X1
+    records it from saved `--compiler-pipeline` reports of one build, A without selectors and B under sel: code generation is
+    (B stage 3 − A stage 3) + B stages 5 and 6, against A stages 5 and 6, since A's stage 3 builds the same MIR without collection.
+    The O2 harness's collect-plus-codegen B/A under sel reads stages 5 and 6, code generation alone; its script (E5) is unchanged and
+    O2Corpus.md says so.
+  - Rejected: an internal prepare/write split of `Generate` for the benchmark (a seam without semantics, whose prepare would be the
+    gate, roots and mark, not layout); the benchmark copying GenerateMir's steps (a second copy of the gate); a sel-only shape filter
+    (a shape allowlist for one interim use); a separate E14b for the comparison.

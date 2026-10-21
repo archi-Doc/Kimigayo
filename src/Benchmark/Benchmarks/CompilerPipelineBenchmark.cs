@@ -76,8 +76,9 @@ public class CompilerPipelineBenchmark
         return builder.Append("    return\n").ToString();
     }
 
-    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. The MIR is built as the mir pipeline's
-    // Analyze builds it, before the old analysis, which still decides (R3-R5).
+    // Each operation owns a fresh Compilation. Boundaries are contiguous; lowering runs only once. Stage 3 builds the MIR as the mir
+    // pipeline's Analyze builds it (under MIR code generation with the collector), and stage 4's Analyze reuses it for the generation gate;
+    // the old analysis still decides (R3-R5). Under MIR code generation stage 5 is empty and stage 6 is the generation entry (R5-M94).
     internal Compilation Compile(TextWriter output, Span<long> timestamps = default, Span<long> allocations = default)
     {
         if (!(timestamps.IsEmpty && allocations.IsEmpty) && (timestamps.Length != Boundaries || allocations.Length != Boundaries))
@@ -100,13 +101,22 @@ public class CompilerPipelineBenchmark
         Require(mir.Records.Count == 0 && mir.Findings.Count == 0, "MIR construction or validation failed.");
         Capture(3, timestamps, allocations);
 
-        Require(result.Ownership.Analyze().IsVerified, "Ownership verification failed.");
+        Require(result.Analyze().IsVerified, "Analysis failed.");
         Capture(4, timestamps, allocations);
 
-        Require(result.Emission.TryPrepare(out var module, out var failure), failure);
-        Capture(5, timestamps, allocations);
+        // The collector laid out every by-value use in stage 3, so MIR code generation has no layout stage; G7 deletes the old branch.
+        if (result.Codegen == CompilerCodegen.Mir)
+        {
+            Capture(5, timestamps, allocations);
+            Require(result.WriteIr(output, out var failure), failure);
+        }
+        else
+        {
+            Require(result.Emission.TryPrepare(out var module, out var failure), failure);
+            Capture(5, timestamps, allocations);
+            module.WriteIr(output);
+        }
 
-        module.WriteIr(output);
         Capture(6, timestamps, allocations);
         return result;
     }
