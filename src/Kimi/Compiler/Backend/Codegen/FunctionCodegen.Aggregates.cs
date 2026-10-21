@@ -6,9 +6,15 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a and C2b; DECISIONS R5-M83, R5-M87, R4-M81): a Tuple, struct, enum Case or
-// fixed array put by its components, and a Fill's one value at each element by one counted loop.
+// fixed array put by its components, and a Fill's one value at each element by one counted loop, the loop writer (Loop) the glue shares.
 internal sealed partial class FunctionCodegen
 {
+    // One pass of a counted loop (Loop): its work from the pass's element offset.
+    private interface IElementPass
+    {
+        void Write(FunctionCodegen codegen, Value offset);
+    }
+
     // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC 13.7.1),
     // then an enum Case's ordinal as its tag (Layout.Tag) and each value put at its component (Component), or a Fill's one value at each
     // element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure environment is
@@ -92,16 +98,22 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // SPEC 4.3.3 (DECISIONS R4-M81): a Fill's value put at each element of the instance's closed length by one counted i64 loop, so the
-    // text does not grow with the length (its Place is not zero-sized, so the length is not 0). The loop is entered through a label of its
-    // own, which the counter's phi names.
+    // SPEC 4.3.3 (DECISIONS R4-M81): a Fill's value put at each element of the instance's closed length by one counted loop (Loop), so the
+    // text does not grow with the length (its Place is not zero-sized, so the length is not 0).
     private void Fill(Value address, BoundType type, Value value)
     {
-        if (this.Laid(type.Components[0]) is not { } element)
+        if (this.Laid(type.Components[0]) is { } element)
         {
-            return;
+            this.Loop(type, element, new Filled(address, type.Components[0], element, value));
         }
+    }
 
+    // The counted i64 loop over a fixed array's closed length, not 0 (DECISIONS R4-M81): it owns its counter, and the body writes each
+    // pass's work from the pass's element offset, the counter times the element's stride. The loop is entered through a label of its own,
+    // which the counter's phi names; a struct body, so a warm write allocates nothing.
+    private void Loop<TBody>(BoundType type, ValueLowering element, in TBody body)
+        where TBody : struct, IElementPass
+    {
         var id = this.next;
         var (index, next, offset, done) = (new Value('t', id + 1), new Value('t', id + 2), new Value('t', id + 3), new Value('t', id + 4));
         this.next += 5;
@@ -123,7 +135,7 @@ internal sealed partial class FunctionCodegen
         output.Write(", ");
         WriteNumber(output, element.Layout.Stride);
         output.Write('\n');
-        this.Put(this.Offset(address, offset), type.Components[0], element, value);
+        body.Write(this, offset);
         output.Write("  ");
         this.WriteValue(next);
         output.Write(" = add i64 ");
@@ -140,5 +152,11 @@ internal sealed partial class FunctionCodegen
         Name(output, ", label %fill", id);
         Name(output, "\nfilled", id);
         output.Write(":\n");
+    }
+
+    // A Fill's pass: its value put at the element.
+    private readonly struct Filled(Value address, BoundType type, ValueLowering element, Value value) : IElementPass
+    {
+        public void Write(FunctionCodegen codegen, Value offset) => codegen.Put(codegen.Offset(address, offset), type, element, value);
     }
 }
