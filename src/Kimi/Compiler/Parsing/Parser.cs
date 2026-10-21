@@ -1904,6 +1904,7 @@ CloseParameters:
     private static DiagnosticKey? CheckAdaptationOrigins(Koto type)
     {
         DiagnosticKey? cause = null;
+        var outer = true;
         while (true)
         {
             if (type is ParenthesizedTypeKoto grouped)
@@ -1912,11 +1913,13 @@ CloseParameters:
             }
             else if (type is TypeSemanticsKoto { Type: { } inner } layer)
             {
-                if (!layer.IsTransparentWrapper && layer.HasOrigin)
+                // SPEC 13.5.1: an outer raw layer states its Origin, a fit or a claim (SPEC 5.7); the chain's other Origins are inferred.
+                if (!layer.IsTransparentWrapper && layer.HasOrigin && !(outer && layer is { SemanticsKind: SemanticsKind.Raw, SemanticsParameter: null }))
                 {
                     cause ??= layer.Unexpected(SyntaxForm.AdaptationOrigin);
                 }
 
+                outer &= layer.IsTransparentWrapper;
                 type = inner;
             }
             else

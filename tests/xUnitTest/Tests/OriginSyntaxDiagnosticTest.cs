@@ -111,7 +111,6 @@ public sealed class OriginSyntaxDiagnosticTest(ITestOutputHelper output)
     [Theory]
     [InlineData("ref/i32 from a", "from", "BorrowOriginKeyword_Kd")]
     [InlineData("owner/ref/i32 during a", "during", "BorrowOriginSemantics_Kd")]
-    [InlineData("raw/ref/i32 during a", "during", "BorrowOriginSemantics_Kd")]
     [InlineData("(ref/i32)? during a", "during", "BorrowOriginTarget_Kd")]
     [InlineData("(ref/i32 during a) during b", "during b", "BorrowOriginTarget_Kd")]
     [InlineData("View<i32>{v} during a", "during", "BorrowOriginBindingSet_Kd")]

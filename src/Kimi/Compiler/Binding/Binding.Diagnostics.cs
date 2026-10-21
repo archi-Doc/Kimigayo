@@ -588,12 +588,13 @@ public sealed partial class Binding
             case OriginKind.Projection when origin.Slot == CallResultSlot && origin.Binder is FunctionKoto { IsAnonymous: true }:
                 return new("closure", "call result");
             case OriginKind.Projection or OriginKind.Anchor:
-                // Without its Borrow, the Place: a local or a parameter by name, and a temporary by its text.
+                // Without its Borrow, the Place: a local or a parameter by name, a constructor's or destructor's receiver (and its helper
+                // borrow) as self, and a temporary by its text.
                 var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
-                    : origin.Slot == HelperSlot ? "self"
+                    : origin.Slot is HelperSlot or ReceiverSlot ? "self"
                     : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName
                     : origin.Binder is FunctionKoto function && origin.Slot >= 0 && origin.Slot < function.Parameters.Count ? function.Parameters[origin.Slot].InternalName
-                    : origin.Binder?.ToString() ?? origin.Name;
+                    : origin.Binder!.ToString(); // OriginAtom gives every Projection and Anchor its binder.
                 return new("borrow", text);
             default:
                 return new("omitted", origin.Occurrence?.ToString() ?? origin.Name);

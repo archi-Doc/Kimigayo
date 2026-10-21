@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // Place authority (SPEC 3.4, 3.4.3, 3.5, 3.6, 13.5.5, 15.1.5, 15.6.2): what an expression is as a Place and what its path grants.
 // - Responsibility: whether an expression is a bare Place (IsBarePlace), a static Field (IsStaticField) or a Temporary Value a borrow
-//   may materialize (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
+//   may materialize (BorrowableTemporary); the steps of a Place's path (NextPathStep, the one enumeration of their forms); the access a
+//   Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
 //   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a receiver
 //   can be exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers
 //   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle, as
@@ -125,61 +126,52 @@ public sealed partial class Binding
         source = KotoHelper.UnwrapParentheses(source);
         for (var depth = 0; depth < 64; depth++)
         {
-            Koto next;
             SemanticsKind? layer = null;
-            switch (source)
+            switch (NextPathStep(source, out var next))
             {
-                case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate }:
+                case PathStep.Candidate:
                     return SemanticsKind.Ref;
-                case ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected:
-                    next = selected.Left;
-                    layer = selected.Left.BoundType?.Semantics;
+                case PathStep.Follow:
+                    layer = next.BoundType?.Semantics;
                     layers |= layer?.ToMask() ?? SemanticsMask.None;
                     break;
-                case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
-                    next = pair.Left;
-                    var admitted = pair.CodeContext.Compilation.Binding.PairAdmitted(pair);
+                case PathStep.PairFollow:
+                    var admitted = source.CodeContext.Compilation.Binding.PairAdmitted(source);
                     layer = PairAuthority(admitted);
                     layers |= admitted;
                     break;
-                case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
+                case PathStep.UserIndex:
                     // SPEC 3.4.3, 4.7.1, 15.1.5: the element Place is reached through the receiver's reference layers; indexUniq
                     // publishes it exclusively when the receiver can be exclusively acquired, index alone shares it, and the
                     // element never offers Take.
-                    if (!userIndex.CodeContext.Compilation.Binding.HasExclusiveIndexer(userIndex))
+                    if (!source.CodeContext.Compilation.Binding.HasExclusiveIndexer(source))
                     {
                         return SemanticsKind.Ref;
                     }
 
                     authority = SemanticsKind.Uniq;
-                    denied |= !AcquirableByBinding(userIndex.Left);
-                    next = userIndex.Left;
-                    layer = LayerAuthority(userIndex.Left);
+                    denied |= !AcquirableByBinding(next);
+                    layer = LayerAuthority(next);
                     break;
-                case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
-                    index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
+                case PathStep.SliceElement:
                     return SemanticsKind.Ref; // SPEC 4.8.2: a Slice element Place is shared.
-                case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType):
-                    next = index.Left;
-                    layer = index.Left.BoundType!.Semantics;
+                case PathStep.BorrowedElement:
+                    layer = next.BoundType!.Semantics;
                     break;
-                case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Array && !ElementAccess.IsSlicing(element):
+                case PathStep.ArrayElement:
                     // SPEC 4.7.1: an Array element is selected like a user index's, an inline part of its owner's path when
                     // the receiver can be exclusively acquired.
-                    denied |= !AcquirableByBinding(element.Left);
-                    next = element.Left;
+                    denied |= !AcquirableByBinding(next);
                     break;
-                case MemberAccessKoto member when !IsGetterResult(member):
-                    next = member.Left; // SPEC 3.4.3: a member is reached through every layer of its receiver's own Type.
-                    layer = LayerAuthority(member.Left);
-                    layers |= LayerCases(member.Left);
+                case PathStep.Member:
+                    layer = LayerAuthority(next); // SPEC 3.4.3: a member is reached through every layer of its receiver's own Type.
+                    layers |= LayerCases(next);
                     break;
-                case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
-                    next = part.Left; // An inline part shares its owner's path.
-                    break;
-                case IdentifierNameKoto root when Receiver(root) is { } receiver:
+                case PathStep.InlinePart:
+                    break; // An inline part shares its owner's path.
+                case PathStep.Receiver:
                     bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
-                    return receiver.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
+                    return Receiver(source)?.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
                 default:
                     bindingDenies = denied;
                     return authority;
@@ -199,6 +191,48 @@ public sealed partial class Binding
 
         bindingDenies = denied;
         return authority;
+    }
+
+    // SPEC 3.4.3, 4.7.1, 4.8.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's forms
+    // that PathAuthority walks: what `source` selects, and next, the node it selects from (`source` itself at a root, a guard
+    // candidate or a special receiver).
+    private static PathStep NextPathStep(Koto source, out Koto next)
+    {
+        next = source;
+        switch (source)
+        {
+            case IdentifierNameKoto { BoundSymbol.Kind: BindingSymbolKind.PatternCandidate }:
+                return PathStep.Candidate;
+            case ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow } selected:
+                next = selected.Left;
+                return PathStep.Follow;
+            case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
+                next = pair.Left;
+                return PathStep.PairFollow;
+            case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
+                next = userIndex.Left;
+                return PathStep.UserIndex;
+            case IndexKoto index when index.Left.BoundType?.Kind == BoundTypeKind.Slice ||
+                index.Left.BoundType is { Kind: BoundTypeKind.Semantics, Components: [{ Kind: BoundTypeKind.Slice }] }:
+                next = index.Left;
+                return PathStep.SliceElement;
+            case IndexKoto index when ReferenceTypes.IsArray(index.Left.BoundType) || ReferenceTypes.IsDynamicArray(index.Left.BoundType) || ReferenceTypes.IsDictionary(index.Left.BoundType):
+                next = index.Left;
+                return PathStep.BorrowedElement;
+            case IndexKoto element when element.Left.BoundType?.Kind == BoundTypeKind.Array && !ElementAccess.IsSlicing(element):
+                next = element.Left;
+                return PathStep.ArrayElement;
+            case MemberAccessKoto member when !IsGetterResult(member):
+                next = member.Left;
+                return PathStep.Member;
+            case BinaryKoto part when ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _):
+                next = part.Left;
+                return PathStep.InlinePart;
+            case IdentifierNameKoto root when Receiver(root) is not null:
+                return PathStep.Receiver;
+            default:
+                return PathStep.Root;
+        }
     }
 
     // SPEC 15.1.5: whether a receiver's own binding permits exclusive acquisition, which storage rooted in a let binding or an owned
@@ -400,7 +434,7 @@ public sealed partial class Binding
             (ElementAccess.IsSharedElement(index) || ElementAccess.IsUserIndex(index) ||
                 (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
         {
-            this.SharedElement(left, index.Left, element);
+            this.SharedElement(left, element);
         }
     }
 
@@ -430,7 +464,7 @@ public sealed partial class Binding
         this.CompareInPlace(selection.Left);
         if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)) || ElementAccess.IsRuntimeFixedElement(selection))
         {
-            this.SharedElement(operand, selection.Left, selection.BoundType);
+            this.SharedElement(operand, selection.BoundType);
         }
     }
 
@@ -440,16 +474,16 @@ public sealed partial class Binding
     {
         if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(element))
         {
-            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element.Left)));
+            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element)));
         }
     }
 
     // Records the one shared borrow of a Non-Copy element Place that is read in place below its receiver.
-    private void SharedElement(Koto node, Koto receiver, BoundType? element)
+    private void SharedElement(Koto node, BoundType? element)
     {
         if (element is not null && this.ProveCopy(element, node) == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
         {
-            var origin = this.PlaceOrigin(receiver);
+            var origin = this.PlaceOrigin(node);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
             var dependency = element.Origin is { } stored ? this.Meet(origin, stored) : origin;
             var read = this.ElementRead(element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
@@ -595,5 +629,42 @@ public sealed partial class Binding
 
         // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local.
         return source is IdentifierNameKoto && IsBarePlace(source) && (!exclusive || Writable(source));
+    }
+
+    // The forms of one path step (NextPathStep).
+    private enum PathStep : byte
+    {
+        // The root: a local, parameter, capture or static, a Temporary Value, a getter result or any other node no step selects from.
+        Root,
+
+        // A guard candidate (SPEC 14.8.3).
+        Candidate,
+
+        // The receiver `self` of a constructor or destructor (Receiver).
+        Receiver,
+
+        // The referent of a ref/uniq reference or the payload of an object handle or view (@follow).
+        Follow,
+
+        // The target of a pair layer (@follow, SPEC 13.5.5).
+        PairFollow,
+
+        // A user index's element Place (SPEC 4.7.1).
+        UserIndex,
+
+        // A Slice element, through the Slice or a reference to it (SPEC 4.8.2).
+        SliceElement,
+
+        // An element of a fixed array, Array or Dictionary reached through a ref or uniq reference to it.
+        BorrowedElement,
+
+        // An element of an owned Array, not a range selection (SPEC 4.7.1).
+        ArrayElement,
+
+        // A member reached through every layer of its receiver's own Type (SPEC 3.4.3).
+        Member,
+
+        // Any other inline part ElementAccess selects in place (a fixed-array or Tuple element), on its owner's path.
+        InlinePart,
     }
 }

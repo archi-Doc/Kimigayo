@@ -163,8 +163,9 @@ public static partial class Parser
         var span = SourceSpan.FromBounds(keyword.Span.Start, Math.Max(keyword.Span.End, expression.Span.End));
         if (type is TypeSemanticsKoto { Type: not null, IsTransparentWrapper: false } target)
         {
+            // SPEC 3.3.2: during is accepted on the borrow Semantics, raw (an optional Origin, SPEC 5.7) and a pair binder.
             target.SetBorrowOrigin(expression, span);
-            if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc or SemanticsKind.Raw)
+            if (target.SemanticsParameter is null && target.SemanticsKind is SemanticsKind.Owner or SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc)
             {
                 reader.Diagnostic.Add(keyword.Span, DiagnosticCode.BorrowOriginSemantics_Kd);
                 RecoverItem(ref reader, type, reader.Diagnostic.LastError);

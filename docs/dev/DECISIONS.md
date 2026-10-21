@@ -107,6 +107,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Removing the retired workflow deletes roughly 900 script/test lines and adds no modes or fallback.
   - The owner explicitly authorized aligning verification and related rules with the deletion. Existing
     architectural limits stay unchanged and are reviewed; no automated analyzer/size coverage is claimed.
+- **CR-R2 Constructors are exempt from the parameter-count limit** (2026-10-22, owner, direct, verbatim:
+  「コンストラクタの引数上限は撤廃します。6個は、コンストラクタ以外に適用します。」).
+  - Reading: the count of 6 parameters no longer applies to a constructor; it applies to every other member. The sub-limits (at most
+    2 optional, 1 `out` and 1 `bool`) are unchanged (confirmed by the owner, 2026-10-22, to R4, relayed by R4:
+    「「コンストラクタの引数上限の撤廃」について、推奨の内容でOKです。」; confirmed to BU directly the same day: 「OKです。」).
+  - Reason (the owner's, as R4 relayed it): constructors tend to take many parameters, and many parameters there rarely lead to an
+    inefficient structure. R4's recommendation, which the owner accepted: a constructor that wires many components is watched by the
+    dependency rules and by review, which the count no longer signals.
+  - Trigger: `BoundType`'s constructor and `TyCtxt.Intern` were both at 10 parameters when G160 added the raw Origin, which keeps one
+    `origin` parameter at `Intern`, a method that stays limited: being over the limit, it may not grow.
 
 
 - **CR-A0** (owner). Begin the adopted Code Rules Analyzer A0–A8 before R4. KR3003 covers only
@@ -3523,6 +3533,19 @@ resumed by R4-M86 (2026-10-20).
   `CandidateConstraintFailure` reads a clause whose L decides nothing), a solve per strongly connected set (a conformance binding can
   name a declaration no written storage of the set names), option 1 (the owner's X-2 candidate). Not temporary; the guard and the
   bound keep their conditions above.
+
+- **BU-23** (2026-10-22; the BU planning session's ruling on bu20's verify-first S1, R4 agreeing; PLAN G178; unit bu20 C0c) A
+  constructor's or destructor's receiver `self` is a Place of its own: its symbol takes the reserved slot `ReceiverSlot`
+  (`int.MinValue + 2`, beside `CallResultSlot`, `ClosureValueSlot` and `HelperSlot`), so its Place's Projection is
+  `Projection[init#ReceiverSlot]` or `Projection[drop#ReceiverSlot]`, never a parameter's (it was slot 0: the first parameter's in a
+  constructor, `Projection[drop#0]` in `drop`; 2a0-D §3 row 3, Finite, renamed). No reader takes the slot as a parameter index:
+  `ParameterVisible` and `DefaultParameters.InLaterDefault` compare it unsigned, so no default sees the receiver (SPEC 7.2.3); every
+  other reader of `BindingSymbol.Slot` compares unsigned or never meets a receiver (audit in the commit). Diagnostics show the atom
+  as `self`, as the helper borrow's. G160-1's `during self` in a special receiver's body names this atom (design §13 A3). Reason:
+  two holders shared one Origin (F4's lesson), so the old analysis gave a receiver Field borrow the first parameter's Loan (G178).
+  Rejected: numbering parameters from 1 (moves every parameter atom and Input index); a receiver `OriginKind` (BU-17's reason: a copy
+  of Projection's meaning in every reader, the frozen old path's among them). BU-17's rejected "own slot for the receiver symbol" was a
+  way to separate the helper borrow, which keeps `HelperSlot`; it stands.
 
 ## R5 and R6 (adopted 2026-10-18)
 
