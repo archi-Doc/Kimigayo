@@ -4771,8 +4771,9 @@ structure is recorded here by the unit that first implements it.
   A5 checking the shape in its pre-pass (a consumer revalidating producer IR).
 - **R5-M91 The owner confirms C2b's and C3a's departures** (owner, 2026-10-21, on the R5 planning session's explanation; verbatim
   「2件とも了承します。」; the consequences are the planning session's) The two departures from owner-approved texts recorded for the
-  owner's list since R5-M86 are confirmed: C2b's PairAcquire written as a Copy of its Place in the view's case Type without asking
+  owner's list since R5-M86 are confirmed: C2b's PairAcquire written as a Copy of its Place in the item's case Type without asking
   `MirCases.Reborrows` (R5-M87; against design 2 §2.2's dispatch sentence; both cases write the same bits, IMPL 21.1.3), and C3a's
   module declaring only the `#LibraryImport`s its definitions call (R5-M89; against the old generator, which also declares a
-  program's own uncalled imports; `ForeignEmissionTest`'s two declaration rows stay pending until G3 reduces them as an intended
-  deviation). They leave the list.
+  program's own uncalled imports, while declaring every validated import would add the Library's `QueryPerformance*` imports to every
+  module; `ForeignEmissionTest`'s two declaration rows stay pending, and by R5-M85 and R5-M6's class (d) G3 reduces them). They leave
+  the list; R5's group reviews check the code against those entries.
