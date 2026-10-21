@@ -108,13 +108,7 @@ public class GenericObjectFactoryTest(ITestOutputHelper output)
                     let next = Kimi.Intrinsics.makeObj(Expanding<Marker<T>>.init())
             let root = Expanding<i32>.init()
             """;
-        var c = MinimalEmissionTest.Analyze(Source);
-        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        using var ir = new StringWriter();
-        Assert.False(c.WriteIr(ir, out var failure));
-        Assert.True(c.Emission.FailureIsResourceLimit, failure);
-        Assert.Contains("'drop' grows through generated dependencies", failure, StringComparison.Ordinal);
-        Assert.Equal(string.Empty, ir.ToString());
+        MinimalEmissionTest.AssertGenerationResourceLimit(Source, "'drop' grows through generated dependencies");
     }
 
     [Trait("Purpose", "Allocation")]

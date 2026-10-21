@@ -141,6 +141,31 @@ public sealed class HirFormsTest
         Assert.DoesNotContain(c.BuildMir().Records, x => x.Subject == SourceRef.Of(jump));
     }
 
+    // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`, a runtime Type test, a built-in
+    // selection) is an Error node that keeps every operand its form evaluates, one Binding did not resolve or an Error too, but a construct
+    // without a Type (a selection's `if` index), which stays replaced; a construct, an assignment and a labeled do Binding left unresolved
+    // keep their Ops (fail-before: the first five kept their forms' Ops).
+    [Theory]
+    [InlineData("func f(x: i32) -> i32\n    return x + missing\n", "x + missing", "Error", "x missing")]
+    [InlineData("func f(c: bool) -> bool\n    return c and missing\n", "c and missing", "Error", "c missing")]
+    [InlineData("func f(x: i32) -> bool\n    return x is Missing\n", "x is Missing", "Error", "x")]
+    [InlineData("func f(values: [3 of i32], r: Range<isize>) -> i32 => values[r]\n", "values[r]", "Error", "values r")]
+    [InlineData("func f(c: bool, v: [3 of i32], i: isize) -> i32\n    return v[if c => i else => missing]\n", "v[if", "Error", "v")]
+    [InlineData("func f(c: bool) -> i32\n    return if c => 1 else => missing\n", "if c => 1", "If", null)]
+    [InlineData("func f()\n    var y: i32 = 0\n    y = missing\n", "y = missing", "Assign", null)]
+    [InlineData("func f() -> i32\n    return label l: do\n        exit to l missing\n", "label l: do", "Group", null)]
+    public void AnOperationBindingDidNotResolveIsAnError(string source, string text, string op, string? kept)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        HirTables.Publish(c);
+        var node = Reachable(c.Kotonoha).First(x => x.ToString()!.StartsWith(text, StringComparison.Ordinal));
+        Assert.NotEqual(BindingState.Resolved, node.StateOf());
+        Assert.Equal(BindingFailure.None, node.FailureOf());
+        Assert.Equal(op, HirTables.Op(node).ToString());
+        var keeps = node.ChildNodes.Where(static x => HirTables.AdjustOf(x) == new HirAdjust(HirAcquire.None, HirAdaptation.None) && HirTables.Op(x) != HirOp.Syntax);
+        Assert.True(kept is null || kept == string.Join(" ", keeps.Select(static x => x.ToString())), string.Join(" ", keeps.Select(static x => x.ToString())));
+    }
+
     // SPEC 3.5, 10.2, 15.1.5, 15.1.6: a Copy Place is Copied, a stored exclusive reference Reborrowed, a Place a ref parameter takes
     // shared-borrowed in place, an @move operand moved, a Subject borrowed in place, and a value taken as a Temporary.
     [Fact]

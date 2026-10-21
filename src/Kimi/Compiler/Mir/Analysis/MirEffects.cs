@@ -52,18 +52,20 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
     private int itemCount;
     private int edgeCount;
     private byte found; // The classes the current evaluation or local walk found.
+    private ulong version; // The program version whose body views Local records (MirProgram.Version; 0: none).
 
     /// <summary>Records the local facts of a body view (driver step 2, after the body's A1 and A2, the dataflow begun with the body): its
     /// effects and static accesses, its calls with a body as edges into the callee views their substitution selects, and the parts its
-    /// Drops destroy (by A2's verdicts) and the Callable inputs it calls through as inputs of its summary. The first view of the first body
-    /// starts a program version.</summary>
+    /// Drops destroy (by A2's verdicts) and the Callable inputs it calls through as inputs of its summary. A program whose
+    /// <see cref="MirProgram.Version"/> differs from the one recorded starts a version; a body's views are recorded in order.</summary>
     /// <param name="program">The program.</param>
     /// <param name="body">The body, whose view is selected.</param>
     /// <param name="view">The selected view.</param>
     internal void Local(MirProgram program, MirBody body, long view)
     {
-        if (body.Ordinal == 0 && view == 0)
+        if (program.Version != this.version)
         {
+            this.version = program.Version;
             this.nodeCount = this.itemCount = this.edgeCount = this.keyCount = 0;
             this.fieldIds.Clear();
         }
@@ -160,8 +162,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
                 this.Given(body, terminator);
             }
         }
-        else if (callee.Arg == (int)IntrinsicId.StaticEnsure &&
-            program[new(body.Statics[(int)body.Consts[body.Operands[terminator.Start].Arg].Bits].Symbol, MirBodyKind.StaticInit)] is { } initializer)
+        else if (callee.Arg == (int)IntrinsicId.StaticEnsure && program.StaticInit(body, body.Operands[terminator.Start]) is { } initializer)
         {
             this.AddEdge(initializer, null);
         }

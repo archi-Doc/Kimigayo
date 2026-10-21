@@ -225,6 +225,33 @@ internal sealed partial class FunctionCodegen
         output.Write(", i1 false)\n");
     }
 
+    // A string constant stored at an address (the string representation, implementation-defined by IMPL 21.1.3: RuntimeAbi.String): its
+    // UTF-8 bytes a pooled constant, the Static release kind, so never released; the empty string has no bytes (null, length 0).
+    private void Text(Value address, string text)
+    {
+        var (output, lowering) = (this.output, RuntimeAbi.String);
+        output.Write("  store ");
+        output.Write(lowering.Layout.StorageType);
+        output.Write(" { ptr ");
+        if (text.Length == 0)
+        {
+            output.Write("null, i64 0");
+        }
+        else
+        {
+            var constant = this.module.Constants[this.module.Constants.Intern(text, LlvmConstantKind.Text)];
+            output.Write('@');
+            output.Write(constant.Name);
+            output.Write(", i64 ");
+            WriteNumber(output, constant.ByteLength);
+        }
+
+        output.Write(", i8 ");
+        WriteNumber(output, RuntimeAbi.StaticReleaseKind);
+        output.Write(" }");
+        this.WriteAccess(address, lowering.Layout);
+    }
+
     // A Place's value in its representation (I4): loaded in its storage representation, or its address when the value is in memory; none
     // for a zero-sized one; false for a Place whose row is not written yet.
     private bool Read(MirPlace place, out Value value)

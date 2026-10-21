@@ -83,6 +83,21 @@ public sealed class FunctionCodegenTest
     private const string Creations =
         "func put<s/T>(value: s/T, x: i32) -> ()\n    s is obj\n    _ = x@s\nfunc lent()\n    let o = 5@obj\n    put(o@move, 1)\n";
 
+    // The call rows (R5 C3a; DECISIONS R5-M89): a scalar and a bool argument and result, a string borrow, a zero-sized parameter, a slot
+    // result, a string moved and a Tuple copied by pointer, a diverging callee, a generic instance and a recursive default's template.
+    private const string Calls =
+        "func id(x: i32) -> i32 => x\nfunc f(a: i32) -> i32 => id(a)\nfunc flip(b: bool) -> bool => not b\nfunc g(c: bool) -> bool => flip(c)\n" +
+        "func show(t: ref/string) => Console.writeLine(t)\nfunc call(t: ref/string) => show(t)\nfunc pair(a: i32) -> (i32, i64) => (a, 2)\n" +
+        "func second() -> i64 => pair(1).1\nfunc take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)\n" +
+        "func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)\nfunc unit(x: (), y: i32) -> i32 => y\n" +
+        "func callUnit() -> i32 => unit((), 3)\nfunc stop() -> Never\n    loop => ()\nfunc diverge(flag: bool) -> i32\n    if flag => stop()\n" +
+        "    return 1\nfunc keep<T>(value: T) -> T => value@move\nfunc kept() -> i32 => keep(1)\n" +
+        "func count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\nfunc counted() -> i32 => count(3)\n";
+
+    // A #LibraryImport call (SPEC 22.6; DECISIONS R5-M89), its C signature memoized per Write.
+    private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+        "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
+
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
     private const string Signatures =
         "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
@@ -327,6 +342,67 @@ public sealed class FunctionCodegenTest
         { "RvalueString", "let t = \"moved\"\nlet u = t@move\nConsole.writeLine(u)\n", "moved\n" },
     };
 
+    // The call rows' programs (R5 C3a; DECISIONS R5-M89), self-checking: recursion; Tuple arguments and results, a Copy argument kept
+    // independent of its source while the call writes the source through an exclusive borrow (the ABI result-slot and copy rules); a string
+    // moved into and out of a call; generic instances; defaults, a recursive one through its template; a pair binder's function in its
+    // owner and its uniq case (tests/mir/cases.kimi's keep, moved here from C2b); a #LibraryImport call; a diverging callee's Abort at its
+    // site (SPEC 22.5.1).
+    public static TheoryData<string, string, string, string> CallPrograms => new()
+    {
+        {
+            "CallScalar",
+            "func factorial(n: i64) -> i64\n    if n <= 1 => return 1\n    return n * factorial(n - 1)\nfunc even(n: u32) -> bool\n" +
+            "    if n == 0 => return true\n    return not even(n - 1)\nvar bad: i32 = 0\nif factorial(10) != 3628800 or not even(10) or even(7) => bad = 1\n" +
+            "let check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallSlots",
+            "func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc probe(p: (i32, i64), r: uniq/(i32, i64)) -> i64\n    r@follow = (7, 8)\n" +
+            "    return p.1\nvar s: (i32, i64) = (1, 2)\nvar bad: i32 = 0\nlet w = swap(s)\nif w.0 != 2 or w.1 != 1 => bad = 1\n" +
+            "if probe(s, s@uniq) != 2 or s.1 != 8 or s.0 != 7 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        { "CallString", "func echo(s: string) -> string => s@move\nlet t = echo(\"called\")\nConsole.writeLine(t)\n", "called\n", string.Empty },
+        {
+            "CallGeneric",
+            "func pick<T>(flag: bool, a: T, b: T) -> T\n    T is Copy\n    if flag => return a\n    return b\nvar bad: i32 = 0\n" +
+            "if pick(true, 1, 2) != 1 or pick(false, 1.5, 2.5) != 2.5 or pick(true, (1, 2), (3, 4)).1 != 2 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallDefault",
+            "func next(x: i32, y: i32 = x + 1) -> i32 => y\nfunc count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\n" +
+            "var bad: i32 = 0\nif next(1) != 2 or next(1, 5) != 5 or count(3) != 3 or count(3, 9) != 9 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallViews",
+            "func keep<s/T>(value: s/T, x: T) -> T\n    s is owner or uniq\n    T is Copy\n    var v = value@move\n    let local = v\n    _ = local\n" +
+            "    v@follow = x\n    return v@follow\nvar y: i32 = 1\nvar bad: i32 = 0\nlet a = keep(5, 2)\nlet b = keep(y@uniq, 3)\n" +
+            "if a != 2 or b != 3 or y != 3 => bad = 1\nlet check = 1 / (1 - bad)\n",
+            string.Empty,
+            string.Empty
+        },
+        {
+            "CallForeign",
+            "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\nvar error: u32 = 1\n" +
+            "unsafe => error = Native.lastError()\nConsole.writeLine(\"imported\")\n",
+            "imported\n",
+            string.Empty
+        },
+        {
+            "CallNeverAbort",
+            "func fail(x: u8) -> Never\n    let y = x + 1\n    loop => ()\nlet z: u8 = 255\nfail(z)\n",
+            string.Empty,
+            "Hello.kimi:2:13: abort KIMI_E_INT_OVERFLOW: Integer overflow\n"
+        },
+    };
+
     [Theory]
     [MemberData(nameof(Frames))]
     public void FrameProgramsRun(string name, string source)
@@ -356,6 +432,11 @@ public sealed class FunctionCodegenTest
     [MemberData(nameof(RvaluePrograms))]
     public void RvalueProgramsRun(string name, string source, string stdout)
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
+
+    [Theory]
+    [MemberData(nameof(CallPrograms))]
+    public void CallProgramsRun(string name, string source, string stdout, string stderr)
+        => ScalarEmissionTest.EmitFixture(name, source, stdout, stderr.Length == 0 ? 0 : 1, stderr);
 
     // The console writeLine is a compiler function's legacy runtime row (RuntimeAbi.WriteLine): the routine is called with the string borrow
     // loaded from its local and the call site's location text (SPEC 22.5.1), a header constant. A string constant is stored whole into its
@@ -822,38 +903,131 @@ public sealed class FunctionCodegenTest
         Assert.DoesNotContain("load i32, ptr %l2", Assert.Single(ItemTexts(c, "put")), StringComparison.Ordinal);
     }
 
-    // I1 for the case views (DECISIONS R5-M87): a PairAcquire's and an Adapt's instances, which only a call (C3a's row) generates, are
-    // written the same in one compilation and in two.
+    // IMPL 21.3.1 (DECISIONS R5-M89): a call of a function's item passes each argument by its parameter's kind and puts its value into the
+    // destination: a scalar in its computation representation (a bool narrowed, its result widened), a string borrow with its attributes
+    // (the O2 parity list), nothing for a zero-sized parameter, the destination's address as a slot result, a moved value's Place itself
+    // and a Copy of a value in memory through a copy slot of the caller's entry block; the callee is the item's own definition.
     [Theory]
-    [InlineData(Acquisitions, "keep")]
-    [InlineData(Adaptations, "put")]
-    public void ViewInstancesAreDeterministic(string source, string name)
+    [InlineData("func id(x: i32) -> i32 => x\nfunc f(a: i32) -> i32 => id(a)", "internal i32 (i32)", "call i32 @(i32 %)", "store i32 %, ptr %, align 4")]
+    [InlineData("func flip(b: bool) -> bool => not b\nfunc g(c: bool) -> bool => flip(c)", "internal i1 (i1)", "call i1 @(i1 %)", "zext i1 % to i8")]
+    [InlineData(
+        "func show(t: ref/string) => Console.writeLine(t)\nfunc call(t: ref/string) => show(t)",
+        "internal void (ptr noundef nonnull align 8 dereferenceable(24))",
+        "call void @(ptr noundef nonnull align 8 dereferenceable(24) %)",
+        null)]
+    [InlineData(
+        "func unit(x: (), y: i32) -> i32 => y\nfunc f() -> i32 => unit((), 3)",
+        "internal i32 (i32)",
+        "call i32 @(i32 3)",
+        "store i32 %, ptr %, align 4")]
+    [InlineData("func pair(a: i32) -> (i32, i64) => (a, 2)\nfunc f() -> i64 => pair(1).1", "internal void (ptr, i32)", "call void @(ptr %, i32 1)", null)]
+    [InlineData("func take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)", "internal void (ptr)", "call void @(ptr %)", null)]
+    [InlineData(
+        "func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)",
+        "internal i64 (ptr)",
+        "call i64 @(ptr %)",
+        "store i64 %, ptr %, align 8")]
+    [InlineData(
+        "func keep<T>(value: T) -> T => value@move\nfunc f() -> i32 => keep(1)",
+        "internal i32 (i32)",
+        "call i32 @(i32 1)",
+        "store i32 %, ptr %, align 4")]
+    public void ACallPassesEachArgumentByItsParameter(string source, string callee, string call, string? result)
     {
-        var c = Analyze(source, OutputKind.Library);
-        var first = ItemTexts(c, name);
-        Assert.Equal(2, first.Length);
-        Assert.Equal(first, ItemTexts(c, name));
-        Assert.Equal(first, ItemTexts(Analyze(source, OutputKind.Library), name));
+        var (ir, text) = Parse(source);
+        var definition = Assert.Single(
+            ir.Functions,
+            x => x.Signature == callee && !x.Instructions.Any(y => y.Opcode == "call" && y.Callee is { } c && c.Signature == callee));
+        var site = Assert.Single(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == definition);
+        Assert.Equal(call, site.Shape);
+        if (result is not null)
+        {
+            Assert.Contains(ir.Functions.SelectMany(static x => x.Instructions), x => x.Shape == result && x.Operands.Contains(site));
+        }
+
+        Assert.DoesNotContain("inbounds", text, StringComparison.Ordinal);
     }
 
-    // I11 for the case views (DECISIONS R5-M87): writing again the module of a PairAcquire's and an Adapt's instances allocates nothing (its
-    // callers' calls are C3a's rows, recorded each time).
-    [Trait("Purpose", "Allocation")]
-    [Theory]
-    [InlineData(Acquisitions)]
-    [InlineData(Adaptations)]
-    public void WarmViewInstancesAllocateNothing(string source)
+    // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory passed by pointer is copied into a copy slot, an alloca of
+    // the caller's entry block, which the callee receives, and a string constant is written into one as its record (Static, IMPL 21.1.3);
+    // a moved string's Place is passed itself, its record never loaded.
+    [Fact]
+    public void ACopyArgumentInMemoryHasACopySlot()
     {
-        var c = Analyze(source, OutputKind.Library);
-        var program = c.BuildMir();
-        var collector = new InstanceCollector(c.Types, c.Layout);
-        var set = collector.Run(program, 1);
-        var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
-        set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
-        Assert.False(module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null));
-        var allocated = AllocationMeasurement.Measure(() => _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null));
-        Assert.Equal(0, allocated);
+        var text = Parse("func use(p: (i32, i64)) -> i64 => p.1\nfunc copy(q: (i32, i64)) -> i64 => use(q)").Text;
+        Assert.Contains("  %c0 = alloca { [0 x i64], [16 x i8] }, align 8\n", text, StringComparison.Ordinal);
+        const string Copied = "  call void @llvm.memcpy.p0.p0.i64(ptr align 8 %c0, ptr align 8 %a0, i64 16, i1 false)\n  %t0 = call i64 @";
+        Assert.Contains(Copied, text, StringComparison.Ordinal);
+        var moved = Parse("func take(s: string) => ()\nfunc give()\n    let t = \"x\"\n    take(t@move)").Text;
+        Assert.Matches(@"\n  call void @__kimi_f\d+\(ptr %l\d+\)\n", moved);
+        Assert.DoesNotContain("%c0", moved, StringComparison.Ordinal);
+        var constant = Parse("func take(s: string) => ()\nfunc give() => take(\"x\")").Text;
+        Assert.Contains("  %c0 = alloca %kimi.string, align 8\n", constant, StringComparison.Ordinal);
+        Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %c0, align 8\n  call void @__kimi_f\d+\(ptr %c0\)\n", constant);
+    }
+
+    // An ABI requirement (IMPL 21.3.1; DECISIONS R5-M89): a slot result is written through the caller's destination, which is never one of
+    // the arguments' pointers: a moved argument's Place is moved out and a copied one's is a copy slot.
+    [Theory]
+    [InlineData("func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc f(q: (i32, i64)) -> (i64, i32) => swap(q)")]
+    [InlineData("func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc f(q: (i32, i64)) -> i64\n    let r = swap(q)\n    return r.0")]
+    [InlineData("func echo(s: string) -> string => s@move\nfunc f(t: string) -> string => echo(t@move)")]
+    [InlineData("func join(p: (i32, i64), q: (i32, i64)) -> (i64, i64) => (p.1, q.1)\nfunc f(a: (i32, i64), b: (i32, i64)) -> (i64, i64) => join(a, b@move)")]
+    public void AResultSlotIsNeverAnArgumentsPointer(string source)
+    {
+        var ir = Parse(source).Ir;
+        var calls = ir.Functions.SelectMany(static x => x.Instructions)
+            .Where(static x => x.Opcode == "call" && x.Shape.StartsWith("call void @(ptr %, ptr %", StringComparison.Ordinal)).ToArray();
+        Assert.NotEmpty(calls);
+        Assert.All(calls, static x => Assert.DoesNotContain(x.Operands[0], x.Operands.Skip(1)));
+    }
+
+    // SPEC 14.10.3, the O2 parity list: a callee of result Never is defined noreturn, and a call without a target is followed by unreachable.
+    [Fact]
+    public void ADivergingCallIsFollowedByUnreachable()
+    {
+        var text = Parse("func stop() -> Never\n    loop => ()\nfunc diverge(flag: bool) -> i32\n    if flag => stop()\n    return 1").Text;
+        Assert.Matches(@"define internal void @__kimi_f\d+\(\) noreturn #0 \{", text);
+        Assert.Matches(@"\n  call void @__kimi_f\d+\(\)\n  unreachable\n", text);
+    }
+
+    // Plan 5.6.2 (DECISIONS R5-M89): a recursive default calls its template, whose Arg locals are its prepared inputs in slot order, each a
+    // shared borrow of the slot the call prepared; the template is written as a function of them.
+    [Fact]
+    public void ARecursiveDefaultCallsItsTemplate()
+    {
+        var ir = Parse("func count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\nfunc counted() -> i32 => count(3)").Ir;
+        var template = ir.Single("internal i32 (ptr)");
+        Assert.Contains(template.Instructions, x => x.Opcode == "call" && x.Callee == template && x.Shape == "call i32 @(ptr %)");
+        Assert.Contains(ir.Functions.SelectMany(static x => x.Instructions), x => x.Opcode == "call" && x.Callee == ir.Single("internal i32 (i32, i32)"));
+    }
+
+    // SPEC 22.6, IMPL 21.4.7 (DECISIONS R5-M89): a #LibraryImport function is called by its C signature, whose declaration its call
+    // requests, once per symbol; an import no call reaches is not declared; a caller-location library callee is C3b's row, one located
+    // record at the call.
+    [Fact]
+    public void AnImportIsCalledByItsCSignature()
+    {
+        var imported = Compilation.CreateForTest();
+        (imported.Pipeline, imported.Codegen) = (CompilerPipeline.Mir, CompilerCodegen.Mir);
+        imported.Project.ProjectFile.NativeRequirements[WindowsProfile.Target] = new(StringComparer.Ordinal) { ["codec"] = new() { Kind = "static" } };
+        Assert.True(imported.Prepare(WindowsProfile.Target));
+        const string Source =
+            "group Native\n    #LibraryImport(\"codec\", \"mix\")\n    public unsafe func mix(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"mix\")\n" +
+            "    public unsafe func again(a: i8, b: f64) -> f64\n    #LibraryImport(\"codec\", \"idle\")\n    public unsafe func idle() -> ()\n" +
+            "public func main()\n    var t: f64 = 0.0\n    unsafe => t = Native.mix(-1, 2.25)\n    unsafe => t = Native.again(1, t)\n";
+        imported.Kotonoha.AddSource(new SourceDocument("Hello.kimi", Source));
+        imported.Bind();
+        imported.Binding.CheckStartup(OutputKind.Application);
+        imported.Analyze();
+        var text = Generate(imported);
+        Assert.Single(Regex.Matches(text, @"\ndeclare double @mix\(i8, double\)\n"));
+        Assert.Matches(@"= call double @mix\(i8 -1, double 0x4002000000000000\)\n", text);
+        Assert.Matches(@"= call double @mix\(i8 1, double %t\d+\)\n", text);
+        Assert.DoesNotContain("@idle", text, StringComparison.Ordinal);
+        var c = Analyze("func grow(d: uniq/Dictionary<i32, i32>) => d.reserve(4)\n", OutputKind.Library);
+        Assert.False(c.Generate(TextWriter.Null));
+        Assert.Contains(("Unsupported_Kd", (string?)"d.reserve(4)"), Records(c));
     }
 
     // X13, SPEC 13.5.5: a PairLayer step is decided by the item's view: in the owner case the Place itself, so the write stores into the
@@ -951,17 +1125,18 @@ public sealed class FunctionCodegenTest
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87); a callee's call is C3a's,
-    // at that call, while a generic callee's instance whose Keep of a T instanced at i32 needs no drop records nothing (R5-M78); the
-    // Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings
-    // its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
-    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. The operator rows
-    // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
-    // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; the place
-    // writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87)
-    // write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from
-    // none to C8d, at the literal. K11: an Application's
-    // function nothing calls is not generated, so its form records nothing; a Library generates it.
+    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
+    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89); a requirement's call is C3b's,
+    // at the call, a property witness's too; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
+    // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
+    // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
+    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
+    // the static. The operator rows (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide
+    // overflow declarations; the conversion rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a,
+    // at the Cast that reads it; the place writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through
+    // it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to
+    // C8e, at the member, and an Array from none to C8d, at the literal. K11: an Application's function nothing calls is not generated, so
+    // its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
@@ -975,11 +1150,16 @@ public sealed class FunctionCodegenTest
     [InlineData("func make() -> Array<i32> => []\n", OutputKind.Library, new[] { "[]" })]
     [InlineData("struct Item\n    public var id: i32 = 7\nfunc take(v: objref/Item) -> i32 => v.id\n", OutputKind.Library, new[] { "v.id" })]
     [InlineData("func twice(a: Wrapping<i128>) -> Wrapping<i128> => a + a\n", OutputKind.Library, new string[0])]
-    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new[] { "twice(1)" })]
+    [InlineData("func twice(a: i32) -> i32 => a\nlet x = twice(1)\n", OutputKind.Application, new string[0])]
     [InlineData("let t = \"x\"\nlet u = t@move\n", OutputKind.Application, new string[0])]
-    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new[] { "keep(1)" })]
-    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new[] { "name()" })]
+    [InlineData("func keep<T>(value: T) => ()\nkeep(1)\n", OutputKind.Application, new string[0])]
+    [InlineData("func name() -> string => \"x\"\nfunc show() => Console.writeLine(name())\n", OutputKind.Library, new string[0])]
+    [InlineData(
+        "func same<T>(a: T, b: T) -> bool\n    T is Equatable\n    return a == b\nfunc use() -> bool => same(1, 2)\n",
+        OutputKind.Library,
+        new[] { "a == b" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
+    [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
     [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
@@ -1007,6 +1187,10 @@ public sealed class FunctionCodegenTest
     [InlineData(Drops, OutputKind.Application)]
     [InlineData(Places, OutputKind.Library)]
     [InlineData(Rvalues, OutputKind.Library)]
+    [InlineData(Acquisitions, OutputKind.Library)]
+    [InlineData(Adaptations, OutputKind.Library)]
+    [InlineData(Calls, OutputKind.Library)]
+    [InlineData(Imports, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1033,7 +1217,7 @@ public sealed class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var (start, unused) = (Of(set, null), Of(set, "unused"));
         set.Mark([start]);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
         Assert.True(module.Write(program, collector, c.Binding.Startup, [start], TextWriter.Null));
         new FunctionCodegen(module, c.Types).Write(program, collector, unused, TextWriter.Null);
         Assert.Equal([new(DiagnosticCode.InternalInvariant_Kd, set.Items[unused].Site)], module.Records);
@@ -1088,6 +1272,10 @@ public sealed class FunctionCodegenTest
     [InlineData(Drops, OutputKind.Application)]
     [InlineData(Places, OutputKind.Library)]
     [InlineData(Rvalues, OutputKind.Library)]
+    [InlineData(Acquisitions, OutputKind.Library)]
+    [InlineData(Adaptations, OutputKind.Library)]
+    [InlineData(Calls, OutputKind.Library)]
+    [InlineData(Imports, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -1141,7 +1329,7 @@ public sealed class FunctionCodegenTest
         var set = collector.Run(program, 1);
         var bodies = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind == MonoKind.Body).ToArray();
         set.Mark(bodies);
-        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types);
+        var module = new ModuleCodegen(c.Layout, c.Locations, c.Types, c.Binding.LibraryImports);
         _ = module.Write(program, collector, c.Binding.Startup, bodies, TextWriter.Null);
         return [.. bodies.Where(x => set.Items[x].Key.Body.Def.Decl?.Name == name).Select(x =>
         {

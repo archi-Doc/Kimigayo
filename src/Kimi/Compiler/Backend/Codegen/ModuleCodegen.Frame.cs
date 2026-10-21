@@ -1,13 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
 // The module frame of ModuleCodegen (R5 package C 3.3, IMPL 21.4.2): the output form around the output roots, and the complete module
-// through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the zero-sized symbol, the
-// overflow declarations, the memory declarations, the buffered definitions, the entry and the footer. The zero-sized symbol and the
-// memory declarations are written only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87).
+// through LlvmModuleText in the old generator's order: the header with the pooled constants, the runtime, the external declarations, the
+// zero-sized symbol, the overflow declarations, the memory declarations, the buffered definitions, the entry and the footer. The external
+// declarations, the imports a definition calls (Import, DECISIONS R5-M89), the zero-sized symbol and the memory declarations are written
+// only when a definition requested them (Request; package C 3.2's requests, DECISIONS R5-M87). The entry calls its root through
+// FunctionCodegen's one call writer (PD3).
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The zero-sized symbol, the home of every zero-sized local: one 16-aligned address (IMPL 21.1.3: a borrow of a zero-sized
@@ -36,24 +39,12 @@ internal sealed partial class ModuleCodegen
     /// <param name="need">The part.</param>
     internal void Request(Needs need) => this.needs |= need;
 
-    // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.
-    private static void WriteStart(TextWriter output, FunctionAbi startup)
-    {
-        output.Write(RuntimeAbi.Start.GetDefinition(exported: true));
-        output.Write("entry:\n  call ");
-        output.Write(startup.Result);
-        output.Write(" @");
-        output.Write(startup.Name);
-        output.Write("()\n  call void @");
-        output.Write(RuntimeAbi.Exit.Name);
-        output.Write("(i32 0)\n  unreachable\n}\n");
-    }
-
     // The complete module around the buffered definitions, an Application's entry calling its startup root.
     private void Assemble(TextWriter output, FunctionAbi? start)
     {
         LlvmModuleText.WriteHeader(output, this.constants);
         LlvmModuleText.WriteRuntime(output, testRuntime: null);
+        LlvmModuleText.WriteExternals(output, CollectionsMarshal.AsSpan(this.externals), testRuntime: null);
         if ((this.needs & Needs.ZeroSized) != 0)
         {
             output.Write(ZeroSizedDefinition);
@@ -68,10 +59,21 @@ internal sealed partial class ModuleCodegen
         output.Write(this.functions.GetStringBuilder());
         if (start is not null)
         {
-            WriteStart(output, start);
+            this.WriteStart(output, start);
         }
 
         output.Write(LlvmModuleText.Footer);
+    }
+
+    // __kimi_start (IMPL 21.4.2): the startup body, which takes no parameter (Binding's startup check), then a normal exit with 0.
+    private void WriteStart(TextWriter output, FunctionAbi startup)
+    {
+        output.Write(RuntimeAbi.Start.GetDefinition(exported: true));
+        output.Write("entry:\n");
+        this.bodies.WriteEntryCall(output, startup);
+        output.Write("  call void @");
+        output.Write(RuntimeAbi.Exit.Name);
+        output.Write("(i32 0)\n  unreachable\n}\n");
     }
 
     // The output form (IMPL 21.4.2) around the output roots: an Application's entry calls its startup root; a Library has none; a test

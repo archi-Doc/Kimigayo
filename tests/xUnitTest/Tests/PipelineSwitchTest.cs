@@ -77,12 +77,12 @@ public sealed class PipelineSwitchTest
 
     // R5 K1, C0b1 (DECISIONS R5-M65): only MIR code generation collects the checked set; it writes the module of an output form whose items
     // its coverage rows cover, an Application's (with its entry) or a Library's, and otherwise writes nothing and records one Unsupported_Kd
-    // in the Emission partition at each subject of a row not written yet, here a call (C3a) and a test build's TestEntry at each test
-    // (C10a); never the old generator's module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does.
+    // in the Emission partition at each subject of a row not written yet, here a test build's TestEntry at each test (C10a); never the old
+    // generator's module. The generation entry (R5 C0a) writes the old generator's module otherwise, as the adapter does.
     // R5 K11 (DECISIONS R5-M77): it generates the closure of the output roots, an Application's startup body, a test build's discovered
     // tests (not its top-level statements and their instance) and a Library's every root.
     [Theory]
-    [InlineData(OutputKind.Application, false, new[] { "first()" }, new[] { "first", "top" })]
+    [InlineData(OutputKind.Application, false, new string[0], new[] { "first", "top" })]
     [InlineData(OutputKind.Application, true, new[] { "first() => ()", "second() => ()" }, new[] { "first", "second" })]
     [InlineData(OutputKind.Library, false, new string[0], new[] { "first", "second", "top" })]
     public void MirCodegenWritesEachCoveredOutputForm(OutputKind output, bool test, string[] records, string[] generated)

@@ -46,7 +46,7 @@ internal sealed partial class FunctionCodegen
         this.output = output;
         output.Write(this.module.Glue(item).GetDefinition(exported: false));
         output.Write("entry:\n");
-        this.WriteCall(release, this.arguments.AsSpan(0, parameters));
+        _ = this.WriteCall(release, this.arguments.AsSpan(0, parameters));
         output.Write("  ret void\n}\n");
     }
 
@@ -126,23 +126,8 @@ internal sealed partial class FunctionCodegen
 
         this.arguments = this.arguments.Length < 3 ? new Value[3] : this.arguments;
         (this.arguments[0], this.arguments[1], this.arguments[2]) = (address, new('@', location), new('\0', this.module.Constants[location].ByteLength));
-        this.WriteCall(this.module.Glue(glue), this.arguments.AsSpan(0, 3));
+        _ = this.WriteCall(this.module.Glue(glue), this.arguments.AsSpan(0, 3));
         return true;
-    }
-
-    // The item the collector targets at a site of the item's body, or -1: its targets are in location order (K package 4.3).
-    private int Target(MirLocation site)
-    {
-        var targets = this.collector.Set.Targets(this.item);
-        var (low, high) = (0, targets.Length);
-        while (low < high)
-        {
-            var middle = (low + high) >> 1;
-            var here = targets[middle].At;
-            (low, high) = here.Block < site.Block || (here.Block == site.Block && here.Index < site.Index) ? (middle + 1, high) : (low, middle);
-        }
-
-        return low < targets.Length && targets[low].At == site ? targets[low].Item : -1;
     }
 
     // Whether the program's MIR analyses recorded no Ownership problem, once per program version (the stand-in above).
