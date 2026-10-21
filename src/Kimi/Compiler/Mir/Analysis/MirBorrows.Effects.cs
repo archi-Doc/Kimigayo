@@ -12,11 +12,12 @@ namespace Kimi.Compiler.Mir;
 // numbers (MirBorrows.Loans), and A4's summaries of the static initializers (MirEffects.Summary).
 // Output, per view of the run (each record with the views whose keys give it, R4-M11), through MirBorrows.Reports:
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
-//   root (shallow, SPEC 15.6.2); its first conflict at the location, coded by Code (row 1: a reservation the call does not activate) with
-//   the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
+//   root (shallow, SPEC 15.6.2); its first conflict at the location its body owns (D11), coded by Code (row 1: a reservation the call does
+//   not activate) with the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
 // - A4's Limit without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd at the location;
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
-//   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4); Limit without them, a located Unsupported_Kd;
+//   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4), its template's inside an inline default copy (D11); Limit
+//   without them, a located Unsupported_Kd;
 // - the initialization proof: a conflict every effect that would decide it may be the first-access initialization of a static a live
 //   Loan proves initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property);
 //   otherwise the first effect outside the proof decides the Language problem (Unproved).
@@ -107,10 +108,11 @@ internal sealed partial class MirBorrows
         var field = this.fields[root - this.body.Locals.Length];
         var decided = Decided(row, classes, field);
         this.Work += 2;
-        if (decided is not null && this.Conflict(root, [], EffectRow(decided), taking) != None)
+        var scope = this.Source(at).Scope;
+        if (decided is not null && this.Conflict(root, [], EffectRow(decided), taking, scope, -1) != None)
         {
             var fact = this.Unproved(at, taking, row, classes, field);
-            var c = fact is { } unproved ? this.Conflict(root, [], EffectRow(unproved), taking) : None;
+            var c = fact is { } unproved ? this.Conflict(root, [], EffectRow(unproved), taking, scope, -1) : None;
             if (fact is not { } kind || c == None)
             {
                 this.Unsupported(at); // Every effect that would decide it lies in a proved initializer.
@@ -138,7 +140,8 @@ internal sealed partial class MirBorrows
     }
 
     // R3 (SPEC 16.4 with 16.3.1, 16.3.3): the destruction of a mutable static's old value holds an exclusive Loan on it until it completes, so
-    // its own effects on that static conflict, a read key, a write key or Unknown; with Limit alone it is not classified.
+    // its own effects on that static conflict, a read key, a write key or Unknown; with Limit alone it is not classified. Inside an inline
+    // default copy it is its template's (D11: no Loan takes part).
     private void Destroying(MirLocation at, int taking, int destroyed, ReadOnlySpan<ulong> row, byte classes)
     {
         var field = this.fields[destroyed];
@@ -149,6 +152,10 @@ internal sealed partial class MirBorrows
             {
                 this.Unsupported(at);
             }
+        }
+        else if (this.Covered(this.Source(at).Scope, -1, -1))
+        {
+            return; // Its template's.
         }
         else if (this.Unproved(at, taking, row, classes, field) is not { } fact)
         {

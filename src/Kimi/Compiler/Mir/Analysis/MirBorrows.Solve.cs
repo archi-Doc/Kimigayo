@@ -4,12 +4,12 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, its holders' slots (Holders), endings
-// and touches, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined by node union, then
-// the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned on the state before
-// it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then removed from every
-// holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and before a Call that moves pending slots their
-// inspection Loans (R-a, MirBorrows.Endings).
+// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, its holders' slots (Holders), endings,
+// touches and the copies' entries, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined
+// by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned
+// on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
+// removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and before a Call that moves
+// pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered before its entry's plan.
 internal sealed partial class MirBorrows
 {
     private int[] slots = []; // Each local's holder slot, -1 for none; E is slot 0.
@@ -43,6 +43,7 @@ internal sealed partial class MirBorrows
         this.Holders();
         this.Endings();
         this.Touches();
+        this.Entries();
         var words = (this.holderCount + 63) >> 6;
         var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount));
         if (state is null)
@@ -146,6 +147,11 @@ internal sealed partial class MirBorrows
         {
             var location = this.Location(block, i);
             this.Work++;
+            if (checks && this.copying && this.entering[location])
+            {
+                this.Entering(state, location);
+            }
+
             if (i == count)
             {
                 this.End(state, this.inspected[block]);

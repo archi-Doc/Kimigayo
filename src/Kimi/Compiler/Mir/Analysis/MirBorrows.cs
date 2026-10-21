@@ -8,15 +8,16 @@
 // Output: each Loan conflict at its access, activation or Call's or Drop's effects, coded by A3 5's A6 table (CallReservationConflict_Kd
 // for a Loan in its reservation holder, CallActivationConflict_Kd or PlacementActivationConflict_Kd for an activation at a Call or at the
 // writeback write, else ComparisonLoanConflict_Kd, also for a value that keeps a guard candidate's guard-local Origin past its EndBorrow),
-// with the Loan's anchor, its witness's next use or the store that carries it, an activation's reservation and an inline default copy's
-// call (R4-M69) as facts; Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound, and the cases
-// of the rules below), a limit record without that fact, and in a view a Call holds (its W stored a value past a holder that passes the
-// guard only by argument, P13's interim, R4-M73) every other Loan problem as Unsupported_Kd at its access, through MirReport; and Work, the
-// steps it took (A3 6.2).
+// with the Loan's anchor, its witness's next use or the store that carries it, an activation's reservation and, inside an inline default
+// copy, the default's operation (Evaluated, the problem at the outermost omitting call; R4-M97) as facts, a failure whose events all lie in
+// one evaluation of a copy left to its template; Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past
+// its bound, and the cases of the rules below), a limit record at its operation also inside a copy, and in a view a Call holds (its W
+// stored a value past a holder that passes the guard only by argument, P13's interim, R4-M73) every other Loan problem as Unsupported_Kd at
+// its subject, through MirReport; and Work, the steps it took (A3 6.2).
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
 // - a Call's contract rows, P9's among them: MirBorrows.CallRows; their transfer, with r3: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
-// - a default template's slot step, R26-borrow and R26-access: MirBorrows.Defaults;
+// - a default template's slot step, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
 // - the problems' codes and facts and the held view: MirBorrows.Reports.
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own,
 // static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans and markers, which never conflict

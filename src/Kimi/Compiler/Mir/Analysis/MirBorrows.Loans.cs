@@ -70,7 +70,7 @@ internal sealed partial class MirBorrows
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
-                    this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, statement.Source);
+                    this.loanAt[data.Start + i] = this.Issue(rvalue.Place, reborrow: false, (MirRefKind)rvalue.Op, statement.Place.Root, data.Start + i);
                     if (statement.Place is { Projection: 0, Root: >= 0 } into)
                     {
                         this.lent[into.Root] = rvalue.Place;
@@ -79,7 +79,7 @@ internal sealed partial class MirBorrows
                 else if (this.Reborrowing(statement) is var kind and not MirRefKind.Raw)
                 {
                     var place = this.body.Operands[rvalue.Start].Place;
-                    this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, statement.Source);
+                    this.loanAt[data.Start + i] = this.Issue(place, reborrow: true, kind, statement.Place.Root, data.Start + i);
                 }
             }
 
@@ -94,8 +94,8 @@ internal sealed partial class MirBorrows
         this.Work += locations;
     }
 
-    // A Loan of a Place issued into a local (-1: none), or -1 past a shared borrow Deref (E3).
-    private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, in SourceInfo source)
+    // A Loan of a Place issued into a local (-1: none) at a location, or -1 past a shared borrow Deref (E3).
+    private int Issue(MirPlace place, bool reborrow, MirRefKind mode, int into, int location)
     {
         var count = this.Walk(place, reborrow, ref this.walk);
         var direct = true;
@@ -123,7 +123,7 @@ internal sealed partial class MirBorrows
             Holder = into,
             Named = root,
             Direct = direct,
-            Site = this.body.Subject(source),
+            Location = location,
         };
         this.loanStepCount += count;
         if (place.IsStatic && !this.borrowed[key] && this.body.Statics[~place.Root].Mutable)
@@ -171,7 +171,8 @@ internal sealed partial class MirBorrows
         /// <summary>Gets or sets a value indicating whether it is a destroying reservation: its call destroys its target in place.</summary>
         internal bool Destroying { get; set; }
 
-        /// <summary>Gets or sets its anchor.</summary>
-        internal SourceRef Site { get; set; }
+        /// <summary>Gets or sets its issuing statement's or terminator's location (Location's index), whose subject is its anchor and whose
+        /// scope its issue's (D14).</summary>
+        internal int Location { get; set; }
     }
 }

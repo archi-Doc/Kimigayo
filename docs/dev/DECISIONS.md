@@ -445,7 +445,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   cause, and obligations on it are derived. A problem inside an Inlined scope belongs to the template's own check,
   except Loan conflicts with the caller and effect contributions. A finding rooted at a PreparedInput local maps to
   `DefaultArgument*_Kd`. Its placement of that mapping in A6 is superseded by R4-M69 (the Move code is A1's) and R4-M72 (the
-  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90.
+  Access and Borrow codes are A5-F9's), and its Inlined rule amended by R4-M69 and superseded by R4-M90 (for A5 by R4-M97; A1 and A2
+  at 2g-6).
 - **R4-M11** A1, A4's local facts and A5 run per `MirCases` view; A6 merges by (code, subject, Reason) with the view mask
   as the case fact. Views are never collapsed. The key is R4-M3a's until U11. R4-M71 keys `MirReport` by (code, subject, body) and
   places the merge across bodies at publication.
@@ -1632,7 +1633,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   Conditions for 2f: a Φ_c met at a receiver's formation is located at its later call (DIAGNOSTICS); a shared-receiver Φ_c takes the
   receiver's mode, or 2f reruns this rule's prototype variant with that case.
 - **R4-M69** (2026-10-19; group 1c's owner-approved design, R4-M75, from the design review of 1c's two designs; unit 1c-6; its
-  Inlined rule superseded for A5 by R4-M90 (2e-4; A1/A2 at 2e-4 or 2g-6)). It
+  Inlined rule superseded for A5 by R4-M97 under R4-M90; A1/A2 at 2g-6, D15 staged). It
   supersedes R4-M10's placement of the PreparedInput mapping and amends its Inlined rule, and supersedes R4-M21's rejection of
   "DefaultArgumentMove decided in A1", whose reason, R4-M10's placement in A6, no longer holds: R5-M23 has each recording rule name its
   requirement, and `MirReport` has no Place and must not derive a requirement from a code.
@@ -1762,7 +1763,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     - Every Loan-problem producer reports through `MirBorrows.Reports`' common `Report(code, anchor, via, at, reservation)`
       (`Checks.cs` at an access and at err(ended), `Activations.cs` at an activation and err(destroy)), so the hold is one rule there,
       and a future producer (err(effect), 2b; the E7/E12 merge, 2a-2; F6's Φ_c) must report through it too.
-    - R4-M69 governs inline default copies (superseded by R4-M90 (2e-4; the taint 2e-3)): a Loan problem inside an Inlined scope is
+    - R4-M69 governs inline default copies (superseded by R4-M97: the hold applies to every failure a body owns, a copy's at the
+      omitting call; the taint by R4-M96): a Loan problem inside an Inlined scope is
       its template's and dropped whatever the hold
       says; the hold reclassifies only problems the held view owns. R4-M70's default taint is unchanged (superseded by R4-M96: no taint;
       a copied conflict is the held caller's own, the hold's `Unsupported_Kd` at its access): a Loan only default-tainted
@@ -2228,8 +2230,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     15.6), so a call's store through a static's borrow lands in E as a parameter's does (`refs.append(y@ref); y = 2` errs; it went nowhere
     before); check sets do not change, since σ(E) is in each.
   - G136 (ii) (OQ-F5-1 (a)): a whole write of a static ends its Field's Loans (`Ending`), a part write none; e16b reports once.
-  - G171 interim: an effect conflict found in an inline default copy carries the Inlined fact and is dropped, as every copy-found
-    conflict, until 2e-4 (unsound for a caller's Loan, shadow only, no regression); Limit and proof records stay in copies.
+  - G171 interim (ended by R4-M97): an effect conflict found in an inline default copy carries the Inlined fact and is dropped, as
+    every copy-found conflict, until 2e-4 (unsound for a caller's Loan, shadow only, no regression); Limit and proof records stay in copies.
   - Unsupported producers registered for X-2 (PD28): A4's Limit at a site with a live mutable-static Loan no key meets (and R3's with
     the Limit alone), until A4 classifies the effect; the initialization proof, until OQ-F5-6's clarification and a must-carry fact (P42
     alone does not decide it). A static without its initializer is a broken builder contract, `InternalInvariant_Kd`.
@@ -2449,6 +2451,76 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Loans rooted at what is destroyed); reservation-holder roots (dead code).
   - PD21: `MirBorrows.Solve.cs` and `MirBorrows.Reports.cs` take their third changing unit (2b-3, 2e-2, 2e-3); Reports.cs's ruling or
     split is due before 2e-4 (the package), Solve.cs's before its next change.
+- **R4-M97 A5-F9's copy disposition: a failure in an inline default copy is its template's only within one evaluation** (2026-10-21; unit
+  2e-4 of G:A5-F9 under R4-M90, the package's §5 (D11–D14) with the planning session's rulings of 2026-10-21; supersedes R4-M69's
+  Inlined rule and R4-M10's Inlined sentence for A5, R4-M73's sub-bullet "R4-M69 governs inline default copies" and R4-M92's G171
+  interim; closes PLAN G171's defect, whose PLAN record is 2e-5's)
+  - Rule (D11; SPEC 7.2.3, 15.6): a failure found in an inline default copy is its template's when every event taking part lies in one
+    evaluation of one copy. `MirBorrows.Covered(scope, loan, reservation)`: B, the innermost Inlined scope holding the operation's scope
+    and the issue scopes of its Loan and reservation (`MirBody.Common`), moves outward (`Inlining(Outer(B))`) while the Loan or the
+    reservation is in Entry(B); it is covered while a copy remains. Entry(B) holds the Loans whose issue lies in B that the state before
+    B's entry carries in E and the holders live into it (the replay's live bits before `Advance`), closed as a check set closes: an
+    earlier evaluation's (a loop). The conflicts relation's selection (`Checks.Conflict`, now given the operation's scope and its
+    reservation) skips a covered candidate and goes on, so a covered first candidate hides no later one; access conflicts, activations,
+    err(destroy) and err(effect) select through it. R3 at a Drop takes no Loan (covered inside a copy). Limit records and the
+    initialization proof's `Unsupported_Kd` stay at their operation (R4-M69, R4-M71).
+  - Entries (the package's implementation note): a per-view pre-pass (`MirBorrows.Entries`, nothing beyond one scan of the scopes for a
+    body without an Inlined scope) marks each copy a Loan of the view is issued in, sets every Inlined scope's entry location, its first in
+    `MirDataflow.Order` (the replay's order: reached heads in reverse postorder, a chain's blocks in order), which dominates the copy
+    (`Inline` maps the template's block 0 into the caller's block; R5-M90's `MirValidator` Entry rule), and marks those locations. In the
+    checks replay `Carry` runs one gather at a marked location, before R-a's ending and the plan, shared by the copies entered there; a
+    copy that issues no Loan gets none. Representation: by scope an entry location and a `MirLoanSets` set, by location one bit; no
+    vocabulary entry, no per-head state.
+  - err(ended) (D12): nothing is recorded where `Inlining(Common(EndBorrow's scope, the guard local's declaration scope)) ≥ 0`; no entry
+    test (γ_H outlives an evaluation only after its template's own err(ended)).
+  - Record identity (D13; SPEC 15.6, 23.1.1): a Loan problem a body owns whose operation lies in a copy has as subject the omitting call of
+    the outermost copy (`MirBody.OmittingCall`) and the default's operation as its last fact, `MirFactKind.Evaluated` (the owner-approved
+    kind of R4-M90); the witness of a taken value stays the operation. `Record`'s hold applies to every owned failure: a held caller's is
+    the located `Unsupported_Kd` at the omitting call. Two calls give two subjects (two records); one record per (code, call) remains,
+    U11's residue.
+  - Loan identity of the issue (D14): `Loan.Location`, the issuing statement's or terminator's location, replaces `Loan.Site` (a
+    `SourceRef`); the anchor is its subject (`MirBorrows.Site`, unchanged), the issue scope its scope.
+  - Two ownership forms until 2g-6 (D15 staged; planning session ruling, 2026-10-21: neither 2x-R7 nor a `MirDrops.cs` response had
+    landed): A1 and A2 keep `MirFactKind.Inlined` and `MirReport.Add`'s drop; `Evaluated` is A5's only kind for the default's operation.
+    Removal condition: 2g-6, after 2x-R7 and a `MirDrops.cs` response; 2e-5 records it in PLAN.
+  - Deleted: `Reports.Report`'s `Inlining` call and A5's Inlined fact; `Record`'s held exception for it; `Loan.Site`; the vacuous "so a
+    clean Loan is reported first (R4-M70)" in `MirBorrows.Activations.cs`; the Inlined clauses of `MirBorrows.cs` and `.Reports.cs`
+    (`MirProblem.cs` names Inlined as A1's and A2's).
+  - Verdicts (`MirBorrowsTest.Defaults`; R4-M69 dropped each): the caller's in a copy, at the omitting call: G171 (`State.add(counter@uniq)`,
+    the copy's poke activation against the caller's reservation, `CallReservationConflict_Kd` with Reservation and Evaluated facts), its
+    effect form, the access in a copy nested in an explicit argument's (at that argument's call), two calls (two records), a covered
+    candidate scanned first, a two-view generic caller (both views), a held caller (U at the call); the outer template's own failure met
+    in a nested copy (round 20's dt20-f2: f2's record at its `State.g()`). Kept: the disjoint, read and explicit twins, a copy's Limit at
+    its operation, a guard across a copy; template-owned omissions (n5, a caller loop around a copy, local Loans only too, R3 in a copy, a
+    guard escaping in a copy) with their templates' records.
+  - Binding-unreachable rows (SPEC 15.6: a Borrow of mutable static storage is bounded by the body, so no default value or raw store keeps
+    one; `UnsatisfiedOriginRelation_Kd`): round 20's dc20-n3, -n3top, -n4, -sib, -twice, -indep, dc20-loop and -loop-nested, and the review's
+    dc20r-loop-e, -fx, -slot, -closure, -nested-entry and -loop-guard; a raw Place's anchor is never compared (SPEC 5.2.2). A copy's own
+    safe Loan cannot outlive its evaluation on Binding-valid source, so Entry(B) is A5's soundness net for Binding's gaps and G160-4's
+    raw holders. Its witnesses are hand-built MIR bodies (planning session ruling (b)): dc20-loop (fail-before), its template form
+    (dt20-loop), dc20-loop-nested's omission, dc20-loop-own (the gather reads only holders live into the entry), and the candidate order
+    both ways (dc20-first fail-before, -first-rev).
+  - Ledger (mir Functional with `KIMI_MIR_DIFF`, against a base run at the unit's start, d39d83f5): no row moved (3,088 raw rows equal
+    after normalizing the run and path prefixes; `summary.md` identical; open blocking rows 239 → 239): no Functional program has a
+    Loan problem in a copy, as round 20 found of its 506 earlier cases.
+  - Cost: per Loan-issuing copy per view one gather (a check's Based pass and the live words) and an `Add` per Loan carried in from an
+    earlier evaluation; per view with a copy one pass over the Loans and over the locations (an `Inlining` walk each); per conflicting
+    candidate O(depth) walks and a binary search. Corpus (the library, the 44 milestones, the 31 goldens) Work +0.33 % (6,965,058 →
+    6,987,845), set bytes unchanged (Release, against the unit's base). V16 "F9 copies" (`MirBorrowsTest.ACopysEntryWorkStaysDense`, N
+    Loan-issuing copies at depth 2 in a loop; VERIFICATION has no V16 table): 122,791, 211,975, 548,359 at N = 16, 32, 64, dense as E8's
+    ended points × holders (each copy adds a holder); Entry's own terms (against the same build without entries) 1,284, 2,276, 4,452.
+    Warm 0 B. Census: no problem.
+  - Rejected (the package's §5.2): R4-M69's access-scope rule (unsound, G171); R20Own alone (unsound on loops); B's γ entry test (a second
+    record); a copy-on-a-cycle rule; per-evaluation Loan twins; template certificates; copies without Loans; dropping on the template's
+    validity. Here: staging Entry(B) until a source witness exists (a departure, and unsound on A5's model where Binding has a gap); one
+    entry set per location of every Loan found (an `Add` per caller Loan live there).
+  - PD21 (planning session rulings, 2026-10-21): `MirBorrows.Loans.cs`, due (four changing units), split first (behavior-preserving, the
+    Loans' group order to `MirBorrows.Groups.cs`; a second consecutive no-split ruling refused), then D14's edit; `MirBorrows.Solve.cs`
+    (three units since 2x-R1) no split, being the forward solve and replay driver into which 2e-4 adds the pre-pass and gather calls; its
+    next changing unit restructures it first (`Holders()` and its fields the candidate); `MirBorrows.Activations.cs` no split (one
+    responsibility; its next changing unit restructures it first; 2x-R9 keeps its 2f-D condition); `MirBorrows.Reports.cs` no split (one
+    responsibility; its next changing unit restructures it first); `MirBorrows.Checks.cs` and `.Locations.cs` take their third change;
+    `MirProblem.cs` counted under R4-M91's ruling; `MirBody.cs` (R5's hold) gains only `Common` and `OmittingCall`.
 - **R4-M98 A5-F9's template rules: the slot step (A3 E17), R26-borrow and R26-access** (2026-10-21; unit 2e-2 of G:A5-F9 under R4-M90,
   the package's §2 (D1–D7) and its precedence table, with the planning session's rulings of 2026-10-21; supersedes R4-M72's Defaults
   bullet and its view skip's form)
@@ -2477,7 +2549,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     new representation). A record whose subject is that Type node shares its SourceRef with any other record there; A6 merges by (code,
     subject, body), so only same-code records merge. `MirBorrows.Record(code, requirement, subject, facts)` applies R4-M73's hold once
     for every producer (the Loan conflict's `Report` builds its facts and calls it), except a problem with an Inlined fact (R4-M69, until
-    2e-4): a held template's R26 records are the located `Unsupported_Kd`.
+    2e-4; the exception removed by R4-M97): a held template's R26 records are the located `Unsupported_Kd`.
   - Kept: R4-M93's ruling (no raw store row); D2 excludes raw writes (dt-raw-copy valid).
   - Tests: Binding rejects round 19's dt-cap-uniq `[x@uniq]` of an i32 slot (`InvalidAssignment_Kd`), and dt-raw-borrow's `p[0] = x@ref`
     and dt-twice's `x@follow = z@ref` of an i32 slot (`UnsatisfiedOriginRelation_Kd`); `MirBorrowsTest.Defaults` checks the Binding-valid

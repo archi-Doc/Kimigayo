@@ -638,6 +638,340 @@ public sealed partial class MirBorrowsTest
             Problems(c, program, DefaultCodes));
     }
 
+    // Round 20's group State (2e-D §5; draft/Sketches/A5 Step 0/prototype.md, round 20): the mutable statics counter and other; poke borrows
+    // its argument exclusively, touch writes counter (A4's key), peek and peekCount read it. Templates: add's default pokes counter (PLAN
+    // G171; addOther and addRead the disjoint and read-only twins, Counter.add the effect form), f's omits g's (§4 row 1), f2 keeps its own
+    // Loan across g's copy (row 2), g5 and add5 conflict inside themselves (r before the poke),
+    // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh is held (e17's store prefix, then g5's conflict), addl's
+    // default passes A4's Limit, setd replaces a static whose old value's drop reads it (R3), gd's guard lets its candidate escape and keepd
+    // copies a preceding argument (DefaultAccessTest :17's form).
+    private const string Copies = """
+        struct Counter
+            public var count: i32 = 0
+            public init() => ()
+            public func add(self: uniq/Self, x: i32 = State.touch()) => ()
+            public func addO(self: uniq/Self, x: i32 = State.touchOther()) => ()
+            public func addR(self: uniq/Self, x: i32 = State.peekCount()) => ()
+            public func view(self: ref/Self) -> ref/i32 during self => self.count@ref
+        struct Watch
+            public var n: i32 = 0
+            public init() => ()
+            drop => _ = State.watch.n
+        group Lim
+            public func run() => _ = Nest<i32>.init(value: 1)
+        group State
+            public var counter: Counter = Counter.init()
+            public var other: Counter = Counter.init()
+            public var watch: Watch = Watch.init()
+            public func inspect<T>(value: ref/T) => ()
+            public func storeL(l: uniq/Loan<uniq/(ref/(ref/i32 during p) during q) during a>, v: ref/(ref/i32 during p) during q) => ()
+            public func poke(c: uniq/Counter) -> i32 => 1
+            public func peek(c: ref/Counter) -> i32 => 1
+            public func touch() -> i32
+                counter.count = 1
+                return 1
+            public func touchOther() -> i32
+                other.count = 1
+                return 1
+            public func peekCount() -> i32 => counter.count
+            public func add(c: uniq/Counter, x: i32 = State.poke(counter@uniq)) => ()
+            public func addOther(c: uniq/Counter, x: i32 = State.poke(other@uniq)) => ()
+            public func addRead(c: uniq/Counter, x: i32 = State.peek(counter@ref)) => ()
+            public func g(x: i32 = State.poke(counter@uniq)) -> i32 => x
+            public func f(y: i32 = State.g()) -> i32 => y
+            public func f2(y: i32 = label w: do
+                let r = counter@ref
+                exit to w State.g() + r.count
+            ) -> i32 => y
+            public func g5(x: i32 = label w: do
+                let r = counter@ref
+                exit to w State.poke(counter@uniq) + r.count
+            ) -> i32 => x
+            public func f5(y: i32 = State.g5()) -> i32 => y
+            public func add5(c: uniq/Counter, x: i32 = label w: do
+                let r = counter@ref
+                exit to w State.poke(counter@uniq) + r.count
+            ) => ()
+            public func local3(n: i32, y: i32 = label w: do
+                var t = n
+                let r = t@ref
+                t = 2
+                exit to w r@follow
+            ) -> i32 => y
+            public func addg<s/T>(a: s/T, c: uniq/Counter, x: i32 = State.poke(counter@uniq)) -> ()
+                s is ref or uniq
+                return
+            public func addh(c: uniq/Counter, x: i32 = label w: do
+                var x0 = 1
+                var z: ref/i32 = x0@ref
+                var w: ref/(ref/i32) = z@ref
+                var lh = Loan<uniq/(ref/(ref/i32))>.init(w@uniq)
+                var b: ref/i32 = x0@ref
+                State.storeL(lh@uniq, b@ref)
+                let r = counter@ref
+                exit to w State.poke(counter@uniq) + r.count
+            ) => ()
+            public func addl(c: uniq/Counter, x: i32 = label w: do
+                Lim.run()
+                exit to w 1
+            ) => ()
+            public func setd(x: i32 = label w: do
+                watch = Watch.init()
+                exit to w 0
+            ) -> i32 => x
+            public func gd(y: i32 = label w: do
+                let packet: Packet = .Data(Data.init())
+                let other = Data.init()
+                var saved = other@ref
+                match packet
+                    .Data(let d) if (label g: do
+                        saved = d
+                        exit to g true
+                    ) => ()
+                    _ => ()
+                exit to w saved.count
+            ) -> i32 => y
+            public func keepd(a: ref/Data during p, b: ref/Data during p = a) -> ref/Data during p => b
+
+        """;
+
+    // D11, D13 (SPEC 7.2.3, 15.6, 23.1.1; R4-M97, round 20): a failure found in an inline default copy is the caller's unless every event
+    // taking part lies in one evaluation of one copy, decided per candidate before selection, and the caller's problem in a copy is recorded at
+    // the outermost omitting call with the default's operation as its Evaluated fact. The caller's (R4-M69 dropped each; fail-before): G171,
+    // the copy's poke activating against the caller's reservation of counter (dc20-g171; facts Reservation and Evaluated), its effect form
+    // (dc20-fx), the access in a copy nested in an explicit argument's copy (n1, at State.f()), two calls (twiceBoth: two records), the
+    // template's own candidate scanned first (first: add5's r, then the caller's reservation; ACoveredCandidateHidesNoLaterOne has both
+    // orders), a two-view generic caller (gen: both views), a held caller (the hold's U at the omitting call too). Kept: the disjoint, read
+    // and explicit twins; a Limit inside a copy, at its operation (limit's copy of addl's default, so the record names addl's Lim.run()); a
+    // guard across a copy (guardAcross, the caller's EndBorrow). Template-owned, omitted in the caller with the template's record: n2 (f2's own
+    // Loan met in g's copy, f2's record at its State.g(), which R4-M69 dropped: fail-before), n5, a caller loop around g5's or local3's copy
+    // (dc20-loop-own, local Loans only too), R3 in a copy, a guard escaping inside a copy. Not Binding-valid, as their earlier or sibling Loan
+    // rides in a default's value (SPEC 15.6: a Borrow of mutable static storage is bounded by the body): dc20-n3, -n3top, -n4, -sib, -twice,
+    // -indep, dc20-loop, -loop-nested and the review's loop rows (dc20r-loop-e, -fx, -slot, -closure, -nested-entry, -loop-guard);
+    // ALoopedCopysEarlierLoanIsTheCallers builds the loops' shape at the MIR layer.
+    [Fact]
+    public void ACopysFailureIsItsTemplatesOnlyWithinOneEvaluation()
+    {
+        var c = MirBuildTest.Compile(Prelude + Copies + """
+                public func g171() => State.add(counter@uniq)
+                public func g171Disjoint() => State.addOther(counter@uniq)
+                public func g171Read() => State.addRead(counter@uniq)
+                public func g171Explicit() => State.add(counter@uniq, State.poke(counter@uniq))
+                public func fx() => counter.add()
+                public func fxDisjoint() => counter.addO()
+                public func fxRead() => counter.addR()
+                public func fxExplicit() => counter.add(State.touch())
+                public func n1() => State.add(counter@uniq, State.f())
+                public func twiceBoth()
+                    State.add(counter@uniq)
+                    State.add(counter@uniq)
+                public func first() => State.add5(counter@uniq)
+                public func gen<s/T>(v: s/T)
+                    s is ref or uniq
+                    State.addg(v, counter@uniq)
+                public func held()
+                    var y0 = 1
+                    let r0 = y0@ref
+                    y0 = 2
+                    inspect(r0)
+                    State.addh(counter@uniq)
+                public func limit()
+                    var y0 = 1
+                    let r0 = y0@ref
+                    State.addl(counter@uniq)
+                    y0 = 2
+                    inspect(r0)
+                public func guardAcross()
+                    let packet: Packet = .Data(Data.init())
+                    let other = Data.init()
+                    var w = other@ref
+                    match packet
+                        .Data(let d) if (label g: do
+                            w = State.keepd(d)
+                            exit to g true
+                        ) => ()
+                        _ => ()
+                    inspect(w)
+                public func n2() => _ = State.f2()
+                public func n5() => _ = State.f5()
+                public func loopOwn(c: bool)
+                    while c
+                        _ = State.g5()
+                public func loopLocal(c: bool)
+                    while c
+                        _ = State.local3(1)
+                public func r3() => _ = State.setd()
+                public func guardIn() => _ = State.gd()
+            """);
+        var program = Analyze(c);
+        Assert.Equal(
+            [
+                "f2: State.g() CallActivationConflict_Kd", "g5: State.poke(counter@uniq) CallActivationConflict_Kd",
+                "add5: State.poke(counter@uniq) CallActivationConflict_Kd", "local3: t = 2", "addh: State.poke(counter@uniq) Unsupported_Kd",
+                "setd: watch = Watch.init()", "gd: let d", "g171: State.add(counter@uniq) CallReservationConflict_Kd",
+                "g171Explicit: State.poke(counter@uniq) CallReservationConflict_Kd", "fx: counter.add() CallReservationConflict_Kd",
+                "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
+                "twiceBoth: State.add(counter@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(counter@uniq) CallReservationConflict_Kd",
+                "first: State.add5(counter@uniq) CallReservationConflict_Kd", "gen: State.addg(v, counter@uniq) CallReservationConflict_Kd",
+                "held: y0 = 2 Unsupported_Kd", "held: State.addh(counter@uniq) Unsupported_Kd", "addl: Lim.run() Unsupported_Kd", "limit: y0 = 2",
+                "guardAcross: let d",
+            ],
+            Problems(c, program, DefaultCodes));
+        Assert.Equal(
+            ["Anchor counter@uniq", "Use State.add(counter@uniq)", "Reservation counter@uniq", "Evaluated State.poke(counter@uniq)"],
+            FactsOf(c, program, "g171"));
+        Assert.Equal(
+            ["Anchor counter@ref", "Use State.g() + r.count", "Reservation counter@uniq", "Evaluated State.poke(counter@uniq)"],
+            FactsOf(c, program, "f2"));
+        Assert.Equal(0b11UL, program.Problems.All.ToArray().Single(x => program.Bodies[x.Body].Key.Decl?.Name == "gen").Views);
+    }
+
+    // D11's entry test and selection at the MIR layer (R4-M97): Binding admits no default whose value keeps a Loan its copy issued (SPEC
+    // 15.6: a Borrow of mutable static storage is bounded by the body), so round 20's loops are hand-built bodies, as AR-9's are
+    // (MirValidatorTest), each valid MIR. dc20-loop ("loop"): a loop holds the copy B, which writes x and then issues k = &x, and the
+    // caller reads prev, then keeps k in it, so the next evaluation's write meets the last one's Loan, which prev carries into B's entry:
+    // the caller's problem at B's omitting call (its source, 900), the default's operation its Evaluated fact. The same body is
+    // dc20-loop-nested's template, f6's, whose own loop it is: there the record is f6's at keep2's call. "nested": that loop inside an
+    // outer copy O (800), as f6's copy in its caller: O's template reports it, so the caller omits it (B's boundary moves out to O, whose
+    // entry carries no earlier Loan). "own" (dc20-loop-own): B issues k = &x, writes x and reads k, its template's own failure; the caller
+    // keeps k in prev but overwrites prev before its next use, so prev, dead at B's entry, carries nothing in (the gather reads the holders
+    // live into the entry) and the failure stays B's. R4-M69 dropped all three as their copies' (fail-before: "loop").
+    [Fact]
+    public void ALoopedCopysEarlierLoanIsTheCallers()
+    {
+        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Use 13; Evaluated 11]"], HandBuilt("loop"));
+        Assert.Empty(HandBuilt("nested"));
+        Assert.Empty(HandBuilt("own"));
+    }
+
+    // D11's selection at the MIR layer (dc20-first, -first-rev): a covered candidate is skipped and the scan goes on, so the caller's Loan h
+    // the copy's write meets is reported whether the copy's own Loan k comes first in the scan (the copy's holder after the caller's, the
+    // order a built body has: "first") or second ("firstRev", the holders declared the other way round). R4-M69 dropped both.
+    [Fact]
+    public void ACoveredCandidateHidesNoLaterOne()
+    {
+        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 1; Use 13; Evaluated 11]"], HandBuilt("first"));
+        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 1; Use 13; Evaluated 11]"], HandBuilt("firstRev"));
+    }
+
+    // A hand-built caller body, validated, through A5 (its sources are SourceRefs of module 0 by number; the copy B is the Inlined scope
+    // whose source is 900, inside O, 800, for "nested"): see ALoopedCopysEarlierLoanIsTheCallers and ACoveredCandidateHidesNoLaterOne.
+    // Each problem: its code, subject and facts by number.
+    private static string[] HandBuilt(string form)
+    {
+        var c = MirBuildTest.Compile("func w(r: ref/i32, f: bool) => ()\n");
+        var program = c.BuildMir();
+        program.Problems.Clear();
+        var shape = Body(program, "w");
+        var (reference, flagType) = (shape.Locals[1].Type, shape.Locals[2].Type);
+        var body = new MirBody();
+        body.Reset(shape.Key, default);
+        var outer = form == "nested" ? body.AddScope(0, MirScopeKind.Inlined, new(0, 800)) : 0;
+        var copy = body.AddScope(outer, MirScopeKind.Inlined, new(0, 900));
+        body.AddLocal(new(BoundType.Unit, MirLocalKind.Return, default));
+        MirPlace Local(BoundType type, MirLocalKind kind = MirLocalKind.Var) => new(body.AddLocal(new(type, kind, default)));
+        SourceInfo At(int id, int scope) => new(new(0, id), (ushort)scope, true);
+        int Constant(MirConstKind kind, BoundType type, long value) => body.AddOperand(MirOperand.Const(body.Const(new(kind, type, value))));
+        void Assign(int block, MirPlace place, MirRvalue value, int id, int scope) => body.Push(block, MirStatement.Assign(place, value, At(id, scope)));
+        void Write(int block, MirPlace place, int id, int scope)
+            => Assign(block, place, MirRvalue.Use(Constant(MirConstKind.Integer, BoundType.I32, 2)), id, scope);
+        void Borrow(int block, MirPlace into, MirPlace place, int id, int scope)
+            => Assign(block, into, MirRvalue.Ref(MirRefKind.Shared, place, reference), id, scope);
+        void Read(int block, MirPlace place, int id, int scope) => body.Push(block, MirStatement.Of(MirStatementKind.FakeRead, place, At(id, scope)));
+        var entry = body.AddBlock();
+        if (form is "first" or "firstRev")
+        {
+            var x = Local(BoundType.I32);
+            var first = Local(reference, form == "first" ? MirLocalKind.Var : MirLocalKind.Temp); // The scan reads the later holder first.
+            var (h, k) = form == "first" ? (first, Local(reference, MirLocalKind.Temp)) : (Local(reference), first);
+            Write(entry, x, 2, 0);
+            Borrow(entry, h, x, 1, 0); // The caller's Loan h.
+            Borrow(entry, k, x, 12, copy); // B's own Loan k, then its write of x, which meets both.
+            Write(entry, x, 11, copy);
+            Read(entry, k, 16, copy);
+            Read(entry, h, 13, 0);
+        }
+        else
+        {
+            var (flag, x, o, prev, k) = (Local(flagType), Local(BoundType.I32), Local(BoundType.I32), Local(reference), Local(reference, MirLocalKind.Temp));
+            var (head, loop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock());
+            Write(entry, x, 2, outer);
+            Write(entry, o, 3, outer);
+            Borrow(entry, prev, o, 4, outer);
+            body.Terminate(entry, MirTerminator.Goto(head, At(5, outer)));
+            body.AddCase(0, exit);
+            body.Terminate(head, MirTerminator.SwitchInt(MirOperand.Copy(flag), body.Cases.Length - 1, 1, loop, At(6, outer)));
+            if (form == "own")
+            {
+                Borrow(loop, k, x, 12, copy);
+                Write(loop, x, 11, copy);
+                Read(loop, k, 16, copy);
+            }
+            else
+            {
+                Write(loop, x, 11, copy);
+                Borrow(loop, k, x, 12, copy);
+                Read(loop, prev, 13, outer);
+            }
+
+            Assign(loop, prev, MirRvalue.Use(body.AddOperand(MirOperand.Copy(k))), 14, outer);
+            body.Terminate(loop, MirTerminator.Goto(head, At(15, outer)));
+            Read(exit, prev, 17, outer);
+            entry = exit;
+        }
+
+        Assign(entry, new(0), MirRvalue.Use(Constant(MirConstKind.Unit, BoundType.Unit, 0)), 18, 0);
+        body.Terminate(entry, MirTerminator.Return(At(19, 0)));
+        var findings = new List<MirFinding>();
+        new MirValidator(c.Types).Validate(body, findings);
+        Assert.Empty(findings);
+        new Stratum(c.Types).Run(program, body);
+        var problems = program.Problems.All.ToArray();
+        return [.. problems.Select((x, i) =>
+            $"{x.Code} {x.Subject.Id} [{string.Join("; ", program.Problems.Facts(i).ToArray().Select(static f => $"{f.Kind} {f.Site.Id}"))}]")];
+    }
+
+    // Copies that issue Loans: fI's default borrows its own local, and fO's copy holds fI's (depth 2).
+    private const string Issuing = """
+        func fI(n: i32, y: i32 = label w: do
+            var t = n
+            let r = t@ref
+            exit to w r@follow
+        ) -> i32 => y
+        func fO(n: i32, y: i32 = fI(n)) -> i32 => y
+
+        """;
+
+    // V16 "F9 copies" (A3 6.2; VERIFICATION has no V16 table): N Loan-issuing copies at depth 2 in a loop. Entry(B)'s terms are the pre-pass's
+    // one pass over the Loans and the locations, one gather per issuing copy's entry in the replay (a check's Based pass, with the live words),
+    // and an Add only for a Loan carried in from an earlier evaluation (none here); Covered runs only for a conflicting candidate. The copies'
+    // work over their explicit-argument twin's stays within the body's dense terms (E8's ended points × holders, as each copy adds a holder).
+    [Fact]
+    public void ACopysEntryWorkStaysDense()
+    {
+        const string Loop = "func shape(c: bool)\n    while c\n";
+        long[] copies = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Issuing + Loop + Expand("«N:        _ = fO(1)\n»", n, 0)).Work)];
+        long[] twin = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Issuing + Loop + Expand("«N:        _ = fO(1, 2)\n»", n, 0)).Work)];
+        long[] own = [.. copies.Zip(twin, static (x, y) => x - y)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", copies)}, twin {string.Join(", ", twin)}");
+        Assert.True(Grows(copies, 5), $"work {string.Join(", ", copies)}");
+        Assert.True(Grows(own, 5), $"the copies' work {string.Join(", ", own)}");
+    }
+
+    // V16: the copies' entries allocate nothing on a program version A5 checked before (nested copies in a loop, and the caller's loop of
+    // round 20's G171 form).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ACopysEntriesWarmRunAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Prelude + Issuing + "func shape(c: bool)\n    while c\n        _ = fO(1)\n        _ = fO(2)\n" + Copies +
+            "    public func g171(c: bool)\n        while c\n            State.add(counter@uniq)\n");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Contains("g171: State.add(counter@uniq) CallReservationConflict_Kd", Problems(c, program, DefaultCodes));
+    }
+
     // A function's one problem's facts: kind and its site's first line.
     private static string[] FactsOf(Compilation c, MirProgram program, string function)
     {

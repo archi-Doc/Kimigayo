@@ -27,7 +27,7 @@ internal sealed partial class MirBorrows
         var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
         var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
-        var accessed = this.accessCount; // The location's own accesses; its effect access follows them.
+        var (accessed, scope) = (this.accessCount, this.Source(location).Scope); // The location's own accesses; its effect access follows them.
         this.Effecting(block, index);
         this.Reserving(state, at);
         var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.MarkerOf(guard) == Marker.Guard;
@@ -46,7 +46,7 @@ internal sealed partial class MirBorrows
             }
 
             var count = this.Walk(access.Place, access.Reborrow, ref this.accessSteps);
-            if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking) is var c and not None)
+            if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);
             }
