@@ -66,10 +66,12 @@ internal sealed partial class FunctionCodegen
     private BoundType[] types = []; // By local, in the item's instance.
     private Value[] arguments = []; // A runtime call's arguments in parameter order, or a fixed-array aggregate's element values.
     private InstanceCollector collector = null!;
+    private MirProgram program = null!; // The program, whose body the item replays and whose drop table its drops read.
     private FunctionAbi abi = null!; // The item's signature.
     private MirBody body = null!;
     private TextWriter output = TextWriter.Null;
     private int item;
+    private int at; // The block being written.
     private int next; // The number of the next value %t<n>.
 
     /// <summary>Initializes a new instance of the <see cref="FunctionCodegen"/> class.</summary>

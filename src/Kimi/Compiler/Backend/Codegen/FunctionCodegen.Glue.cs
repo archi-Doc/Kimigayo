@@ -17,6 +17,7 @@ namespace Kimi.Compiler.Backend;
 // Type of a kind no glue has, or a target missing or left over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
+    private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters a1 and a2.
     private readonly List<DropPart> parts = []; // DropGlue.Parts' scratch.
     private int glued; // The glue item's targets read.
 
@@ -45,7 +46,7 @@ internal sealed partial class FunctionCodegen
         output.Write("entry:\n");
         if (row == DropGlueRow.Release)
         {
-            this.Destroy(DropGlue.Release, new('p', 0));
+            this.Destroy(DropGlue.Release, new('p', 0), Received);
         }
         else
         {
@@ -159,7 +160,7 @@ internal sealed partial class FunctionCodegen
         {
             if (this.module.Signature(target) is { } destructor)
             {
-                this.Destroy(destructor, new('p', 0)); // Its receiver, the one parameter other than a location; none for a zero-sized Self.
+                this.Destroy(destructor, new('p', 0), Received); // Its receiver, the one parameter other than a location; none for a zero-sized Self.
             }
         }
         else if (type.Kind == BoundTypeKind.FixedArray)
@@ -170,7 +171,7 @@ internal sealed partial class FunctionCodegen
         {
             var kind = type.Kind == BoundTypeKind.Tuple ? MirAggregateKind.Tuple : MirAggregateKind.Adt;
             var (offset, _) = this.Component(kind, type, record, part.Ordinal, part.Index);
-            this.Destroy(this.module.Glue(target), this.Offset(new('p', 0), offset));
+            this.Destroy(this.module.Glue(target), this.Offset(new('p', 0), offset), Received);
         }
     }
 
@@ -198,8 +199,9 @@ internal sealed partial class FunctionCodegen
         return difference;
     }
 
-    // A call of a routine whose one parameter other than the location is the given value, the location parameters the function's own.
-    private void Destroy(FunctionAbi routine, Value value)
+    // The one destruction call (a glue's part or destructor, a Drop's glue): a routine whose one parameter other than the location is the
+    // given value, its location parameters a site's (a glue function passes its own on, Received; a Drop its location).
+    private void Destroy(FunctionAbi routine, Value value, Site site)
     {
         var parameters = routine.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
@@ -207,8 +209,8 @@ internal sealed partial class FunctionCodegen
         {
             this.arguments[i] = parameters[i].Kind switch
             {
-                AbiParameterKind.Location => new('p', 1),
-                AbiParameterKind.LocationLength => new('p', 2),
+                AbiParameterKind.Location => site.Text,
+                AbiParameterKind.LocationLength => site.Length,
                 _ => value,
             };
         }
@@ -235,6 +237,6 @@ internal sealed partial class FunctionCodegen
         public string Stem => "destroy";
 
         public void Write(FunctionCodegen codegen, Value offset)
-            => codegen.Destroy(codegen.module.Glue(glue), codegen.Offset(new('p', 0), codegen.Difference(last, offset)));
+            => codegen.Destroy(codegen.module.Glue(glue), codegen.Offset(new('p', 0), codegen.Difference(last, offset)), Received);
     }
 }

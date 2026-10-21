@@ -6,14 +6,13 @@ namespace Kimi.Compiler.Backend;
 
 // The Drop terminator of FunctionCodegen (R5 package C 3.6, plan C4a; C0c brings the Keep and Elide verdicts forward, DECISIONS R5-M78):
 // A2's verdict for the item's view (R4-M6a), Keep destroying exactly when the dropped value's instance Type may need a drop, by calling its
-// DropGlue item, the collector's target at the Drop, with the Place's address and the Drop's location text, Elide writing nothing; Flag
-// (C4b) and Open (C4c) are rows not written yet. FunctionCodegen.Glue.cs writes the glue functions (DECISIONS R5-M95). Gate step 2 has
-// written only a body whose table is exact (FunctionCodegen.Write; DECISIONS R5-M96), so a runtime Drop without a group is a broken contract.
+// DropGlue item, the collector's target at the Drop, with the Place's address and the Drop's location text through the one
+// destruction-call writer (FunctionCodegen.Glue's Destroy), Elide writing nothing; Flag (C4b) and Open (C4c) are rows not written yet.
+// FunctionCodegen.Glue.cs writes the glue functions (DECISIONS R5-M95). Gate step 2 has written only a body whose table is exact
+// (FunctionCodegen.Write; DECISIONS R5-M96), so a runtime Drop without a group is a broken contract.
 internal sealed partial class FunctionCodegen
 {
     private readonly HashSet<BoundType> seen = new(); // MirTypes.MayNeedDrop's scratch.
-    private MirProgram program = null!;
-    private int at; // The block being written.
 
     private void Drop(in MirTerminator drop)
     {
@@ -82,9 +81,7 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        this.arguments = this.arguments.Length < 3 ? new Value[3] : this.arguments;
-        (this.arguments[0], this.arguments[1], this.arguments[2]) = (address, site.Text, site.Length);
-        _ = this.WriteCall(this.module.Glue(glue), this.arguments.AsSpan(0, 3));
+        this.Destroy(this.module.Glue(glue), address, site);
         return true;
     }
 }
