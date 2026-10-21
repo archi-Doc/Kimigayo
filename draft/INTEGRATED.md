@@ -963,3 +963,82 @@ the owner's confirmation of C1–C3; the review is `Sketches/G160/raw-origins-re
 - `Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`: 完了. Nothing was integrated. Q1's declaration statement was
   rejected by the owner; its shapes, probes (`Sketches/G160/probes/`) and call-side analysis are taken over by the design above,
   which answers Q1–Q5 (DECISIONS R4-M95). The file moved with only its status paragraph replaced.
+
+## 2026-10-21 — Closure calls as receiver calls (R4)
+
+The owner's instruction of 2026-10-21, after R4's list of SPEC improvement candidates in its area: 「候補1（クロージャを受け手つき呼び出しとして定義）と候補3（派生失敗の定義）を、2c-D・2g-D の前に判断できるよう draft/Proposals に提案書として書いてください。」
+Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the second proposal's round 2 is reviewed in
+`review-2.md`.
+
+- [Closure Calls as Receiver Calls](Proposals/2026-10-21%20Closure%20Calls%20as%20Receiver%20Calls.md): 一部取り込み (open,
+  intake only); adopted by the owner (OQ-C1 (a), OQ-C2 (a); DECISIONS R4-M99). One sentence in §15.8.2: a Closure body is checked
+  against its call receiver as an instance function's body is, its environment bindings being Fields of the receiver's referent,
+  so results, containment and retention follow the receiver rules; the five-row table becomes a restatement. §7.7.2, §7.7.3 and
+  the Closure Type are unchanged; the receiver stays out of an annotated result's elision, and `{environment}` stays in Appendix
+  D.2. Meant to change no verdict. The owner answered on the round-1 text; the review's narrower formulation, used now, keeps
+  option A's intent and removes two verdict changes the round-1 definition had (its §9). Planned mapping (its §5): §15.8.2,
+  §15.6.5, §7.7.4. The SPEC text lands only after 2x-P7's derivation column agrees (its §8), before 2c-D's design review.
+- [Failures Caused Only by Other Failures](Proposals/2026-10-21%20Failures%20Caused%20Only%20by%20Other%20Failures.md):
+  一部取り込み (open, intake only), candidate 3. Round 1 ("Escapes and Derived Failures", not kept) and round 2 (a general
+  definition of "caused only by" in §23.1.2) were not accepted by their reviews. After two rounds on one family the owner chooses
+  between W, one concrete §15.6.5 sentence for a Loan conflict on the Loan of a Borrow refuted to a fixed Origin, R, the same rule
+  as an implementation contract of A6, and H, 2a0-D §7 as approved; the owner chose W (2026-10-22, 「P2は、W：個別規則に決定します」).
+  Round 3 writes W out; it passed its review with fixes, a re-check and a confirmation
+  (`Sketches/R4 Proposals 2026-10-21/review-p2r3.md`), and DECISIONS R4-M104 adopts it. Planned mapping, after the prototype round
+  and a SPEC session: §15.6.5, §14.8.3, §15.8.2. The owner's answers to round 1 are not applied.
+- Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
+
+## 2026-10-22 — Static slots, layout requirements and lifecycle receivers (R4)
+
+The owner's instruction of 2026-10-21: 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」 R5's and BU's
+planning sessions checked the facts; the independent review is `Sketches/R4 Proposals 2026-10-21/review-3.md`. Candidate 4 (raw
+pointer rules left open by G160) was not accepted in that review and was redone (round 2, reviewed in `review-rp2.md`).
+
+- [Static Slots for P42](Proposals/2026-10-22%20Static%20Slots%20for%20P42.md): 一部取り込み (open, intake only), candidate 2.
+  No SPEC change: SPEC §22.4 and §15.6 already state one model (the key for storage, state and destruction; the Field for Loans and
+  effects). Proposes one static slot key, (Field, `TyCtxt.Erase` of the enclosing Subst), owned by `TyCtxt`, and one full-process
+  P42 design package before P42's units; the A5 plan's two narrowings are not adopted. Adopted by the owner (OQ-S1 (a), OQ-S2 (a),
+  DECISIONS R4-M103). Integrated: none (no SPEC change); open: the key and the package, transferred to P42's package file when it
+  exists.
+- `Obsolete/2026-10-22 Layout Requirements on Type Parameters.md`: 完了 (closed 2026-10-22), candidate 6. The owner chose D, no
+  change (OQ-Y1 (d), DECISIONS R4-M103): A′ (an intrinsic Contract for a C-layout Field that is not zero-sized) is rejected (locality
+  for one record kind at the price of a narrowing and a vocabulary entry; the collector stays at `check` for its other records), the
+  first draft's Resource reclassification was withdrawn (it reversed R5-M52 and IMPL 21.1.1), and the A5 plan's optional candidate
+  is not adopted. Nothing is integrated; the file moved with only its status line replaced.
+- `Changes/2026-10-22 Lifecycle Receivers.md`: 取り込み済み (2026-10-22), candidate 5. The owner chose option B (OQ-L1 (b), DECISIONS
+  R4-M103). Mapping: §2's root → SPEC §15.6.5's body-local bullet ("or in the receiver of a constructor or `drop`", citing §6.3.4 and
+  §16.3.1); §6.3.4, §16.3.1, §7.7.2 and §5.7 unchanged; its §5 (consequences) is transferred to 2a0-2 (2a0-D §3 row 3, DECISIONS
+  R4-M101) and to BU's G166. Option A (a unified "lifecycle receiver" definition) is rejected (editorial, with the rule drift
+  review-3 found); option C (no change) is rejected (the classification G161, G165 and G166 need would stay a reading of §6.3.4 and
+  §16.3.1). No support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- `Changes/2026-10-22 Raw Pointer Rules Left Open by G160.md`: 取り込み済み (2026-10-22), candidate 4, round 2 (review-rp2: ACCEPT WITH
+  FIXES, applied; BU checked §2.1 against B′+). The owner chose OQ-R1 (a), OQ-R2 (a), OQ-R3 (b) and OQ-R4 (a) (DECISIONS R4-M105).
+  Mapping: 2.1 A → SPEC §5.7's new "Writing a Field" bullet (through a dereference, the Origin reading gives; through no
+  dereference, reads, shared borrows and `null` writes only; the repair through a borrow; Case payloads), without §2.1's sketch (a
+  new SPEC example is a diagnostic-corpus case); 2.2 A → §5.7 "Origins" (a written `o` is one atom; a formed raw Origin is the
+  outer Origin of the borrow it is formed through, whatever its form), which "Reading a Field", "Typed paths" and "Calls" read
+  unchanged. Transferred: 2.3 B to G160-4's full-process design (the own-step marker, whose change to the address representation
+  the owner approved with (b); the Warning's sentence in §5.2.1 condition 3 with that design); 2.4 A to BU's implementing unit as
+  a DIAGNOSTICS Information code, not SPEC text (the SPEC requires warnings only; other diagnostics and their codes are the
+  implementation's, §23.1.1). Rejected: a Place Origin (2.1 B), the located `Unsupported_Kd` kept (2.1 C), no Origin or an error
+  for a formed intersection (2.2 B, C), an error for an own-step pointer's later use (2.3 A), a broader Warning (2.4 B). No
+  support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- Integrated: the lifecycle receivers' root (SPEC §15.6.5) and the raw pointer rules' 2.1 A and 2.2 A (SPEC §5.7); no support is
+  claimed.
+
+## 2026-10-22 — Abstract calls reach by paths (`preserves results` removed)
+
+The owner asked on 2026-10-22 for a scrutiny of design C (unify concrete and abstract calls under the ordinary borrowing
+rules, including the removal of `preserves results`), then: 「推奨の通り修整し、bの移行方法で進めます。正式な変更案を書き、独立レビューにかけて下さい」,
+and after the review: 「Q1 (a) P12も削除、Q2 (a) CallEffectConflict_Kdを廃止、で採択します。提案をdevにコミット・pushしてください。」
+Two independent reviewers (soundness and design; SPEC text, completeness and plan) reviewed it in three rounds; every finding is
+applied (its §13).
+
+- [Abstract Calls Reach by Paths](Proposals/2026-10-22%20Abstract%20Calls%20Reach%20by%20Paths.md): 一部取り込み (open, adopted,
+  intake only). Deletes SPEC 8.11.4 rule 1's "an abstract input may reach every Loan its Origins may denote" and everything that
+  excused or completed it: `preserves results` (8.11.3), rule 3, 8.11.5 delegation, the Callable and slot variants, Iterator's
+  bound and P12 (15.6.3:571, 15.6.4:595); `confined` stays the only effect bound. Planned mapping: its §5 (8.11 renumbered,
+  6.4.6, 12.7.1, 15.6, 15.6.3, 15.6.4, 16.3.3, 22.2, Appendices D, E, F, LIBRARY), integrated by its unit U0, which also moves it
+  to `Changes` and records its DECISIONS entries (its §10). Migration (b): a freeze exception for the old Analysis.
+- On U0, `Proposals/2026-10-16 Preserves Results by Receiver Place.md` (S2) moves to `Obsolete` as 完了 (nothing integrated).
+- Nothing is integrated yet; no support is claimed. SPECJ (being retranslated on `codex/specj-from-source`) predates this change.

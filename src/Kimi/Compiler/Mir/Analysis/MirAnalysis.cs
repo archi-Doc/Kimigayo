@@ -2,13 +2,16 @@
 
 // Owns the MIR analyses (P7–P9) of one program version (DECISIONS R4-M1, R4-M2a).
 // Input: a built and validated MirProgram. Output: its Problems for that version, which the analyses add through MirReport.
-// Runs them once per version, after build and validation, in a fixed order: per body, 1. A3, then 2. per view A1, then A2, a body whose A1
-// arena exceeds the analyses' limit stopping those views (R4-M15a), then per view A4's local facts; 3. A4's summaries and obligations over
-// the program; 4. per body A5 over the views A1 and A2 completed, which A2's table publishes (MirDropTable.ViewsOf), its block order and
-// move paths built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92); 5. A6 inside MirReport. Owns one instance of each
-// analysis and their shared scratch (MirCases, the one MirReach, the dataflow arena, the move paths) for the compilation's lifetime, arrays
-// reset by counts; each analysis unit adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its
-// own loop over the bodies after A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
+// Runs them once per version, after build and validation, in a fixed order, one line per step (a body's steps 1 and 2 together); a step's
+// details are in the comment of the method that runs it or in its analysis's contract:
+// 1. per body, A3;
+// 2. per body, per view A1, then A2, then A4's local facts;
+// 3. A4 over the program;
+// 4. per body, A5;
+// 5. A6 inside MirReport.
+// Owns one instance of each analysis and their shared scratch for the compilation's lifetime, arrays reset by counts; each analysis unit
+// adds its field and its pass row at its step: steps 1 and 2 in Body, steps 3 and 4 in Run (A5 with its own loop over the bodies after
+// A4's, Borrows per body). A2's table (MirProgram.Drops) is per version, like the problems.
 // Must not read syntax, HIR or plans, publish, decide acceptance, or analyze a program with validator findings.
 
 namespace Kimi.Compiler.Mir;
@@ -31,6 +34,7 @@ internal sealed class MirAnalysis
     /// <param name="types">The Type context of the programs, which the case views read.</param>
     internal MirAnalysis(TyCtxt types)
     {
+        // The scratch the analyses share: MirCases, the one MirReach, the dataflow arena and the move paths.
         var reach = new MirReach(); // The one reachability walk: A3's runtime walks, the dataflow's block order and phases.
         this.cases = new(types);
         this.lints = new(reach);
@@ -74,7 +78,8 @@ internal sealed class MirAnalysis
         return program;
     }
 
-    // The passes of one body: 1. A3, then 2. its block order and move paths, then per view A1, then A2, then A4's local facts.
+    // Steps 1 and 2 of one body: 1. A3, then 2. its block order and move paths, then per view A1, then A2, a body whose A1 arena exceeds the
+    // analyses' limit stopping those views (R4-M15a), then per view A4's local facts.
     private void Body(MirProgram program, MirBody body)
     {
         this.lints.Run(body, program.Problems); // 1. A3 per body.
@@ -100,7 +105,8 @@ internal sealed class MirAnalysis
         }
     }
 
-    // 4. A5 over the views of a body A1 and A2 completed, after its block order and move paths are built again.
+    // 4. A5 over the views of a body A1 and A2 completed, which A2's table publishes (MirDropTable.ViewsOf), after its block order and move
+    // paths are built again (design A3 6.1, DECISIONS R4-M57), reading A4's keys (R4-M92).
     private void Borrows(MirProgram program, MirBody body)
     {
         this.flow.Begin(body);

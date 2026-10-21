@@ -13,10 +13,10 @@ is outside timing.
 | --- | --- | --- |
 | 1 | `PreparationTokenizerParser` | `Compilation.CreateForTest`, target `Prepare`, document creation and `Kotonoha.AddSource` (registration, tokenization and parsing) |
 | 2 | `BindingAndStartup` | `Compilation.Bind` and application `CheckStartup` |
-| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); under MIR code generation also the instance collector (R5), which this default configuration does not run |
-| 4 | `ControlFlowAndOwnership` | `Ownership.Analyze` |
-| 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model |
-| 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR |
+| 3 | `MirPublishBuildValidate` | `Compilation.BuildMir`: HIR publication, MIR construction and validation of every body, the source's and the Kimi library's, and the MIR analyses (R4; V18 later times them as their own intervals); under MIR code generation (sel) also the instance collector, which lays out every by-value use of the items it admits (R5) |
+| 4 | `ControlFlowAndOwnership` | `Compilation.Analyze`: the old analysis; under the `mir` pipeline it reuses stage 3's MIR, memoized, and keeps it for generation |
+| 5 | `EmissionLowering` | `LlvmEmitter.TryPrepare`: emission preconditions, layouts, ABI and lowered output model; empty under sel |
+| 6 | `LlvmIrWriting` | `EmissionModule.WriteIr`: serialize that prepared model to LLVM IR; under sel `Compilation.WriteIr`, the generation entry (gate, output roots and `ModuleCodegen`) |
 
 Every operation creates a new `Compilation` and runs these stages exactly once in
 order. Stage 3 builds the MIR as the `mir` pipeline's `Analyze` does, before the old
@@ -31,6 +31,15 @@ parsing; it is not exclusively semantic analysis of user source. Stage 4 similar
 includes lazy emitter initialization. Success checks belong to their respective
 stages; stage 3 requires a MIR without construction records or validator findings.
 The compiler implementation and public APIs are unchanged.
+
+A process follows `KIMI_PIPELINE` and `KIMI_CODEGEN`, and the report's `compiler` names
+them (`[mir]`, `[mir, codegen mir]`). Under MIR code generation (sel, both `mir`) the
+collector lays out every by-value use in stage 3 and code generation reads those layouts
+as it writes, so stage 5 is empty and stage 6 is the whole generation entry; the stage
+names stay, so reports remain comparable (DECISIONS R5-M94). An input that sel does not
+generate fails the run with the entry's failure. Sel's code generation cost against the
+old generator's is (sel stage 3 − legacy stage 3) + sel stages 5-6, against legacy
+stages 5-6: legacy stage 3 builds the same MIR without collection.
 
 Seven boundaries record monotonic timestamps and current-thread allocated bytes.
 Differences between adjacent boundaries partition the same operation's first-to-last
@@ -83,7 +92,8 @@ dotnet src/Benchmark/bin/Release/net10.0/Benchmark.dll --compiler-pipeline-check
 ```
 
 The check runs every input repeatedly. It verifies nonempty IR and exact agreement
-between split lowering/writing and the public emitter, agreement with uninstrumented
+between the measured stages' IR and the public `Compilation.WriteIr` under the process's
+selector (set `KIMI_PIPELINE=mir` and `KIMI_CODEGEN=mir` for sel), agreement with uninstrumented
 fresh compilation, monotonic boundaries and conservation of stage time/allocation
 totals. It has no timing thresholds. Save output under `artifacts/verify/`.
 

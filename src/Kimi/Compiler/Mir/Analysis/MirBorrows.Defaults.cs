@@ -6,7 +6,7 @@ namespace Kimi.Compiler.Mir;
 
 // A5-F9's default rules (SPEC 7.2.3, 15.6; DECISIONS R4-M90, R4-M97, R4-M98). In a default template, a preceding parameter's PreparedInput p_i references
 // the caller's pending slot, which the default may only inspect, shared. A Deref directly on p_i is the slot itself, an inline step (A3 E17, the
-// slot step of MirBorrows.Walk), so a Borrow of the slot forms a Loan of the template; a Place is slot-rooted when it is rooted at a PreparedInput,
+// slot step of MirSteps.Walk), so a Borrow of the slot forms a Loan of the template; a Place is slot-rooted when it is rooted at a PreparedInput,
 // passes that step and no raw pointer's referent after it (D2; SPEC 15.6.2, 5.2.1: a raw Place has its own anchor), which both rules read.
 // - R26-borrow: at each Return of the checks replay, one gather with the checks' Based pass and closure from E and _0's holder (the result
 //   and storage the body does not own); each slot-rooted Loan it finds is DefaultArgumentBorrow_Kd at the Loan's site, once per Loan and
@@ -37,20 +37,17 @@ internal sealed partial class MirBorrows
     private bool[] entering = []; // By location: whether an issuing copy is entered there.
     private bool copying; // Whether a copy issues a Loan in the view, so entering and the entry sets hold.
 
-    // Whether a root, a local or a Loan's root key, is a default template's PreparedInput.
-    private bool Prepared(int root) => (uint)root < (uint)this.body.Locals.Length && this.body.Locals[root].Role == MirLocalRole.PreparedInput;
-
     // Whether a Place's steps on a root are slot-rooted (D2): a PreparedInput's, past its slot step, through no raw pointer's referent.
-    private bool SlotRooted(int root, ReadOnlySpan<Step> steps)
+    private bool SlotRooted(int root, ReadOnlySpan<MirStep> steps)
     {
-        if (!this.Prepared(root) || steps.IsEmpty || steps[0] is not { Kind: MirProjectionKind.Deref, Class: StepClass.Inline })
+        if (!MirSteps.Prepared(this.body, root) || steps.IsEmpty || steps[0] is not { Kind: MirProjectionKind.Deref, Class: MirStepClass.Inline })
         {
             return false;
         }
 
         foreach (var step in steps)
         {
-            if (step.Class == StepClass.Raw)
+            if (step.Class == MirStepClass.Raw)
             {
                 return false;
             }
@@ -98,7 +95,7 @@ internal sealed partial class MirBorrows
     // R26-access (D4 (1)): a write to a slot-rooted Place, an Assign's or a Call's destination, at the write.
     private void DefaultWrite(MirPlace place, MirLocation at)
     {
-        if (this.Prepared(place.Root) && this.Walk(place, reborrow: false, ref this.walk) is var count &&
+        if (MirSteps.Prepared(this.body, place.Root) && this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk) is var count &&
             this.SlotRooted(place.Root, this.walk.AsSpan(0, count)))
         {
             this.Default(DiagnosticCode.DefaultArgumentAccess_Kd, OwnershipRequirement.DefaultArgumentAccess, this.Subject(at), place.Root);

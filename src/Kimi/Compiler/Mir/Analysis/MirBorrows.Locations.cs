@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private Access[] accesses = [];
-    private Step[] accessSteps = [];
+    private MirStep[] accessSteps = [];
     private int accessCount;
 
     // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
@@ -45,7 +45,7 @@ internal sealed partial class MirBorrows
                 continue;
             }
 
-            var count = this.Walk(access.Place, access.Reborrow, ref this.accessSteps);
+            var count = this.placeSteps.Walk(this.body, access.Place, access.Reborrow, ref this.accessSteps);
             if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);

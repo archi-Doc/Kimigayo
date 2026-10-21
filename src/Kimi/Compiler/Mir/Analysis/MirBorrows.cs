@@ -17,7 +17,8 @@
 // Rules, each with its inputs, records and Unsupported_Kd cases in its owner's contract:
 // - a Call's contract rows, P9's among them: MirBorrows.CallRows; their transfer, with r3: MirBorrows.Calls;
 // - the effect rule and its initialization proof: MirBorrows.Effects;
-// - a default template's slot step, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
+// - a default template's slot-rooted test, R26-borrow and R26-access, and the copy disposition: MirBorrows.Defaults;
+// - a Place's steps and their classes, E17's Inline row included: MirSteps (R4-M100);
 // - the problems' codes and facts and the held view: MirBorrows.Reports.
 // Invariants: a holder is a root local whose case Type may hold a Loan (MirTypes.HoldsLoans), or E, the storage the body does not own,
 // static storage included (a direct Loan on a static names E); its state is a MirLoanSets node of Loans and markers, which never conflict
