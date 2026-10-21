@@ -12,7 +12,9 @@
 //            keeps only X's outer core (core:sealed, core:open). The direct walk checks SPEC 8.7.3's Object Target.
 //   Decided  the owner's option 2 (2026-10-21): an obligation that would name outer(X) or target(X) (a pair parameter instantiated with
 //            the declaration's own plain formal or projection; every peel) is not recorded, and the declaration is the site of a located
-//            U that a Transferable judgment raises on reading it; a projection family is F5 (a)'s located U for both intrinsics.
+//            U for Transferable; a projection family is F5 (a)'s located U for both intrinsics. An argument that D's premises prove
+//            ObjectPayload or Sealed splits exactly first (review R2-1). Order P < U < L < R < E: a site's U is raised only when it decides
+//            the verdict (review N3-1).
 //            Option 1 (the X-2 candidate) keeps such obligations as outer(X)/target(X) with peel templates ∀m. O[$h ↦ target^(j·m)(Y)].
 //   Use      Owned(D<A,o>) = ¬ExclO ∧ o = static ∧ Owned(A) ∧ Proj[A]; Transferable(D<A>) = ¬ExclT ∧ Transferable(A) ∧ Obl[A]; Error
 //            absorbs. Abstract Types by premises: exact assumption, Contract refinement, associated-Type requirements (SPEC 8.3.2).
@@ -26,9 +28,10 @@ using System.Text.RegularExpressions;
 
 return Run.Go(args);
 
-// Conjunction is the maximum: Error absorbs, then L, Refuted, Unknown. L: a located Unsupported_Kd, raised when a judgment reads a summary
-// that the decided rules leave unsupported (F5 (a), option 2); its answer is Derived, never a Language error. NT: no convergence.
-enum V { P, U, R, L, E, NT }
+// Conjunction is the maximum: Error absorbs, then Refuted, L, Unknown. L: a located Unsupported_Kd for a summary the decided rules leave
+// unsupported (F5 (a), option 2), raised only when it decides the verdict: an exact refutation elsewhere wins (review N3-1); its answer is
+// Derived, never a Language error. NT: the fixed point did not converge.
+enum V { P, U, L, R, E, NT }
 
 static class Vx
 {
@@ -538,6 +541,10 @@ sealed class Engine
                 // On a growing path when the edge grows, or when E itself lies on a growing cycle (E's obligations, mapped through a target
                 // that names E again, deepen by one step per walk).
                 var m = P.Bind(e, t); var c = growing.Contains(d.Name + ">" + e.Name) || growingDecl.Contains(e.Name);
+                // R2-1: an abstract argument that D's premises prove ObjectPayload or Sealed is an owner Type (8.7.3, 8.7.2), so a pair
+                // parameter splits it exactly: s ↦ owner, T ↦ W. Only a split no premise decides is left to option 2's check.
+                for (var j = 0; j < e.Ps.Count && j < t.A.Length; j++)
+                    if (e.Ps[j].S != null && Prog.Abstract(t.A[j]) && P.OwnerKnown(t.A[j], d.Prem)) { m.S[e.Ps[j].S] = Sem.C("owner"); m.T[e.Ps[j].T] = t.A[j]; }
                 foreach (var o in s.Obl.Values)
                 {
                     var u = o.Map(P, m);
@@ -611,7 +618,14 @@ sealed class Engine
 
     // ---- Use: the verdicts at a complete Type under a scope's premises.
     static V Orig(string o) => o == null || o == "static" ? V.P : V.U; // an unproven Origin gives Unknown (SPEC 15.2.3)
-    public V Eval(string i, Ty t, Scope sc) => R.Walk == "summary" ? J(i, t, sc) : Expand(i, t, sc, R.Walk, R.Lim, out _);
+    readonly SortedSet<string> pending = new();
+    public V Eval(string i, Ty t, Scope sc)
+    {
+        pending.Clear();
+        var v = R.Walk == "summary" ? J(i, t, sc) : Expand(i, t, sc, R.Walk, R.Lim, out _);
+        if (v == V.L) Raised.UnionWith(pending); // the sites whose U decided this verdict
+        return v;
+    }
     public V J(string i, Ty t, Scope sc)
     {
         var tr = i == T;
@@ -650,8 +664,8 @@ sealed class Engine
         if (!tr) v = v.And(t.O.Select(Orig).All());
         var m = P.Bind(e, t);
         foreach (var a in t.A) v = v.And(J(i, a, sc));
-        if (s.FamU.Count > 0) { Raised.UnionWith(s.FamU); v = v.And(V.L); } // F5 (a): raised on read, once per declaration
-        if (tr ? s.PairU.Count > 0 : s.PairOwned) { Raised.UnionWith(s.PairU); v = v.And(V.L); } // option 2: Transferable only, in practice
+        if (s.FamU.Count > 0) { pending.UnionWith(s.FamU); v = v.And(V.L); } // F5 (a): raised by the judgment it decides, once per declaration
+        if (tr ? s.PairU.Count > 0 : s.PairOwned) { pending.UnionWith(s.PairU); v = v.And(V.L); } // option 2: Transferable only (R2-1's argument)
         foreach (var o in s.Obl.Values)
         {
             if (!tr && o.Kind != "proj") continue;
@@ -685,8 +699,8 @@ sealed class Engine
             var vs = set.Select(n => Leaf(Sem.C(n), x, sc)).ToList();
             if (vs.Contains(V.NT)) return V.NT;
             if (vs.Contains(V.E)) return V.E;
-            if (vs.Contains(V.L)) return V.L;
-            if (vs.All(v => v == V.R)) return V.R;
+            if (vs.Contains(V.L) && !(vs.Contains(V.U) || vs.Contains(V.P) && vs.Contains(V.R))) return V.L; // the known cases do not decide
+            if (vs.All(v => v is V.R or V.L)) return V.R;
             return R.AllAdmitted ? (vs.All(v => v == V.P) ? V.P : V.U) : (vs.Contains(V.R) ? V.U : V.P); // the package: "Proven when none does"
         }
         switch (s.N)
@@ -849,6 +863,8 @@ static class Cases
         .Decl("RB<s/T>{a}", "Array<s/OBox<RB<T>{a}> during a>")
         .Decl("PS<s/T>{a}", "s/SemAny<T>{a} during a", "Option<obj/PS<T>{a}>")
         .Decl("G2<s/T, U>{a}", "s/OBox<U> during a", "Option<obj/G2<s/T, Box<U>>{a}>") // a pair binder over a composite that grows: no outer, no peel
+        .Decl("EP<s/T>{a} where T is Has", "T.(Has).Out").Decl("DP<X>{a} where X is Has and ObjectPayload", "EP<X>{a}") // review round 3
+        .Decl("TB<s/T, r/U>{a} where U is ObjectPayload", "s/U during a", "Option<obj/TB<s/T, r/Box<U>>{a}>")
         .Decl("Cfg", "i32").Decl("Leaf", "i32").Decl("Wrap<X>", "X").Decl("Pair2<X>", "X", "X")
         .Decl("PHold<T> where T is Has", "T.(Has).Out")
         .Decl("TreeNode<T> where T is Tree", "T", "Array<TreeNode<T.(Tree).Child>>")
@@ -1004,6 +1020,12 @@ static class Cases
         ("s4", "review2", "PS<ref/(ref/(ref/(Item) during static) during static) during static>{static}", "", "P/P", ""),
         ("s5", "review2", "PS<U>{static}", "U is Transferable and Owned", "P/U", ""),
         ("s6", "review2", "PS<U>{static}", "U is Transferable and Owned and ObjectPayload", "P/P", "U owner: every level owner/Base"),
+        ("q1", "review3", "DP<Cfg>{static}", "", "P/P", "EP<Cfg>: owner split of an ObjectPayload argument; Cfg.Out = i32"),
+        ("q2", "review3", "DP<Item>{static}", "", "P/R", "Item.Out = rc/Item"),
+        ("q3", "review3", "Fwd<rc/Item>{static}", "", "P/R", "the argument refutes, independent of the pair site"),
+        ("q4", "review3", "TB<ref/i32 during static, obj/Item>{static}", "", "P/P", "s/U with U r's target: ref/Item"),
+        ("q5", "review3", "TB<obj/Item, obj/Base>{static}", "", "P/R", "the argument obj/Base refutes"),
+        ("q6", "review3", "TB<obj/Item, obj/OBox<i32>>{static}", "", "P/R", "the argument obj/OBox<i32> refutes (open)"),
         ("g1", "review2", "G2<ref/Item during static, i32>{static}", "", "P/P", "ref/OBox<Box^k<i32>> at every level"),
         ("g2", "review2", "G2<obj/Item, i32>{static}", "", "P/R", "obj/OBox<i32>: OBox open"),
     ];
@@ -1069,8 +1091,10 @@ static class Run
     // Option 2's located U, listed by hand: Transferable of a Type whose summary would need outer(X) or target(X) (a pair parameter
     // instantiated with the declaration's own plain formal or projection, which every peel is), and both intrinsics under a projection
     // family (F5 (a)). Every other verdict must equal SPEC's.
-    static readonly HashSet<string> PairCases = ["l16", "l17", "l23", "l25", "l26", "l27", "k1", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "j1", "j2", "j3", "j4", "d1",
-        "x1", "x2", "x3", "b1", "b2", "b3", "s1", "s2", "s3", "s4", "s5", "s6"];
+    // k1 (Fwd2<Item>: its recorded T(T.(Has).Out) is rc/Item), b1 (RB<obj/Item>: its recorded level-0 Layer(s, core:open)) and q3 (the
+    // argument rc/Item) refute exactly through what the summary keeps, so under N3-1's order they answer SPEC's R, not L.
+    static readonly HashSet<string> PairCases = ["l16", "l17", "l23", "l25", "l26", "l27", "k2", "k3", "k4", "k5", "k6", "k7", "k8", "j1", "j2", "j3", "j4", "d1",
+        "x1", "x2", "x3", "b2", "b3", "s1", "s2", "s3", "s4", "s5", "s6"];
     static readonly HashSet<string> FamilyCases = ["f1", "f2", "f5", "f6", "f7", "f8", "f9", "f10"];
     static (V O, V T) Expected(string id, V o, V t) => (FamilyCases.Contains(id) ? V.L : o, FamilyCases.Contains(id) || PairCases.Contains(id) ? V.L : t);
     static string S2(V o, V t) => $"{o}/{t}";
@@ -1126,7 +1150,7 @@ static class Run
             var iv = dec.J("Transferable", inst, body); var consistent = iv != V.P == a.Err; fails += consistent ? 0 : 1;
             string Out(string rn)
             {
-                var e = engines[rn]; var v = e.J("Transferable", ty, e.R.BodyAnchor ? d.Prem.Plus(body) : d.Prem);
+                var e = engines[rn]; var v = e.Eval("Transferable", ty, e.R.BodyAnchor ? d.Prem.Plus(body) : d.Prem);
                 var o = v switch { V.P => "valid", V.R => "error", V.U => "U", V.L => "U (located)", V.E => "derived", _ => "NT" };
                 var bad = a.Err && o == "valid" ? " **UNSOUND**" : !a.Err && o == "error" ? " **OVERSTRICT**" : d.Ps.Count == 0 && o == "U" ? " **U at a closed Type**" : "";
                 if (rn == "Decided" && bad.Length > 0) fails++;
@@ -1174,7 +1198,7 @@ static class Rand
     public static int Check(int graphs, int seed)
     {
         var rnd = new Random(seed); var cls = new SortedDictionary<string, int>(); var first = new SortedDictionary<string, string>(); var locatedBy = new SortedDictionary<string, int>();
-        int queries = 0, inconclusive = 0, deepened = 0, maxRounds = 0, decDiv = 0, opt1Rounds = 0, opt1Div = 0, templates = 0, reentries = 0, pairGraphs = 0, rings = 0, deep = 0, bad = 0;
+        int queries = 0, inconclusive = 0, deepened = 0, maxRounds = 0, decDiv = 0, opt1Rounds = 0, opt1Div = 0, templates = 0, reentries = 0, pairGraphs = 0, ownedSites = 0, rings = 0, deep = 0, bad = 0;
         for (var g = 0; g < graphs; g++)
         {
             var p = Cases.Prelude(new Prog()); var ring = rnd.Next(4) == 0; var nd = ring ? rnd.Next(5, 9) : rnd.Next(2, 5); rings += ring ? 1 : 0;
@@ -1216,7 +1240,7 @@ static class Rand
             var dec = new Engine(p, Run.Decided); var opt1 = new Engine(p, new Rules("Option1")); var pkg = new Engine(p, new Rules("Package", Outer: false, AllAdmitted: false, TargetAlways: false, Family: "prefix"));
             var grd = new Engine(p, Run.Decided with { Name = "Guard", Walk = "guard" });
             maxRounds = Math.Max(maxRounds, dec.Rounds); decDiv += dec.Div.Count > 0 ? 1 : 0; opt1Rounds = Math.Max(opt1Rounds, opt1.Rounds); opt1Div += opt1.Div.Count > 0 ? 1 : 0;
-            templates += dec.S.Values.Sum(x => x.Obl.Values.Count(o => o.Hole != null)); pairGraphs += dec.S.Values.Any(x => x.PairU.Count > 0) ? 1 : 0;
+            templates += dec.S.Values.Sum(x => x.Obl.Values.Count(o => o.Hole != null)); pairGraphs += dec.S.Values.Any(x => x.PairU.Count > 0) ? 1 : 0; ownedSites += dec.S.Values.Any(x => x.PairOwned) ? 1 : 0;
             string Arg() { var a = Args[rnd.Next(Args.Length)]; if (rnd.Next(5) != 0) return a; deep++; var n = rnd.Next(2, 81); for (var j = 0; j < n; j++) a = $"ref/({a}) during static"; return a; }
             for (var k = 0; k < nd; k++)
                 for (var r = 0; r < (ring ? 1 : 3); r++)
@@ -1231,7 +1255,7 @@ static class Rand
                         if (cut && reference != V.E) { deepened++; reference = dec.Expand(i, q, new Scope(), "ref", 100, out cut); }
                         if (reference == V.NT || cut && reference != V.E) { inconclusive++; continue; }
                         queries++;
-                        var c = dec.J(i, q, new Scope());
+                        var c = dec.Eval(i, q, new Scope());
                         if (c == V.L && i == "Transferable") { var key = reference.ToString(); locatedBy[key] = locatedBy.GetValueOrDefault(key) + 1; }
                         else if (c != reference)
                         {
@@ -1252,7 +1276,7 @@ static class Rand
         Console.WriteLine($"\n## Random declaration graphs\n\n{graphs} graphs (seed {seed}; {rings} rings of 5–8 peeling declarations; {deep} query arguments with 2–80 ref layers): {queries} closed queries compared "
             + $"({deepened} reference walks cut at depth 9 deepened to 100); {inconclusive} inconclusive (still cut, or over the node or term limits). Decided: disagreements {bad}; "
             + $"Transferable's located U {locatedBy.Values.Sum()} times (reference {string.Join(", ", locatedBy.Select(x => $"{x.Key} ×{x.Value}"))}); most fixed-point rounds {maxRounds}, "
-            + $"graphs not converged {decDiv}, graphs with a pair site {pairGraphs}, peel templates {templates}, use-site re-entries {reentries}. Option1: most rounds {opt1Rounds}, graphs not converged {opt1Div}.\n"
+            + $"graphs not converged {decDiv}, graphs with a pair site {pairGraphs} (with an Owned site {ownedSites}), peel templates {templates}, use-site re-entries {reentries}. Option1: most rounds {opt1Rounds}, graphs not converged {opt1Div}.\n"
             + $"Other rules against the reference: {(cls.Count == 0 ? "none differ" : string.Join("; ", cls.Select(x => $"{x.Key} ×{x.Value}")))}.");
         foreach (var (k, v) in first) Console.WriteLine($"- first {k}: {v}");
         return bad;

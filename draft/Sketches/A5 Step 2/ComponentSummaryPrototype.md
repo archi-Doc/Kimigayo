@@ -16,11 +16,15 @@ owner then chose between the two options of the F1/F2 proposal. The owner's answ
 - **Option 1 is a future candidate, registered at X-2.** It is the representation `outer(X)`/`target(X)` with peel templates and
   the use-site self-reference rule. R1-1 and R1-2 stay open against it (see "Option 1" below).
 
-This revision (revision 2) models option 2 as the main rule ("Decided") and keeps option 1 as a variant.
+Revision 2 modelled option 2 as the main rule ("Decided") and kept option 1 as a variant. Revision 3 applies review round 3:
+
+- **R2-1.** An owner-known abstract argument splits exactly before option 2's check.
+- **N3-1.** The order is P < U < L < R < E, and a site's U is raised only when it decides the verdict.
+- **Record.** The core reduction is recorded as the planning session ruled it, and the review's cases q1–q6 are added.
 
 Run in an empty folder outside the repository (.NET SDK 11.0.100-rc.2):
 
-- `dotnet run ComponentSummaryPrototype.cs` runs 2,000 random graphs in about 40 s.
+- `dotnet run ComponentSummaryPrototype.cs` runs 2,000 random graphs in about 45 s.
 - `-- -random 10000 [-- -seed S]` runs more graphs, in about 4 minutes.
 - Exit code: Decided's failures, 0 on every run recorded here.
 
@@ -35,7 +39,7 @@ Run in an empty folder outside the repository (.NET SDK 11.0.100-rc.2):
   - `core:sealed` and `core:open`, the outer core of a Type in a layer obligation.
 
   Only option 1 records `outer(X)` and `target(X)`; under option 2 they mark what the summary leaves unsupported.
-- **Program.** 75 declarations:
+- **Program.** 78 declarations:
   - the Kimi prelude: Option, Array, Dictionary, Slice, the iterator storage, Weak, Sender, FixedBuffer, Box and an open OBox;
   - the case declarations;
   - 9 Contracts and 7 conformances. A conformance is verified without itself (8.3.3), and an intrinsic parent is decided by the
@@ -47,13 +51,21 @@ Run in an empty folder outside the repository (.NET SDK 11.0.100-rc.2):
   - The walk of the declaration's own storage checks SPEC 8.7.3's Object Target.
 - **Option 2 (Decided).** When the mapping would produce an obligation naming `outer(X)` or `target(X)`, it is not recorded. That
   happens when E's pair parameter is instantiated with the declaration's own plain formal or projection, which every peel is.
-  - The declaration records itself as the site of a located U for Transferable. For Owned too, if the obligation is a projection
-    obligation, which Owned reads; no case or random graph produced one.
+  - **Owner-known split first (R2-1).** An abstract argument that D's premises prove ObjectPayload or Sealed is an owner Type
+    (8.7.3, 8.7.2), so it splits exactly as `s ↦ owner`, `T ↦ W` before the check. Without that, q1 (`DP<Cfg>`) and q2
+    (`DP<Item>`) were L/L where SPEC and today's engine give P/P and P/R: an Owned regression on a valid program.
+  - The declaration records itself as the site of a located U for Transferable.
+  - **Owned stays exact.** After the owner-known split, a dropped projection obligation would be on `target(X)` for an X no
+    premise makes owner-known. E's premise on that pair target would then have to be proven for `target(X)`, and SPEC has no syntax
+    naming `target(X)`, so the use would be ill-formed. The Owned site (`PairOwned`) stays as a guard. No case or random graph fires
+    it (H: argued, and run on the cases and random graphs).
   - The site set propagates through nominal components, like the exclusion bits.
   - A projection family (a cycle of the projection-link graph with a projection step) is F5 (a)'s site, for both intrinsics.
 - **Use.** `Owned(D<A,o>) = ¬ExclO ∧ o = static ∧ Owned(A) ∧ Proj[A]` and `Transferable(D<A>) = ¬ExclT ∧ Transferable(A) ∧ Obl[A]`.
-  - Error absorbs, then L (the located U), then Refuted, then Unknown.
-  - A judgment that reads a site's summary raises its U (L) and records the site.
+  - Error absorbs, then Refuted, then L (the located U), then Unknown (N3-1). An exact refutation through what the summary keeps
+    wins over a site's U, as with q3 `Fwd<rc/Item>` (SPEC 23.1.2: independent errors stay visible).
+  - A site's U is raised and recorded only when it decides the verdict.
+  - In an admitted set, the known cases decide when they can (a P with an R, or a U, gives U); otherwise L.
   - Abstract Types are judged by the Contract-knowledge closure of the premises (8.3.2).
 - **Anchor (§3.5).** One verdict per static under its container's premises; A4's table maps it (L: a located U).
 - **Oracles.**
@@ -64,8 +76,10 @@ Run in an empty folder outside the repository (.NET SDK 11.0.100-rc.2):
 
 ## Rules under test
 
-- **Decided.** Option 2, with F3, F4, F5 (a), F6 and the core reduction. On the pair and family cases, the expected verdict
-  (SPEC with the located U in place of Transferable's answer, and of both answers for a family) is in parentheses.
+- **Decided.** Option 2 with R2-1's split and N3-1's order, plus F3, F4, F5 (a), F6 and the core reduction.
+  - On the pair and family cases, the expected verdict is in parentheses. It is SPEC with the located U in place of Transferable's
+    answer, and of both answers for a family.
+  - The exceptions are k1, b1 and q3, which refute exactly through what the summary keeps, so they answer SPEC's R.
 - **Option1.** Option 1 as in revision 1: `outer(X)`/`target(X)`, the core reduction, peel templates with step j ≤ 4 and at most 64
   instances at use, the use-site rule, and Q*.s families. R1-1 and R1-2 are left open, as the owner decided.
 - **Package.** §3.2's wording. It shares the model's core reduction and coverage, so it isolates the wording.
@@ -90,6 +104,12 @@ The brief's cases, the cases added in revisions 0 and 1 (listed in those commits
   - s1–s6: a pair binder over a nominal with its own layer obligation;
 - g1 and g2: a pair binder over a composite argument that grows non-regularly (`G2<s/T, U>` stores `s/OBox<U>` and
   `Option<obj/G2<s/T, Box<U>>>`). This shape needs neither `outer` nor a peel, and it tests the core reduction.
+
+Added in revision 3, the review's round-3 cases:
+
+- q1 and q2: R2-1's owner-known split (`DP<X> where X is Has and ObjectPayload` stores `EP<X>`).
+- q3: N3-1, `Fwd<rc/Item>`.
+- q4–q6: a binder applied to another pair's growing target (`TB<s/T, r/U>`).
 
 | Case | Query | Premises | SPEC | why | Package | Option1 | Decided (expected) | meets |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
@@ -200,7 +220,7 @@ The brief's cases, the cases added in revisions 0 and 1 (listed in those commits
 | f9 | `LFam<U>` | `U is STree` | P/P | obj/U.Childᵏ: Sealed and Transferable at every k | P/P | P/P | L/L (L/L) | yes |
 | f10 | `LFam<U>` | `U is OTree and TTree` | P/U | U.Child's Sealed proof is unknown | P/U | P/U | L/L (L/L) | yes |
 | f11 | `LFamBad<U>` | `U is STree` | E/E | 8.7.3: obj/T.(Tree).Child needs an Object Target; Tree supplies no ObjectPayload | E/E | E/E | E/E | yes |
-| k1 | `Fwd2<Item>{static}` |  | P/R | SemAny<rc/Item>: a pair binder bound to a projection, s = rc | P/R | P/R | P/L (P/L) | yes |
+| k1 | `Fwd2<Item>{static}` |  | P/R | SemAny<rc/Item>: a pair binder bound to a projection, s = rc | P/R | P/R | P/R | yes |
 | k2 | `Fwd2<Cfg>{static}` |  | P/P | SemAny<i32>: owner/Base | P/P | P/P | P/L (P/L) | yes |
 | k3 | `Fwd2<U>{static}` | `U is THas and Transferable and Owned` | P/U | outer(U.Out) unknown | P/P **UNSOUND** | P/U | P/L (P/L) | yes |
 | k4 | `PA<ref/(ref/(obj/Item) during static) during static>{static}` |  | P/R | a peel through PB: PA<obj/Item> stores obj/Base | P/P **UNSOUND** | P/R | P/L (P/L) | yes |
@@ -216,7 +236,7 @@ The brief's cases, the cases added in revisions 0 and 1 (listed in those commits
 | x1 | `IX<ref/Item during static, ref/(ref/(ref/(obj/Item) during static) during static) during static>{static}` |  | P/R | swapped peels: s at level 3 is obj | P/P **UNSOUND** | P/R | P/L (P/L) | yes |
 | x2 | `IX<ref/Item during static, ref/(ref/(ref/(Item) during static) during static) during static>{static}` |  | P/P |  | P/P | P/P | P/L (P/L) | yes |
 | x3 | `IX<U, V>{static}` | `U is Transferable and Owned; V is Transferable and Owned` | P/U |  | P/U | P/U | P/L (P/L) | yes |
-| b1 | `RB<obj/Item>{static}` |  | P/R | obj/OBox<RB<Item>>: OBox open | P/R | P/R | P/L (P/L) | yes |
+| b1 | `RB<obj/Item>{static}` |  | P/R | obj/OBox<RB<Item>>: OBox open | P/R | P/R | P/R | yes |
 | b2 | `RB<ref/(ref/(i32) during static) during static>{static}` |  | P/P | self-reference through Array | P/P | P/P | P/L (P/L) | yes |
 | b3 | `RB<ref/(obj/Item) during static>{static}` |  | P/R | level 1 is obj | P/P **UNSOUND** | P/R | P/L (P/L) | yes |
 | s1 | `PS<ref/(obj/Item) during static>{static}` |  | P/R | level 0's SemAny<obj/Item> stores obj/Base | P/P **UNSOUND** | P/R | P/L (P/L) | yes |
@@ -225,10 +245,16 @@ The brief's cases, the cases added in revisions 0 and 1 (listed in those commits
 | s4 | `PS<ref/(ref/(ref/(Item) during static) during static) during static>{static}` |  | P/P |  | P/P | P/P | P/L (P/L) | yes |
 | s5 | `PS<U>{static}` | `U is Transferable and Owned` | P/U |  | P/U | P/U | P/L (P/L) | yes |
 | s6 | `PS<U>{static}` | `U is Transferable and Owned and ObjectPayload` | P/P | U owner: every level owner/Base | P/P | P/P | P/L (P/L) | yes |
+| q1 | `DP<Cfg>{static}` |  | P/P | EP<Cfg>: owner split of an ObjectPayload argument; Cfg.Out = i32 | P/P | P/P | P/P | yes |
+| q2 | `DP<Item>{static}` |  | P/R | Item.Out = rc/Item | P/R | P/R | P/R | yes |
+| q3 | `Fwd<rc/Item>{static}` |  | P/R | the argument refutes, independent of the pair site | P/R | P/R | P/R | yes |
+| q4 | `TB<ref/i32 during static, obj/Item>{static}` |  | P/P | s/U with U r's target: ref/Item | P/P | P/P | P/P | yes |
+| q5 | `TB<obj/Item, obj/Base>{static}` |  | P/R | the argument obj/Base refutes | P/R | P/R | P/R | yes |
+| q6 | `TB<obj/Item, obj/OBox<i32>>{static}` |  | P/R | the argument obj/OBox<i32> refutes (open) | P/R | P/R | P/R | yes |
 | g1 | `G2<ref/Item during static, i32>{static}` |  | P/P | ref/OBox<Box^k<i32>> at every level | P/P | P/P | P/P | yes |
 | g2 | `G2<obj/Item, i32>{static}` |  | P/R | obj/OBox<i32>: OBox open | P/R | P/R | P/R | yes |
 
-Decided: Transferable answers the located U on 39 cases (the pair cases and the families listed by hand), Owned equals SPEC on 126 of 134 (the others: F5 (a)'s families), every other verdict equals SPEC; use-site re-entries 0; peel templates 0; located U raised at Even, Fwd, Fwd2, IX, LFam, LFamBad, Odd, PB, Peel, Peel3, PS, Q4, RB, TreeNode, Walk.
+Decided: Transferable answers the located U on 37 cases (the pair cases and the families listed by hand), Owned equals SPEC on 132 of 140 (the others: F5 (a)'s families), every other verdict equals SPEC; use-site re-entries 0; peel templates 0; located U raised at Even, Fwd, Fwd2, IX, LFam, Odd, PB, Peel, Peel3, PS, Q4, RB, TreeNode, Walk.
 
 ## Generic statics (§3.5)
 
@@ -277,24 +303,24 @@ The SPEC column is the confined read's verdict for the instance read. The model'
 
 | Rules | rounds | not converged | located U: families | located U: pair sites | max obligations | templates |
 | --- | --- | --- | --- | --- | --- | --- |
-| Decided | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
+| Decided | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
 | Option1 | 24 | Q0, Q1, Q2, Q3, Q4 | — | — | 6 | 9 |
 | Package | 24 | Walk | — | — | 25 | 0 |
-| PairBinderOnly | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | — | 2 | 0 |
-| NoCore | 24 | G2 | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 24 | 0 |
+| PairBinderOnly | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | — | 3 | 0 |
+| NoCore | 24 | G2, TB | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 48 | 0 |
 | A | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | — | 2 | 0 |
-| B | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| TwoValued | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| NoneRefutes | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| TargetIfSealed | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
+| B | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| TwoValued | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| NoneRefutes | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| TargetIfSealed | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
 | FamilyPrefix | 24 | Walk | — | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 25 | 0 |
-| FamilyQs | 7 | — | — | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| NoInternal | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
+| FamilyQs | 7 | — | — | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| NoInternal | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
 | Bounded8 | 8 | Even, LFam, LFamBad, Odd, TreeNode, Walk | — | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 16 | 0 |
-| Guard | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| Cap4U | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| Cap4P | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
-| BodyAnchor | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 2 | 0 |
+| Guard | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| Cap4U | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| Cap4P | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
+| BodyAnchor | 7 | — | Even, LFam, LFamBad, Odd, TreeNode, Walk | Fwd, Peel, Fwd2, PB, Peel3, Q4, IX, RB, PS | 3 | 0 |
 
 Decided's summaries with obligations or a located-U site:
 
@@ -321,6 +347,9 @@ Decided's summaries with obligations or a located-U site:
 - RB: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open)}, pair U {RB}
 - PS: ExclT no, ExclO no, Error no, Obl {Layer(s, core:sealed)}, pair U {PS}
 - G2: ExclT no, ExclO no, Error no, Obl {Layer(s, core:open)}
+- EP: ExclT no, ExclO no, Error no, Obl {T(T.(Has).Out)}
+- DP: ExclT no, ExclO no, Error no, Obl {T(X.(Has).Out)}
+- TB: ExclT no, ExclO no, Error no, Obl {Layer(s, U), Layer(r, core:sealed), Layer(s, core:sealed)}
 - PHold: ExclT no, ExclO no, Error no, Obl {T(T.(Has).Out)}
 - TreeNode: ExclT no, ExclO no, Error no, Obl {T(T.(Tree).Child)}, family U {TreeNode}
 - LFam: ExclT no, ExclO no, Error no, Obl {Layer(obj, T.(Tree).Child), T(T.(Tree).Child)}, family U {LFam}
@@ -344,34 +373,38 @@ Decided's summaries with obligations or a located-U site:
 - **Decided's located U is not a disagreement.** Its rule is the decided one. The table counts what the reference says at those
   queries.
 
-| Seed | Graphs (rings) | Compared | Inconclusive | Decided disagreements | Transferable's located U (reference P / R) | Most rounds | Not converged | Option 1 not converged |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 20261021 | 2,000 (496) | 27,824 | 5,376 | 0 | 1,959 (92 / 1,867) | 13 | 0 | 96 graphs |
-| 20261021 | 10,000 (2,494) | 139,960 | 27,486 | 0 | 9,555 (377 / 9,178) | 14 | 0 | 475 graphs |
-| 7 | 10,000 (2,503) | 139,638 | 27,228 | 0 | 9,550 (415 / 9,135) | 13 | 0 | 453 graphs |
+| Seed | Graphs (rings) | Compared | Inconclusive | Decided disagreements | Transferable's located U (reference P / R) | Most rounds | Not converged | Owned sites | Option 1 not converged |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 20261021 | 2,000 (496) | 27,824 | 5,376 | 0 | 65 (64 / 1) | 13 | 0 | 0 | 82 graphs |
+| 20261021 | 10,000 (2,494) | 139,960 | 27,486 | 0 | 252 (250 / 2) | 14 | 0 | 0 | 413 graphs |
+| 7 | 10,000 (2,503) | 139,638 | 27,228 | 0 | 246 (237 / 9) | 14 | 0 | 0 | 383 graphs |
+| 99 | 10,000 (2,489) | 140,064 | 26,912 | 0 | 242 (231 / 11) | 15 | 0 | 0 | 395 graphs |
+
+Before N3-1, revision 2's order (L over R) gave 9,555 located U on seed 20261021's 10,000 graphs. Most of those queries also had an
+exact refutation, which now wins.
 
 - **Owned** equals the reference in every compared query (it is part of "disagreements 0").
 - **Decided's summaries** form no peel template, and no use-site judgment re-enters itself.
-- **Package** is UNSOUND in 1–3 queries per 10,000 graphs.
+- **Package** is UNSOUND in 1–5 queries per 10,000 graphs.
 
 ## Variants
 
-- **Option1** (option 1, the X-2 candidate: outer(X)/target(X), the core reduction, peel templates (step j ≤ 4 and 64 instances at use: R1-1, R1-2 open), the use-site rule, Q*.s families): l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 P/R (SPEC); l27 P/U (SPEC); f1 P/P (SPEC); f2 U/U (SPEC); f5 P/P (SPEC); f6 U/U (SPEC); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/U (SPEC); k4 P/R (SPEC); k5 P/P (SPEC); k6 P/R (SPEC); k7 P/P (SPEC); k8 P/U (SPEC); j1 NT/NT (NONTERM); j2 NT/NT (NONTERM); j3 NT/NT (NONTERM); j4 NT/NT (NONTERM); d1 P/P (UNSOUND); x1 P/R (SPEC); x2 P/P (SPEC); x3 P/U (SPEC); b1 P/R (SPEC); b2 P/P (SPEC); b3 P/R (SPEC); s1 P/R (SPEC); s2 P/R (SPEC); s3 P/R (SPEC); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
-- **Package** (§3.2 as written (sharing the model's core reduction and coverage): no outer(...), "Proven when none does", the target only under a proven Sealed, Tᵢ.p.qᵏ): l16 P/P (SPEC); l17 P/P (UNSOUND); l21 P/P (UNSOUND); l23 P/P (UNSOUND); l25 P/P (SPEC); l26 P/P (UNSOUND); l27 P/U (SPEC); l24 P/U (U for R); f1 P/P (SPEC); f2 U/U (SPEC); f5 NT/NT (NONTERM); f6 NT/NT (NONTERM); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/P (UNSOUND); k7 P/P (SPEC); k8 P/U (SPEC); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/U (SPEC); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/U (SPEC); b1 P/R (SPEC); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/P (UNSOUND); s2 P/P (UNSOUND); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
-- **PairBinderOnly** (option 2 without its U: an obligation that would name outer(X) or target(X) is dropped): l16 P/P (SPEC); l17 P/P (UNSOUND); l23 P/P (UNSOUND); l25 P/P (SPEC); l26 P/P (UNSOUND); l27 P/U (SPEC); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/P (UNSOUND); k7 P/P (SPEC); k8 P/U (SPEC); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/U (SPEC); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/U (SPEC); b1 P/R (SPEC); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/P (UNSOUND); s2 P/P (UNSOUND); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
-- **NoCore** (option 2 without the core reduction): g1 NT/NT (NONTERM); g2 NT/NT (NONTERM)
-- **A** (design A's summary: a formal adds nothing, no layer obligation): r12 P/P (UNSOUND); l1 P/P (UNSOUND); l3 P/P (UNSOUND); l5 P/P (UNSOUND); l7 P/P (UNSOUND); l15 P/P (UNSOUND); l16 P/P (SPEC); l17 P/P (UNSOUND); l18 P/P (UNSOUND); l23 P/P (UNSOUND); l25 P/P (SPEC); l26 P/P (UNSOUND); l27 P/P (UNSOUND); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/P (UNSOUND); k7 P/P (SPEC); k8 P/P (UNSOUND); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/P (UNSOUND); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/P (UNSOUND); b1 P/P (UNSOUND); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/P (UNSOUND); s2 P/P (UNSOUND); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/P (UNSOUND); s6 P/P (SPEC); g2 P/P (UNSOUND)
-- **B** (design B's ViewTarget (obj, objref, objuniq; two-valued) and Layer(s) (rc, raw); arc continues): l7 P/P (UNSOUND); l12 P/P (UNSOUND); l15 P/P (UNSOUND); l18 P/R (R for U); g2 P/P (UNSOUND)
-- **TwoValued** (the pre-P-2 wording: an unproven Sealed refutes): l18 P/R (R for U)
+- **Option1** (option 1, the X-2 candidate: outer(X)/target(X), the core reduction, peel templates (step j ≤ 4 and 64 instances at use: R1-1, R1-2 open), the use-site rule, Q*.s families): l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 P/R (SPEC); l27 P/U (SPEC); f1 P/P (SPEC); f2 U/U (SPEC); f5 P/P (SPEC); f6 U/U (SPEC); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC); k2 P/P (SPEC); k3 P/U (SPEC); k4 P/R (SPEC); k5 P/P (SPEC); k6 P/R (SPEC); k7 P/P (SPEC); k8 P/U (SPEC); j1 NT/NT (NONTERM); j2 NT/NT (NONTERM); j3 NT/NT (NONTERM); j4 NT/NT (NONTERM); d1 P/P (UNSOUND); x1 P/R (SPEC); x2 P/P (SPEC); x3 P/U (SPEC); b2 P/P (SPEC); b3 P/R (SPEC); s1 P/R (SPEC); s2 P/R (SPEC); s3 P/R (SPEC); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
+- **Package** (§3.2 as written (sharing the model's core reduction and coverage): no outer(...), "Proven when none does", the target only under a proven Sealed, Tᵢ.p.qᵏ): l16 P/P (SPEC); l17 P/P (UNSOUND); l21 P/P (UNSOUND); l23 P/P (UNSOUND); l25 P/P (SPEC); l26 P/P (UNSOUND); l27 P/U (SPEC); l24 P/U (U for R); f1 P/P (SPEC); f2 U/U (SPEC); f5 NT/NT (NONTERM); f6 NT/NT (NONTERM); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC); k2 P/P (SPEC); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/P (UNSOUND); k7 P/P (SPEC); k8 P/U (SPEC); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/U (SPEC); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/U (SPEC); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/P (UNSOUND); s2 P/P (UNSOUND); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
+- **PairBinderOnly** (option 2 without its U: an obligation that would name outer(X) or target(X) is dropped): l16 P/P (SPEC); l17 P/P (UNSOUND); l23 P/P (UNSOUND); l25 P/P (SPEC); l26 P/P (UNSOUND); l27 P/U (SPEC); k2 P/P (SPEC); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/P (UNSOUND); k7 P/P (SPEC); k8 P/U (SPEC); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/U (SPEC); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/U (SPEC); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/P (UNSOUND); s2 P/P (UNSOUND); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
+- **NoCore** (option 2 without the core reduction): b3 P/R (SPEC); s1 P/R (SPEC); q4 NT/NT (NONTERM); q5 NT/NT (NONTERM); q6 NT/NT (NONTERM); g1 NT/NT (NONTERM); g2 NT/NT (NONTERM)
+- **A** (design A's summary: a formal adds nothing, no layer obligation): r12 P/P (UNSOUND); l1 P/P (UNSOUND); l3 P/P (UNSOUND); l5 P/P (UNSOUND); l7 P/P (UNSOUND); l15 P/P (UNSOUND); l16 P/P (SPEC); l17 P/P (UNSOUND); l18 P/P (UNSOUND); l23 P/P (UNSOUND); l25 P/P (SPEC); l26 P/P (UNSOUND); l27 P/P (UNSOUND); k2 P/P (SPEC); k3 P/P (UNSOUND); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/P (UNSOUND); k7 P/P (SPEC); k8 P/P (UNSOUND); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/P (UNSOUND); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/P (UNSOUND); b1 P/P (UNSOUND); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/P (UNSOUND); s2 P/P (UNSOUND); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/P (UNSOUND); s6 P/P (SPEC); g2 P/P (UNSOUND)
+- **B** (design B's ViewTarget (obj, objref, objuniq; two-valued) and Layer(s) (rc, raw); arc continues): l7 P/P (UNSOUND); l12 P/P (UNSOUND); l15 P/P (UNSOUND); l18 P/R (R for U); f10 L/R (located U, R for U); b1 P/L (located U); g2 P/P (UNSOUND)
+- **TwoValued** (the pre-P-2 wording: an unproven Sealed refutes): l18 P/R (R for U); f10 L/R (located U, R for U)
 - **NoneRefutes** (§3.2's "Proven when none does" for an admitted set): l21 P/P (UNSOUND)
 - **TargetIfSealed** (§3.2's object layer: the target only when Sealed is Proven): l24 P/U (U for R)
 - **FamilyPrefix** (§3.2's family (Tᵢ, p, q*) = Tᵢ.p.qᵏ with B's inductive rule): f1 P/P (SPEC); f2 U/U (SPEC); f5 NT/NT (NONTERM); f6 NT/NT (NONTERM); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC)
 - **FamilyQs** (F5 (b): Tᵢ.Q*.s families with the knowledge-state judgment): f1 P/P (SPEC); f2 U/U (SPEC); f5 P/P (SPEC); f6 U/U (SPEC); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC)
 - **NoInternal** (the exemption without the iterators' internal storage declarations): c27 P/R (over-strict)
 - **Bounded8** (oracle for families: obligations enumerated for 8 rounds, each judged by 8.3.2): f1 P/P (SPEC); f2 U/U (SPEC); f5 P/P (SPEC); f6 U/U (SPEC); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC)
-- **Guard** (instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r12 U/R (U for P); l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 P/R (SPEC); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f2 U/U (SPEC); f5 U/U (U for P); f6 U/U (SPEC); f7 U/U (U for P); f8 U/U (SPEC); f9 U/U (U for P); f10 U/U (U for P); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/U (SPEC); k4 P/R (SPEC); k5 P/P (SPEC); k6 P/R (SPEC); k7 P/P (SPEC); k8 U/U (U for P); j1 P/R (SPEC); j2 P/P (SPEC); j3 U/U (U for P); j4 P/R (SPEC); d1 P/R (SPEC); x1 P/R (SPEC); x2 P/P (SPEC); x3 U/U (U for P); b1 P/R (SPEC); b2 P/P (SPEC); b3 P/R (SPEC); s1 P/R (SPEC); s2 P/R (SPEC); s3 P/R (SPEC); s4 P/P (SPEC); s5 U/U (U for P); s6 U/U (U for P); g1 U/U (U for P); g2 U/R (U for P)
-- **Cap4U** (instantiation walk, depth cap 4 answering U): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r11 U/U (U for P, U for R); r12 U/R (U for P); l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 U/R (U for P); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f2 U/U (SPEC); f5 U/U (U for P); f6 U/U (SPEC); f7 U/U (U for P); f8 U/U (SPEC); f9 U/U (U for P); f10 U/U (U for P); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/U (SPEC); k4 U/U (U for P, U for R); k5 U/U (U for P); k6 U/R (U for P); k7 U/U (U for P); k8 U/U (U for P); j1 U/U (U for P, U for R); j2 U/U (U for P); j3 U/U (U for P); j4 U/U (U for P, U for R); d1 U/U (U for P, U for R); x1 U/U (U for P, U for R); x2 U/U (U for P); x3 U/U (U for P); b1 U/R (U for P); b2 U/U (U for P); b3 U/U (U for P, U for R); s1 U/R (U for P); s2 U/R (U for P); s3 U/U (U for P, U for R); s4 U/U (U for P); s5 U/U (U for P); s6 U/U (U for P); g1 U/U (U for P); g2 U/R (U for P)
-- **Cap4P** (instantiation walk, depth cap 4 answering P): r11 P/P (UNSOUND); l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 P/R (SPEC); l27 P/U (SPEC); f1 P/P (SPEC); f2 U/U (SPEC); f5 P/P (SPEC); f6 U/U (SPEC); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC); k1 P/R (SPEC); k2 P/P (SPEC); k3 P/U (SPEC); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/R (SPEC); k7 P/P (SPEC); k8 P/U (SPEC); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/U (SPEC); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/U (SPEC); b1 P/R (SPEC); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/R (SPEC); s2 P/R (SPEC); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
+- **Guard** (instantiation walk with today's growth guard (Binding.Capabilities.cs:228-245)): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r12 U/R (U for P); l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 P/R (SPEC); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f2 U/U (SPEC); f5 U/U (U for P); f6 U/U (SPEC); f7 U/U (U for P); f8 U/U (SPEC); f9 U/U (U for P); f10 U/U (U for P); k2 P/P (SPEC); k3 P/U (SPEC); k4 P/R (SPEC); k5 P/P (SPEC); k6 P/R (SPEC); k7 P/P (SPEC); k8 U/U (U for P); j1 P/R (SPEC); j2 P/P (SPEC); j3 U/U (U for P); j4 P/R (SPEC); d1 P/R (SPEC); x1 P/R (SPEC); x2 P/P (SPEC); x3 U/U (U for P); b2 P/P (SPEC); b3 P/R (SPEC); s1 P/R (SPEC); s2 P/R (SPEC); s3 P/R (SPEC); s4 P/P (SPEC); s5 U/U (U for P); s6 U/U (U for P); q4 U/U (U for P); q5 U/R (U for P); q6 U/R (U for P); g1 U/U (U for P); g2 U/R (U for P)
+- **Cap4U** (instantiation walk, depth cap 4 answering U): r1 U/U (U for P); r2 U/R (U for P); r3 U/R (U for P); r5 U/U (U for P); r6 U/R (U for P); r9 U/U (U for P); r10 U/R (U for P); r11 U/U (U for P, U for R); r12 U/R (U for P); l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 U/R (U for P); l27 U/U (U for P); p6 U/U (U for P); p7 U/U (U for P); p8 U/R (U for P); f1 U/U (U for P); f2 U/U (SPEC); f5 U/U (U for P); f6 U/U (SPEC); f7 U/U (U for P); f8 U/U (SPEC); f9 U/U (U for P); f10 U/U (U for P); k2 P/P (SPEC); k3 P/U (SPEC); k4 U/U (U for P, U for R); k5 U/U (U for P); k6 U/R (U for P); k7 U/U (U for P); k8 U/U (U for P); j1 U/U (U for P, U for R); j2 U/U (U for P); j3 U/U (U for P); j4 U/U (U for P, U for R); d1 U/U (U for P, U for R); x1 U/U (U for P, U for R); x2 U/U (U for P); x3 U/U (U for P); b1 U/R (U for P); b2 U/U (U for P); b3 U/U (U for P, U for R); s1 U/R (U for P); s2 U/R (U for P); s3 U/U (U for P, U for R); s4 U/U (U for P); s5 U/U (U for P); s6 U/U (U for P); q4 U/U (U for P); q5 U/R (U for P); q6 U/R (U for P); g1 U/U (U for P); g2 U/R (U for P)
+- **Cap4P** (instantiation walk, depth cap 4 answering P): r11 P/P (UNSOUND); l16 P/P (SPEC); l17 P/R (SPEC); l23 P/U (SPEC); l25 P/P (SPEC); l26 P/R (SPEC); l27 P/U (SPEC); f1 P/P (SPEC); f2 U/U (SPEC); f5 P/P (SPEC); f6 U/U (SPEC); f7 P/P (SPEC); f8 U/U (SPEC); f9 P/P (SPEC); f10 P/U (SPEC); k2 P/P (SPEC); k3 P/U (SPEC); k4 P/P (UNSOUND); k5 P/P (SPEC); k6 P/R (SPEC); k7 P/P (SPEC); k8 P/U (SPEC); j1 P/P (UNSOUND); j2 P/P (SPEC); j3 P/U (SPEC); j4 P/P (UNSOUND); d1 P/P (UNSOUND); x1 P/P (UNSOUND); x2 P/P (SPEC); x3 P/U (SPEC); b2 P/P (SPEC); b3 P/P (UNSOUND); s1 P/R (SPEC); s2 P/R (SPEC); s3 P/P (UNSOUND); s4 P/P (SPEC); s5 P/U (SPEC); s6 P/P (SPEC)
 - **BodyAnchor** (anchor: the reading body's premises (the Transferable plan §5.3)): as Decided on every case
 
 ## Oracle
@@ -399,7 +432,7 @@ Decided's summaries with obligations or a located-U site:
 | F4 (an object layer always requires its target) | Within R4-M89 (15.2.4 with 15.2.3) | DEC with 2b-4 |
 | F5 (a) (projection families: a located U on read) | Within R4-M89: the package's named fallback | DEC with 2b-4a |
 | F6 (Error under rc; through nominal components) | Within R4-M89: a clarification | DEC with 2b-4a |
-| The core reduction | **For the planning session to confirm** (below) | DEC with 2b-4a, or a question |
+| The core reduction | Within R4-M89: the planning session's ruling, confirmed exact by the review; it rests on 8.7.3 and changes no verdict | DEC with 2b-4a, naming the 8.7.3 well-formedness premise (Binding rejects ill-formed object forms) |
 | F7, F8, F9 | Confirmations (F9 is in the approved package) | — |
 
 ### What 2b-4a implements
@@ -407,10 +440,10 @@ Decided's summaries with obligations or a located-U site:
 | Concern | Rule |
 | --- | --- |
 | Projection families (F5 (a)) | The projection-link graph: (D, i) → (E, j) when D's storage names E with argument j = formal i extended by projection steps. A cycle with a projection step marks its declarations as F5 (a) sites, for Owned and Transferable |
-| Pair parameters (option 2) | When a nominal component E⟨B⟩ instantiates E's pair parameter with D's own plain formal or projection, or with D's pair target passed whole (a peel), an E obligation that would map onto `outer(X)` or `target(X)` is not recorded. D records itself as a site for Transferable, and for Owned only if a projection obligation is dropped |
+| Pair parameters (option 2) | First, an abstract argument that D's premises prove ObjectPayload or Sealed splits exactly as `s ↦ owner`, `T ↦ W` (R2-1). Otherwise, when a nominal component E⟨B⟩ instantiates E's pair parameter with D's own plain formal or projection, or with D's pair target passed whole (a peel), an E obligation that would map onto `outer(X)` or `target(X)` is not recorded. D records itself as a site for Transferable. An Owned site (a dropped projection obligation) cannot arise in a valid program after the split; it is kept as a guard |
 | Peels | No separate detection. A peel can only grow obligations through `outer` or `target`, so the pair check catches every peel cycle: the cases Peel, PA/PB, Peel3, Q0–Q4, IX, RB and PS, and about 3,300 random graphs per 10,000 with a pair site, all converged |
 | Propagation | The site set and the family set propagate through nominal components, like the exclusion bits |
-| Where the U is raised | In the judgment, when it first reads a summary with a site: a located `Unsupported_Kd` at the site declaration, recorded once per declaration. Its answer is Error (Derived in A4), never a Language error. A declaration no judgment reads raises nothing, so programs that compile today keep compiling |
+| Where the U is raised | In the judgment that reads a summary with a site, and only when the site decides the verdict. The order is P < U < L < R < E, so an exact refutation through what the summary keeps wins (N3-1, SPEC 23.1.2). It is a located `Unsupported_Kd` at the site declaration, recorded once per declaration. Its answer is Error (Derived in A4), never a Language error. A declaration no judgment reads raises nothing, so programs that compile today keep compiling |
 | The core reduction | `Layer(s, X)` stores `core(X)` for an X whose outer core is known |
 | Owned | Reads ExclO, Proj, Error and the instance's Origins, never a layer obligation, so option 2 leaves Owned exact. G174's fix holds (r5 Proven) |
 
@@ -418,16 +451,18 @@ The cost of option 2 (R1-3 (b), corrected):
 
 - Only Transferable judgments of such Types give the located U, concrete instances included. In the cases these are l16
   `Fwd<i32>`, k2, k5, k7, j2, x2, b2, s4 and s6, where SPEC proves, and the refuted or unknown ones.
-- Owned stays exact.
-- No current verdict changes: Transferable is new with 2b-4 (today `UnresolvedBinding_Kd`), and no struct or enum in the Kimi library
-  or the milestones declares a pair parameter (grep of `src/Kimi/Library`, `tests/milestones`).
+- Owned stays exact, with R2-1's owner-known split. Without it, q1 and q2 regress Owned.
+- No current verdict changes, with R2-1's split: Transferable is new with 2b-4 (today `UnresolvedBinding_Kd`), and no struct or enum
+  in the Kimi library or the milestones declares a pair parameter (grep of `src/Kimi/Library`, `tests/milestones`).
+- Under N3-1 the U appears only where nothing else decides: 37 of 140 cases (29 pair cases and 8 families), and about 250 per
+  10,000 random graphs.
 
 ### What 2b-4 implements
 
 The leaves with F3 and F4, the exempt table with the iterators' internal storage (F9), the anchor of §3.5 (F8), and A4's mapping of
 the located U (Derived). A confined read of a static whose Type reads a site gives the located U, never a Language error.
 
-### The core reduction (needed under option 2; for the planning session)
+### The core reduction (needed under option 2; within R4-M89)
 
 - **The problem.** §3.2 records `Layer(s, X)` for a pair binder s with X arbitrary. When X is a composite whose arguments grow
   non-regularly, the obligation grows without end, and the case needs no `outer` and no peel: g1 and g2,
@@ -435,9 +470,11 @@ the located U (Derived). A confined read of a static whose Type reads a site giv
 - **The fix is exact.** `Layer(s, X) = Layer(s, core(X)) ∧ Transferable(X)`. The layer rule reads X only through its Sealed proof
   (the outer core alone, 8.7.2) and its Transferable verdict, which the walk already requires as a component.
 - **It changes no verdict.** g1 and g2 meet SPEC, and it is in force on every case.
-- **Classification.** It was listed under option 1 in revision 1, but it is independent of `outer`, `target` and peels. I read it as
-  a correction within R4-M89 that restores §3.2's finiteness. The alternative is a located U for a pair binder over a growing
-  composite. The planning session should confirm which.
+- **Classification.** The planning session ruled it a correction within R4-M89: a representation detail of the approved
+  three-valued layer obligation that restores §3.2's own finiteness. The review confirmed it exact.
+  - It rests on 8.7.3's well-formedness: an object Semantics' target is an Object Target, which is an owner Type, and Binding rejects
+    ill-formed object forms.
+  - Its DEC entry names that premise.
 
 ### F3–F9 (as in revision 1)
 
@@ -450,7 +487,7 @@ the located U (Derived). A confined read of a static whose Type reads a site giv
   - FamilyQs shows the Q*.s alternative meeting SPEC on f1–f10. It is rejected for the same evidence reason as option 1 (below).
 - **F6.** The walk continues under `rc` and `raw`. Error, which now includes 8.7.3's ill-formedness, propagates through nominal
   components.
-- **F7.** Owned shares the summary, and no guard or cap is needed. Guard gives Unknown Owned on 24 cases; Cap4P is UNSOUND on r11,
+- **F7.** Owned shares the summary, and no guard or cap is needed. Guard gives Unknown Owned on 27 cases; Cap4P is UNSOUND on r11,
   k4, j1, j4, d1, x1, b3 and s3.
 - **F8.** The container anchor holds. BodyAnchor accepts a12, and TwoValued rejects a16.
 - **F9.** The exemption needs the iterators' internal storage (NoInternal: c27).
@@ -486,7 +523,6 @@ the located U (Derived). A confined read of a static whose Type reads a site giv
 - **Conformances.** Verification covers associated-Type requirements and intrinsic parents only.
 - **Object Targets.** The check covers only the declaration's own storage. Opt-outs are not modelled, and a Tuple counts as an
   Object Target, as in the engine's leaf.
-- **Option 2's Owned site** (a projection obligation over a pair target that is dropped) is implemented, but no valid case or random
-  graph produced one (H).
+- **Option 2's Owned site** is argued unreachable in valid programs after R2-1's split (see "Model"), and is kept as a guard.
 - **Random graphs.** No projections, and only closed queries.
 - **Other.** Diagnostic categories, costs and allocations.
