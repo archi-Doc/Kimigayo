@@ -1,6 +1,7 @@
 # Lifecycle Receivers
 
-Status: proposal for the owner's decision; not integrated, not implemented. Date: 2026-10-22. Base: `dev` `9031f7bc`. Written by
+Status: 取り込み済み (integrated 2026-10-22): the owner chose option B (OQ-L1 (b); DECISIONS R4-M103); §2's root is in SPEC §15.6.5.
+Not implemented. Date: 2026-10-22. Base: `dev` `9031f7bc`. Written by
 the R4 planning session on the owner's instruction (2026-10-21): 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」
 (candidate 5). BU's planning session checked it against G166, G163, G165 and G178 (2026-10-22). Its independent review
 (`../Sketches/R4 Proposals 2026-10-21/review-3.md`: ACCEPT WITH FIXES) found that the first draft's unified definition dropped and

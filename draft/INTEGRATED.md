@@ -997,13 +997,18 @@ pointer rules left open by G160) was not accepted in that review and is being re
 - [Static Slots for P42](Proposals/2026-10-22%20Static%20Slots%20for%20P42.md): 一部取り込み (open, intake only), candidate 2.
   No SPEC change: SPEC §22.4 and §15.6 already state one model (the key for storage, state and destruction; the Field for Loans and
   effects). Proposes one static slot key, (Field, `TyCtxt.Erase` of the enclosing Subst), owned by `TyCtxt`, and one full-process
-  P42 design package before P42's units; the A5 plan's two narrowings are not adopted. Owner questions OQ-S1, OQ-S2.
-- [Layout Requirements on Type Parameters](Proposals/2026-10-22%20Layout%20Requirements%20on%20Type%20Parameters.md): 一部取り込み
-  (open, intake only), candidate 6. A′ (an intrinsic Contract for a C-layout Field that is not zero-sized, stated by generic
-  C-layout structs) against D (no change); the recommendation is D, R5's view: the collector stays at `check` for its other records,
-  so A′ buys locality for one record kind at the price of a narrowing. A first-draft item reclassifying `OversizedLayout_Kd` as
-  Resource was withdrawn (it reversed R5-M52 and IMPL 21.1.1). Owner question OQ-Y1.
-- [Lifecycle Receivers](Proposals/2026-10-22%20Lifecycle%20Receivers.md): 一部取り込み (open, intake only), candidate 5. Recommends
-  option B: §15.6.5's body-local list gains the receiver of a constructor or `drop` (bound: the body; §6.3.4's completion rule stays
-  a Loan rule); the unified "lifecycle receiver" definition is option A, corrected after the review. Owner question OQ-L1.
-- Nothing is integrated into SPEC or IMPL, no text is frozen, and no support is claimed.
+  P42 design package before P42's units; the A5 plan's two narrowings are not adopted. Adopted by the owner (OQ-S1 (a), OQ-S2 (a),
+  DECISIONS R4-M103). Integrated: none (no SPEC change); open: the key and the package, transferred to P42's package file when it
+  exists.
+- `Obsolete/2026-10-22 Layout Requirements on Type Parameters.md`: 完了 (closed 2026-10-22), candidate 6. The owner chose D, no
+  change (OQ-Y1 (d), DECISIONS R4-M103): A′ (an intrinsic Contract for a C-layout Field that is not zero-sized) is rejected (locality
+  for one record kind at the price of a narrowing and a vocabulary entry; the collector stays at `check` for its other records), the
+  first draft's Resource reclassification was withdrawn (it reversed R5-M52 and IMPL 21.1.1), and the A5 plan's optional candidate
+  is not adopted. Nothing is integrated; the file moved with only its status line replaced.
+- `Changes/2026-10-22 Lifecycle Receivers.md`: 取り込み済み (2026-10-22), candidate 5. The owner chose option B (OQ-L1 (b), DECISIONS
+  R4-M103). Mapping: §2's root → SPEC §15.6.5's body-local bullet ("or in the receiver of a constructor or `drop`", citing §6.3.4 and
+  §16.3.1); §6.3.4, §16.3.1, §7.7.2 and §5.7 unchanged; its §5 (consequences) is transferred to 2a0-2 (2a0-D §3 row 3, DECISIONS
+  R4-M101) and to BU's G166. Option A (a unified "lifecycle receiver" definition) is rejected (editorial, with the rule drift
+  review-3 found); option C (no change) is rejected (the classification G161, G165 and G166 need would stay a reading of §6.3.4 and
+  §16.3.1). No support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- Only the lifecycle receivers' root is integrated (SPEC §15.6.5); no support is claimed.
