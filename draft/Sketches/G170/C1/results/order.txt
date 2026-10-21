@@ -1,2 +1,6 @@
-== ORDER: 4800 requests (declaration order shuffled; three limit settings): 0 differ in verdict, outcome, rounds, V, E or N
+== ORDER: 1832 requests on 400 models (templates and Contracts shuffled; ordinary and frozen views) and 6276 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
 FAILURES 0
+
+real	9m32.183s
+user	0m0.000s
+sys	0m0.031s

@@ -113,12 +113,12 @@ public class G170C1AdapterTest
 
                     foreach (var input in model.Inputs.Where(x => x.IsAtom))
                     {
-                        Count(Timed(() => solver.Supply(input, View.Ordinary, new Limits { Rounds = 2000, Size = 100_000 })), "input");
+                        Count(Timed(() => solver.Supply(input, View.Ordinary, new Limits { Rounds = 2000, Items = 100_000 })), "input");
                     }
 
                     foreach (var subject in model.Inputs.Where(x => x.IsAtom).Select(x => x.Subject).Distinct())
                     {
-                        Count(Timed(() => solver.Enumerate(subject, View.Ordinary, new Limits { Rounds = 2000, Size = 100_000 })), "enumerate");
+                        Count(Timed(() => solver.Enumerate(subject, View.Ordinary, new Limits { Rounds = 2000, Items = 100_000 })), "enumerate");
                     }
 
                     foreach (var parameter in f.Parameters)
@@ -135,7 +135,7 @@ public class G170C1AdapterTest
                         }
 
                         var goal = new Formula(FK.Is, scoped.Type(t), scoped.Ref(c.Binding.Library.Copy, []));
-                        var a = Timed(() => solver.Supply(goal, View.Ordinary, new Limits { Rounds = 2000, Size = 100_000 }));
+                        var a = Timed(() => solver.Supply(goal, View.Ordinary, new Limits { Rounds = 2000, Items = 100_000 }));
                         Count(a, "copy");
                         var today = c.Binding.ProveCopy(t, f);
                         var key = $"today {today} / C {(a.Outcome == Outcome.Resource ? "Resource" : a.Positive ? "evidence" : "no evidence")}";
@@ -324,20 +324,24 @@ public class G170C1AdapterTest
             var dxProjection = model.Bindings[dx].Projection;
             var ewProjection = model.Bindings[ew].Projection;
             var i32 = source.Type(BoundType.I32);
-            var viewD = new View("frozen D", source.InferredIn(Container(c, "D")), wantsReads: true);
-            var viewE = new View("frozen E", source.InferredIn(Container(c, "E")), wantsReads: true);
+            var viewD = new View("frozen D", source.InferredIn(Container(c, "D")));
+            var viewE = new View("frozen E", source.InferredIn(Container(c, "E")));
             var solver = new Solver(model);
             var inE = solver.Supply(new Formula(FK.Eq, dxProjection, i32), viewE);
-            o.Append($"  in E's view, D.(P).X is i32: {inE} reads {Reads(inE)} (a completed external value; its read returns to the owner)\n");
+            o.Append($"  in E's view, D.(P).X is i32: {inE} (a completed external value)\n");
             var inD = solver.Supply(new Formula(FK.Eq, dxProjection, i32), viewD);
             o.Append($"  in D's view, D.(P).X is i32: {inD} (D's own inferred value is excluded)\n");
-            // Dependencies flow back: E.W's published dependencies are the reads of the normalization E's inference ran.
-            var flowed = new View("frozen D + dependents", source.InferredIn(Container(c, "D")).Concat(inE.PositiveReads.Any(r => r.Contains(dx)) ? [ew] : []), wantsReads: true);
-            var ewInD = solver.Supply(new Formula(FK.Eq, ewProjection, i32), flowed);
+
+            // OQ3 option (c), G172's to decide: no read sets flow back. To use E.W in D's view the owner evaluates E.W's own
+            // evidence (E's `w() -> D.(P).X`) in a view excluding D; where that has none, E.W is inadmissible in D's view too (the
+            // exclusion accumulates along the chain). C answers both steps with Supply alone.
+            var evidence = solver.Supply(new Formula(FK.Eq, dxProjection, i32), viewD);
+            var chained = new View("frozen D, chained", source.InferredIn(Container(c, "D")).Concat(evidence.Positive ? [] : [ew]));
+            var ewInD = solver.Supply(new Formula(FK.Eq, ewProjection, i32), chained);
             var ewInDToday = solver.Supply(new Formula(FK.Eq, ewProjection, i32), viewD);
-            o.Append($"  in D's view, E.(Q).W is i32: with E.W's returned dependency {ewInD}; with today's owner state (no dependency published) {ewInDToday}\n");
-            var ordinary = solver.Supply(new Formula(FK.Eq, ewProjection, i32), new View("ordinary+reads", [], wantsReads: true));
-            o.Append($"  ordinary view, E.(Q).W is i32: {ordinary} reads {Reads(ordinary)}\n");
+            o.Append($"  in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) {evidence.Verdict}, so E.W is inadmissible: {ewInD}; with today's owner state (E.W admissible) {ewInDToday}\n");
+            var ordinary = solver.Supply(new Formula(FK.Eq, ewProjection, i32), View.Ordinary);
+            o.Append($"  ordinary view, E.(Q).W is i32: {ordinary}\n");
         }
 
         // The same-definition chain (SameNominalUnitNeverChainsInference's shape): two conformances of one definition.
@@ -353,7 +357,7 @@ public class G170C1AdapterTest
             o.Append($"same definition: bindings {string.Join("; ", model.Bindings.Values.Select(source.Describe))}; Binding issues [{issues}]\n");
             if (model.Bindings.Values.FirstOrDefault(b => b.Name == "X") is { } x)
             {
-                var viewS = new View("frozen S", source.InferredIn(Container(c, "S")), wantsReads: true);
+                var viewS = new View("frozen S", source.InferredIn(Container(c, "S")));
                 var a = new Solver(model).Supply(new Formula(FK.Eq, x.Projection, source.Type(BoundType.I32)), viewS);
                 o.Append($"  in S's own view, S.(P).X is i32: {a} (no value inferred for S enters its frozen premises)\n");
             }
@@ -421,8 +425,6 @@ public class G170C1AdapterTest
         times.Sort();
         return (times[times.Count / 2], bytes);
     }
-
-    private static string Reads(Answer a) => "{" + string.Join("},{", a.PositiveReads.Select(x => string.Join(",", x))) + "}";
 
     private static string Reference(ProgramModel model, Formula goal, int bound)
     {
@@ -548,6 +550,7 @@ internal sealed class BindingSource
         {
             var conformance = new Conformance
             {
+                Id = this.Model.Conformances.Count,
                 Type = this.Type(type),
                 Ref = this.Reference(path.Contract, null),
                 VarCount = 1,

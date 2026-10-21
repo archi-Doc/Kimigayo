@@ -10,13 +10,12 @@ public sealed class EGraph
     private readonly List<int> parent = new();
     private readonly List<List<int>> nodesOf = new();
     private readonly List<List<int>> usesOf = new();
-    private readonly List<HashSet<int>> explain = new();
     private readonly List<Head> heads = new();
     private readonly List<int[]> kids = new();
     private readonly List<int> classOf = new();
     private readonly List<NodeKey> keyOf = new();
     private readonly Dictionary<NodeKey, int> memo = new();
-    private readonly List<(int A, int B, int Reason)> pending = new();
+    private readonly List<(int A, int B)> pending = new();
 
     public int Nodes => this.memo.Count;
 
@@ -25,7 +24,9 @@ public sealed class EGraph
 
     public int Classes { get; private set; }
 
-    public long Work { get; set; }
+    /// <summary>Gets the congruence work: per rebuild, the classes merged plus the distinct nodes over a merged class (a function of
+    /// the partition, so independent of union order).</summary>
+    public long Work { get; private set; }
 
     public int Find(int c)
     {
@@ -48,8 +49,6 @@ public sealed class EGraph
 
     public int ClassOfNode(int node) => this.Find(this.classOf[node]);
 
-    public IReadOnlyCollection<int> Explain(int c) => this.explain[this.Find(c)];
-
     public IEnumerable<int> UsesOf(int c) => this.usesOf[this.Find(c)];
 
     public int Add(Head head, int[] kidClasses)
@@ -71,7 +70,6 @@ public sealed class EGraph
         this.parent.Add(c);
         this.nodesOf.Add([node]);
         this.usesOf.Add(new());
-        this.explain.Add(new());
         this.heads.Add(head);
         this.kids.Add(canonical);
         this.classOf.Add(c);
@@ -124,7 +122,7 @@ public sealed class EGraph
         return this.Lookup(t.Head, k);
     }
 
-    public void Union(int a, int b, int reason) => this.pending.Add((a, b, reason));
+    public void Union(int a, int b) => this.pending.Add((a, b));
 
     public bool HasPending => this.pending.Count != 0;
 
@@ -134,7 +132,7 @@ public sealed class EGraph
         var merged = new HashSet<int>();
         while (this.pending.Count != 0)
         {
-            var (a, b, reason) = this.pending[^1];
+            var (a, b) = this.pending[^1];
             this.pending.RemoveAt(this.pending.Count - 1);
             a = this.Find(a);
             b = this.Find(b);
@@ -155,18 +153,11 @@ public sealed class EGraph
             this.Classes--;
             this.nodesOf[a].AddRange(this.nodesOf[b]);
             this.nodesOf[b].Clear();
-            this.explain[a].UnionWith(this.explain[b]);
-            if (reason >= 0)
-            {
-                this.explain[a].Add(reason);
-            }
-
             var uses = this.usesOf[b];
             this.usesOf[b] = new();
             this.usesOf[a].AddRange(uses);
             foreach (var node in uses)
             {
-                this.Work++;
                 var old = this.keyOf[node];
                 if (this.memo.TryGetValue(old, out var owner) && owner == node)
                 {
@@ -189,12 +180,7 @@ public sealed class EGraph
                     var oc = this.Find(this.classOf[other]);
                     if (pc != oc)
                     {
-                        foreach (var k in canonical)
-                        {
-                            this.explain[pc].UnionWith(this.explain[k]);
-                        }
-
-                        this.pending.Add((pc, oc, -1));
+                        this.pending.Add((pc, oc));
                     }
                 }
                 else
@@ -204,6 +190,13 @@ public sealed class EGraph
             }
         }
 
+        var repaired = new HashSet<int>();
+        foreach (var root in merged.Select(this.Find).Distinct())
+        {
+            repaired.UnionWith(this.usesOf[root]);
+        }
+
+        this.Work += repaired.Count;
         return merged;
     }
 

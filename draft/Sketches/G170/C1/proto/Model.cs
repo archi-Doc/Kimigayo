@@ -249,7 +249,8 @@ public sealed class Formula
     }
 }
 
-public enum Status : byte { Valid, Pending, Invalid }
+/// <summary>A source's published state: Resource when its own check ended at an analysis limit (read as Resource, never Invalid).</summary>
+public enum Status : byte { Valid, Pending, Invalid, Resource }
 
 public sealed class ContractDecl
 {
@@ -273,6 +274,9 @@ public sealed class ContractDecl
     public Status Status { get; set; }
 
     public List<Term> Ancestors { get; } = new();
+
+    /// <summary>Gets, per ancestor, the worst published state of the declarations its refinement path passes through.</summary>
+    public List<Status> AncestorSources { get; } = new();
 
     public bool Recursive { get; set; }
 
@@ -299,6 +303,8 @@ public sealed class AssocBinding
 
 public sealed class Conformance
 {
+    public int Id { get; init; }
+
     public Term Type { get; init; } = null!;
 
     public Term Ref { get; init; } = null!;
@@ -312,23 +318,24 @@ public sealed class Conformance
     public List<AssocBinding> Bindings { get; } = new();
 }
 
-/// <summary>The evidence view: the inference owner's inadmissible bindings and whether supports' reads are returned.</summary>
+/// <summary>The evidence view: the inference owner's inadmissible bindings and the conformances whose own check is under way
+/// (SPEC 8.3.3: an obligation revisited while it is being proven supplies no evidence; the answer stays Complete).</summary>
 public sealed class View
 {
-    public static readonly View Ordinary = new("ordinary", [], wantsReads: false);
+    public static readonly View Ordinary = new("ordinary", []);
 
-    public View(string name, IEnumerable<int> inadmissible, bool wantsReads)
+    public View(string name, IEnumerable<int> inadmissible, IEnumerable<int>? underCheck = null)
     {
         this.Name = name;
         this.Inadmissible = new(inadmissible);
-        this.WantsReads = wantsReads;
+        this.UnderCheck = new(underCheck ?? []);
     }
 
     public string Name { get; }
 
     public HashSet<int> Inadmissible { get; }
 
-    public bool WantsReads { get; }
+    public HashSet<int> UnderCheck { get; }
 }
 
 public enum TemplateKind : byte { Input, Ancestor, Clause, Conformance, Binding }
@@ -352,6 +359,8 @@ public sealed class Template
     public List<Formula> Conditions { get; init; } = new();
 
     public int BindingId { get; init; } = -1;
+
+    public int ConformanceId { get; init; } = -1;
 
     public string Origin { get; init; } = string.Empty;
 
@@ -394,12 +403,13 @@ public sealed class ProgramModel
         foreach (var decl in this.Decls)
         {
             decl.Ancestors.Clear();
-            this.CollectAncestors(decl, decl.Parents, new Term?[decl.Arity + 1], decl.Ancestors, 0);
+            decl.AncestorSources.Clear();
+            this.CollectAncestors(decl, decl.Parents, new Term?[decl.Arity + 1], decl, Status.Valid, 0);
         }
 
         foreach (var decl in this.Decls)
         {
-            decl.Recursive = this.IsRecursiveSafe(decl);
+            decl.Recursive = this.IsRecursive(decl);
         }
 
         this.Templates.Clear();
@@ -413,9 +423,9 @@ public sealed class ProgramModel
 
         foreach (var decl in this.Decls)
         {
-            foreach (var ancestor in decl.Ancestors)
+            for (var i = 0; i < decl.Ancestors.Count; i++)
             {
-                this.Add(new() { Kind = TemplateKind.Ancestor, Antecedent = decl, Conclusion = new(FK.Is, this.Terms.Var(0), ancestor), VarCount = decl.Arity + 1, Source = decl.Status, Origin = decl.Name });
+                this.Add(new() { Kind = TemplateKind.Ancestor, Antecedent = decl, Conclusion = new(FK.Is, this.Terms.Var(0), decl.Ancestors[i]), VarCount = decl.Arity + 1, Source = Worst(decl.Status, decl.AncestorSources[i]), Origin = decl.Name });
             }
 
             foreach (var clause in decl.Clauses)
@@ -431,22 +441,22 @@ public sealed class ProgramModel
         {
             var target = this.DeclOf(c.Ref);
             var status = target is { Recursive: true } ? Status.Invalid : c.Status; // SPEC 8.3.3: never proven
-            this.Add(new() { Kind = TemplateKind.Conformance, Conclusion = new(FK.Is, c.Type, c.Ref), VarCount = c.VarCount, Source = status, Conditions = c.Conditions, Origin = c.Type + " is " + c.Ref });
+            this.Add(new() { Kind = TemplateKind.Conformance, Conclusion = new(FK.Is, c.Type, c.Ref), VarCount = c.VarCount, Source = status, Conditions = c.Conditions, ConformanceId = c.Id, Origin = c.Type + " is " + c.Ref });
             foreach (var b in c.Bindings)
             {
                 this.Bindings[b.Id] = b;
                 var bs = status == Status.Valid ? b.Status : status;
-                this.Add(new() { Kind = TemplateKind.Binding, Conclusion = new(FK.Eq, b.Projection, b.Value), VarCount = c.VarCount, Source = bs, Conditions = c.Conditions, BindingId = b.Id, Origin = $"binding {b.Id}" });
+                this.Add(new() { Kind = TemplateKind.Binding, Conclusion = new(FK.Eq, b.Projection, b.Value), VarCount = c.VarCount, Source = bs, Conditions = c.Conditions, BindingId = b.Id, ConformanceId = c.Id, Origin = $"binding {b.Id}" });
             }
         }
     }
 
     private void Add(Template t)
     {
-        this.Templates.Add(new() { Id = this.Templates.Count, Kind = t.Kind, Antecedent = t.Antecedent, Conclusion = t.Conclusion, VarCount = t.VarCount, Source = t.Source, Conditions = t.Conditions, BindingId = t.BindingId, Origin = t.Origin });
+        this.Templates.Add(new() { Id = this.Templates.Count, Kind = t.Kind, Antecedent = t.Antecedent, Conclusion = t.Conclusion, VarCount = t.VarCount, Source = t.Source, Conditions = t.Conditions, BindingId = t.BindingId, ConformanceId = t.ConformanceId, Origin = t.Origin });
     }
 
-    private void CollectAncestors(ContractDecl root, List<Term> parents, Term?[] binding, List<Term> into, int depth)
+    private void CollectAncestors(ContractDecl root, List<Term> parents, Term?[] binding, ContractDecl into, Status via, int depth)
     {
         if (depth > this.Decls.Count)
         {
@@ -456,12 +466,15 @@ public sealed class ProgramModel
         foreach (var parent in parents)
         {
             var substituted = depth == 0 ? parent : this.Terms.Subst(parent, binding);
-            if (into.Contains(substituted))
+            var known = into.Ancestors.IndexOf(substituted);
+            if (known >= 0)
             {
+                into.AncestorSources[known] = Worst(via, into.AncestorSources[known]) == via ? into.AncestorSources[known] : via;
                 continue;
             }
 
-            into.Add(substituted);
+            into.Ancestors.Add(substituted);
+            into.AncestorSources.Add(via);
             if (this.DeclOf(substituted) is { } p)
             {
                 var next = new Term?[p.Arity + 1];
@@ -471,32 +484,42 @@ public sealed class ProgramModel
                     next[i + 1] = substituted.Kids[i];
                 }
 
-                this.CollectAncestors(root, p.Parents, next, into, depth + 1);
+                this.CollectAncestors(root, p.Parents, next, into, Worst(via, p.Status), depth + 1);
             }
         }
     }
 
-    // SPEC 8.3.3: C is recursive when T is C supplies, directly or through the Contracts so supplied, a conformance of a
-    // projection of T to C's declaration or to a refinement of it. A declaration-level search: edges are the ancestor and clause
-    // rows whose subject is Self or a projection of Self; at least one projection edge must be on the path.
-    private bool IsRecursive(ContractDecl root)
+    // Invalid supplies nothing; otherwise Resource, then Pending, dominate (a path is as available as its least available source).
+    private static Status Worst(Status a, Status b)
+        => a == Status.Invalid || b == Status.Invalid ? Status.Invalid : a == Status.Resource || b == Status.Resource ? Status.Resource : a == Status.Pending || b == Status.Pending ? Status.Pending : Status.Valid;
+
+    // SPEC 8.3.3: C is recursive when T is C supplies, directly or through the Contracts so supplied, a conformance of a projection
+    // of T to C's declaration or to a refinement of it. A declaration-level search over the refinement and clause rows: a state is
+    // a Contract with what its Self and each parameter stand for (T itself, a projection of T, a closed Type up to a small depth,
+    // or another Type), so argument routes (`Self is D<Self.(C).X>` with `D<A>: A is C`) and identity routes are followed: a
+    // projection of T identical to T, or to a closed Type that some state makes conform to C (`Self.(C).Y is List<i32>` with
+    // `List<i32> is C` supplied through an argument clause). Finite: Contracts times the kinds per position. The reference evaluator
+    // classifies independently (Reference.Recursive).
+    public bool IsRecursive(ContractDecl root)
     {
-        var seen = new HashSet<(ContractDecl, bool)>();
-        var stack = new Stack<(ContractDecl Decl, bool Projected)>();
-        stack.Push((root, false));
+        var seen = new HashSet<string>();
+        var stack = new Stack<(ContractDecl Decl, Kind[] Kinds)>();
+        var conforming = new HashSet<Term>(); // closed Types some state makes conform to root (or a refinement of it)
+        var projected = new HashSet<Term>(); // closed Types identical to a projection of T
+        stack.Push((root, [Kind.Root, .. Enumerable.Repeat(Kind.Other, root.Arity)]));
         while (stack.Count != 0)
         {
-            var (decl, projected) = stack.Pop();
-            if (!seen.Add((decl, projected)))
+            var (decl, kinds) = stack.Pop();
+            if (!seen.Add(decl.Name + ":" + string.Join(",", kinds)))
             {
                 continue;
             }
 
-            foreach (var ancestor in decl.Ancestors)
+            foreach (var parent in decl.Parents)
             {
-                if (this.DeclOf(ancestor) is { } a)
+                if (this.Visit(root, parent, kinds[0], kinds, stack, conforming))
                 {
-                    Visit(a, projected);
+                    return true;
                 }
             }
 
@@ -504,57 +527,97 @@ public sealed class ProgramModel
             {
                 foreach (var f in clause.Supplied())
                 {
-                    if (f.Kind == FK.Is && this.DeclOf(f.B!) is { } d && SelfRooted(f.A!) is { } isProjection)
+                    if (f.Kind == FK.Is && this.Visit(root, f.B!, this.KindOf(f.A!, kinds), kinds, stack, conforming))
                     {
-                        Visit(d, projected || isProjection);
+                        return true;
+                    }
+
+                    if (f.Kind == FK.Eq)
+                    {
+                        var a = this.KindOf(f.A!, kinds);
+                        var b = this.KindOf(f.B!, kinds);
+                        if ((a.Tag == KindTag.Projection && b.Tag == KindTag.Root) || (a.Tag == KindTag.Root && b.Tag == KindTag.Projection))
+                        {
+                            return true; // a projection of T is T itself, which conforms to the root
+                        }
+
+                        if (a.Tag == KindTag.Projection && b.Tag == KindTag.Closed)
+                        {
+                            projected.Add(b.Type!);
+                        }
+                        else if (b.Tag == KindTag.Projection && a.Tag == KindTag.Closed)
+                        {
+                            projected.Add(a.Type!);
+                        }
                     }
                 }
             }
         }
 
-        return false;
-
-        void Visit(ContractDecl d, bool projected)
-        {
-            if (projected && (d == root || d.Ancestors.Any(x => this.DeclOf(x) == root)))
-            {
-                throw new RecursiveFound();
-            }
-
-            stack.Push((d, projected));
-        }
+        return conforming.Overlaps(projected);
     }
 
-    private static bool? SelfRooted(Term t)
-        => t.Head is VarHead { Index: 0 } ? false : t.Head is SymHead { Kind: SymKind.Proj } && SelfRooted(t.Kids[0]) is not null ? true : null;
-
-    public bool IsRecursiveSafe(ContractDecl decl)
+    // What a Type stands for in a state: a variable's kind; a projection of T or of a projection of T; a closed Type (its variables
+    // replaced by closed kinds) up to depth 3; otherwise another Type.
+    private Kind KindOf(Term t, Kind[] kinds)
     {
-        try
+        if (t.Head is VarHead v)
         {
-            return this.IsRecursive(decl);
+            return v.Index < kinds.Length ? kinds[v.Index] : Kind.Other;
         }
-        catch (RecursiveFound)
+
+        if (t.Head is SymHead { Kind: SymKind.Proj } && this.KindOf(t.Kids[0], kinds).Tag is KindTag.Root or KindTag.Projection)
+        {
+            return new(KindTag.Projection, null);
+        }
+
+        var binding = new Term?[kinds.Length];
+        for (var i = 0; i < kinds.Length; i++)
+        {
+            binding[i] = kinds[i].Type;
+        }
+
+        var closed = this.Terms.Subst(t, binding);
+        return !closed.HasVar && closed.Depth <= 3 ? new(KindTag.Closed, closed) : Kind.Other;
+    }
+
+    private bool Visit(ContractDecl root, Term reference, Kind subject, Kind[] kinds, Stack<(ContractDecl, Kind[])> stack, HashSet<Term> conforming)
+    {
+        if (this.DeclOf(reference) is not { } d)
+        {
+            return false;
+        }
+
+        var refines = d == root || d.Ancestors.Any(x => this.DeclOf(x) == root);
+        if (refines && subject.Tag == KindTag.Projection)
         {
             return true;
         }
-    }
 
-    public void Classify()
-    {
-        foreach (var decl in this.Decls)
+        if (refines && subject.Tag == KindTag.Closed)
         {
-            decl.Recursive = this.IsRecursiveSafe(decl);
+            conforming.Add(subject.Type!);
         }
+
+        stack.Push((d, [subject, .. reference.Kids.Select(k => this.KindOf(k, kinds))]));
+        return false;
     }
 
-    private sealed class RecursiveFound : Exception
+    private enum KindTag : byte { Root, Projection, Closed, Other }
+
+    private readonly record struct Kind(KindTag Tag, Term? Type)
     {
+        public static readonly Kind Root = new(KindTag.Root, null);
+
+        public static readonly Kind Other = new(KindTag.Other, null);
+
+        public override string ToString() => this.Tag == KindTag.Closed ? "=" + this.Type!.Id : this.Tag.ToString();
     }
 }
 
-/// <summary>A small text form for hand-written models: `contract C<A> : P<A>, Q`, indented `clause S is R`,
-/// `associate X is R`, `input S is R`, `conformance S1 is C<i32> [pending|failed]` with `binding X = i32 [inferred d] [pending]`.</summary>
+/// <summary>A small text form for hand-written models: `contract C<A> : P<A>, Q [pending|resource]`, indented `clause S is R`,
+/// `associate X is R`, `input S is R`, `conformance S1 is C<i32> [when S is R, ...] [pending|failed|resource]` with
+/// `binding X = i32 [inferred d] [pending|resource]`.</summary>
 public sealed class ModelText
 {
     private readonly ProgramModel model;
@@ -623,6 +686,11 @@ public sealed class ModelText
                 this.current.Status = Status.Pending;
                 header = header[..^8];
             }
+            else if (header.EndsWith(" resource", StringComparison.Ordinal))
+            {
+                this.current.Status = Status.Resource;
+                header = header[..^9];
+            }
 
             if (colon >= 0)
             {
@@ -649,6 +717,11 @@ public sealed class ModelText
                 status = Status.Invalid;
                 body = body[..^7];
             }
+            else if (body.EndsWith(" resource", StringComparison.Ordinal))
+            {
+                status = Status.Resource;
+                body = body[..^9];
+            }
 
             var when = body.IndexOf(" when ", StringComparison.Ordinal);
             var conditions = when < 0 ? string.Empty : body[(when + 6)..];
@@ -658,7 +731,7 @@ public sealed class ModelText
             var type = this.Type(body[..at], null);
             var reference = this.Type(body[(at + 4)..], null);
             var formulas = conditions.Length == 0 ? [] : conditions.Split(',').Select(x => this.Requirement(x.Trim(), null)).ToList();
-            this.conformance = new() { Type = type, Ref = reference, Status = status, VarCount = this.conformanceVars + 1 };
+            this.conformance = new() { Id = this.model.Conformances.Count, Type = type, Ref = reference, Status = status, VarCount = this.conformanceVars + 1 };
             this.conformance.Conditions.AddRange(formulas);
             this.conformanceVars = -1;
             this.model.Conformances.Add(this.conformance);
@@ -681,7 +754,7 @@ public sealed class ModelText
                 Name = name,
                 Projection = this.model.Terms.Make(new SymHead(SymKind.Proj, name), c.Type, c.Ref),
                 Value = value,
-                Status = parts.Contains("pending") ? Status.Pending : Status.Valid,
+                Status = parts.Contains("pending") ? Status.Pending : parts.Contains("resource") ? Status.Resource : Status.Valid,
                 Inferred = inferred >= 0,
                 Definition = inferred >= 0 ? int.Parse(parts[inferred + 1]) : -1,
             });

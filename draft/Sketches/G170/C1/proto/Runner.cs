@@ -1,5 +1,6 @@
-// G170 C1 prototype runner: fixed cases (PlanB §3's B/D counterexamples and §4.3's forms), agreement of C with the exhaustive
-// bounded reference on generated finite models, order invariance, the Resource boundary and cost workloads.
+// G170 C1 prototype runner: fixed cases (PlanB §3's B/D counterexamples, §4.3's forms, the review's cases), agreement of C with the
+// exhaustive bounded reference on generated finite models, order invariance (answers, counts, work and limit outcomes), the
+// Resource boundary and its transport through judgments, and cost workloads including program-size scaling.
 // Run: dotnet run -c Release -- <fixed|random|order|resource|cost|all> [count] [seed]
 #pragma warning disable
 #nullable enable
@@ -11,6 +12,7 @@ namespace G170C1;
 public static class Runner
 {
     private static readonly object LogLock = new();
+    private static readonly Limits Harness = new() { Rounds = 300, Items = int.Parse(Environment.GetEnvironmentVariable("G170_ITEMS") ?? "10000") };
 
     public static int Main(string[] args)
     {
@@ -22,9 +24,8 @@ public static class Runner
         {
             var m = ModelText.Parse(File.ReadAllText(args[1]));
             var solver = new Solver(m) { Trace = Console.WriteLine };
-            var inadmissible = args.Length > 4 ? args[4].Split(',').Select(int.Parse) : [];
-            var a = solver.Supply(ModelText.ParseFormula(m, args[2]), args.Length > 3 && args[3] == "reads" ? new View("reads", inadmissible, wantsReads: true) : View.Ordinary, args.Length > 3 && args[3] == "limits" ? new Limits { Rounds = 300, Size = 30_000, Work = 3_000_000 } : new Limits { Rounds = args.Length > 3 ? 300 : 12 });
-            Console.WriteLine(a + " reads " + string.Join(" ", a.PositiveReads.Select(x => "{" + string.Join(",", x) + "}")));
+            var inadmissible = args.Length > 3 ? args[3].Split(',').Select(int.Parse) : [];
+            Console.WriteLine(solver.Supply(ModelText.ParseFormula(m, args[2]), new View("trace", inadmissible), Harness));
             return 0;
         }
 
@@ -54,7 +55,7 @@ public static class Runner
             {
                 var f = ModelText.ParseFormula(m, q);
                 var sw = Stopwatch.StartNew();
-                var a = new Solver(m).Supply(f, View.Ordinary, new Limits { Rounds = 300, Size = 30_000, Work = 3_000_000 });
+                var a = new Solver(m).Supply(f, View.Ordinary, Harness);
                 var tc = sw.Elapsed.TotalMilliseconds;
                 sw.Restart();
                 var r = Ref(m, View.Ordinary, f, 5);
@@ -107,6 +108,18 @@ public static class Runner
         """;
 
     public static string Chain(int depth, string qualifier = "Tree") => "T" + string.Concat(Enumerable.Repeat(".(" + qualifier + ").Child", depth));
+
+    /// <summary>The review's scaling program: n concrete conformances binding X = i32, unrelated to Holder.</summary>
+    public static string Many(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract Pp\n  associate X\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\nconformance i32 is Copy\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"conformance S{i} is Pp\n  binding X = i32\n");
+        }
+
+        return sb.ToString();
+    }
 
     private static int Fixed()
     {
@@ -266,8 +279,36 @@ public static class Runner
         failures += Expect("unseeded proof cycle", Cycle, "S1 is Aa", "none C");
         failures += Expect("cycle with an independent support", Cycle, "S2 is Aa", "+ C");
 
-        // Recursive-Contract prohibition (SPEC 8.3.3): a concrete conformance to Tree is never evidence.
+        // Recursive-Contract prohibition (SPEC 8.3.3): a concrete conformance to Tree is never evidence; the classification
+        // follows argument routes (the review's rec-arg: Cr reaches its projection through Dr's argument clause).
         failures += Expect("recursive Contract, concrete conformance", Trees + "\nconformance S1 is Tree\n  binding Child = S1", "S1 is Tree", "none C");
+        const string RecArg = """
+            contract Cr
+              associate X
+              clause Self is Dr<Self.(Cr).X>
+            contract Dr<A>
+              clause A is Cr
+            input T is Cr
+            conformance S1 is Cr
+              binding X = S1
+            """;
+        failures += Expect("recursive through an argument route: projection", RecArg, "T.(Cr).X is Cr", "+ C");
+        failures += Expect("recursive through an argument route: concrete conformance", RecArg, "S1 is Cr", "none C");
+
+        // Seed 7 model 85: T.(Kb).Y is i32, and i32 is Kb through Ka's argument clause: a projection of T conforms to Kb.
+        const string RecClosed = """
+            contract Ka<A>
+              clause A is Kb
+            contract Kb
+              associate X is Ka<i32>
+              associate Y is i32
+            input T is Kb
+            conformance S1 is Kb
+              binding X = S2
+              binding Y = i32
+            """;
+        failures += Expect("recursive through an identity with a closed Type: projection", RecClosed, "T.(Kb).Y is Kb", "+ C");
+        failures += Expect("recursive through an identity with a closed Type: concrete conformance", RecClosed, "S1 is Kb", "none C");
 
         // Pending declaration: provisional, never a cached negative; discoverable through discovery.
         const string Pending = """
@@ -280,6 +321,26 @@ public static class Runner
         failures += Expect("pending declaration", Pending, "T.(Aa).X is Copy", "none P");
         failures += ExpectEnumerate("pending declaration, discovery", Pending, "T.(Aa).X", "C", discovery: true, expectFact: "+Copy");
 
+        // Published Resource states: a source whose own check ended at a limit is read as Resource, never as absent.
+        const string Res = """
+            contract Copy
+            contract Aa
+              associate X
+            contract Bb resource
+              associate Y
+              clause Self.(Bb).Y is Copy
+            conformance S1 is Aa resource
+              binding X = i32
+            conformance S2 is Aa
+            input T is Bb
+            """;
+        failures += Expect("Resource conformance: its fact", Res, "S1 is Aa", "R");
+        failures += Expect("Resource conformance: its binding", Res, "S1.(Aa).X is i32", "R");
+        failures += Expect("Resource declaration: its clause", Res, "T.(Bb).Y is Copy", "R");
+        failures += Expect("Resource sources, independent evidence", Res, "S2 is Aa", "+ C");
+        failures += Expect("Resource sources, an input", Res, "T is Bb", "+ C");
+        failures += Expect("the conformance under its own check (SPEC 8.3.3)", Res, "S2 is Aa", "none C", new View("check S2", [], [1]));
+
         // Evidence views: exclusion of the definition's own inferred value; a completed external value; independent support.
         const string Views = """
             contract Pp
@@ -291,13 +352,13 @@ public static class Runner
             conformance S2 is Qq
               binding W = S1.(Pp).X inferred 2
             """;
-        var own = new View("frozen definition 1", [0], wantsReads: true);
-        var other = new View("frozen definition 2", [1], wantsReads: true);
+        var own = new View("frozen definition 1", [0]);
+        var other = new View("frozen definition 2", [1]);
         failures += Expect("view: own inferred value excluded", Views, "S1.(Pp).X is i32", "none C", own);
-        failures += Expect("view: completed external value admissible", Views, "S1.(Pp).X is i32", "+ C", other, reads: "{0}");
+        failures += Expect("view: completed external value admissible", Views, "S1.(Pp).X is i32", "+ C", other);
         failures += Expect("view: own value through another definition", Views, "S2.(Qq).W is i32", "none C", other);
-        failures += Expect("view: ordinary, reads through both", Views, "S2.(Qq).W is i32", "+ C", new View("ordinary+reads", [], wantsReads: true), reads: "{0,1}");
-        failures += Expect("view: independent explicit support", Views + "\ninput S1.(Pp).X is i32", "S1.(Pp).X is i32", "+ C", other, reads: "{}");
+        failures += Expect("view: ordinary, through both values", Views, "S2.(Qq).W is i32", "+ C");
+        failures += Expect("view: independent explicit support", Views + "\ninput S1.(Pp).X is i32", "S1.(Pp).X is i32", "+ C", other);
 
         // Closed-side identity in a recursive Contract: finite answers where the polarity settles; exhaustive work is Resource.
         const string IntTree = """
@@ -311,7 +372,6 @@ public static class Runner
             """;
         failures += Expect("closed identity, recursive: projection", IntTree, "T.(It).Value is Copy", "+ C");
         failures += Expect("closed identity, recursive: the closed Type", IntTree, "i32 is Copy", "+ C");
-        failures += Expect("closed identity, recursive: frozen view, a read-free support", IntTree, "i32 is Copy", "+ C", new View("reads", [], wantsReads: true), reads: "{}");
         const string IntTreeRead = """
             contract Copy
             contract Pp
@@ -325,8 +385,8 @@ public static class Runner
             conformance S1 is Pp
               binding X = i32
             """;
-        failures += Expect("closed identity through a binding: ordinary view", IntTreeRead, "i32 is Copy", "+ C");
-        failures += Expect("closed identity through a binding: every support reads it", IntTreeRead, "i32 is Copy", "R", new View("reads", [], wantsReads: true), limits: new Limits { Rounds = 200, Size = 20_000 });
+        failures += Expect("closed identity through a binding", IntTreeRead, "i32 is Copy", "+ C");
+        failures += Expect("closed identity through a binding: a frozen view settles like an ordinary one", IntTreeRead, "i32 is Copy", "+ C", new View("frozen, nothing excluded", []));
         const string IntTreeArgs = """
             contract Dd<A>
             contract It
@@ -338,11 +398,69 @@ public static class Runner
             """;
         failures += Expect("closed identity, argument bound by the goal", IntTreeArgs, "i32 is Dd<T.(It).Child>", "+ C");
         failures += Expect("closed identity, argument not derivable", IntTreeArgs, "i32 is Dd<U>", "none C");
-        failures += ExpectEnumerate("closed identity, enumerate the closed Type", IntTreeArgs, "i32", "R", limits: new Limits { Rounds = 200, Size = 20_000 });
+        failures += ExpectEnumerate("closed identity, enumerate the closed Type", IntTreeArgs, "i32", "R", limits: new Limits { Rounds = 200, Items = 20_000 });
+
+        // Upward congruence needs the kids' identity: a class demand reaches its nodes' kids (found by this revision).
+        const string Kids = """
+            contract Copy
+            contract Pp
+              associate X
+            contract Kk
+              associate Y
+              clause Self.(Kk).Y is Copy
+            conformance S1 is Pp
+              binding X = i32
+            """;
+        failures += Expect("congruence through a kid: a fact on List<i32>", Kids + "\ninput List<i32> is Copy", "List<S1.(Pp).X> is Copy", "+ C");
+        failures += Expect("congruence through a kid: a member through List<i32>", Kids + "\ninput T is Kk\ninput T.(Kk).Y is List<i32>", "List<S1.(Pp).X> is Copy", "+ C");
+
+        // One laziness rule for closed sides: a parameter-only side reached from an identity goal (bound expansion), and the
+        // binding rows matched through their value (lazy) or their projection (eager).
+        // A chain through a chain (random model 359): List<i32> = S1.(Kk).X (a closed side), = i64 (binding X's open side, meeting the
+        // class only through that virtual node), = S1.(Kk).Y (binding Y's closed side, meeting it only through that chain).
+        const string Chains = """
+            contract Copy
+            contract Kk
+              associate X is List<i32>
+              associate Y is Copy
+            conformance S1 is Kk
+              binding X = i64
+              binding Y = i64
+            """;
+        failures += Expect("a chain through a chain", Chains, "List<i32> is Copy", "+ C");
+
+        // Earlier gaps of this revision: a Contract concluded only by an input reaches the goal through identity (random model
+        // 130); an identity goal's classes meet (model 97); a chain through another instance of the same row (model 12).
+        failures += Expect("an input's Contract is concludable", "contract Kk\ncontract Kj\n  associate Y\n  clause Self.(Kj).Y is Self\ninput T is Kk\ninput T is Kj", "T.(Kj).Y is Kk", "+ C");
+        failures += Expect("an identity goal's classes meet", "contract K2\n  associate Y is List<i32>\n  clause Self.(K2).Y is i32\ninput T is K2", "i32 is List<i32>", "+ C");
+        failures += Expect("a chain through another instance of the same row", "contract Kc<A>\n  clause A.(Kd).Y is List<i32>\ncontract Kd\n  associate Y is Kc<Self>\ninput T is Kd\ninput U is Kd", "T.(Kd).Y is Kc<U>", "+ C");
+
+        // Seed 7 model 225: T.(K1).X = List<i32> = S1.(K1).X = i32 (binding X's open side meets the class through K1's virtual node
+        // ?.(K1).X, whose first kid can be anything); under List<…> the need for i32 goes down to the kid (upward congruence) and
+        // is answered as its own lookup in a later round.
+        const string Kid = """
+            contract Cp
+            contract K0<A>
+              clause A is Cp
+            contract K1 : K0<i32>
+              associate X is List<i32>
+            input T is K1
+            conformance S1 is K1
+              binding X = i32
+            """;
+        failures += Expect("a chain through a virtual node's first kid", Kid, "T.(K1).X is Cp", "+ C");
+        failures += Expect("a need under a ground Type's kid", Kid, "List<T.(K1).X> is Cp", "+ C");
+
+        // Seed 7 model 395: A is Kz<A> binds A = i64 from the argument; the subject i32 must then be i64's class: the classes meet.
+        failures += Expect("a bound variable meets the subject class", "contract Kz<A>\n  associate Y is i32\n  clause A is Kz<A>\nconformance S1 is Kz<i64>\n  binding Y = i64", "i32 is Kz<i64>", "+ C");
+        failures += Expect("closed parameter side, identity goal", "contract Kk<A>\n  clause A is List<i32>\ninput T is Kk<U>", "U is List<i32>", "+ C");
+        failures += Expect("many bindings: through the projection", Many(50), "S7.(Pp).X is Copy", "+ C");
+        failures += Expect("many bindings: an unrelated compound", Many(50), "List<i32> is Copy", "none C");
+        failures += Expect("many bindings: a projection needed in the closed class (each binding is a candidate)", Many(50) + "contract Ww\ncontract Uu\n  clause Self.(Pp).X is Ww\nconformance S9 is Uu\n", "i32 is Ww", "+ C");
         return failures;
     }
 
-    private static int Expect(string name, string text, string query, string expected, View? view = null, Limits? limits = null, string? reads = null)
+    private static int Expect(string name, string text, string query, string expected, View? view = null, Limits? limits = null)
     {
         var m = ModelText.Parse(text);
         var f = ModelText.ParseFormula(m, query);
@@ -350,9 +468,8 @@ public static class Runner
         var r6 = Ref(m, view ?? View.Ordinary, f, 6);
         var r8 = Ref(m, view ?? View.Ordinary, f, 8);
         var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
-        var readText = "{" + string.Join("},{", a.PositiveReads.Select(x => string.Join(",", x))) + "}";
-        var ok = verdict == expected && (reads is null || readText == reads);
-        Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | C {a} reads {readText} | ref6 {Show(r6)} ref8 {Show(r8)} | expected {expected}{(reads is null ? string.Empty : " reads " + reads)}");
+        var ok = verdict == expected;
+        Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | C {a} | ref6 {Show(r6)} ref8 {Show(r8)} | expected {expected}");
         return ok ? 0 : 1;
     }
 
@@ -397,10 +514,10 @@ public static class Runner
         public int EnumDisagree;
         public int EnumResource;
         public int EnumUnstable;
-        public int ReadsChecked;
-        public int ReadsAgree;
-        public int ReadsOver;
-        public int ReadsDisagree;
+        public int Contracts;
+        public int Recursive;
+        public int ClassificationDiffers;
+        public int Frozen;
         public readonly Dictionary<string, int> PositiveBy = new();
         public readonly List<long> V = new();
         public readonly List<long> E = new();
@@ -409,7 +526,6 @@ public static class Runner
         public readonly List<long> Rounds = new();
         public int Derived;
         public int ResourceNone;
-        public int ResourceFrozen;
 
         public void Add(Stats o)
         {
@@ -418,7 +534,6 @@ public static class Runner
             this.Queries += o.Queries;
             this.Derived += o.Derived;
             this.ResourceNone += o.ResourceNone;
-            this.ResourceFrozen += o.ResourceFrozen;
             this.Stable += o.Stable;
             this.Agree += o.Agree;
             this.Disagree += o.Disagree;
@@ -431,10 +546,10 @@ public static class Runner
             this.EnumDisagree += o.EnumDisagree;
             this.EnumResource += o.EnumResource;
             this.EnumUnstable += o.EnumUnstable;
-            this.ReadsChecked += o.ReadsChecked;
-            this.ReadsAgree += o.ReadsAgree;
-            this.ReadsOver += o.ReadsOver;
-            this.ReadsDisagree += o.ReadsDisagree;
+            this.Contracts += o.Contracts;
+            this.Recursive += o.Recursive;
+            this.ClassificationDiffers += o.ClassificationDiffers;
+            this.Frozen += o.Frozen;
             foreach (var (k, v) in o.PositiveBy)
             {
                 this.PositiveBy[k] = this.PositiveBy.GetValueOrDefault(k) + v;
@@ -471,7 +586,22 @@ public static class Runner
         Parallel.For(0, count, new ParallelOptions { MaxDegreeOfParallelism = int.Parse(Environment.GetEnvironmentVariable("G170_THREADS") ?? "6") }, i =>
         {
             var sw = Stopwatch.StartNew();
+            if (Environment.GetEnvironmentVariable("G170_PROGRESS") is not null)
+            {
+                lock (LogLock)
+                {
+                    Console.Error.WriteLine($"start {i} at {DateTime.Now:HH:mm:ss} heap {GC.GetTotalMemory(false) >> 20} MB");
+                }
+            }
+
             results[i] = OneModel(i, cases[i].Text, cases[i].Queries, cases[i].Subjects);
+            if (Environment.GetEnvironmentVariable("G170_PROGRESS") is not null)
+            {
+                lock (LogLock)
+                {
+                    Console.Error.WriteLine($"end {i} {sw.Elapsed.TotalSeconds:F1} s");
+                }
+            }
             if (sw.Elapsed.TotalSeconds > 10)
             {
                 results[i].Log.Add($"SLOW model {i}: {sw.Elapsed.TotalSeconds:F0} s");
@@ -485,21 +615,21 @@ public static class Runner
             st.Add(s);
             foreach (var line in log)
             {
-                if (!line.StartsWith("RESOURCE", StringComparison.Ordinal) && !line.StartsWith("ENUM-RESOURCE", StringComparison.Ordinal) && !line.StartsWith("READS-OVER", StringComparison.Ordinal) || printed++ < 12)
+                if (!line.StartsWith("RESOURCE", StringComparison.Ordinal) && !line.StartsWith("ENUM-RESOURCE", StringComparison.Ordinal) || printed++ < 12)
                 {
                     Console.WriteLine(line);
                 }
             }
         }
 
-        Console.WriteLine($"== RANDOM seed {seed}: {clock.Elapsed.TotalSeconds:F0} s; models {st.Models} (reference overflow {st.Overflow}); Supply queries {st.Queries} ({st.Derived} of them reference-derived facts): stable {st.Stable} " +
+        Console.WriteLine($"== RANDOM seed {seed}: {clock.Elapsed.TotalSeconds:F0} s; models {st.Models} (reference overflow {st.Overflow}); Supply queries {st.Queries} ({st.Derived} of them reference-derived facts, {st.Frozen} in a frozen view): stable {st.Stable} " +
             $"(agree {st.Agree}, disagree {st.Disagree}, C Resource {st.ResourceStable}), unstable {st.Unstable} (C Resource {st.ResourceUnstable}), provisional {st.Provisional}");
-        Console.WriteLine($"   C Resource on stable queries: {st.ResourceStable}, of which the reference has evidence for neither polarity {st.ResourceNone}, in a frozen view {st.ResourceFrozen}");
+        Console.WriteLine($"   C Resource on stable queries: {st.ResourceStable}, of which the reference has evidence for neither polarity {st.ResourceNone}");
         Console.WriteLine($"   answer kinds on stable agreement: {string.Join(", ", st.PositiveBy.OrderBy(x => x.Key).Select(x => x.Key + "=" + x.Value))}");
         Console.WriteLine($"   Enumerate: {st.Enumerations}: agree {st.EnumAgree}, disagree {st.EnumDisagree}, C Resource {st.EnumResource}, unstable {st.EnumUnstable}");
-        Console.WriteLine($"   reads (frozen views, <=3 bindings): checked {st.ReadsChecked}: exact {st.ReadsAgree}, over-approximated {st.ReadsOver}, disagree {st.ReadsDisagree}");
+        Console.WriteLine($"   recursive classification (Model's declaration search vs the reference's bounded SPEC 8.3.3 closure): {st.Contracts} Contracts, {st.Recursive} recursive, {st.ClassificationDiffers} differ");
         Console.WriteLine($"   cost per stable request: V {Dist(st.V)}; E {Dist(st.E)}; J {Dist(st.J)}; N {Dist(st.N)}; rounds {Dist(st.Rounds)}");
-        return st.Disagree + st.EnumDisagree + st.ReadsDisagree;
+        return st.Disagree + st.EnumDisagree;
     }
 
     private static (Stats, List<string>) OneModel(int i, string text, List<string> queries, List<string> subjects)
@@ -513,7 +643,7 @@ public static class Runner
         var inferred = m.Bindings.Values.Where(b => b.Inferred).ToList();
         if (inferred.Count != 0)
         {
-            views.Add(new View("frozen 0", inferred.Where(b => b.Definition == 0).Select(b => b.Id), wantsReads: true));
+            views.Add(new View("frozen 0", inferred.Where(b => b.Definition == 0).Select(b => b.Id)));
         }
 
         foreach (var view in views)
@@ -538,6 +668,18 @@ public static class Runner
                 continue;
             }
 
+            if (view == View.Ordinary)
+            {
+                st.Contracts += m.Decls.Count;
+                st.Recursive += m.Decls.Count(d => d.Recursive);
+                var differs = m.Decls.Where(d => d.Recursive != r1.Recursive.Contains(d)).ToList();
+                st.ClassificationDiffers += differs.Count;
+                if (differs.Count != 0)
+                {
+                    log.Add($"CLASSIFICATION model {i}: {string.Join(", ", differs.Select(d => d.Name + (d.Recursive ? " (Model only)" : " (reference only)")))}{nl}{text}");
+                }
+            }
+
             // Reference-derived queries: facts the bounded reference found on the query subjects (positive-biased).
             var derived = querySubjects.SelectMany(s => r1.FactsOn(s).Take(3).Select(x => x.Positive ? new Formula(FK.Is, s, x.Ref) : new Formula(FK.Not, l: new Formula(FK.Is, s, x.Ref)))).Take(8).ToList();
             st.Derived += derived.Count;
@@ -545,7 +687,8 @@ public static class Runner
             foreach (var f in formulas.Concat(derived))
             {
                 st.Queries++;
-                var a = solver.Supply(f, view, new Limits { Rounds = 300, Size = 30_000, Work = 3_000_000 });
+                st.Frozen += view == View.Ordinary ? 0 : 1;
+                var a = solver.Supply(f, view, Harness);
                 var x1 = r1.Answer(f);
                 var x2 = r2.Answer(f);
                 if (a.Outcome == Outcome.Provisional)
@@ -569,16 +712,12 @@ public static class Runner
                         st.ResourceNone++;
                     }
 
-                    if (view.WantsReads)
-                    {
-                        st.ResourceFrozen++;
-                    }
-
                     log.Add($"RESOURCE-ON-STABLE model {i} view {view.Name}: {f} ref {x1} C {a}{nl}{text}");
                     lock (LogLock)
                     {
                         File.AppendAllText(Path.Combine(Path.GetTempPath(), "g170-resource-stable.txt"), $"model {i} view {view.Name}: {f} ref {x1} C {a}{nl}{text}{nl}");
                     }
+
                     continue;
                 }
 
@@ -598,28 +737,6 @@ public static class Runner
                     st.Disagree++;
                     log.Add($"DISAGREE model {i} view {view.Name}: {f} ref {x1} C {a}{nl}{text}");
                 }
-
-                if (view.WantsReads && a.Positive && f.IsAtom && f.Kind != FK.Not && m.Bindings.Count <= 3 && st.ReadsChecked < 40)
-                {
-                    st.ReadsChecked++;
-                    var semantic = MinimalSufficient(m, view, f);
-                    var mine = a.PositiveReads.Select(x => string.Join(",", x)).OrderBy(x => x).ToList();
-                    var theirs = semantic.Select(x => string.Join(",", x)).OrderBy(x => x).ToList();
-                    if (mine.SequenceEqual(theirs))
-                    {
-                        st.ReadsAgree++;
-                    }
-                    else if (semantic.All(sx => a.PositiveReads.Any(cx => sx.All(cx.Contains))) && a.PositiveReads.All(cx => semantic.Any(sx => sx.All(cx.Contains))))
-                    {
-                        st.ReadsOver++;
-                        log.Add($"READS-OVER model {i}: {f} C [{string.Join(" ", mine)}] semantic [{string.Join(" ", theirs)}]{nl}{text}");
-                    }
-                    else
-                    {
-                        st.ReadsDisagree++;
-                        log.Add($"READS model {i}: {f} C [{string.Join(" ", mine)}] semantic [{string.Join(" ", theirs)}]{nl}{text}");
-                    }
-                }
             }
 
             if (view != View.Ordinary)
@@ -630,7 +747,7 @@ public static class Runner
             foreach (var s in subjectTerms)
             {
                 st.Enumerations++;
-                var a = solver.Enumerate(s, view, new Limits { Rounds = 300, Size = 30_000, Work = 3_000_000 });
+                var a = solver.Enumerate(s, view, Harness);
                 var f1 = r1.FactsOn(s).Select(x => (x.Positive, x.Ref)).ToList();
                 var f2 = r2.FactsOn(s).Select(x => (x.Positive, x.Ref)).ToList();
                 var c1 = Classes(r1, f1);
@@ -678,27 +795,6 @@ public static class Runner
         }
 
         return seen.Count;
-    }
-
-    private static List<int[]> MinimalSufficient(ProgramModel m, View view, Formula f)
-    {
-        var ids = m.Bindings.Keys.Where(b => !view.Inadmissible.Contains(b)).OrderBy(x => x).ToArray();
-        var result = new List<int[]>();
-        for (var mask = 0; mask < 1 << ids.Length; mask++)
-        {
-            var set = ids.Where((_, i) => (mask & (1 << i)) != 0).ToArray();
-            if (result.Any(r => r.All(set.Contains)))
-            {
-                continue;
-            }
-
-            if (Ref(m, view, f, 5, bindings: new HashSet<int>(set)).Pos)
-            {
-                result.Add(set);
-            }
-        }
-
-        return result.Where(r => !result.Any(o => o != r && o.All(r.Contains))).ToList();
     }
 
     private static string Dist(List<long> xs)
@@ -890,6 +986,18 @@ public static class Runner
             inputs.Add(tProjection + " is i32");
         }
 
+        // Compound subjects (this revision): a fact on a compound Type and an identity with one, so congruence through kids is
+        // exercised.
+        if (r.Next(100) < 15)
+        {
+            inputs.Add(Pick("List<i32>", "List<U>") + " is " + Pick("Cp", names[r.Next(n)] is var z1 && arity[Array.IndexOf(names, z1)] == 0 ? z1 : "Cp"));
+        }
+
+        if (tProjection is not null && r.Next(100) < 10)
+        {
+            inputs.Add("U is List<" + tProjection + ">");
+        }
+
         foreach (var input in inputs)
         {
             sb.Append("input ").Append(input).Append('\n');
@@ -935,6 +1043,7 @@ public static class Runner
         if (tProjection is not null)
         {
             subjects.Add(tProjection);
+            subjects.Add("List<" + tProjection + ">");
             var j = r.Next(n);
             if (assocs[j].Length != 0)
             {
@@ -945,6 +1054,7 @@ public static class Runner
         if (s1Ref is not null && assocs[s1Contract].Length != 0)
         {
             subjects.Add("S1.(" + s1Ref + ")." + assocs[s1Contract][0]);
+            subjects.Add("List<S1.(" + s1Ref + ")." + assocs[s1Contract][0] + ">");
         }
 
         queries = new List<string>();
@@ -982,63 +1092,95 @@ public static class Runner
     }
 
     // ---------------------------------------------------------------- order invariance
+    // Declaration order (templates and Contracts) shuffled; ordinary and frozen views. Each request is compared in full (verdict,
+    // outcome, reason, rounds, V, E, J, N, peak items) at harness limits, then at its own need and need − 1 for each limit: the
+    // limit outcome must be the same in both orders, Complete/Provisional at the need and Resource below it.
     private static int Order(int count, int seed)
     {
         var rnd = new Random(seed);
-        var checkedCount = 0;
+        var requests = 0;
+        var boundaries = 0;
         var differences = 0;
+        var unexpected = 0;
         for (var i = 0; i < count; i++)
         {
             var text = Generate(rnd, out var queries, out _);
             var m = ModelText.Parse(text);
             var shuffled = ModelText.Parse(text);
             var order = rnd;
-            var list = shuffled.Templates.OrderBy(_ => order.Next()).ToList();
+            var templates = shuffled.Templates.OrderBy(_ => order.Next()).ToList();
             shuffled.Templates.Clear();
-            shuffled.Templates.AddRange(list);
+            shuffled.Templates.AddRange(templates);
+            var decls = shuffled.Decls.OrderBy(_ => order.Next()).ToList();
+            shuffled.Decls.Clear();
+            shuffled.Decls.AddRange(decls);
             var a = new Solver(m);
             var b = new Solver(shuffled);
+            var views = new List<View> { View.Ordinary };
+            if (m.Bindings.Values.Any(x => x.Inferred))
+            {
+                views.Add(new View("frozen 0", m.Bindings.Values.Where(x => x.Inferred && x.Definition == 0).Select(x => x.Id)));
+            }
+
             foreach (var q in queries.Take(4))
             {
-                foreach (var limits in new[] { new Limits { Rounds = 300, Size = 30_000, Work = 3_000_000 }, new Limits { Rounds = 6, Size = 30_000 }, new Limits { Rounds = 300, Size = 60 } })
+                foreach (var view in views)
                 {
-                    var x = a.Supply(ModelText.ParseFormula(m, q), View.Ordinary, limits);
-                    var y = b.Supply(ModelText.ParseFormula(shuffled, q), View.Ordinary, limits);
-                    checkedCount++;
-                    if ((x.Verdict, x.Outcome, x.Rounds, x.V, x.E, x.N) != (y.Verdict, y.Outcome, y.Rounds, y.V, y.E, y.N))
+                    requests++;
+                    var x = a.Supply(ModelText.ParseFormula(m, q), view, Harness);
+                    var y = b.Supply(ModelText.ParseFormula(shuffled, q), view, Harness);
+                    differences += Compare(i, q, view, "harness", x, y);
+                    if (x.Outcome == Outcome.Resource)
                     {
-                        differences++;
-                        if (differences < 6)
+                        continue;
+                    }
+
+                    var checks = new List<(string Name, Limits Limits, bool Below)>
+                    {
+                        ("items=need", new Limits { Rounds = Harness.Rounds, Items = x.PeakItems }, false),
+                        ("items=need-1", new Limits { Rounds = Harness.Rounds, Items = x.PeakItems - 1 }, true),
+                    };
+                    if (x.Rounds > 0)
+                    {
+                        checks.Add(("rounds=need", new Limits { Rounds = x.Rounds, Items = Harness.Items }, false));
+                        checks.Add(("rounds=need-1", new Limits { Rounds = x.Rounds - 1, Items = Harness.Items }, true));
+                    }
+
+                    foreach (var (name, limits, below) in checks)
+                    {
+                        boundaries++;
+                        var xl = a.Supply(ModelText.ParseFormula(m, q), view, limits);
+                        var yl = b.Supply(ModelText.ParseFormula(shuffled, q), view, limits);
+                        differences += Compare(i, q, view, name, xl, yl);
+                        if ((xl.Outcome == Outcome.Resource) != below)
                         {
-                            Console.WriteLine($"ORDER model {i}: {q} limits {limits.Rounds}/{limits.Size}: {x} [{x.Detail}] vs {y} [{y.Detail}]");
-                            if (Environment.GetEnvironmentVariable("G170_DUMP") is not null)
+                            unexpected++;
+                            if (unexpected < 6)
                             {
-                                var xs = a.DumpSubs();
-                                var ys = b.DumpSubs();
-                                foreach (var line in xs.Except(ys))
-                                {
-                                    Console.WriteLine("  only original: " + line);
-                                }
-
-                                foreach (var line in ys.Except(xs))
-                                {
-                                    Console.WriteLine("  only shuffled: " + line);
-                                }
-
-                                Console.WriteLine($"  multiset sizes {xs.Count} {ys.Count}, distinct {xs.Distinct().Count()} {ys.Distinct().Count()}");
+                                Console.WriteLine($"BOUNDARY model {i}: {q} view {view.Name} {name}: {xl} (harness {x})");
                             }
-
                         }
                     }
                 }
             }
         }
 
-        Console.WriteLine($"== ORDER: {checkedCount} requests (declaration order shuffled; three limit settings): {differences} differ in verdict, outcome, rounds, V, E or N");
-        return differences;
+        Console.WriteLine($"== ORDER: {requests} requests on {count} models (templates and Contracts shuffled; ordinary and frozen views) and {boundaries} limit-boundary runs: {differences} differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; {unexpected} boundary outcomes other than Complete/Provisional at the need and Resource below it");
+        return differences + unexpected;
+
+        int Compare(int model, string q, View view, string setting, Answer x, Answer y)
+        {
+            if ((x.Verdict, x.Outcome, x.Reason, x.Rounds, x.V, x.E, x.J, x.N, x.PeakItems) == (y.Verdict, y.Outcome, y.Reason, y.Rounds, y.V, y.E, y.J, y.N, y.PeakItems))
+            {
+                return 0;
+            }
+
+            Console.WriteLine($"ORDER model {model}: {q} view {view.Name} {setting}: {x} peak {x.PeakItems} [{x.Detail}] vs {y} peak {y.PeakItems} [{y.Detail}]");
+            return 1;
+        }
     }
 
-    // ---------------------------------------------------------------- resource boundary
+    // ---------------------------------------------------------------- resource boundary and transport
     private static int ResourceBoundary()
     {
         var failures = 0;
@@ -1049,77 +1191,120 @@ public static class Runner
             var f = ModelText.ParseFormula(m, Chain(d) + " is Copy");
             var free = new Solver(m).Supply(f, View.Ordinary);
             var rounds = free.Rounds;
-            var size = free.PeakSize;
+            var items = free.PeakItems;
             var atRounds = new Solver(m).Supply(f, View.Ordinary, new Limits { Rounds = rounds });
             var belowRounds = new Solver(m).Supply(f, View.Ordinary, new Limits { Rounds = rounds - 1 });
-            var atSize = new Solver(m).Supply(f, View.Ordinary, new Limits { Size = size });
-            var belowSize = new Solver(m).Supply(f, View.Ordinary, new Limits { Size = size - 1 });
-            var ok = atRounds.Outcome == Outcome.Complete && belowRounds.Outcome == Outcome.Resource && atSize.Outcome == Outcome.Complete && belowSize.Outcome == Outcome.Resource;
+            var atItems = new Solver(m).Supply(f, View.Ordinary, new Limits { Items = items });
+            var belowItems = new Solver(m).Supply(f, View.Ordinary, new Limits { Items = items - 1 });
+            var ok = atRounds.Outcome == Outcome.Complete && belowRounds.Outcome == Outcome.Resource && atItems.Outcome == Outcome.Complete && belowItems.Outcome == Outcome.Resource;
             failures += ok ? 0 : 1;
-            Console.WriteLine($"{(ok ? "PASS" : "FAIL")} G170 depth {d}: needs rounds {rounds}, peak size {size}; limit=need {atRounds.Verdict}/{atRounds.Outcome}, need-1 rounds {belowRounds.Outcome} ({belowRounds.Reason}), need-1 size {belowSize.Outcome} ({belowSize.Reason})");
+            Console.WriteLine($"{(ok ? "PASS" : "FAIL")} G170 depth {d}: needs rounds {rounds}, peak items {items}; limit=need {atRounds.Verdict}/{atRounds.Outcome}, need-1 rounds {belowRounds.Outcome} ({belowRounds.Reason}), need-1 items {belowItems.Outcome} ({belowItems.Reason})");
         }
 
-        // An unbounded search: every support's reads of i32 is Copy in a recursive Contract with a closed identity.
+        // An unbounded search ends in Resource at every limit: enumerating a closed Type's infinite class.
         var it = ModelText.Parse("""
-            contract Copy
-            contract Pp
-              associate X
+            contract Dd<A>
             contract It
               associate Child is It
               associate Value
-              clause Self.(It).Value is S1.(Pp).X
-              clause Self.(It).Value is Copy
+              clause Self.(It).Value is i32
+              clause Self.(It).Value is Dd<Self>
             input T is It
-            conformance S1 is Pp
-              binding X = i32
             """);
-        var goal = ModelText.ParseFormula(it, "i32 is Copy");
-        foreach (var size in new[] { 1_000, 10_000, 100_000 })
+        foreach (var items in new[] { 1_000, 3_000, 10_000 })
         {
-            var a = new Solver(it).Supply(goal, new View("reads", [], wantsReads: true), new Limits { Size = size, Rounds = 100_000 });
-            Console.WriteLine($"{(a.Outcome == Outcome.Resource ? "PASS" : "FAIL")} unbounded supports, size limit {size}: {a}");
+            var sw = Stopwatch.StartNew();
+            var a = new Solver(it).Enumerate(ModelText.ParseType(it, "i32"), View.Ordinary, new Limits { Items = items });
+            Console.WriteLine($"{(a.Outcome == Outcome.Resource ? "PASS" : "FAIL")} unbounded enumeration, item limit {items}: {a} ({sw.Elapsed.TotalSeconds:F1} s)");
             failures += a.Outcome == Outcome.Resource ? 0 : 1;
         }
 
-        // Dependent-use stopping: a judgment needing a Resource answer stops with the Resource record; independent errors survive.
-        var checks = new (string Name, string Query, View View)[]
-        {
-            ("required Copy (provable)", Chain(8, "Tree").Replace("T", "T") + " is Copy", View.Ordinary),
-            ("required, every support (Resource)", "i32 is Copy", new View("reads", [], wantsReads: true)),
-            ("required, independent and unprovable", "T is Copy", View.Ordinary),
-        };
-        var combined = """
+        failures += Transport();
+        return failures;
+    }
+
+    // Transport: a conformance whose own check hits the limit publishes Resource; judgments that read it (alone, under and/or,
+    // through a condition, through its binding) are Resource and report nothing; independent judgments report as usual. Judged
+    // first with the conformance Pending (not final: restarted after publication) and again with the check first; the records
+    // must be the same. A control publishes Valid at the default limit.
+    private static int Transport()
+    {
+        const string Text = """
             contract Copy
             contract Tree
               associate Child is Tree
             contract CopyTree : Tree, Copy
               clause Self.(Tree).Child is CopyTree
-            contract Pp
-              associate X
-            contract It
-              associate Child is It
-              associate Value
-              clause Self.(It).Value is S1.(Pp).X
-              clause Self.(It).Value is Copy
-            input T is It
-            input V is CopyTree
-            conformance S1 is Pp
-              binding X = i32
+            contract Deep
+              associate D
+              clause Self.(Deep).D.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Copy
+            contract Bb
+            input T is CopyTree
+            conformance S1 is Deep pending
+              binding D = T
+            conformance S2 is Bb when S1 is Deep
             """;
-        var cm = ModelText.Parse(combined);
-        var records = new List<string>();
-        foreach (var (name, query, view) in checks)
+        var uses = new (string Scope, string Requirement)[]
         {
-            var q = query.Replace("T.(Tree)", "V.(Tree)");
-            var a = new Solver(cm).Supply(ModelText.ParseFormula(cm, q), view, new Limits { Size = 20_000 });
-            // The checker: Resource -> one located Resource record and the dependent judgment is absorbed; Unknown -> unproven.
-            records.Add(a.Outcome == Outcome.Resource ? $"Resource({name})" : a.Positive && !a.Negative ? $"ok({name})" : $"Unproven({name})");
+            ("a: S1 is Deep", "S1 is Deep"),
+            ("b: and with an unprovable one", "S1 is Deep and U is Copy"),
+            ("c: or with a proven one", "S1 is Deep or T is Copy"),
+            ("d: a condition (S2 is Bb when S1 is Deep)", "S2 is Bb"),
+            ("e: through its binding (S1.(Deep).D is Copy)", "S1.(Deep).D is Copy"),
+            ("f: independent, unprovable", "U is Copy"),
+            ("g: independent, proven", "T is Copy"),
+        };
+        var failures = 0;
+        foreach (var (label, limits, expected) in new[]
+        {
+            ("check at a 6-round limit", new Limits { Rounds = 6 }, "Resource(check S1 is Deep: rounds>6) Unproven(f: independent, unprovable)"),
+            ("check at the default limit", new Limits(), "Unproven(b: and with an unprovable one) Unproven(f: independent, unprovable)"),
+        })
+        {
+            var outcomes = new List<string>();
+            foreach (var checkFirst in new[] { false, true })
+            {
+                var m = ModelText.Parse(Text);
+                var checker = new Checker(m);
+                var pending = new List<(string Scope, string Requirement)>();
+                if (checkFirst)
+                {
+                    checker.Verify(m.Conformances[0], limits);
+                }
+
+                foreach (var (scope, requirement) in uses)
+                {
+                    if (checker.Require(scope, ModelText.ParseFormula(m, requirement)) is null)
+                    {
+                        pending.Add((scope, requirement)); // read a Pending source: judged again after publication
+                    }
+                }
+
+                if (!checkFirst)
+                {
+                    checker.Verify(m.Conformances[0], limits);
+                }
+
+                var proofs = new List<string>();
+                foreach (var (scope, requirement) in pending)
+                {
+                    proofs.Add(scope[..1] + "=" + checker.Require(scope, ModelText.ParseFormula(m, requirement)));
+                }
+
+                var records = string.Join(" ", checker.Records.OrderBy(x => x, StringComparer.Ordinal));
+                outcomes.Add(records);
+                var ok = records == expected;
+                failures += ok ? 0 : 1;
+                Console.WriteLine($"{(ok ? "PASS" : "FAIL")} transport, {label}, {(checkFirst ? "check first" : "uses first, restarted")}: S1 {m.Conformances[0].Status}; restarted [{string.Join(" ", proofs)}]; records [{records}]");
+            }
+
+            if (outcomes[0] != outcomes[1])
+            {
+                failures++;
+                Console.WriteLine($"FAIL transport, {label}: records depend on checking order");
+            }
         }
 
-        var expected = "ok(required Copy (provable)) Resource(required, every support (Resource)) Unproven(required, independent and unprovable)";
-        var got = string.Join(" ", records);
-        Console.WriteLine($"{(got == expected ? "PASS" : "FAIL")} dependent-use stopping: {got}");
-        failures += got == expected ? 0 : 1;
         return failures;
     }
 
@@ -1177,6 +1362,17 @@ public static class Runner
         Measure("growing argument, derivable depth 6", growing, "List<List<List<List<List<List<i32>>>>>> is Copy");
         Measure("growing argument, not derivable depth 6", growing, "List<List<List<List<List<List<i64>>>>>> is Copy");
 
+        // Program-size scaling (the review's B3 workload): n conformances binding X = i32. Unrelated requests must not grow with
+        // n; related ones grow only with the rows they can use.
+        foreach (var n in new[] { 10, 100, 400, 1600 })
+        {
+            var many = ModelText.Parse(Many(n));
+            foreach (var q in new[] { "List<i32> is Copy", "T.(Holder).Item is Copy", "i32 is Copy", "S1.(Pp).X is Copy", "i32 is Pp" })
+            {
+                Measure($"scaling n={n}: {q}", many, q, timed: n <= 400);
+            }
+        }
+
         // Repeated top-level requests: nothing is reused across requests (request-local), so the cost repeats.
         var solver = new Solver(trees);
         var goal = ModelText.ParseFormula(trees, Chain(8) + " is Copy");
@@ -1190,12 +1386,18 @@ public static class Runner
         Console.WriteLine($"repeated: 1000 top-level requests of G170 depth 8: {sw.Elapsed.TotalMilliseconds:F1} ms, {(GC.GetAllocatedBytesForCurrentThread() - before) / 1000} B per request");
     }
 
-    private static void Measure(string name, ProgramModel m, string query)
+    private static void Measure(string name, ProgramModel m, string query, bool timed = true)
     {
         var solver = new Solver(m);
         var f = ModelText.ParseFormula(m, query);
-        Answer a = null!;
-        for (var i = 0; i < 5; i++)
+        Answer a = solver.Supply(f, View.Ordinary);
+        if (!timed)
+        {
+            Console.WriteLine($"{name}: {a} peak {a.PeakItems}");
+            return;
+        }
+
+        for (var i = 0; i < 4; i++)
         {
             a = solver.Supply(f, View.Ordinary);
         }
@@ -1212,6 +1414,6 @@ public static class Runner
         }
 
         times.Sort();
-        Console.WriteLine($"{name}: {a} peak {a.PeakSize}; {times[times.Count / 2]:F0} us, {bytes} B");
+        Console.WriteLine($"{name}: {a} peak {a.PeakItems}; {times[times.Count / 2]:F0} us, {bytes} B");
     }
 }

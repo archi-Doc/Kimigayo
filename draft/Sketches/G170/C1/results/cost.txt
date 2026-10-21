@@ -1,20 +1,40 @@
 == COST (prototype, Release; median of 15 timed requests after 5 untimed; allocation per request)
-G170 Copy depth 1: + Complete rounds=4 V=8 E=5 J=20 N=5 peak 16; 138 us, 26104 B
-G170 Copy depth 2: + Complete rounds=6 V=11 E=7 J=42 N=6 peak 21; 114 us, 39896 B
-G170 Copy depth 4: + Complete rounds=10 V=17 E=11 J=114 N=8 peak 31; 240 us, 73856 B
-G170 Copy depth 8: + Complete rounds=18 V=29 E=19 J=398 N=12 peak 51; 626 us, 172688 B
-G170 Copy depth 16: + Complete rounds=34 V=53 E=35 J=1750 N=20 peak 91; 2186 us, 483176 B
-G170 Copy depth 32: + Complete rounds=66 V=101 E=67 J=9382 N=36 peak 171; 10254 us, 1574280 B
-G170 Copy depth 64: + Complete rounds=130 V=197 E=131 J=58694 N=68 peak 331; 35450 us, 5872296 B
-G170 unrelated Foo depth 8 (exhausted): none Complete rounds=0 V=2 E=1 J=0 N=13 peak 16; 10 us, 15096 B
-G170 unrelated Foo depth 64 (exhausted): none Complete rounds=0 V=2 E=1 J=0 N=69 peak 72; 41 us, 71456 B
-wide: 8 Contracts on T: + Complete rounds=2 V=6 E=10 J=35 N=11 peak 26; 27 us, 32696 B
-wide: 32 Contracts on T: + Complete rounds=2 V=6 E=34 J=131 N=35 peak 74; 65 us, 84952 B
-wide: 128 Contracts on T: + Complete rounds=2 V=6 E=130 J=515 N=131 peak 266; 242 us, 307944 B
-diamond refinements height 4: + Complete rounds=2 V=74 E=3 J=64 N=13 peak 89; 97 us, 138800 B
-diamond refinements height 16: + Complete rounds=2 V=650 E=3 J=616 N=37 peak 689; 894 us, 1224504 B
-diamond refinements height 64: + Complete rounds=2 V=8714 E=3 J=8584 N=133 peak 8849; 38206 us, 16829640 B
-growing argument, derivable depth 6: + Complete rounds=14 V=29 E=15 J=1142 N=22 peak 59; 251 us, 278232 B
-growing argument, not derivable depth 6: none Complete rounds=7 V=24 E=1 J=161 N=11 peak 36; 43 us, 64232 B
-repeated: 1000 top-level requests of G170 depth 8: 215.1 ms, 171928 B per request
+G170 Copy depth 1: + Complete rounds=4 V=8 E=5 J=25 N=5 peak 16; 208 us, 38376 B
+G170 Copy depth 2: + Complete rounds=6 V=11 E=7 J=53 N=6 peak 21; 142 us, 62864 B
+G170 Copy depth 4: + Complete rounds=10 V=17 E=11 J=140 N=8 peak 31; 382 us, 124784 B
+G170 Copy depth 8: + Complete rounds=18 V=29 E=19 J=466 N=12 peak 51; 1750 us, 317592 B
+G170 Copy depth 16: + Complete rounds=34 V=53 E=35 J=1950 N=20 peak 91; 4806 us, 953680 B
+G170 Copy depth 32: + Complete rounds=66 V=101 E=67 J=10038 N=36 peak 171; 11652 us, 3236200 B
+G170 Copy depth 64: + Complete rounds=130 V=197 E=131 J=61030 N=68 peak 331; 26910 us, 11970408 B
+G170 unrelated Foo depth 8 (exhausted): none Complete rounds=0 V=2 E=1 J=0 N=12 peak 15; 27 us, 18696 B
+G170 unrelated Foo depth 64 (exhausted): none Complete rounds=0 V=2 E=1 J=0 N=68 peak 71; 94 us, 96488 B
+wide: 8 Contracts on T: + Complete rounds=2 V=6 E=10 J=46 N=11 peak 26; 48 us, 42600 B
+wide: 32 Contracts on T: + Complete rounds=2 V=6 E=34 J=166 N=35 peak 74; 109 us, 98104 B
+wide: 128 Contracts on T: + Complete rounds=2 V=6 E=130 J=646 N=131 peak 266; 372 us, 338280 B
+diamond refinements height 4: + Complete rounds=2 V=74 E=3 J=126 N=3 peak 79; 137 us, 155000 B
+diamond refinements height 16: + Complete rounds=2 V=650 E=3 J=1230 N=3 peak 655; 1048 us, 1287624 B
+diamond refinements height 64: + Complete rounds=2 V=8714 E=3 J=17166 N=3 peak 8719; 34573 us, 17379536 B
+growing argument, derivable depth 6: + Complete rounds=14 V=34 E=15 J=652 N=22 peak 64; 233 us, 334688 B
+growing argument, not derivable depth 6: none Complete rounds=7 V=24 E=1 J=77 N=11 peak 36; 34 us, 97712 B
+scaling n=10: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9; 7 us, 14224 B
+scaling n=10: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 13 us, 23440 B
+scaling n=10: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8; 7 us, 13464 B
+scaling n=10: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=4 J=21 N=7 peak 15; 56 us, 39984 B
+scaling n=10: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7; 9 us, 9456 B
+scaling n=100: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9; 12 us, 14224 B
+scaling n=100: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 22 us, 23440 B
+scaling n=100: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8; 14 us, 13464 B
+scaling n=100: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=4 J=21 N=7 peak 15; 55 us, 39984 B
+scaling n=100: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7; 8 us, 9456 B
+scaling n=400: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9; 7 us, 14224 B
+scaling n=400: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 12 us, 23440 B
+scaling n=400: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8; 7 us, 13464 B
+scaling n=400: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=4 J=21 N=7 peak 15; 29 us, 39984 B
+scaling n=400: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7; 5 us, 9456 B
+scaling n=1600: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9
+scaling n=1600: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12
+scaling n=1600: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8
+scaling n=1600: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=4 J=21 N=7 peak 15
+scaling n=1600: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7
+repeated: 1000 top-level requests of G170 depth 8: 270.8 ms, 315392 B per request
 FAILURES 0
