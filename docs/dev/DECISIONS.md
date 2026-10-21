@@ -107,6 +107,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Removing the retired workflow deletes roughly 900 script/test lines and adds no modes or fallback.
   - The owner explicitly authorized aligning verification and related rules with the deletion. Existing
     architectural limits stay unchanged and are reviewed; no automated analyzer/size coverage is claimed.
+- **CR-R2 Constructors are exempt from the parameter-count limit** (2026-10-22, owner, direct, verbatim:
+  「コンストラクタの引数上限は撤廃します。6個は、コンストラクタ以外に適用します。」).
+  - Reading: the count of 6 parameters no longer applies to a constructor; it applies to every other member. The sub-limits (at most
+    2 optional, 1 `out` and 1 `bool`) are unchanged (the planning session's reading; the owner may correct it).
+  - Trigger: `BoundType`'s constructor and `TyCtxt.Intern` were both at 10 parameters when G160 added the raw Origin (unit bu20, C1a).
+    Methods such as `Intern` stay limited: being over the limit, they may not grow (C1a keeps one `origin` parameter at `Intern`).
 
 
 - **CR-A0** (owner). Begin the adopted Code Rules Analyzer A0–A8 before R4. KR3003 covers only
