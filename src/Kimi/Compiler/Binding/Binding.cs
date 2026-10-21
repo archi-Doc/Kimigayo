@@ -1147,8 +1147,7 @@ public sealed partial class Binding
             }
         }
 
-        this.ReportLateSites();
-        return new(mode, resolved, unresolved, invalid);
+        return new(mode, resolved, unresolved, invalid + this.PublishSites());
     }
 
     private BindingScope GetScope(object key, BindingScope? parent, Koto? owner = null)

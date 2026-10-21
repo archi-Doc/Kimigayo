@@ -200,6 +200,7 @@ public sealed partial class Binding
         this.capabilitiesReady = false;
         this.capabilityMode = mode;
         this.ClearNeededSites();
+        this.ClearProofScopes();
         this.ClearCapabilityResults();
     }
 
@@ -238,10 +239,10 @@ public sealed partial class Binding
             return leaf;
         }
 
-        // Copy's conditional premises over a projection can re-enter a declaration with ever larger arguments (2b-4a's census, DECISIONS
-        // BU-22: Copy is the only grower; Owned reads component summaries); the second growth step stays Unknown. Removal condition:
-        // Copy reads a per-declaration summary, or SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200).
-        if (!derivation && type.Symbol is not null && intrinsic.Intrinsic == IntrinsicKind.Copy)
+        // A proof can re-enter a declaration with ever larger arguments: Copy's conditional premise over a projection, and Owned's
+        // projection normalized at the use through a conformance binding that uses itself (SPEC 8.3.3, DECISIONS BU-22); the second
+        // growth step stays Unknown. Removal condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200).
+        if (!derivation && type.Symbol is not null)
         {
             var growing = false;
             var depth = 0;
@@ -287,31 +288,28 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
-            if (work.Result == ConstraintProof.Unknown)
-            {
-                consumer.ReadLimit ??= work.Limit; // P < U < L < R < E: an Unknown resting on a site stays limited in its readers.
-            }
-
-            return work.Result;
+            return this.ReadVerdict(work.Result, work.Cause);
         }
 
+        var outer = this.BeginProof();
         try
         {
             while (this.capabilityQueue.TryDequeue(out var next))
             {
                 next.Queued = false;
                 next.Evaluated = true;
-                next.ReadLimit = null;
                 this.capabilityConsumer = next;
+                this.limitRead = null;
+                this.errorRead = null;
                 var result = this.ComputeCapability(next);
-                var limit = result == ConstraintProof.Unknown ? next.ReadLimit : null;
-                if (result == next.Result && ReferenceEquals(limit, next.Limit))
+                var cause = result == ConstraintProof.Unknown ? this.limitRead : result == ConstraintProof.Error ? this.errorRead : null;
+                if (result == next.Result && ReferenceEquals(cause, next.Cause))
                 {
                     continue;
                 }
 
                 next.Result = result;
-                next.Limit = limit;
+                next.Cause = cause;
                 for (var i = 0; i < next.Dependents.Count; i++)
                 {
                     var dependent = next.Dependents[i];
@@ -328,15 +326,9 @@ public sealed partial class Binding
             this.capabilityConsumer = null;
         }
 
-        if (work.Result == ConstraintProof.Unknown && work.Limit is { } site)
-        {
-            // L (DECISIONS BU-22): inside the engine it combines as Unknown, so Refuted and Error win; the outermost request answers Error
-            // resting on the site, from which a failing check derives its record (TakeFailedCause, SPEC 23.1.2).
-            this.failedCause ??= site;
-            return ConstraintProof.Error;
-        }
-
-        return work.Result;
+        this.limitRead = null;
+        this.errorRead = null;
+        return this.EndProof(outer, this.ReadVerdict(work.Result, work.Cause));
     }
 
     private ConstraintProof ComputeCapability(CapabilityWork work)
@@ -674,11 +666,8 @@ public sealed partial class Binding
 
         internal CapabilityWork? Parent { get; set; }
 
-        // The site of an Unknown that a component summary decided (L, DECISIONS BU-22), or one it read through an Unknown child.
-        internal ICheckCause? Limit { get; set; }
-
-        // The first limit the evaluation in progress met.
-        internal ICheckCause? ReadLimit { get; set; }
+        // What its Unknown (a limit, L) or Error rests on (DECISIONS BU-22): a component summary's site or Error, or a child's it read.
+        internal ICheckCause? Cause { get; set; }
 
         internal List<CapabilityWork> Dependents { get; } = new();
 
@@ -688,8 +677,7 @@ public sealed partial class Binding
             this.Evaluated = false;
             this.Queued = false;
             this.Parent = null;
-            this.Limit = null;
-            this.ReadLimit = null;
+            this.Cause = null;
             this.Dependents.Clear();
         }
 

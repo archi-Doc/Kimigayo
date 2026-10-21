@@ -4,16 +4,16 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// Owns the explanation of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3): the first member of the
-// subject's OwnedOrigins through which a non-static Origin enters, which RecordMismatch records as the Constraint failure's fact.
-// Input: the converted Closure or Function Item, the required Function Type, the use. Output: an OwnedConversionFact, or none when the
+// Owns the failure of a common Function conversion whose subject is not proven Owned (SPEC 7.7.4, 15.2.3), a Constraint failure: an
+// Error rests on its cause (SPEC 23.1.2), else the record explains the first member of the subject's OwnedOrigins through which a
+// non-static Origin enters (an OwnedConversionFact).
+// Input: the converted Closure or Function Item, the required Function Type, the use. Output: the use failed, or false when the
 // conversion's Owned proof holds or the signature does not match. Must not change the Owned proof or select a conversion.
 public sealed partial class Binding
 {
-    // SPEC 15.2.3, 7.7.4: the first member of a conversion subject's OwnedOrigins through which a non-static Origin enters: a capture of a
-    // closure with a Shared receiver, or a bound Type argument of an Item, whose signature matches structurally. The first Refuted member
-    // (a body-local Origin) wins, else the first Unknown one; the Owned proof itself stays unchanged.
-    private OwnedConversionFact? OwnedConversionFailure(BoundType implementation, BoundType required, Koto at, Koto use)
+    // SPEC 15.2.3, 7.7.4: the explaining member is a capture of a closure with a Shared receiver, or a bound Type argument of an Item,
+    // whose signature matches structurally. The first Refuted member (a body-local Origin) wins, else the first Unknown one.
+    private bool FailOwnedConversion(BoundType implementation, BoundType required, Koto at, Koto use)
     {
         BoundType? signature;
         FunctionKoto? closure = null;
@@ -30,12 +30,25 @@ public sealed partial class Binding
         }
         else
         {
-            return null;
+            return false;
         }
 
-        if (signature is null || !ReferenceTypes.StorageMatches(required, signature) || this.ProveOwned(implementation, use) == ConstraintProof.Proven)
+        if (signature is null || !ReferenceTypes.StorageMatches(required, signature))
         {
-            return null;
+            return false;
+        }
+
+        this.failedCause = null;
+        var proof = this.ProveOwned(implementation, use);
+        if (proof == ConstraintProof.Proven)
+        {
+            return false;
+        }
+
+        if (proof == ConstraintProof.Error && this.TakeFailedCause() is { } cause)
+        {
+            this.CompleteDependent(use, cause);
+            return true;
         }
 
         OwnedConversionFact? unknown = null;
@@ -58,13 +71,20 @@ public sealed partial class Binding
             var fact = new OwnedConversionFact(at, implementation, name, member, origin, closure is null ? null : CaptureEntryOf(closure, name), closure, borrow, origin is not null && BodyLocalOrigin(origin));
             if (fact.Refuted)
             {
-                return fact;
+                unknown = fact;
+                break;
             }
 
             unknown ??= fact;
         }
 
-        return unknown;
+        if (unknown is not { } failure)
+        {
+            return false;
+        }
+
+        this.FailExplained(ref this.ownedConversions, use, failure.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, failure);
+        return true;
 
         static string Ordinal(int n) => n + (n % 100 is >= 11 and <= 13 ? "th" : (n % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" });
     }

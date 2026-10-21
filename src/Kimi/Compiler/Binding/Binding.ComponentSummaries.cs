@@ -7,11 +7,11 @@ namespace Kimi.Compiler;
 // Owns the per-declaration component summaries (SPEC 15.2.3, 15.3.5; DECISIONS BU-22): for each struct or enum, what its storage adds,
 // in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments (unit 2b-4 adds Transferable's half), as the
 // least fixed point over the declarations one solve reaches; Owned's judgment of a nominal instance through it; the sites of the located
-// Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each published
-// once per pass whenever a judgment it decided was read, and the cause a failing check rests on (ICheckCause).
+// Unsupported_Kd a summary decides (a projection family, F5 (a); the bound; the owner's option 2 for a pair parameter), each a limit (L)
+// a proof carries until its answer is settled (EndProof), and the stored Type a summary's Error rests on (ICheckCause).
 // Input: a declaration's stored shape (AdtDef.Types) with its Binding states; the Owned leaves (TryLeafCapability); the summaries of the
 // declarations its storage names; conformance bindings (ContractType) for a mapped projection whose base is not abstract.
-// Output: Summary; SummaryCapability, Owned of D<A, o>; the needed sites, which Binding.Check publishes (PublishNeededLimits, ReportLateSites).
+// Output: Summary; SummaryCapability, Owned of D<A, o>; the sites a settled proof needed, which Binding.Check publishes (PublishSites).
 // Invariants: storage is walked in the declaration's formals and never instantiated; a summary's projection is based at a formal or the
 // pair target of its declaration; a summary belongs to one capability epoch (ClearCapabilityResults ends it); the declarations one solve
 // reaches are iterated together from no exclusion to their least fixed point, which a family cut keeps finite; a warm rebind allocates
@@ -19,8 +19,8 @@ namespace Kimi.Compiler;
 // Must not instantiate storage, decide Copy, re-derive a leaf rule, record a Language error or cap a result silently.
 public sealed partial class Binding
 {
-    // A summary holding more projections is a family site too (F-a: a conformance binding can lengthen a projection with no projection
-    // link); it only yields the located Unsupported_Kd, never a verdict (DECISIONS BU-22).
+    // A projection of more steps makes its summary a family site too (F-a: a conformance binding can lengthen a projection with no
+    // projection link); it only yields the located Unsupported_Kd, never a verdict (DECISIONS BU-22).
     private const int ProjectionBound = 64;
 
     private readonly Dictionary<BindingSymbol, ComponentSummary> summaries = new(ReferenceEqualityComparer.Instance);
@@ -30,6 +30,7 @@ public sealed partial class Binding
     private readonly HashSet<(ComponentSummary Summary, int Slot)> linkSeen = [];
     private readonly TypeMemo<bool> summaryParts = new(); // The parts one summary walk met.
     private readonly TypeMemo<bool> scannedParts = new(); // The parts one storage scan met.
+    private readonly List<BoundType> resolvingSteps = []; // The concrete projection steps the walk in progress resolves through.
     private int summaryEpoch;
     private bool solvingSummaries;
 
@@ -38,7 +39,11 @@ public sealed partial class Binding
         => argument.Kind is BoundTypeKind.TargetProjection or BoundTypeKind.AssociatedProjection ||
             argument is { Kind: BoundTypeKind.Parameter, Symbol.Kind: not BindingSymbolKind.SemanticsTarget };
 
-    // Owned of D<A, o> (SPEC 15.2.3): Error absorbs, then Refuted, then a site (L), then Unknown. A site's Unknown carries it as its limit.
+    // A stored Type's own Type: a Field's annotation, or an inferred Property's.
+    private static BoundType? StoredTypeOf(Koto stored) => stored.BoundType ?? (stored as PropertyKoto)?.BoundSymbol?.Type;
+
+    // Owned of D<A, o> (SPEC 15.2.3): Error absorbs, then Refuted, then a site (L), then Unknown. An Error rests on the stored Type that
+    // decided it, a site's Unknown on the site (ReadVerdict).
     private ConstraintProof SummaryCapability(CapabilityWork work, DeclarationContainerKoto container)
     {
         if (container.BoundSymbol is not { Adt: not null } symbol)
@@ -49,7 +54,7 @@ public sealed partial class Binding
         var summary = this.Summary(symbol);
         if (summary.Error)
         {
-            return ConstraintProof.Error;
+            return this.ReadVerdict(ConstraintProof.Error, summary);
         }
 
         var result = summary.ExcludesOwned ? ConstraintProof.Refuted : summary.Unresolved ? ConstraintProof.Unknown : ConstraintProof.Proven;
@@ -74,32 +79,26 @@ public sealed partial class Binding
             result = CombineProof(result, proof, true);
         }
 
-        if (summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown)
-        {
-            // A limited judgment publishes its sites whatever reads it, so no path accepts a program whose summary hit a limit.
-            foreach (var site in summary.Sites)
-            {
-                site.Rest();
-            }
-
-            work.ReadLimit ??= summary.Sites[0];
-            return ConstraintProof.Unknown;
-        }
-
-        return result;
+        return summary.Sites.Count != 0 && result is ConstraintProof.Proven or ConstraintProof.Unknown
+            ? this.ReadVerdict(ConstraintProof.Unknown, summary.Sites[0]) : result;
     }
 
-    // A site first needed by a check of Binding.Check's own loop, after PublishNeededLimits: its record is added here.
-    private void ReportLateSites()
+    // SPEC 23.1.1: each site a settled proof needed, recorded once at its stored Type after Binding.Check's loop, whose checks can still
+    // need one; a stored Type that failed by itself has its own record. Returns the number of records.
+    private int PublishSites()
     {
+        var count = 0;
         foreach (var site in this.neededSites)
         {
             if (this.capabilityMode == BindingMode.Final && site.Use.BindingFailure == BindingFailure.None)
             {
                 this.Fail(site.Use, BindingFailure.Unsupported);
                 this.issues.Add(new(site.Use, DiagnosticCode.Unsupported_Kd) { Failure = BindingFailure.Unsupported });
+                count++;
             }
         }
+
+        return count;
     }
 
     private void ClearNeededSites()
@@ -163,6 +162,7 @@ public sealed partial class Binding
         finally
         {
             this.solvingSummaries = false;
+            this.resolvingSteps.Clear();
             set.Clear();
         }
     }
@@ -182,7 +182,7 @@ public sealed partial class Binding
             var types = summary.Declaration.Adt!.Types;
             for (var t = 0; t < types.Count; t++)
             {
-                if (types[t].BindingState != BindingState.Invalid && (types[t].BoundType ?? (types[t] as PropertyKoto)?.BoundSymbol?.Type) is { } stored)
+                if (types[t].BindingState != BindingState.Invalid && StoredTypeOf(types[t]) is { } stored)
                 {
                     this.Scan(summary, stored, t, this.scannedParts.Begin(this.storageVersion));
                 }
@@ -292,16 +292,19 @@ public sealed partial class Binding
             // As the stored walk judged an instantiated Field: Invalid is Error, an unbound or unresolved one Unknown.
             if (types[t].BindingState == BindingState.Invalid)
             {
-                summary.Error = true;
+                summary.Fail(types[t]);
             }
-            else if ((types[t].BoundType ?? (types[t] as PropertyKoto)?.BoundSymbol?.Type) is not { } stored)
+            else if (StoredTypeOf(types[t]) is not { } stored)
             {
                 summary.Unresolved = true;
             }
             else if (this.OperandContexts(stored) is var (invalid, unresolved) && (invalid || unresolved))
             {
-                summary.Error |= invalid;
                 summary.Unresolved |= !invalid;
+                if (invalid)
+                {
+                    summary.Fail(types[t]);
+                }
             }
             else
             {
@@ -324,7 +327,11 @@ public sealed partial class Binding
         if (TryLeafCapability(type, IntrinsicKind.Owned, out var leaf))
         {
             summary.ExcludesOwned |= leaf == ConstraintProof.Refuted;
-            summary.Error |= leaf == ConstraintProof.Error;
+            if (leaf == ConstraintProof.Error)
+            {
+                summary.Fail(summary.Declaration.Adt!.Types[stored]);
+            }
+
             return;
         }
 
@@ -362,8 +369,12 @@ public sealed partial class Binding
     {
         var component = this.Summary(type.Symbol!);
         summary.ExcludesOwned |= component.ExcludesOwned;
-        summary.Error |= component.Error;
         summary.Unresolved |= component.Unresolved;
+        if (component.Error)
+        {
+            summary.Fail(component.Use);
+        }
+
         for (var i = 0; i < component.Sites.Count; i++)
         {
             summary.AddSite(component.Sites[i]);
@@ -395,7 +406,7 @@ public sealed partial class Binding
 
             if (this.StoredType(projection, type) is { } mapped)
             {
-                this.WalkProjection(summary, mapped, stored, query);
+                this.Walk(summary, mapped, stored, query);
             }
             else
             {
@@ -408,27 +419,27 @@ public sealed partial class Binding
     // conformance binding under D's premises and walked.
     private void WalkProjection(ComponentSummary summary, BoundType projection, int stored, uint query)
     {
-        var root = projection;
-        while (root.Kind == BoundTypeKind.AssociatedProjection)
+        var step = projection;
+        var length = 1;
+        while (step.Components[0].Kind == BoundTypeKind.AssociatedProjection)
         {
-            root = root.Components[0];
+            step = step.Components[0];
+            length++;
         }
 
+        var root = step.Components[0];
         if (root.IsAbstract)
         {
-            if (summary.Projections.Contains(projection))
-            {
-                return;
-            }
-
-            if (summary.Projections.Count >= ProjectionBound)
+            if (length > ProjectionBound)
             {
                 summary.Family = true; // F-a's closure: the located Unsupported_Kd at the stored Type, never a verdict.
                 this.AddSite(summary, stored);
-                return;
+            }
+            else if (!summary.Projections.Contains(projection))
+            {
+                summary.Projections.Add(projection);
             }
 
-            summary.Projections.Add(projection);
             return;
         }
 
@@ -439,7 +450,21 @@ public sealed partial class Binding
             return;
         }
 
+        foreach (var outer in this.resolvingSteps)
+        {
+            if (ReferenceEquals(outer.Symbol, step.Symbol) && ReferenceEquals(outer.Components[0].Symbol, root.Symbol) &&
+                this.CapabilityTypeDepth(root) > this.CapabilityTypeDepth(outer.Components[0]))
+            {
+                // SPEC 8.3.3: the walk re-enters a conformance binding it is resolving through, at a deeper instance: the conformance
+                // uses itself, which has its own record. Error, resting on the stored Type, never a cap.
+                summary.Fail(summary.Declaration.Adt!.Types[stored]);
+                return;
+            }
+        }
+
+        this.resolvingSteps.Add(step);
         this.Walk(summary, resolved, stored, query);
+        this.resolvingSteps.RemoveAt(this.resolvingSteps.Count - 1);
     }
 
     private void AddSite(ComponentSummary summary, int stored)
@@ -458,15 +483,18 @@ public sealed partial class Binding
     // A link of the projection-link graph: D's formal From reaches argument Index of To, through projection steps when Projection.
     private readonly record struct ComponentLink(int From, ComponentSummary To, int Index, bool Projection, int Stored);
 
-    private sealed class ComponentSummary(BindingSymbol declaration)
+    // A summary is the cause its Error rests on: the stored Type that decided it, which has its own record.
+    private sealed class ComponentSummary(BindingSymbol declaration) : ICheckCause
     {
+        public Koto Use { get; private set; } = null!;
+
         internal BindingSymbol Declaration { get; } = declaration;
 
         internal int Epoch { get; private set; } = -1;
 
         internal bool ExcludesOwned { get; set; }
 
-        internal bool Error { get; set; }
+        internal bool Error { get; private set; }
 
         internal bool Unresolved { get; set; }
 
@@ -482,6 +510,19 @@ public sealed partial class Binding
 
         // A site per stored Type of the declaration, reused across passes.
         internal ComponentSite?[] OwnSites { get; set; } = [];
+
+        public void Rest()
+        {
+        }
+
+        internal void Fail(Koto use)
+        {
+            if (!this.Error)
+            {
+                this.Error = true;
+                this.Use = use;
+            }
+        }
 
         internal void AddSite(ComponentSite site)
         {

@@ -809,9 +809,9 @@ public sealed partial class Binding
     {
         // SPEC 15.2.3, 7.7.4: the Owned condition of a common Function conversion is a Constraint failure, never a Type mismatch.
         if (expected is BoundType { Kind: BoundTypeKind.Function } owner && actual is BoundType { Kind: BoundTypeKind.Closure or BoundTypeKind.FunctionItem } value &&
-            this.OwnedConversionFailure(value, owner, at, node) is { } owned)
+            this.FailOwnedConversion(value, owner, at, node))
         {
-            return this.FailExplained(ref this.ownedConversions, node, owned.Refuted ? BindingFailure.UnsatisfiedConstraint : BindingFailure.UnprovenConstraint, owned);
+            return null;
         }
 
         // SPEC 10.7, 15.6.1: a common Function conversion compares whole contracts; with matching signatures, its Origin failure is

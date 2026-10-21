@@ -31,11 +31,18 @@ public class ComponentSummaryTest
         "struct PHold<T>\n    T is Has\n    let v: T.(Has).Out\nstruct Fold<T>\n    T is Has\n    let v: T.(Has).Out\n    let f: Option<obj/Fold<Pair2<T>>>\n" +
         "contract Tree\n    associate Child is Tree\ncontract OTree: Tree, Owned\n    Self.(Tree).Child is OTree\n" +
         "struct TreeNode<T>\n    T is Tree\n    let v: T\n    let kids: Array<TreeNode<T.(Tree).Child>>\n" +
+        "contract Marker\n    associate M\n" +
+        "struct TreeM<T>\n    T is Tree\n    Self is Marker\n    associate Marker.M is i32\n    let v: T\n    let kids: Array<TreeM<T.(Tree).Child>>\n" +
+        "contract RHas\n    associate Out is RHas\n" +
+        "struct P2<X>\n    let a: X\n    Self is RHas when X is RHas\n        associate RHas.Out is X.(RHas).Out.(RHas).Out\n" +
+        "struct FoldR<T>\n    T is RHas\n    let v: T.(RHas).Out\n    let f: Option<obj/FoldR<P2<T>>>\n" +
         "contract Seq\n    associate Next is Seq\n    associate Elem\n" +
         "struct Walk<T>\n    T is Seq\n    let e: T.(Seq).Elem\n    let n: Option<obj/Walk<T.(Seq).Next>>\n" +
         "struct Owner<s/T>\n    s is owner\n    T is Has\n    let v: T.(Has).Out\nstruct Whole<s/T>\n    s is owner\n    T is Has\n    let e: Owner<s/T>\n";
 
     private const string Need = "func need<T>(x: T)\n    T is Owned\n    ()\n";
+
+    private const string Site = "Unsupported_Kd Array<TreeNode<T.(Tree).Child>>";
 
     // The prototype's id, the queried Type, its premises (U a Type parameter when they name it) and SPEC's Owned, with a projection
     // family's located U as Error (F5 (a)). The Origin rows name an input Origin `a` or prove `x.a == static`.
@@ -77,10 +84,12 @@ public class ComponentSummaryTest
     [InlineData("p2", "PHold<U>", "U is OHas", ConstraintProof.Proven)]
     [InlineData("p5", "PHold<Cfg>", "", ConstraintProof.Proven)]
     [InlineData("p6", "Fold<U>", "U is OHas", ConstraintProof.Proven)]
+    [InlineData("p6b", "Fold<U>", "U is Has and Owned", ConstraintProof.Unknown)] // Fold's summary keeps T.(Has).Out.
     [InlineData("p7", "Fold<Cfg>", "", ConstraintProof.Proven)]
     [InlineData("f1", "TreeNode<U>", "U is OTree", ConstraintProof.Error)]
     [InlineData("f2", "TreeNode<U>", "U is Tree and Owned", ConstraintProof.Error)]
     [InlineData("f5", "Walk<U>", "U is Seq and Owned", ConstraintProof.Error)]
+    [InlineData("fa", "FoldR<U>", "U is RHas and Owned", ConstraintProof.Error)] // F-a: a conformance binding lengthens the projection.
     [InlineData("w1", "Whole<Cfg>", "", ConstraintProof.Proven)]
     public void OwnedFollowsTheDeclarationSummaries(string id, string type, string premises, ConstraintProof expected)
     {
@@ -124,45 +133,84 @@ public class ComponentSummaryTest
         Assert.Null(c.Semantics.CallOf(call));
     }
 
-    // P < U < L < R < E (DECISIONS BU-22): an exact refutation beside a family wins at the use; the family's site, which the judgment read,
-    // is still reported.
-    [Fact]
-    public void ARefutationBesideAFamilyIsItsOwnRecord()
+    // P < U < L < R < E (DECISIONS BU-22): a limit is a value of the proofs that combine it, the connectives, a clause list and a
+    // candidate's applicability; only where the verdict is no longer combined and is L does it answer Error resting on the site, whose
+    // one record a failing check takes (its own derived); an exact refutation or proof elsewhere decides. Readers that record their own
+    // failure, such as a common Function conversion, rest on it too (SPEC 23.1.2). An unread family raises nothing.
+    [Theory]
+    [InlineData("a1", "func reject<T>(x: T)\n    T is not Owned\n    ()\nfunc inspect<U>(x: (TreeNode<U>, Text.FixedBuffer during a))\n    U is OTree\n    reject(x@move)", "")]
+    [InlineData("a2", "func reject<T>(x: T)\n    T is not Owned\n    ()\nfunc inspect<U>(x: TreeNode<U>)\n    U is OTree\n    reject(x@move)", Site)]
+    [InlineData("a3", Need + "func inspect<U>(x: (TreeNode<U>, Text.FixedBuffer during a))\n    U is OTree\n    need(x@move)", "NoApplicableOverload_Kd need(x@move)")]
+    [InlineData("b1", "func pick<T>(x: T, y: i32) -> i32\n    T is Owned\n    return 1\nfunc pick<T>(x: T, y: i64) -> i32\n    return 2\nfunc inspect<U>(x: (TreeNode<U>, Text.FixedBuffer during a)) -> i32\n    U is OTree\n    return pick(x@move, 1)", "")]
+    [InlineData("c1", "func need2<T>(x: T)\n    T is Owned and Copy\n    ()\nfunc inspect<U>(x: TreeNode<U>)\n    U is OTree\n    need2(x@move)", "NoApplicableOverload_Kd need2(x@move)")]
+    [InlineData("c2", "func need3<T>(x: T)\n    T is Owned\n    T is Copy\n    ()\nfunc inspect<U>(x: TreeNode<U>)\n    U is OTree\n    need3(x@move)", "NoApplicableOverload_Kd need3(x@move)")]
+    [InlineData("d1", "func needOr<T>(x: T)\n    T is Marker or Owned\n    ()\nfunc inspect<U>(x: TreeM<U>)\n    U is OTree\n    needOr(x@move)", "")]
+    [InlineData("d2", "func needOr<T>(x: T)\n    T is Owned or Marker\n    ()\nfunc inspect<U>(x: TreeM<U>)\n    U is OTree\n    needOr(x@move)", "")]
+    [InlineData("d4", "func needOr<T>(x: T)\n    T is Copy or Owned\n    ()\nfunc inspect<U>(x: TreeNode<U>)\n    U is OTree\n    needOr(x@move)", Site)]
+    [InlineData("k1", Need + "func reject<T>(x: T)\n    T is not Owned\n    ()\nfunc inspect<U>(x: TreeNode<U>, y: (TreeNode<U>, Text.FixedBuffer during a))\n    U is OTree\n    reject(y@move)\n    need(x@move)", Site)]
+    [InlineData("f1", "func identity<T>(value: T) -> T => value@move\nfunc inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: (TreeNode<U>) -> TreeNode<U> = identity\n    ()", Site)]
+    [InlineData("f2", "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let f: () -> () = func [x@move] () => ()\n    ()", Site)]
+    [InlineData("g1", "func inspect<U>(x: TreeNode<U>)\n    U is OTree\n    let y = x@move\n    ()", "")]
+    [InlineData("h1", Need + "func inspect<U>(x: FoldR<U>)\n    U is RHas and Owned\n    need(x@move)", "Unsupported_Kd Option<obj/FoldR<P2<T>>>")]
+    [InlineData("two", Need + "func inspect<U>(a: TreeNode<U>)\n    U is OTree\n    need(a@move)\nfunc again<U>(a: TreeNode<U>)\n    U is Tree and Owned\n    need(a@move)", Site)]
+    public void ALimitIsSettledWhereItsVerdictIsNoLongerCombined(string id, string source, string records)
     {
-        var c = CompilationTestHelper.ParseSuccess(Prelude + Need +
-            "func inspect<U>(x: (TreeNode<U>, Text.FixedBuffer during a))\n    U is OTree\n    need(x@move)");
-        Assert.False(c.Bind().IsComplete);
+        var c = CompilationTestHelper.ParseSuccess(Prelude + source);
+        var complete = c.Bind().IsComplete;
         c.Binding.ReportDiagnostics();
-        Assert.Equal(
-            [("NoApplicableOverload_Kd", "need(x@move)"), ("Unsupported_Kd", "Array<TreeNode<T.(Tree).Child>>")],
-            TestDiagnostics.Of(c).Select(static x => (x.Code, x.Text!)).Order());
+        Assert.Equal(records, string.Join(" | ", TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Text}")));
+        Assert.True(complete == (records.Length == 0), id);
     }
 
-    // The closure of F5 (a) (DECISIONS BU-22): a summary holding more than 64 projections is a site, which only yields the located
-    // Unsupported_Kd at the stored Type past the bound, never a verdict.
+    // SPEC 8.3.3 (DECISIONS BU-22): a conformance binding that uses itself at a deeper instance grows a proof without end, at the use
+    // (the growth guard) and in a summary's walk (Error resting on the stored Type); the conformance has its own record, and Binding ends.
+    // A deeper instance of a declaration reached through another conformance is no such growth and stays exact.
     [Theory]
-    [InlineData(64, "Proven", "")]
-    [InlineData(65, "Error", "Unsupported_Kd T.(Many).A65")]
-    public void ProjectionsPastTheBoundAreASite(int fields, string owned, string records)
+    [InlineData("n1", "func inspect(a: PH<W<i32>>)\n    need(a@move)", "PH<W<(X, X)>>", "Unknown")]
+    [InlineData("n2", "struct S\n    let p: PH<W<i32>>\nfunc inspect(a: S)\n    need(a@move)", "PH<W<(X, X)>>", "Error")]
+    [InlineData("x1", "struct S\n    let p: PH<W<i32>>\nfunc inspect(a: S)\n    need(a@move)", "PH<V<Option<X>>>", "Proven")]
+    [InlineData("x2", "func inspect(a: PH<W<i32>>)\n    need(a@move)", "PH<V<Option<X>>>", "Proven")]
+    public void AConformanceUsingItselfIsItsOwnRecord(string id, string use, string binding, string owned)
     {
-        var source = new StringBuilder("contract Many\n");
+        var c = CompilationTestHelper.ParseSuccess(Need + "contract Has2\n    associate Out\nstruct V<Y>\n    Self is Has2\n    associate Has2.Out is i32\n" +
+            "struct W<X>\n    Self is Has2\n    associate Has2.Out is " + binding + "\nstruct PH<T>\n    T is Has2\n    let v: T.(Has2).Out\n" + use);
+        var complete = c.Bind().IsComplete;
+        c.Binding.ReportDiagnostics();
+        var records = TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Text}").ToArray();
+        var f = Function(c, "inspect");
+        Assert.Equal(owned, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f).ToString());
+        Assert.True(complete == (owned == "Proven"), id);
+        Assert.Equal(!complete, records.Contains("UnprovenConstraint_Kd Self is Has2"));
+        Assert.DoesNotContain(records, static x => x.StartsWith("Unsupported_Kd", StringComparison.Ordinal));
+    }
+
+    // The closure of F5 (a) (DECISIONS BU-22): a projection of more than 64 steps (a conformance binding can lengthen a projection with
+    // no projection link) makes its summary a site, which only yields the located Unsupported_Kd at its stored Type, never a verdict; a
+    // shorter one is judged (a stored projection of several steps stays Unknown, as before), and many short projections stay exact.
+    [Theory]
+    [InlineData(64, 1, "Unknown", "UnprovenConstraint_Kd")]
+    [InlineData(65, 1, "Error", "Unsupported_Kd")]
+    [InlineData(1, 65, "Proven", "")]
+    public void ProjectionsPastTheBoundAreASite(int steps, int fields, string owned, string record)
+    {
+        var source = new StringBuilder("contract Deep: Owned\n    associate Next is Deep\ncontract Many\n");
         for (var i = 1; i <= fields; i++)
         {
-            source.Append("    associate A").Append(i).Append(" is Owned\n");
+            source.Append("    associate A").Append(i).Append(" is Deep\n");
         }
 
         source.Append("struct Wide<T>\n    T is Many\n");
         for (var i = 1; i <= fields; i++)
         {
-            source.Append("    let field").Append(i).Append(": T.(Many).A").Append(i).Append('\n');
+            source.Append("    let field").Append(i).Append(": T.(Many).A").Append(i).Append(string.Concat(Enumerable.Repeat(".(Deep).Next", steps - 1))).Append('\n');
         }
 
         var c = CompilationTestHelper.ParseSuccess(source + Need + "func inspect<U>(x: Wide<U>)\n    U is Many and Owned\n    need(x@move)");
-        c.Bind();
+        Assert.Equal(record.Length == 0, c.Bind().IsComplete);
         c.Binding.ReportDiagnostics();
         var f = Function(c, "inspect");
         Assert.Equal(owned, c.Binding.ProveOwned(f.Parameters[0].Type.TypeOf()!, f).ToString());
-        Assert.Equal(records, string.Join(" | ", TestDiagnostics.Of(c).Select(static x => $"{x.Code} {x.Text}")));
+        Assert.Equal(record, string.Join(" | ", TestDiagnostics.Of(c).Select(static x => x.Code)));
     }
 
     // OQ-F5-3 (a), D5 (DECISIONS BU-22): Binding now accepts a value of a non-regular recursive Type where Owned is required, and the old
@@ -180,15 +228,16 @@ public class ComponentSummaryTest
         Assert.Contains("depth limit of 64 levels", failure, StringComparison.Ordinal);
     }
 
-    // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing.
+    // Immutable after Bind and pooled: a warm rebind that solves the summaries again allocates nothing, a family's settled limit included.
     [Trait("Purpose", "Allocation")]
-    [Fact]
-    public void AWarmRebindSolvesTheSummariesWithoutAllocating()
+    [Theory]
+    [InlineData("func f(a: Chain<i32>, b: Ping<i32>, c: Nest<i32>)\n    need(a@move)\n    need(b@move)\n    need(c@move)\nfunc g<U>(a: Fold<U>)\n    U is OHas\n    need(a@move)", true)]
+    [InlineData("func f<U>(a: TreeNode<U>, b: Walk<U>)\n    U is OTree and Seq\n    need(a@move)\n    need(b@move)", false)]
+    public void AWarmRebindSolvesTheSummariesWithoutAllocating(string source, bool complete)
     {
-        var c = CompilationTestHelper.ParseSuccess(Prelude + Need +
-            "func f(a: Chain<i32>, b: Ping<i32>, c: Nest<i32>)\n    need(a@move)\n    need(b@move)\n    need(c@move)\n" +
-            "func g<U>(a: Fold<U>)\n    U is OHas\n    need(a@move)");
-        Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
+        var c = CompilationTestHelper.ParseSuccess(Prelude + Need + source);
+        Assert.Equal(complete, c.Binding.Bind(BindingMode.Final).IsComplete);
+        c.Binding.Bind(BindingMode.Final);
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final)));
     }
 
