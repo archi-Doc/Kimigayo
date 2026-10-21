@@ -149,6 +149,10 @@ public sealed class BoundOrigin
     internal bool Open { get; init; }
 
     internal BindingSymbol? BorrowCondition { get; set; }
+
+    // The body whose binding first formed the atom (Binding.ExecutableBodies.cs; DECISIONS R4-M101 E5): defined for a non-declaration
+    // binder, which one body binds; a declaration binder's atom is read by its slot's role instead.
+    internal ExecutableBody Body { get; init; }
 }
 
 /// <summary>A retained semantic requirement, independent of successful name resolution. An <see cref="BindingObligationKind.OriginOutlives"/>
@@ -158,8 +162,12 @@ public sealed class BoundOrigin
 /// relation of an input's instantiated Type at that input (SPEC 15.3.7, 15.6.4 step 3), which classifies the record's source and is
 /// discharged by judgment. <c>Discharge</c> names the check responsible for the obligation. <c>Condition</c> is the Semantics case
 /// the relation is required in (SPEC 15.6.5): the pair binders in scope of <c>Use</c> that must all be borrows, as bits of their
-/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases.</summary>
-public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0);
+/// order there (<see cref="Binding.PairSlotCondition"/>); its proof may use the premises of exactly those cases. <c>Body</c> is the executable
+/// body Binding formed it in, none for a declaration's (Binding.ExecutableBodies.cs), part of its identity.</summary>
+public readonly record struct BindingObligation(BindingObligationKind Kind, Koto Use, BindingDeadline Deadline, BoundType? Type = null, BoundOrigin? Longer = null, BoundOrigin? Shorter = null, BoundLength? Length = null, bool Equality = false, Koto? Clause = null, bool WellFormed = false, OriginDischarge Discharge = OriginDischarge.Judgment, ulong Condition = 0)
+{
+    internal ExecutableBody Body { get; init; }
+}
 
 internal enum TypePosition : byte
 {
@@ -293,6 +301,9 @@ public sealed partial class Binding
 
         internal BindingScope? Scope { get; set; }
 
+        // The body that opened it: a local's, or none for a declaration's (DECISIONS R4-M101 E1), whose late rows it owns.
+        internal ExecutableBody Body { get; set; }
+
         internal int State { get; set; }
 
         internal Koto? Failure { get; set; }
@@ -314,6 +325,7 @@ public sealed partial class Binding
             this.State = 0;
             this.Failure = null;
             this.Scope = null;
+            this.Body = default;
             this.Sets.Clear();
             this.Replacements.Clear();
             this.Pending.Clear();

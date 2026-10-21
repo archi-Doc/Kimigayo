@@ -289,8 +289,7 @@ public sealed partial class Binding
             return null;
         }
 
-        declaration.Scope = scope;
-        declaration.State = 1;
+        (declaration.Scope, declaration.Body, declaration.State) = (scope, this.formingBody, 1);
         this.originStateVersion++;
         foreach (var entry in declaration.Sets)
         {

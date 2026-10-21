@@ -404,19 +404,34 @@ public sealed partial class Binding
                 continue;
             }
 
-            foreach (var relation in declaration.Relations)
+            // A clause's rows are its owner's body's: a local's, or none for a declaration's (DECISIONS R4-M101 E1).
+            var saved = this.EnterBody(declaration.Body);
+            try
             {
-                if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
-                    (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
+                this.ValidateOriginRelations(declaration);
+            }
+            finally
+            {
+                this.formingBody = saved;
+            }
+        }
+    }
+
+    // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.
+    private void ValidateOriginRelations(OriginDeclaration declaration)
+    {
+        foreach (var relation in declaration.Relations)
+        {
+            if (!this.ProvesOriginOutlives(relation.Longer, relation.Shorter, relation.Syntax) ||
+                (relation.Equality && !this.ProvesOriginOutlives(relation.Shorter, relation.Longer, relation.Syntax)))
+            {
+                if (declaration.Owner is FieldKoto)
                 {
-                    if (declaration.Owner is FieldKoto)
-                    {
-                        this.JudgeLocalClause(declaration, relation);
-                    }
-                    else
-                    {
-                        this.JudgeDeclaredRelation(relation);
-                    }
+                    this.JudgeLocalClause(declaration, relation);
+                }
+                else
+                {
+                    this.JudgeDeclaredRelation(relation);
                 }
             }
         }

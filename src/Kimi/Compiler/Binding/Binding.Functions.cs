@@ -9,8 +9,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private int defaultBindingDepth;
-
     private static bool HasParameterDefaults(FunctionKoto function)
     {
         for (var i = 0; i < function.Parameters.Count; i++)
@@ -25,65 +23,81 @@ public sealed partial class Binding
     }
 
     // A function definition: its signature (header, receiver, generic arguments, Constraints, effect bounds, parameter and result
-    // Types), then its parts (parameter defaults, base initializer and body).
+    // Types), bound as its declaration's (SPEC 15.6.1; DECISIONS R4-M101 E3), then its parts (BindFunctionParts).
     private BoundType? BindFunction(FunctionKoto function, BindingScope scope)
     {
         var symbol = this.symbols.GetValueOrDefault(function);
-        if (symbol is not null)
+        var saved = this.EnterBody(default);
+        try
         {
-            this.BindHeader(symbol);
+            if (symbol is not null)
+            {
+                this.BindHeader(symbol);
+            }
+
+            // The indexing pass only had the nominal shell. A constructor/destructor body sees the complete Self,
+            // including its Type parameters and Origins, just as an explicit receiver does.
+            if (this.SpecialReceiver(function) is { } receiver && symbol?.Scope.Owner.BoundSymbol is { Schema: not null } owner)
+            {
+                receiver.Type = this.DeclarationSelf(owner);
+            }
+
+            for (var i = 0; i < function.GenericArguments.Count; i++)
+            {
+                this.BindType(function.GenericArguments[i], scope);
+            }
+
+            for (var i = 0; i < function.TypeConstraints.Count; i++)
+            {
+                this.BindNode(function.TypeConstraints[i], scope);
+            }
+
+            for (var i = 0; i < function.EffectBounds.Count; i++)
+            {
+                this.BindNode(function.EffectBounds[i], scope);
+            }
+
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                var parameter = function.Parameters[i];
+                this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
+            }
+
+            if (function.ReturnType is { } resultSyntax)
+            {
+                this.BindType(resultSyntax, scope);
+            }
+
+            this.CheckCaseBound(function);
+            this.BindFunctionParts(function, symbol, scope);
+        }
+        finally
+        {
+            this.formingBody = saved;
         }
 
-        // The indexing pass only had the nominal shell. A constructor/destructor body sees the complete Self,
-        // including its Type parameters and Origins, just as an explicit receiver does.
-        if (this.SpecialReceiver(function) is { } receiver && symbol?.Scope.Owner.BoundSymbol is { Schema: not null } owner)
+        if (function.IsAnonymous || (function.IsSpecialization && !this.specializations.ContainsKey(function)))
         {
-            receiver.Type = this.DeclarationSelf(owner);
+            return this.Fail(function, BindingFailure.Unsupported, true);
         }
 
-        for (var i = 0; i < function.GenericArguments.Count; i++)
-        {
-            this.BindType(function.GenericArguments[i], scope);
-        }
+        return Complete(function, function.IsGenerated ? BoundType.Unit : symbol?.Type);
+    }
 
-        for (var i = 0; i < function.TypeConstraints.Count; i++)
-        {
-            this.BindNode(function.TypeConstraints[i], scope);
-        }
-
-        for (var i = 0; i < function.EffectBounds.Count; i++)
-        {
-            this.BindNode(function.EffectBounds[i], scope);
-        }
-
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            var parameter = function.Parameters[i];
-            this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
-        }
-
-        if (function.ReturnType is { } resultSyntax)
-        {
-            this.BindType(resultSyntax, scope);
-        }
-
-        this.CheckCaseBound(function);
+    // A function's parts (SPEC 7.2.3, 15.6): each default as its own template (f, i), then the base initializer and the body as f's body.
+    private void BindFunctionParts(FunctionKoto function, BindingSymbol? symbol, BindingScope scope)
+    {
         for (var i = 0; i < function.Parameters.Count; i++)
         {
             var parameter = function.Parameters[i];
             if (parameter.DefaultValue is { } value)
             {
-                this.defaultBindingDepth++;
-                try
-                {
-                    this.RequireType(value, scope, parameter.Type.BoundType);
-                }
-                finally
-                {
-                    this.defaultBindingDepth--;
-                }
+                this.formingBody = new(symbol, i);
+                this.RequireType(value, scope, parameter.Type.BoundType);
             }
         }
+
+        this.formingBody = FunctionBody(function, symbol);
 
         if (function.BaseInitializer is { } initializer)
         {
@@ -111,12 +125,6 @@ public sealed partial class Binding
         }
 
         this.JudgeHelperCaptures(function);
-        if (function.IsAnonymous || (function.IsSpecialization && !this.specializations.ContainsKey(function)))
-        {
-            return this.Fail(function, BindingFailure.Unsupported, true);
-        }
-
-        return Complete(function, function.IsGenerated ? BoundType.Unit : symbol?.Type);
     }
 
     // A function's header (BindHeader's function part): its parameter and result Types under its Origin declaration, then its receiver's

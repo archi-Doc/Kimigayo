@@ -133,7 +133,7 @@ public sealed partial class Binding
         {
             // An edited declaration may reuse a slot with a different name. Keep old expressions immutable while
             // rebuilding the current signature; unchanged passes retain the same interned atom.
-            this.originAtoms[key] = origin = new(kind, binder, slot, name);
+            this.originAtoms[key] = origin = new(kind, binder, slot, name) { Body = this.formingBody };
         }
 
         return origin;
@@ -245,6 +245,7 @@ public sealed partial class Binding
 
     private void AddObligation(BindingObligation obligation)
     {
+        obligation = obligation with { Body = this.formingBody }; // The body Binding formed it in (DECISIONS R4-M101 E1).
         if (this.obligationSet.Add(obligation))
         {
             this.obligations.Add(obligation);

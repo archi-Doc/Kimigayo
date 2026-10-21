@@ -1214,26 +1214,35 @@ public sealed partial class Binding
             return;
         }
 
-        symbol.Resolving = true;
-        if (symbol.Declaration is FunctionKoto function)
+        // A header is its declaration's, never the body that binds it lazily (SPEC 15.6.1; DECISIONS R4-M101 E3).
+        var saved = this.EnterBody(default);
+        try
         {
-            if (!this.BindFunctionHeader(symbol, function))
+            symbol.Resolving = true;
+            if (symbol.Declaration is FunctionKoto function)
             {
-                symbol.Resolving = false;
-                return;
+                if (!this.BindFunctionHeader(symbol, function))
+                {
+                    symbol.Resolving = false;
+                    return;
+                }
             }
-        }
-        else if (symbol.Property is { } property)
-        {
-            this.BindPropertyHeader(property);
-        }
-        else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
-        {
-            symbol.Type = this.BindType(type, symbol.Scope);
-        }
+            else if (symbol.Property is { } property)
+            {
+                this.BindPropertyHeader(property);
+            }
+            else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
+            {
+                symbol.Type = this.BindType(type, symbol.Scope);
+            }
 
-        symbol.HeaderBound = true;
-        symbol.Resolving = false;
+            symbol.HeaderBound = true;
+            symbol.Resolving = false;
+        }
+        finally
+        {
+            this.formingBody = saved;
+        }
     }
 
     private void ValidateSignatures()
