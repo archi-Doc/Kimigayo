@@ -992,7 +992,7 @@ Its independent review is `Sketches/R4 Proposals 2026-10-21/review-1.md`; the se
 
 The owner's instruction of 2026-10-21: 「この勢いで、先ほどの新しく挙げる候補 2、4、5、6の提案書も書いてください。」 R5's and BU's
 planning sessions checked the facts; the independent review is `Sketches/R4 Proposals 2026-10-21/review-3.md`. Candidate 4 (raw
-pointer rules left open by G160) was not accepted in that review and is being redone; it will be registered when it passes.
+pointer rules left open by G160) was not accepted in that review and was redone (round 2, reviewed in `review-rp2.md`).
 
 - [Static Slots for P42](Proposals/2026-10-22%20Static%20Slots%20for%20P42.md): 一部取り込み (open, intake only), candidate 2.
   No SPEC change: SPEC §22.4 and §15.6 already state one model (the key for storage, state and destruction; the Field for Loans and
@@ -1011,4 +1011,11 @@ pointer rules left open by G160) was not accepted in that review and is being re
   R4-M101) and to BU's G166. Option A (a unified "lifecycle receiver" definition) is rejected (editorial, with the rule drift
   review-3 found); option C (no change) is rejected (the classification G161, G165 and G166 need would stay a reading of §6.3.4 and
   §16.3.1). No support is claimed (STATUS unchanged); SPECJ and GUIDE are not refreshed.
+- [Raw Pointer Rules Left Open by G160](Proposals/2026-10-22%20Raw%20Pointer%20Rules%20Left%20Open%20by%20G160.md): 一部取り込み
+  (open, intake only), candidate 4, round 2 (review-rp2: ACCEPT WITH FIXES, applied; BU checked §2.1 against B′+). Recommends: a
+  `during self` layer's Place through no dereference admits reads, shared borrows and `null` writes only (OQ-R1 (a)); a formed raw
+  Origin is the outer Origin of the borrow it is formed through, whatever its form, superseding G160 D18 for formed Origins (OQ-R2
+  (a)); a Warning for an own-step pointer after its owner leaves its holder, designed in G160-4 with a change to the address
+  representation (OQ-R3 (b)); G160 §6's diagnostic for a raw Field a `drop` releases without `during self` (OQ-R4 (a)). Planned
+  mapping: §5.7 and §5.2.1 condition 3.
 - Only the lifecycle receivers' root is integrated (SPEC §15.6.5); no support is claimed.
