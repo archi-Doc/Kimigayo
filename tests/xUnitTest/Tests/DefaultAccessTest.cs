@@ -21,7 +21,12 @@ public class DefaultAccessTest
     public void PreparedInputsAreSharedAndIndependentLocalsAreWritable(string name, string source)
         => ScalarEmissionTest.EmitFixture("DefaultAccess" + name, source, string.Empty);
 
+    // The `x@follow@ref` row expects the rule before Loan identity by base (A5 S1): the default keeps a new Borrow of the preceding
+    // argument. A Borrow past a shared dereference forms no Loan of its own (SPEC 15.6.3), so the default Copies an existing shared
+    // borrow, which SPEC 7.2.3 allows (`MirBorrowsTest.ATemplateMayInspectItsSlots`); the default pipeline keeps the old rule until
+    // R6-check.
     [Theory]
+    [Trait("OldRule", "S1")]
     [InlineData(Increment + "func f(x: uniq/i32, y: i32 = increment(x)) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd")]
     [InlineData("func f(x: uniq/i32, y: i32 = label work: do\n    x@follow = 9\n    exit to work 1\n) => ()\npublic func main() => ()", "DefaultArgumentAccess_Kd")]
     [InlineData("func f(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\npublic func main() => ()", "DefaultArgumentBorrow_Kd")]

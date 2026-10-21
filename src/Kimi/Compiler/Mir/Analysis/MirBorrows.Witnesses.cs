@@ -5,8 +5,8 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 // A5's problem codes and witness sites (A3 5's A6 table, 6.4): a conflict's code (a Loan found in its reservation holder is a reservation
-// conflict, else the check's), a location's subject and source (its statement's or terminator's), and a witness holder's next use in its
-// chain, which MirBorrows.Reports records as a problem's subject and facts.
+// conflict, else the check's), a location's subject and source (its statement's or terminator's), a Loan's anchor (its issuing location's
+// subject, D14) and a witness holder's next use in its chain, which MirBorrows.Reports records as a problem's subject and facts.
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
@@ -18,12 +18,16 @@ internal sealed partial class MirBorrows
     // A location's subject: its statement's or terminator's.
     private SourceRef Subject(MirLocation at) => this.body.Subject(this.Source(at));
 
+    // A Loan's anchor (D14): its issuing location's subject.
+    private SourceRef Site(int loan) => this.body.Subject(this.Source(this.loans[loan].Location));
+
     // A location's source: its statement's or terminator's.
-    private SourceInfo Source(MirLocation at)
-    {
-        ref readonly var data = ref this.body.Blocks[at.Block];
-        return at.Index < data.Count ? this.body.Statements[data.Start + at.Index].Source : data.Terminator.Source;
-    }
+    private SourceInfo Source(MirLocation at) => this.Source(this.Location(at.Block, at.Index));
+
+    // The source of a location by its index (Location): a statement's, or after every statement a block's terminator's.
+    private SourceInfo Source(int location)
+        => location < this.body.Statements.Length ? this.body.Statements[location].Source
+            : this.body.Blocks[location - this.body.Statements.Length].Terminator.Source;
 
     // The witness holder's first use at or after a location in its chain (A3 6.4), or null where it is used only in a later chain.
     private SourceRef? NextUse(int slot, MirLocation from)

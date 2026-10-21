@@ -1896,128 +1896,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
-    // R4-M70 (SPEC 7.2.3; until A5-F9, unit 2e): the value a default's evaluation places into its pending slot carries the slot's default
-    // taint: a default template's result (the 1c design's p06, a recursive generic default and a recursive Function-typed one) and an inline
-    // copy's store (p15, whose copy keeps the slot of x borrowed in y's). A conflict whose Loan only sets with a taint hold is one located
-    // Unsupported_Kd per omitting call, never a Language problem; a Loan a holder without a taint also keeps stays one (`both`), as does an
-    // explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean value: unsupported too.
-    // A copy's store into its slot that acquires again by case, a PairAcquire (R5's F18 probe shapes), lies in the copy and taints: from a
-    // concrete caller (`copied`), a generic one (`copiedGeneric`) and a uniq argument's reborrow (`reborrowed`, whose template the old
-    // analysis rejects, DefaultAccessTest), as does a template call's result into the slot (`called`). A clean route stays the Language
-    // problem, witnessed by its clean holder (`copiedClean`). A destroying call's observing destruction (err(destroy)) reports the clean
-    // Loan before the tainted one whichever holder comes first (`dz`, `dzSwapped`: the group 1c final review's B1).
-    [Fact]
-    public void ADefaultsTaintMakesItsConflictsUnsupported()
-    {
-        var c = MirBuildTest.Compile(Prelude + """
-            func f<T>(n: i32, x: T, value: T = if n == 0 => x else => f(n - 1, x)) -> T
-                T is Copy
-                return value
-            func g(n: i32, value: () -> i32 = if n == 0 => func () => 7 else => g(n - 1)) -> () -> i32 => value@move
-            func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
-            func same(x: ref/i32 during a, y: ref/i32 during a = x) -> ref/i32 during a => y
-            func first(x: ref/i32 during a, y: i32 = 0) -> ref/i32 during a => x
-            func p06()
-                var k = 3
-                let r = f(3, k@ref)
-                k = 4
-                let a = g(3)
-            func p15()
-                var n = 3
-                fc(n@uniq)
-            func both()
-                var k = 1
-                let p = k@ref
-                let r = same(p)
-                k = 2
-                inspect(r)
-                inspect(p)
-            func joined()
-                var k = 1
-                let r = same(k@ref)
-                k = 2
-                inspect(r)
-            func given()
-                var k = 1
-                let r = first(k@ref)
-                k = 2
-                inspect(r)
-            func pick<s/T>(a: s/T, b: s/T = a) -> s/T
-                s is owner or ref
-                T is Copy
-                return b
-            func grab<s/T>(a: s/T, b: s/T = a) -> i32
-                s is ref or uniq
-                return 0
-            func id<s/T>(x: s/T) -> s/T
-                s is owner or ref
-                T is Copy
-                return x
-            func via<s/T>(a: s/T, b: s/T = id(a)) -> s/T
-                s is owner or ref
-                T is Copy
-                return b
-            func copied()
-                var k = 1
-                let r = k@ref
-                let y = pick(r)
-                k = 2
-                inspect(y)
-            func copiedClean()
-                var k = 1
-                let r = k@ref
-                let y = pick(r)
-                k = 2
-                inspect(r)
-                inspect(y)
-            func copiedGeneric<s/T>(z: s/T)
-                s is owner or ref
-                T is Copy
-                var k = 1
-                let r = k@ref
-                let y = pick(r)
-                k = 2
-                inspect(y)
-            func reborrowed(u: uniq/i32) -> i32 => grab(u)
-            func called()
-                var k = 1
-                let r = k@ref
-                let y = via(r)
-                k = 2
-                inspect(y)
-            func dz()
-                var x: Array<i32> = [1, 2]
-                var y: Array<i32> = [3]
-                var s = C.init(r: x@uniq)
-                let t = same(s.r@follow[0]@ref)
-                let u = s.r@follow[0]@ref
-                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
-                inspect(t)
-                inspect(u)
-            func dzSwapped()
-                var x: Array<i32> = [1, 2]
-                var y: Array<i32> = [3]
-                var s = C.init(r: x@uniq)
-                let u = s.r@follow[0]@ref
-                let t = same(s.r@follow[0]@ref)
-                Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))
-                inspect(t)
-                inspect(u)
-            """);
-        var program = Analyze(c);
-        Assert.Equal(
-            [
-                "f: f(n - 1, x) Unsupported_Kd", "g: g(n - 1) Unsupported_Kd", "p06: f(3, k@ref) Unsupported_Kd", "p06: g(3) Unsupported_Kd",
-                "p15: fc(n@uniq) Unsupported_Kd", "both: k = 2", "joined: same(k@ref) Unsupported_Kd", "given: k = 2",
-                "copied: pick(r) Unsupported_Kd", "copiedClean: k = 2", "copiedGeneric: pick(r) Unsupported_Kd",
-                "reborrowed: grab(u) Unsupported_Kd", "called: via(r) Unsupported_Kd",
-                "dz: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))", "dzSwapped: Kimi.Intrinsics.replace(s@uniq, with: C.init(r: y@uniq))",
-            ],
-            Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
-        var clean = Array.FindIndex(program.Problems.All.ToArray(), x => program.Bodies[x.Body].Key.Decl?.Name == "copiedClean");
-        Assert.Contains(program.Problems.Facts(clean).ToArray(), x => x.Kind == MirFactKind.Use && Line(c, x.Site) == "inspect(r)");
-    }
-
     // A3's listed loss P13 under its interim, the owner's body hold (DECISIONS R4-M73, R4-M76, PD30; until the guard reads each part,
     // before R4's exit): the guard is per holder, so a call's store follows what a holder carries past a holder whose Type passes it only
     // through a Type argument, a pair layer or an abstract part, and a (body, view) where a Call's W stores a non-empty value so is held:
@@ -2030,7 +1908,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
     // (cleanRoute's append, which the live iterator keeps clean; g1's `var xs`), while a body that is not held keeps it (notHeld, an
     // iterator whose Type holds no exclusive reference; emptyStore, whose by-argument store's value is empty). A conflict inside an
     // inline default copy stays its template's (R4-M69): the template reports it and the held caller adds nothing for the copy
-    // (heldCopy, dd3); a default-tainted conflict keeps its omitting call's location in a held body (heldDefault, R4-M70).
+    // (heldCopy, dd3); a Loan a copy's value keeps is the held caller's own problem at its access (heldDefault, R-a).
     [Fact]
     public void AListedLossIsUnsupported()
     {
@@ -2185,7 +2063,7 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
                 "guardP13: let d Unsupported_Kd", "guardP13: inspect(saved) Unsupported_Kd", "writeQ: c = 5 Unsupported_Kd",
                 "seedRoute: w@follow@follow@ref Unsupported_Kd", "cleanRoute: xs.append(b) Unsupported_Kd", "cleanRoute: var xs: Array<T> = [] Unsupported_Kd",
                 "notHeld: x = 2", "heldCopy: xs.append(b) Unsupported_Kd", "heldCopy: var xs: Array<T> = [] Unsupported_Kd",
-                "heldDefault: sameD(k@ref) Unsupported_Kd", "heldDefault: var xs: Array<T> = [] Unsupported_Kd", "emptyStore: k = 2",
+                "heldDefault: k = 2 Unsupported_Kd", "heldDefault: var xs: Array<T> = [] Unsupported_Kd", "emptyStore: k = 2",
             ],
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }

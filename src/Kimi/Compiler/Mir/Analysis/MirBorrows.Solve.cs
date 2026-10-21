@@ -4,11 +4,12 @@ using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
 
-// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, its holders' slots (Holders), endings
-// and touches, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined by node union, then
-// the checks replay. A block's locations are carried in order, each planned on the state before it (MirBorrows.Flow), checked in the
-// replay, then committed; at a destruction in place the Loans it ends are then removed from every holder (`step`: σ_out \ ended, so a
-// call's transfer still reads its destroyed target).
+// A5's view loop (A3 5, Carrying, with E8): Run checks a body under the selected view: its Loans, its holders' slots (Holders), endings,
+// touches and the copies' entries, then holder liveness backward and carrying forward over the dataflow's chains, each holder's set joined
+// by node union, then the checks replay and R26-access's pass (MirBorrows.Defaults). A block's locations are carried in order, each planned
+// on the state before it (MirBorrows.Flow), checked in the replay, then committed; at a destruction in place the Loans it ends are then
+// removed from every holder (`step`: σ_out \ ended, so a call's transfer still reads its destroyed target), and before a Call that moves
+// pending slots their inspection Loans (R-a, MirBorrows.Endings); in the replay, a copy's Entry(B) is gathered before its entry's plan.
 internal sealed partial class MirBorrows
 {
     private int[] slots = []; // Each local's holder slot, -1 for none; E is slot 0.
@@ -34,14 +35,15 @@ internal sealed partial class MirBorrows
         this.sets.Clear();
         (this.loanBase, this.escapedSet) = (Markers + body.Locals.Length, this.sets.Add(0, Escaped));
         this.Loans();
-        if (this.loanCount == 0 && !this.guarded && !this.staticDrops)
+        if (!this.producing)
         {
-            return; // No Loan, guard candidate or Drop of a mutable static: no problem (A3 6.1; E7's γ and R3 need no Loan).
+            return; // No input of a Loan-stratum producer, no problem (A3 6.1, D5; E7's γ, R3 and a slot write need no Loan).
         }
 
         this.Holders();
         this.Endings();
         this.Touches();
+        this.Entries();
         var words = (this.holderCount + 63) >> 6;
         var state = flow.Prepare((this.flowCount + 63) >> 6, this.flowCount, Math.Max(words, this.holderCount));
         if (state is null)
@@ -60,6 +62,7 @@ internal sealed partial class MirBorrows
         (carrying.Checks, this.chainHead) = (true, -1);
         this.Restamp();
         flow.Replay(ref carrying);
+        this.DefaultAccesses();
         this.Bytes += this.sets.Bytes;
         this.Work += this.sets.Bytes + this.sets.Scanned;
     }
@@ -129,7 +132,8 @@ internal sealed partial class MirBorrows
         }
     }
 
-    // A block's locations: in the checks replay, the live holders after each, its plan on the state before it and its checks first.
+    // A block's locations: in the checks replay, the live holders after each, its plan on the state before it and its checks first; the
+    // terminator's inspection Loans end before its plan (R-a).
     private void Carry(ulong[] state, int block, bool checks)
     {
         if (checks && flow.Head(block) != this.chainHead)
@@ -138,10 +142,21 @@ internal sealed partial class MirBorrows
             this.Enter(this.chainHead);
         }
 
-        for (var i = 0; i <= this.body.Blocks[block].Count; i++)
+        var count = this.body.Blocks[block].Count;
+        for (var i = 0; i <= count; i++)
         {
             var location = this.Location(block, i);
             this.Work++;
+            if (checks && this.copying && this.entering[location])
+            {
+                this.Entering(state, location);
+            }
+
+            if (i == count)
+            {
+                this.End(state, this.inspected[block]);
+            }
+
             this.Plan(state, block, i, checks);
             if (checks)
             {
@@ -150,16 +165,24 @@ internal sealed partial class MirBorrows
             }
 
             this.Commit(state);
-            if (this.ended[location] != 0)
-            {
-                for (var s = 0; s < this.holderCount; s++)
-                {
-                    state[s] = (ulong)this.sets.Remove((int)state[s], this.ended[location]);
-                }
-
-                this.Work += this.holderCount;
-            }
+            this.End(state, this.ended[location]);
         }
+    }
+
+    // Ended Loans removed from every holder (E8, R-a).
+    private void End(ulong[] state, int ended)
+    {
+        if (ended == 0)
+        {
+            return;
+        }
+
+        for (var s = 0; s < this.holderCount; s++)
+        {
+            state[s] = (ulong)this.sets.Remove((int)state[s], ended);
+        }
+
+        this.Work += this.holderCount;
     }
 
     // The node-union join (R4-M34).

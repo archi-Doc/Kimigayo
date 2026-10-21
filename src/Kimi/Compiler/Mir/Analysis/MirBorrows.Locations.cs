@@ -6,8 +6,9 @@ namespace Kimi.Compiler.Mir;
 // borrowed roots, each classified by what it does (MirBorrows.Checks' AccessKind) and with the check set it takes, a Call's or Drop's
 // effect access after them (MirBorrows.Effects), and the reservations it activates; one gather of their check sets (MirBorrows.CheckSets);
 // each access compared with the Loans on its root by the conflicts relation, its first conflict recorded by MirBorrows.Reports; then a
-// guard candidate's EndBorrow (err(ended)), a call's retention Limit, the location's activations (MirBorrows.Activations) and last its
-// effects (MirBorrows.Effects, whose keys select other case views). Its classifiers Dropping and Destruction are also read by
+// guard candidate's EndBorrow (err(ended)), a call's retention Limit, the location's activations (MirBorrows.Activations), its effects
+// (MirBorrows.Effects, whose keys select other case views) and at a default template's Return R26-borrow; every write goes to R26-access
+// before the borrowed-root filter (MirBorrows.Defaults). Its classifiers Dropping and Destruction are also read by
 // MirBorrows.Liveness and MirBorrows.Activations.
 // Must not decide whether an access meets a Loan (MirBorrows.Checks) or which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
@@ -17,7 +18,8 @@ internal sealed partial class MirBorrows
     private int accessCount;
 
     // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its
-    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem.
+    // effects, on the check sets of one gather; the first conflicting Loan of each access is its problem; at a Return, R26-borrow on its own
+    // gather.
     private void Check(ulong[] state, int block, int index, int location)
     {
         this.accessCount = 0;
@@ -25,7 +27,7 @@ internal sealed partial class MirBorrows
         var statement = index < this.body.Blocks[block].Count ? this.body.Statements[location] : default;
         var visitor = new Accessing(this, at, index < this.body.Blocks[block].Count ? statement.Kind : MirStatementKind.Assign, this.Reborrowing(statement));
         MirUses.ForEach(cases, at, ref visitor);
-        var accessed = this.accessCount; // The location's own accesses; its effect access follows them.
+        var (accessed, scope) = (this.accessCount, this.Source(location).Scope); // The location's own accesses; its effect access follows them.
         this.Effecting(block, index);
         this.Reserving(state, at);
         var ended = statement is { Kind: MirStatementKind.EndBorrow, Place.Root: var guard } && this.MarkerOf(guard) == Marker.Guard;
@@ -44,7 +46,7 @@ internal sealed partial class MirBorrows
             }
 
             var count = this.Walk(access.Place, access.Reborrow, ref this.accessSteps);
-            if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking) is var c and not None)
+            if (this.Conflict(this.Key(access.Place.Root), this.accessSteps.AsSpan(0, count), access.Kind, access.Taking, scope, -1) is var c and not None)
             {
                 this.Report(this.Code(this.candidates[c], access.Kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, access.Taking, at, -1, null);
             }
@@ -64,6 +66,11 @@ internal sealed partial class MirBorrows
         if (accessed < this.accessCount)
         {
             this.Effects(at, this.accesses[accessed].Taking);
+        }
+
+        if (index == this.body.Blocks[block].Count && this.body.Blocks[block].Terminator.Kind == MirTerminatorKind.Return)
+        {
+            this.DefaultBorrows(state);
         }
     }
 
@@ -144,8 +151,9 @@ internal sealed partial class MirBorrows
 
     // The accesses of one location (A3 5's access, E13 (1)): Copy, FakeRead, Discriminant, Len and an index read; Move; a Ref borrows
     // (Borrowing), a Reborrowing PairAcquire too, as its Use's marker says (reborrow; TwoPhaseUniq reserves, a shared access); a
-    // destination is written; StorageDead destroys, and a Drop as Dropping says. Each operand's accesses, its index locals' and its own,
-    // take its operand's check set. An Opaque site's roots are its problems' (derived, R4-M10).
+    // destination is written, every write also R26-access's, whether its root is borrowed or not (MirBorrows.Defaults); StorageDead
+    // destroys, and a Drop as Dropping says. Each operand's accesses, its index locals' and its own, take its operand's check set. An Opaque
+    // site's roots are its problems' (derived, R4-M10).
     private struct Accessing(MirBorrows owner, MirLocation at, MirStatementKind statement, MirRefKind reborrow) : IMirUses
     {
         private MirOperand operand;
@@ -167,6 +175,11 @@ internal sealed partial class MirBorrows
             var opaque = (access & (MirAccess.Reads | MirAccess.Writes)) == (MirAccess.Reads | MirAccess.Writes);
             if (!opaque && this.Kind(place, access, reborrows ? reborrow : kind, reborrows) is { } known)
             {
+                if (known == AccessKind.Write)
+                {
+                    owner.DefaultWrite(place, at);
+                }
+
                 taking = known == AccessKind.Observe ? TakesValue : reborrows || (access & MirAccess.Borrows) != 0 ? TakesParents : taking;
                 owner.Accessed(new(place, known, reborrows, taking));
             }
