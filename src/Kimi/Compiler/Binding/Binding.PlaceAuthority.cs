@@ -9,7 +9,8 @@ namespace Kimi.Compiler;
 //   (BorrowableTemporary); the access a Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
 //   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a receiver
 //   can be exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers
-//   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle); and
+//   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle, as
+//   SPEC lends it: LendsPlace), with the one diagnostic for a written Borrow it may not (BorrowFailure); and
 //   the in-place read Binding records for a receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement,
 //   SharedElementView; ElementRead through the layers an element stores) or for a compared operand (CompareInPlace).
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
@@ -19,8 +20,8 @@ namespace Kimi.Compiler;
 // - Invariants: one path computation decides writes, Moves and borrows; a shared layer anywhere on a path bounds it to Read; a node
 //   keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the Type declaring
 //   the member, never a layer (a path's layer below a Place is its own Type's, LayerAuthority).
-// - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure names), selects a candidate or changes
-//   a Type.
+// - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure or BorrowFailure names), selects a
+//   candidate or changes a Type.
 public sealed partial class Binding
 {
     // SPEC 15.1.5, 23.1.3: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
@@ -313,8 +314,9 @@ public sealed partial class Binding
     // SPEC 3.6, 10.2: a Temporary Value, which a borrow materializes once in a Temporary Place with the ordinary temporary
     // lifetime. A newly owned temporary has exclusive writable capability, lent exclusively only when spelled or as a Receiver
     // Expression (SPEC 7.3, 15.1.5), and a getter result only shared (SPEC 11.5). A selected referent or payload, a published
-    // Place, a user index Place (SPEC 4.7.1), a named binding and a Tuple element are Places, never temporaries.
-    private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation, bool callableValue = false)
+    // Place, a user index Place (SPEC 4.7.1), a named binding and a Tuple element are Places, never temporaries. A function reference
+    // and an anonymous function construct a callable value, despite a declaration Symbol (SPEC 7).
+    private static bool BorrowableTemporary(Koto source, bool exclusive, bool spelled, bool fixedExpectation)
     {
         var unwrapped = KotoHelper.UnwrapParentheses(source);
         if (unwrapped is ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } ||
@@ -323,6 +325,8 @@ public sealed partial class Binding
             return false;
         }
 
+        var callableValue = (source.BoundType?.Kind == BoundTypeKind.FunctionItem && unwrapped.BoundSymbol?.Kind == BindingSymbolKind.Function) ||
+            unwrapped is FunctionKoto { IsAnonymous: true };
         return (source.BoundSymbol is null || callableValue || unwrapped is InvocationKoto || (!exclusive && IsGetterResult(source))) &&
             (!exclusive || (spelled && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
             !(unwrapped is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(tupleElement.Left.BoundType)) &&
@@ -461,8 +465,29 @@ public sealed partial class Binding
     private bool BorrowableHandle(Koto source, BindingScope scope, bool exclusive, bool spelled, bool fixedExpectation = false)
         => this.BorrowablePlace(source, scope, exclusive) || BorrowableTemporary(source, exclusive, spelled, fixedExpectation);
 
+    // SPEC 15.6.2, PLAN P42: whether Binding lends a Place in a mode: as SPEC does (LendsPlace), except a Place rooted at a static
+    // Field reached through its qualified name, whose Loans no analysis models yet (BorrowFailure names its Borrow unsupported).
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
+        => this.LendsPlace(source, scope, exclusive, out var staticRoot) && staticRoot is null;
+
+    // SPEC 15.6.2, 15.6.4: the one diagnostic for a written Borrow of a Place Binding does not lend (BorrowablePlace): one that SPEC
+    // lends but whose root is a qualified static Field is unsupported (an unqualified one in its group binds, PLAN G100); otherwise
+    // an exclusive borrow names the capability its path denies (AccessFailure) and a shared one InvalidAssignment.
+    private BindingFailure BorrowFailure(Koto place, BindingScope scope, bool exclusive)
+        => (this.LendsPlace(place, scope, exclusive, out var staticRoot) && staticRoot is not null, exclusive) switch
+        {
+            (true, _) => BindingFailure.Unsupported,
+            (_, true) => AccessFailure(place),
+            _ => BindingFailure.InvalidAssignment,
+        };
+
+    // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field reached through its qualified
+    // name at the root of the path that lends it (SPEC 15.6.2), if any; a node, not a bool, as the structure limits leave this member one
+    // bool parameter, the mode. Exception until PLAN G100 (b): below a static object handle or a pair layer the walk asks BorrowablePlace
+    // (BorrowableHandle, PairCapability), so such a payload path reports no root and keeps its Language error or binds.
+    private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
+        staticRoot = null;
         source = KotoHelper.UnwrapParentheses(source);
         if (exclusive && ReachedThroughShared(source))
         {
@@ -529,6 +554,13 @@ public sealed partial class Binding
 
             if (source is MemberAccessKoto access)
             {
+                // SPEC 15.6.2: a static Field is a root Place, lent as its accessors allow (above), as one named unqualified is (below).
+                if (property.Symbol.Scope.Owner is GroupKoto)
+                {
+                    staticRoot = access;
+                    return true;
+                }
+
                 // SPEC 15.1.5: a special receiver lends its own initialized Fields as its row says, although the receiver itself is
                 // not an assignable binding (Receiver).
                 if (Receiver(access.Left) is { } special)
@@ -545,7 +577,7 @@ public sealed partial class Binding
                 // the Field is lent in either mode; past another reference, view or raw pointer it is shared; an owned receiver, also
                 // past a pair layer admitting owner, lends it as the receiver Place does.
                 return LayerAuthority(access.Left) == SemanticsKind.Uniq ||
-                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.BorrowablePlace(access.Left, scope, exclusive));
+                    (access.Left.BoundType?.Kind == BoundTypeKind.Semantics ? !exclusive : this.LendsPlace(access.Left, scope, exclusive, out staticRoot));
             }
 
             return true;
@@ -553,7 +585,7 @@ public sealed partial class Binding
 
         if (source is BinaryKoto part && ElementAccess.IsSyntax(part) && ElementAccess.TryType(part, out _, out _))
         {
-            return this.BorrowablePlace(part.Left, scope, exclusive);
+            return this.LendsPlace(part.Left, scope, exclusive, out staticRoot);
         }
 
         // A closure environment binding is a Place of its own (SPEC 7.7.2), borrowable like a local.
