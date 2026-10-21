@@ -232,6 +232,8 @@ internal sealed partial class FunctionCodegen
     // A glue's pass over a fixed array: the element's glue at the element the pass destroys, the last first.
     private readonly struct Destroyed(int glue, long last) : IElementPass
     {
+        public string Stem => "destroy";
+
         public void Write(FunctionCodegen codegen, Value offset)
             => codegen.Destroy(codegen.module.Glue(glue), codegen.Offset(new('p', 0), codegen.Difference(last, offset)));
     }

@@ -9,9 +9,11 @@ namespace Kimi.Compiler.Backend;
 // fixed array put by its components, and a Fill's one value at each element by one counted loop, the loop writer (Loop) the glue shares.
 internal sealed partial class FunctionCodegen
 {
-    // One pass of a counted loop (Loop): its work from the pass's element offset.
+    // One pass of a counted loop (Loop): its labels' stem and its work from the pass's element offset.
     private interface IElementPass
     {
+        string Stem { get; }
+
         void Write(FunctionCodegen codegen, Value offset);
     }
 
@@ -110,7 +112,8 @@ internal sealed partial class FunctionCodegen
 
     // The counted i64 loop over a fixed array's closed length, not 0 (DECISIONS R4-M81): it owns its counter, and the body writes each
     // pass's work from the pass's element offset, the counter times the element's stride. The loop is entered through a label of its own,
-    // which the counter's phi names; a struct body, so a warm write allocates nothing.
+    // which the counter's phi names; the pass names the labels, its stem followed by s (the entry), nothing (the loop) and ed (the exit),
+    // so a Fill's are fills, fill and filled and a glue's destroys, destroy and destroyed; a struct body, so a warm write allocates nothing.
     private void Loop<TBody>(BoundType type, ValueLowering element, in TBody body)
         where TBody : struct, IElementPass
     {
@@ -118,16 +121,22 @@ internal sealed partial class FunctionCodegen
         var (index, next, offset, done) = (new Value('t', id + 1), new Value('t', id + 2), new Value('t', id + 3), new Value('t', id + 4));
         this.next += 5;
         var output = this.output;
-        Name(output, "  br label %fills", id);
-        Name(output, "\nfills", id);
-        Name(output, ":\n  br label %fill", id);
-        Name(output, "\nfill", id);
+        output.Write("  br label %");
+        this.LoopLabel(body.Stem, "s", id);
+        output.Write('\n');
+        this.LoopLabel(body.Stem, "s", id);
+        output.Write(":\n  br label %");
+        this.LoopLabel(body.Stem, string.Empty, id);
+        output.Write('\n');
+        this.LoopLabel(body.Stem, string.Empty, id);
         output.Write(":\n  ");
         this.WriteValue(index);
-        Name(output, " = phi i64 [ 0, %fills", id);
+        output.Write(" = phi i64 [ 0, %");
+        this.LoopLabel(body.Stem, "s", id);
         output.Write(" ], [ ");
         this.WriteValue(next);
-        Name(output, ", %fill", id);
+        output.Write(", %");
+        this.LoopLabel(body.Stem, string.Empty, id);
         output.Write(" ]\n  ");
         this.WriteValue(offset);
         output.Write(" = mul i64 ");
@@ -148,15 +157,28 @@ internal sealed partial class FunctionCodegen
         WriteNumber(output, type.Length);
         output.Write("\n  br i1 ");
         this.WriteValue(done);
-        Name(output, ", label %filled", id);
-        Name(output, ", label %fill", id);
-        Name(output, "\nfilled", id);
+        output.Write(", label %");
+        this.LoopLabel(body.Stem, "ed", id);
+        output.Write(", label %");
+        this.LoopLabel(body.Stem, string.Empty, id);
+        output.Write('\n');
+        this.LoopLabel(body.Stem, "ed", id);
         output.Write(":\n");
+    }
+
+    // A label of the counted loop numbered id: the pass's stem and a suffix.
+    private void LoopLabel(string stem, string suffix, int id)
+    {
+        this.output.Write(stem);
+        this.output.Write(suffix);
+        WriteNumber(this.output, id);
     }
 
     // A Fill's pass: its value put at the element.
     private readonly struct Filled(Value address, BoundType type, ValueLowering element, Value value) : IElementPass
     {
+        public string Stem => "fill";
+
         public void Write(FunctionCodegen codegen, Value offset) => codegen.Put(codegen.Offset(address, offset), type, element, value);
     }
 }

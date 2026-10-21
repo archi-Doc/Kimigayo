@@ -5676,14 +5676,20 @@ structure is recorded here by the unit that first implements it.
   - Rule (PD12): A2's verdicts are exact only for a body A1 accepts (R4-M6a), so MIR code generation writes no body A1 or A2 left inexact.
     The fact is `MirDropTable.Incomplete(body)` (ask A-2b, R4-M102): A1's or A2's first problem in the body, an inline copy's included,
     which marks its caller although `MirReport.Add` drops it as its template's. A3's, A4's and A5's problems do not refuse (R5-M4).
-  - Place: `FunctionCodegen.Write`, as each Generated body item is written, not package C 3.8's step in `Compilation.Generation.cs`: by
-    the Q2 ruling the gate skips only the refused body and writes every other item, so their gaps are recorded too (package C 3.9, SPEC
-    23.1.2), and no module is written; step 1 still stops before writing, since its records already reject at check.
-  - Record: the problem's own code at its subject, by the location rule, through the new `InstanceCollector.Subject(item, SourceRef)`
-    overload (the same rule, for a located subject); in the Emission partition with the `Emission` requirement (R5-M4, R5-M65); never
-    `InternalInvariant_Kd`. A runtime Drop with no group in a written body stays `InternalInvariant_Kd` (package C 3.2 I6).
+  - Place: `FunctionCodegen.Write`, as each Generated body item is written: by the Q2 ruling the gate skips only the refused body and
+    writes every other item, so their gaps are recorded too (package C 3.9, SPEC 23.1.2), and no module is written; step 1 still stops
+    before writing, since its records already reject at check. Departure (for the owner's departures list): package C 3.8 places step 2
+    in `Compilation.Generation.cs` before writing.
+  - Record: the problem's own code at its subject, in the Emission partition with the `Emission` requirement (R5-M4, R5-M65); never
+    `InternalInvariant_Kd`. A runtime Drop with no group in a written body stays `InternalInvariant_Kd` (package C 3.2 I6). The subject
+    goes through the new `InstanceCollector.Subject(item, SourceRef)` overload, which keeps a root module's subject and else takes the
+    item's site, but does not apply KD12's move out of an inlined default template outside the root modules (`Located`), since the fact
+    carries no scope. Unreachable today: the only non-root module is the Kimi library, which declares no default parameter. Removal:
+    `Incomplete` carries the scope or location and the gate calls `Subject(item, body, source)`, the overload deleted (R5's PLAN row
+    with R4's ask A-2c).
   - Interim (the planning session, 2026-10-22): a body A1 skipped at the arena limit (`ViewsOf` 0, R4-M15a, R4-M67) is one located
-    `Unsupported_Kd` at the body, because `OwnershipStorageLimit_Kd` takes `requiredBytes`, `limitBytes` and the `table` evidence, which
+    `Unsupported_Kd` at the body. Departure (for the owner's departures list): package C 3.8's refusal carries that problem's code. The
+    reason: `OwnershipStorageLimit_Kd` takes `requiredBytes`, `limitBytes` and the `table` evidence, which
     neither the fact nor A1's arena problem carries. Removal: A1's arena problem carries its arguments, published to the gate and to H3;
     the gate then records `OwnershipStorageLimit_Kd` with them. Every other fact's code (A1's and A2's arity-0 Language codes) is recorded
     as it is.

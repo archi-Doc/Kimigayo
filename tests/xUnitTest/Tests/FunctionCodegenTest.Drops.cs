@@ -135,34 +135,47 @@ public sealed partial class FunctionCodegenTest
     }
 
     // R4-M15a, PD12: a body A1 skips at the arena limit has no drop rows and is inexact. No program the old analysis accepts reaches this
-    // before G2 (the old arena trips first), so the skip is simulated: the version's table is closed again with f unjudged and its fact
-    // set, A1's record at the body. Interim (DECISIONS R5-M96): the refusal is one located Unsupported_Kd at the body (f's), never
-    // InternalInvariant_Kd or a throw, until A1's arena problem carries the arguments OwnershipStorageLimit_Kd takes.
+    // before G2 (the old arena trips first), so the skip is simulated: the version's table is rebuilt with f's rows, points and views
+    // cleared and its fact set, A1's record at the body, every other body's kept. Interim (DECISIONS R5-M96): the refusal is one located
+    // Unsupported_Kd at the body (f's), never InternalInvariant_Kd or a throw, until A1's arena problem carries the arguments
+    // OwnershipStorageLimit_Kd takes.
     [Fact]
     public void AnArenaSkippedBodyIsUnsupportedUntilA1PublishesItsArguments()
     {
         var c = Analyze("func f()\n    Console.writeLine(\"a\")\nf()\n");
-        var program = c.BuildMir();
-        var bodies = program.Bodies.ToArray();
-        var skipped = Array.FindIndex(bodies, static x => x.Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" });
-        program.Drops.Clear();
+        var (table, bodies) = (c.BuildMir().Drops, c.BuildMir().Bodies.ToArray());
+        var ends = bodies.Select(x => (Rows: table.RowsOf(x.Ordinal).ToArray(), Points: table.PointsOf(x.Ordinal).ToArray(),
+            Flags: table.FlagsOf(x.Ordinal), Views: table.ViewsOf(x.Ordinal), Fact: table.Incomplete(x.Ordinal))).ToArray();
+        table.Clear();
         for (var i = 0; i < bodies.Length; i++)
         {
-            program.Drops.Close(0, i == skipped ? 0 : 1, i == skipped ? (DiagnosticCode.OwnershipStorageLimit_Kd, bodies[i].Source) : null);
+            if (bodies[i].Key is { Kind: MirBodyKind.Fn, Decl.Name: "f" })
+            {
+                table.Close(0, 0, (DiagnosticCode.OwnershipStorageLimit_Kd, bodies[i].Source));
+                continue;
+            }
+
+            table.Rows.AddRange(ends[i].Rows);
+            table.Points.AddRange(ends[i].Points);
+            table.Close(ends[i].Flags, ends[i].Views, ends[i].Fact);
         }
 
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("Unsupported_Kd", (string?)"f()\n    Console.writeLine(\"a\")")], Records(c));
     }
 
-    // PD12, R5-M4: only A1's and A2's problems refuse; a Loan problem A5 records in a body (like A3's and A4's) leaves the module written.
-    [Fact]
-    public void AnA5ProblemLeavesTheModuleWritten()
+    // PD12, R5-M4: only A1's and A2's problems refuse; a Loan problem A5 records in a body, or a control-flow problem A3 records (like A4's),
+    // leaves the module written.
+    [Theory]
+    [InlineData("A5")]
+    [InlineData("A3")]
+    public void AnA3OrA5ProblemLeavesTheModuleWritten(string analysis)
     {
         var c = Analyze("Console.writeLine(\"a\")\n");
         var program = c.BuildMir();
-        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict);
-        program.Problems.Add(new(DiagnosticCode.ComparisonLoanConflict_Kd, requirement, program.Bodies[0].Source, 0, 1));
+        var (code, requirement) = analysis == "A3" ? (DiagnosticCode.RequireFallthrough_Kd, DiagnosticRequirement.ControlFlow)
+            : (DiagnosticCode.ComparisonLoanConflict_Kd, DiagnosticRequirement.Ownership(OwnershipRequirement.ComparisonLoanConflict));
+        program.Problems.Add(new(code, requirement, program.Bodies[0].Source, 0, 1));
         Assert.True(c.Generate(TextWriter.Null));
         Assert.Empty(Records(c));
     }

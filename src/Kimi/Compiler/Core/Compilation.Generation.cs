@@ -4,8 +4,9 @@
 // Input: the latest analysis; callers generate an accepted program version (Project and the test command, after check).
 // Output: the module text, written to the caller's writer only when generation succeeds, never in part; otherwise the generation
 // records in the Emission partition: under MIR code generation (sel) ModuleCodegen's, Unsupported_Kd at each location of a code generation
-// coverage row not written yet (PD11, until the R5 plan's unit X2) and InternalInvariant_Kd at a broken input contract, each keyed by its
-// location (a record carries no fact; DECISIONS R5-M65), and, for a module neither written nor explained, InternalInvariant_Kd at the
+// coverage row not written yet (PD11, until the R5 plan's unit X2), gate step 2's refusals (an inexact body's A1 or A2 code at its subject;
+// DECISIONS R5-M96) and InternalInvariant_Kd at a broken input contract, each keyed by its location (a record carries no fact; DECISIONS
+// R5-M65), and, for a module neither written nor explained, InternalInvariant_Kd at the
 // project; under the old generator its own record (its instance's located records, GenerationResourceLimit_Kd or, until G9b,
 // GenerationFailed_Kd).
 // Gate, step 1 (PD12): no MIR records of the version (construction records, validator findings and, under sel, the checked set's
@@ -105,8 +106,9 @@ public partial class Compilation
     // MIR code generation (R5 C0b1, K11; DECISIONS R5-M65, R5-M77) of an accepted program: ModuleCodegen over the Generated items of its
     // checked set. A program check did not accept adds no record (check reported why); an accepted one without its MIR, its checked set or
     // its output roots, or a module neither written nor explained by a record, is a broken contract. A record is a code without
-    // facts (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, or InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS
-    // 4.1): the records of two nodes at one location, such as the siblings an expansion synthesizes with its span, are one problem.
+    // facts (Unsupported_Kd, location-only by DIAGNOSTICS rule 3, gate step 2's refusal, an A1 or A2 code of no argument (DECISIONS
+    // R5-M96), or InternalInvariant_Kd), so its location is its subject (DIAGNOSTICS 4.1): the records of two nodes at one location, such
+    // as the siblings an expansion synthesizes with its span, are one problem.
     private bool GenerateMir(TextWriter writer)
     {
         this.Diagnostics.Invalidate(DiagnosticPartition.Emission);
