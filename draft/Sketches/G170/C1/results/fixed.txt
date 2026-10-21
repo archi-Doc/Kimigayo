@@ -1,0 +1,56 @@
+== FIXED (expected: + evidence, - negated evidence, none; C complete, P provisional, R resource)
+PASS G170 depth 1 | T.(Tree).Child is Copy | C + Complete rounds=4 V=8 E=5 J=20 N=5 reads {} | ref6 + ref8 + | expected + C
+PASS G170 depth 1, unrelated contract | T.(Tree).Child is Foo | C none Complete rounds=0 V=2 E=1 J=0 N=6 reads {} | ref6 none ref8 none | expected none C
+PASS G170 depth 2 | T.(Tree).Child.(Tree).Child is Copy | C + Complete rounds=6 V=11 E=7 J=42 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS G170 depth 2, unrelated contract | T.(Tree).Child.(Tree).Child is Foo | C none Complete rounds=0 V=2 E=1 J=0 N=7 reads {} | ref6 none ref8 none | expected none C
+PASS G170 depth 4 | T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Copy | C + Complete rounds=10 V=17 E=11 J=114 N=8 reads {} | ref6 + ref8 + | expected + C
+PASS G170 depth 4, unrelated contract | T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Foo | C none Complete rounds=0 V=2 E=1 J=0 N=9 reads {} | ref6 none ref8 none | expected none C
+PASS G170 depth 8 | T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Copy | C + Complete rounds=18 V=29 E=19 J=398 N=12 reads {} | ref6 none ref8 + | expected + C
+PASS G170 depth 8, unrelated contract | T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Foo | C none Complete rounds=0 V=2 E=1 J=0 N=13 reads {} | ref6 none ref8 none | expected none C
+PASS non-recursive variant | T.(Outer).Inner.(Holder).Item is Copy | C + Complete rounds=4 V=10 E=5 J=18 N=8 reads {} | ref6 + ref8 + | expected + C
+PASS B: identity to another subject (input) | U is Copy | C + Complete rounds=2 V=6 E=4 J=27 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS B: identity to another subject (derived) | U is Copy | C + Complete rounds=6 V=11 E=8 J=67 N=8 reads {} | ref6 + ref8 + | expected + C
+PASS B: identity, other direction | U is Copy | C + Complete rounds=2 V=6 E=4 J=27 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS B: Contract argument clause | T.(Cc).Y is Ee | C + Complete rounds=4 V=9 E=5 J=17 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS B: Contract argument clause, other subject | T.(Cc).X is Ee | C none Complete rounds=1 V=4 E=1 J=3 N=4 reads {} | ref6 none ref8 none | expected none C
+PASS deep subject | T.(Aa).X.(Bb).Y is Copy | C + Complete rounds=2 V=8 E=3 J=10 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS deep subject through an identity (non-prefix) | U.(Bb).Y is Copy | C + Complete rounds=2 V=8 E=4 J=12 N=7 reads {} | ref6 + ref8 + | expected + C
+PASS absent-head binder, instance available | T.(Tree).Child is Copy | C + Complete rounds=2 V=6 E=3 J=9 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS absent-head binder, no instance | T.(Tree).Child is Copy | C none Complete rounds=1 V=6 E=1 J=4 N=4 reads {} | ref6 none ref8 none | expected none C
+PASS ancestor with arguments | T is Pp<i32> | C + Complete rounds=2 V=7 E=3 J=20 N=4 reads {} | ref6 + ref8 + | expected + C
+PASS ancestor, other arguments | T is Pp<i64> | C none Complete rounds=3 V=5 E=1 J=26 N=6 reads {} | ref6 none ref8 none | expected none C
+PASS inherited identity on the argument | T.(Pp<i32>).X is i32 | C + Complete rounds=5 V=11 E=7 J=134 N=5 reads {} | ref6 + ref8 + | expected + C
+PASS G180 associate X is D<Self> | T.(Cc).X is Dd<T> | C + Complete rounds=2 V=6 E=3 J=10 N=4 reads {} | ref6 + ref8 + | expected + C
+PASS G180 not D<U> | T.(Cc).X is Dd<U> | C none Complete rounds=1 V=4 E=1 J=6 N=5 reads {} | ref6 none ref8 none | expected none C
+PASS G180 contract C2: D<Self> | T is Dd<T> | C + Complete rounds=2 V=4 E=3 J=8 N=4 reads {} | ref6 + ref8 + | expected + C
+PASS G180 h6 N | T.(Cc).X.(Dd<T.(Cc).Y>).N is Dd<T.(Cc).X.(Dd<T.(Cc).Y>).M> | C + Complete rounds=4 V=12 E=5 J=56 N=9 reads {} | ref6 + ref8 + | expected + C
+PASS G180 h6 M | T.(Cc).X.(Dd<T.(Cc).Y>).M is Ee | C + Complete rounds=4 V=14 E=7 J=63 N=9 reads {} | ref6 + ref8 + | expected + C
+PASS D: growing argument, derivable | List<List<i32>> is Copy | C + Complete rounds=6 V=13 E=7 J=118 N=10 reads {} | ref6 + ref8 + | expected + C
+PASS D: growing argument, not derivable | List<List<i64>> is Copy | C none Complete rounds=3 V=12 E=1 J=39 N=7 reads {} | ref6 none ref8 none | expected none C
+PASS D: growing argument, enumerate T | enumerate T | C none Complete rounds=2 V=6 E=1 J=15 N=4 facts [+Gc<i32>] members [T] | expected C
+PASS negated evidence | T.(Nn).X is Copy | C - Complete rounds=2 V=6 E=3 J=7 N=7 reads {} | ref6 - ref8 - | expected - C
+PASS contradictory evidence | T.(Nn).X is Copy | C +- Complete rounds=2 V=6 E=4 J=7 N=7 reads {} | ref6 +- ref8 +- | expected +- C
+PASS disjunction supplies no disjunct | T.(Cc).X is Aa | C none Complete rounds=0 V=2 E=1 J=2 N=7 reads {} | ref6 none ref8 none | expected none C
+PASS exact disjunction | T.(Cc).X is Aa or Bb | C + Complete rounds=2 V=6 E=3 J=9 N=7 reads {} | ref6 + ref8 + | expected + C
+PASS conjunction supplies conjuncts | T.(Cc).Y is Bb | C + Complete rounds=2 V=6 E=3 J=7 N=7 reads {} | ref6 + ref8 + | expected + C
+PASS exact conjunction | T.(Cc).Y is Aa and Bb | C + Complete rounds=2 V=6 E=3 J=9 N=7 reads {} | ref6 + ref8 + | expected + C
+PASS negated compound input | T is Aa or Bb | C - Complete rounds=0 V=2 E=1 J=4 N=6 reads {} | ref6 - ref8 - | expected - C
+PASS unseeded proof cycle | S1 is Aa | C none Complete rounds=2 V=6 E=1 J=6 N=4 reads {} | ref6 none ref8 none | expected none C
+PASS cycle with an independent support | S2 is Aa | C + Complete rounds=2 V=5 E=3 J=7 N=4 reads {} | ref6 + ref8 + | expected + C
+PASS recursive Contract, concrete conformance | S1 is Tree | C none Complete rounds=1 V=4 E=0 J=5 N=5 reads {} | ref6 none ref8 none | expected none C
+PASS pending declaration | T.(Aa).X is Copy | C none Provisional rounds=0 V=2 E=1 J=0 N=4 reads {} | ref6 none ref8 none | expected none P
+PASS pending declaration, discovery | enumerate T.(Aa).X | C none Complete rounds=3 V=7 E=3 J=11 N=4 facts [+Copy] members [T.(Aa).X] | expected C
+PASS view: own inferred value excluded | S1.(Pp).X is i32 | C none Complete rounds=2 V=2 E=3 J=7 N=7 reads {} | ref6 none ref8 none | expected none C
+PASS view: completed external value admissible | S1.(Pp).X is i32 | C + Complete rounds=2 V=1 E=4 J=7 N=7 reads {0} | ref6 + ref8 + | expected + C reads {0}
+PASS view: own value through another definition | S2.(Qq).W is i32 | C none Complete rounds=2 V=2 E=3 J=7 N=7 reads {} | ref6 none ref8 none | expected none C
+PASS view: ordinary, reads through both | S2.(Qq).W is i32 | C + Complete rounds=2 V=1 E=6 J=14 N=7 reads {0,1} | ref6 + ref8 + | expected + C reads {0,1}
+PASS view: independent explicit support | S1.(Pp).X is i32 | C + Complete rounds=1 V=1 E=3 J=3 N=7 reads {} | ref6 + ref8 + | expected + C reads {}
+PASS closed identity, recursive: projection | T.(It).Value is Copy | C + Complete rounds=2 V=7 E=5 J=24 N=5 reads {} | ref6 + ref8 + | expected + C
+PASS closed identity, recursive: the closed Type | i32 is Copy | C + Complete rounds=5 V=12 E=13 J=62 N=8 reads {} | ref6 + ref8 + | expected + C
+PASS closed identity, recursive: frozen view, a read-free support | i32 is Copy | C + Complete rounds=5 V=12 E=13 J=64 N=8 reads {} | ref6 + ref8 + | expected + C reads {}
+PASS closed identity through a binding: ordinary view | i32 is Copy | C + Complete rounds=6 V=12 E=20 J=92 N=11 reads {} | ref6 + ref8 + | expected + C
+PASS closed identity through a binding: every support reads it | i32 is Copy | C Resource Resource (rounds>200) rounds=201 V=981 E=1956 J=7823488 N=399 reads {} | ref6 + ref8 + | expected R
+PASS closed identity, argument bound by the goal | i32 is Dd<T.(It).Child> | C + Complete rounds=7 V=12 E=9 J=72 N=6 reads {} | ref6 + ref8 + | expected + C
+PASS closed identity, argument not derivable | i32 is Dd<U> | C none Complete rounds=3 V=7 E=1 J=27 N=5 reads {} | ref6 none ref8 none | expected none C
+PASS closed identity, enumerate the closed Type | enumerate i32 | C Resource Resource (rounds>200) rounds=201 V=987 E=1569 J=297494 N=592 facts [] members [] | expected R
+FAILURES 0

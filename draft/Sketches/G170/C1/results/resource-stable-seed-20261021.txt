@@ -1,0 +1,2805 @@
+model 425 view ordinary: List<i32> is K2<i64> ref (False, False) C Resource Resource (work>3000000) rounds=27 V=1849 E=2218 J=3078888 N=202
+contract Cp
+contract K0
+  associate Y is Cp or Cp
+  clause Self.(K0).Y.(K1<i32>).X is K1<Self>
+contract K1<A> : K0, Cp
+  associate X is K0
+  clause Self.(K1<A>).X.(K3).X is A
+contract K2<A>
+  associate X is K2<i32>
+  associate Y is K1<List<A>>
+contract K3
+  associate X
+  associate Y is K3
+input T is K3
+input U is K2<List<i32>>
+input T.(K3).X is U
+input T.(K3).X is i32
+conformance S1 is K2<i64> pending
+  binding X = List<i32>
+  binding Y = i32 inferred 0
+conformance S2 is K2<i32>
+
+model 425 view ordinary: S1.(K2<i64>).X is K2<U> ref (False, False) C Resource Resource (work>3000000) rounds=28 V=1716 E=2218 J=3039795 N=202
+contract Cp
+contract K0
+  associate Y is Cp or Cp
+  clause Self.(K0).Y.(K1<i32>).X is K1<Self>
+contract K1<A> : K0, Cp
+  associate X is K0
+  clause Self.(K1<A>).X.(K3).X is A
+contract K2<A>
+  associate X is K2<i32>
+  associate Y is K1<List<A>>
+contract K3
+  associate X
+  associate Y is K3
+input T is K3
+input U is K2<List<i32>>
+input T.(K3).X is U
+input T.(K3).X is i32
+conformance S1 is K2<i64> pending
+  binding X = List<i32>
+  binding Y = i32 inferred 0
+conformance S2 is K2<i32>
+
+model 1812 view ordinary: List<i32> is K0<i32> ref (False, False) C Resource Resource (work>3000000) rounds=198 V=2318 E=1542 J=3039245 N=588
+contract Cp
+contract K0<A>
+  associate Y
+contract K1<A>
+  clause A is A
+contract K2 : Cp
+  associate Y
+contract K3
+  associate Y is K1<i32>
+  clause Self.(K3).Y is K3 and K4
+contract K4 : K0<i32>, Cp
+  associate X
+  clause Self.(K4).X is K0<i32>
+  clause Self.(K4).X.(K4).X is List<i32>
+input T is K3
+input U is K0<i64>
+
+model 659 view ordinary: List<i32> is K0 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=1361 E=1790 J=711481 N=456
+contract Cp
+contract K0
+  associate X is Cp and K2
+contract K1
+  associate X is Self.(K1).X
+  clause Self.(K1).X is List<i32>
+  clause Self.(K1).X.(K2).Y is K2
+contract K2 : K0
+  associate Y
+  clause Self.(K2).Y.(K1).X is List<i32>
+  clause Self.(K2).Y.(K0).X is K2 or K2
+input T is K0
+input U is K0
+input T.(K0).X is U
+input T.(K0).X is i32
+conformance S2 is K1 when S2 is K1
+
+model 425 view frozen 0: List<i32> is K2<i64> ref (False, False) C Resource Resource (work>3000000) rounds=26 V=2898 E=5350 J=3627883 N=188
+contract Cp
+contract K0
+  associate Y is Cp or Cp
+  clause Self.(K0).Y.(K1<i32>).X is K1<Self>
+contract K1<A> : K0, Cp
+  associate X is K0
+  clause Self.(K1<A>).X.(K3).X is A
+contract K2<A>
+  associate X is K2<i32>
+  associate Y is K1<List<A>>
+contract K3
+  associate X
+  associate Y is K3
+input T is K3
+input U is K2<List<i32>>
+input T.(K3).X is U
+input T.(K3).X is i32
+conformance S1 is K2<i64> pending
+  binding X = List<i32>
+  binding Y = i32 inferred 0
+conformance S2 is K2<i32>
+
+model 659 view ordinary: List<i32> is K0 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=1361 E=1790 J=711481 N=456
+contract Cp
+contract K0
+  associate X is Cp and K2
+contract K1
+  associate X is Self.(K1).X
+  clause Self.(K1).X is List<i32>
+  clause Self.(K1).X.(K2).Y is K2
+contract K2 : K0
+  associate Y
+  clause Self.(K2).Y.(K1).X is List<i32>
+  clause Self.(K2).Y.(K0).X is K2 or K2
+input T is K0
+input U is K0
+input T.(K0).X is U
+input T.(K0).X is i32
+conformance S2 is K1 when S2 is K1
+
+model 659 view ordinary: List<i32> is K0 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=1361 E=1790 J=711481 N=456
+contract Cp
+contract K0
+  associate X is Cp and K2
+contract K1
+  associate X is Self.(K1).X
+  clause Self.(K1).X is List<i32>
+  clause Self.(K1).X.(K2).Y is K2
+contract K2 : K0
+  associate Y
+  clause Self.(K2).Y.(K1).X is List<i32>
+  clause Self.(K2).Y.(K0).X is K2 or K2
+input T is K0
+input U is K0
+input T.(K0).X is U
+input T.(K0).X is i32
+conformance S2 is K1 when S2 is K1
+
+model 425 view frozen 0: S1.(K2<i64>).X is K2<U> ref (False, False) C Resource Resource (work>3000000) rounds=27 V=2906 E=5350 J=3716778 N=188
+contract Cp
+contract K0
+  associate Y is Cp or Cp
+  clause Self.(K0).Y.(K1<i32>).X is K1<Self>
+contract K1<A> : K0, Cp
+  associate X is K0
+  clause Self.(K1<A>).X.(K3).X is A
+contract K2<A>
+  associate X is K2<i32>
+  associate Y is K1<List<A>>
+contract K3
+  associate X
+  associate Y is K3
+input T is K3
+input U is K2<List<i32>>
+input T.(K3).X is U
+input T.(K3).X is i32
+conformance S1 is K2<i64> pending
+  binding X = List<i32>
+  binding Y = i32 inferred 0
+conformance S2 is K2<i32>
+
+model 427 view ordinary: List<i32> is K3<i32> ref (False, False) C Resource Resource (work>3000000) rounds=279 V=1102 E=1369 J=3054030 N=692
+contract Cp
+contract K0
+  associate X is K3<Self.(K0).Y>
+  associate Y
+  clause Self.(K0).X.(K0).Y is i32
+  clause Self.(K0).Y is Cp or Cp
+contract K1
+  associate Y
+contract K2<A> : K1, Cp
+  associate X
+  associate Y
+  clause Self.(K2<A>).X is Cp and K1
+contract K3<A>
+  associate X is Cp and K0
+  clause A.(K1).Y is List<i32>
+input T is K3<i32>
+
+model 851 view ordinary: i32 is K3 ref (False, False) C Resource Resource (work>3000000) rounds=120 V=1322 E=1976 J=3007933 N=561
+contract Cp
+contract K0
+  associate X
+  associate Y
+  clause Self is K1 or Cp
+contract K1
+  associate X is K3 or K1
+  associate Y
+  clause Self.(K1).X is K1 and K3
+contract K2
+  associate X is i32
+  associate Y is Self.(K2).X
+  clause Self.(K2).Y.(K1).X is K2 or K1
+  clause Self.(K2).X.(K3).X is K1
+contract K3 : Cp
+  associate X is Cp
+  associate Y
+  clause Self is not K2
+  clause Self.(K3).Y.(K2).X is K2
+input T is K2
+input U is not K3
+conformance S1 is K3
+  binding X = i64
+  binding Y = i32 inferred 0
+
+model 427 view ordinary: List<i32> is K3<i32> ref (False, False) C Resource Resource (work>3000000) rounds=279 V=1102 E=1369 J=3054030 N=692
+contract Cp
+contract K0
+  associate X is K3<Self.(K0).Y>
+  associate Y
+  clause Self.(K0).X.(K0).Y is i32
+  clause Self.(K0).Y is Cp or Cp
+contract K1
+  associate Y
+contract K2<A> : K1, Cp
+  associate X
+  associate Y
+  clause Self.(K2<A>).X is Cp and K1
+contract K3<A>
+  associate X is Cp and K0
+  clause A.(K1).Y is List<i32>
+input T is K3<i32>
+
+model 851 view ordinary: T.(K2).X is Cp ref (False, False) C Resource Resource (work>3000000) rounds=122 V=1325 E=2196 J=3045149 N=561
+contract Cp
+contract K0
+  associate X
+  associate Y
+  clause Self is K1 or Cp
+contract K1
+  associate X is K3 or K1
+  associate Y
+  clause Self.(K1).X is K1 and K3
+contract K2
+  associate X is i32
+  associate Y is Self.(K2).X
+  clause Self.(K2).Y.(K1).X is K2 or K1
+  clause Self.(K2).X.(K3).X is K1
+contract K3 : Cp
+  associate X is Cp
+  associate Y
+  clause Self is not K2
+  clause Self.(K3).Y.(K2).X is K2
+input T is K2
+input U is not K3
+conformance S1 is K3
+  binding X = i64
+  binding Y = i32 inferred 0
+
+model 662 view ordinary: T is List<i32> ref (False, False) C Resource Resource (work>3000000) rounds=80 V=1463 E=3414 J=3080339 N=373
+contract Cp
+contract K0
+  associate X is Self
+  clause Self is K1
+  clause Self.(K0).X.(K1).X is K0
+contract K1 : K0
+  associate X is Self.(K1).Y
+  associate Y is K2
+  clause Self.(K1).X is K1
+contract K2
+  associate X is Cp or Cp
+  clause Self.(K2).X.(K0).X is List<i32>
+  clause Self is Cp and K2
+contract K3<A> pending
+  associate X is K2
+  associate Y
+input T is K0
+input T.(K0).X is U
+
+model 427 view ordinary: T.(K3<i32>).X is K3<i32> ref (False, False) C Resource Resource (rounds>300) rounds=301 V=1188 E=1479 J=406562 N=747
+contract Cp
+contract K0
+  associate X is K3<Self.(K0).Y>
+  associate Y
+  clause Self.(K0).X.(K0).Y is i32
+  clause Self.(K0).Y is Cp or Cp
+contract K1
+  associate Y
+contract K2<A> : K1, Cp
+  associate X
+  associate Y
+  clause Self.(K2<A>).X is Cp and K1
+contract K3<A>
+  associate X is Cp and K0
+  clause A.(K1).Y is List<i32>
+input T is K3<i32>
+
+model 851 view ordinary: (T.(K2).X is Cp) or (T.(K2).X is K0) ref (False, False) C Resource Resource (work>3000000) rounds=122 V=1322 E=1756 J=3031602 N=562
+contract Cp
+contract K0
+  associate X
+  associate Y
+  clause Self is K1 or Cp
+contract K1
+  associate X is K3 or K1
+  associate Y
+  clause Self.(K1).X is K1 and K3
+contract K2
+  associate X is i32
+  associate Y is Self.(K2).X
+  clause Self.(K2).Y.(K1).X is K2 or K1
+  clause Self.(K2).X.(K3).X is K1
+contract K3 : Cp
+  associate X is Cp
+  associate Y
+  clause Self is not K2
+  clause Self.(K3).Y.(K2).X is K2
+input T is K2
+input U is not K3
+conformance S1 is K3
+  binding X = i64
+  binding Y = i32 inferred 0
+
+model 668 view ordinary: T.(K0).X is Cp ref (False, False) C Resource Resource (work>3000000) rounds=21 V=4668 E=25606 J=3531786 N=8337
+contract Cp
+contract K0
+  associate X is List<i32>
+  clause Self is Cp and K2
+contract K1<A>
+  associate X is K1<i32>
+  associate Y is K1<List<A>>
+  clause A.(K0).X is K0
+  clause A.(K2).X is K0 or K2
+contract K2 : K0
+  associate X is not Cp
+  associate Y
+  clause Self.(K2).X.(K0).X is K1<i32>
+  clause Self.(K2).X is K0
+input T is K0
+input U is K0
+conformance S1 is K0
+  binding X = List<i32>
+conformance S2 is K1<i32>
+
+model 851 view frozen 0: i32 is K3 ref (False, False) C Resource Resource (work>3000000) rounds=89 V=1252 E=1576 J=3061945 N=406
+contract Cp
+contract K0
+  associate X
+  associate Y
+  clause Self is K1 or Cp
+contract K1
+  associate X is K3 or K1
+  associate Y
+  clause Self.(K1).X is K1 and K3
+contract K2
+  associate X is i32
+  associate Y is Self.(K2).X
+  clause Self.(K2).Y.(K1).X is K2 or K1
+  clause Self.(K2).X.(K3).X is K1
+contract K3 : Cp
+  associate X is Cp
+  associate Y
+  clause Self is not K2
+  clause Self.(K3).Y.(K2).X is K2
+input T is K2
+input U is not K3
+conformance S1 is K3
+  binding X = i64
+  binding Y = i32 inferred 0
+
+model 1632 view ordinary: List<i32> is Cp ref (False, False) C Resource Resource (size 50341>30000) rounds=19 V=14485 E=42986 J=673222 N=14362
+contract Cp
+contract K0
+  associate Y is Self
+  clause Self.(K0).Y is K1
+contract K1
+  associate X is K3<Self>
+  associate Y is K1
+  clause Self.(K1).X is K1
+  clause Self.(K1).X is Cp or Cp
+contract K2
+  associate X
+  associate Y is K3<i32>
+  clause Self.(K2).X.(K3<Self>).Y is K2
+  clause Self.(K2).X is Cp
+contract K3<A> : K1, Cp
+  associate Y is Self.(K3<A>).Y
+  clause Self.(K3<A>).Y is K0 or Cp
+  clause Self.(K3<A>).Y is List<i32>
+contract K4<A>
+  associate X
+  clause A is K1 or Cp
+  clause A.(K2).X is Cp and K2
+input T is K4<i64>
+input U is T.(K4<i64>).X
+
+model 668 view ordinary: (T.(K0).X is Cp) or (T.(K0).X is K0) ref (False, False) C Resource Resource (work>3000000) rounds=21 V=4668 E=25606 J=3531786 N=8337
+contract Cp
+contract K0
+  associate X is List<i32>
+  clause Self is Cp and K2
+contract K1<A>
+  associate X is K1<i32>
+  associate Y is K1<List<A>>
+  clause A.(K0).X is K0
+  clause A.(K2).X is K0 or K2
+contract K2 : K0
+  associate X is not Cp
+  associate Y
+  clause Self.(K2).X.(K0).X is K1<i32>
+  clause Self.(K2).X is K0
+input T is K0
+input U is K0
+conformance S1 is K0
+  binding X = List<i32>
+conformance S2 is K1<i32>
+
+model 851 view frozen 0: T.(K2).X is Cp ref (False, False) C Resource Resource (work>3000000) rounds=91 V=1255 E=1734 J=3081350 N=406
+contract Cp
+contract K0
+  associate X
+  associate Y
+  clause Self is K1 or Cp
+contract K1
+  associate X is K3 or K1
+  associate Y
+  clause Self.(K1).X is K1 and K3
+contract K2
+  associate X is i32
+  associate Y is Self.(K2).X
+  clause Self.(K2).Y.(K1).X is K2 or K1
+  clause Self.(K2).X.(K3).X is K1
+contract K3 : Cp
+  associate X is Cp
+  associate Y
+  clause Self is not K2
+  clause Self.(K3).Y.(K2).X is K2
+input T is K2
+input U is not K3
+conformance S1 is K3
+  binding X = i64
+  binding Y = i32 inferred 0
+
+model 851 view frozen 0: (T.(K2).X is Cp) or (T.(K2).X is K0) ref (False, False) C Resource Resource (work>3000000) rounds=91 V=1253 E=1418 J=3074072 N=407
+contract Cp
+contract K0
+  associate X
+  associate Y
+  clause Self is K1 or Cp
+contract K1
+  associate X is K3 or K1
+  associate Y
+  clause Self.(K1).X is K1 and K3
+contract K2
+  associate X is i32
+  associate Y is Self.(K2).X
+  clause Self.(K2).Y.(K1).X is K2 or K1
+  clause Self.(K2).X.(K3).X is K1
+contract K3 : Cp
+  associate X is Cp
+  associate Y
+  clause Self is not K2
+  clause Self.(K3).Y.(K2).X is K2
+input T is K2
+input U is not K3
+conformance S1 is K3
+  binding X = i64
+  binding Y = i32 inferred 0
+
+model 282 view ordinary: i32 is K0 ref (False, False) C Resource Resource (work>3000000) rounds=103 V=2525 E=1959 J=3014964 N=598
+contract Cp
+contract K0 : Cp
+  associate X is K0
+  associate Y
+  clause Self.(K0).X is K0 and Cp
+  clause Self.(K0).Y.(K0).X is i32
+contract K1
+  associate Y
+  clause Self is K1 or K1
+contract K2
+  associate X is K0 or K0
+  associate Y is Cp or K4
+contract K3<A>
+  associate X is K0 and K4
+  associate Y
+  clause Self.(K3<A>).Y is K4
+contract K4 : K0
+  associate X is K2 or Cp
+  clause Self.(K4).X.(K4).X is List<i32>
+input T is K4
+input U is K4
+input U is not Cp
+conformance S2 is K0 when S2 is K4
+
+model 677 view ordinary: T.(K1).X is K2<i32> ref (False, False) C Resource Resource (work>3000000) rounds=76 V=1331 E=7430 J=3054618 N=119
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 344 view ordinary: List<i32> is K3 ref (False, False) C Resource Resource (work>3000000) rounds=257 V=1528 E=1771 J=3031435 N=394
+contract Cp
+contract K0
+  associate X
+  associate Y is K0 or K2
+  clause Self.(K0).X.(K2).Y is List<i32>
+contract K1 pending
+  associate Y is K3 or K0
+contract K2 : K0
+  associate Y is K3
+  clause Self.(K2).Y is K1
+  clause Self.(K2).Y.(K0).Y is Cp
+contract K3 : K2
+  associate Y is Self.(K3).Y
+  clause Self is not Cp
+contract K4<A> : K1
+  associate Y is Cp and K1
+input T is K0
+input U is K3
+input U is T.(K0).Y
+conformance S1 is K4<i64>
+  binding Y = i64 inferred 1 pending
+
+model 344 view frozen 0: List<i32> is K3 ref (False, False) C Resource Resource (work>3000000) rounds=174 V=1196 E=1187 J=3017960 N=268
+contract Cp
+contract K0
+  associate X
+  associate Y is K0 or K2
+  clause Self.(K0).X.(K2).Y is List<i32>
+contract K1 pending
+  associate Y is K3 or K0
+contract K2 : K0
+  associate Y is K3
+  clause Self.(K2).Y is K1
+  clause Self.(K2).Y.(K0).Y is Cp
+contract K3 : K2
+  associate Y is Self.(K3).Y
+  clause Self is not Cp
+contract K4<A> : K1
+  associate Y is Cp and K1
+input T is K0
+input U is K3
+input U is T.(K0).Y
+conformance S1 is K4<i64>
+  binding Y = i64 inferred 1 pending
+
+model 358 view ordinary: T is K2<List<i32>> ref (False, False) C Resource Resource (size 39568>30000) rounds=24 V=2786 E=68621 J=356888 N=2471
+contract Cp
+contract K0
+  associate Y is K3
+  clause Self.(K0).Y is K4
+  clause Self.(K0).Y.(K2<List<i32>>).X is List<i32>
+contract K1
+  associate X is K4 and K0
+  associate Y
+  clause Self.(K1).X is K3 or K3
+contract K2<A>
+  associate X is Self.(K2<A>).Y
+  associate Y is K4
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X.(K3).X is K2<Self.(K3).X>
+  clause Self.(K3).Y.(K1).Y is K1
+contract K4
+  clause Self is not K3
+input T is K3
+
+model 677 view ordinary: S1.(K0).X is K1 ref (False, False) C Resource Resource (work>3000000) rounds=81 V=1470 E=7848 J=3060740 N=117
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 381 view ordinary: List<i32> is K0 ref (False, False) C Resource Resource (size 42835>30000) rounds=18 V=14884 E=37583 J=1438208 N=9158
+contract Cp
+contract K0
+  associate X is Self
+  associate Y is K2
+  clause Self.(K0).Y.(K2).X is K0 and K0
+contract K1 : K0
+  associate Y is K2
+  clause Self.(K1).Y.(K1).Y is List<i32>
+  clause Self.(K1).Y is not Cp
+contract K2 : K0
+  associate X is K1
+input T is K0
+input U is T.(K0).Y
+input U is not Cp
+conformance S1 is K2
+  binding X = S2
+
+model 381 view ordinary: List<i32> is K2 ref (False, False) C Resource Resource (size 42835>30000) rounds=18 V=14884 E=37583 J=1438193 N=9158
+contract Cp
+contract K0
+  associate X is Self
+  associate Y is K2
+  clause Self.(K0).Y.(K2).X is K0 and K0
+contract K1 : K0
+  associate Y is K2
+  clause Self.(K1).Y.(K1).Y is List<i32>
+  clause Self.(K1).Y is not Cp
+contract K2 : K0
+  associate X is K1
+input T is K0
+input U is T.(K0).Y
+input U is not Cp
+conformance S1 is K2
+  binding X = S2
+
+model 381 view ordinary: List<i32> is K2 ref (False, False) C Resource Resource (size 42835>30000) rounds=18 V=14884 E=37583 J=1438193 N=9158
+contract Cp
+contract K0
+  associate X is Self
+  associate Y is K2
+  clause Self.(K0).Y.(K2).X is K0 and K0
+contract K1 : K0
+  associate Y is K2
+  clause Self.(K1).Y.(K1).Y is List<i32>
+  clause Self.(K1).Y is not Cp
+contract K2 : K0
+  associate X is K1
+input T is K0
+input U is T.(K0).Y
+input U is not Cp
+conformance S1 is K2
+  binding X = S2
+
+model 677 view ordinary: T.(K1).X is K4 ref (False, False) C Resource Resource (work>3000000) rounds=81 V=1361 E=7778 J=3052455 N=119
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: List<i32> is K0<i32> ref (False, False) C Resource Resource (work>3000000) rounds=55 V=6956 E=36394 J=3172748 N=195
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 465 view ordinary: T is K1<i32> ref (False, False) C Resource Resource (work>3000000) rounds=53 V=6928 E=35690 J=3121369 N=195
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 677 view ordinary: S1 is K4 ref (False, False) C Resource Resource (work>3000000) rounds=82 V=1379 E=7924 J=3145934 N=121
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: T is K2 ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6924 E=35510 J=3110168 N=194
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 677 view ordinary: T.(K1).X.(K3<i64>).X is Cp ref (False, False) C Resource Resource (work>3000000) rounds=81 V=1387 E=7922 J=3122440 N=121
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: List<i32> is K3 ref (False, False) C Resource Resource (work>3000000) rounds=55 V=6798 E=34706 J=3024873 N=191
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 677 view ordinary: S1.(K0).X is K1 ref (False, False) C Resource Resource (work>3000000) rounds=81 V=1470 E=7848 J=3060740 N=117
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: List<i32> is K1<i64> ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6955 E=36244 J=3164461 N=195
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 1865 view ordinary: T.(K3).Y.(K0).X is K3 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=508 E=241 J=58710 N=128
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: T.(K3).Y.(K0).X is K3 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=508 E=241 J=58710 N=128
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: S1 is Cp ref (False, False) C Resource Resource (rounds>300) rounds=301 V=502 E=237 J=39230 N=125
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: S1 is K1 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=501 E=237 J=39231 N=125
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: U is K3 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=500 E=241 J=39706 N=127
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: T.(K3).Y is Cp ref (False, False) C Resource Resource (rounds>300) rounds=301 V=502 E=241 J=39729 N=127
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: U is K1 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=501 E=237 J=39231 N=125
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: T is Cp ref (False, False) C Resource Resource (rounds>300) rounds=301 V=496 E=241 J=30073 N=126
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: T is K1 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=496 E=241 J=30384 N=126
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: U is List<i32> ref (False, False) C Resource Resource (rounds>300) rounds=301 V=507 E=237 J=48861 N=127
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: U is List<i32> ref (False, False) C Resource Resource (rounds>300) rounds=301 V=507 E=237 J=48861 N=127
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: U is List<i32> ref (False, False) C Resource Resource (rounds>300) rounds=301 V=507 E=237 J=48861 N=127
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: (T is Cp) or (T is K0) ref (False, False) C Resource Resource (rounds>300) rounds=301 V=495 E=241 J=30083 N=126
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: (T.(K3).Y is Cp) or (T.(K3).Y is K0) ref (False, False) C Resource Resource (rounds>300) rounds=301 V=501 E=241 J=39744 N=127
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: T is K0 ref (True, False) C Resource Resource (rounds>300) rounds=301 V=496 E=241 J=30853 N=126
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 1865 view ordinary: T is K0 ref (True, False) C Resource Resource (rounds>300) rounds=301 V=496 E=241 J=30853 N=126
+contract Cp
+contract K0
+  associate X is K0
+  associate Y is not K0
+  clause Self.(K0).X.(K3).Y is Self
+contract K1
+  associate Y is K3
+contract K2<A> : K0, Cp
+  clause A.(K0).Y is Cp or Cp
+contract K3 : K0
+  associate Y is K1
+input T is K3
+conformance S2 is K0
+
+model 677 view ordinary: List<i32> is K1 ref (False, False) C Resource Resource (work>3000000) rounds=76 V=1451 E=7922 J=3046517 N=117
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: T is K2 ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6924 E=35510 J=3110168 N=194
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 1920 view ordinary: List<i32> is K4 ref (False, False) C Resource Resource (work>3000000) rounds=82 V=2787 E=2089 J=3098357 N=681
+contract Cp
+contract K0
+  associate X
+  associate Y is i32
+  clause Self.(K0).X.(K4).X is K4
+  clause Self.(K0).X.(K4).X is K1 or Cp
+contract K1 : K0, Cp
+  associate X is Cp or Cp
+  associate Y is K0 and Cp
+contract K2 : K1
+  associate X is K2
+  associate Y
+  clause Self.(K2).Y is K1 or Cp
+  clause Self is K4
+contract K3<A> : K2
+contract K4
+  associate X is List<i32>
+input T is K3<i32>
+conformance S2 is K2
+
+model 465 view ordinary: T is Cp ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6927 E=35510 J=3110364 N=194
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 677 view ordinary: List<i32> is K0 ref (False, False) C Resource Resource (work>3000000) rounds=76 V=1413 E=7850 J=3013937 N=117
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 935 view ordinary: List<i32> is K1<i32> ref (False, False) C Resource Resource (work>3000000) rounds=21 V=8500 E=13288 J=5030035 N=4026
+contract Cp
+contract K0
+  associate X
+  associate Y is K1<List<i32>>
+  clause Self.(K0).Y.(K2).Y is K4<Self>
+contract K1<A> : K0
+  associate X is K1<Self>
+  associate Y is i32
+contract K2 : K1<Self>
+  associate X is K3
+  associate Y is K0 or Cp
+  clause Self is K1<Self.(K2).X>
+  clause Self.(K2).Y.(K0).Y is not Cp
+contract K3 : K0, Cp
+  clause Self is Cp
+contract K4<A> : Cp
+  associate X is K3
+  associate Y is Self.(K4<A>).X
+  clause Self.(K4<A>).Y is List<i32>
+  clause Self.(K4<A>).Y is Cp or Cp
+input T is K0
+input U is not Cp
+conformance S1 is K4<i64>
+  binding X = S2 inferred 0 pending
+  binding Y = i64 inferred 0
+
+model 935 view frozen 0: List<i32> is K1<i32> ref (False, False) C Resource Resource (size 35146>30000) rounds=19 V=5667 E=53972 J=1373468 N=2492
+contract Cp
+contract K0
+  associate X
+  associate Y is K1<List<i32>>
+  clause Self.(K0).Y.(K2).Y is K4<Self>
+contract K1<A> : K0
+  associate X is K1<Self>
+  associate Y is i32
+contract K2 : K1<Self>
+  associate X is K3
+  associate Y is K0 or Cp
+  clause Self is K1<Self.(K2).X>
+  clause Self.(K2).Y.(K0).Y is not Cp
+contract K3 : K0, Cp
+  clause Self is Cp
+contract K4<A> : Cp
+  associate X is K3
+  associate Y is Self.(K4<A>).X
+  clause Self.(K4<A>).Y is List<i32>
+  clause Self.(K4<A>).Y is Cp or Cp
+input T is K0
+input U is not Cp
+conformance S1 is K4<i64>
+  binding X = S2 inferred 0 pending
+  binding Y = i64 inferred 0
+
+model 465 view ordinary: U is Cp ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6927 E=35510 J=3110364 N=194
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 550 view ordinary: List<i32> is K0<T.(K2).X.(K1).X> ref (True, False) C Resource Resource (size 35090>30000) rounds=21 V=8709 E=29423 J=466378 N=11668
+contract Cp
+contract K0<A>
+  clause Self is K2
+  clause Self is not Cp
+contract K1
+  associate X is K0<Self.(K1).X>
+  associate Y is K1
+contract K2
+  associate X is K0<List<i32>>
+  associate Y is not K0<i32>
+  clause Self.(K2).X.(K1).X is List<i32>
+  clause Self is K1
+input T is K0<U>
+input U is K0<U>
+input T is Cp or K2
+conformance S1 is K0<i64>
+
+model 677 view ordinary: U is Cp ref (False, False) C Resource Resource (work>3000000) rounds=82 V=1369 E=7852 J=3093614 N=121
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 550 view ordinary: List<i32> is K0<U.(K2).X.(K1).X> ref (True, False) C Resource Resource (size 35090>30000) rounds=21 V=8709 E=29423 J=466380 N=11668
+contract Cp
+contract K0<A>
+  clause Self is K2
+  clause Self is not Cp
+contract K1
+  associate X is K0<Self.(K1).X>
+  associate Y is K1
+contract K2
+  associate X is K0<List<i32>>
+  associate Y is not K0<i32>
+  clause Self.(K2).X.(K1).X is List<i32>
+  clause Self is K1
+input T is K0<U>
+input U is K0<U>
+input T is Cp or K2
+conformance S1 is K0<i64>
+
+model 465 view ordinary: i32 is K1<i32> ref (False, False) C Resource Resource (work>3000000) rounds=53 V=6928 E=35690 J=3129492 N=195
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 720 view ordinary: S1 is Cp ref (False, False) C Resource Resource (work>3000000) rounds=36 V=361 E=11000 J=3093333 N=275
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 677 view ordinary: T is List<i32> ref (False, False) C Resource Resource (work>3000000) rounds=77 V=1368 E=7854 J=3093656 N=121
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 720 view ordinary: T.(K2).Y is K2 ref (False, False) C Resource Resource (work>3000000) rounds=36 V=362 E=11182 J=3052365 N=274
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: T is K1<i64> ref (False, False) C Resource Resource (work>3000000) rounds=36 V=357 E=11000 J=3092594 N=276
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: S1 is K2 ref (False, False) C Resource Resource (work>3000000) rounds=36 V=357 E=11000 J=3092623 N=275
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: U is Cp ref (False, False) C Resource Resource (work>3000000) rounds=36 V=357 E=10826 J=3046185 N=274
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 465 view ordinary: T.(K1<i64>).Y.(K1<List<i32>>).Y is U ref (False, False) C Resource Resource (work>3000000) rounds=55 V=6775 E=36172 J=3085501 N=193
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 720 view ordinary: U is Cp ref (False, False) C Resource Resource (work>3000000) rounds=36 V=357 E=10826 J=3046185 N=274
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: i32 is Cp ref (False, False) C Resource Resource (work>3000000) rounds=36 V=360 E=11000 J=3093333 N=274
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: T.(K2).Y.(K1<List<i32>>).Y is i64 ref (False, False) C Resource Resource (work>3000000) rounds=36 V=371 E=11360 J=3187097 N=277
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: T is i32 ref (False, False) C Resource Resource (work>3000000) rounds=36 V=355 E=11000 J=3092596 N=274
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 720 view ordinary: S1 is List<i32> ref (False, False) C Resource Resource (work>3000000) rounds=34 V=356 E=11000 J=3092509 N=275
+contract Cp
+contract K0<A>
+  associate X is Cp
+  associate Y is Cp and Cp
+  clause A is List<i32>
+  clause Self.(K0<A>).Y.(K0<Self.(K0<A>).X>).X is K2 and Cp
+contract K1<A> : K0<List<A>>, Cp
+  associate X is not K1<A>
+  associate Y
+contract K2 : Cp
+  associate X is K0<Self.(K2).Y>
+  associate Y is K0<List<i32>>
+input T is K2
+input U is K0<List<i32>>
+conformance S2 is K2
+
+model 677 view ordinary: S1.(K0).X is S2 ref (False, False) C Resource Resource (work>3000000) rounds=81 V=1374 E=7920 J=3066713 N=118
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 742 view ordinary: List<i32> is Cp ref (False, False) C Resource Resource (work>3000000) rounds=190 V=1125 E=1109 J=3014625 N=383
+contract Cp
+contract K0
+contract K1
+  associate Y is K2<Self>
+  clause Self is not K2<i32>
+  clause Self.(K1).Y is K0 or K0
+contract K2<A> : K0, Cp
+  associate Y
+  clause Self.(K2<A>).Y is K2<A>
+  clause Self.(K2<A>).Y.(K2<i32>).Y is List<i32>
+contract K3<A>
+  associate Y is Cp
+  clause A is K0 or Cp
+  clause Self is K1 and K4
+contract K4
+  associate Y is not K4
+  clause Self is K0 or Cp
+  clause Self is K1
+input T is K1
+conformance S1 is K2<i32>
+  binding Y = i64 inferred 1
+
+model 465 view ordinary: T.(K1<i64>).Y.(K1<List<i32>>).Y is i32 ref (False, False) C Resource Resource (work>3000000) rounds=52 V=6775 E=36166 J=3083450 N=193
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 742 view frozen 0: List<i32> is Cp ref (False, False) C Resource Resource (work>3000000) rounds=140 V=830 E=809 J=3033644 N=283
+contract Cp
+contract K0
+contract K1
+  associate Y is K2<Self>
+  clause Self is not K2<i32>
+  clause Self.(K1).Y is K0 or K0
+contract K2<A> : K0, Cp
+  associate Y
+  clause Self.(K2<A>).Y is K2<A>
+  clause Self.(K2<A>).Y.(K2<i32>).Y is List<i32>
+contract K3<A>
+  associate Y is Cp
+  clause A is K0 or Cp
+  clause Self is K1 and K4
+contract K4
+  associate Y is not K4
+  clause Self is K0 or Cp
+  clause Self is K1
+input T is K1
+conformance S1 is K2<i32>
+  binding Y = i64 inferred 1
+
+model 677 view ordinary: i32 is T.(K1).X ref (False, False) C Resource Resource (work>3000000) rounds=77 V=1362 E=7780 J=3037899 N=119
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: T.(K1<i64>).Y.(K1<List<i32>>).Y is U ref (False, False) C Resource Resource (work>3000000) rounds=55 V=6775 E=36172 J=3085501 N=193
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 465 view ordinary: (T is Cp) or (T is K2) ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6925 E=35510 J=3110174 N=194
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 677 view ordinary: not (T.(K1).X is Cp) ref (True, False) C Resource Resource (work>3000000) rounds=81 V=1364 E=7780 J=3038155 N=119
+contract Cp
+contract K0
+  associate X is Cp and Cp
+  clause Self is K1
+contract K1
+  associate X is not Cp
+  associate Y
+  clause Self.(K1).Y.(K0).X is K4
+  clause Self.(K1).Y.(K1).X is Self.(K1).X
+contract K2<A> : K0
+  clause A is i32
+contract K3<A> : Cp
+  associate X is K2<A>
+  clause Self.(K3<A>).X.(K0).X is A
+contract K4
+  associate X
+  associate Y is not Cp
+  clause Self.(K4).Y is K2<List<i32>>
+input T is K1
+input U is K2<i64>
+conformance S1 is K0
+  binding X = i32
+
+model 465 view ordinary: (T.(K1<i64>).Y is Cp) or (T.(K1<i64>).Y is K2) ref (False, False) C Resource Resource (work>3000000) rounds=56 V=6935 E=35844 J=3140796 N=194
+contract Cp
+contract K0<A> : Cp
+  associate X
+  associate Y
+  clause A is Self
+  clause A.(K0<A>).Y is Cp and K3
+contract K1<A>
+  associate Y is K0<A>
+  clause A.(K1<A>).Y is Cp
+contract K2
+  associate X is Self
+  associate Y is K2 or K2
+  clause Self is Cp
+contract K3
+  associate X
+  associate Y is K3
+  clause Self.(K3).X is K0<i32>
+  clause Self.(K3).X.(K2).X is not K2
+input T is K1<i64>
+input U is K1<i64>
+
+model 1187 view ordinary: i32 is K1<i64> ref (False, False) C Resource Resource (size 42525>30000) rounds=23 V=1104 E=81891 J=1324852 N=475
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is K2<i32>
+  clause Self.(K0).Y.(K3).X is K3 or Cp
+  clause Self is K1<List<i32>>
+contract K1<A>
+  associate X is K0
+  clause A is i32
+contract K2<A> : K1<List<A>>
+  associate Y
+  clause Self is Cp
+  clause A.(K1<Self.(K2<A>).Y>).X is not Cp
+contract K3 : K0, Cp pending
+  associate X
+  clause Self is Cp
+  clause Self.(K3).X.(K0).Y is Cp or Cp
+input T is K2<i64>
+
+model 1187 view ordinary: List<i32> is Cp ref (False, False) C Resource Resource (size 42535>30000) rounds=24 V=1109 E=81903 J=1317242 N=474
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is K2<i32>
+  clause Self.(K0).Y.(K3).X is K3 or Cp
+  clause Self is K1<List<i32>>
+contract K1<A>
+  associate X is K0
+  clause A is i32
+contract K2<A> : K1<List<A>>
+  associate Y
+  clause Self is Cp
+  clause A.(K1<Self.(K2<A>).Y>).X is not Cp
+contract K3 : K0, Cp pending
+  associate X
+  clause Self is Cp
+  clause Self.(K3).X.(K0).Y is Cp or Cp
+input T is K2<i64>
+
+model 1533 view ordinary: List<i32> is K2<List<i32>> ref (False, False) C Resource Resource (work>3000000) rounds=126 V=761 E=15143 J=3057138 N=134
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1187 view ordinary: i32 is K1<List<i32>> ref (False, False) C Resource Resource (size 43594>30000) rounds=23 V=1114 E=84011 J=1339335 N=474
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is K2<i32>
+  clause Self.(K0).Y.(K3).X is K3 or Cp
+  clause Self is K1<List<i32>>
+contract K1<A>
+  associate X is K0
+  clause A is i32
+contract K2<A> : K1<List<A>>
+  associate Y
+  clause Self is Cp
+  clause A.(K1<Self.(K2<A>).Y>).X is not Cp
+contract K3 : K0, Cp pending
+  associate X
+  clause Self is Cp
+  clause Self.(K3).X.(K0).Y is Cp or Cp
+input T is K2<i64>
+
+model 1187 view ordinary: T is i32 ref (False, False) C Resource Resource (size 41994>30000) rounds=23 V=1102 E=80835 J=1308923 N=474
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is K2<i32>
+  clause Self.(K0).Y.(K3).X is K3 or Cp
+  clause Self is K1<List<i32>>
+contract K1<A>
+  associate X is K0
+  clause A is i32
+contract K2<A> : K1<List<A>>
+  associate Y
+  clause Self is Cp
+  clause A.(K1<Self.(K2<A>).Y>).X is not Cp
+contract K3 : K0, Cp pending
+  associate X
+  clause Self is Cp
+  clause Self.(K3).X.(K0).Y is Cp or Cp
+input T is K2<i64>
+
+model 1533 view ordinary: List<i32> is K2<U> ref (False, False) C Resource Resource (work>3000000) rounds=126 V=763 E=15023 J=3054389 N=135
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1533 view ordinary: S1 is K2<i32> ref (False, False) C Resource Resource (work>3000000) rounds=126 V=762 E=15026 J=3022410 N=134
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1533 view ordinary: i32 is Cp ref (False, False) C Resource Resource (work>3000000) rounds=125 V=765 E=15266 J=3023374 N=133
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1553 view ordinary: List<i32> is K0<List<i32>> ref (False, False) C Resource Resource (work>3000000) rounds=16 V=7435 E=208 J=3840977 N=59
+contract Cp
+contract K0<A>
+  associate X is A
+  associate Y is K1<Self.(K0<A>).X>
+  clause A.(K1<i32>).Y is Cp
+  clause Self.(K0<A>).Y is Cp or Cp
+contract K1<A> : K0<List<i32>>
+  associate X is Self.(K1<A>).X
+  associate Y
+contract K2<A>
+  associate Y is not Cp
+  clause Self.(K2<A>).Y.(K0<List<i32>>).X is K0<A>
+  clause Self.(K2<A>).Y.(K1<List<A>>).X is K1<List<A>>
+contract K3<A> : K2<A>
+  associate Y is K1<A>
+  clause Self.(K3<A>).Y.(K1<Self>).X is Self.(K3<A>).Y
+input T is K0<List<i32>>
+input T is Cp or Cp
+conformance S1 is K3<i64>
+  binding Y = i64
+conformance S2 is K1<i32> when S2 is K0<i32>
+
+model 1533 view ordinary: S1.(K0).X is U ref (False, False) C Resource Resource (work>3000000) rounds=126 V=755 E=14783 J=3001158 N=134
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1584 view ordinary: S1.(K2).Y is K0 ref (False, False) C Resource Resource (size 41443>30000) rounds=23 V=1947 E=75938 J=746450 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1533 view ordinary: S1.(K0).X is U ref (False, False) C Resource Resource (work>3000000) rounds=126 V=755 E=14783 J=3001158 N=134
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1584 view ordinary: S1 is Cp ref (False, False) C Resource Resource (size 41151>30000) rounds=23 V=1945 E=75358 J=745331 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1584 view ordinary: S1 is Cp ref (False, False) C Resource Resource (size 41151>30000) rounds=23 V=1945 E=75358 J=745331 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1584 view ordinary: S1.(K2).Y is K1 ref (False, False) C Resource Resource (size 41152>30000) rounds=23 V=1944 E=75362 J=744155 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1584 view ordinary: List<i32> is K0 ref (False, False) C Resource Resource (size 41443>30000) rounds=23 V=1946 E=75938 J=745869 N=1527
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1533 view frozen 0: List<i32> is K2<List<i32>> ref (False, False) C Resource Resource (work>3000000) rounds=125 V=755 E=15380 J=3039328 N=135
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1584 view ordinary: S1 is K1 ref (False, False) C Resource Resource (size 40857>30000) rounds=23 V=1939 E=74782 J=741911 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1584 view ordinary: T.(K2).Y is K1 ref (False, False) C Resource Resource (size 41148>30000) rounds=18 V=1940 E=75362 J=753415 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1584 view ordinary: List<i32> is K1 ref (False, False) C Resource Resource (size 41152>30000) rounds=23 V=1943 E=75362 J=743574 N=1527
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1695 view ordinary: T.(K2<U>).X.(K2<i32>).X is K3 ref (False, False) C Resource Resource (work>3000000) rounds=155 V=1873 E=524 J=3006807 N=277
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1533 view frozen 0: List<i32> is K2<U> ref (False, False) C Resource Resource (work>3000000) rounds=125 V=757 E=15258 J=3036594 N=136
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1695 view ordinary: T.(K2<U>).X.(K2<i32>).X is K2<List<i32>> ref (False, False) C Resource Resource (work>3000000) rounds=155 V=1894 E=524 J=3045787 N=277
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1695 view ordinary: S1 is K1 ref (False, False) C Resource Resource (work>3000000) rounds=190 V=1693 E=484 J=3004084 N=255
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1584 view ordinary: List<i32> is U ref (False, False) C Resource Resource (size 40859>30000) rounds=23 V=1940 E=74782 J=741873 N=1527
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1695 view ordinary: T.(K2<U>).X is K2<i64> ref (False, False) C Resource Resource (work>3000000) rounds=157 V=1912 E=526 J=3045934 N=278
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1584 view ordinary: S1.(K2).Y is U ref (False, False) C Resource Resource (size 40859>30000) rounds=23 V=1941 E=74782 J=742432 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1533 view frozen 0: S1 is K2<i32> ref (False, False) C Resource Resource (work>3000000) rounds=126 V=754 E=15252 J=3002174 N=134
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1695 view ordinary: T.(K2<U>).X is U ref (False, False) C Resource Resource (work>3000000) rounds=158 V=1887 E=534 J=3009632 N=276
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1584 view ordinary: T is List<i32> ref (False, False) C Resource Resource (size 40859>30000) rounds=21 V=1940 E=74782 J=741841 N=1527
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1695 view ordinary: List<i32> is S2 ref (False, False) C Resource Resource (work>3000000) rounds=190 V=1705 E=484 J=3028447 N=255
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1695 view ordinary: T is S2 ref (False, False) C Resource Resource (work>3000000) rounds=190 V=1705 E=484 J=3028447 N=255
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1584 view ordinary: (T is Cp) or (T is K0) ref (False, False) C Resource Resource (size 41794>30000) rounds=21 V=1994 E=76546 J=787521 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1723 view ordinary: List<i32> is K1<U> ref (False, False) C Resource Resource (work>3000000) rounds=87 V=1714 E=1800 J=3055401 N=426
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is i32
+contract K1<A> : K0
+  associate X is Self
+  associate Y is K2
+  clause Self.(K1<A>).X.(K2).Y is not K2
+  clause Self.(K1<A>).Y.(K2).X is K1<List<A>>
+contract K2
+  associate X is List<i32>
+  associate Y is Cp or K0
+  clause Self.(K2).X is K3
+contract K3
+  associate X
+  associate Y
+input T is K1<i32>
+input U is K0
+conformance S1 is K1<i64>
+  binding X = i64
+  binding Y = List<i32>
+
+model 1695 view ordinary: (T is Cp) or (T is K0) ref (False, False) C Resource Resource (work>3000000) rounds=192 V=1701 E=486 J=3007791 N=254
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1533 view frozen 0: i32 is Cp ref (False, False) C Resource Resource (work>3000000) rounds=126 V=757 E=15748 J=3013232 N=134
+contract Cp
+contract K0
+  associate X
+  associate Y is Cp or K1
+contract K1 : Cp
+  associate X is Self
+  associate Y
+  clause Self.(K1).X.(K0).X is Self.(K1).X
+contract K2<A> : Cp
+  associate X is K3<List<i32>>
+  associate Y
+contract K3<A> : K2<Self>
+  associate X is Cp and Cp
+  associate Y
+  clause A is i32
+input T is K2<i64>
+conformance S1 is K0
+  binding X = List<i32> inferred 0
+  binding Y = i32
+
+model 1723 view ordinary: List<i32> is U ref (False, False) C Resource Resource (work>3000000) rounds=87 V=1629 E=1632 J=3030169 N=425
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is i32
+contract K1<A> : K0
+  associate X is Self
+  associate Y is K2
+  clause Self.(K1<A>).X.(K2).Y is not K2
+  clause Self.(K1<A>).Y.(K2).X is K1<List<A>>
+contract K2
+  associate X is List<i32>
+  associate Y is Cp or K0
+  clause Self.(K2).X is K3
+contract K3
+  associate X
+  associate Y
+input T is K1<i32>
+input U is K0
+conformance S1 is K1<i64>
+  binding X = i64
+  binding Y = List<i32>
+
+model 1584 view ordinary: (T.(K2).Y is Cp) or (T.(K2).Y is K0) ref (False, False) C Resource Resource (size 40856>30000) rounds=18 V=1938 E=74782 J=744420 N=1526
+contract Cp
+contract K0
+  associate X is K0 or K1
+  associate Y is K0 or Cp
+  clause Self.(K0).Y is K1
+  clause Self is Cp
+contract K1 : K0
+  associate X is K1
+  associate Y is K0 or Cp
+  clause Self.(K1).Y.(K1).Y is K2
+contract K2 : Cp
+  associate Y is i32
+  clause Self is K1
+  clause Self.(K2).Y.(K0).Y is Self
+input T is K2
+input U is K1
+conformance S1 is K2
+  binding Y = S2
+conformance S2 is K0
+
+model 1695 view ordinary: (T.(K2<U>).X is Cp) or (T.(K2<U>).X is K0) ref (False, False) C Resource Resource (work>3000000) rounds=157 V=1904 E=528 J=3048613 N=276
+contract Cp
+contract K0
+  associate X
+  associate Y is K3
+  clause Self.(K0).X is Cp or Cp
+contract K1
+  associate X
+  associate Y is K2<List<i32>>
+  clause Self.(K1).Y.(K2<Self.(K1).Y>).X is Self
+contract K2<A> : K1
+  associate X is K1 or Cp
+  clause Self.(K2<A>).X is K1
+  clause A is K1
+contract K3
+  associate X is K2<List<i32>>
+  associate Y is K0 or Cp
+  clause Self.(K3).Y.(K0).Y is K0 or Cp
+  clause Self.(K3).X.(K2<i32>).X is Self
+input T is K2<U>
+input U is K2<List<i32>>
+
+model 1744 view ordinary: List<i32> is K1 ref (False, False) C Resource Resource (rounds>300) rounds=301 V=2666 E=2945 J=1250900 N=603
+contract Cp
+contract K0
+  associate X is Self.(K0).X
+  associate Y is K2 or Cp
+  clause Self is K0 or Cp
+contract K1
+  associate X
+  associate Y is K0 and K1
+  clause Self.(K1).Y.(K0).X is List<i32>
+  clause Self.(K1).X is K0 or K1
+contract K2 : K1
+  associate X is K2
+  associate Y is K0 or K2
+  clause Self is K1 or K1
+input T is K0
+input U is K1
+input T is Cp or K1
+conformance S1 is K0 pending
+  binding X = i32 inferred 0
+  binding Y = i32 inferred 0
+
+model 1723 view ordinary: List<i32> is S1 ref (False, False) C Resource Resource (work>3000000) rounds=87 V=1632 E=1632 J=3040435 N=425
+contract Cp
+contract K0 : Cp
+  associate X
+  associate Y is i32
+contract K1<A> : K0
+  associate X is Self
+  associate Y is K2
+  clause Self.(K1<A>).X.(K2).Y is not K2
+  clause Self.(K1<A>).Y.(K2).X is K1<List<A>>
+contract K2
+  associate X is List<i32>
+  associate Y is Cp or K0
+  clause Self.(K2).X is K3
+contract K3
+  associate X
+  associate Y
+input T is K1<i32>
+input U is K0
+conformance S1 is K1<i64>
+  binding X = i64
+  binding Y = List<i32>
+
+model 1744 view frozen 0: List<i32> is K1 ref (False, False) C Resource Resource (work>3000000) rounds=133 V=1154 E=1265 J=3040399 N=267
+contract Cp
+contract K0
+  associate X is Self.(K0).X
+  associate Y is K2 or Cp
+  clause Self is K0 or Cp
+contract K1
+  associate X
+  associate Y is K0 and K1
+  clause Self.(K1).Y.(K0).X is List<i32>
+  clause Self.(K1).X is K0 or K1
+contract K2 : K1
+  associate X is K2
+  associate Y is K0 or K2
+  clause Self is K1 or K1
+input T is K0
+input U is K1
+input T is Cp or K1
+conformance S1 is K0 pending
+  binding X = i32 inferred 0
+  binding Y = i32 inferred 0
+
+model 1755 view ordinary: (T.(K3<U>).X is Cp) or (T.(K3<U>).X is K0) ref (False, False) C Resource Resource (rounds>300) rounds=301 V=2067 E=2940 J=1105686 N=893
+contract Cp
+contract K0
+  clause Self is K0
+  clause Self is K4 or Cp
+contract K1
+  associate X
+  associate Y is List<i32>
+contract K2 : K1
+  associate X
+contract K3<A> : K0
+  associate X is K0 and K1
+  associate Y is List<i32>
+  clause Self.(K3<A>).X is i32
+contract K4 : K2, Cp
+  associate X is K4
+  associate Y is K3<i32>
+input T is K3<U>
+input U is K4
+
+model 1703 view ordinary: T.(K2<List<i32>>).X.(K3).Y is Cp ref (False, False) C Resource Resource (work>3000000) rounds=20 V=467 E=484 J=4574051 N=187
+contract Cp
+contract K0
+  associate X is List<i32>
+  associate Y is K0
+  clause Self.(K0).X.(K1).Y is not Cp
+contract K1 : K0
+  associate X is K3
+  associate Y is K3 or Cp
+  clause Self.(K1).X is not Cp
+  clause Self.(K1).Y is K1
+contract K2<A>
+  associate X is A
+  associate Y is K0 or Cp
+  clause Self.(K2<A>).X is K2<List<A>>
+contract K3
+  associate Y is Cp
+input T is K2<List<i32>>
+input U is K1
+conformance S1 is K2<i32>
+  binding X = S2
+  binding Y = S2
+conformance S2 is K1
+
+model 1703 view ordinary: T.(K2<List<i32>>).X.(K3).Y is Cp ref (False, False) C Resource Resource (work>3000000) rounds=20 V=467 E=484 J=4574051 N=187
+contract Cp
+contract K0
+  associate X is List<i32>
+  associate Y is K0
+  clause Self.(K0).X.(K1).Y is not Cp
+contract K1 : K0
+  associate X is K3
+  associate Y is K3 or Cp
+  clause Self.(K1).X is not Cp
+  clause Self.(K1).Y is K1
+contract K2<A>
+  associate X is A
+  associate Y is K0 or Cp
+  clause Self.(K2<A>).X is K2<List<A>>
+contract K3
+  associate Y is Cp
+input T is K2<List<i32>>
+input U is K1
+conformance S1 is K2<i32>
+  binding X = S2
+  binding Y = S2
+conformance S2 is K1
+
+model 1486 view ordinary: T.(K1).X is K1 ref (False, False) C Resource Resource (work>3000000) rounds=40 V=5174 E=202 J=3322763 N=79
+contract Cp
+contract K0<A> : Cp
+  associate X is A
+  clause A.(K0<A>).X is Cp and Cp
+  clause Self.(K0<A>).X is A
+contract K1
+  associate X
+  associate Y is K1
+  clause Self.(K1).X is i32
+contract K2
+  associate X
+  associate Y is Self.(K2).X
+contract K3
+  associate X is K1
+  clause Self is K1 or Cp
+input T is K1
+input T is Cp or Cp
+conformance S1 is K1
+  binding X = S2 inferred 0
+  binding Y = i64
+
+model 1486 view frozen 0: T.(K1).X is K1 ref (False, False) C Resource Resource (work>3000000) rounds=39 V=5883 E=196 J=3284962 N=77
+contract Cp
+contract K0<A> : Cp
+  associate X is A
+  clause A.(K0<A>).X is Cp and Cp
+  clause Self.(K0<A>).X is A
+contract K1
+  associate X
+  associate Y is K1
+  clause Self.(K1).X is i32
+contract K2
+  associate X
+  associate Y is Self.(K2).X
+contract K3
+  associate X is K1
+  clause Self is K1 or Cp
+input T is K1
+input T is Cp or Cp
+conformance S1 is K1
+  binding X = S2 inferred 0
+  binding Y = i64
+

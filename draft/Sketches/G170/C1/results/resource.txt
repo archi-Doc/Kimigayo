@@ -1,0 +1,8 @@
+== RESOURCE BOUNDARY
+PASS G170 depth 8: needs rounds 18, peak size 51; limit=need +/Complete, need-1 rounds Resource (rounds>17), need-1 size Resource (size 51>50)
+PASS G170 depth 64: needs rounds 130, peak size 331; limit=need +/Complete, need-1 rounds Resource (rounds>129), need-1 size Resource (size 331>330)
+PASS unbounded supports, size limit 1000: Resource Resource (size 1009>1000) rounds=81 V=386 E=766 J=484589 N=161
+PASS unbounded supports, size limit 10000: Resource Resource (work>20000000) rounds=274 V=1346 E=2686 J=20015802 N=545
+PASS unbounded supports, size limit 100000: Resource Resource (work>20000000) rounds=274 V=1346 E=2686 J=20015802 N=545
+PASS dependent-use stopping: ok(required Copy (provable)) Resource(required, every support (Resource)) Unproven(required, independent and unprovable)
+FAILURES 0

@@ -1,0 +1,316 @@
+RESOURCE-ON-STABLE model 6 view ordinary: List<i32> is Cp ref (True, False) C Resource Resource (work>3000000) rounds=12 V=2288 E=2593 J=4580652 N=511
+contract Cp
+contract K0
+  associate X is K1<List<i32>>
+  associate Y
+  clause Self.(K0).Y.(K1<i32>).X is K0
+contract K1<A> : K0
+  associate X is not Cp
+  associate Y is Cp and K2
+  clause Self.(K1<A>).Y is A
+contract K2 : K0
+  associate X is K0
+  clause Self.(K2).X is K2
+  clause Self.(K2).X.(K1<Self>).X is List<i32>
+input T is K0
+input U is K0
+input T.(K0).X is i32
+
+RESOURCE-ON-STABLE model 6 view ordinary: List<i32> is Cp ref (True, False) C Resource Resource (work>3000000) rounds=12 V=2288 E=2593 J=4580652 N=511
+contract Cp
+contract K0
+  associate X is K1<List<i32>>
+  associate Y
+  clause Self.(K0).Y.(K1<i32>).X is K0
+contract K1<A> : K0
+  associate X is not Cp
+  associate Y is Cp and K2
+  clause Self.(K1<A>).Y is A
+contract K2 : K0
+  associate X is K0
+  clause Self.(K2).X is K2
+  clause Self.(K2).X.(K1<Self>).X is List<i32>
+input T is K0
+input U is K0
+input T.(K0).X is i32
+
+RESOURCE-ON-STABLE model 6 view ordinary: List<i32> is Cp ref (True, False) C Resource Resource (work>3000000) rounds=12 V=2288 E=2593 J=4580652 N=511
+contract Cp
+contract K0
+  associate X is K1<List<i32>>
+  associate Y
+  clause Self.(K0).Y.(K1<i32>).X is K0
+contract K1<A> : K0
+  associate X is not Cp
+  associate Y is Cp and K2
+  clause Self.(K1<A>).Y is A
+contract K2 : K0
+  associate X is K0
+  clause Self.(K2).X is K2
+  clause Self.(K2).X.(K1<Self>).X is List<i32>
+input T is K0
+input U is K0
+input T.(K0).X is i32
+
+ENUM-RESOURCE model 6: List<i32> ref 3 C Resource Resource (work>3000000) rounds=11 V=6341 E=1069 J=3802126 N=277
+contract Cp
+contract K0
+  associate X is K1<List<i32>>
+  associate Y
+  clause Self.(K0).Y.(K1<i32>).X is K0
+contract K1<A> : K0
+  associate X is not Cp
+  associate Y is Cp and K2
+  clause Self.(K1<A>).Y is A
+contract K2 : K0
+  associate X is K0
+  clause Self.(K2).X is K2
+  clause Self.(K2).X.(K1<Self>).X is List<i32>
+input T is K0
+input U is K0
+input T.(K0).X is i32
+
+SLOW model 6: 10 s
+SLOW model 43: 18 s
+RESOURCE-ON-STABLE model 57 view ordinary: S1 is K1<i32> ref (False, False) C Resource Resource (work>3000000) rounds=41 V=1409 E=6996 J=3074803 N=188
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: i32 is K2 ref (False, False) C Resource Resource (work>3000000) rounds=40 V=1398 E=6926 J=3009756 N=186
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: T.(K3<i32>).X.(K0).Y is Cp ref (False, False) C Resource Resource (work>3000000) rounds=42 V=1419 E=6996 J=3078142 N=187
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: U is Cp ref (False, False) C Resource Resource (work>3000000) rounds=42 V=1399 E=6856 J=3006579 N=186
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: List<i32> is K1<i32> ref (False, False) C Resource Resource (work>3000000) rounds=41 V=1400 E=6926 J=3039571 N=187
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: T.(K3<i32>).X is Cp ref (False, False) C Resource Resource (work>3000000) rounds=41 V=1395 E=6856 J=3007605 N=186
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: T.(K3<i32>).X is K1<i32> ref (False, False) C Resource Resource (work>3000000) rounds=41 V=1396 E=6926 J=3039649 N=187
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+RESOURCE-ON-STABLE model 57 view ordinary: i32 is K2 ref (False, False) C Resource Resource (work>3000000) rounds=40 V=1398 E=6926 J=3009756 N=186
+contract Cp
+contract K0
+  associate Y is K1<List<i32>>
+contract K1<A>
+  associate Y
+  clause A.(K0).Y is Cp
+  clause Self is K3<Self>
+contract K2 : K0, Cp
+  associate X is i32
+  associate Y
+  clause Self is Cp
+  clause Self.(K2).X is Self
+contract K3<A>
+  associate X is not K2
+  clause A is i32
+  clause Self.(K3<A>).X is List<i32>
+contract K4<A> : K3<Self.(K4<A>).X>
+  associate X
+  associate Y is K4<List<A>>
+input T is K3<i32>
+input U is K4<U>
+
+SLOW model 57: 24 s
+SLOW model 105: 11 s
+SLOW model 141: 29 s
+SLOW model 159: 46 s
+SLOW model 165: 606 s
+SLOW model 309: 2502 s
+SLOW model 342: 125 s
+SLOW model 396: 12 s
+SLOW model 437: 15 s
+SLOW model 445: 36 s
+SLOW model 571: 23 s
+SLOW model 646: 80 s
+SLOW model 658: 15 s
+SLOW model 711: 22 s
+SLOW model 724: 12 s
+SLOW model 767: 15 s
+SLOW model 814: 79 s
+SLOW model 951: 79 s
+SLOW model 1014: 57 s
+SLOW model 1050: 87 s
+SLOW model 1068: 14 s
+SLOW model 1194: 40 s
+SLOW model 1232: 80 s
+SLOW model 1236: 14 s
+SLOW model 1237: 21 s
+SLOW model 1317: 1979 s
+SLOW model 1347: 764 s
+SLOW model 1355: 59 s
+SLOW model 1365: 879 s
+SLOW model 1405: 10 s
+SLOW model 1406: 48 s
+SLOW model 1425: 15 s
+SLOW model 1446: 2354 s
+SLOW model 1483: 10 s
+SLOW model 1485: 78 s
+SLOW model 1502: 722 s
+SLOW model 1506: 1600 s
+SLOW model 1569: 58 s
+SLOW model 1605: 406 s
+SLOW model 1648: 38 s
+SLOW model 1655: 43 s
+SLOW model 1658: 41 s
+SLOW model 1722: 364 s
+SLOW model 1747: 330 s
+SLOW model 1756: 131 s
+SLOW model 1777: 124 s
+SLOW model 1815: 13 s
+SLOW model 1828: 14 s
+SLOW model 1849: 944 s
+SLOW model 1860: 10 s
+SLOW model 1971: 80 s
+== RANDOM seed 7: 2514 s; models 2000 (reference overflow 66); Supply queries 40674 (9158 of them reference-derived facts): stable 40674 (agree 40489, disagree 0, C Resource 185), unstable 0 (C Resource 0), provisional 6835
+   C Resource on stable queries: 185, of which the reference has evidence for neither polarity 155, in a frozen view 31
+   answer kinds on stable agreement: Eq=5838, Eq+=154, Is=19349, Is-=186, Is+=11243, Is+-=384, Or-compound=3221, Or-compound+=114
+   Enumerate: 3577: agree 3542, disagree 0, C Resource 32, unstable 3
+   reads (frozen views, <=3 bindings): checked 1495: exact 1424, over-approximated 71, disagree 0
+   cost per stable request: V median 4, p95 26, max 843; E median 3, p95 12, max 635; J median 12, p95 206, max 35956; N median 11, p95 15, max 42; rounds median 1, p95 6, max 22
+FAILURES 0
