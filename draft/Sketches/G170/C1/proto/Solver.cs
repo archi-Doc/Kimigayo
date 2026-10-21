@@ -18,7 +18,8 @@
 // only where (a) a pattern needs its head (and kids) at the class or a kid, (b) the class meets another class (a demand and the
 // classes of its Contract's facts, a bound variable and its class, an identity goal's two classes, same-head nodes' kids: a meeting
 // row per class pair, answered once per round when new or woken), or (c) a node of the other side's shape exists (bound
-// expansion); a side meeting a class only through a virtual node is a chain row.
+// expansion); a side meeting a class only through a virtual node is a chain row. A virtual node matches as a node, modulo classes:
+// a subterm instantiated to a class matches by class, different classes meet there; two classes' nodes join through the index.
 // Static row indexes (heads per Contract position, which polarities a Contract can have) skip impossible expansions and settle
 // impossible polarities. Polarity tags, recomputed every round from the goal rows, say which goal polarity a row serves; a polarity
 // settles when its evidence is established or none of its rows has work left. A subscription whose conclusion is fixed by its
@@ -107,6 +108,7 @@ public sealed class Solver
     private readonly HashSet<HeadKey> chainableAliasHeads = new();
     private readonly HashSet<HeadKey> anyVirtualHeads = new();
     private readonly Dictionary<int, bool> mayGain = new();
+    private readonly Dictionary<int, HashSet<HeadKey>> indexHeads = new();
     private readonly HashSet<(int Class, HeadKey Need)> chainGuard = new();
     private readonly Dictionary<(int, HeadKey, string), (List<Virtual> Result, List<int> Visits, List<(int, HeadKey)> Needs, bool Resource, bool Chains)> roundMemo = new();
     private List<int>? visitLog;
@@ -139,6 +141,8 @@ public sealed class Solver
     private Dictionary<ContractDecl, List<int>> factsOf = new();
     private HashSet<(int T, int Class, string Bind, Row Owner, byte Sign)> expansions = new();
     private Dictionary<int, List<Virtual>> chains = new();
+    private readonly Dictionary<Virtual, string> keys = new();
+    private readonly Dictionary<int, HashSet<string>> storedKeys = new();
     private Dictionary<(int Class, HeadKey Need), NeedRow> needs = new();
     private Dictionary<(int A, int B), MeetRow> meetings = new();
     private List<MeetRow> meetQueue = new();
@@ -537,6 +541,8 @@ public sealed class Solver
         this.factsOf = new();
         this.expansions = new();
         this.chains = new();
+        this.keys.Clear();
+        this.storedKeys.Clear();
         this.needs = new();
         this.meetings = new();
         this.meetQueue = new();
@@ -881,6 +887,7 @@ public sealed class Solver
         this.roundMemo.Clear(); // virtual nodes are a function of the round's starting state
         this.shapes.Clear();
         this.mayGain.Clear();
+        this.indexHeads.Clear();
         foreach (var d in this.demands.ToArray())
         {
             if ((!d.Selected || d.Dirty) && (d.Tags & active) != 0)
@@ -1046,7 +1053,7 @@ public sealed class Solver
 
         if (this.chains.TryGetValue(c, out var stored))
         {
-            result.AddRange(stored.Where(vs => need.IsAny || vs.Other.Head is VarHead || HeadKey.Of(vs.Other) == need));
+            result.AddRange(stored.Where(vs => (need.IsAny || vs.Other.Head is VarHead || HeadKey.Of(vs.Other) == need) && Passes(KidAt(vs.Other, 0), o0) && Passes(KidAt(vs.Other, 1), o1)));
         }
 
         try
@@ -1116,8 +1123,11 @@ public sealed class Solver
             }
         }
 
-        return result;
+        var seen = new HashSet<string>();
+        return result.Where(vs => seen.Add(this.VirtualKey(vs))).ToList(); // a set: stored and newly found chains are one
     }
+
+    private static bool Passes(HeadKey kid, HashSet<HeadKey>? filter) => filter is null || kid.IsAny || filter.Contains(kid) || filter.Contains(HeadKey.Any);
 
     // The heads kid i of a side with head h can have to meet one of c's nodes of that head: those of the nodes' kids and of their
     // virtual nodes (null: any).
@@ -1275,7 +1285,7 @@ public sealed class Solver
             var via = hit.Via ?? hit;
             var vs = new Virtual(e.T, new int?[e.T.VarCount], e.Other, c) { Via = via, ViaPattern = hit.Via is null ? pattern : hit.ViaPattern!, ViaBeta = hit.Via is null ? beta : hit.ViaBeta! };
             result.Add(vs);
-            if (requester.Fx is { } fx && !(this.chains.TryGetValue(c, out var stored) && stored.Any(x => this.VirtualKey(x) == this.VirtualKey(vs))))
+            if (requester.Fx is { } fx && !(this.chains.TryGetValue(c, out var stored) && this.StoredKeys(c, stored).Contains(this.VirtualKey(vs))))
             {
                 fx.Chains.Add(vs); // stored when the round is applied: a later lookup finds chains through it
                 fx.ChainTags |= requester.Tags;
@@ -1285,10 +1295,31 @@ public sealed class Solver
     }
 
     // A chain row's content: its template, other side, canonical bindings and its base's content; equal rows from classes that
-    // merged are one row.
+    // merged are one row. Keys are remembered until a merge changes the canonical classes (AfterApply).
     private string VirtualKey(Virtual vs)
+    {
+        if (!this.keys.TryGetValue(vs, out var key))
+        {
+            this.keys[vs] = key = this.VirtualKeyOf(vs);
+        }
+
+        return key;
+    }
+
+    private string VirtualKeyOf(Virtual vs)
         => vs.T.Id + "/" + vs.Other.Id + "/" + string.Join(",", vs.Beta.Select(b => b is int i ? this.g.Find(i) : -1)) +
             (vs.Via is { } via ? "<" + vs.ViaPattern!.Id + "/" + string.Join(",", vs.ViaBeta!.Select(b => b is int i ? this.g.Find(i) : -1)) + "<" + this.VirtualKey(via) : string.Empty);
+
+    // The keys of a class's stored chains (kept with the chains until a merge).
+    private HashSet<string> StoredKeys(int c, List<Virtual> stored)
+    {
+        if (!this.storedKeys.TryGetValue(c, out var set))
+        {
+            this.storedKeys[c] = set = stored.Select(this.VirtualKey).ToHashSet();
+        }
+
+        return set;
+    }
 
     // Bound expansion (§1 (c)): an existing node with the shape of an identity row's non-variable side binds the row; a side whose
     // class has an active class demand gets the row requested on its behalf when the other side's node exists (finite: no
@@ -1580,6 +1611,11 @@ public sealed class Solver
             this.meetings[key] = row = new MeetRow(key.Item1, key.Item2);
         }
 
+        if (row == owner)
+        {
+            return; // a pair that needs the meeting itself is that meeting's own row
+        }
+
         if (row.Owners.Add(owner) | (row.TagsValue | ctx.Tags) != row.TagsValue)
         {
             row.TagsValue |= ctx.Tags;
@@ -1594,8 +1630,9 @@ public sealed class Solver
         }
     }
 
-    // A meeting row's answer: each class's real nodes meet the other's virtual nodes, virtual nodes meet where their shapes can
-    // agree, and same-head real nodes meet at their kids (upward congruence: they are one Type when their kids are), as kid meetings.
+    // A meeting row's answer: the nodes of the two classes, real or virtual, meet as nodes (§1): each node of one class probes the
+    // other's virtual nodes through the index by its head and kid heads and agrees with each found (Agree: one Type, or its kids
+    // meet); same-head real nodes meet at their kids (upward congruence), as kid meetings.
     private void MeetClasses(MeetRow row, MatchCtx ctx)
     {
         var c = this.g.Find(row.A);
@@ -1610,30 +1647,11 @@ public sealed class Solver
         this.MeetOneWay(c, other, ctx);
         this.MeetOneWay(other, c, ctx);
 
-        // Virtual nodes on both sides meet where their shapes can agree (heads both classes' virtual nodes can have): the side with
-        // fewer index candidates is looked up first, the other only for virtual nodes whose kids can meet the ones found. Aliases
-        // (an existing class) were expanded against the real nodes above; two virtual nodes whose kid at one position is each their
-        // own class (`c.(W).X` of `associate X is Self` at c and at the other class) never unify.
-        var mine = this.Shapes(c);
-        var theirs = this.Shapes(other);
-        if (mine.Count != 0 && theirs.Count != 0)
-        {
-            var shared = mine.Contains(HeadKey.Any) || theirs.Contains(HeadKey.Any) ? mine.Concat(theirs).ToHashSet() : mine.Intersect(theirs).ToHashSet();
-            foreach (var head in shared)
-            {
-                // On a tie both orders run (an order-free choice: class ids depend on interning order).
-                var (mineCount, theirCount) = (this.Candidates(c, head), this.Candidates(other, head));
-                if (mineCount <= theirCount)
-                {
-                    this.MeetVirtuals(c, other, head, ctx);
-                }
-
-                if (theirCount <= mineCount)
-                {
-                    this.MeetVirtuals(other, c, head, ctx);
-                }
-            }
-        }
+        // Virtual nodes meet virtual nodes at the heads the index can give both classes' virtual nodes, in both directions.
+        var shared = this.IndexHeads(c);
+        shared.IntersectWith(this.IndexHeads(other));
+        this.MeetVirtuals(c, other, shared, ctx);
+        this.MeetVirtuals(other, c, shared, ctx);
 
         foreach (var n in this.g.NodesOf(c).ToArray())
         {
@@ -1676,87 +1694,60 @@ public sealed class Solver
         return this.mayGain[c] = result;
     }
 
-    // The index entries that can give c a virtual node of the head (a static count over the keys a lookup reads, plus its chains).
-    private long Candidates(int c, HeadKey need)
+    // b's virtual nodes meet a's as nodes: each probes a's virtual nodes through the index by its head and kid heads (an index join,
+    // never a loop over both lists) and agrees with each found, both rows expanding when they are one Type. A virtual node whose other
+    // side is a variable (an alias: an existing class; a free variable: any Type) meets real nodes only (MeetOneWay).
+    private void MeetVirtuals(int a, int b, HashSet<HeadKey> heads, MatchCtx ctx)
     {
-        var heads = this.HeadsOf(c);
-        long count = this.chains.TryGetValue(this.g.Find(c), out var stored) ? stored.Count : 0;
-        foreach (var (index, byHead, sideHeads) in new[] { (this.sides, this.otherHeads, heads.Append(HeadKey.Any)), (this.chainable, this.chainOtherHeads, this.VirtualHeads(heads)) })
+        foreach (var w in heads.SelectMany(h => this.Virtuals(b, h, ctx)))
         {
-            foreach (var h in sideHeads.Distinct())
+            if (w.Other.Head is VarHead)
             {
-                foreach (var other in byHead.GetValueOrDefault(h) ?? [])
+                continue;
+            }
+
+            this.work++;
+            var k0 = w.Other.Kids.Length > 0 ? this.KidHeads(w.Other.Kids[0], w.Beta) : null;
+            var k1 = w.Other.Kids.Length > 1 ? this.KidHeads(w.Other.Kids[1], w.Beta) : null;
+            foreach (var u in this.Virtuals(a, HeadKey.Of(w.Other), ctx, k0, k1))
+            {
+                if (u.Other.Head is not VarHead)
                 {
-                    if (need.IsAny || other == need || other.IsAny)
-                    {
-                        count += index[(other, h)].Count;
-                    }
+                    this.Expand(u, w.Other, w.Beta, ctx);
+                    this.Expand(w, u.Other, u.Beta, ctx);
                 }
             }
         }
-
-        return count;
     }
 
-    // x's virtual nodes of the head meet y's whose kids can meet theirs.
-    private void MeetVirtuals(int x, int y, HeadKey head, MatchCtx ctx)
+    // The heads the index can give c's virtual nodes whose other side is not a variable: rows whose side can have a head of c (or is
+    // a variable), chainable rows whose side can have a head of c's virtual nodes, c's chains. Once per round.
+    private HashSet<HeadKey> IndexHeads(int c)
     {
-        var left = this.Virtuals(x, head, ctx).Where(v => !IsAlias(v)).ToList();
-        if (left.Count == 0)
+        c = this.g.Find(c);
+        if (!this.indexHeads.TryGetValue(c, out var result))
         {
-            return;
+            var heads = this.HeadsOf(c);
+            result = new HashSet<HeadKey>();
+            foreach (var h in heads.Append(HeadKey.Any))
+            {
+                result.UnionWith(this.otherHeads.GetValueOrDefault(h) ?? []);
+            }
+
+            foreach (var h in heads.Append(HeadKey.Any).Concat(this.VirtualHeads(heads)))
+            {
+                result.UnionWith(this.chainOtherHeads.GetValueOrDefault(h) ?? []);
+            }
+
+            result.UnionWith(this.chains.GetValueOrDefault(c)?.Select(vs => HeadKey.Of(vs.Other)) ?? []);
+            result.Remove(HeadKey.Any);
+            this.indexHeads[c] = result;
         }
 
-        var lefts = left.ToLookup(v => this.SelfKids(v, x));
-        foreach (var ws in this.Virtuals(y, head, ctx, this.KidFilter(left, 0), this.KidFilter(left, 1)).Where(v => !IsAlias(v)).ToLookup(v => this.SelfKids(v, y)))
-        {
-            foreach (var vss in lefts.Where(g => (g.Key & ws.Key) == 0))
-            {
-                foreach (var w in ws)
-                {
-                    foreach (var vs in vss)
-                    {
-                        this.Expand(vs, w.Other, w.Beta, ctx);
-                        this.Expand(w, vs.Other, vs.Beta, ctx);
-                    }
-                }
-            }
-        }
+        return new HashSet<HeadKey>(result);
     }
 
     private static bool IsAlias(Virtual vs) => vs.Via is null && vs.Other.Head is VarHead v && vs.Beta[v.Index] is not null;
-
-    // The kid positions where a virtual node of class c is c itself (a bit per position).
-    private int SelfKids(Virtual vs, int c)
-    {
-        var mask = 0;
-        for (var i = 0; vs.Via is null && i < vs.Other.Kids.Length && i < 31; i++)
-        {
-            if (vs.Other.Kids[i].Head is VarHead v && vs.Beta[v.Index] is int k && this.g.Find(k) == this.g.Find(c))
-            {
-                mask |= 1 << i;
-            }
-        }
-
-        return mask;
-    }
-
-    // The heads kid i of the given virtual nodes can have (null: any), a filter for the virtual nodes they can meet.
-    private HashSet<HeadKey>? KidFilter(List<Virtual> virtuals, int i)
-    {
-        var result = new HashSet<HeadKey>();
-        foreach (var vs in virtuals)
-        {
-            if (vs.Other.Head is VarHead || vs.Other.Kids.Length <= i || this.KidHeads(vs.Other.Kids[i], vs.Beta) is not { } heads)
-            {
-                return null;
-            }
-
-            result.UnionWith(heads);
-        }
-
-        return result;
-    }
 
     // A real node of one class meets the virtual nodes of the other whose other side has its head (and can meet its kids).
     private void MeetOneWay(int withVirtual, int other, MatchCtx ctx)
@@ -1784,9 +1775,11 @@ public sealed class Solver
         }
     }
 
-    // A virtual node meets a real node of the same shape: the real node's kids bind the virtual's variables.
+    // A virtual node meets a real node of its head as a node: it agrees with the node's kid classes (a free variable other side takes
+    // the node's class; an alias expands).
     private void ExpandAt(Virtual vs, int node, MatchCtx ctx)
     {
+        this.work++;
         if (vs.Via is { } via)
         {
             this.Expand(via, vs.ViaPattern!, vs.ViaBeta!, ctx);
@@ -1794,33 +1787,21 @@ public sealed class Solver
         }
 
         var bind = (int?[])vs.Beta.Clone();
-        if (vs.Other.Head is not VarHead)
+        var shapes = new Dictionary<int, Head>();
+        var meets = new List<(int, int)>();
+        if (vs.Other.Head is VarHead && !IsAlias(vs))
+        {
+            this.AgreeClass(vs.Other, bind, this.g.ClassOfNode(node), meets);
+        }
+        else if (!IsAlias(vs))
         {
             for (var i = 0; i < vs.Other.Kids.Length; i++)
             {
-                var k = vs.Other.Kids[i];
-                var kid = this.g.KidOf(node, i);
-                if (k.Head is VarHead v)
-                {
-                    if (bind[v.Index] is int b && this.g.Find(b) != kid)
-                    {
-                        return;
-                    }
-
-                    bind[v.Index] = kid;
-                }
-                else if (!k.HasVar && this.g.LookupTerm(k) is var gk && (gk < 0 || this.g.Find(gk) != kid))
-                {
-                    return;
-                }
+                this.AgreeClass(vs.Other.Kids[i], bind, this.g.KidOf(node, i), meets);
             }
         }
 
-        var key = (vs.T.Id, this.g.Find(vs.Class), BindKey(bind), ctx.Owner!, ctx.Sign);
-        if (this.expansions.Add(key))
-        {
-            this.Request(vs.T, bind, ctx.Tags, ctx.Sign, ctx.Owner!, ctx.Fx!);
-        }
+        this.Settle(vs, bind, shapes, meets, ctx);
     }
 
     private void SelectIdent(ClassDemand c, Effects fx)
@@ -2209,10 +2190,12 @@ public sealed class Solver
         return a.Head.Equals(b.Head) && a.Kids.Length == b.Kids.Length && a.Kids.Zip(b.Kids).All(k => this.MayUnify(k.First, k.Second));
     }
 
-    // A pattern needs nodes of a virtual source's head in this class: request the deferred row, bound as far as the requester's
-    // pattern resolves (a bound variable or an existing ground Type), on behalf of the requester.
+    // A pattern needs nodes of a virtual node's head in this class (or a meeting pairs two virtual nodes): the virtual node agrees with
+    // the pattern as a node (§1), its variables bound as far as the pattern resolves; agreement requests the deferred row on behalf of
+    // the requester, kid classes that differ meet first (their merge wakes the requester, which matches again).
     private void Expand(Virtual vs, Term p, int?[] beta, MatchCtx ctx)
     {
+        this.work++;
         if (vs.Via is { } via)
         {
             this.Expand(via, vs.ViaPattern!, vs.ViaBeta!, ctx);
@@ -2221,9 +2204,99 @@ public sealed class Solver
 
         var bind = (int?[])vs.Beta.Clone();
         var shapes = new Dictionary<int, Head>();
-        if (!Unify(vs.Other, p, bind, beta))
+        var meets = new List<(int, int)>();
+        if (IsAlias(vs) || this.Agree(vs.Other, bind, p, beta, shapes, meets))
         {
-            return; // incompatible now; a later merge wakes the requester, which matches (and expands) again
+            this.Settle(vs, bind, shapes, meets, ctx);
+        }
+    }
+
+    // Matching modulo classes (§1): a virtual node's term o (variables bound in into) and a pattern p (bound in bp) can be one Type.
+    // A subterm instantiated to a class matches by its class (AgreeClass); a free variable on either side matches anything (a free
+    // variable of o records the head p needs there); otherwise heads and kids, a compound kid with a free variable by shape only.
+    // False only when heads differ.
+    private bool Agree(Term o, int?[] into, Term p, int?[] bp, Dictionary<int, Head> shapes, List<(int, int)> meets)
+    {
+        var cp = p.Head is VarHead pv ? bp[pv.Index] ?? -1 : this.ClassOf(p, bp);
+        if (cp >= 0)
+        {
+            return this.AgreeClass(o, into, cp, meets);
+        }
+
+        if (p.Head is VarHead)
+        {
+            return true;
+        }
+
+        if (o.Head is VarHead ov)
+        {
+            if (into[ov.Index] is null)
+            {
+                shapes[ov.Index] = p.Head;
+            }
+
+            return true;
+        }
+
+        if (this.ClassOf(o, into) >= 0)
+        {
+            return true; // an existing Type and one not built yet: decided by matching once the row is built
+        }
+
+        if (!o.Head.Equals(p.Head) || o.Kids.Length != p.Kids.Length)
+        {
+            return false;
+        }
+
+        // A compound kid with a free variable is not one Type yet (its row's antecedent binds the variable): it agrees by shape and
+        // is decided once built; other kids agree as above.
+        for (var i = 0; i < o.Kids.Length; i++)
+        {
+            var (ko, kp) = (o.Kids[i], p.Kids[i]);
+            if ((ko.Head is not VarHead && HasFree(ko, into)) || (kp.Head is not VarHead && HasFree(kp, bp)) ? !SameShape(ko, kp) : !this.Agree(ko, into, kp, bp, shapes, meets))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool HasFree(Term t, int?[] beta) => t.Head is VarHead v ? beta[v.Index] is null : t.HasVar && t.Kids.Any(k => HasFree(k, beta));
+
+    private static bool SameShape(Term a, Term b)
+        => a.Head is VarHead || b.Head is VarHead || (a.Head.Equals(b.Head) && a.Kids.Length == b.Kids.Length && a.Kids.Zip(b.Kids).All(k => SameShape(k.First, k.Second)));
+
+    // o and a class c: a bound variable or a subterm instantiated to a class matches by class (different classes meet there); a free
+    // variable takes c; a subterm not built yet is decided once built.
+    private bool AgreeClass(Term o, int?[] into, int c, List<(int, int)> meets)
+    {
+        c = this.g.Find(c);
+        var co = o.Head is VarHead ov ? (into[ov.Index] is int bound ? this.g.Find(bound) : -1) : this.ClassOf(o, into);
+        if (o.Head is VarHead fv && into[fv.Index] is null)
+        {
+            into[fv.Index] = c;
+        }
+        else if (co >= 0 && co != c)
+        {
+            meets.Add((co, c));
+        }
+
+        return true;
+    }
+
+    // An agreed virtual node: kid classes that differ meet first; otherwise its row is requested on behalf of the requester (unless no
+    // fact of its antecedent Contract can have the shape the requester needs at a free variable's position).
+    private void Settle(Virtual vs, int?[] bind, Dictionary<int, Head> shapes, List<(int, int)> meets, MatchCtx ctx)
+    {
+        if (meets.Count != 0)
+        {
+            foreach (var (a, b) in meets)
+            {
+                this.Meet(a, b, ctx);
+            }
+
+            return;
         }
 
         if (vs.T.Antecedent is { } k)
@@ -2232,85 +2305,15 @@ public sealed class Solver
             {
                 if (bind[v] is null && v <= k.Arity && !this.anyHead.Contains((k, v)) && !this.positionHeads[(k, v)].Contains(shape))
                 {
-                    return; // no fact of k has, at this variable's position, a Type of the shape the requester needs
+                    return;
                 }
             }
         }
 
         var key = (vs.T.Id, this.g.Find(vs.Class), BindKey(bind), ctx.Owner!, ctx.Sign);
-        if (!this.expansions.Add(key))
+        if (this.expansions.Add(key))
         {
-            return;
-        }
-
-        this.Request(vs.T, bind, ctx.Tags, ctx.Sign, ctx.Owner!, ctx.Fx!);
-
-        // Binds the virtual's variables where the requester's pattern resolves to a class; false when they cannot match now.
-        bool Unify(Term other, Term pattern, int?[] into, int?[] requester)
-        {
-            if (other.Head is VarHead ov)
-            {
-                var resolved = pattern.Head is VarHead pv ? requester[pv.Index] : !pattern.HasVar ? this.g.LookupTerm(pattern) : null;
-                if (resolved is int r && r >= 0 && into[ov.Index] is int already && this.g.Find(already) != this.g.Find(r))
-                {
-                    return false; // both sides bound to different classes
-                }
-
-                if (resolved is int r2 && r2 >= 0 && into[ov.Index] is null)
-                {
-                    into[ov.Index] = this.g.Find(r2);
-                }
-                else if (pattern.Head is not VarHead)
-                {
-                    shapes[ov.Index] = pattern.Head;
-                }
-
-                return true;
-            }
-
-            if (pattern.Head is VarHead rv)
-            {
-                // A requester variable already bound to a class must agree with a ground side of the virtual.
-                if (requester[rv.Index] is int bound && !other.HasVar)
-                {
-                    var o = this.g.LookupTerm(other);
-                    return o >= 0 && this.g.Find(o) == this.g.Find(bound);
-                }
-
-                return true;
-            }
-
-            if (!other.HasVar && !pattern.HasVar)
-            {
-                if (ReferenceEquals(other, pattern))
-                {
-                    return true;
-                }
-
-                // Two ground Types: one class when both are present; an absent one has no identity facts, so it equals another only
-                // by its head and kids (congruence).
-                var a = this.g.LookupTerm(other);
-                var b = this.g.LookupTerm(pattern);
-                if (a >= 0 && b >= 0)
-                {
-                    return this.g.Find(a) == this.g.Find(b);
-                }
-            }
-
-            if (!other.Head.Equals(pattern.Head) || other.Kids.Length != pattern.Kids.Length)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < other.Kids.Length; i++)
-            {
-                if (!Unify(other.Kids[i], pattern.Kids[i], into, requester))
-                {
-                    return false;
-                }
-            }
-
-            return true;
+            this.Request(vs.T, bind, ctx.Tags, ctx.Sign, ctx.Owner!, ctx.Fx!);
         }
     }
 
@@ -2342,7 +2345,7 @@ public sealed class Solver
                 this.chains[c] = list = new();
             }
 
-            if (!list.Any(x => this.VirtualKey(x) == this.VirtualKey(vs)))
+            if (this.StoredKeys(c, list).Add(this.VirtualKey(vs)))
             {
                 list.Add(vs);
                 woken.Add(c);
@@ -2412,6 +2415,9 @@ public sealed class Solver
         {
             return;
         }
+
+        this.keys.Clear();
+        this.storedKeys.Clear();
 
         this.mergedSinceScan = true;
 
@@ -2596,7 +2602,7 @@ public sealed class Solver
 
             foreach (var vs in list)
             {
-                if (!into.Any(x => this.VirtualKey(x) == this.VirtualKey(vs)))
+                if (this.StoredKeys(root, into).Add(this.VirtualKey(vs)))
                 {
                     into.Add(vs);
                 }

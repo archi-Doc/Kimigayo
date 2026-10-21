@@ -1,20 +1,20 @@
 # G170 C1: executable design of C (ContractSolver premise supply)
 
 Unit C1 of [PlanB](../../../Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md) (BU planning session,
-2026-10-21), after [C0](../C0-evidence.md). Draft data only. Branch `claude/bu-g170-c1` from origin/dev `e0f24c83`. Revised twice after
-the independent review (round 1: ACCEPT WITH CHANGES; round 2: BLOCK on R2-B1, R2-B2): §10 gives each ruling and its evidence.
+2026-10-21), after [C0](../C0-evidence.md). Draft data only. Branch `claude/bu-g170-c1` from origin/dev `e0f24c83`. Revised three times
+after the independent review (round 1: accept with changes; round 2: R2-B1, R2-B2; round 3: R3-B1, R3-B2): §10 gives each ruling.
 
 [proto/](proto/): model, identity classes (`EGraph.cs`), C (`Solver.cs`), judgments (`Checker.cs`), bounded reference, runner
 (`dotnet run -c Release -- fixed|random [n] [seed]|order [n]|resource|cost`, probes `enum|scale|pending|limit`; `G170_ITEMS`,
-`G170_REVIEW_PROFILE=params`); [adapter/](adapter/G170C1AdapterTest.cs) runs in a scratch test assembly; [results/](results/).
+`G170_REVIEW_PROFILE=params|nested`, `nested_probe.py`); [adapter/](adapter/G170C1AdapterTest.cs) runs in a scratch test assembly.
 
 ## 0. Verdict per completion condition
 
 1. **Rule selection** (§1): every SPEC 8.3.2 supply row is selected by e-matching through static indexes keyed by conclusion heads,
    every identity row by one need-driven rule whichever side mentions the row's subject (owner, 2026-10-21): a request reads only
    rows that can meet its classes, and unrelated requests are flat in program size. A prefix selector is B.
-2. **Agreement** (§2): 32,389 stable Supply queries on 1,600 generated models (400 with two-parameter Contracts) and 2,913 stable
-   enumerations, 0 disagreements; the reference builds its own rows and recursion classification.
+2. **Agreement** (§2): 12,289 stable Supply queries and 1,103 enumerations on 600 models (seed 4242, one and two Contract
+   parameters) and 587 nested-profile queries this round, 0 disagreements; round 2's seeds likewise; the reference is independent.
 3. **Real-source witnesses** (§3): G170 at every depth whatever the spelling, G180's probes, frozen views; the corpus matches `ProveCopy`.
 4. **Resource** (§4): two limits (rounds, items), order-free (1,832 requests, 6,264 boundary runs, 0 differ); a published Resource
    state per source; transport through real judgments; time to the item limit is a C3 gate with a number.
@@ -54,15 +54,21 @@ a goal names it. Every row below is selected by a need, a meeting or an existing
   waiting for an absent node). A **chain**: a side meeting c only through a virtual node makes its other side one too; only
   **chainable** sides are tried (some row's other side unifies with them), excluding an **alias** (an other side that is a
   variable its side binds: an existing class, expanded wherever a need or real node meets it, after which the side is direct) and
-  the row's own other side when matching fixes nothing new (the base instance itself). Chains and deeper needs are rows.
+  the row's own other side when matching fixes nothing new (the base instance itself). Chains and deeper needs are rows; a lookup
+  answers each virtual node once, keyed by its row, bindings and base.
+- **A virtual node matches as a node** (R3, one rule for (a) and (b)): against a pattern, a real node's kid classes or another
+  virtual node, a subterm instantiated to a class (a bound variable, a built Type) matches by its class; equal classes agree,
+  different classes meet there as a kid meeting row; a free variable takes the class; a compound subterm with a free variable is
+  no Type until its row binds the variable and agrees by shape, decided once built; other subterms compare by head and kids.
+  Agreement requests the row; a pending kid meeting wakes the requester when it merges.
 - **Meeting row (a, b)** (b): one per class pair, its requesters' tags, answered once per round when new or woken (a merge it read
   or below either class); none where neither class can gain a node (no virtual node, no head a virtual node can have, no such kid).
-  Each class's real nodes meet the other's virtual nodes of their head and kid heads; same-head real nodes meet at their kids as
-  kid meeting rows (upward congruence); virtual nodes meet virtual nodes, the class with fewer index candidates first and the other
-  filtered by their kids (aliases, and two nodes whose kid at one position is each their own class, never pair). Requested by a
-  demand for its facts' classes (above), a bound variable and its class, an identity goal's two classes, and Enumerate's
-  same-declaration facts: once no row has work, the facts of each declaration on the subject's class meet pairwise at their
-  arguments (R2-B2: one instance per class, SPEC 8.6.1); what that requests re-enters the fixpoint.
+  Every node of one class, real or virtual, probes the other's virtual nodes through the index by its head and kid heads and
+  matches each found (both ways, at heads the index gives both classes; no loop over both lists); same-head real nodes meet at
+  their kids; a pair needing the meeting itself is its own row; an alias or a free-variable virtual node meets real nodes only.
+  Requested by a demand for its facts' classes (above), a bound variable and its class, an identity goal's two classes, and
+  Enumerate's same-declaration facts: once no row has work, those facts on the subject's class meet pairwise at their arguments
+  (R2-B2: one instance per class, SPEC 8.6.1); what that requests re-enters the fixpoint.
 - **Class demand (c)**: c's kids (congruence makes c depend on them), the identity goal's meeting and negated identity rows for an
   identity goal's pair. **Compound row (c)**: exact compounds whose subject e-matches c, by subject head. Static indexes (heads a
   K-fact can have per position; whether any row or input concludes `not … is K`; the heads a virtual node can have, an alias
@@ -96,23 +102,23 @@ argument and compound subjects, identity, `not`, `and`/`or`, refinement, verifie
 bindings with a frozen view): each Supply query and up to 8 reference-derived facts compared at both bounds, each Enumerate fact by
 fact and class by class; harness 300 rounds, 3,000 items ([results/](results/)):
 
-| Seed (models) | Stable Supply: agree / disagree / Resource | Enumerate: agree / disagree / Resource | Recursive Contracts (differ) |
+| Seed (models; oracle overflows excluded) | Stable Supply: agree / disagree / Resource | Enumerate: agree / disagree / Resource | Recursive Contracts (differ) |
 | --- | --- | --- | --- |
-| 20261021 (400; 15 oracle overflows excluded) | 8,038: 8,018 / 0 / 20 | 731: 726 / 0 / 4 (1 unstable) | 506 of 1,924 (0) |
-| 7 (400; 11) | 8,184: 8,179 / 0 / 5 | 727: 723 / 0 / 3 (1 unstable) | 470 of 1,919 (0) |
-| 4242 (400; 9) | 8,305: 8,279 / 0 / 26 | 745: 737 / 0 / 8 | 523 of 1,939 (0) |
-| 4242, two parameters (200; 14) | 3,963: 3,961 / 0 / 2 | 356: 354 / 0 / 2 | 159 of 932 (2) |
-| 99, two parameters (200; 9) | 3,899: 3,893 / 0 / 6 | 354: 353 / 0 / 1 | 217 of 954 (1) |
+| 4242 (400; 9) | 8,305: 8,285 / 0 / 20 | 745: 738 / 0 / 7 | 523 of 1,939 (0) |
+| 4242, two parameters (200; 13) | 3,984: 3,982 / 0 / 2 | 358: 356 / 0 / 2 | 162 of 937 (2) |
+| 77, nested (R3-N3: nested-projection identity clauses, different subjects' projections equal; 40, 653 queries, each its own process; 66) | 587: 576 / 0 / 11 | not run | not compared |
+| Round 2 (`f550b474`): 20261021, 7 (400 each); 99 two-parameter (200) | 20,121: 20,090 / 0 / 31 | 1,812: 1,802 / 0 / 8 | 1,193 of 4,797 (1) |
 
-No Supply query was unstable; of 59 Resource answers (round 1: 61 on two seeds), 52 have no reference evidence. Per stable request:
-V median 5–6 (p95 ≤ 60), J median 7–9 (p95 ≤ 2,199). The three classification differences (two-parameter only, no answer differs)
-are the prototype's declaration search missing what the closure finds (`clause B is i32` makes T0 a closed Type): C4 classifies by
-SPEC 8.3.3's search over the rows (N3).
+No Supply query was unstable. Exclusions depend on the reference's 5 s guard and the machine's load (R3-N2): seed 4242 excluded 9
+models here and on `f550b474`, 10 on an intermediate build; nested: 50 overflows and model 36's 16 queries over the 60 s budget (the
+reference's; C alone ≤ 0.5 s). Classification differences (two-parameter only, no answer differs): the prototype's declaration search
+misses what the closure finds; C4 classifies by SPEC 8.3.3's search (N3). Nested Resource (models 2, 39; 1–6 s): chain virtual nodes
+multiply (model 39 `T is V`: V 2,636 at 3,000 items, + at 30,000 in 12 s; round 1's stored rows: V 243, 3.5 s; `f550b474` > 200 s).
 
-Fixed cases (86, all pass, [results/fixed.txt](results/fixed.txt)): G170 depth 1–8, §3's B and D inputs, the absent-head binder,
+Fixed cases (94, all pass, [results/fixed.txt](results/fixed.txt)): G170 depth 1–8, §3's B and D inputs, the absent-head binder,
 ancestors, G180, negation, compounds, cycles, recursion routes, pending and Resource sources, the check under way, frozen views, the
-round-2 workloads at 4 and 64 Contracts, Enumerate's same-declaration facts, one case per gap of §10. `pending` (seed 4245): 0 of
-2,663 Complete answers change with pending sources usable.
+round-2 and round-3 workloads at 4 and 64 Contracts, Enumerate's same-declaration facts, R3-B1's witnesses, one case per gap of §10.
+`pending` (round 2, seed 4245): 0 of 2,663 Complete answers change with pending sources usable.
 
 ## 3. Real-source witnesses
 
@@ -127,39 +133,35 @@ round-2 workloads at 4 and 64 Contracts, Enumerate's same-declaration facts, one
 | G180 stale0 control; stale1 `associate X is D<Self>`; stale2 `contract C: D<Self>` | none; `UnprovenConstraint_Kd` ×2 | + ; + ; + | + |
 | G180 h4: the required `T.(C).X is D<T.(C).Y>`; D's clause `T.(C).Y is E`; h6 | `UnprovenConstraint_Kd`; none; none | + ; + ; + | + |
 
-Frozen views (D: `x() -> i32`; E: `w() -> D.(P).X`; both orders): in E's view `D.(P).X is i32` is +, in D's own view none; without
-read sets (OQ3 option (c)) E.W's evidence in a view excluding D is none, so `E.(Q).W is i32` is none in D's view (today: +). Corpus:
-every function scope with input premises in the 44 milestones and the Kimi library (121 scopes, 400 requests): all Complete; Copy
-evidence equals `ProveCopy` on all 99 parameters (55 / 44); V ≤ 45, J ≤ 62.
+Frozen views (D: `x() -> i32`; E: `w() -> D.(P).X`; both orders): `D.(P).X is i32` is + in E's view, none in D's own; without read
+sets (OQ3 (c)) E.W's evidence in a view excluding D is none, so `E.(Q).W is i32` is none in D's view (today: +). Corpus (44 milestones
+and the Kimi library: 121 scopes with input premises, 400 requests): all Complete; Copy evidence equals `ProveCopy` on all 99 (55 / 44); V ≤ 45.
 
 ## 4. Resource boundary and transport
 
 - **Limits, per request** (owner, OQ2): **rounds** (SPEC 8.3.3's search depth) and **items** (rows, supports, identity nodes; the
   seeded state counts); 4,096 and 65,536 provisional, confirmed by C3's measurements and recorded in IMPL 21.3.2/A.4 at C3. No
   join-work and no read-alternatives limit. Resource replaces the whole answer (a nested judgment is in the closure).
-- **Order-free.** Each limit reads the state after a round and rounds are Jacobi. J (reported, never a limit) counts matching steps
-  and index entries examined, a function of the round's starting state (subscriptions examine every new candidate; lookups and
-  meeting rows are answered once per round; virtual-node meetings start with the side with fewer candidates, both on a tie), plus
-  classes merged and nodes over a merged class. `order` ([results/order.txt](results/order.txt)): 1,832 requests on 400 models,
+- **Order-free.** Each limit reads the state after a round and rounds are Jacobi. J (reported, never a limit) counts matching steps,
+  index entries, probes and every virtual-node agreement examined (R3-N1), a function of the round's starting state (subscriptions
+  examine every new candidate; lookups and meeting rows are answered once per round; meetings probe both ways), plus classes merged
+  and nodes over a merged class. `order` ([results/order.txt](results/order.txt)): 1,832 requests on 400 models,
   templates and Contracts shuffled, ordinary and frozen views, and 6,264 runs at each request's need and need − 1 per limit: 0
   differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; Complete/Provisional at the need, Resource below it.
 - **Tested values** (`resource`, [results/resource.txt](results/resource.txt)): G170 depth 8 and 64 complete at the need (depth 64:
   130 rounds, 331 items) and are Resource at need − 1; enumerating a closed Type's infinite class is Resource at every limit.
-- **Time to the item limit** (R2-N2; `resource`, `limit`; machine loaded): that enumeration reaches 1,000 / 3,000 / 10,000 /
-  30,000 items in 0.1 / 1.1 / 5.5 / 137 s, J 64 k / 0.56 M / 6.2 M / 56 M (round 1: 0.7 / 3.3 / 118 s to 10,000, J 586 M): J grows
-  about as items², time faster, as rows woken by merges are re-selected in full. **C3 gate**: the production evaluator reaches the
-  chosen item value within about 1 s (a warm Bind) on this workload and on the two-parameter Resource cases (seed 4242 model 12,
-  `List<i32> is K3`: 3,000 items in 28 rounds, J 0.92 M, 7 s here), by semi-naive deltas (a demand reads only new facts and merged
-  classes, as meeting rows already do; bound expansion only new or merged nodes); otherwise IMPL records the item value it reaches
-  in about 1 s (the prototype: about 3,000), or the owner reconsiders a work limit (J is order-free now).
+- **Time to the item limit** (R2-N2; `limit`; machine loaded): that enumeration reaches 1,000 / 3,000 / 10,000 items in 0.16 / 1.1 /
+  4.6 s, J 64 k / 0.56 M / 6.2 M (about items²: rows woken by merges are re-selected in full). **C3 gate**: the production evaluator
+  reaches the chosen item value within about 1 s (a warm Bind) here and on the two-parameter Resource cases (seed 4242 model 12,
+  `List<i32> is K3`: 3,000 items in 28 rounds, J 1.4 M, 1.6 s here) by semi-naive deltas (a demand reads only new facts and merged
+  classes, bound expansion only new or merged nodes); otherwise IMPL records the value reached in 1 s, or the owner reconsiders a work limit.
 - **Published Resource state.** A source whose own check ended at a limit publishes `Resource` (beside Valid, Pending, Invalid); a
   selected row from it makes every polarity not established Resource, never absent (never Unknown or `UnprovenConstraint_Kd`).
 - **Transport** (planning session, Q2): `ConstraintProof` gains a fifth member `Resource`; `ProveConstraint` maps Complete evidence to
   Proven, Refuted, Unknown or Error, Provisional to the same value not final (judged again after publication), Resource to
-  `ConstraintProof.Resource`, absorbed as Error is (SPEC 8.3.2); one record per (scope, limit) at the scope owner's signature, with
-  the shared analysis-limit code (OQ1). Tested: `S1 is Deep` checked at a 6-round limit publishes Resource and records it once; its
-  uses (alone, `and`/`or`, a condition, its binding) are Resource and record nothing; an independent `U is Copy` records `Unproven`;
-  judged before the check (restarted after publication) or after it, the records are the same.
+  `ConstraintProof.Resource`, absorbed as Error is (SPEC 8.3.2); one record per (scope, limit) at the scope owner's signature (OQ1).
+  Tested: `S1 is Deep` checked at a 6-round limit publishes Resource and records it once; its uses (alone, `and`/`or`, a condition,
+  its binding) are Resource and record nothing; `U is Copy` records `Unproven`; before or after the check, the records are the same.
 
 ## 5. Lifecycle and scheduler (§4.4)
 
@@ -171,11 +173,10 @@ evidence equals `ProveCopy` on all 99 parameters (55 / 44); V ≤ 45, J ≤ 62.
   demands later; each kind keeps its transfer rule and initial value; limits count all kinds. **Stratification** (N5): a premise row
   reads only judgments final in the request, Owned's optimistic start never feeds one; a cross-kind cycle in a valid program needs
   an explicit rule or PlanB's recorded contract difference; C3 tests it.
-- **Source states**: C reads a published state per declaration, conformance path and binding (Valid, Pending, Invalid, Resource) and
+- **Source states**: C reads a published state per declaration, conformance path and binding (Valid, Pending, Invalid, Resource),
   never runs verification; a Pending read is Provisional, never cached, re-run after publication. **The check under way** is an
-  `EvidenceView` exclusion (N4): its own row supplies nothing to it, the answer stays Complete (SPEC 8.3.3). **Invalid** supplies
-  nothing, as today (N7); whether a selected Invalid source makes the answer Error (PlanB §4.3.5) is C3's with a reproducer. Moving
-  `VerifyConformance` and `CheckClosedDeclarationConstraints` out of proof is its own reviewed unit with a reproducer (N6).
+  `EvidenceView` exclusion (N4): its own row supplies nothing, the answer stays Complete (SPEC 8.3.3). **Invalid** supplies nothing (N7;
+  Error per PlanB §4.3.5 is C3's); moving `VerifyConformance` and `CheckClosedDeclarationConstraints` out of proof is its own unit (N6).
 
 ## 6. Representation and entry contract (C2/C3)
 
@@ -186,8 +187,7 @@ bound-expansion shapes, static indexes), `.Demands.cs` (rows, subscriptions, nee
 
 - `Supply(BoundConstraint proposition, EvidenceView view) -> Evidence { bool Positive, bool Negative, Completion }`.
 - `Enumerate(BoundType subject, EvidenceView view, declarations) -> SubjectEvidence { facts on the subject's class (positive or
-  negated, available or only discoverable), identity members, Completion }`; `declarations` is the consumer's candidate set;
-  identity normalization passes none and reads members only (N8).
+  negated, available or only discoverable), identity members, Completion }`; `declarations`: the consumer's candidates (identity: none, N8).
 - `EvidenceView { BindingScope Premises, SourceState (provisional pass or final), FrozenDefinition (null for ordinary proof),
   Inadmissible (the inference owner's published set), UnderCheck (the conformance or declaration whose own check is running) }`.
 - `Completion = Complete | Provisional | Resource(limit, count | source)`. No read sets (B2, OQ3): "depends" is per derivation and
@@ -205,12 +205,13 @@ median of 15 after 5; machine loaded by other sessions; V, J and time at the lis
 
 | Workload | Rounds | V | J | Time | Allocated |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| G170 Copy, depth 1 / 8 / 64 (as in round 1) | 4 / 18 / 130 | 8 / 29 / 197 | 25 / 466 / 61,030 | 0.07 / 0.8 / 20 ms | 44 KB / 0.4 / 17 MB |
-| Wide: 8 / 32 / 128 Contracts on T | 2 | 6 | 46 / 166 / 646 | 39 / 86 / 254 µs | 48 / 114 / 395 KB |
-| Diamond refinements, height 4 / 16 / 64 | 2 | 74 / 650 / 8,714 | 126 / 1,230 / 17,166 | 0.13 / 1.1 / 21 ms | 0.2 / 1.3 / 17 MB |
+| G170 Copy, depth 1 / 8 / 64 (as in round 1) | 4 / 18 / 130 | 8 / 29 / 197 | 25 / 466 / 61,030 | 0.05 / 0.6 / 29 ms | 44 KB / 0.4 / 17 MB |
+| Wide: 8 / 32 / 128 Contracts on T | 2 | 6 | 46 / 166 / 646 | 26 / 58 / 176 µs | 48 / 114 / 395 KB |
+| Diamond refinements, height 4 / 16 / 64 | 2 | 74 / 650 / 8,714 | 126 / 1,230 / 17,166 | 0.06 / 0.5 / 15 ms | 0.2 / 1.3 / 17 MB |
 
 **Program-size scaling.** B3's n conformances binding `X = i32` (`T is Holder`); R2-B1's n Contracts declaring `associate X is Self`
-(selfid) or `associate X is List<Self>` with `Self.(Wi).Y is Option<Self.(Wi).X>` (open, `U is W1`):
+(selfid) or `associate X is List<Self>` with `Self.(Wi).Y is Option<Self.(Wi).X>` (open, `U is W1`); R3-B2's `Ki<A>: associate X is
+A` (palias) and `Wi: Self is Self.(Wi).X.(Wi).X` (deep2), with `V is Copy`:
 
 | Request (n = 10, 400, 1,600; B3 also 100) | Answer | Rounds | V | J | Review (round 2) V; J |
 | --- | --- | ---: | ---: | ---: | --- |
@@ -218,13 +219,14 @@ median of 15 after 5; machine loaded by other sessions; V, J and time at the lis
 | selfid `T is Copy` | none | 0 | 2 | 0 | 23 / 803 / 3,203; 135 / 5,205 / 20,805 |
 | selfid `T.(Holder).Item is Copy` | + | 2 | 6 | 11 | 67 / 2,407 / 9,607 |
 | open `List<T> is Copy` | none | 1 | 3 | 1 | 24 / 804 / 3,204 |
-| open `U.(W1).Y is Option<List<U>>` | + | 2 | 10 | 98 | J 2,602 / 101,272 / 404,872 |
-| selfid with `T is W3`: `T.(W3).X is T` (related; a meeting) | + | 2 | 7 | 194 / 2,534 / 9,734 | (new probe) |
+| open `U.(W1).Y is Option<List<U>>` | + | 2 | 10 | 104 | J 2,602 / 101,272 / 404,872 |
+| selfid with `T is W3`: `T.(W3).X is T` (related; a meeting) | + | 2 | 7 | 420 / 12,510 / 49,710 (0.2 / 8 / 17 ms) | round 2, pairs uncounted: 194 / 2,534 / 9,734 |
+| palias, deep2, selfid with `V is Copy`: `T is Copy` (a meeting) | none | 1 | 4 | 145 / 5,605 / 22,405 (0.1 / 2–3 / 8–11 ms) | 0.2–0.5 / 32–43 / 506–547 ms, 2n² unifications |
+| palias `T.(K3<i32>).X is i32`; deep2 `T.(Holder).Item is Copy` | +, + | 2 | 10, 8 | 502 / 14,152 / 56,152; 156 / 5,616 / 22,416 | |
 
-Every request reads the same rows whatever n, except the last: a meeting of two classes every variable side reaches reads each such
-side's virtual node once (J linear in those rows) and requests none (V constant); an index of self-referential virtual nodes by kid
-position removes that J if C3's library measurement shows it matters. The diamond is quadratic (rows copy `AncestorStorage`).
-Adapter (loaded): `ProveCopy` of the G170 value 18–43 µs against 0.2–2.6 ms; the corpus's 400 requests 84 ms beside 0.8 s of rebinds.
+Every request reads the same rows (V) whatever n. J counts every probe and agreement (R3-N1): a meeting of two classes every variable
+side reaches probes each such side's virtual node once each way (J ≈ 14 n, linear time) and requests none. The diamond is quadratic.
+Adapter (loaded): `ProveCopy` of the G170 value 4–17 µs against 0.14–1.2 ms; the corpus's 400 requests 99 ms beside 1.6 s of rebinds.
 
 ## 8. C2's input list
 
@@ -251,13 +253,13 @@ be SPEC 8.3.3's search over the supply rows with argument and identity routes, c
 correction. Behavior-preserving restructures first (C2): `Binding.Contracts.cs` (6,516 tokens) premise supply to
 `Binding.ContractSolver.cs`; `Binding.Constraints.cs` (5,324) to `.Rows.cs`; `Binding.AssociatedTypes.cs` (5,047) lookup to `Binding.AssociatedLookup.cs`.
 
-**Review additions.** `order`, the scaling workloads and §4's curve become C3 regressions; a `src/Benchmark` premise workload (request
-counts per warm Bind and A1/A4 analysis, per-request time and allocation, time to each limit, warm zero-allocation, cold/warm Bind
-against C0, retained capacity); a per-pass (request, view) memo only on measurement. Rows C1 did not model, each a row or outside
-supply at C3: PrimitiveInteger → Position, `AddArithmeticPremises`, Semantics and Callable constraints, Origin families, generic
-value-side conformances, structured conditions.
+**Review additions.** `order`, the scaling workloads, the generated profiles' slow cases and §4's curve become C3 regressions; a
+`src/Benchmark` premise workload (requests per warm Bind and A1/A4 analysis, per-request time and allocation, time to each limit, warm
+zero-allocation, cold/warm Bind against C0, retained capacity); a per-pass memo only on measurement. Rows C1 did not model, each a
+row or outside supply at C3: PrimitiveInteger → Position, `AddArithmeticPremises`, Semantics and Callable constraints, Origin
+families, generic value-side conformances, structured conditions.
 
-**Expected size (N9, DECISIONS Q5).** Added: the four ContractSolver files about 18,000 tokens (prototype `Solver.cs` 24,500
+**Expected size (N9, DECISIONS Q5).** Added: the four ContractSolver files about 18,000 tokens (prototype `Solver.cs` 24,700
 with string keys and LINQ; 20,700 in round 1), TypeIdentity's classes about 2,500, `ConstraintProof.Resource` and the record 300.
 Removed at C3 (measured on `e0f24c83`): `Binding.Contracts.cs` premise supply about 1,000 tokens, `Constraints` 450, `FindAssociated`'s
 scan 300, `TypeIdentity.cs` 550, `AddArithmeticPremises` 155, `DerivedFacts`, copy paths and guards 1,500. Net about +18,000 tokens:
@@ -278,23 +280,21 @@ C adds a responsibility Binding lacks (the supply's closure).
 Departures from PlanB §4: identity classes are part of selection; every identity side is lazy under one rule; chains, needs,
 meetings and bound expansions are rows (§1); verification is inside proof today (§5). **Unverified**: production cost and item-limit
 time (C3 gates); witnesses for effect premises, Enumerate lookups, arithmetic, composed scopes; G172's admissibility; mixed
-Owned/premise cycles (N5); Origin families, structured conditions, deeper goals (C3 gate); the J of meetings variable sides reach (§7).
+Owned/premise cycles (N5); Origin families, structured conditions, deeper goals (C3 gate); the J of meetings variable sides reach
+(§7); kid meetings of unrelated classes (model 185 `List<i32> is Cp`: 17 rounds, V 781, 1.7 s; `f550b474` 1); chain virtual nodes
+multiplying with nested-projection identity rows (§2: Resource where round 1's stored rows answer; open).
 
 ## 10. Review findings: rulings and evidence
 
 | Finding | Ruling | Evidence |
 | --- | --- | --- |
-| R2-B1 open identity sides requested eagerly | one need-driven rule for every identity side (owner): requested only by (a) a need with its kid heads, (b) a meeting, (c) an existing node; "requested eagerly" gone | §7: the selfid and open requests are flat at n = 10…1,600; fixed cases at 4 and 64 Contracts with equal work; agreement and `order` re-run (§2, §4) |
-| R2-B2 `Enumerate` lists one instance twice | Enumerate's same-declaration facts meet pairwise at their arguments once the fixpoint is reached (§1) | fixed cases for one and two parameters, each three facts before; two-parameter seed 4242: 0 enumeration disagreements |
-| R2-N1 rules accrete | two-parameter profile run with the redo; Origin families and structured conditions stay a C3 gate | §2: seeds 4242 and 99, 200 models each, 0 disagreements; 3 classification differences (N3's C4 search) |
-| R2-N2 time to the item limit | a C3 completion condition with its number, else a lower IMPL item value or the owner's work limit | §4: the curve and the gate |
-| R2-N3 cost, N7; R2-N4 size; R2-N5 | C3 with request counts (§8) and a reproducer (§5); §8's estimate (the first implementing commit records it); this message is under 2,000 characters | the open-side linear scan is gone (one keyed index) |
-| Round 1: B1–B4, N1–N12 | no work limit, J order-free; no read sets; B3 flat (now within R2-B1's rule); published Resource state and `ConstraintProof.Resource`; N1 compound subjects, N2 own reference rows, N3 argument and identity routes, N4–N8 contract text, N9 §8, N10–N11 §9, N12 gone with B2 | `order` (§4); §3; §7; `resource` transport; fixed cases |
+| R3-B1 matching against a virtual node compares bindings, not classes | a virtual node matches as a node, modulo classes (§1): a bound subterm by its class, different classes meet as kid meeting rows, in needs (a) and meetings (b) alike | fixed cases (an involution law twice, a nested identity side, a bound pattern, a free Contract argument), each `none` on `f550b474`, `+` here and in the reference ([results/witnesses.txt](results/witnesses.txt)) |
+| R3-B2 a self-kid exclusion over a quadratic join | every node of one class probes the other's virtual nodes through the index, both ways, at heads the index gives both; `SelfKids`, `KidFilter` and the tie rule deleted | §7: palias, deep2 and selfid with `V is Copy` linear, V 4 at every n |
+| R3-N1 J; R3-N2 oracle guard; R3-N3 generator | J counts every probe and agreement (§4); exclusions stated with the machine's state (§2); a nested profile and the palias/deep2 workloads (C3 regressions) | §2, §7 |
+| Round 2: R2-B1, R2-B2, R2-N1–N5 | one need-driven rule for every identity side (owner); Enumerate's same-declaration facts meet; two-parameter profile; item-limit time a C3 gate; cost and N7 to C3 | §7; fixed cases; §2; §4 |
+| Round 1: B1–B4, N1–N12 | no work limit, J order-free; no read sets; B3 flat; published Resource state and `ConstraintProof.Resource`; N1–N12 as recorded | `order` (§4); §3; §7; `resource` transport |
 
-Gaps the redo found, each fixed in the rules and shown by a case or workload failing before: virtual-virtual meetings read all
-virtual nodes of both classes (open, V 1,206 at n = 400; now smaller side first, the other filtered by kids); an alias made every
-class's virtual heads "any" (now only where an alias side can match); alias and self-kid pairs requested every Contract with a
-variable side (related selfid, V 809 at n = 400; now never paired); demands met the arguments of facts on other subjects (now once
-the subjects are one class); bound expansion matched a node's whole class, and same-declaration meetings ran every round (the curve);
-meetings descended recursively and were re-run by every requester every round (G170 depth 64: J 1.59 M; seed 20261021 model 106:
-over 10 minutes to Resource): now meeting rows, none where neither class can gain a node (round 1's G170 J; model 106 in 1 s).
+Gaps this redo found: stored chains answered lookups without the lookup's kid heads (now filtered like index rows); a join at every
+head read the open program's n chains (V 199 at n = 64; at heads the index gives both classes: 10); a compound kid with a free
+Contract argument met the meeting itself (now agreed by shape until built); a lookup answered a chain once per path that found it
+(two-parameter model 185, `List<i32> is Cp`: J 307 M, 54 s; as a set: J 1.6 M, 1.7 s).

@@ -2,7 +2,8 @@
 // exhaustive bounded reference on generated finite models, order invariance (answers, counts, work and limit outcomes), the
 // Resource boundary and its transport through judgments, and cost workloads including program-size scaling.
 // Run: dotnet run -c Release -- <fixed|random|order|resource|cost|all> [count] [seed]; probes: trace|time|enum|scale <model file>
-// <queries…>, pending [count] [seed], limit <items…> (time to the item limit); G170_REVIEW_PROFILE=params: two-parameter models.
+// <queries…>, pending [count] [seed], limit <items…> (time to the item limit); G170_REVIEW_PROFILE=params: two-parameter models;
+// G170_REVIEW_PROFILE=nested: nested projections of two subjects made one Type by depth-1 identities, with bound patterns.
 #pragma warning disable
 #nullable enable
 using System.Diagnostics;
@@ -248,6 +249,32 @@ public static class Runner
         for (var i = 1; i <= n; i++)
         {
             sb.Append($"contract W{i}\n  associate X is List<Self>\n  associate Y\n  clause Self.(W{i}).Y is Option<Self.(W{i}).X>\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>The round-3 review's palias program: n Contracts `Ki&lt;A&gt;: associate X is A` (a parameter identity side), with a Copy
+    /// fact on another subject.</summary>
+    public static string PAlias(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput V is Copy\ninput T is K3<i32>\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"contract K{i}<A>\n  associate X is A\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>The round-3 review's deep2 program: n Contracts `Wi: Self is Self.(Wi).X.(Wi).X` (a nested-projection identity side),
+    /// with a Copy fact on another subject.</summary>
+    public static string Deep2(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput V is Copy\ninput T is W3\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"contract W{i}\n  associate X\n  clause Self is Self.(W{i}).X.(W{i}).X\n");
         }
 
         return sb.ToString();
@@ -603,6 +630,18 @@ public static class Runner
 
         // A meeting at classes every variable side reaches requests no unrelated row (J reads their virtual nodes once: §7).
         failures += ExpectFlat("related identity goal, variable identity sides", n => SelfId(n) + "input T is W3\n", "T.(W3).X is T", "+ C", sameJ: false);
+        failures += ExpectFlat("a meeting, variable identity sides", n => SelfId(n) + "input V is Copy\n", "T is Copy", "none C", sameJ: false);
+        failures += ExpectFlat("a meeting, parameter identity sides", PAlias, "T is Copy", "none C", sameJ: false);
+        failures += ExpectFlat("a meeting, nested-projection identity sides", Deep2, "T is Copy", "none C", sameJ: false);
+
+        // Round 3 (R3-B1): a virtual node matches as a node, modulo classes. Nested projections of two subjects are one Type when the
+        // subjects' projections are (T.(Inv).I and V.(Inv).I are both i32): met by two virtual nodes, and needed by a bound pattern.
+        const string Inv = "contract Copy\ncontract Inv\n  associate I\n  clause Self.(Inv).I.(Inv).I is Self\ninput T is Inv\ninput V is Inv\ninput V is Copy\ninput T.(Inv).I is i32\ninput V.(Inv).I is i32";
+        failures += Expect("an involution law: virtual nodes one Type modulo classes", Inv, "T is Copy", "+ C");
+        failures += Expect("an involution law: the identity", Inv, "T is V", "+ C");
+        failures += Expect("a nested-projection identity side met modulo classes", "contract Copy\ncontract W1\n  associate X\n  clause Self is Self.(W1).X.(W1).X\ninput T is W1\ninput V is W1\ninput V is Copy\ninput T.(W1).X is i32\ninput V.(W1).X is i32", "T is Copy", "+ C");
+        failures += Expect("a free Contract argument inside a virtual node's subterm (decided once its row binds it)", "contract Copy\ncontract Inv<A>\n  associate I\n  clause Self.(Inv<A>).I.(Inv<A>).I is Self\ninput T is Inv<i64>\ninput V is Inv<i64>\ninput V is Copy\ninput T.(Inv<i64>).I is i32\ninput V.(Inv<i64>).I is i32", "T is Copy", "+ C");
+        failures += Expect("a bound pattern needs a virtual node modulo classes", "contract W\n  associate X\ncontract D<A>\ncontract K\n  clause Self.(W).X.(W).X is D<Self>\ncontract M\n  associate P\n  clause Self.(M).P is Self.(W).X.(W).X\ninput T is K\ninput V is M\ninput T.(W).X is i32\ninput V.(W).X is i32", "V.(M).P is D<T>", "+ C");
 
         // Round 2 (R2-B2): Enumerate lists one fact per instance: same-declaration facts on the subject meet at their arguments
         // (two-parameter seed 4242 model 6, minimized; one and two parameters).
@@ -981,6 +1020,7 @@ public static class Runner
         var n = r.Next(3, 6);
         var names = Enumerable.Range(0, n).Select(i => "K" + i).ToArray();
         var two = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "params";
+        var nested = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "nested";
         var arity = names.Select(_ => two ? r.Next(3) : (r.Next(4) == 0 ? 1 : 0)).ToArray();
         var assocs = names.Select(_ => new[] { "X", "Y" }.Where(_ => r.Next(3) != 0).ToArray()).ToArray();
         var usedOr = false;
@@ -1127,10 +1167,24 @@ public static class Runner
 
                 sb.Append("  clause ").Append(subject).Append(" is ").Append(requirement).Append('\n');
             }
+
+            // The nested profile (R3-N3): a nested projection of Self is Self, or names a Contract with Self as an argument (a bound
+            // pattern), or is a projection of another Contract's nested projection.
+            if (nested && assocs[i].Length != 0)
+            {
+                var z = assocs[i][r.Next(assocs[i].Length)];
+                var path = "Self.(" + Own(i) + ")." + z + ".(" + Own(i) + ")." + z;
+                var j = r.Next(n);
+                sb.Append("  clause ").Append(path).Append(" is ").Append(Pick("Self", Ref(j, i), assocs[j].Length != 0 ? "Self.(" + Ref(j, i) + ")." + assocs[j][0] : "Self")).Append('\n');
+            }
         }
 
         var inputs = new List<string>();
         var tContract = r.Next(n);
+        if (nested && assocs[tContract].Length == 0 && Enumerable.Range(0, n).Where(i => assocs[i].Length != 0).ToList() is { Count: > 0 } withAssocs)
+        {
+            tContract = withAssocs[r.Next(withAssocs.Count)]; // the nested profile needs T's projection
+        }
         var tRef = Ref(tContract, -1);
         inputs.Add("T is " + tRef);
         if (r.Next(2) == 0)
@@ -1170,6 +1224,18 @@ public static class Runner
         if (tProjection is not null && r.Next(100) < 10)
         {
             inputs.Add("U is List<" + tProjection + ">");
+        }
+
+        // The nested profile: a second subject V of T's Contract whose projection is the same Type as T's (both i32), so nested
+        // projections of T and V are one Type; V carries a fact.
+        string? vProjection = null;
+        if (nested && tProjection is not null)
+        {
+            vProjection = "V" + tProjection[1..];
+            inputs.Add("V is " + tRef);
+            inputs.Add(tProjection + " is i32");
+            inputs.Add(vProjection + " is i32");
+            inputs.Add("V is " + Pick("Cp", Ref(r.Next(n), -1)));
         }
 
         foreach (var input in inputs)
@@ -1231,7 +1297,19 @@ public static class Runner
             subjects.Add("List<S1.(" + s1Ref + ")." + assocs[s1Contract][0] + ">");
         }
 
+        if (vProjection is not null)
+        {
+            subjects.Add("V");
+            subjects.Add(tProjection + tProjection![1..]); // T's nested projection, one Type with V's
+        }
+
         queries = new List<string>();
+        if (vProjection is not null)
+        {
+            queries.Add("T is V");
+            queries.Add("T is Cp");
+        }
+
         for (var q = 0; q < 10; q++)
         {
             var s = subjects[r.Next(subjects.Count)];
@@ -1555,9 +1633,17 @@ public static class Runner
             var selfId = ModelText.Parse(SelfId(n));
             var open = ModelText.Parse(Open(n));
             var related = ModelText.Parse(SelfId(n) + "input T is W3\n");
-            foreach (var (m, q) in new[] { (selfId, "T is Copy"), (selfId, "T.(Holder).Item is Copy"), (open, "List<T> is Copy"), (open, "U.(W1).Y is Option<List<U>>"), (related, "T.(W3).X is T"), (related, "T.(W3).X.(Holder).Item is Copy") })
+            var selfIdV = ModelText.Parse(SelfId(n) + "input V is Copy\n");
+            var palias = ModelText.Parse(PAlias(n));
+            var deep2 = ModelText.Parse(Deep2(n));
+            foreach (var (name, m, q) in new[]
             {
-                Measure($"scaling n={n}: {(m == selfId ? "selfid" : m == open ? "open" : "selfid + T is W3")} {q}", m, q);
+                ("selfid", selfId, "T is Copy"), ("selfid", selfId, "T.(Holder).Item is Copy"), ("open", open, "List<T> is Copy"), ("open", open, "U.(W1).Y is Option<List<U>>"),
+                ("selfid + T is W3", related, "T.(W3).X is T"), ("selfid + T is W3", related, "T.(W3).X.(Holder).Item is Copy"), ("selfid + V is Copy", selfIdV, "T is Copy"),
+                ("palias", palias, "T is Copy"), ("palias", palias, "T.(K3<i32>).X is i32"), ("deep2", deep2, "T is Copy"), ("deep2", deep2, "T.(Holder).Item is Copy"),
+            })
+            {
+                Measure($"scaling n={n}: {name} {q}", m, q);
             }
         }
 

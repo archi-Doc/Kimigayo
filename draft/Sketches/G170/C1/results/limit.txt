@@ -1,8 +1,7 @@
-item limit 1000: Resource Resource (items 1003>1000) rounds=93 V=457 E=543 J=63676 N=274 (0.27 s)
-item limit 3000: Resource Resource (items 3005>3000) rounds=275 V=1367 E=1635 J=563721 N=820 (2.08 s)
-item limit 10000: Resource Resource (items 10001>10000) rounds=911 V=4547 E=5451 J=6212991 N=2728 (7.12 s)
-item limit 30000: Resource Resource (items 30010>30000) rounds=2730 V=13642 E=16365 J=55862596 N=8185 (136.90 s)
+item limit 1000: Resource Resource (items 1003>1000) rounds=93 V=457 E=543 J=63767 N=274 (0.16 s)
+item limit 3000: Resource Resource (items 3005>3000) rounds=275 V=1367 E=1635 J=563994 N=820 (1.10 s)
+item limit 10000: Resource Resource (items 10001>10000) rounds=911 V=4547 E=5451 J=6213900 N=2728 (4.60 s)
 
-real	2m26.523s
-user	0m0.015s
+real	0m5.934s
+user	0m0.000s
 sys	0m0.000s
