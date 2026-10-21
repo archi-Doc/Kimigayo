@@ -77,6 +77,7 @@ public class InheritedStorageTest
     // borrow, a read, `exchange` and early exits while a borrow lives, and a stored reference Field lent to `exchange`.
     [Theory]
     [InlineData(Tally + "        Kimi.Intrinsics.replace(self.total@uniq, with: 5)\n", "self.total@uniq")]
+    [InlineData(Tally + "        Kimi.Intrinsics.replace(self.total@uniq/i32, with: 5)\n", "self.total@uniq/i32")]
     [InlineData(Tally + "        let old = Kimi.Intrinsics.exchange(self.buffer@uniq, with: Buffer.init())\n", "self.buffer@uniq")]
     [InlineData(Tally + "        Audit.change(self.buffer@uniq)\n", "self.buffer@uniq")]
     [InlineData(Tally + "        let r = self.buffer@uniq\n        self.buffer = Buffer.init()\n        Audit.change(r)\n", "self.buffer@uniq")]
