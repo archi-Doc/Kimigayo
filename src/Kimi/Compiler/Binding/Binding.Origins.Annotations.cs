@@ -95,6 +95,11 @@ public sealed partial class Binding
                 return origin;
             }
 
+            if (use.BoundSymbol is { Slot: ReceiverSlot } receiver)
+            {
+                return this.ReceiverOrigin(receiver); // SPEC 5.7, 15.2.1: in a constructor or drop, `self` is the receiver's Origin.
+            }
+
             this.Fail(use, BindingFailure.InvalidOrigin);
             return null;
         }

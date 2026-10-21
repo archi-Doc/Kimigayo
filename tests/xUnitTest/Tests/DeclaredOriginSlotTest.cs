@@ -93,5 +93,13 @@ public class DeclaredOriginSlotTest
         Assert.Equal([nameof(DiagnosticCode.InvalidOriginBinding_Kd), nameof(DiagnosticCode.TypeMismatch_Kd)], errors.Select(static x => x.Code).ToArray());
     }
 
+    // SPEC 5.7, 15.3.5: a raw layer's Origin is no use of a slot for Loan requirements, so a slot only a raw layer states is Phantom and
+    // the declaration invalid, with the slot related; a Loan<T> Field over the slot keeps it.
+    [Theory]
+    [InlineData("struct W<T> {s}\n    let p: raw/T during s", "InvalidOriginBinding_Kd: raw/T during s")]
+    [InlineData("struct W<T> {s}\n    let keep: Loan<ref/T during s>\n    let p: raw/T during s", null)]
+    public void ARawLayerStatesNoPhantomSlot(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
+
     private static string Text(string source, SourceSpan? span) => span is { } value ? source.Substring(value.Start, value.Length) : string.Empty;
 }

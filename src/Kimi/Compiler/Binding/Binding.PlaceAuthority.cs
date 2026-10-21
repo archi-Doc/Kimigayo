@@ -209,6 +209,12 @@ public sealed partial class Binding
             case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
                 next = pair.Left;
                 return PathStep.PairFollow;
+            case DereferenceKoto dereference:
+                next = dereference.Operand;
+                return PathStep.RawFollow;
+            case IndexKoto raw when ReferenceTypes.IsPointer(raw.Left.BoundType):
+                next = raw.Left;
+                return PathStep.RawFollow;
             case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
                 next = userIndex.Left;
                 return PathStep.UserIndex;
@@ -740,6 +746,9 @@ public sealed partial class Binding
 
         // The referent of a ref/uniq reference or the payload of an object handle or view (@follow).
         Follow,
+
+        // The pointee of a raw pointer, `*p` or `p[n]` (SPEC 5.2), which PathAuthority treats as a root.
+        RawFollow,
 
         // The target of a pair layer (@follow, SPEC 13.5.5).
         PairFollow,

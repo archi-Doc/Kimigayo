@@ -15,6 +15,15 @@ public sealed partial class Binding
             return new(at, member, required, written, true, Required: definition);
         }
 
+        if (!ReferenceEquals(expected.RawOrigin, actual.RawOrigin))
+        {
+            // SPEC 5.7, 15.3.7: raw Origins compare by subtyping; the record names the direction that fails, an Unstated end first.
+            var stated = RegionOf(expected.RawOrigin) ?? BoundOrigin.Unstated;
+            var own = RegionOf(actual.RawOrigin) ?? BoundOrigin.Unstated;
+            return OriginOutlives(own, stated) ? new(at, member, stated, own, false, Required: definition)
+                : new(at, member, own, stated, false, Required: definition);
+        }
+
         for (var i = 0; i < Math.Min(expected.OriginArguments.Count, actual.OriginArguments.Count); i++)
         {
             if (!ReferenceEquals(expected.OriginArguments[i], actual.OriginArguments[i]))
@@ -241,8 +250,10 @@ public sealed partial class Binding
                 Reset(syntax);
                 var actual = this.BindType(syntax, scope);
                 this.symbols[function.Parameters[i]].Type = actual;
-                valid &= ReferenceEquals(pattern, actual);
-                if (actual is not null && !ReferenceEquals(pattern, actual))
+                // SPEC 5.7, 15.3.7: an input whose raw Origins differ must accept the required one.
+                var fits = ReferenceEquals(pattern, actual) || (actual is not null && SameExceptRawOrigins(pattern, actual) && IsSubtype(pattern, actual));
+                valid &= fits;
+                if (actual is not null && !fits)
                 {
                     incompatible ??= ImplementationOriginMismatch(syntax, definition, pattern, actual, "the input '" + function.Parameters[i].ExternalName + "'");
                 }
@@ -263,7 +274,9 @@ public sealed partial class Binding
             }
 
             function.BoundSymbol!.Type = actualResult;
-            if (actualResult is not null && !ReferenceEquals(result, actualResult))
+            var resultFits = ReferenceEquals(result, actualResult) ||
+                (actualResult is not null && SameExceptRawOrigins(result, actualResult) && IsSubtype(actualResult, result));
+            if (actualResult is not null && !resultFits)
             {
                 incompatible ??= ImplementationOriginMismatch(function.ReturnType ?? function, definition, result, actualResult, "the result");
             }
@@ -292,7 +305,7 @@ public sealed partial class Binding
                 }
             }
 
-            return valid && ReferenceEquals(result, actualResult);
+            return valid && resultFits;
         }
         finally
         {

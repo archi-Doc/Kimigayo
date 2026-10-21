@@ -73,6 +73,19 @@ public sealed partial class Binding
         }
     }
 
+    // SPEC 5.7: a Case payload's `during self` layer read at a position: through the layer the position is reached by, in its mode,
+    // else through the Subject's path (ReadHolder); null after a located Unsupported_Kd at `node`.
+    private BoundType? PayloadRead(BoundType stored, BoundMatch plan, in PatternReach reach, Koto node)
+    {
+        if (reach.Access == PatternAccessMode.Owned || !HoldsHolder(stored))
+        {
+            return this.ReadHolder(stored, plan.Syntax.Expression, node);
+        }
+
+        var mode = reach.Access == PatternAccessMode.Shared ? RawStep.Shared : RawStep.Exclusive;
+        return this.ReplaceHolder(stored, reach.Origin is { } through ? this.Formed(through, mode) : null);
+    }
+
     // SPEC 15.1.6 (Bindings): a part of an owned Subject or item reached with owned access is bound as its stored Type; a Place reached
     // with shared or exclusive access binds ref/T or uniq/T of the Place the step selected, also for a Copy T.
     private BoundType BindingTypeOf(BoundType selected, in PatternReach reach)

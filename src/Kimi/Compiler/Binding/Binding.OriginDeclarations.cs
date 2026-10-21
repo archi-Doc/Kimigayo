@@ -174,7 +174,8 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (annotation.OriginExpression is not { } expression)
+            // SPEC 5.7 (design-final §0, bu19): a raw layer's Origin belongs to an input's borrow, a slot or static, so it introduces no name.
+            if (annotation.OriginExpression is not { } expression || annotation.SemanticsKind == SemanticsKind.Raw)
             {
                 continue;
             }
@@ -623,7 +624,7 @@ public sealed partial class Binding
 
     private BoundType RewriteOrigins(BoundType type, OriginDeclaration declaration)
     {
-        if (!type.CarriesOrigin)
+        if (!type.CarriesAnyOrigin)
         {
             return type;
         }
@@ -642,7 +643,13 @@ public sealed partial class Binding
                 arguments[i] = this.ResolveOrigin(type.OriginArguments[i], declaration);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? this.ResolveOrigin(origin, declaration) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            var origin = type.Origin is { } outer ? this.ResolveOrigin(outer, declaration) : null;
+            if (type.RawOrigin is { } raw)
+            {
+                origin = this.Restep(raw, this.ResolveOrigin(RegionOf(raw)!, declaration));
+            }
+
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
         }
         finally
         {

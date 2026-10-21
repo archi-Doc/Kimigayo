@@ -15,7 +15,7 @@ public sealed partial class Binding
         => !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
 
     // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and converts the
-    // borrowed address; the pointer carries no Origin, so it keeps no Loan. The operation's borrow is recorded on the operator.
+    // borrowed address, which keeps no Loan. The operation's borrow is recorded on the operator.
     private BoundType? BindAddress(ConversionKoto conversion, BindingScope scope)
     {
         var stored = this.BindNode(conversion.Left, scope);
@@ -47,13 +47,25 @@ public sealed partial class Binding
         return Complete(conversion, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
     }
 
-    // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer.
+    // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer. SPEC 5.7: a pointer keeps its raw
+    // Origin unless the target states one, which is a fit of the source's Origin (none for usize) outside an unsafe context and a
+    // claim, which records no relation, inside one.
     private BoundType? CompletePointerConversion(ConversionKoto conversion, BoundType source, BoundType target)
     {
         if ((ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
             (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)))
         {
             conversion.ConversionBinding = ConversionBinding.Pointer;
+            if (target.RawOrigin is null && source.RawOrigin is { } kept && ReferenceTypes.IsPointer(target))
+            {
+                return Complete(conversion, this.types.Pointer(target.Components[0], kept));
+            }
+
+            if (target.RawOrigin is not null && !KotoHelper.IsUnsafeContext(conversion))
+            {
+                _ = this.CheckTypeUse(this.types.Pointer(target.Components[0], source.RawOrigin), target, conversion.Left);
+            }
+
             return Complete(conversion, target);
         }
 

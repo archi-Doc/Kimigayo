@@ -828,7 +828,7 @@ public sealed partial class Binding
                     return this.Fail(node, BindingFailure.InvalidAssignment);
                 }
 
-                return Complete(node, symbol.Type);
+                return Complete(node, symbol.Type is { } field ? this.ReadHolder(field, ((MemberAccessKoto)node).Left, node) : null);
             }
 
             var operation = write ? property.Setter : property.Getter;
@@ -910,7 +910,7 @@ public sealed partial class Binding
             this.Consulted(annotation ?? accessor.Property.Declaration.TypeKoto ?? accessor.Property.Declaration);
         }
 
-        return Complete(node, type);
+        return Complete(node, node is MemberAccessKoto read && type is not null ? this.ReadHolder(type, read.Left, node) : type);
     }
 
     private BoundType? RequireType(Koto node, BindingScope scope, BoundType? expected)
@@ -1015,6 +1015,11 @@ public sealed partial class Binding
                 if (!Writable(unary.Operand) && ElementAccess.WritableRoot(unary.Operand) is null)
                 {
                     return this.FailWrite(unary, unary.Operand);
+                }
+
+                if (this.HolderPlaceFailure(unary.Operand, HolderAccess.Update, null, unary))
+                {
+                    return null;
                 }
 
                 // Increment and decrement apply to integer and wrapping integer Types, never to floats (SPEC 13.2).
@@ -1130,6 +1135,11 @@ public sealed partial class Binding
             !(kind == KotoKind.Equals && (CanInitializeLocal(binary.Left, scope) || (IsSpecialField(binary.Left, out var constructor) && constructor.IsConstructor))))
         {
             return this.FailWrite(binary, binary.Left);
+        }
+
+        if (assignment && this.HolderPlaceFailure(binary.Left, kind == KotoKind.Equals ? HolderAccess.Write : HolderAccess.Update, binary.Right, binary))
+        {
+            return null;
         }
 
         var result = assignment ? BoundType.Unit : left;

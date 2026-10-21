@@ -386,19 +386,24 @@ public sealed partial class Binding
 
         // Without a corresponding binder this rewrites Origins only, so an Origin-free
         // subtree is already its own result; skip its scratch frames and recursion.
-        if (!type.CarriesOrigin && correspondingBinder is null)
+        if (!type.CarriesAnyOrigin && correspondingBinder is null)
         {
             return type;
         }
 
         var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, inputs) : null;
+        if (type.RawOrigin is { } raw)
+        {
+            origin = this.Restep(raw, this.SubstituteStoredOrigin(RegionOf(raw)!, binder, arguments, inputs));
+        }
+
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);
         var components = this.RentTypes(type.Components.Count);
         var origins = this.originScratch.Rent(type.OriginArguments.Count);
         var lengths = correspondingBinder is null ? type.LengthArguments : this.lengthScratch.Rent(type.LengthArguments.Length);
         try
         {
-            var changed = !ReferenceEquals(origin, type.Origin) || !ReferenceEquals(length, type.LengthExpression);
+            var changed = !ReferenceEquals(origin, type.Origin ?? type.RawOrigin) || !ReferenceEquals(length, type.LengthExpression);
             if (correspondingBinder is not null)
             {
                 for (var i = 0; i < type.LengthArguments.Length; i++)

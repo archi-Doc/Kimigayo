@@ -649,6 +649,17 @@ public class LayoutTest
         Assert.False(compilation.IsAlive);
     }
 
+    // SPEC 5.7, R5-M37 (DECISIONS BU-24): a raw Origin is no part of a layout; the memo is keyed by the interned Type, so a Type that
+    // differs in a raw Origin alone is its own entry with the same layout.
+    [Fact]
+    public void ARawOriginChangesNoLayout()
+    {
+        var c = CompilationTestHelper.BindSuccess("func probe(r: ref/i32, p: (raw/i32 during r, isize), q: (raw/i32, isize)) => ()");
+        var parameters = Parameters(c);
+        Assert.NotSame(parameters[1], parameters[2]);
+        Assert.Equal(Row(c.Layout.Of(parameters[2]).Value!), Row(c.Layout.Of(parameters[1]).Value!));
+    }
+
     private static (string Storage, int Size, int Alignment, int Stride, string Computation, string? Argument) Row(ValueLowering value)
         => (value.Layout.StorageType, value.Layout.Size, value.Layout.Alignment, value.Layout.Stride, value.ComputationType, value.ArgumentType);
 

@@ -442,7 +442,8 @@ public sealed partial class Binding
         for (var i = 0; i < payload.Length; i++)
         {
             var source = ((InvocationKoto)use).ArgumentNodes[i];
-            var type = this.StoredType(payload[i].BoundType!, result)!;
+            var stored = this.StoredType(payload[i].BoundType!, result)!;
+            var type = this.ReplaceHolder(stored, null); // SPEC 5.7: a Case holding `during self` is constructed through no dereference.
             var fitted = default(BoundArgumentOperation);
             var fit = settled.Contains(i) ? CandidateApplicability.Applicable : this.FitArgument(source, type, scope, source, out fitted);
             if (fit is CandidateApplicability.Inapplicable or CandidateApplicability.Pending)
@@ -457,6 +458,12 @@ public sealed partial class Binding
                 !this.ErasePart(source, completed, type)))
             {
                 Complete(use, null); // The payload's own failure, on which the construction rests.
+                return false;
+            }
+
+            if (HoldsHolder(stored) && this.HolderWriteFailure(stored, HolderAccess.Write, source, source))
+            {
+                Complete(use, null);
                 return false;
             }
 

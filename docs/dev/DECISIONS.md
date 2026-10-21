@@ -3451,6 +3451,28 @@ resumed by R4-M86 (2026-10-20).
   rewriter it guards read different meanings (a body-local region escapes through `ResolveLocalResultOrigins`), `JudgeCallFit` skips
   an unstated argument, its reader list misses `StoredValues`, and the frozen old analysis still sees raw Origins. G160-1 (C1b)
   appends §0's vocabulary (`Holder`, `Shared`, `Unstated`) and the owner's decisions.
+  C1b (unit bu20; the owner's Q-O1, Q-O2, Q-O6 of design-final §0, Q-O4 and Q-O5 as R4-M105 (OQ-R1 (a), OQ-R2 (a)) decided them;
+  the planning session's decisions there): `OriginKind` gains `Holder` (`self` on a raw layer in inline storage: a Field's or Case
+  payload's Type and their Tuple and fixed-array elements; only in stored shapes, which every read replaces), `Shared` (`Shared(L)`,
+  interned per label, the label reached through a shared borrow, only as a raw Origin; Q-O1, removed by per-Borrow Origins, R7) and
+  `Unstated` (what a raw layer without `during` counts as stating, only in relations and their records, never stored; Q-O2). The
+  constructor rejects `Unstated` in both roles and `Shared` or `Holder` in the borrow role; a formed raw Origin may be a meet
+  (OQ-R2 (a)), a written one is one atom (D18). Component `Binding.RawOrigins` (contract at its head): `Formed`; `StepOf` (`RawStep`:
+  a meet and any label but a slot, input or the shared view steps Exclusive, an input atom or universal name joins its binder's
+  input borrows, a declared slot reads its requirement, a pair `o` its admitted cases; mixed modes are a located `Unsupported_Kd`,
+  U1); `RegionOf`; `Restep` (G1, the raw arm of `SubstituteStoredOrigins`, `SubstituteTypeCore`, `RewriteOrigins` and
+  `ResolveLocalResultOrigins`); `ReadHolder`; `OwnedOrigin`; `UnstatedRelation` (rulings S4: consulted by `OriginOutlives`,
+  `EntailsOrigin`, `JudgeOriginAtoms` and `RefutesOriginRelation`, and by `AddObligation`, which records a Refuted relation at the
+  fit's value instead of an obligation, so nothing past it names `Unstated`, `Shared` or `Holder`, design-final §13 A2); the written
+  forms; the OQ-R1 (a) allowlist. `PathOrigin` (`Binding.PlaceAuthority.Raw`, over `NextPathStep`, which gains `RawFollow`) gives the
+  Origin a Place's path is reached through; a special receiver root gives its `ReceiverSlot` atom (BU-23) and is no dereference, so
+  only `self` of the Type's own constructors and drop is exempt from the allowlist. A raw Origin adds covariant variance and no Loan
+  requirement; a slot only a raw layer states is Phantom. A `during self` layer makes its holder non-Copy; the pointer read from it is
+  Copy. Contracts compare raw Origins by subtyping; differing raw Origins join unstated (Q-O6); a raw annotation introduces no
+  signature name (bu19). `Keepers` and `TyCtxt.RawStep` land with retention (C4), which reads them first. Not done:
+  `PlaceOriginSource` keeps its own walk, since old Emission reads it and it walks forms `NextPathStep` treats as roots (an Array range
+  selection); claim and borrow repair candidates. Rejected: a located `Unsupported_Kd` at the substituting node for a meet (item 11,
+  superseded by OQ-R2 (a)); deciding `self`'s exemption by the receiver atom (a borrow of a receiver part carries it too).
 
 ## R5 and R6 (adopted 2026-10-18)
 

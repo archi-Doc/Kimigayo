@@ -395,10 +395,10 @@ public sealed record BoundType
         this.Semantics = semantics;
         this.Components = components ?? [];
         this.Length = length;
-        if (semantics == SemanticsKind.Raw && origin is not null)
+        // DECISIONS BU-24: the slot's role is the layer's. Unstated is never stored; Shared(L) and Holder only in the raw role.
+        if (origin?.Kind == OriginKind.Unstated || (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Shared or OriginKind.Holder))
         {
-            // The raw role is written by no site yet (G160-1's formation is DECISIONS BU-24's next step); a raw layer has no Origin.
-            throw new InvalidOperationException($"A raw layer states no Origin yet: `{origin}`.");
+            throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }
 
         this.origin = origin;

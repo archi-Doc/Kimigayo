@@ -891,7 +891,7 @@ public sealed partial class Binding
         }
         else if (issue.Code == DiagnosticCode.InvalidOriginBinding_Kd && this.ReportInvalidOriginSlot(issue.Node, requirement, issue.Code))
         {
-            // SPEC 15.2.3: an Origin slot the written binding cannot supply, at the annotation.
+            // SPEC 15.2.3, 5.7: an Origin slot the written binding cannot supply, at the annotation.
         }
         else if (issue.Code == DiagnosticCode.DuplicateBinding_Kd && issue.Node is TypeSemanticsKoto { BindingSetName: { } reusedSet } bindingSet)
         {

@@ -204,7 +204,7 @@ public sealed partial class Binding
     {
         var operation = operations[index];
         if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
-            !adapted.StoresOrigin || !parameter.StoresOrigin)
+            ((!adapted.StoresOrigin || !parameter.StoresOrigin) && !adapted.CarriesRawOrigin && !parameter.CarriesRawOrigin))
         {
             return;
         }

@@ -56,7 +56,9 @@ public sealed partial class Binding
 
             if (current.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
             {
-                var mark = complete ? current.Origin is not null : shown is not null && ReferenceEquals(current.Origin, shown);
+                // SPEC 5.7: a raw layer shows the region its Origin names.
+                var layer = current.Origin ?? RegionOf(current.RawOrigin);
+                var mark = complete ? layer is not null : shown is not null && ReferenceEquals(layer, shown);
                 if (mark)
                 {
                     shown = null;
@@ -81,7 +83,7 @@ public sealed partial class Binding
 
                 if (mark)
                 {
-                    text.Append(" during ").Append(complete ? HoverOriginName(current.Origin!, budget!) : shownText);
+                    text.Append(" during ").Append(complete ? HoverOriginName(layer!, budget!) : shownText);
                     if (underBorrow)
                     {
                         text.Append(')');
@@ -290,6 +292,11 @@ public sealed partial class Binding
     {
         using var guard = budget.Enter();
         budget.Charge(origin.Name.Length);
+        if (origin is { Kind: OriginKind.Holder } or { Kind: OriginKind.Projection, Slot: ReceiverSlot })
+        {
+            return "self"; // SPEC 5.7: the holding value, and a constructor's or destructor's receiver.
+        }
+
         if (origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input)
         {
             var display = OriginDisplay(origin, null, typeLevel: true);

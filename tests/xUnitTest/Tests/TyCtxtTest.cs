@@ -281,7 +281,8 @@ public sealed class TyCtxtTest
     }
 
     // DECISIONS BU-24: a layer's stated Origin is one slot whose role its Semantics decides: Origin never reads a raw layer's, RawOrigin
-    // only a raw layer's, and a rebuild keeps both. No site gives a raw layer an Origin yet, so the constructor rejects one.
+    // only a raw layer's, and a rebuild keeps both. The constructor never stores Unstated, nor Shared or Holder in the borrow role; a raw
+    // Origin enters no instance key (R5-M39: Erase gives the unstated layer).
     [Fact]
     public void ARawLayerKeepsItsOriginRole()
     {
@@ -290,11 +291,17 @@ public sealed class TyCtxtTest
         var origin = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters[0].Type.TypeOf()!.Origin!;
         var borrow = types.Reference(SemanticsKind.Ref, BoundType.I32, origin);
         var pointer = types.Pointer(borrow);
+        var stated = types.Pointer(BoundType.I32, origin);
         Assert.Equal((origin, null, true, false, true), (borrow.Origin, borrow.RawOrigin, borrow.CarriesOrigin, borrow.CarriesRawOrigin, borrow.CarriesAnyOrigin));
         Assert.Equal((null, null, true, false), (pointer.Origin, pointer.RawOrigin, pointer.CarriesOrigin, pointer.CarriesRawOrigin));
+        Assert.Equal((null, origin, false, true, true), (stated.Origin, stated.RawOrigin, stated.CarriesOrigin, stated.CarriesRawOrigin, stated.CarriesAnyOrigin));
+        Assert.NotSame(types.Pointer(BoundType.I32), stated);
         Assert.Same(pointer, types.Rebuild(pointer, [borrow], pointer.Origin, []));
         Assert.Same(borrow, types.Rebuild(borrow, [BoundType.I32], borrow.Origin, []));
-        Assert.Throws<InvalidOperationException>(() => types.Pointer(BoundType.I32, origin));
+        Assert.Same(stated, types.Rebuild(stated, [BoundType.I32], null, []));
+        Assert.Same(types.Erase(types.Pointer(BoundType.I32)), types.Erase(stated));
+        Assert.Throws<InvalidOperationException>(() => types.Pointer(BoundType.I32, BoundOrigin.Unstated));
+        Assert.Throws<InvalidOperationException>(() => types.Reference(SemanticsKind.Ref, BoundType.I32, BoundOrigin.Holder));
     }
 
     // SPEC 6.1.3, 8.13, 8.15.1: the body of every MIR key symbol is instantiated exactly when the symbol or a declaration enclosing it has a

@@ -52,6 +52,11 @@ public sealed partial class Binding
             return true;
         }
 
+        if (UnstatedRelation(longer, shorter) is not null)
+        {
+            return false; // Rulings S4: Refuted before any premise node is built.
+        }
+
         var environment = this.RentPremises(use) ??
             throw new InvalidOperationException($"The premise environment of `{longer} outlives {shorter}` is not ready: its construction depends on itself (PLAN G74).");
         var start = this.OriginProofMetrics is null ? 0 : Stopwatch.GetTimestamp();

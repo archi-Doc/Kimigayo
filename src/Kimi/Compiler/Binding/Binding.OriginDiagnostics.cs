@@ -240,16 +240,29 @@ public sealed partial class Binding
 
     // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
     // Type's header and listing the declared slots.
-    // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements), with that slot related.
+    // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements); SPEC 5.7: a Phantom slot a raw layer
+    // states (InvalidRawOrigin); each with that slot related.
     private bool ReportInvalidOriginSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
     {
-        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var slot) != true)
+        if (this.invalidStaticOriginSlots?.TryGetValue(node, out var slot) == true)
         {
-            return false;
+            node.Report(requirement, code, evidence: [$"static cannot supply uniq for Origin slot {slot!.Name}"], note: $"Origin slot {slot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
+            return true;
         }
 
-        node.Report(requirement, code, evidence: [$"static cannot supply uniq for Origin slot {slot!.Name}"], note: $"Origin slot {slot.Name} requires uniq and cannot bind to static; a static Origin admits no exclusive loan (SPEC 15.2.3)", relatedSpans: [("Origin slot", slot.Origin.Binder!, slot.Span, "requires uniq")]);
-        return true;
+        if (this.phantomRawOrigins?.TryGetValue(node, out var phantom) == true)
+        {
+            var note = $"a raw layer states a slot that no stored safe reference or Loan<T> Field keeps; add a Loan Field over {phantom!.Name}";
+            node.Report(
+                requirement,
+                code,
+                evidence: [$"Origin slot {phantom.Name} is Phantom"],
+                note: note + " (SPEC 5.7, 15.3.5)",
+                relatedSpans: [("Origin slot", phantom.Origin.Binder!, phantom.Span, "Phantom")]);
+            return true;
+        }
+
+        return false;
     }
 
     private bool ReportAbsentSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)

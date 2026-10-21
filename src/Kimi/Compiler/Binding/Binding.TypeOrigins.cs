@@ -192,15 +192,21 @@ public sealed partial class Binding
                 this.RetainInnerOutlives(type.Components[0], origin, use, discharge, RequiredCondition(this.PairSlotCondition(type, use)));
             }
         }
+        else if (type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+        {
+            // SPEC 5.7: a raw layer states the Origin its `during` writes (WrittenRawOrigin) or none, and forms no borrow Origin.
+            if (written)
+            {
+                if (this.WrittenRawOrigin(annotation!, use, scope, context.Position) is not { } raw)
+                {
+                    return null;
+                }
+
+                type = this.types.Pointer(type.Components[0], raw);
+            }
+        }
         else
         {
-            // SPEC 5.7: a raw layer may state an Origin, which Binding does not represent yet: the written annotation is the located
-            // limit and the layer forms no Type. Unit G160-1 (DECISIONS R4-M95) replaces this arm with the raw Origin.
-            if (written && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
-            {
-                return this.FailExplained(ref this.unsupportedSpans, use, BindingFailure.Unsupported, annotation!.BorrowOriginSpan);
-            }
-
             var target = type;
             var objectLayer = type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc;
             if (objectLayer)
@@ -351,6 +357,12 @@ public sealed partial class Binding
             this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
         }
 
+        if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
+        {
+            // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
+            this.AccumulateOrigin(RegionOf(raw)!, schema, polarity, LoanRequirement.None, ref changed);
+        }
+
         // A Type may carry fewer or more arguments than its declaration while a pass is
         // still completing; only the slots the declaration actually owns carry requirements.
         var declared = type.Symbol?.Schema;
@@ -451,7 +463,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (invalid)
+            if (invalid || (node is TypeSemanticsKoto && type.RawOrigin is { } raw && this.InvalidRawOrigin(node, raw)))
             {
                 continue;
             }

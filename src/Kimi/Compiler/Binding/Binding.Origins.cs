@@ -13,6 +13,11 @@ public sealed partial class Binding
 {
     internal static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
+    // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one, or its
+    // longer end is Unstated (UnstatedRelation).
+    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter)
+        => UnstatedRelation(longer, shorter) == false || (BodyLocalOrigin(longer) && FixedOrigin(shorter));
+
     private static bool IsExclusive(SemanticsKind semantics) => semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 
     private static int CompareOrigins(BoundOrigin a, BoundOrigin b)
@@ -79,6 +84,11 @@ public sealed partial class Binding
         if (ReferenceEquals(a, b) || a.Kind is OriginKind.Static or OriginKind.Anchor)
         {
             return true;
+        }
+
+        if (UnstatedRelation(a, b) is { } decided)
+        {
+            return decided;
         }
 
         if (a.Kind == OriginKind.Intersection)
@@ -245,6 +255,22 @@ public sealed partial class Binding
 
     private void AddObligation(BindingObligation obligation)
     {
+        // Rulings S4, design-final §13 A2: a relation with an Unstated end forms no obligation; a Refuted one is recorded at its use,
+        // its Unstated end first.
+        if (obligation is { Longer: { } longer, Shorter: { } shorter } && UnstatedRelation(longer, shorter) is { } holds)
+        {
+            if (!holds || (obligation.Equality && UnstatedRelation(shorter, longer) == false))
+            {
+                // As ownership reports a fit's record: at the value that supplies the longer end, a local's initializer.
+                var at = IsFitObligation(obligation) && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
+                var fact = holds ? new OriginRelationFact(at, shorter, longer, true, obligation.Type, true)
+                    : new(at, longer, shorter, obligation.Equality, obligation.Type, true);
+                this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, fact);
+            }
+
+            return;
+        }
+
         if (this.obligationSet.Add(obligation))
         {
             this.obligations.Add(obligation);

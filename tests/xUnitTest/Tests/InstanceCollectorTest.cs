@@ -1523,6 +1523,20 @@ public sealed class InstanceCollectorTest
         Assert.Throws<InvalidOperationException>(static () => IntrinsicRows.Of(IntrinsicId.None));
     }
 
+    // R5-M39 (DECISIONS BU-24): a raw Origin enters no instance key, so variants of a generic callee that differ in raw Origins alone are
+    // one item.
+    [Fact]
+    public void RawOriginVariantsAreOneInstance()
+    {
+        var c = MirBuildTest.Compile("func keep<T>(value: T) -> T\n    T is Copy\n    return value\n" +
+            "func host(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b, r: raw/i32) -> i32\n    _ = keep(p)\n    _ = keep(q)\n    _ = keep(r)\n    return 0\n" +
+            "let x = 1\nlet y = 2\nrequire host(x@ref, y@ref, null, null, null) == 0 else => $abort(\"keep\")\n");
+        var program = c.BuildMir();
+        var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
+        Assert.Empty(set.Records);
+        Assert.Equal(["Fn keep [raw/i32]"], set.Items[set.RootCount..].ToArray().Select(x => Label(program, x)));
+    }
+
     // K 4.3: a representative is closed and makes every local Type of its body closed.
     private static bool Closes(TyCtxt types, MirBody body, Subst representative)
         => representative.Types.ToArray().Append(representative.Declaring).Append(representative.Self).All(static x => x is not { ContainsParameter: true }) &&

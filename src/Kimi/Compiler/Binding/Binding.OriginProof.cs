@@ -117,6 +117,11 @@ public sealed partial class Binding
 
     private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
+        if (UnstatedRelation(longer, shorter) is { } holds)
+        {
+            return holds ? OriginJudgment.Proven : OriginJudgment.Refuted; // Rulings S4.
+        }
+
         if (IsLocalRegion(shorter))
         {
             return OriginJudgment.Proven;

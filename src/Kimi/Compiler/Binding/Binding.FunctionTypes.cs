@@ -41,7 +41,7 @@ public sealed partial class Binding
 
     private static bool StaticOnly(BoundType type)
     {
-        if (!StaticOrigin(type.Origin))
+        if (!StaticOrigin(OwnedOrigin(type)))
         {
             return false;
         }
@@ -66,7 +66,7 @@ public sealed partial class Binding
 
         static bool StaticOrigin(BoundOrigin? origin)
         {
-            if (origin is null || origin.Kind == OriginKind.Static)
+            if (origin?.Kind is null or OriginKind.Static)
             {
                 return true;
             }
