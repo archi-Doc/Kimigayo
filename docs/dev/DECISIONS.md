@@ -3188,7 +3188,7 @@ resumed by R4-M86 (2026-10-20).
   Type is exact (Unknown → Proven for `Chain<i32>`, `Nest`, `Nest15`, `Ping`/`Pong`, `Grow`, `Fold`); a requirement resting on a
   projection family gets one located `Unsupported_Kd` at the family's stored Type, its use derived, in place of
   `UnprovenConstraint_Kd`; no old-path guard (R4's Q6): such a value meets the old Emission's existing generation depth limit.
-  X-2 register (PD28): the family site, the bound and the option-2 site. Open (PLAN G204): a reader that combines two scoped proofs
+  X-2 register (PD28): the family site, the bound and the option-2 site. Open (PLAN G207): a reader that combines two scoped proofs
   itself settles each. Rejected: L as an Unknown that `RequireConstraint` takes (the other consumers), a fifth `ConstraintProof`, a
   second channel, publishing a site where its proof settles whatever the reader does (an explanation such as
   `CandidateConstraintFailure` reads a clause whose L decides nothing), a solve per strongly connected set (a conformance binding can
