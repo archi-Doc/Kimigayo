@@ -118,14 +118,13 @@ internal sealed partial class FunctionCodegen
             return false;
         }
 
-        var location = this.Location(drop.Source);
-        if (location < 0)
+        if (!this.Location(drop.Source, out var site))
         {
             return false;
         }
 
         this.arguments = this.arguments.Length < 3 ? new Value[3] : this.arguments;
-        (this.arguments[0], this.arguments[1], this.arguments[2]) = (address, new('@', location), new('\0', this.module.Constants[location].ByteLength));
+        (this.arguments[0], this.arguments[1], this.arguments[2]) = (address, site.Text, site.Length);
         _ = this.WriteCall(this.module.Glue(glue), this.arguments.AsSpan(0, 3));
         return true;
     }

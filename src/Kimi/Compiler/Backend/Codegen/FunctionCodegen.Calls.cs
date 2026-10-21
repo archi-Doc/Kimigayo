@@ -4,9 +4,9 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C8a; DECISIONS R5-M89, R5-M92): a callee by its kind's row, the
-// collector's targets read by one forward cursor, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and
-// the module's entry call too.
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a; DECISIONS R5-M89, R5-M92, R5-M93): a callee by its
+// kind's row, the collector's targets read by one forward cursor, and the one call writer, which the legacy rows, the intrinsic rows, the
+// glue items and the module's entry call too.
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -21,8 +21,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // A Call by its callee's row: a compiler function of the Body disposition (KimiLibraryKinds' published IntrinsicDisposition) by its
-    // legacy row, any other Fn callee by its target (Function), an intrinsic by its row's writer (FunctionCodegen.Intrinsics); the other
-    // rows are not written yet, each at the call.
+    // legacy row, any other Fn callee and a Requirement by its target (Function), an intrinsic by its row's writer
+    // (FunctionCodegen.Intrinsics); the other rows are not written yet, each at the call.
     private void Call(in MirTerminator call)
     {
         var callee = call.Callee;
@@ -32,11 +32,8 @@ internal sealed partial class FunctionCodegen
                 IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
                 this.Legacy(call);
                 return;
-            case MirCalleeKind.Fn:
+            case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
-                return;
-            case MirCalleeKind.Requirement:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C3b calls the requirement's target.
                 return;
             case MirCalleeKind.Value:
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C5a calls a Closure or function value.
@@ -52,33 +49,35 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A Fn callee by the collector's target at the call (I8): a body item is called by its signature (ModuleCodegen.Signature), one that
-    // receives its caller's location is C3b's row; a Builtin shim is C8f's and C9b's, a property witness C3c's; without a target, a
-    // #LibraryImport function is called by its C signature (SPEC 22.6), and any other callee is a broken contract.
+    // A Fn or Requirement callee by the collector's target at the call (I8; a requirement's is the witness K6 resolved, SPEC 8.6.3-8.6.4,
+    // whose signature is the call's, since compatibility inserts no conversion): a body item is called by its signature
+    // (ModuleCodegen.Signature), a caller-location one given the call's location (Invoke); a Builtin shim is C8f's and C9b's, a property
+    // witness C3c's. Without a target, a #LibraryImport function is called by its C signature (SPEC 22.6), a requirement's witness has no
+    // body (R5-M67; a row not written yet, PLAN G157 (10)), and any other callee is a broken contract.
     private void Function(in MirTerminator call)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
         if (target < 0)
         {
-            if (this.module.Import(call.Callee.Symbol!) is { } import)
+            if (call.Callee.Kind == MirCalleeKind.Requirement)
+            {
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
+            }
+            else if (this.module.Import(call.Callee.Symbol!) is { } import)
             {
                 this.Invoke(call, import, new(call.Callee.Symbol, MirBodyKind.Fn));
-                return;
+            }
+            else
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
             }
 
-            this.Report(DiagnosticCode.InternalInvariant_Kd, call.Source);
             return;
         }
 
         switch (this.collector.Set.Items[target].Key.Kind)
         {
             case MonoKind.Body when this.module.Signature(target) is { } signature:
-                if (signature.CallerLocation)
-                {
-                    this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C3b passes the caller's location.
-                    return;
-                }
-
                 this.Invoke(call, signature, this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key);
                 return;
             case MonoKind.Body:
@@ -93,7 +92,7 @@ internal sealed partial class FunctionCodegen
     }
 
     // A call by its signature (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument), the destination's address as the result slot,
-    // the call site's location text for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92), a slot-less Value parameter's
+    // the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92, R5-M93), a slot-less Value parameter's
     // the next of the given values (a runtime routine's stride or reason), then the call and its end (Finish). The operands are in the
     // callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a pointer argument: a
     // Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
@@ -101,7 +100,7 @@ internal sealed partial class FunctionCodegen
     {
         var parameters = signature.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
-        var (location, next) = (-1, 0);
+        var (located, site, next) = (false, default(Site), 0);
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
@@ -113,12 +112,12 @@ internal sealed partial class FunctionCodegen
 
             if (parameter.Kind is AbiParameterKind.Location or AbiParameterKind.LocationLength)
             {
-                if (location < 0 && (location = this.Location(call.Source)) < 0)
+                if (!located && !(located = this.Location(call.Source, out site)))
                 {
                     return; // Recorded.
                 }
 
-                this.arguments[i] = parameter.Kind == AbiParameterKind.Location ? new('@', location) : new('\0', this.module.Constants[location].ByteLength);
+                this.arguments[i] = parameter.Kind == AbiParameterKind.Location ? site.Text : site.Length;
                 continue;
             }
 

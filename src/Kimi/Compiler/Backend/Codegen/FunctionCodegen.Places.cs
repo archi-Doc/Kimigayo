@@ -99,8 +99,8 @@ internal sealed partial class FunctionCodegen
     {
         address = start;
         var position = row.Arg;
-        var location = this.Location(this.body.Locals[position].Source);
-        if (location < 0 || this.Representation(row.Type!) is not { } element || this.LoweringOf(prefix) is not { } sequence)
+        if (!this.Location(this.body.Locals[position].Source, out var site) || this.Representation(row.Type!) is not { } element ||
+            this.LoweringOf(prefix) is not { } sequence)
         {
             return true; // Recorded.
         }
@@ -123,7 +123,7 @@ internal sealed partial class FunctionCodegen
         output.Write(", ");
         this.WriteValue(length);
         output.Write('\n');
-        LlvmScalarText.WriteFailure(output, "%invalid", AbortReasons.IndexBounds, this.Failure(id, location, stackalloc char[3 * SpellingLength]));
+        LlvmScalarText.WriteFailure(output, "%invalid", AbortReasons.IndexBounds, this.Failure(id, site, stackalloc char[3 * SpellingLength]));
         if (element.Layout.Stride == 0)
         {
             address = buffer; // A zero-sized element needs no address of its own; its check remains.

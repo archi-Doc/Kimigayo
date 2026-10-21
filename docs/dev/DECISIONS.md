@@ -5083,3 +5083,35 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a switch over `IntrinsicId` in code generation (a second table of the vocabulary); `memmove` (R5-M18); an inline nullable
     Alloc or `LegacyRuntimeHelpers`' text (above); a code column in `IntrinsicRows` for Fail (it would copy `IntrinsicDisposition`'s codes);
     copying the old 16-byte check (the invariant above makes it dead code).
+
+- **R5-M93 The requirement calls and the caller location of MIR code generation** (2026-10-21, C lane; plan C3b, package C 3.2 I5 and
+  I8, SPEC 8.6.3-8.6.4 and 22.5.1, IMPL 21.3.1; the planning session's decisions on C3b's design; under R5-M61, R5-M67, R5-M70, R5-M89 and
+  R5-M92)
+  - Requirement row: a Requirement callee is called by the collector's target at the call, as a Fn callee is (`FunctionCodegen.Function`):
+    a Body witness (a conformance's, an inherited one, a generic Type's instance, one through a bound Contract reference, an accessor's
+    Getter or Setter, a fixed array's entry member, Position's i32 specialization) under its own signature (`ModuleCodegen.Signature`),
+    its operands in its Arg-local order (`ArgumentPosition`): SPEC 8.6.3's compatibility inserts no conversion, so the witness's
+    signature is the call's. A Builtin shim stays C8f's and C9b's and a property witness C3c's, each a located `Unsupported_Kd`, now
+    reached. A requirement call without a target is a located `Unsupported_Kd` (decision 3): a bodiless witness has none (R5-M67; PLAN
+    G157 (10), FixedBuffer's and HeapBuffer's `reserve`); a Fn callee without one stays a `#LibraryImport` function or
+    `InternalInvariant_Kd`.
+  - Caller location (SPEC 22.5.1): `Location(source, out Site site)` is the one rule and `Site` its result, a new representation: IMPL
+    21.3.1's pair of the text's address and its byte length, two `Value`s. In a caller-location body (`FunctionAbi.CallerLocation`) it is
+    the body's own last two parameters (Abi.Of), which it forwards, so every location it reports is the one it received: a check's Abort
+    (`Failure`: the operators, the conversions, an Index's bounds), a glue call, a runtime routine's or legacy row's location parameters
+    and a caller-location callee's; elsewhere it is the site's pooled Location constant. `Invoke` keeps R5-M92's location kinds and passes
+    the `Site`; C3a's records for a caller-location callee and for a caller-location body's locations go. The old generator does the same
+    (`EmissionOperandKind.CallerLocation`), so OQ7 expects no deviation.
+  - Parameter spelling (decision 2, A): a parameter `Value` (prefix `p`) is a physical index into the function's `FunctionAbi`, spelled by
+    its `AbiParameter.Name`, so the prologue, a pointer-passed argument's and the result slot's home (one `Parameter` home), a glue
+    function's arguments and the forwarded location read Abi.Of's and DropGlue's names instead of a second copy (`%a<slot>`, `%ret`).
+    `Spelled` writes a named value (a pooled constant, a parameter) into text, shared by `WriteValue` and `Failure`.
+  - Restructure first (b2194242, behavior unchanged): `FunctionCodegen.Places.cs` keeps the place writer and `FunctionCodegen.Stores.cs`
+    takes the loads, stores and copies through it; the parameter spelling. C3b does not change `ModuleCodegen.Frame.cs`. After C3b,
+    `FunctionCodegen.cs`, `.Calls.cs`, `.Frame.cs`, `.Arithmetic.cs` and `.Casts.cs` have had three consecutive units, so the next unit
+    changing one restructures it first.
+  - MIR's Location constants are TestObserve's operands (C10a's row), not C3b's. Requirement calls use the copy slots (R5-M89's condition,
+    met by R5-M92's narrowed scan).
+  - Rejected: a "forwarded" sentinel that each location writer tests (a sentinel and a branch per consumer); hidden location operands
+    from the MIR builder (a held builder change, where package C names them code generation's); `%a<slot>` kept with a forwarded form of
+    its own (option B, a second naming rule).
