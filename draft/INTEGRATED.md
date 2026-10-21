@@ -908,10 +908,58 @@ record the intake in INTEGRATED at commit.
 
 ## 2026-10-21 — G160 raw storage plan
 
-- [G160 Raw Storage Kept by Declarations](Proposals/2026-10-21%20G160%20Raw%20Storage%20Kept%20by%20Declarations.md): 一部取り込み
-  (open). The planning session's plan for PLAN G160, selected from designs A and B (`Sketches/G160/`) and plan X
+- `Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`: 完了 (closed 2026-10-21; see the next section). The
+  record of its intake follows unchanged. The planning session's plan for PLAN G160, selected from designs A and B (`Sketches/G160/`) and plan X
   (`2026-10-21 G160 Stored Loan Destinations.md`, branch `codex/g160-storage-loan-plan`, `e76e03ae`, not on dev), after seven
   independent review rounds (`Sketches/G160/review-1.md` to `review-7.md`, the last a records check). The in-body read side
   became PLAN G184, and the interim for one class went to the owner after three rounds, as AGENTS requires. Nothing is integrated into SPEC or IMPL, and no
   text is frozen. It awaits the owner's answers Q1–Q5. Q1's recommended answer adopts X's §5 declaration contract (or its minimal
   core) as an explicit SPEC revision, which will be recorded here when it lands. Adoption implies no implementation support.
+
+## 2026-10-21 — Raw reach and raw Origins (G160, G184)
+
+The owner's request of 2026-10-21 on PLAN G160 and G184 asked for common rules instead of more cases (「とにかく、場合分けを
+増やすと実装の難易度が極度に上がる。共通の規則で対処したい。」), allowed raw SPEC changes for simplicity and speed, rejected the
+G160 plan's declaration statement and confirmed the planning session's recommendations (「推奨の仕様で結構です。」,
+「残りの判断事項はすべて推奨どおりで確定します。」, 「案aで決定します。」), then asked for the documents, their review and their
+integration (「推奨の進め方の通り、文書の作成、レビュー、反映処理を行ってください。」). DECISIONS R4-M95 records the decisions and
+the owner's confirmation of C1–C3; the review is `Sketches/G160/raw-origins-review-1.md` and its re-check `raw-origins-review-2.md`.
+
+- `Changes/2026-10-21 G160 Raw Reach and Raw Origins.md`: 取り込み済み. Mapping:
+  - §3.1 (reach and addresses) → §15.6's new Addresses bullet (a raw dereference counts as a dereference), the write-through
+    bullet (a reference also reaches the holders it addresses; a raw pointer that reaches no holder reaches storage the body does
+    not own; "from static or raw storage" becomes "from static storage") and the liveness bullet (an address of the holder);
+    §5.2.1 condition 4 (Loan liveness follows the uses of values, raw pointers included); §5.2.2 (a raw Place borrow carries what
+    the pointer reaches; its anchor recovers no owner or Loan); Appendix E's Address and Holder rows.
+  - §3.2 (raw Origins) → the new §5.7 with its `Lens` example; §5's opening paragraphs (a raw layer may state an Origin; a claim
+    needs an unsafe context); §5.2.2 and §5.6's `slice` (within the pointer's Origin); §5.3 (a displacement keeps the Origin);
+    §5.4's `P@raw` row, the new `E@(raw/U during o)` row and its conversion sentence; §13.5.1 (a grouped target may state an outer
+    `raw` layer's Origin) and §13.5.3's raw conversion row; §15.2.1 (`self` on a raw layer); §15.3.5's Variance and Loan
+    requirements; §15.6.1's Liveness (a raw pointer's uses add no point to its Origin's region); §15.6.5's inferred region (a raw
+    Place borrow is contained in the pointer's Origin); Appendix E's Claim and Raw pointer Origin rows; LIBRARY's `Raw.slice` row.
+  - §3.3 (no write past a shared layer, with C1) → §5.2.1 condition 3's first limit and §15.6.2's Shared access paragraph.
+  - §3.2's Authority and §3.4 (own steps and Move) → §5.2.1 condition 3's second and third limits and §5.7's Authority item.
+  - §3.5 (calls) → §15.6.4's retention paragraph, §5.7's Origins and Calls items (the borrow an Origin belongs to), §5.2.1's
+    Retained dependencies (rewritten: where a stored value's Loans go, and a function stores through raw storage only what its
+    contract lets it retain) and condition 5 (C2); §8.11.4 rule 1 (raw layers, inside abstract parts too).
+  - §3.6 (integer addresses) → §5.5.
+  - §3.7 (Types and syntax) → §3.3.2 (`during` on `raw`; `raw/ref/T during a` annotates the raw layer), §3.8 (an unstated raw
+    Origin is outlived by every Origin), §8.1.2's raw row, §15.2.3 (OwnedOrigins), §15.3.1, §15.3.2 (`self` in storage), §15.4.2
+    and §22.6 (raw Origins in an import's safety contract).
+  - §4 (examples) → §5.6's `Buffer` (`data: raw/T during self`, the claim in `init`) and `BufferView` (`data: raw/T during
+    source`, no claim) with the prose after them, and §15.6.3's region-splitting sentence (a raw Field `during source`).
+  - §0–§2 and §5–§8 → the rationale, verdicts, Principles, rejected options and costs. §9 → transferred to PLAN G147 (1), G160,
+    G184 and §3's next actions (units G160-0 to G160-5, R4's exit), DECISIONS R4-M95 and COMPILER_ARCHITECTURE's R4 row.
+    §10–§11 → records.
+  - Every item is incorporated, transferred or recorded. The file was written in `Proposals`, revised after the review (§11) and
+    moved to `Changes` as 取り込み済み.
+  - Principles. One Concept, One Canonical Form: the relation between a pointer and the Loans that protect its storage is an
+    Origin, as for every borrow, and the Loan's mode stays the `Loan<T>` marker's. Local Reasoning: a raw Field's class is in
+    its Type and a call's effect on raw storage in its signature. Explicit Semantics: ownership and dependency are written,
+    omission is sound, and every claim is a visible unsafe operation. Compiler Server Protocol: located errors with repair
+    candidates (a write through a shared Origin, a Phantom slot a raw layer states, a missing claim).
+  - No implementation is claimed (STATUS): until unit G160-0 the parser rejects `during` on a raw layer and the claim with
+    Language errors; the ungrouped `E@raw/U during o` stays a syntax error. Not refreshed: SPECJ and GUIDE.
+- `Obsolete/2026-10-21 G160 Raw Storage Kept by Declarations.md`: 完了. Nothing was integrated. Q1's declaration statement was
+  rejected by the owner; its shapes, probes (`Sketches/G160/probes/`) and call-side analysis are taken over by the design above,
+  which answers Q1–Q5 (DECISIONS R4-M95). The file moved with only its status paragraph replaced.

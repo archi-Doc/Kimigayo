@@ -3,15 +3,9 @@
 Date: 2026-10-21. Scope: the design and implementation plan for PLAN G160; no implementation. Baseline: dev `59b78023`
 (code and SPEC unchanged in this area since `08145aa2`, where the designs were read); probes ran on dev `a1677549`.
 
-Status: open proposal. It is the planning session's final plan, selected from three independent designs and revised over three
-review rounds (§11). It changes no SPEC, compiler, library or support boundary. Implementation needs:
-
-- the owner's answers in §10, of which Q1 includes a SPEC revision;
-- the owner's approval of the new representation and, under the recommended answer, of the declaration grammar (AGENTS: new
-  vocabulary and representations);
-- then R4's units in §9.
-
-G160 stays open until G160-3 passes.
+Status: 完了 (closed without integration, 2026-10-21). The owner rejected its declaration statement and adopted
+[G160 and G184: Raw Reach and Raw Origins](../Changes/2026-10-21%20G160%20Raw%20Reach%20and%20Raw%20Origins.md) (DECISIONS
+R4-M95), which answers its Q1–Q5 and takes over its shapes, probes and call-side analysis. Only this status paragraph changed.
 
 ## 0. Summary
 
