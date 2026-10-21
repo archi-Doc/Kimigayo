@@ -263,8 +263,8 @@ public sealed partial class Binding
             {
                 // As ownership reports a fit's record: at the value that supplies the longer end, a local's initializer.
                 var at = IsFitObligation(obligation) && obligation.Use is VariableKoto { InitializerKoto: { } initializer } ? initializer : obligation.Use;
-                var fact = holds ? new OriginRelationFact(at, shorter, longer, true, obligation.Type, true)
-                    : new(at, longer, shorter, obligation.Equality, obligation.Type, true);
+                var fact = holds ? new OriginRelationFact(at, shorter, longer, Equality: true, obligation.Type, Refuted: true)
+                    : new(at, longer, shorter, obligation.Equality, obligation.Type, Refuted: true);
                 this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, fact);
             }
 

@@ -96,6 +96,96 @@ public class RawPointerSyntaxTest
     public void DroppingOrKeepingARawOriginIsAFit(string declarations)
         => Assert.Empty(Records(declarations));
 
+    // SPEC 5.7, 15.3.5 (B′ §8 keep-rebuilds): an instance, a closure's inferred result and a Semantics case view keep a raw Origin, so an
+    // invariant position still compares it.
+    [Theory]
+    [InlineData("func id<T>(x: T) -> T => x@move\nfunc f(r: ref/i32, p: raw/i32 during r)\n    var q = id(p)\n    let u: uniq/(raw/i32) = q@uniq", "UnsatisfiedOriginRelation_Kd: q@uniq")]
+    [InlineData("func f(r: ref/i32, p: raw/i32 during r)\n    let g = func [p] () => p\n    var q = g()\n    let u: uniq/(raw/i32) = q@uniq", "UnsatisfiedOriginRelation_Kd: q@uniq")]
+    [InlineData("func f<s/T>(x: s/T, r: ref/i32, p: raw/i32 during r)\n    s is ref or uniq\n    var q = p\n    let u: uniq/(raw/i32) = q@uniq", "UnsatisfiedOriginRelation_Kd: q@uniq")]
+    [InlineData("func id<T>(x: T) -> T => x@move\nfunc f(r: ref/i32, p: raw/i32 during r)\n    var q = id(p)\n    let u: uniq/(raw/i32 during r) = q@uniq", null)]
+    public void InstancesClosuresAndCaseViewsKeepARawOrigin(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], Records(declarations));
+
+    // B′ §8 (design-final §14; DECISIONS BU-24): the census of published raw Origins. In every node's Type (signatures, Field and Case
+    // declarations and bodies) and every function's result, a raw layer's Origin is `static`, a shared view or meet of allowed atoms,
+    // or an atom whose declaration encloses the node; `self` (Holder) only in a stored shape (a Field or Case declaration, outside any
+    // body), which every read replaces; never Unbound or Unstated. So no Inference, callee or local-region atom is published past its
+    // body.
+    [Theory]
+    [InlineData(RawStorageTest.Buffer + "func use()\n    var b = Buffer<i32>.init(capacity: 4)\n    b.push(1)\n    let v = b.view()\n    let s = v.get(0)@follow + b.get(0)@follow")]
+    [InlineData(RawStorageTest.Block + "func more(b: ref/Block, u: uniq/Block)\n    let c = Cell.Two((null, 1))\n    unsafe => *u.data = 1\n    let p: raw/u8 = b.pair.0")]
+    [InlineData(RawPlaceAccessTest.Lenses + "func f(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at\nfunc g(y: uniq/B)\n    unsafe => *y.data = 1")]
+    [InlineData("func choose(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 => if c => a else => b\nfunc f(c: bool, x: ref/i32, y: ref/i32) -> raw/i32 => choose(c, x, y)@follow@raw\nfunc h<s/T>(x: s/i32) -> i32\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => return *p")]
+    [InlineData("func id<T>(x: T) -> T => x@move\nfunc k(r: ref/i32, p: raw/i32 during r) -> raw/i32\n    let q = id(p)\n    let n: i32 = 1\n    let local = n@raw\n    let g = func [q] () => q\n    return g()")]
+    public void PublishedRawOriginsStayWithinTheirDeclarations(string declarations)
+    {
+        var source = declarations.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", "()", StringComparison.Ordinal) + "\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var census = 0;
+        var leaks = new List<string>();
+        foreach (var node in KotoTree.Walk(c.Kotonoha.RootKoto))
+        {
+            Audit(node, node.TypeOf());
+            Audit(node, (node as FunctionKoto)?.SymbolOf()?.Type);
+        }
+
+        Assert.True(census > 0);
+        Assert.Empty(leaks);
+
+        void Audit(Koto node, BoundType? type)
+        {
+            for (var i = 0; type is not null && i < type.Components.Count; i++)
+            {
+                Audit(node, type.Components[i]);
+            }
+
+            if (type?.RawOrigin is { } raw)
+            {
+                census++;
+                if (!Allowed(raw, node))
+                {
+                    leaks.Add($"{node.GetType().Name} `{node.ToString()?.Split('\n')[0]}`: {raw.Kind} {raw.Name}");
+                }
+            }
+        }
+
+        static bool Allowed(BoundOrigin origin, Koto node) => origin.Kind switch
+        {
+            OriginKind.Static => true,
+            OriginKind.Holder => Declaration(node) is not FunctionKoto,
+            OriginKind.Shared or OriginKind.Intersection => origin.Operands.All(x => Allowed(x, node)),
+            OriginKind.Unbound or OriginKind.Unstated => false,
+            _ => origin.Binder is { } binder && Encloses(Declaration(binder), node),
+        };
+
+        static Koto Declaration(Koto binder)
+        {
+            for (Koto? at = binder; at is not null; at = at.Parent)
+            {
+                if (at is FunctionKoto or DeclarationContainerKoto)
+                {
+                    return at;
+                }
+            }
+
+            return binder;
+        }
+
+        static bool Encloses(Koto outer, Koto node)
+        {
+            for (Koto? at = node; at is not null; at = at.Parent)
+            {
+                if (ReferenceEquals(at, outer))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     // SPEC 5.7 (Q-O6): a var local keeps its initializer's raw Origin; raw Origins that differ have the unstated common Type, never a meet,
     // also where one branch is a call whose result states its argument's Origin.
     [Theory]

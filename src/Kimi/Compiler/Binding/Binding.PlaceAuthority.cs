@@ -476,9 +476,9 @@ public sealed partial class Binding
         }
 
         // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
+        var inline = unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored);
         return !IsBarePlace(root) && !IsStaticField(root) &&
-            (!exclusive ||
-                (spelled && !IsGetterResult(root) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)) && !ReachedThroughShared(unwrapped))) &&
+            (!exclusive || (spelled && !IsGetterResult(root) && !inline && !ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 

@@ -3603,6 +3603,17 @@ resumed by R4-M86 (2026-10-20).
   C3 (typed paths, SPEC 5.4, 5.7): `P@raw` states `PathOrigin`'s Origin formed with its borrow's mode (a pair follow admitting a
   non-borrow case is a located `Unsupported_Kd`, U2). Q-O3 is moot under B′+, so design §10's M is C3's own evidence: the
   `-DiagnosticSnapshot` over the census and the native fixture sweep, in C3's commit.
+  Final review fixes (2026-10-22): a `during self` layer's null admission judges the value reaching the layer (`NonNullAtLayers`:
+  the null literal at the layer, or the element at its position of a Tuple or array literal, recursively), and the record's longer
+  end is that value's Origin (B1). `PathOrigin` returns one `RawPath` (dereferences, Origin, mode, stored Field, stored Type) from
+  its one walk over `NextPathStep`, so Raw Origins walks no Place (B3; `StoredHolder` deleted). A pair follow admitting only borrows
+  is reached with its weakest case's mode (`FollowStep`, design-final §4); formation keeps `CasesStep` (U1). A published raw Origin
+  always has a step (`PublishedStep`); none is a broken contract that ends the analysis (`CheckFaulted_Kd`, Internal), since
+  `Restep` has no node for a located `InternalInvariant_Kd`. R4 agreed to C1b's lines in `JudgeCallFit` and `JudgeOriginAtoms`.
+  Q-O3 is not moot (correcting C1a and C3 above): the old paths compare a stored Field's or Case's Type (`Holder`) with the read
+  node's Type by reference, so legacy code generation of a `during self` layer, and of a comparison of pointers stating different
+  Origins, is `GenerationFailed_Kd` (Internal). Measured over 176 programs (30 such); erasing raw Origins at
+  `OwnershipAnalysis.Place`, `OwnershipBody.Resolve` and Emission's `AdtDef.CaseTypes` reads makes all 30 run; Q-O3 is with the owner.
 
 ## R5 and R6 (adopted 2026-10-18)
 

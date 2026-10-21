@@ -115,7 +115,7 @@ public sealed partial class Binding
     {
         if (layer.Semantics == SemanticsKind.Raw && layer.Kind == BoundTypeKind.Semantics)
         {
-            return new(true, layer.RawOrigin, this.StepOf(layer.RawOrigin) ?? RawStep.Exclusive);
+            return new(true, layer.RawOrigin, this.PublishedStep(layer.RawOrigin));
         }
 
         var mode = TryPairLayer(layer, out _, out _) ? FollowStep(this.LayerAdmitted(layer)) : this.LayerStep(layer);

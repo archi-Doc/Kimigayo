@@ -168,7 +168,8 @@ public sealed partial class Binding
         if (this.StatedWithin(selected, operations, out var storage) is { } within && selected.BoundSymbol!.Type?.Origin is { } result)
         {
             // SPEC 5.6, 5.7 (D14): the result of an operation whose catalog row names Within lies within the Origin its argument states.
-            this.JudgeCallPosition(storage, within, this.SubstituteClauseOrigin(result, selected, origins, inputs, declaringType), false, null, null);
+            var bound = this.SubstituteClauseOrigin(result, selected, origins, inputs, declaringType);
+            this.JudgeCallPosition(storage, within, bound, equality: false, variable: null, clause: null);
         }
     }
 

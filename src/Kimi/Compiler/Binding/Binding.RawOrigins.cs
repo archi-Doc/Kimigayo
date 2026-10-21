@@ -230,10 +230,16 @@ public sealed partial class Binding
         return shared;
     }
 
+    // The step of a published raw Origin (design-final §7.3): total, since formation reports an Origin StepOf cannot classify
+    // (InvalidRawOrigin) and every formation through a mixed pair follow states its shared view (FollowStep), so none is a broken
+    // contract that ends the analysis without recovery.
+    private RawStep PublishedStep(BoundOrigin? raw)
+        => this.StepOf(raw) ?? throw new InvalidOperationException($"The published raw Origin `{raw}` has no step (InternalInvariant).");
+
     // G1 (design-final §4): a rewriter's image of a raw Origin, `image` being its own map of RegionOf(raw), keeps the step of the Origin
     // it replaces; `self` and `static` are unchanged.
     private BoundOrigin Restep(BoundOrigin raw, BoundOrigin image)
-        => raw.Kind is OriginKind.Holder or OriginKind.Static || ReferenceEquals(image, RegionOf(raw)) ? raw : this.Formed(image, this.StepOf(raw) ?? RawStep.Exclusive);
+        => raw.Kind is OriginKind.Holder or OriginKind.Static || ReferenceEquals(image, RegionOf(raw)) ? raw : this.Formed(image, this.PublishedStep(raw));
 
     // SPEC 5.7, Reading a Field: a `during self` layer read at `place` (a Field, or a Subject a payload is selected from in place)
     // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), formed with that dereference's mode, the
@@ -376,12 +382,14 @@ public sealed partial class Binding
 
         static bool InlineStorage(Koto node)
         {
-            while (node.Parent is ParenthesizedTypeKoto or TupleTypeKoto || (node.Parent is FixedArrayTypeKoto array && ReferenceEquals(array.ElementType, node)))
+            while (node.Parent is ParenthesizedTypeKoto or TupleTypeKoto ||
+                (node.Parent is FixedArrayTypeKoto array && ReferenceEquals(array.ElementType, node)))
             {
                 node = node.Parent;
             }
 
-            return node.Parent is SyntaxFormKoto { Akind: KotoKind.EnumCase } || (node.Parent is VariableKoto variable && ReferenceEquals(variable.TypeKoto, node));
+            var field = node.Parent is VariableKoto variable && ReferenceEquals(variable.TypeKoto, node);
+            return node.Parent is SyntaxFormKoto { Akind: KotoKind.EnumCase } || field;
         }
     }
 

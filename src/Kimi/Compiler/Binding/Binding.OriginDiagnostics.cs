@@ -238,8 +238,6 @@ public sealed partial class Binding
     private void RecordAbsentSlot(Koto projection, BoundType type)
         => (this.absentSlotProjections ??= new(ReferenceEqualityComparer.Instance))[projection] = type;
 
-    // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
-    // Type's header and listing the declared slots.
     // SPEC 15.2.3: a static Origin bound to a slot that requires uniq (ValidateOriginRequirements); SPEC 5.7: a Phantom slot a raw layer
     // states (InvalidRawOrigin); each with that slot related.
     private bool ReportInvalidOriginSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
@@ -265,6 +263,8 @@ public sealed partial class Binding
         return false;
     }
 
+    // SPEC 15.3.2: a projection of a slot that its Type does not declare, once per projection at the slot name, relating the
+    // Type's header and listing the declared slots.
     private bool ReportAbsentSlot(Koto node, DiagnosticRequirement requirement, DiagnosticCode code)
     {
         if (this.absentSlotProjections?.TryGetValue(node, out var type) != true || node is not MemberAccessKoto { Right: IdentifierNameKoto slot } ||

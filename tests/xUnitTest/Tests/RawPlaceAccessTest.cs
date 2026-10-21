@@ -13,6 +13,14 @@ namespace XunitTest;
 // Copy value is Copied and a Non-Copy or Copy-unproven value needs @move (SPEC 3.5).
 public class RawPlaceAccessTest
 {
+    // SPEC 5.7's Lens, whose slot keeps a shared Loan, its exclusive twin ULens, a struct pointee and a `during self` holder.
+    internal const string Lenses = "struct P\n    public var f: i32\n    public init() => self.f = 0\n" +
+        "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+        "    internal init(target: ref/T during source, at: raw/T during source)\n        self.at = at\n        self.loan = Loan.init(target)\n" +
+        "struct ULens<T> {source}\n    internal let loan: Loan<uniq/T during source>\n    internal let at: raw/T during source\n" +
+        "    internal init(target: uniq/T during source, at: raw/T during source)\n        self.at = at\n        self.loan = Loan.init(target)\n" +
+        "struct B\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n";
+
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
     private const string View = "struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\n";
 
@@ -21,14 +29,6 @@ public class RawPlaceAccessTest
         "    internal init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
         "func read(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at\nfunc clear(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0\n" +
         "func adopt(pointer: raw/i32) -> raw/i32 during static\n    unsafe => return pointer@(raw/i32 during static)";
-
-    // SPEC 5.7's Lens, whose slot keeps a shared Loan, its exclusive twin ULens, a struct pointee and a `during self` holder.
-    private const string Lenses = "struct P\n    public var f: i32\n    public init() => self.f = 0\n" +
-        "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
-        "    internal init(target: ref/T during source, at: raw/T during source)\n        self.at = at\n        self.loan = Loan.init(target)\n" +
-        "struct ULens<T> {source}\n    internal let loan: Loan<uniq/T during source>\n    internal let at: raw/T during source\n" +
-        "    internal init(target: uniq/T during source, at: raw/T during source)\n        self.at = at\n        self.loan = Loan.init(target)\n" +
-        "struct B\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n";
 
     [Theory]
     [InlineData("let taken = *pointer")]
@@ -219,6 +219,7 @@ public class RawPlaceAccessTest
     [InlineData("func f<s/T>(x: s/i32)\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => *p = 1", "SharedPathAccess_Kd: *p")]
     [InlineData("func f<s/T>(x: s/B)\n    s is ref or uniq\n    unsafe => *x.data = 1", "SharedPathAccess_Kd: *x.data")]
     [InlineData("func f<s/T>(x: s/i32)\n    s is uniq\n    let p = x@follow@raw\n    unsafe => *p = 1", null)]
+    [InlineData("func f<s/T>(x: s/i32) -> i32\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => return *p", null)]
     [InlineData("func f<s/T>(x: s/B) -> raw/i32\n    s is value or ref\n    return x.data", "Unsupported_Kd: x.data")]
     [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is value or valueborrow\n    return x@follow@raw", "Unsupported_Kd: x@follow@raw")]
     public void APairFollowIsReachedWithItsWeakestBorrowCase(string declarations, string? record)

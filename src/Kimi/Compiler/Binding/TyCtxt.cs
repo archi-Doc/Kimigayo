@@ -186,12 +186,23 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal BoundType Reference(SemanticsKind semantics, BoundType referent, BoundOrigin? origin = null) => this.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
 
     // SPEC 5.2, 5.7: the raw pointer to a pointee, stating `rawOrigin` (null: unstated).
-    internal BoundType Pointer(BoundType referent, BoundOrigin? rawOrigin = null) => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent], origin: rawOrigin);
+    internal BoundType Pointer(BoundType referent, BoundOrigin? rawOrigin = null)
+        => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent], origin: rawOrigin);
 
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form
     // of a rebuild that keeps a Type's shape (DECISIONS BU-24). A raw layer takes no `origin` (its role's getter gives none).
     internal BoundType Rebuild(BoundType type, ReadOnlySpan<BoundType> components, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> originArguments)
-        => this.Intern(type.Kind, type.Symbol, type.Semantics, components, type.Length, origin ?? type.RawOrigin, originArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments);
+        => this.Intern(
+            type.Kind,
+            type.Symbol,
+            type.Semantics,
+            components,
+            type.Length,
+            origin ?? type.RawOrigin,
+            originArguments,
+            type.LengthExpression,
+            type.ClosureContext,
+            type.LengthArguments);
 
     internal BoundType Tuple(ReadOnlySpan<BoundType> elements) => this.Intern(BoundTypeKind.Tuple, null, SemanticsKind.Owner, elements);
 

@@ -20,8 +20,8 @@ public sealed partial class Binding
             // SPEC 5.7, 15.3.7: raw Origins compare by subtyping; the record names the direction that fails, an Unstated end first.
             var stated = RegionOf(expected.RawOrigin) ?? BoundOrigin.Unstated;
             var own = RegionOf(actual.RawOrigin) ?? BoundOrigin.Unstated;
-            return OriginOutlives(own, stated) ? new(at, member, stated, own, false, Required: definition)
-                : new(at, member, own, stated, false, Required: definition);
+            return OriginOutlives(own, stated) ? new(at, member, stated, own, Equality: false, definition)
+                : new(at, member, own, stated, Equality: false, definition);
         }
 
         for (var i = 0; i < Math.Min(expected.OriginArguments.Count, actual.OriginArguments.Count); i++)

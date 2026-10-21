@@ -12,10 +12,8 @@ namespace XunitTest;
 // nothing, and placed values leave the storage only through raw Place Take or relocation (SPEC 5.2).
 public class RawStorageTest
 {
-    private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
-
     // SPEC 5.6's Buffer and BufferView: a `during self` Field filled by a claim in the constructor and read through each borrow.
-    private const string Buffer = "public struct Buffer<T>\n    internal let data: raw/T during self\n    internal var length: isize\n    let capacity: isize\n" +
+    internal const string Buffer = "public struct Buffer<T>\n    internal let data: raw/T during self\n    internal var length: isize\n    let capacity: isize\n" +
         "    public init(capacity: isize)\n        unsafe => self.data = Raw.allocate<T>(capacity)@(raw/T during self)\n        self.length = 0\n        self.capacity = capacity\n" +
         "    public func push(self: uniq/Self, value: T)\n        require self.length < self.capacity else => $abort(\"Buffer is full\")\n" +
         "        unsafe => Raw.initialize(self.data + self.length, value@move)\n        self.length += 1\n" +
@@ -31,13 +29,15 @@ public class RawStorageTest
         "        unsafe => return self.data[index]@ref\n";
 
     // A struct holding `during self` layers alone and in a Tuple, and an enum with a `during self` payload (SPEC 5.7, DECISIONS R4-M105).
-    private const string Block = "struct Block\n    internal var data: raw/u8 during self\n    internal var pair: (raw/u8 during self, isize)\n" +
+    internal const string Block = "struct Block\n    internal var data: raw/u8 during self\n    internal var pair: (raw/u8 during self, isize)\n" +
         "    internal var arr: [2 of raw/u8 during self]\n" +
         "    public init()\n        unsafe\n            self.data = Raw.allocate<u8>(1)@(raw/u8 during self)\n            self.pair = (Raw.allocate<u8>(1)@(raw/u8 during self), 1)\n" +
         "        self.arr = [null, null]\n    drop => unsafe => Raw.release(self.data)\n" +
         "enum Cell\n    Some(raw/u8 during self)\n    Two((raw/u8 during self, i32))\n    None\n" +
         "struct Outer\n    internal var inner: Block\n    public init(fresh: raw/u8)\n        self.inner = Block.init()\n        {0}\n" +
         "func reset(fresh: raw/u8, shared: raw/u8 during static)\n    var b = Block.init()\n    {1}\n";
+
+    private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
 
     [Fact]
     public void StorageIsAllocatedInitializedTakenAndReleased()
