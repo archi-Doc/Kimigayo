@@ -5405,11 +5405,13 @@ structure is recorded here by the unit that first implements it.
     is `BuildMir`, which under sel also runs the instance collector, whose layout obligations lay out every by-value use of an admitted
     item (K 4.8, R5-M37); stage 4 is `Compilation.Analyze()`; under sel stage 5 is empty and stage 6 is `Compilation.WriteIr`, the
     generation entry (gate, output roots, mark, `ModuleCodegen`). Under legacy and the mir pipeline stages 5 and 6 stay the old
-    generator's `TryPrepare` and `WriteIr`. The benchmark reads the published `Compilation.Codegen`; G7 deletes the old branch with the
-    split-IR check.
+    generator's `TryPrepare` and `WriteIr`. The benchmark reads the published `Compilation.Codegen`, which is Transitional, so G4, which
+    removes it, deletes the branch (the plan's G7 row, frozen draft text, names G7); the old emitter's readers go with G7.
   - Stage 4 calls `Compilation.Analyze()`, not `Ownership.Analyze()`: the generation gate needs the program `Analyze` keeps, which under
-    the mir pipeline re-reads stage 3's memoized MIR (PublishHir and version checks); under legacy it is the same work, with equal
-    per-stage allocation (E14's A/B). It anticipates H9's reads through `Compilation.Analyze()`.
+    the mir pipeline re-reads stage 3's memoized MIR (PublishHir and version checks); under legacy it is the same work. Measured (E14's
+    A/B): stage 4's minimum per-sample allocation is identical on 11 of 12 inputs, and at Generic 128 it is 416 B lower, inside that
+    input's ~22 KB per-side spread. It anticipates H9's reads through `Compilation.Analyze()`.
+  - A failure in `Setup` or `Compile` names its input (size and shape), so a run that stops at one is identifiable.
   - Check: the measured IR must equal the public `Compilation.WriteIr` under the same selector. It compared with `Emission.WriteIr`,
     the old emitter, so under sel it never tested MIR code generation. An input sel does not generate fails closed. Until C8e, the sel
     check passes Scalar and Branching and fails at Generic size 1 (`for` over an Array, Array, Dictionary and the `tryGet` match are
