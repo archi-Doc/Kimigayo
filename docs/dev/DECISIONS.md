@@ -3595,9 +3595,11 @@ resumed by R4-M86 (2026-10-20).
   read, so a write, Take or exclusive borrow through a pointer whose Origin keeps only shared Loans is `SharedPathAccess_Kd`.
   `PathOrigin` takes the Place (a member's, a borrowed element's or an inline part's innermost layer of the Type it is selected from),
   read by `ReadHolder`, the allowlist and `BorrowRawPlace`, whose anchor meets the pointer's region and whose declared result it must
-  outlive. `KimiLibraryCatalog.Entry` gains the column `Within` (the parameter whose argument's pre-fit raw Origin the result lies
-  within; `Raw.slice`'s storage), judged with the callee's clauses. The repair candidates (the claim; the borrow and claim) need
-  `Repair.*` kinds the SPEC 23.3 schema does not have (open).
+  outlive. The catalog's `OriginRows` table (`OriginRow`: the parameter whose argument's pre-fit raw Origin an operation's result
+  lies within; `Raw.slice`'s storage), apart from the recognition `Entry` so no member gains a parameter (planning session's ruling),
+  is judged with the callee's clauses. C2's size is +181/−72 lines (its message says +178/−70). G160-1 offers no repair candidate
+  for the claim or for the borrow and claim (SPEC 23.1 leaves the offered candidates implementation-defined); open for a SPEC
+  session: offering them needs new `Repair.*` kinds in SPEC 23.3's closed schema.
   C3 (typed paths, SPEC 5.4, 5.7): `P@raw` states `PathOrigin`'s Origin formed with its borrow's mode (a pair follow admitting a
   non-borrow case is a located `Unsupported_Kd`, U2). Q-O3 is moot under B′+, so design §10's M is C3's own evidence: the
   `-DiagnosticSnapshot` over the census and the native fixture sweep, in C3's commit.
