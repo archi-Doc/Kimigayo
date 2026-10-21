@@ -41,8 +41,8 @@
 // body, of a value (C5a), a virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f,
 // C9b), a property witness (C3c) or another legacy row (C8b-C8e, C9a); a Drop's Flag (C4b) and Open (C4c) verdicts. A warm write allocates
 // nothing. Files: the dispatch and the records (this file); the operands' and constants' values, the representations, a site's location
-// and the text's spelling (FunctionCodegen.Values.cs); the function's frame: its kind's argument order, homes, copy slots, prologue and
-// return (.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
+// and the text's spelling (FunctionCodegen.Values.cs); the function's frame: homes, prologue and return (.Frame.cs); parameter passing:
+// its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
 // (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs), intrinsics
 // (.Intrinsics.cs) and drops (.Drops.cs); the DropGlue items' functions (.Glue.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
