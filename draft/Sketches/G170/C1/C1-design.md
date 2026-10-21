@@ -1,25 +1,24 @@
 # G170 C1: executable design of C (ContractSolver premise supply)
 
 Unit C1 of [PlanB](../../../Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md) (BU planning session,
-2026-10-21), after [C0](../C0-evidence.md). Draft data only. Branch `claude/bu-g170-c1` from origin/dev `e0f24c83`. Revised after the
-independent review (ACCEPT WITH CHANGES): §10 gives the ruling and evidence for each finding.
+2026-10-21), after [C0](../C0-evidence.md). Draft data only. Branch `claude/bu-g170-c1` from origin/dev `e0f24c83`. Revised twice after
+the independent review (round 1: ACCEPT WITH CHANGES; round 2: BLOCK on R2-B1, R2-B2): §10 gives each ruling and its evidence.
 
 [proto/](proto/): model, identity classes (`EGraph.cs`), C (`Solver.cs`), judgments (`Checker.cs`), bounded reference, runner
-(`dotnet run -c Release -- fixed|random [n] [seed]|order [n]|resource|cost`; harness item limit `G170_ITEMS`);
-[adapter/](adapter/G170C1AdapterTest.cs) runs in a scratch test assembly (`G170_C1_OUT=<file> [G170_C1_CORPUS=<abs>] xUnitTest.exe -method …Probe`); [results/](results/).
+(`dotnet run -c Release -- fixed|random [n] [seed]|order [n]|resource|cost`, probes `enum|scale|pending|limit`; `G170_ITEMS`,
+`G170_REVIEW_PROFILE=params`); [adapter/](adapter/G170C1AdapterTest.cs) runs in a scratch test assembly; [results/](results/).
 
 ## 0. Verdict per completion condition
 
 1. **Rule selection** (§1): every SPEC 8.3.2 supply row is selected by e-matching through static indexes keyed by conclusion heads,
-   so a request examines only rows that can meet its classes; one laziness rule covers every identity row matched only through a
-   closed side. A prefix selector is B.
-2. **Agreement** (§2): 16,222 stable Supply queries on 800 generated models and 1,456 stable enumerations, 0 disagreements; the
-   reference builds its own rows and recursion classification, and the classifications agree on all 3,843 Contracts.
+   every identity row by one need-driven rule whichever side mentions the row's subject (owner, 2026-10-21): a request reads only
+   rows that can meet its classes, and unrelated requests are flat in program size. A prefix selector is B.
+2. **Agreement** (§2): 32,389 stable Supply queries on 1,600 generated models (400 with two-parameter Contracts) and 2,913 stable
+   enumerations, 0 disagreements; the reference builds its own rows and recursion classification.
 3. **Real-source witnesses** (§3): G170 at every depth whatever the spelling, G180's probes, frozen views; the corpus matches `ProveCopy`.
-4. **Resource** (§4): two limits (rounds, items); counts and limit outcomes order-free, J included (1,832 requests, 6,276 boundary
-   runs, 0 differ); a published Resource state per source; transport through real judgments, including the restart.
-5. **Lifecycle, scheduler, contract, cost** (§5–§7): one Jacobi worklist with a stratification rule; no read sets; unrelated requests
-   flat in program size (n = 10…1,600); C2's inputs (§8); decisions (§9).
+4. **Resource** (§4): two limits (rounds, items), order-free (1,832 requests, 6,264 boundary runs, 0 differ); a published Resource
+   state per source; transport through real judgments; time to the item limit is a C3 gate with a number.
+5. **Lifecycle, scheduler, contract, cost** (§5–§7): one Jacobi worklist, stratified; no read sets; C2's inputs (§8); decisions (§9).
 
 ## 1. Rule selection (§4.3 step 2)
 
@@ -37,78 +36,88 @@ A row's source state is its declaration's (a refinement row: the worst along its
 Identity is not a row: supplied identity facts are unioned into request-local classes closed under upward congruence, never
 decomposed (SPEC 8.2.3), and every match is modulo those classes. Disjunction supplies nothing; `not` is a polarity of the same rows.
 
-**Demands and selection.** A request interns only its goal's Types and its inputs; a Type enters when a fired row, a condition or
-a goal names it.
+**One fixpoint over needs.** A request interns only its goal's Types and its inputs; a Type enters when a fired row, a condition or
+a goal names it. Every row below is selected by a need, a meeting or an existing node, never eagerly:
 
 - **Demand (K, s, ā)**: facts `s' is K<ā'>` with `s' ≡ s`, `ā' ≡ ā` where bound (s or any āᵢ may be ⋆). Selected: K's rows whose
   conclusion subject is a variable, and those whose subject head is a head of s's class or of its virtual nodes (a static index);
   each is e-matched, arguments first (a goal's `D<Self>` binds Self: G180), then the subject; the bindings β give the antecedent
-  Demand(K_α, β(Self) or ⋆, β(Ā) or ⋆). A free parameter is read off an available antecedent fact, never invented. A demand meets
-  the classes holding its Contract's facts (and their argument classes); a variable already bound to class x and matched against
-  another class c makes c and x meet too (`A is K0<A>` with A = i64 from the argument and subject i32).
-- **Identity row (c)**: an identity row's side is **open** when it mentions the row's subject (Self; a binding's projection) and
-  **closed** otherwise (`i32`, `A`, `List<A>`, a binding's value). Open sides, indexed by (head, first kid head), are matched against
-  c's nodes and requested eagerly. **One laziness rule for every closed side, ground or not**: matched only through it, the other
-  side is a **virtual node** of c, never stored per row, found through the closed-side index (other side's head, closed side's head,
-  other side's first kid head; rows sharing a closed side are one match) where (a) a pattern needs its head in c (a ground pattern
-  also sends the need down to the kids of c's nodes with its head: upward congruence), (b) c meets another class, or (c) an existing
-  node has its shape (bound expansion, finite). A side meeting c only through a virtual node makes its row's other side one too (a
-  **chain**, forwarding to its base, possibly another instance of the same row), detected for a need and the needs its candidates
-  meet and stored as a row; a need met deeper is a **need row**, answered as its own lookup next round: every need gets its chains,
-  one level per round, with bounded work per lookup. A class demand covers its nodes' kid classes; an identity goal's classes meet.
-- **Compound row (c)**: exact compounds whose subject e-matches c, by subject head.
-
-Two further static indexes (heads a K-fact can have per position; whether any row or input concludes `not … is K`) skip impossible
-expansions and polarities. Tags recomputed each round from the goal say which polarity a row serves.
+  Demand(K_α, β(Self) or ⋆, β(Ā) or ⋆); a free parameter is read off an available antecedent fact, never invented. A demand meets
+  the classes holding its Contract's facts, and their arguments once the subjects are one class; a variable bound to class x and
+  matched against class c makes c and x meet (`A is K0<A>` with A = i64 from the argument and subject i32).
+- **Identity rows: one need-driven rule for every side** (owner, 2026-10-21: the general rule, R2-B1). Every positive identity
+  side, whichever side mentions the row's subject, is in one index: (other side's head, side's head), then the heads of both sides'
+  kids 0 and 1 (Any for a variable or no kid), rows sharing a side matched once. A side matching class c makes its other side a
+  **virtual node** of c, never stored per row, requested only where **(a)** a pattern needs its head at c or at a kid of c's node
+  (with the heads the pattern's kids 0 and 1 can have: `Self.(W1).X` and `Self.(W2).X` differ only in kid 1), **(b)** c meets
+  another class, or **(c)** a node of the other side's shape exists and c has a class demand (bound expansion, one entry per row,
+  waiting for an absent node). A **chain**: a side meeting c only through a virtual node makes its other side one too; only
+  **chainable** sides are tried (some row's other side unifies with them), excluding an **alias** (an other side that is a
+  variable its side binds: an existing class, expanded wherever a need or real node meets it, after which the side is direct) and
+  the row's own other side when matching fixes nothing new (the base instance itself). Chains and deeper needs are rows.
+- **Meeting row (a, b)** (b): one per class pair, its requesters' tags, answered once per round when new or woken (a merge it read
+  or below either class); none where neither class can gain a node (no virtual node, no head a virtual node can have, no such kid).
+  Each class's real nodes meet the other's virtual nodes of their head and kid heads; same-head real nodes meet at their kids as
+  kid meeting rows (upward congruence); virtual nodes meet virtual nodes, the class with fewer index candidates first and the other
+  filtered by their kids (aliases, and two nodes whose kid at one position is each their own class, never pair). Requested by a
+  demand for its facts' classes (above), a bound variable and its class, an identity goal's two classes, and Enumerate's
+  same-declaration facts: once no row has work, the facts of each declaration on the subject's class meet pairwise at their
+  arguments (R2-B2: one instance per class, SPEC 8.6.1); what that requests re-enters the fixpoint.
+- **Class demand (c)**: c's kids (congruence makes c depend on them), the identity goal's meeting and negated identity rows for an
+  identity goal's pair. **Compound row (c)**: exact compounds whose subject e-matches c, by subject head. Static indexes (heads a
+  K-fact can have per position; whether any row or input concludes `not … is K`; the heads a virtual node can have, an alias
+  contributing any) skip impossible expansions and polarities; tags recomputed each round say which polarity a row serves.
 
 **Why the selection is complete.** If the supply has `s' is K<ā'>` with `s' ≡ s`, C derives it unless it stops with Resource.
 Induction on derivation height: the last row instance concludes σ[β] ≡ s; each identity fact of that congruence has smaller height
-and a side in a class C holds or in a kid class of one; those classes are identity-saturated (and woken on merges and new chains), so
-the fact is requested through its open side or, through its closed side, expanded where σ needs its head (at c or a kid), where classes
-meet, or against an existing node; a side meeting c only through such nodes is a chain, found one level per round. So σ[β] joins s,
-e-matching yields β and the antecedent's fact is derived by hypothesis. The indexes prune only heads a class or its virtual nodes
-cannot hold. A sketch: the agreement runs (§2) are its evidence, and each rule was added for a reproduced miss (§10).
+and a side in a class C holds or in a kid class of one. E-matching σ there needs σ's head and kid heads: (a) asks every side that can
+match that class or a kid; chains reach sides that meet only through a virtual node (a side no other side unifies with meets none;
+an alias merges its class first); a deeper need is a row; classes that must be one meet (b) at their real, virtual and kid nodes;
+(c) covers identities between existing nodes; a lookup or meeting is redone when a class it read merges or gains a chain. So σ[β]
+joins s and the antecedent's fact is derived by hypothesis. Filters prune only heads a class, its kids or its virtual nodes cannot
+have. Evidence: the agreement runs (§2), the two-parameter generator included, and a fixed case per gap (§10).
 
-**A syntactic-prefix selector is B.** §3's B counterexamples are fixed inputs, each `none` under a prefix selector and `+` for C and
-the reference: an identity to another subject, a Contract-argument clause (h4's shape), a deep subject through an identity, a
-closed-Type identity and congruence through a kid. §3's D input (`Gc<A>: associate Child is Gc<List<A>>; A is Copy`) is finite.
-
-**Where it does not terminate.** A polarity settles when established or when none of its rows has work; a subscription whose
-bindings fix its conclusion retires after the round that found a witness. Infinite remain: a negative answer over a recursive Contract
-with growing subjects or arguments, and enumerating a closed Type's infinite class (`It: associate Child is It; Self.(It).Value is
-i32; Self.(It).Value is Dd<Self>`, enumerating `i32`). These end in Resource (§4), never Unknown. Frozen views settle like ordinary ones.
+**A syntactic-prefix selector is B**: §3's B counterexamples (an identity to another subject, a Contract-argument clause, a deep
+subject through an identity, a closed-Type identity, congruence through a kid) are fixed inputs, `none` under it and `+` for C and
+the reference; §3's D input is finite. **Where it does not terminate**: a polarity settles when established or when none of its rows
+has work; a negative answer over a recursive Contract with growing subjects or arguments, and enumerating a closed Type's infinite
+class (`It: associate Child is It; Self.(It).Value is i32; Self.(It).Value is Dd<Self>`, enumerating `i32`), end in Resource (§4).
 
 ## 2. Prototype and exhaustive bounded reference
 
 C runs §1 in **Jacobi rounds**: a round computes its effects from the previous round's state only (lookups answered once per round
-and replayed with their visits, needs and Resource reads for later requesters), applies them and restores congruence; subscriptions
-scan only facts added since their last scan (all after a merge). Answers: Complete, Provisional (a pending source was selected) or
-Resource. The reference applies every row to every fact forward with Types up to a depth bound and no selection, an oracle where its
-answer is the same at bounds 5 and 7; it builds its rows from the declarations (direct parents, conjunct-split clauses, conformances
-and bindings at materialized Types) and classifies recursion by SPEC 8.3.3's definition (a bounded closure from `T0 is C<P̄>`) (N2).
+and replayed for later requesters; meeting rows answered once), applies them and restores congruence; subscriptions scan only facts
+added since their last scan (all after a merge). Answers: Complete, Provisional (a pending source was selected) or Resource. The
+reference applies every row to every fact forward with Types up to a depth bound, an oracle where its answer is the same at bounds 5
+and 7; it builds its own rows from the declarations and classifies recursion by SPEC 8.3.3's definition (a closure from `T0 is C<P̄>`).
 
-Generated models (3–5 Contracts with 0–1 parameters, associated requirements, deep, argument and compound subjects, identity, `not`,
-`and`/`or`, refinement, verified, pending and conditional conformances, inferred bindings with a frozen view): each Supply query and
-up to 8 reference-derived facts compared at both bounds, each Enumerate fact by fact; harness 300 rounds, 3,000 items ([results/](results/)):
+Generated models (3–5 Contracts with 0–1 parameters, or 0–2 in the review's two-parameter profile; associated requirements, deep,
+argument and compound subjects, identity, `not`, `and`/`or`, refinement, verified, pending and conditional conformances, inferred
+bindings with a frozen view): each Supply query and up to 8 reference-derived facts compared at both bounds, each Enumerate fact by
+fact and class by class; harness 300 rounds, 3,000 items ([results/](results/)):
 
-| Seed (400 models) | Stable Supply: agree / disagree / Resource | Enumerate: agree / disagree / Resource | Recursive Contracts (differ) |
+| Seed (models) | Stable Supply: agree / disagree / Resource | Enumerate: agree / disagree / Resource | Recursive Contracts (differ) |
 | --- | --- | --- | --- |
-| 20261021 (15 oracle overflows excluded) | 8,038: 7,986 / 0 / 52 | 731: 719 / 0 / 11 (1 unstable) | 506 of 1,924 (0) |
-| 7 (11 excluded) | 8,184: 8,175 / 0 / 9 | 727: 721 / 0 / 5 (1 unstable) | 470 of 1,919 (0) |
+| 20261021 (400; 15 oracle overflows excluded) | 8,038: 8,018 / 0 / 20 | 731: 726 / 0 / 4 (1 unstable) | 506 of 1,924 (0) |
+| 7 (400; 11) | 8,184: 8,179 / 0 / 5 | 727: 723 / 0 / 3 (1 unstable) | 470 of 1,919 (0) |
+| 4242 (400; 9) | 8,305: 8,279 / 0 / 26 | 745: 737 / 0 / 8 | 523 of 1,939 (0) |
+| 4242, two parameters (200; 14) | 3,963: 3,961 / 0 / 2 | 356: 354 / 0 / 2 | 159 of 932 (2) |
+| 99, two parameters (200; 9) | 3,899: 3,893 / 0 / 6 | 354: 353 / 0 / 1 | 217 of 954 (1) |
 
-No Supply query was unstable. Of 61 Resource answers, 56 have no evidence in the reference (an unbounded search); in 5 (models 49,
-371) C had established the positive polarity when the negated search reached the limit. Per stable request: V median 6 (p95 ≤ 53),
-J median 11 (p95 ≤ 2,546), rounds median 2 (p95 ≤ 7).
+No Supply query was unstable; of 59 Resource answers (round 1: 61 on two seeds), 52 have no reference evidence. Per stable request:
+V median 5–6 (p95 ≤ 60), J median 7–9 (p95 ≤ 2,199). The three classification differences (two-parameter only, no answer differs)
+are the prototype's declaration search missing what the closure finds (`clause B is i32` makes T0 a closed Type): C4 classifies by
+SPEC 8.3.3's search over the rows (N3).
 
-Fixed cases (76, all pass, [results/fixed.txt](results/fixed.txt)): G170 depth 1–8, §3's B and D inputs, the absent-head binder,
-ancestors, G180's forms, negation, contradiction, compounds, conformance cycles, recursion classification routes, pending and
-Resource sources, the check under way, frozen views, closed identities in recursive Contracts, and one case per gap of §10.
+Fixed cases (86, all pass, [results/fixed.txt](results/fixed.txt)): G170 depth 1–8, §3's B and D inputs, the absent-head binder,
+ancestors, G180, negation, compounds, cycles, recursion routes, pending and Resource sources, the check under way, frozen views, the
+round-2 workloads at 4 and 64 Contracts, Enumerate's same-declaration facts, one case per gap of §10. `pending` (seed 4245): 0 of
+2,663 Complete answers change with pending sources usable.
 
 ## 3. Real-source witnesses
 
-`BindingSource` (adapter) builds the model from Binding's state after `Bind`, read-only: `AncestorStorage`, `ClauseStorage`, a scope
-chain's `DirectFacts` (never `DerivedFacts`), verified `BoundConformancePath`s with `AssociatedTypes` and `InferenceEvidence`
-([results/adapter-output.txt](results/adapter-output.txt)):
+`BindingSource` (adapter) builds the model from Binding's state after `Bind`, read-only (`AncestorStorage`, `ClauseStorage`,
+`DirectFacts`, verified paths with `AssociatedTypes` and `InferenceEvidence`; [results/adapter-output.txt](results/adapter-output.txt)):
 
 | Program (C0's and the 2b-S5 review's) | Binding today | C over Binding's own clauses | Reference |
 | --- | --- | --- | --- |
@@ -118,12 +127,10 @@ chain's `DirectFacts` (never `DerivedFacts`), verified `BoundConformancePath`s w
 | G180 stale0 control; stale1 `associate X is D<Self>`; stale2 `contract C: D<Self>` | none; `UnprovenConstraint_Kd` ×2 | + ; + ; + | + |
 | G180 h4: the required `T.(C).X is D<T.(C).Y>`; D's clause `T.(C).Y is E`; h6 | `UnprovenConstraint_Kd`; none; none | + ; + ; + | + |
 
-Frozen views over real inference state (D: `x() -> i32`; E: `w() -> D.(P).X`; both declaration orders): in E's view `D.(P).X is
-i32` is +; in D's own view none (exclusion). Without read sets (OQ3 option (c), G172's to decide), using E.W in D's view evaluates
-E.W's own evidence (`D.(P).X is i32`) in a view excluding D: none, so E.W is inadmissible there and `E.(Q).W is i32` is none in D's
-view (today's owner admits it: +). Both steps are plain Supply requests. The same-definition chain is none in S's own view.
-Corpus: every function scope with input premises in the 44 milestones and the Kimi library (121 scopes, 400 requests): all
-Complete, no Resource; Copy evidence equals `ProveCopy` on all 99 parameters (55 / 44); V ≤ 45, J ≤ 62.
+Frozen views (D: `x() -> i32`; E: `w() -> D.(P).X`; both orders): in E's view `D.(P).X is i32` is +, in D's own view none; without
+read sets (OQ3 option (c)) E.W's evidence in a view excluding D is none, so `E.(Q).W is i32` is none in D's view (today: +). Corpus:
+every function scope with input premises in the 44 milestones and the Kimi library (121 scopes, 400 requests): all Complete; Copy
+evidence equals `ProveCopy` on all 99 parameters (55 / 44); V ≤ 45, J ≤ 62.
 
 ## 4. Resource boundary and transport
 
@@ -131,54 +138,51 @@ Complete, no Resource; Copy evidence equals `ProveCopy` on all 99 parameters (55
   seeded state counts); 4,096 and 65,536 provisional, confirmed by C3's measurements and recorded in IMPL 21.3.2/A.4 at C3. No
   join-work and no read-alternatives limit. Resource replaces the whole answer (a nested judgment is in the closure).
 - **Order-free.** Each limit reads the state after a round and rounds are Jacobi. J (reported, never a limit) counts matching steps
-  and index entries examined, a function of the round's starting state (a subscription examines every new candidate, then retires;
-  lookups are answered once per round), plus classes merged and distinct nodes over a merged class (a function of the partition, not
-  of union order). Tested (`order`, [results/order.txt](results/order.txt)): 1,832 requests on 400 models with templates and
-  Contracts shuffled, ordinary and frozen views, compared in verdict, outcome, reason, rounds, V, E, J, N and peak items, plus 6,276
-  runs at each request's need and need − 1 per limit: 0 differ; Complete/Provisional at the need, Resource below it, in every case.
+  and index entries examined, a function of the round's starting state (subscriptions examine every new candidate; lookups and
+  meeting rows are answered once per round; virtual-node meetings start with the side with fewer candidates, both on a tie), plus
+  classes merged and nodes over a merged class. `order` ([results/order.txt](results/order.txt)): 1,832 requests on 400 models,
+  templates and Contracts shuffled, ordinary and frozen views, and 6,264 runs at each request's need and need − 1 per limit: 0
+  differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; Complete/Provisional at the need, Resource below it.
 - **Tested values** (`resource`, [results/resource.txt](results/resource.txt)): G170 depth 8 and 64 complete at the need (depth 64:
-  130 rounds, 331 items) and are Resource at need − 1; enumerating a closed Type's infinite class is Resource at 1,000, 3,000 and
-  10,000 items (0.7 s, 3.3 s, 118 s; J 0.65 M, 16 M, 586 M): time to the item limit grows faster than the items (rows woken by
-  merges are re-selected in full); C3 measures it at the chosen value; no work limit returns without the owner.
-- **Published Resource state.** A declaration, conformance or binding whose own check ended at a limit publishes `Resource` (beside
-  Valid, Pending, Invalid). C reads it as Resource: a selected row from such a source makes every polarity the request did not
-  establish Resource, never absent (so never Unknown or `UnprovenConstraint_Kd`), and never marks anything Invalid.
-- **Transport** (planning session, Q2): `ConstraintProof` gains a fifth member `Resource`. `ProveConstraint` maps Complete evidence
-  to Proven, Refuted, Unknown or Error (both polarities); Provisional to the same value, not final (no diagnostic; judged again after
-  the pending sources publish; at a final pass no source is Pending); Resource to `ConstraintProof.Resource`. Judgments absorb it as
-  Error is absorbed (SPEC 8.3.2: And/Or, capability, conditions, conformance checks; with both, Error). One record per (scope, limit)
-  where the limit was hit, at the scope owner's signature as `CaseLimit` is, with the shared analysis-limit code (owner, OQ1).
-- **Tested** (`resource` transport): `conformance S1 is Deep`, whose obligation (a G170 depth-8 proof) is checked at a 6-round limit,
-  publishes Resource and records `Resource(check S1 is Deep: rounds>6)`; then `S1 is Deep`, `S1 is Deep and U is Copy`, `S1 is Deep
-  or T is Copy`, `S2 is Bb` (conditioned on S1) and `S1.(Deep).D is Copy` (through its binding) are Resource and record nothing; an
-  independent `U is Copy` records `Unproven`. Judged before the check (reading Pending: not final, judged again after publication)
-  or after it, the records are the same; at the default limit S1 is Valid and only the two `U is Copy` uses are Unproven.
+  130 rounds, 331 items) and are Resource at need − 1; enumerating a closed Type's infinite class is Resource at every limit.
+- **Time to the item limit** (R2-N2; `resource`, `limit`; machine loaded): that enumeration reaches 1,000 / 3,000 / 10,000 /
+  30,000 items in 0.1 / 1.1 / 5.5 / 137 s, J 64 k / 0.56 M / 6.2 M / 56 M (round 1: 0.7 / 3.3 / 118 s to 10,000, J 586 M): J grows
+  about as items², time faster, as rows woken by merges are re-selected in full. **C3 gate**: the production evaluator reaches the
+  chosen item value within about 1 s (a warm Bind) on this workload and on the two-parameter Resource cases (seed 4242 model 12,
+  `List<i32> is K3`: 3,000 items in 28 rounds, J 0.92 M, 7 s here), by semi-naive deltas (a demand reads only new facts and merged
+  classes, as meeting rows already do; bound expansion only new or merged nodes); otherwise IMPL records the item value it reaches
+  in about 1 s (the prototype: about 3,000), or the owner reconsiders a work limit (J is order-free now).
+- **Published Resource state.** A source whose own check ended at a limit publishes `Resource` (beside Valid, Pending, Invalid); a
+  selected row from it makes every polarity not established Resource, never absent (never Unknown or `UnprovenConstraint_Kd`).
+- **Transport** (planning session, Q2): `ConstraintProof` gains a fifth member `Resource`; `ProveConstraint` maps Complete evidence to
+  Proven, Refuted, Unknown or Error, Provisional to the same value not final (judged again after publication), Resource to
+  `ConstraintProof.Resource`, absorbed as Error is (SPEC 8.3.2); one record per (scope, limit) at the scope owner's signature, with
+  the shared analysis-limit code (OQ1). Tested: `S1 is Deep` checked at a 6-round limit publishes Resource and records it once; its
+  uses (alone, `and`/`or`, a condition, its binding) are Resource and record nothing; an independent `U is Copy` records `Unproven`;
+  judged before the check (restarted after publication) or after it, the records are the same.
 
 ## 5. Lifecycle and scheduler (§4.4)
 
-- **Request-local**: identity classes, rows (demands, class demands, subscriptions, chain rows, need rows), supports, facts and the
-  per-round lookup answers; capacity is reused; an answer (Resource included) is a function of (request, inputs).
+- **Request-local**: identity classes, rows (demands, class demands, subscriptions, chain, need and meeting rows), supports, facts
+  and the per-round lookup answers; capacity is reused; an answer (Resource included) is a function of (request, inputs).
 - **Persistent answer-shaping state** (C0's census) becomes request-local or keyed by its inputs: capability results, `Normalized`
-  (per frozen batch), `retentions` (through Enumerate), composed scopes' `DerivedFacts` (inputs only), the three re-entry guards.
+  (per frozen batch), `retentions` (Enumerate), composed scopes' `DerivedFacts` (inputs only), the three re-entry guards.
 - **One scheduler**: the Jacobi worklist hosts premise rows now, capability nodes and conformance verification at C3, G172's value
-  demands later; each node kind keeps its transfer rule and initial value; a round reads only the previous round's state; limits
-  count all kinds. **Stratification rule** (N5): a premise row reads only judgments final in the request, and Owned's optimistic
-  start never feeds a premise row; a cross-kind cycle in a valid program needs an explicit rule or the contract difference PlanB
-  allows, recorded; C3 tests it.
+  demands later; each kind keeps its transfer rule and initial value; limits count all kinds. **Stratification** (N5): a premise row
+  reads only judgments final in the request, Owned's optimistic start never feeds one; a cross-kind cycle in a valid program needs
+  an explicit rule or PlanB's recorded contract difference; C3 tests it.
 - **Source states**: C reads a published state per declaration, conformance path and binding (Valid, Pending, Invalid, Resource) and
-  never runs verification; a Pending read is Provisional, never cached, and re-run after publication. **The check under way** is an
-  `EvidenceView` exclusion (N4): its own conformance row supplies nothing to it and the answer stays Complete (SPEC 8.3.3; fixed
-  case). **Invalid** supplies nothing, as today (N7); SPEC 8.3.1 makes a proposition naming an invalid declaration Error through the
-  judgment's own validation, and whether a selected Invalid source makes the answer Error (PlanB §4.3.5's "relevant Error
-  dependencies") is C3's to decide with a reproducer. Moving `VerifyConformance` and `CheckClosedDeclarationConstraints` out of
-  proof is its own reviewed unit with a reproducer (N6).
+  never runs verification; a Pending read is Provisional, never cached, re-run after publication. **The check under way** is an
+  `EvidenceView` exclusion (N4): its own row supplies nothing to it, the answer stays Complete (SPEC 8.3.3). **Invalid** supplies
+  nothing, as today (N7); whether a selected Invalid source makes the answer Error (PlanB §4.3.5) is C3's with a reproducer. Moving
+  `VerifyConformance` and `CheckClosedDeclarationConstraints` out of proof is its own reviewed unit with a reproducer (N6).
 
 ## 6. Representation and entry contract (C2/C3)
 
-Files under `src/Kimi/Compiler/Binding/`, each within the 5,000-token limit: `Binding.ContractSolver.cs` (entry file, beginning with
-this contract; entry operations and request driver), `.Rows.cs` (row indexes over existing storage: conclusion heads, open sides,
-closed sides, static indexes), `.Demands.cs` (rows, subscriptions, need rows, rounds, tags, limits), `.Matching.cs` (e-matching,
-virtual nodes, chains, meetings); identity classes are TypeIdentity's (Q4; its own unit first: OQ5).
+Files under `src/Kimi/Compiler/Binding/`, each within 5,000 tokens: `Binding.ContractSolver.cs` (entry file with this contract; entry
+operations, request driver), `.Rows.cs` (indexes over existing storage: conclusion heads, the identity side index, chainable sides,
+bound-expansion shapes, static indexes), `.Demands.cs` (rows, subscriptions, need and meeting rows, rounds, tags, limits),
+`.Matching.cs` (e-matching, virtual nodes, chains, meetings); identity classes are TypeIdentity's (Q4; its own unit first: OQ5).
 
 - `Supply(BoundConstraint proposition, EvidenceView view) -> Evidence { bool Positive, bool Negative, Completion }`.
 - `Enumerate(BoundType subject, EvidenceView view, declarations) -> SubjectEvidence { facts on the subject's class (positive or
@@ -190,35 +194,37 @@ virtual nodes, chains, meetings); identity classes are TypeIdentity's (Q4; its o
   G172's design decides how a definition's value reaches another definition's view (prefer option (c), §3).
 
 Invariants: Jacobi rounds over request-local rows; answers, counts and limit outcomes functions of (request, inputs); indexes prune
-only impossible heads; identity never decomposed; nothing guessed; inadmissible bindings never read; Pending never cached as
-negative; Resource never read as absent. Prohibitions: no Binding writes, no syntax-triggered supply, no `DerivedFacts`, no fallback
-fact scan, no mode or bool parameter, no cross-request semantic cache, no second scheduler, no read sets.
+only impossible heads; identity never decomposed; nothing guessed; inadmissible bindings never read; Pending never a cached negative;
+Resource never absent. Prohibitions: no Binding writes, syntax-triggered supply, `DerivedFacts`, fallback fact scan, mode or bool
+parameter, cross-request semantic cache, second scheduler or read sets.
 
 ## 7. Cost
 
 A reference implementation (string keys, LINQ), not the production evaluator; no speed claim ([results/cost.txt](results/cost.txt);
-median of 15 after 5; V, J and time at the listed sizes):
+median of 15 after 5; machine loaded by other sessions; V, J and time at the listed sizes):
 
 | Workload | Rounds | V | J | Time | Allocated |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| G170 Copy, depth 1 / 8 / 64 | 4 / 18 / 130 | 8 / 29 / 197 | 25 / 466 / 61,030 | 0.2 / 1.8 / 27 ms | 38 KB / 0.3 / 12 MB |
-| G170, an unrelated Contract, depth 8 / 64 (settled statically) | 0 | 2 | 0 | 27 / 94 µs | 19 / 96 KB |
-| Wide: 8 / 32 / 128 Contracts on T | 2 | 6 | 46 / 166 / 646 | 48 / 109 / 372 µs | 43 / 98 / 338 KB |
-| Diamond refinements, height 4 / 16 / 64 | 2 | 74 / 650 / 8,714 | 126 / 1,230 / 17,166 | 0.14 / 1.0 / 35 ms | 0.2 / 1.3 / 17 MB |
-| §3's D input, depth 6: derivable / not | 14 / 7 | 34 / 24 | 652 / 77 | 233 / 34 µs | 335 / 98 KB |
+| G170 Copy, depth 1 / 8 / 64 (as in round 1) | 4 / 18 / 130 | 8 / 29 / 197 | 25 / 466 / 61,030 | 0.07 / 0.8 / 20 ms | 44 KB / 0.4 / 17 MB |
+| Wide: 8 / 32 / 128 Contracts on T | 2 | 6 | 46 / 166 / 646 | 39 / 86 / 254 µs | 48 / 114 / 395 KB |
+| Diamond refinements, height 4 / 16 / 64 | 2 | 74 / 650 / 8,714 | 126 / 1,230 / 17,166 | 0.13 / 1.1 / 21 ms | 0.2 / 1.3 / 17 MB |
 
-**Program-size scaling** (the review's B3 workload: n conformances binding `X = i32`, `T is Holder`, `Self.(Holder).Item is Copy`):
+**Program-size scaling.** B3's n conformances binding `X = i32` (`T is Holder`); R2-B1's n Contracts declaring `associate X is Self`
+(selfid) or `associate X is List<Self>` with `Self.(Wi).Y is Option<Self.(Wi).X>` (open, `U is W1`):
 
-| Request (identical at n = 10, 100, 400, 1,600) | Answer | Rounds | V | J | N |
-| --- | --- | ---: | ---: | ---: | ---: |
-| `List<i32> is Copy`, `T.(Holder).Item is Copy` (unrelated) | none, + | 1, 2 | 3, 6 | 1, 11 | 5, 4 |
-| `i32 is Copy`, `S1.(Pp).X is Copy` (through `i32`), `i32 is Pp` | +, +, none | 1, 2, 0 | 2, 4, 2 | 2, 21, 0 | 4, 7, 4 |
+| Request (n = 10, 400, 1,600; B3 also 100) | Answer | Rounds | V | J | Review (round 2) V; J |
+| --- | --- | ---: | ---: | ---: | --- |
+| B3: `List<i32> is Copy`, `T.(Holder).Item is Copy`; `i32 is Copy`, `S1.(Pp).X is Copy`, `i32 is Pp` | none, +; +, +, none | 1, 2; 1, 2, 0 | 3, 6; 2, 4, 2 | 1, 11; 2, 21, 0 | flat (B3 resolved) |
+| selfid `T is Copy` | none | 0 | 2 | 0 | 23 / 803 / 3,203; 135 / 5,205 / 20,805 |
+| selfid `T.(Holder).Item is Copy` | + | 2 | 6 | 11 | 67 / 2,407 / 9,607 |
+| open `List<T> is Copy` | none | 1 | 3 | 1 | 24 / 804 / 3,204 |
+| open `U.(W1).Y is Option<List<U>>` | + | 2 | 10 | 98 | J 2,602 / 101,272 / 404,872 |
+| selfid with `T is W3`: `T.(W3).X is T` (related; a meeting) | + | 2 | 7 | 194 / 2,534 / 9,734 | (new probe) |
 
-Unrelated requests no longer grow with the program (review: J 23/203/803 and 68/608/2,408 at n = 10/100/400); related requests use
-only the rows that can meet their classes. V and N grow linearly with depth and width, J faster (woken rows are re-selected in full;
-semi-naive deltas for every row kind are C3's); the diamond is quadratic because rows copy the transitive `AncestorStorage`. No
-cross-request reuse by design. Adapter: today's `ProveCopy` of the G170 value 8–13 µs against about 0.9 ms for the prototype (today's
-answer is Unknown wherever the spelling hides CopyTree); the corpus's 400 requests take 52–72 ms beside 0.9–1.4 s of warm rebinds.
+Every request reads the same rows whatever n, except the last: a meeting of two classes every variable side reaches reads each such
+side's virtual node once (J linear in those rows) and requests none (V constant); an index of self-referential virtual nodes by kid
+position removes that J if C3's library measurement shows it matters. The diamond is quadratic (rows copy `AncestorStorage`).
+Adapter (loaded): `ProveCopy` of the G170 value 18–43 µs against 0.2–2.6 ms; the corpus's 400 requests 84 ms beside 0.8 s of rebinds.
 
 ## 8. C2's input list
 
@@ -237,64 +243,58 @@ today's Facts), C3 replaces the answer. Paths under `src/Kimi/Compiler/Binding/`
 | `AdmittedSemantics`, `ValidateConstraintEnvironments` (`Constraints.cs:401`), `ValidateConstraintUses`, `RecordReferenceConstraint`, `ReportQualification`, `ValidateConditionalBlock` | none: input validation over DirectFacts | Resource never marks an environment Invalid |
 | `DisjointConformanceFacts`, `RefutedOverlapInputs`, `ValidateAssociatedOverlapAgreement` | Supply in the composed scope | composed scopes hold inputs only |
 
-Writers: `AddConstraintFact` stays for direct inputs only; `AddContractPremises` (4 callers), `ExpandScopeContractPremises` (6
-callers) and `AddArithmeticPremises` go at C3; scope composers (`VerifyConformanceAgreement`, `ContractOverlapScope`,
-`AddOverlapFacts`, `CompatibleRequirement`, `AddInheritedPremises`, `PrepareVirtual*Premises`, `InheritVirtualConstraints`) copy
-inputs and substituted clauses as inputs; `DerivedFacts` and the `HasAssociatedProjection` flag go. S5's view
-(`Binding.RecursiveContracts.cs`, R4-M87) must be SPEC 8.3.3's search over the supply rows with argument and identity routes, the
-latter including identities with closed Types (N3; the prototype's declaration search and the reference's closure agree on all
-generated Contracts), not today's refinement-and-clause walk, and inherits G180's correction. Behavior-preserving restructures
-first (C2): `Binding.Contracts.cs` (6,516 tokens) premise supply to `Binding.ContractSolver.cs`; `Binding.Constraints.cs` (5,324)
-facts and availability to `.Rows.cs`; `Binding.AssociatedTypes.cs` (5,047) lookup to `Binding.AssociatedLookup.cs`.
+Writers: `AddConstraintFact` stays for direct inputs only; `AddContractPremises` (4 callers), `ExpandScopeContractPremises` (6) and
+`AddArithmeticPremises` go at C3; scope composers (`VerifyConformanceAgreement`, `ContractOverlapScope`, `AddOverlapFacts`,
+`CompatibleRequirement`, `AddInheritedPremises`, `PrepareVirtual*Premises`, `InheritVirtualConstraints`) copy inputs and substituted
+clauses as inputs; `DerivedFacts` and the `HasAssociatedProjection` flag go. S5's view (`Binding.RecursiveContracts.cs`, R4-M87) must
+be SPEC 8.3.3's search over the supply rows with argument and identity routes, closed Types included (N3), and inherits G180's
+correction. Behavior-preserving restructures first (C2): `Binding.Contracts.cs` (6,516 tokens) premise supply to
+`Binding.ContractSolver.cs`; `Binding.Constraints.cs` (5,324) to `.Rows.cs`; `Binding.AssociatedTypes.cs` (5,047) lookup to `Binding.AssociatedLookup.cs`.
 
-**Review additions.** The extended `order` test and the scaling workload become C3 regressions. A premise workload in
-`src/Benchmark`: request counts per warm Bind and per A1/A4 analysis (milestones, library), per-request time and allocation on §7's
-workloads, the diamond with a direct-parent index, time to each limit, warm zero-allocation tests, cold/warm Bind against C0,
-retained capacity; a per-pass (request, view) memo stamped with the pass version (R4-M87's pattern) only on measurement. Rows C1
-did not model, each a row or outside supply at C3: PrimitiveInteger → Position, `AddArithmeticPremises`, Semantics and Callable
-constraints, Origin families, generic conformances seen from a value side, structured conditions. N4, N6, N7: §5.
+**Review additions.** `order`, the scaling workloads and §4's curve become C3 regressions; a `src/Benchmark` premise workload (request
+counts per warm Bind and A1/A4 analysis, per-request time and allocation, time to each limit, warm zero-allocation, cold/warm Bind
+against C0, retained capacity); a per-pass (request, view) memo only on measurement. Rows C1 did not model, each a row or outside
+supply at C3: PrimitiveInteger → Position, `AddArithmeticPremises`, Semantics and Callable constraints, Origin families, generic
+value-side conformances, structured conditions.
 
-**Expected size (N9, DECISIONS Q5).** Added: the four ContractSolver files about 15,000 tokens (prototype `Solver.cs` 20,500 with
-string keys and LINQ), TypeIdentity's classes about 2,500 (`EGraph.cs` 1,700), `ConstraintProof.Resource` and the record 300.
-Removed at C3 (measured on `e0f24c83`): `Binding.Contracts.cs` premise supply about 1,000 tokens (`ExpandContractPremises` 118,
-`ExpandScopeContractPremises` 177, `AddContractPremises` 200, `ContractConstraint` 269, a `ProveConformance` loop 264), `Constraints`
-450, `FindAssociated`'s scan 300, `TypeIdentity.cs` 550, `AddArithmeticPremises` 155, `DerivedFacts`, copy paths and guards 1,500.
-Net about +15,000 tokens: C adds a responsibility Binding lacks (the supply's closure).
+**Expected size (N9, DECISIONS Q5).** Added: the four ContractSolver files about 18,000 tokens (prototype `Solver.cs` 24,500
+with string keys and LINQ; 20,700 in round 1), TypeIdentity's classes about 2,500, `ConstraintProof.Resource` and the record 300.
+Removed at C3 (measured on `e0f24c83`): `Binding.Contracts.cs` premise supply about 1,000 tokens, `Constraints` 450, `FindAssociated`'s
+scan 300, `TypeIdentity.cs` 550, `AddArithmeticPremises` 155, `DerivedFacts`, copy paths and guards 1,500. Net about +18,000 tokens:
+C adds a responsibility Binding lacks (the supply's closure).
 
 ## 9. Decisions, departures, unverified
 
 | Question | Decision | By |
 | --- | --- | --- |
 | Q1/OQ1 Resource diagnostic | one shared Binding analysis-limit code, the limit as an argument, the last free `BindingFailure` entry; also G172's inference budget and G174's fixed points | owner, 2026-10-21 |
+| R2-B1 identity selection | one need-driven rule for every identity side (§1), not a whitelist or a hold | owner, 2026-10-21 (「一般規則 (推奨)」) |
 | Q2 transport | `ConstraintProof` gains a fifth member `Resource` (§4) | planning session (N10) |
 | Q3/OQ3 "depends" | per derivation; no read sets in C0–C4; G172's design decides its flow-back (prefer option (c)) | owner |
-| Q4 identity classes | TypeIdentity owns them; C reads them | planning session (N10) |
-| OQ5 identity scope | a separate reproduced identity unit before C3 | planning session |
-| Q5/OQ2 limits | rounds and items; 4,096 and 65,536 provisional, confirmed by C3, in IMPL 21.3.2/A.4 at C3 | owner |
+| Q4 identity classes; OQ5 scope | TypeIdentity owns them, C reads them; a separate reproduced identity unit before C3 | planning session |
+| Q5/OQ2 limits | rounds and items; 4,096 and 65,536 provisional, confirmed by C3 (§4's gate), in IMPL 21.3.2/A.4 at C3 | owner |
 | OQ4 D5 freeze | where C3 shows only the proof changes and the old Emission generates correctly, the default pipeline accepts; otherwise a guard reports the located `Unsupported_Kd` until R6-check | owner |
 
-Departures from PlanB §4: identity classes are part of selection; closed sides need the laziness rule and its indexes; class demands
-and needs reach kids; chains and needs are rows (§1); verification is inside proof today (§5). **Unverified**: production cost and
-time to the item limit; real-source witnesses for effect premises, Enumerate lookups, arithmetic, effect bounds, composed scopes;
-G172's admissibility; mixed Owned/premise cycles (N5); Origin families; generator gaps (N1, a C3 gate: 2-parameter Contracts,
-Origin families, structured conditions, deeper goals at bounds 7/9); that stability at bounds 5 and 7 gives the unbounded answer.
+Departures from PlanB §4: identity classes are part of selection; every identity side is lazy under one rule; chains, needs,
+meetings and bound expansions are rows (§1); verification is inside proof today (§5). **Unverified**: production cost and item-limit
+time (C3 gates); witnesses for effect premises, Enumerate lookups, arithmetic, composed scopes; G172's admissibility; mixed
+Owned/premise cycles (N5); Origin families, structured conditions, deeper goals (C3 gate); the J of meetings variable sides reach (§7).
 
 ## 10. Review findings: rulings and evidence
 
 | Finding | Ruling | Evidence |
 | --- | --- | --- |
-| B1 join-work limit order-dependent | no work limit (OQ2); J order-free by definition (§4) | `order`: 1,832 requests + 6,276 boundary runs, 0 differ (J and limit outcomes included) |
-| B2 reads wrong, unused before G172 | `Reads`, read-free settlement, alternatives limit removed; frozen views settle like ordinary ones; option (c) shown with Supply | fixed case (the former "every support reads it": + Complete); adapter §3 |
-| B3 work grows with the program | no up-front interning; head and first-kid indexes; one laziness rule for closed sides | §7: J 1, 11, 2, 21, 0 at n = 10…1,600 |
-| B4 Resource transport | published Resource state; `ConstraintProof.Resource`; `ProveConstraint` mapping (§4) | `resource` transport with judgments and restart; Resource-state fixed cases |
-| N1 generator | compound subjects added; the rest a C3 gate (§9) | |
-| N2 shared rows | the reference builds rows and classifies recursion itself | 0 of 3,843 classifications differ |
-| N3 recursion search | argument and identity routes, identities with closed Types included; a C4 requirement (§8) | fixed rec-arg and closed-Type cases |
-| N4–N7 | contract text (§5) | N4 fixed case |
-| N8 / N9 / N10–N11 / N12 | §6 / §8 / §9 / gone with B2 | |
+| R2-B1 open identity sides requested eagerly | one need-driven rule for every identity side (owner): requested only by (a) a need with its kid heads, (b) a meeting, (c) an existing node; "requested eagerly" gone | §7: the selfid and open requests are flat at n = 10…1,600; fixed cases at 4 and 64 Contracts with equal work; agreement and `order` re-run (§2, §4) |
+| R2-B2 `Enumerate` lists one instance twice | Enumerate's same-declaration facts meet pairwise at their arguments once the fixpoint is reached (§1) | fixed cases for one and two parameters, each three facts before; two-parameter seed 4242: 0 enumeration disagreements |
+| R2-N1 rules accrete | two-parameter profile run with the redo; Origin families and structured conditions stay a C3 gate | §2: seeds 4242 and 99, 200 models each, 0 disagreements; 3 classification differences (N3's C4 search) |
+| R2-N2 time to the item limit | a C3 completion condition with its number, else a lower IMPL item value or the owner's work limit | §4: the curve and the gate |
+| R2-N3 cost, N7; R2-N4 size; R2-N5 | C3 with request counts (§8) and a reproducer (§5); §8's estimate (the first implementing commit records it); this message is under 2,000 characters | the open-side linear scan is gone (one keyed index) |
+| Round 1: B1–B4, N1–N12 | no work limit, J order-free; no read sets; B3 flat (now within R2-B1's rule); published Resource state and `ConstraintProof.Resource`; N1 compound subjects, N2 own reference rows, N3 argument and identity routes, N4–N8 contract text, N9 §8, N10–N11 §9, N12 gone with B2 | `order` (§4); §3; §7; `resource` transport; fixed cases |
 
-Gaps this revision found, each fixed in the rules with a fixed case that fails before the fix: congruence through a kid; an input's
-Contract in the polarity index; identity goals meet; a chain through another instance of a row; a chain through a chain (20261021
-model 359); a virtual node's first kid in the open-side index and needs below a ground Type's kid as need rows (seed 7 model 225); a
-bound variable meets the subject class (model 395); recursion through an identity with a closed Type (model 85). Need rows keyed by
-class and head, not by first requester, fixed an order difference the `order` test found.
+Gaps the redo found, each fixed in the rules and shown by a case or workload failing before: virtual-virtual meetings read all
+virtual nodes of both classes (open, V 1,206 at n = 400; now smaller side first, the other filtered by kids); an alias made every
+class's virtual heads "any" (now only where an alias side can match); alias and self-kid pairs requested every Contract with a
+variable side (related selfid, V 809 at n = 400; now never paired); demands met the arguments of facts on other subjects (now once
+the subjects are one class); bound expansion matched a node's whole class, and same-declaration meetings ran every round (the curve);
+meetings descended recursively and were re-run by every requester every round (G170 depth 64: J 1.59 M; seed 20261021 model 106:
+over 10 minutes to Resource): now meeting rows, none where neither class can gain a node (round 1's G170 J; model 106 in 1 s).

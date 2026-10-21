@@ -1,7 +1,8 @@
 // G170 C1 prototype runner: fixed cases (PlanB §3's B/D counterexamples, §4.3's forms, the review's cases), agreement of C with the
 // exhaustive bounded reference on generated finite models, order invariance (answers, counts, work and limit outcomes), the
 // Resource boundary and its transport through judgments, and cost workloads including program-size scaling.
-// Run: dotnet run -c Release -- <fixed|random|order|resource|cost|all> [count] [seed]
+// Run: dotnet run -c Release -- <fixed|random|order|resource|cost|all> [count] [seed]; probes: trace|time|enum|scale <model file>
+// <queries…>, pending [count] [seed], limit <items…> (time to the item limit); G170_REVIEW_PROFILE=params: two-parameter models.
 #pragma warning disable
 #nullable enable
 using System.Diagnostics;
@@ -69,6 +70,111 @@ public static class Runner
             return 0;
         }
 
+        if (mode == "enum")
+        {
+            var m = ModelText.Parse(File.ReadAllText(args[1]));
+            var subject = ModelText.ParseType(m, args[2]);
+            var a = new Solver(m).Enumerate(subject, View.Ordinary, Harness);
+            Console.WriteLine($"C {a}: facts [{string.Join(" ", a.Facts)}] members [{string.Join(" ", a.Members)}]");
+            foreach (var q in args.Skip(3))
+            {
+                Console.WriteLine($"  supply {q}: {new Solver(m).Supply(ModelText.ParseFormula(m, q), View.Ordinary, Harness)}; ref5 {Show(Ref(m, View.Ordinary, ModelText.ParseFormula(m, q), 5))}");
+            }
+
+            return 0;
+        }
+
+        if (mode == "limit")
+        {
+            // Time to the item limit: enumerating a closed Type's infinite class (`resource`'s unbounded case) at each item value.
+            foreach (var items in args.Skip(1).Select(long.Parse))
+            {
+                var m = UnboundedModel();
+                var sw = Stopwatch.StartNew();
+                var a = new Solver(m).Enumerate(ModelText.ParseType(m, "i32"), View.Ordinary, new Limits { Items = items });
+                Console.WriteLine($"item limit {items}: {a} ({sw.Elapsed.TotalSeconds:F2} s)");
+            }
+
+            return 0;
+        }
+
+        if (mode == "scale")
+        {
+            var m = ModelText.Parse(File.ReadAllText(args[1]));
+            var solver = new Solver(m);
+            foreach (var q in args.Skip(2))
+            {
+                var f = ModelText.ParseFormula(m, q);
+                Answer a = null!;
+                for (var i = 0; i < 5; i++)
+                {
+                    a = solver.Supply(f, View.Ordinary);
+                }
+
+                var times = new List<double>();
+                for (var i = 0; i < 21; i++)
+                {
+                    var sw = Stopwatch.StartNew();
+                    a = solver.Supply(f, View.Ordinary);
+                    times.Add(sw.Elapsed.TotalMicroseconds);
+                }
+
+                times.Sort();
+                Console.WriteLine($"{q}: {a} median {times[10]:F0} us");
+            }
+
+            return 0;
+        }
+
+        if (mode == "pending")
+        {
+            var rnd = new Random(seed);
+            int complete = 0, wrong = 0, prov = 0, provMatters = 0;
+            for (var i = 0; i < count; i++)
+            {
+                var text = Generate(rnd, out var queries, out _);
+                var m = ModelText.Parse(text);
+                var solver = new Solver(m);
+                foreach (var q in queries)
+                {
+                    var f = ModelText.ParseFormula(m, q);
+                    var a = solver.Supply(f, View.Ordinary, Harness);
+                    if (a.Outcome == Outcome.Resource)
+                    {
+                        continue;
+                    }
+
+                    var r5 = Ref(m, View.Ordinary, f, 5);
+                    var r7 = Ref(m, View.Ordinary, f, 7);
+                    var p5 = Ref(m, View.Ordinary, f, 5, pending: true);
+                    var p7 = Ref(m, View.Ordinary, f, 7, pending: true);
+                    if (r5.Overflow || r7.Overflow || p5.Overflow || p7.Overflow || r5 != r7 || p5 != p7)
+                    {
+                        continue;
+                    }
+
+                    var matters = (p5.Pos, p5.Neg) != (r5.Pos, r5.Neg);
+                    if (a.Outcome == Outcome.Complete)
+                    {
+                        complete++;
+                        if (matters)
+                        {
+                            wrong++;
+                            Console.WriteLine($"COMPLETE-BUT-PENDING-MATTERS model {i}: {q}: C {a}; ref {Show(r5)}; with pending {Show(p5)}{Environment.NewLine}{text}");
+                        }
+                    }
+                    else
+                    {
+                        prov++;
+                        provMatters += matters ? 1 : 0;
+                    }
+                }
+            }
+
+            Console.WriteLine($"== PENDING seed {seed}: Complete {complete}, pending would change {wrong}; Provisional {prov}, pending changes {provMatters}");
+            return wrong;
+        }
+
         if (mode is "fixed" or "all")
         {
             failures += Fixed();
@@ -116,6 +222,32 @@ public static class Runner
         for (var i = 1; i <= n; i++)
         {
             sb.Append($"conformance S{i} is Pp\n  binding X = i32\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>The round-2 review's selfid program: n Contracts each declaring `associate X is Self` (an identity side that is a
+    /// variable), unrelated to Holder.</summary>
+    public static string SelfId(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"contract W{i}\n  associate X is Self\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>The round-2 review's open program: n Contracts each declaring `associate X is List&lt;Self&gt;` and
+    /// `Self.(Wi).Y is Option&lt;Self.(Wi).X&gt;` (sides mentioning the row's subject), U conforming to the first.</summary>
+    public static string Open(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput U is W1\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"contract W{i}\n  associate X is List<Self>\n  associate Y\n  clause Self.(W{i}).Y is Option<Self.(W{i}).X>\n");
         }
 
         return sb.ToString();
@@ -457,7 +589,42 @@ public static class Runner
         failures += Expect("many bindings: through the projection", Many(50), "S7.(Pp).X is Copy", "+ C");
         failures += Expect("many bindings: an unrelated compound", Many(50), "List<i32> is Copy", "none C");
         failures += Expect("many bindings: a projection needed in the closed class (each binding is a candidate)", Many(50) + "contract Ww\ncontract Uu\n  clause Self.(Pp).X is Ww\nconformance S9 is Uu\n", "i32 is Ww", "+ C");
+
+        // Round 2 (R2-B1): one need-driven rule for every identity side. An identity row whose side is a variable or mentions the
+        // subject is selected only where a need, a meeting or an existing node reaches it: the work of a request is the same with 4
+        // or 64 unrelated Contracts, and the rows are found where they are needed.
+        failures += Expect("a variable identity side, needed through a projection", SelfId(8) + "input T is W3\n", "T.(W3).X.(Holder).Item is Copy", "+ C");
+        failures += Expect("an open identity side, needed by an identity goal through two rows", Open(8), "U.(W1).Y is Option<List<U>>", "+ C");
+        failures += Expect("an open identity side, not provable", Open(8), "U.(W2).Y is Option<List<U>>", "none C");
+        failures += ExpectFlat("unrelated request, variable identity sides", SelfId, "T is Copy", "none C");
+        failures += ExpectFlat("related request, variable identity sides", SelfId, "T.(Holder).Item is Copy", "+ C");
+        failures += ExpectFlat("unrelated request, open identity sides", Open, "List<T> is Copy", "none C");
+        failures += ExpectFlat("identity goal, open identity sides", Open, "U.(W1).Y is Option<List<U>>", "+ C");
+
+        // A meeting at classes every variable side reaches requests no unrelated row (J reads their virtual nodes once: §7).
+        failures += ExpectFlat("related identity goal, variable identity sides", n => SelfId(n) + "input T is W3\n", "T.(W3).X is T", "+ C", sameJ: false);
+
+        // Round 2 (R2-B2): Enumerate lists one fact per instance: same-declaration facts on the subject meet at their arguments
+        // (two-parameter seed 4242 model 6, minimized; one and two parameters).
+        failures += ExpectEnumerate("same-declaration facts meet (one parameter)", "contract Cp\ncontract K3<A>\n  associate X\n  clause Self is K3<i32>\ncontract K4<A>\n  associate Y is i32\n  clause Self is K3<Self.(K4<A>).Y>\nconformance S1 is K4<i64>\n  binding Y = i32", "S1", "C", facts: 2);
+        failures += ExpectEnumerate("same-declaration facts meet (two parameters)", "contract Cp\ncontract K3<A>\n  associate X\n  clause Self is K3<i32>\ncontract K4<A, B>\n  associate Y is i32\n  clause Self is K3<Self.(K4<A, B>).Y>\ninput T is K4<i32, List<i32>>\nconformance S1 is K4<i64, List<i32>>\n  binding Y = i32", "S1", "C", facts: 2);
         return failures;
+    }
+
+    // The same request on the program at two sizes: the expected answer, and the same rounds, V, J and N (nothing unrelated is read);
+    // with sameJ false, the same rows (rounds, V, N) only.
+    private static int ExpectFlat(string name, Func<int, string> program, string query, string expected, bool sameJ = true)
+    {
+        var answers = new[] { 4, 64 }.Select(n =>
+        {
+            var m = ModelText.Parse(program(n));
+            return new Solver(m).Supply(ModelText.ParseFormula(m, query), View.Ordinary);
+        }).ToArray();
+        var (a, b) = (answers[0], answers[1]);
+        var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
+        var ok = verdict == expected && (a.Verdict, a.Rounds, a.V, a.N) == (b.Verdict, b.Rounds, b.V, b.N) && (!sameJ || a.J == b.J);
+        Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | n=4: C {a} | n=64: C {b} | expected {expected}, equal {(sameJ ? "work" : "rows")}");
+        return ok ? 0 : 1;
     }
 
     private static int Expect(string name, string text, string query, string expected, View? view = null, Limits? limits = null)
@@ -473,13 +640,13 @@ public static class Runner
         return ok ? 0 : 1;
     }
 
-    private static int ExpectEnumerate(string name, string text, string subject, string expected, bool discovery = false, string? expectFact = null, Limits? limits = null)
+    private static int ExpectEnumerate(string name, string text, string subject, string expected, bool discovery = false, string? expectFact = null, Limits? limits = null, int? facts = null)
     {
         var m = ModelText.Parse(text);
         var s = ModelText.ParseType(m, subject);
         var a = new Solver(m).Enumerate(s, View.Ordinary, limits, discovery);
         var verdict = a.Outcome == Outcome.Resource ? "R" : a.Outcome == Outcome.Complete ? "C" : "P";
-        var ok = verdict == expected && (expectFact is null || a.Facts.Contains(expectFact));
+        var ok = verdict == expected && (expectFact is null || a.Facts.Contains(expectFact)) && (facts is null || a.Facts.Count == facts);
         Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | enumerate {subject} | C {a} facts [{string.Join(" ", a.Facts)}] members [{string.Join(" ", a.Members)}] | expected {expected}");
         return ok ? 0 : 1;
     }
@@ -813,12 +980,13 @@ public static class Runner
         var sb = new StringBuilder();
         var n = r.Next(3, 6);
         var names = Enumerable.Range(0, n).Select(i => "K" + i).ToArray();
-        var arity = names.Select(_ => r.Next(4) == 0 ? 1 : 0).ToArray();
+        var two = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "params";
+        var arity = names.Select(_ => two ? r.Next(3) : (r.Next(4) == 0 ? 1 : 0)).ToArray();
         var assocs = names.Select(_ => new[] { "X", "Y" }.Where(_ => r.Next(3) != 0).ToArray()).ToArray();
         var usedOr = false;
         string Pick(params string[] xs) => xs[r.Next(xs.Length)];
-        string Own(int i) => arity[i] == 1 ? names[i] + "<A>" : names[i];
-        string Ref(int j, int ctx) => arity[j] == 0 ? names[j] : names[j] + "<" + Arg(ctx) + ">";
+        string Own(int i) => arity[i] == 2 ? names[i] + "<A, B>" : arity[i] == 1 ? names[i] + "<A>" : names[i];
+        string Ref(int j, int ctx) => arity[j] == 0 ? names[j] : arity[j] == 2 ? names[j] + "<" + Arg(ctx) + ", " + Arg(ctx) + ">" : names[j] + "<" + Arg(ctx) + ">";
         string Arg(int ctx)
         {
             if (ctx < 0)
@@ -827,10 +995,16 @@ public static class Runner
             }
 
             var options = new List<string> { "i32", "Self", "List<i32>" };
-            if (arity[ctx] == 1)
+            if (arity[ctx] >= 1)
             {
                 options.Add("A");
                 options.Add("List<A>");
+            }
+
+            if (arity[ctx] == 2)
+            {
+                options.Add("B");
+                options.Add("List<B>");
             }
 
             if (assocs[ctx].Length != 0)
@@ -861,9 +1035,9 @@ public static class Runner
                             options.Add("Self");
                         }
 
-                        if (ctx >= 0 && arity[ctx] == 1)
+                        if (ctx >= 0 && arity[ctx] >= 1)
                         {
-                            options.Add("A");
+                            options.Add(arity[ctx] == 2 ? Pick("A", "B") : "A");
                         }
 
                         if (ctx < 0)
@@ -933,9 +1107,9 @@ public static class Runner
                     }
                 }
 
-                if (arity[i] == 1)
+                if (arity[i] >= 1)
                 {
-                    subjectOptions.Add("A");
+                    subjectOptions.Add(arity[i] == 2 ? Pick("A", "B") : "A");
                     var j = r.Next(n);
                     if (assocs[j].Length != 0)
                     {
@@ -1007,7 +1181,7 @@ public static class Runner
         var s1Contract = r.Next(n);
         if (r.Next(10) < 4)
         {
-            s1Ref = arity[s1Contract] == 0 ? names[s1Contract] : names[s1Contract] + "<" + Pick("i32", "i64") + ">";
+            s1Ref = arity[s1Contract] == 0 ? names[s1Contract] : arity[s1Contract] == 2 ? names[s1Contract] + "<" + Pick("i32", "i64") + ", " + Pick("i32", "List<i32>") + ">" : names[s1Contract] + "<" + Pick("i32", "i64") + ">";
             sb.Append("conformance S1 is ").Append(s1Ref).Append(r.Next(10) == 0 ? " pending" : string.Empty).Append('\n');
             foreach (var z in assocs[s1Contract])
             {
@@ -1029,11 +1203,11 @@ public static class Runner
         if (r.Next(10) < 2)
         {
             var j = r.Next(n);
-            sb.Append("conformance S2 is ").Append(arity[j] == 0 ? names[j] : names[j] + "<i32>");
+            sb.Append("conformance S2 is ").Append(arity[j] == 0 ? names[j] : arity[j] == 2 ? names[j] + "<i32, i64>" : names[j] + "<i32>");
             if (r.Next(2) == 0)
             {
                 var k = r.Next(n);
-                sb.Append(" when S2 is ").Append(arity[k] == 0 ? names[k] : names[k] + "<i32>");
+                sb.Append(" when S2 is ").Append(arity[k] == 0 ? names[k] : arity[k] == 2 ? "Cp" : names[k] + "<i32>");
             }
 
             sb.Append('\n');
@@ -1202,15 +1376,7 @@ public static class Runner
         }
 
         // An unbounded search ends in Resource at every limit: enumerating a closed Type's infinite class.
-        var it = ModelText.Parse("""
-            contract Dd<A>
-            contract It
-              associate Child is It
-              associate Value
-              clause Self.(It).Value is i32
-              clause Self.(It).Value is Dd<Self>
-            input T is It
-            """);
+        var it = UnboundedModel();
         foreach (var items in new[] { 1_000, 3_000, 10_000 })
         {
             var sw = Stopwatch.StartNew();
@@ -1222,6 +1388,16 @@ public static class Runner
         failures += Transport();
         return failures;
     }
+
+    private static ProgramModel UnboundedModel() => ModelText.Parse("""
+        contract Dd<A>
+        contract It
+          associate Child is It
+          associate Value
+          clause Self.(It).Value is i32
+          clause Self.(It).Value is Dd<Self>
+        input T is It
+        """);
 
     // Transport: a conformance whose own check hits the limit publishes Resource; judgments that read it (alone, under and/or,
     // through a condition, through its binding) are Resource and report nothing; independent judgments report as usual. Judged
@@ -1370,6 +1546,18 @@ public static class Runner
             foreach (var q in new[] { "List<i32> is Copy", "T.(Holder).Item is Copy", "i32 is Copy", "S1.(Pp).X is Copy", "i32 is Pp" })
             {
                 Measure($"scaling n={n}: {q}", many, q, timed: n <= 400);
+            }
+        }
+
+        // The round-2 review's workloads (R2-B1): identity sides that are variables or mention the subject, in n unrelated Contracts.
+        foreach (var n in new[] { 10, 400, 1600 })
+        {
+            var selfId = ModelText.Parse(SelfId(n));
+            var open = ModelText.Parse(Open(n));
+            var related = ModelText.Parse(SelfId(n) + "input T is W3\n");
+            foreach (var (m, q) in new[] { (selfId, "T is Copy"), (selfId, "T.(Holder).Item is Copy"), (open, "List<T> is Copy"), (open, "U.(W1).Y is Option<List<U>>"), (related, "T.(W3).X is T"), (related, "T.(W3).X.(Holder).Item is Copy") })
+            {
+                Measure($"scaling n={n}: {(m == selfId ? "selfid" : m == open ? "open" : "selfid + T is W3")} {q}", m, q);
             }
         }
 
