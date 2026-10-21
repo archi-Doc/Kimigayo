@@ -104,6 +104,31 @@ internal sealed partial class MirBorrows
         return loan >= 0 && this.loans[loan].Destroying ? AccessKind.Read : AccessKind.SharedBorrow;
     }
 
+    // A location's effect access, listed after its own accesses so that the one gather takes its values (MirBorrows.Effects checks it): at a
+    // Call or a Drop of a view with an effect root, or at a Drop of a mutable static (R3), a Call's set its last operand's (TakesStores
+    // without one: its result carries no Loan of its own), a Drop's its value's (TakesValue). It is listed as the widest row; the rule
+    // gives each root its own.
+    private void Effecting(int block, int index)
+    {
+        ref readonly var data = ref this.body.Blocks[block];
+        var terminator = data.Terminator;
+        if (index < data.Count || terminator.Kind is not (MirTerminatorKind.Call or MirTerminatorKind.Drop) ||
+            (this.effectRoots.Count == 0 && this.DroppedStatic(terminator) < 0))
+        {
+            return;
+        }
+
+        var taking = TakesValue;
+        if (terminator.Kind == MirTerminatorKind.Call)
+        {
+            var operands = terminator.Count + (terminator.Callee.Kind == MirCalleeKind.Value ? 1 : 0);
+            taking = operands > 0 ? operands - 1 : TakesStores;
+        }
+
+        MirDataflow.Grow(ref this.accesses, this.accessCount + 1);
+        this.accesses[this.accessCount++] = new(terminator.Place, AccessKind.EffectWrite, false, taking);
+    }
+
     private void Accessed(in Access access)
     {
         if (this.borrowed[this.Key(access.Place.Root)])

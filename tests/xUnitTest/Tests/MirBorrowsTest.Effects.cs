@@ -39,6 +39,10 @@ public sealed partial class MirBorrowsTest
             public var n: i32 = 0
             public init() => ()
             drop => _ = State.watch.n
+        struct XReader
+            public var n: i32 = 0
+            public init() => ()
+            drop => _ = State.x.n
         struct Quiet
             public var n: i32 = 0
             public init() => ()
@@ -54,6 +58,9 @@ public sealed partial class MirBorrowsTest
             public let limits: Counter = Counter.init()
             public var x: Counter = State.makeX()
             public var log: Counter = Counter.init()
+            public var d: Counter = State.makeD()
+            public var x2: Counter = State.makeX2()
+            public let lim2: Counter = State.makeL()
             public var watch: Watch = Watch.init()
             public var quiet: Quiet = Quiet.init()
             public var limited: Limited = Limited.init()
@@ -64,6 +71,18 @@ public sealed partial class MirBorrowsTest
             public func makeX() -> Counter
                 log = Counter.init()
                 return Counter.init()
+            public func makeD() -> Counter
+                log = Counter.init()
+                return Counter.init()
+            public func makeX2() -> Counter
+                _ = d.n
+                return Counter.init()
+            public func makeL() -> Counter
+                log = Counter.init()
+                return Counter.init()
+            public func useX() -> i32 => State.x.n
+            public func useLim() -> i32 => State.lim2.n
+            public func writeLog() => State.log = Counter.init()
             public func inspect<T>(value: ref/T) => ()
             public func reads() -> i32 => State.counter.n
             public func writes() -> i32
@@ -221,6 +240,62 @@ public sealed partial class MirBorrowsTest
                 Cache));
     }
 
+    // SPEC 15.6.4, 22.4.3 (DECISIONS R4-M92, R4-M89's PD12 (ii) as the planning session read it after the group review): every first
+    // access of a static is an ensure, which A4 composes into every site that may run it, so the proof applies wherever a conflict's
+    // deciding effect lies in the initializer of a static a live Loan is on and the site may first-access that static: a call that reads
+    // x (pA), the ensure of x2, whose initializer reads d (pB), a call that reads the immutable lim2 (pQ), a destructor that reads x (the
+    // early Drop): each the located Unsupported_Kd. Without the proof Loan each is the error (pA2, pB2), and so is a site that never
+    // reaches d although a Loan on d lives, its conflict a direct one (direct). Fail-before: pA, pB, pQ and the early Drop (errors).
+    [Fact]
+    public void AnInitializationProofDecidesWhereverAnInitializerComposes()
+        => Assert.Equal(
+            [
+                "pA: useX() Unsupported_Kd", "pA2: useX()", "pB: x2 Unsupported_Kd", "pB2: x2", "pQ: useLim() Unsupported_Kd",
+                "direct: writeLog()", "early: let r = XReader.init() Unsupported_Kd",
+            ],
+            Effects("""
+                    public func pA()
+                        let lx = x.view()
+                        let ll = log.view()
+                        _ = useX()
+                        inspect(lx)
+                        inspect(ll)
+                    public func pA2()
+                        let ll = log.view()
+                        _ = useX()
+                        inspect(ll)
+                    public func pB()
+                        let ld = d.view()
+                        let ll = log.view()
+                        let v = x2.n
+                        inspect(ld)
+                        inspect(ll)
+                    public func pB2()
+                        let ll = log.view()
+                        let v = x2.n
+                        inspect(ll)
+                    public func pQ()
+                        let lm = lim2.view()
+                        let ll = log.view()
+                        _ = useLim()
+                        inspect(lm)
+                        inspect(ll)
+                    public func direct()
+                        let ld = d.view()
+                        let ll = log.view()
+                        writeLog()
+                        inspect(ld)
+                        inspect(ll)
+                    public func early()
+                        let lx = x.view()
+                        let ll = log.view()
+                        do
+                            let r = XReader.init()
+                        inspect(lx)
+                        inspect(ll)
+
+                """));
+
     // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91): a call A4 does not classify (Limit) is the located Unsupported_Kd where a live
     // mutable-static Loan would be met (e12a) and nothing where none is (e12b), Unknown beside it decides (e12c); a callee's dependent of an
     // error (Derived) reports nothing by itself (e13a), and a key beside it stays checked (e13b). Fail-before: e12a, e12c and e13b.
@@ -296,7 +371,8 @@ public sealed partial class MirBorrowsTest
 
     // R4-M73, R4-M70 (with R4-M92): an effect conflict is a Loan problem, so in a view a call's by-argument store holds it is the located
     // Unsupported_Kd at its call (e17), and one whose Loan only a default's tainted sets hold is the located Unsupported_Kd at the omitting
-    // call (tainted). Fail-before: each.
+    // call (tainted). Fail-before: e17's g() and tainted; the `var xs` record is the held view's own (R4-M73), with or without the static
+    // Loan.
     [Fact]
     public void AHeldOrTaintedEffectIsUnsupported()
         => Assert.Equal(
@@ -467,8 +543,9 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(inM, 4), $"work in M {string.Join(", ", inM)}");
     }
 
-    // V16 (R4-M92): A5 with the effect rule on a program version it checked before allocates nothing: the effect roots, the Field numbers
-    // and A4's row keep their storage, and each view's keys are A4's pooled row. Fail-before: the effect problems.
+    // V16 (R4-M92): A5 with the effect rule on a program version it checked before allocates nothing: the effect roots, the Field numbers,
+    // the activation stamps and A4's row keep their storage, each view's keys are A4's pooled row and an initializer's summary its stored
+    // one (pA's proof). Fail-before: the effect problems.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmEffectRunAllocatesNothing()
@@ -490,6 +567,12 @@ public sealed partial class MirBorrowsTest
                     counter = Counter.init()
                     counter = Counter.init()
                     inspect(c)
+                public func pA()
+                    let lx = x.view()
+                    let ll = log.view()
+                    _ = useX()
+                    inspect(lx)
+                    inspect(ll)
 
             """);
         var program = c.BuildMir();

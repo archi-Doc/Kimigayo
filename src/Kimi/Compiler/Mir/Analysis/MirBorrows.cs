@@ -11,7 +11,7 @@
 // guard-local Origin past its EndBorrow and for a destruction of a static whose own effects touch it), with the Loan's anchor, its
 // witness's next use or the store that carries it, an activation's reservation, the static Field an effect met and an inline default
 // copy's call (R4-M69) as facts, and Unsupported_Kd at a destruction or a call it does not classify (a destruction walk past its bound,
-// CallRetention.Limit, A4's Limit, an ensure whose proof would decide), a limit record without that fact, or at a default's omitting call
+// CallRetention.Limit, A4's Limit, a live Loan's initialization proof), a limit record without that fact, or at a default's omitting call
 // for a conflict whose Loan only sets with its default taint hold (R4-M70), and in a view a Call holds (its W stored a value past a holder
 // that passes the guard only by argument, P13's interim, R4-M73) every other Loan problem as Unsupported_Kd at its access, through
 // MirReport; and Work, the steps it took (A3 6.2).

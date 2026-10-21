@@ -2,10 +2,11 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A4's static keys for A5 (SPEC 15.6.4, 16.3.3, 22.4.4; DECISIONS R4-M38, R4-M91): the mutable static Fields a Call or a Drop may access
-// through what it runs. Under the owner's P5 every key of one Field is one key, so keys are Fields, never substituted: a node's keys are its
-// local accesses (AddKey, as Local walks the view) joined with those of every body view it composes (Spread, after Run's fixed point); Keys
-// answers a site of one view with its key row and classes from the summaries and keys of the last Run, and Field numbers a Field's bits.
+// A4's static keys for A5 (SPEC 15.6.4, 16.3.3, 22.4.4; DECISIONS R4-M38, R4-M91, R4-M92): the mutable static Fields a Call or a Drop may
+// access through what it runs. Under the owner's P5 every key of one Field is one key, so keys are Fields, never substituted: a node's keys
+// are its local accesses (AddKey, as Local walks the view) joined with those of every body view it composes (Spread, after Run's fixed
+// point); Keys answers a site of one view with its key row and classes from the summaries and keys of the last Run, Summary gives a body
+// view's own row and classes (a static initializer's, for A5's initialization proof), and Field numbers a Field's bits.
 internal sealed partial class MirEffects
 {
     private readonly Dictionary<BindingSymbol, int> fieldIds = new(ReferenceEqualityComparer.Instance); // Each mutable static Field's number (P5).
@@ -42,6 +43,25 @@ internal sealed partial class MirEffects
         (this.itemCount, this.edgeCount) = (items, edges); // The site's inputs are not the body's.
         classes = (byte)(this.found & (Unknown | Limit | Derived)); // With no reader an atom left abstract is Unknown (AddAtom).
         return this.keyScratch.AsSpan(0, this.keyWords);
+    }
+
+    /// <summary>Gets the summary of a body view from the last <see cref="Run"/>: the key row of what the body may run (its local keys
+    /// joined with every body it composes) and its classes. An atom the summary keeps is <see cref="Unknown"/> here, since a site that
+    /// composes the body may resolve it so (R4-M92).</summary>
+    /// <param name="body">A body of the last <see cref="Run"/>'s program.</param>
+    /// <param name="view">The view.</param>
+    /// <param name="classes">The summary's classes among <see cref="Unknown"/>, <see cref="Limit"/> and <see cref="Derived"/>.</param>
+    /// <returns>The row, A4's storage, valid until the next <see cref="Run"/>.</returns>
+    internal ReadOnlySpan<ulong> Summary(MirBody body, long view, out byte classes)
+    {
+        var node = this.bases[body.Ordinal] + (int)view;
+        classes = (byte)(this.classes[node] & (Unknown | Limit | Derived));
+        if (this.atomCounts[node] > 0)
+        {
+            classes |= Unknown;
+        }
+
+        return this.keys.AsSpan(node * this.keyWords, this.keyWords);
     }
 
     /// <summary>Gets A4's number of a mutable static Field in the program version of the last <see cref="Run"/>, whose bits in a key row

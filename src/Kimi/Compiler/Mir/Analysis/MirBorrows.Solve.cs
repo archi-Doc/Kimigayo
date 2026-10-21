@@ -96,7 +96,15 @@ internal sealed partial class MirBorrows
         {
             ref var loan = ref this.loans[l];
             loan.Holder = loan.Holder >= 0 ? this.slots[loan.Holder] : -1;
-            loan.Named = loan.Named >= 0 ? this.slots[loan.Named] : loan.Direct ? Escaped : -1; // A direct Loan on a static names E.
+            if (loan.Named >= 0)
+            {
+                loan.Named = this.slots[loan.Named];
+            }
+            else if (loan.Direct)
+            {
+                loan.Named = Escaped; // A direct Loan on a static names E.
+            }
+
             if (loan is { Mode: MirRefKind.TwoPhaseUniq, Holder: >= 0 })
             {
                 this.reserves[loan.Holder] = true;

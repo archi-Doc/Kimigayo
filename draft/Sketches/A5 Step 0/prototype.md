@@ -1871,8 +1871,8 @@ it omits. Each caller's templates are rows of `-r20`'s table with their own verd
 
 **Run.** `-r20` reports 0 failures:
 
-- (i) None of the 506 earlier cases has a Loan problem inside a copy: R19 drops nothing there. So R20Own and every variant keep R19's (Loan, access) multiset
-  and outcome in all 506.
+- (i) None of the 506 earlier cases (508 since unit 2b-3's e10e and e10f) has a Loan problem inside a copy: R19 drops nothing there. So R20Own and every
+  variant keep R19's (Loan, access) multiset and outcome in all of them.
 - (ii) Every round-20 case meets its expected outcome under R20Own, except the three loop cases (dt20-loop, dc20-loop, dc20-loop-nested), which record
   finding 2 and are checked to reproduce it.
 - (iii) R20Own omits 15 failures. Its templates report 12 of them, the loop cases' three not. The run lists each omission and its template.

@@ -50,7 +50,12 @@ internal sealed partial class MirBorrows
         }
 
         var (subject, from) = (this.Subject(at), reservation >= 0 ? at : at with { Index = at.Index + 1 });
-        var witness = via > Escaped ? this.NextUse(via, from) : via == None ? null : subject;
+        SourceRef? witness = via == None ? null : subject;
+        if (via > Escaped)
+        {
+            witness = this.NextUse(via, from);
+        }
+
         var count = 0;
         this.facts[count++] = new(MirFactKind.Anchor, anchor);
         if (witness is { } site)

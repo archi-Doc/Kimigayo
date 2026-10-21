@@ -123,25 +123,10 @@ internal sealed partial class MirBorrows
         => this.loans[candidate.Loan].Mode == MirRefKind.TwoPhaseUniq && !this.Unique(candidate, kind);
 
     // A candidate's mode as an access sees it (W6, SPEC 15.6.7, A3 E13 (1)): its mode in the holder it was found in, but unique at the
-    // effect rows of the call that activates it, where every reservation is live at once with the call's effects; the call's other
-    // accesses see a reservation shared in its holder.
+    // effect rows of the call that activates it (stamped by MirBorrows.Effects), where every reservation is live at once with the call's
+    // effects; the call's other accesses see a reservation shared in its holder.
     private bool Unique(in Candidate candidate, AccessKind kind)
-    {
-        if (candidate.Unique || kind is not (AccessKind.EffectRead or AccessKind.EffectWrite))
-        {
-            return candidate.Unique;
-        }
-
-        foreach (var (_, loan, _) in this.reserving)
-        {
-            if (loan == candidate.Loan)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
+        => candidate.Unique || (kind is AccessKind.EffectRead or AccessKind.EffectWrite && this.activated[candidate.Loan] == this.effecting);
 
     // err(ended) (A3 E7, SPEC 14.8.3): at a guard candidate's EndBorrow its guard-local Origin ends, so a value live after it that carries its
     // γ (CS(ℓ), transit included) is a borrow that escapes the guard: ComparisonLoanConflict_Kd at the cleanup (DIAGNOSTICS, escaped

@@ -7,69 +7,68 @@ namespace Kimi.Compiler.Mir;
 
 // A5's effect rule (SPEC 15.6.4, 15.6.7, 16.3.3, 16.4 with 16.3.1, 22.4.3; DECISIONS R4-M92): a Call's or a Drop's effects on static
 // storage, by A4's key row and classes (MirEffects.Keys), against the live Loans on the view's mutable static roots.
-// Input: the location's one gather, its effect access listed by Effecting (a Call's set the last operand's, every operand's value with no
-// holder left out; a Drop's its value's), the reservations the location activates, the view's effect roots and A4's Field numbers
-// (MirBorrows.Loans).
+// Input: the location's one gather, its effect access listed by MirBorrows.Locations (a Call's set the last operand's, every operand's
+// value with no holder left out; a Drop's its value's), the reservations the location activates, the view's effect roots and A4's Field
+// numbers (MirBorrows.Loans), and A4's summaries of the static initializers (MirEffects.Summary).
 // Output, per view of the run (each record with the views whose keys give it, R4-M11), through MirBorrows.Reports:
 // - R1: for each effect root with a candidate, a write key or Unknown as an EffectWrite, else a read key as an EffectRead of the whole
 //   root (shallow, SPEC 15.6.2); its first conflict at the location, coded by Code (row 1: a reservation the call does not activate) with
 //   the effect fact on the met Field, what decided it (a write key, else Unknown, else the read key);
 // - A4's Limit without Unknown, where a candidate a write would meet is met by no key: a located Unsupported_Kd at the location;
-// - at a staticEnsure whose effect set holds a candidate on the ensured static (the proof, a may-set: PD12 (ii) as written), every R1
-//   conflict a located Unsupported_Kd at the ensure instead;
 // - R3: at a Drop of a mutable static, its own read or write key on that static, or Unknown, ComparisonLoanConflict_Kd anchored at the
-//   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4); Limit without them, a located Unsupported_Kd.
+//   Drop, no Loan issued and no witness (the destruction's hold, SPEC 16.4); Limit without them, a located Unsupported_Kd;
+// - the initialization proof: a conflict whose deciding effect may be the first-access initialization of a static a live Loan proves
+//   initialized (Proved) is the located Unsupported_Kd at the location instead (PD12 (ii): liveness is a may-property).
 // Invariants: a Derived class reports nothing by itself (R4-M10); the case view Keys selects is the run's again when the rule returns.
-// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Unsupported, or read keys
-// outside a Call or a Drop.
+// Must not decide whether an access meets a Loan (MirBorrows.Checks), record other than through Report and Unsupported (and
+// InternalInvariant_Kd for a static without its initializer, a broken builder contract), or read keys outside a Call or a Drop.
 internal sealed partial class MirBorrows
 {
+    private int[] activated = []; // By Loan: the effect rule's run whose location activates it (W6).
+    private int effecting; // The effect rule's runs, the stamp of activated, never reset.
+
     // A bit of a key row: 2f a read and 2f + 1 a write of the Field A4 numbers f.
     private static bool Bit(ReadOnlySpan<ulong> row, int bit) => (row[bit >> 6] & (1UL << bit)) != 0;
 
-    // A location's effect access, listed after its own accesses so that the one gather takes its values: at a Call or a Drop of a view with
-    // an effect root, or at a Drop of a mutable static (R3), a Call's set its last operand's (TakesStores without one: its result carries
-    // no Loan of its own), a Drop's its value's (TakesValue). It is listed as the widest row; the rule gives each root its own.
-    private void Effecting(int block, int index)
+    // What decides an effect on the Field A4 numbers f in a key row and classes: a write key, else Unknown, else a read key; null for none.
+    private static MirFactKind? Decided(ReadOnlySpan<ulong> row, byte classes, int field)
     {
-        ref readonly var data = ref this.body.Blocks[block];
-        var terminator = data.Terminator;
-        if (index < data.Count || terminator.Kind is not (MirTerminatorKind.Call or MirTerminatorKind.Drop) ||
-            (this.effectRoots.Count == 0 && this.DroppedStatic(terminator) < 0))
+        if (Bit(row, (2 * field) + 1))
         {
-            return;
+            return MirFactKind.EffectWrite;
         }
 
-        var operands = terminator.Kind == MirTerminatorKind.Drop ? 0 : terminator.Count + (terminator.Callee.Kind == MirCalleeKind.Value ? 1 : 0);
-        var taking = terminator.Kind == MirTerminatorKind.Drop ? TakesValue : operands > 0 ? operands - 1 : TakesStores;
-        MirDataflow.Grow(ref this.accesses, this.accessCount + 1);
-        this.accesses[this.accessCount++] = new(terminator.Place, AccessKind.EffectWrite, false, taking);
+        if ((classes & MirEffects.Unknown) != 0)
+        {
+            return MirFactKind.EffectUnknown;
+        }
+
+        return Bit(row, 2 * field) ? MirFactKind.EffectRead : null;
     }
 
     // The effect rule at a location whose effect access is listed, on that access's check set: nothing unless an effect root has a
-    // candidate or the location drops a mutable static; else per view of the run its keys, the run's views narrowed to that view while it
-    // records (Keys selects that case view, so the run's is selected again after).
+    // candidate or the location drops a mutable static; else the reservations it activates stamped (W6, Unique), then per view of the run
+    // its keys, the run's views narrowed to that view while it records (Keys selects that case view, so the run's is selected again after).
     private void Effects(MirLocation at, int taking)
     {
-        var terminator = this.body.Blocks[at.Block].Terminator;
-        var (destroyed, candidates) = (this.DroppedStatic(terminator), false);
+        var destroyed = this.DroppedStatic(this.body.Blocks[at.Block].Terminator);
+        var candidates = false;
         foreach (var root in this.effectRoots)
         {
             candidates |= this.First(root) != None;
         }
 
-        this.Work += this.effectRoots.Count;
+        this.Work += this.effectRoots.Count + this.reserving.Count;
         if (!candidates && destroyed < 0)
         {
             return;
         }
 
-        var proof = false; // A staticEnsure's effect set holds a candidate on the ensured static (SPEC 15.6.4, 22.4.3).
-        var ensured = terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } }
-            ? this.Key(~(int)this.body.Consts[this.body.Operands[terminator.Start].Arg].Bits) : -1; // The slot MirProgram.StaticInit decodes.
-        for (var c = ensured < 0 ? None : this.First(ensured); c != None && !proof; c = this.candidates[c].Next)
+        this.effecting++;
+        MirDataflow.Grow(ref this.activated, this.loanCount);
+        foreach (var (_, loan, _) in this.reserving)
         {
-            proof = this.candidates[c].Takes(taking);
+            this.activated[loan] = this.effecting;
         }
 
         var all = this.views;
@@ -80,12 +79,12 @@ internal sealed partial class MirBorrows
             this.Work += row.Length;
             foreach (var root in this.effectRoots)
             {
-                this.Met(at, taking, root, row, classes, proof);
+                this.Met(at, taking, root, row, classes);
             }
 
             if (destroyed >= 0)
             {
-                this.Destroying(at, destroyed, row, classes);
+                this.Destroying(at, taking, destroyed, row, classes);
             }
         }
 
@@ -93,36 +92,36 @@ internal sealed partial class MirBorrows
         cases.Select(this.body, this.view);
     }
 
-    // R1 and Limit on one effect root with candidates in the effect set (R4 at an ensure with the proof).
-    private void Met(MirLocation at, int taking, int root, ReadOnlySpan<ulong> row, byte classes, bool proof)
+    // R1 and Limit on one effect root with candidates in the effect set.
+    private void Met(MirLocation at, int taking, int root, ReadOnlySpan<ulong> row, byte classes)
     {
         if (this.First(root) == None)
         {
             return;
         }
 
-        var field = 2 * this.fields[root - this.body.Locals.Length];
-        var (read, write, unknown) = (Bit(row, field), Bit(row, field + 1), (classes & MirEffects.Unknown) != 0);
-        var kind = write || unknown ? AccessKind.EffectWrite : AccessKind.EffectRead;
+        var field = this.fields[root - this.body.Locals.Length];
+        var decided = Decided(row, classes, field);
+        var kind = decided == MirFactKind.EffectRead ? AccessKind.EffectRead : AccessKind.EffectWrite;
         this.Work += 2;
-        if ((write || unknown || read) && this.Conflict(root, [], kind, taking) is var c and not None)
+        if (decided is { } fact && this.Conflict(root, [], kind, taking) is var c and not None)
         {
-            if (proof)
+            if (this.Proved(at, taking, row, fact, field))
             {
-                this.Unsupported(at); // The proof would decide (PD12 (ii)): the effect set is a may-set (e10f).
+                this.Unsupported(at);
             }
-            else
+            else if (this.Effect(fact, root, at) is { } met)
             {
-                var fact = this.Effect(write ? MirFactKind.EffectWrite : unknown ? MirFactKind.EffectUnknown : MirFactKind.EffectRead, root);
-                this.Report(this.Code(this.candidates[c], kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, -1, fact);
+                this.Report(this.Code(this.candidates[c], kind, DiagnosticCode.ComparisonLoanConflict_Kd), c, taking, at, -1, met);
             }
         }
 
-        if ((classes & MirEffects.Limit) == 0 || unknown || write)
+        if ((classes & MirEffects.Limit) == 0 || decided is MirFactKind.EffectWrite or MirFactKind.EffectUnknown)
         {
             return;
         }
 
+        var read = decided == MirFactKind.EffectRead;
         for (var u = this.First(root); u != None; u = this.candidates[u].Next)
         {
             if (this.Conflicts(u, root, [], AccessKind.EffectWrite, taking) && !(read && this.Conflicts(u, root, [], AccessKind.EffectRead, taking)))
@@ -135,28 +134,103 @@ internal sealed partial class MirBorrows
 
     // R3 (SPEC 16.4 with 16.3.1, 16.3.3): the destruction of a mutable static's old value holds an exclusive Loan on it until it completes, so
     // its own effects on that static conflict, a read key, a write key or Unknown; with Limit alone it is not classified.
-    private void Destroying(MirLocation at, int destroyed, ReadOnlySpan<ulong> row, byte classes)
+    private void Destroying(MirLocation at, int taking, int destroyed, ReadOnlySpan<ulong> row, byte classes)
     {
-        var field = 2 * this.fields[destroyed];
-        var (read, write, unknown) = (Bit(row, field), Bit(row, field + 1), (classes & MirEffects.Unknown) != 0);
+        var field = this.fields[destroyed];
         this.Work += 2;
-        if (write || unknown || read)
+        if (Decided(row, classes, field) is not { } fact)
         {
-            var root = this.Key(~destroyed);
-            var fact = this.Effect(write ? MirFactKind.EffectWrite : unknown ? MirFactKind.EffectUnknown : MirFactKind.EffectRead, root);
-            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, fact);
+            if ((classes & MirEffects.Limit) != 0)
+            {
+                this.Unsupported(at);
+            }
         }
-        else if ((classes & MirEffects.Limit) != 0)
+        else if (this.Proved(at, taking, row, fact, field))
         {
             this.Unsupported(at);
         }
+        else if (this.Effect(fact, this.Key(~destroyed), at) is { } met)
+        {
+            this.Report(DiagnosticCode.ComparisonLoanConflict_Kd, this.Subject(at), None, at, -1, met);
+        }
+    }
+
+    // The initialization proof (SPEC 15.6.4: a live Loan anchored to a Field proves that Field initialized, so its first access runs no
+    // initializer; 22.4.3): whether a conflict's deciding effect on a Field, a write or read key or Unknown, lies in the summary of the
+    // initializer of a static d with a candidate in the effect set (MirEffects.Summary), where the location may first-access d: d is
+    // immutable (its accesses carry no key), the location's row has a key of d, or the location is d's staticEnsure (MirProgram.StaticInit),
+    // which carries no key of its own static (R4-M38). Liveness is a may-property, so the Loan proves nothing on a path it is absent from
+    // (e10f): such a conflict is the located Unsupported_Kd, never a Language problem (PD12 (ii) as written).
+    private bool Proved(MirLocation at, int taking, ReadOnlySpan<ulong> row, MirFactKind fact, int field)
+    {
+        var terminator = this.body.Blocks[at.Block].Terminator;
+        MirBody? ensured = null;
+        if (terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.StaticEnsure } })
+        {
+            ensured = this.program.StaticInit(this.body, this.body.Operands[terminator.Start]);
+        }
+
+        var bit = fact == MirFactKind.EffectWrite ? (2 * field) + 1 : 2 * field;
+        this.Work += this.body.Statics.Length;
+        for (var d = 0; d < this.body.Statics.Length; d++)
+        {
+            if (!this.Holds(this.Key(~d), taking) || this.Initializer(d, at) is not { } initializer)
+            {
+                continue;
+            }
+
+            var own = 2 * this.fields[d];
+            if (this.body.Statics[d].Mutable && !Bit(row, own) && !Bit(row, own + 1) && !ReferenceEquals(initializer, ensured))
+            {
+                continue; // The location does not first-access d.
+            }
+
+            for (var view = 0L; view < MirCases.Count(initializer); view++)
+            {
+                var summary = effects.Summary(initializer, view, out var classes);
+                if (fact == MirFactKind.EffectUnknown ? (classes & MirEffects.Unknown) != 0 : Bit(summary, bit))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether the effect set holds a candidate on a root, in any mode.
+    private bool Holds(int root, int taking)
+    {
+        for (var c = this.First(root); c != None; c = this.candidates[c].Next)
+        {
+            if (this.candidates[c].Takes(taking))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // The static a Drop of a mutable static destroys, whole or in part, or -1.
     private int DroppedStatic(in MirTerminator terminator)
         => terminator is { Kind: MirTerminatorKind.Drop, Place: { IsStatic: true } place } && this.body.Statics[~place.Root].Mutable ? ~place.Root : -1;
 
-    // An effect fact on a static root: what decided it, at its Field's declaration (its StaticInit body's source; every static has one).
-    private MirFact Effect(MirFactKind kind, int root)
-        => new(kind, this.program[new(this.body.Statics[root - this.body.Locals.Length].Symbol, MirBodyKind.StaticInit)]!.Source);
+    // An effect fact on a static root: what decided it, at its Field's declaration (its initializer's source).
+    private MirFact? Effect(MirFactKind kind, int root, MirLocation at)
+        => this.Initializer(root - this.body.Locals.Length, at) is { } initializer ? new(kind, initializer.Source) : null;
+
+    // A static's initializer, its StaticInit body: the builder builds one for every static it accesses, so a missing one is a broken
+    // contract, InternalInvariant_Kd at the location, whose problem is then not recorded.
+    private MirBody? Initializer(int index, MirLocation at)
+    {
+        if (this.program[new(this.body.Statics[index].Symbol, MirBodyKind.StaticInit)] is { } initializer)
+        {
+            return initializer;
+        }
+
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Internal);
+        this.program.Problems.Add(new(DiagnosticCode.InternalInvariant_Kd, requirement, this.Subject(at), this.body.Ordinal, this.views));
+        return null;
+    }
 }

@@ -1711,7 +1711,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   A6 (completing R4-M69's) and R4-M57's 1b-4 statement that unit 1c does the E7/E12 merge, and settles R4-M57's guard code.
   - Effects (clarified by R4-M89: a Loan found only in a reservation holder that the call does not activate is
     `CallReservationConflict_Kd` (A6 row 1); implemented by R4-M92; "none
-    arises" overlooked implicit static reservations (`tests/mir/statics.mir:178`)): err(effect), a static or unknown-environment
+    arises" overlooked implicit static reservations, such as a receiver reserved while an argument's call runs, R4-M92's
+    `counter.add(g())`): err(effect), a static or unknown-environment
     effect against a live Loan (SPEC 15.6.4), is `ComparisonLoanConflict_Kd` at
     the call or the Drop whose effects meet it (A4's keys are a Call's or a Drop's, `MirEffects.Keys`; an erased destruction's are
     unknown, SPEC 16.3.3), as the spec case `15.6.4-static-anchors` expects at its call; `CallEffectConflict_Kd`, whose catalog message
@@ -2112,9 +2113,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `Accessing`, `Accessed`, `Dropping`, `Destruction`, `Borrowing`) to `MirBorrows.Locations.cs`, behavior-preserving, `.Checks.cs`
     keeping the conflicts relation; and ruled that `MirProblem.cs`, due by count (`Inlined`, 1c-6; `Body` and `NoBody`, 1c-8;
     reworded comments), has no split: the problem and fact records with their fact kinds are one responsibility.
-- **R4-M92 A5's effect rule: err(effect), R3 and the staticEnsure; G136's static items** (2026-10-21; unit 2b-3 of G:A5-F5 under
-  R4-M89, the package's §1; group review; clarifies R4-M72's effect row as R4-M89 reads it; G136 (i) replaces PD12 (iv)'s lemma; G136
-  (ii) is OQ-F5-1 (a))
+- **R4-M92 A5's effect rule: err(effect), R3 and the initialization proof; G136's static items** (2026-10-21; unit 2b-3 of G:A5-F5
+  under R4-M89, the package's §1; group review, whose B1 the planning session ruled within R4-M89 (below); clarifies R4-M72's effect
+  row as R4-M89 reads it; G136 (i) replaces PD12 (iv)'s lemma; G136 (ii) is OQ-F5-1 (a))
   - Rule (SPEC 15.6.4, 15.6.2): at a Call or a Drop, each mutable static a Loan of the view is on (an effect root) with a candidate in
     the effect set is accessed whole and shallow through two rows of the conflicts relation, `EffectWrite` (a write key or A4's Unknown,
     any mode) and `EffectRead` (a read key, a unique Loan). A Loan past a raw or shared Deref is not reached; in safe code a static's Loan
@@ -2127,7 +2128,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Drop). One effect access is listed after the location's own accesses, so the one gather takes its values; the rule runs last.
   - W6 (SPEC 15.6.7): at a call's effect rows a reservation the call activates is unique. One predicate, `Unique(candidate, kind)`, is
     read by the mode test and by `Code`, which takes the access kind; the operands' own accesses and the activations still see a
-    reservation shared in its holder.
+    reservation shared in its holder. The effect rule stamps the reservations a location activates once, so the predicate is O(1).
   - Codes: an effect problem is `ComparisonLoanConflict_Kd` at the call or Drop, except one whose Loan is found only in a reservation
     holder the call does not activate: `CallReservationConflict_Kd` by the A6 table's row 1, through `Code` (e1, an argument's call while
     the receiver is reserved: `counter.add(g())`). An activation's conflict and an effect conflict on one Loan are two problems (e4c).
@@ -2140,33 +2141,49 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `ComparisonLoanConflict_Kd` at the Drop, anchored at it, with the effect fact and no witness; Limit alone, a located `Unsupported_Kd`.
     No Loan is issued. It reports through `Report`, so the view skip becomes "no Loan, no guard candidate and no Drop of a mutable
     static", and the hold stays one rule.
-  - staticEnsure (SPEC 15.6.4, 22.4.3; PD12 (ii) as written): where the ensure's effect set holds a candidate on the ensured static (the
-    slot `MirProgram.StaticInit` decodes), every R1 conflict is a located `Unsupported_Kd` at the ensure, for every key: the set is a
-    may-set, so a Loan carried on one path proves nothing on another (e10f; OQ-F5-6 (a), registered at X-2 until a must-carry fact).
+  - Initialization proof (SPEC 15.6.4, 22.4.3; PD12 (ii) as written; the planning session's clarification of R4-M89 on the group
+    review's B1, 2026-10-21): "a live Loan anchored to a Field proves that Field initialized" holds wherever a first access is
+    composed, since every first access is an ensure and A4 composes each initializer into every site that may run it (R4-M38). So at
+    every Call and Drop, ensures included, an R1 or R3 conflict whose deciding effect (a write or read key, or Unknown) lies in the
+    summary of the initializer of a static d with a candidate in the effect set, in any mode, is the located `Unsupported_Kd` at the
+    site, where the site may first-access d: d is immutable (its accesses carry no key), the site's row has a key of d, or the site is
+    d's own staticEnsure (`MirProgram.StaticInit`; an ensure carries no key of its own static, R4-M38, so without this e10a, e10e and
+    e10f would be errors). A site that never reaches d keeps a direct conflict as the error (`direct`). The set is a may-set, so the
+    proof decides nothing exactly (e10f; OQ-F5-6 (a)). A4 publishes `MirEffects.Summary(body, view, out classes)`, a body view's row and
+    classes over its existing storage, an atom it keeps counted as Unknown (warm 0 B). Before the review the proof was consulted only at
+    the body's own ensure of the static (Language errors on SPEC-valid pA, pB, pQ: a call that reads x, the ensure of x2 whose
+    initializer reads d, a call that reads an immutable static); that special case, its slot decoding and `Met`'s bool are deleted.
   - G136 (i): a direct Loan on a static names E (`Holders`; W's step from E is `MirWrites.None`), storage the body does not own (SPEC
     15.6), so a call's store through a static's borrow lands in E as a parameter's does (`refs.append(y@ref); y = 2` errs; it went nowhere
     before); check sets do not change, since σ(E) is in each.
   - G136 (ii) (OQ-F5-1 (a)): a whole write of a static ends its Field's Loans (`Ending`), a part write none; e16b reports once.
   - G171 interim: an effect conflict found in an inline default copy carries the Inlined fact and is dropped, as every copy-found
-    conflict, until 2e-4 (unsound for a caller's Loan, shadow only, no regression); Limit and ensure records stay in copies.
+    conflict, until 2e-4 (unsound for a caller's Loan, shadow only, no regression); Limit and proof records stay in copies.
+  - Unsupported producers registered for X-2 (PD28): A4's Limit at a site with a live mutable-static Loan no key meets (and R3's with
+    the Limit alone), until A4 classifies the effect; the initialization proof, until OQ-F5-6's clarification and a must-carry fact (P42
+    alone does not decide it). A static without its initializer is a broken builder contract, `InternalInvariant_Kd`.
   - Tests: Binding accepts the implicit static Loans of a group's own members only (a receiver reserved or shared with a retained
     result, an argument's adaptation), so 2b-3's programs are group members, which R4-M90's PQ-1 re-expects when 2b-6's unqualified part
     lands; the qualified receiver and argument forms are `NoApplicableOverload_Kd`, a `for` over a static moves it, a `match` on one is
     Opaque. Census (`MirCensusTest`): no A5 problem in the library, the milestones (42's `Registry.replaced` Drop runs no key) or the
     goldens.
-  - Driver: `MirBorrows` takes `MirEffects` (`MirAnalysis`).
+  - Driver: `MirBorrows` takes `MirEffects` (`MirAnalysis`); the effect access is listed by `MirBorrows.Locations` (`Effecting`).
   - PD21 (the planning session, 2026-10-21; the plan's 2x-R9 expected it): `MirBorrows.Activations.cs` has one responsibility, the
     activation and observing-destruction checks of a location, and 2b-3's change is an argument at its two `Code`/`Report` call sites, so
     no split exists; 2x-R9 keeps its 2f-D condition (a split if 2f-D adds the caller relation there). `MirBorrows.Loans.cs`,
     `MirBorrows.Values.cs` and `MirAnalysis.cs` reach their third change with 2b-3: their next editors split first (PLAN §3.7).
   - Cost: per checked site one `Keys` query per view where an effect root has a candidate or R3 applies, Θ(effect roots + their
-    candidates) tests and scans; `Work` counts the row's words and the bit tests; Field numbers per view, pooled; warm 0 B. V16 "F5
-    effects" (`MirBorrowsTest`): linear in N calls at M = 4, K = 8; within the M × sites term in M at N = 32.
+    candidates) tests and scans, and on a conflict Θ(the body's statics + their initializers' views × ⌈2F/64⌉) for the proof; `Work`
+    counts the row's words, the bit tests, the reservations stamped and the statics the proof scans; Field numbers per view and the
+    stamps, pooled; warm 0 B. The query's own composition, Θ(terminator inputs + composed views × ⌈2F/64⌉), is A4's and uncounted (A4
+    has no work counter; 2b-2 measured it). V16 "F5 effects" lives in `MirBorrowsTest.EffectsScaleWithCallsAndStaticLoans` (VERIFICATION
+    has no V16 table): linear in N calls at M = 4, K = 8; within the M × sites term in M at N = 32.
   - Rejected: W6 as a gather pass marking activated reservations unique (a new pass and taking, and the bucket order would decide
     `EffectWrite`'s candidate); a site row `Effect` in `AccessKind` (not a relation row); a deep reach (equivalent in safe code); R3 as an
     issued Loan (no value carries it); the closed-key ensure (`R18EnsureClosed`, `R18EnsureKeyed`: unsound on e10f); keeping `Code`'s and
-    `Report`'s signatures (a second statement of row 1 outside `Code`, an optional parameter). Not temporary, except the ensure's and
-    the Limit's `Unsupported_Kd` (OQ-F5-6, P42; AGENTS Diagnostics).
+    `Report`'s signatures (a second statement of row 1 outside `Code`, an optional parameter); the proof at any site regardless of
+    whether it may first-access d (the error of a site that never reaches d would become a U, `direct`). Not temporary, except the
+    proof's and the Limit's `Unsupported_Kd` (OQ-F5-6, P42; AGENTS Diagnostics).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
