@@ -1,3 +1,7 @@
+fixture	AggregateArrayPartialExitAudit.ll	1
+fixture	AggregateDefaultAbandonedAudit.ll	1
+fixture	AggregatePartialExitAudit.ll	1
+fixture	AggregatePartialReturnAudit.ll	1
 test	XunitTest.AggregateArgumentInferenceTest.ElementsArePositionsOfTheirParameter	XunitTest.AggregateArgumentInferenceTest.ElementsArePositionsOfTheirParameter(source: \"func dbl(v: i64) -> i64 => v * 2\\nfunc gf(x: (i64, (i64) -> i64)) => ()\\nlet a: i64 = 2\\ngf((a, dbl))\")
 test	XunitTest.AggregateArgumentInferenceTest.ElementsArePositionsOfTheirParameter	XunitTest.AggregateArgumentInferenceTest.ElementsArePositionsOfTheirParameter(source: \"func foo<F>(x: (i64, F)) -> ()\\n    F is Callable<(i64) -> i64>\\n    return\\nlet a: i64 = 2\\nfoo((a, func (v) => v))\")
 test	XunitTest.AggregateArgumentInferenceTest.ElementsArePositionsOfTheirParameter	XunitTest.AggregateArgumentInferenceTest.ElementsArePositionsOfTheirParameter(source: \"func gf(x: (i64, (i64) -> i64)) => ()\\nlet a: i64 = 2\\ngf((a, func (v) => v))\")
