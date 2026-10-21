@@ -51,6 +51,9 @@ public class PathCapabilityDiagnosticTest
     // A struct Box with a computed Field, whose getter result is lent only shared (SPEC 11.5).
     private const string Box = "struct Box\n    public computed calc: i32\n        get() -> i32 => 1\n    public init() => ()\n";
 
+    // An open struct Fixed with a let Field y, which an exclusive reference to it does not lend exclusively (SPEC 3.4, 15.1.5).
+    private const string Fixed = "open struct Fixed\n    public var x: i32 = 0\n    public let y: i32 = 1\n    public init() => ()\n";
+
     // A Contract whose required Property level is read through its getter, a getter result lent only shared (SPEC 11.1, 11.5).
     private const string Leveled = "contract Leveled\n    property level: i32 has get, set\n";
 
@@ -135,6 +138,8 @@ public class PathCapabilityDiagnosticTest
     [InlineData(Take + "func f() -> ()\n    let t = (1, 2)\n    take((t).0@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Box + "func f() -> ()\n    var b = Box.init()\n    take((b.calc)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData(Take + Leveled + "func f<T>(t: uniq/T) -> ()\n    T is Leveled\n    take((t.level)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Take + Fixed + "func f(p: uniq/Fixed) -> () => take((p.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData(Take + Fixed + "func f<T>(t: uniq/T) -> ()\n    T is Fixed\n    take((t.y)@uniq)", DiagnosticCode.InvalidAssignment_Kd)]
     public void TheDenyingLayerIsReported(string source, DiagnosticCode code)
     {
         var c = MinimalEmissionTest.Analyze(source);
