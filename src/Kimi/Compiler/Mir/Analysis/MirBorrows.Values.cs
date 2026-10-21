@@ -222,7 +222,7 @@ internal sealed partial class MirBorrows
             {
                 if (loan.Named >= 0)
                 {
-                    this.Written(loan.Named, this.writable[loan.Root]);
+                    this.Written(loan.Named, loan.Named == Escaped ? MirWrites.None : this.writable[loan.Root]); // A static's names E.
                 }
                 else if (loan.Root < this.body.Locals.Length && this.writable[loan.Root] == MirWrites.Raw)
                 {

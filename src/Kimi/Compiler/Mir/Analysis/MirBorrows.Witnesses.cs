@@ -10,8 +10,10 @@ namespace Kimi.Compiler.Mir;
 // Must not record a problem or decide which problem a conflict becomes (MirBorrows.Reports).
 internal sealed partial class MirBorrows
 {
-    // A conflict's code (A3 5's A6 table): a Loan found in its reservation holder is a reservation conflict, else the check's code.
-    private DiagnosticCode Code(in Candidate candidate, DiagnosticCode code) => this.Reserved(candidate) ? DiagnosticCode.CallReservationConflict_Kd : code;
+    // A conflict's code (A3 5's A6 table, row 1 for every access): a Loan found in its reservation holder, as the access sees it (a call's
+    // effect rows see a reservation it activates unique, W6, R4-M92), is a reservation conflict, else the check's code.
+    private DiagnosticCode Code(in Candidate candidate, AccessKind kind, DiagnosticCode code)
+        => this.Reserved(candidate, kind) ? DiagnosticCode.CallReservationConflict_Kd : code;
 
     // A location's subject: its statement's or terminator's.
     private SourceRef Subject(MirLocation at) => this.body.Subject(this.Source(at));
