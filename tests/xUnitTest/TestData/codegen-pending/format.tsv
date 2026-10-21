@@ -132,7 +132,6 @@ test	XunitTest.Utf8TryWriteTest.EmbeddedReturnTargetsTheOriginalFunction	XunitTe
 test	XunitTest.Utf8TryWriteTest.EmbeddedTransferKeepsItsEnclosingTarget	XunitTest.Utf8TryWriteTest.EmbeddedTransferKeepsItsEnclosingTarget(name: \"Exit\", boundary: \"label work: do\", transfer: \"exit to work 7\")
 test	XunitTest.Utf8TryWriteTest.EmbeddedTransferKeepsItsEnclosingTarget	XunitTest.Utf8TryWriteTest.EmbeddedTransferKeepsItsEnclosingTarget(name: \"Yield\", boundary: \"label work: if true\", transfer: \"yield to work 7\")
 test	XunitTest.Utf8TryWriteTest.FailureSkipsLaterEvaluationAndRetainsTheWrittenPrefix	XunitTest.Utf8TryWriteTest.FailureSkipsLaterEvaluationAndRetainsTheWrittenPrefix
-test	XunitTest.Utf8TryWriteTest.FirstOperandCanTransferControlWithoutAcquiringAWriter	XunitTest.Utf8TryWriteTest.FirstOperandCanTransferControlWithoutAcquiringAWriter
 test	XunitTest.Utf8TryWriteTest.RootPreservesOuterPendingLiteralAndCapacityHint	XunitTest.Utf8TryWriteTest.RootPreservesOuterPendingLiteralAndCapacityHint
 test	XunitTest.Utf8TryWriteTest.RootWritesIntoExistingStorageWithoutAllocation	XunitTest.Utf8TryWriteTest.RootWritesIntoExistingStorageWithoutAllocation(name: \"Embedded\", literal: \"\\\"君=\\\\(42)!\\\\(true)\\\"\", expected: \"君=42!true\\n\")
 test	XunitTest.Utf8TryWriteTest.RootWritesIntoExistingStorageWithoutAllocation	XunitTest.Utf8TryWriteTest.RootWritesIntoExistingStorageWithoutAllocation(name: \"Empty\", literal: \"\\\"\\\"\", expected: \"\\n\")

@@ -28,9 +28,6 @@ test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.
 test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"fixed-roots\", count: 16)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"fixed-roots\", count: 4)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"fixed-roots\", count: 8)
-test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"regions\", count: 16)
-test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"regions\", count: 4)
-test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"regions\", count: 8)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"results\", count: 16)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"results\", count: 4)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior	XunitTest.CallableRegionScalingTest.GrowingPlansPreserveBehavior(axis: \"results\", count: 8)
@@ -43,9 +40,6 @@ test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTe
 test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"fixed-roots\", count: 16)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"fixed-roots\", count: 4)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"fixed-roots\", count: 8)
-test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"regions\", count: 16)
-test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"regions\", count: 4)
-test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"regions\", count: 8)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"results\", count: 16)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"results\", count: 4)
 test	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage	XunitTest.CallableRegionScalingTest.GrowingPlansReuseBoundedStorage(axis: \"results\", count: 8)
@@ -59,7 +53,6 @@ test	XunitTest.CallableSignatureInferenceTest.AKnownSignatureIsNoEvidenceForTheC
 test	XunitTest.CallableSignatureInferenceTest.AKnownSignatureIsNoEvidenceForTheCalleesOrigins	XunitTest.CallableSignatureInferenceTest.AKnownSignatureIsNoEvidenceForTheCalleesOrigins(reversed: True)
 test	XunitTest.CallableSignatureInferenceTest.APerCallOriginLeavesTheSlotOriginOpen	XunitTest.CallableSignatureInferenceTest.APerCallOriginLeavesTheSlotOriginOpen
 test	XunitTest.CallableSignatureInferenceTest.APerCallStandInDecidesNothingElse	XunitTest.CallableSignatureInferenceTest.APerCallStandInDecidesNothingElse
-test	XunitTest.CallableSignatureInferenceTest.ARealNeverExpressionStillSuppliesNoTypeEvidence	XunitTest.CallableSignatureInferenceTest.ARealNeverExpressionStillSuppliesNoTypeEvidence
 test	XunitTest.CallableSignatureInferenceTest.AResultOnlyInstantiationAllowsLocalReassignment	XunitTest.CallableSignatureInferenceTest.AResultOnlyInstantiationAllowsLocalReassignment
 test	XunitTest.CallableSignatureInferenceTest.AResultOnlyUniversalIsInstantiatedToTheOpenRegion	XunitTest.CallableSignatureInferenceTest.AResultOnlyUniversalIsInstantiatedToTheOpenRegion(name: \"Callable\", body: \"func make<T, F>(f: ref/F) -> i32\\n    F is Callable<() -> T>\\n    return 7\\nlet r = make(constant)\")
 test	XunitTest.CallableSignatureInferenceTest.AResultOnlyUniversalIsInstantiatedToTheOpenRegion	XunitTest.CallableSignatureInferenceTest.AResultOnlyUniversalIsInstantiatedToTheOpenRegion(name: \"Erased\", body: \"func make<T>(f: () -> T) -> i32 => 7\\nlet r = make(constant)\")

@@ -18,7 +18,8 @@
 // After a failed Binding: Rejected for a declaration with InlineCycle or a rejected C-layout declaration (CLayoutRejected: Binding
 // reports its direct zero-sized Field), a null stored Field Type, null CaseTypes or a fixed array with Length < 0; an unresolved base,
 // which Binding publishes as no base, is laid out without it (Ok; no record follows a failed Binding).
-// Invariants: an answer depends only on the Type and the program version, never on query order; one record per representation
+// Invariants: no alignment exceeds 16, the heap's (SPEC 21.4.3; DECISIONS R5-M92): a row's is at most 16 and a placement takes its parts'
+// maximum; an answer depends only on the Type and the program version, never on query order; one record per representation
 // within a program version; Oversized only for Outcome Oversized and an oversized CLayout; every memo entry's size is exact or a lower
 // bound, 2^63 for any size above 2^63 - 1; warm calls allocate 0 B; at most 65 placement levels per call and 65 memo entries per Type;
 // the complete base is a prefix of a derived struct, its tail padding included (X1); Never is zero-sized, laid out as Unit (IMPL 21.1.3),
