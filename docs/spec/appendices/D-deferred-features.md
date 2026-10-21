@@ -46,7 +46,7 @@ Each line names a feature outside this revision ([§1.3](../01-overview.md#13-no
 - Additional dynamic Move Paths. [§15.1.3](../15-ownership-and-lifetime-analysis.md#1513-move-paths-and-partial-move)
 - Non-static erased views (existential object views hiding non-static payload dependencies), static-Place Origins, and higher-ranked Origins beyond Callable direct-input quantification and Origin-parameterized associated Types.
 - Destruction lifetime relaxation. [§15.6.6](../15-ownership-and-lifetime-analysis.md#1566-destruction-lifetime-checking)
-- Effect bounds on non-virtual concrete functions, Property requirements, Function Types and the `drop` of open structures (so that erased destruction can have known effects); effect vocabularies beyond `confined` and `preserves results`; general effect systems. [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds), [§16.3.3](../16-scope-exit-and-destruction.md#1633-handles-and-object-release)
+- Effect bounds on non-virtual concrete functions, Property requirements, Function Types and the `drop` of open structures (so that erased destruction can have known effects); effect vocabularies beyond `confined`; general effect systems. [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds), [§16.3.3](../16-scope-exit-and-destruction.md#1633-handles-and-object-release)
 
 ## D.5. Concurrency
 

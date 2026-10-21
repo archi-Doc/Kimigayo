@@ -5,10 +5,10 @@ abstract-input Origin reach of SPEC 8.11.4 rule 1 and everything that existed be
 delegation, P12's abstract descent), and the implementation plan for the new MIR path and the old Analysis (the default
 pipeline). Base: dev `4c2e5d69`; line numbers refer to it ("8.11.4:789" is line 789 of `docs/spec/08-…md`).
 
-Status: adopted by the owner on 2026-10-22 with Q1 (a) and Q2 (a) (§1); not integrated or implemented. Unit U0 integrates §5
-and moves this file to `draft/Changes` as 取り込み済み, as the G160 proposal was; it supersedes the proposal
-[Preserves Results by Receiver Place](<2026-10-16 Preserves Results by Receiver Place.md>) ("S2"), which moves to
-`draft/Obsolete` as 完了 because none of it was integrated, and the open questions of the sketch
+Status: 取り込み済み (2026-10-22). Adopted by the owner on 2026-10-22 with Q1 (a) and Q2 (a) (§1; DECISIONS R4-M106); §5
+integrated into SPEC by unit U0 (INTEGRATED), units U1–U5 implement it (PLAN). It supersedes the proposal
+[Preserves Results by Receiver Place](../Obsolete/2026-10-16%20Preserves%20Results%20by%20Receiver%20Place.md) ("S2"), closed as
+完了 because none of it was integrated, and the open questions of the sketch
 `draft/Sketches/A5 Step 2/preserves-revision.md` ("2f-S1"). Adoption implies no implementation support (STATUS).
 
 Conventions: (H) marks an inference that was not run. Case ids `c1`… are 2f-S1 §8's, `h1`… and `p1`… are

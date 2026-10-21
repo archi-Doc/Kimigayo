@@ -96,7 +96,7 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
     }
 
     [Theory]
-    [InlineData("effect confined\n        effect preserves results\n        return 1", false)]
+    [InlineData("effect confined\n        return 1", false)]
     [InlineData("effect confined\n        effect confined\n        return 1", true)]
     public void EffectClausesUseTheCommonDeclarationChecks(string body, bool rejected)
     {
@@ -105,17 +105,6 @@ public class VirtualDeclarationTest(ITestOutputHelper output)
         Assert.Equal(!rejected, c.Binding.Result.IsComplete);
         c.Binding.ReportDiagnostics();
         Assert.DoesNotContain(TestDiagnostics.Of(c), x => x.Code == "CheckFaulted_Kd");
-    }
-
-    [Theory]
-    [InlineData("objref")]
-    [InlineData("objuniq")]
-    public void PreservedResultsCannotDependOnTheReceiverBorrow(string receiver)
-    {
-        var c = MinimalEmissionTest.Analyze($"open struct Base\n    public virtual func read(self: {receiver}/Self) -> {receiver}/Self\n        effect preserves results\n        return self@{receiver}\n()");
-        c.Binding.ReportDiagnostics();
-        var diagnostic = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "InvalidEffectBound_Kd");
-        Assert.Contains("receiver borrow", diagnostic.Label!, StringComparison.Ordinal);
     }
 
     [Trait("Purpose", "Allocation")]

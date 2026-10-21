@@ -27,6 +27,8 @@ public class OriginRelationDiagnosticTest
 
     private const string Make = "func make(values: Slice<i32> during s) -> Slice<i32> during s => values\n";
 
+    private const string Cursor = "struct Cursor {source}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during source\n    let value: uniq/i32 during source\n";
+
     [Theory]
     [InlineData(Bad, nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r", "requires the borrow local@ref outlives x, which is false", "local@ref")]
     [InlineData("func pick(a: ref/i32, b: ref/i32) -> ref/i32 during a\n    return b\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "b", "requires b outlives a, which is not proven", null)]
@@ -45,6 +47,9 @@ public class OriginRelationDiagnosticTest
     [InlineData("func leak(values: Slice<i32> during s) -> uniq/(Slice<i32> during s) during s\n    var local = values\n    return local@uniq\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "local@uniq", "requires the borrow local@uniq outlives s, which is false", "local@uniq")]
     [InlineData(Keep + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return keep(values)\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "keep(values)", "requires the borrow values outlives s, which is false", "values")]
     [InlineData(Make + "func leak(values: Slice<i32> during s) -> ref/(Slice<i32> during s) during s\n    return make(values)@ref\n", nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "make(values)@ref", "requires the borrow make(values)@ref outlives s, which is false", "make(values)@ref")]
+    // SPEC 15.6.3, 22.2.3: an Iterator's item Reborrowed through `self` from an exclusive Field is contained in the receiver's Origin;
+    // no effect bound exempts it (the adopted proposal Abstract Calls Reach by Paths removed `preserves results`' exemption, PLAN G193).
+    [InlineData(Cursor + "    public func next(self: uniq/Self) -> Option<ref/i32 during source> => .Some(self.value)\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "self.value", "requires self outlives self.source, which is not proven", null)]
     public void AnOriginOnlyFailureIsOneRelationRecord(string body, string code, string text, string label, string? origin)
     {
         var source = body + Main;
@@ -102,6 +107,8 @@ public class OriginRelationDiagnosticTest
     [InlineData("func first(view: ref/(Slice<i32> during s)) -> ref/i32 during s => view@follow[0]@ref\n")]
     [InlineData("func tail(view: ref/(Slice<i32> during s)) -> Slice<i32> during s => view@follow[1..]\n")]
     [InlineData("func first(p: ref/(ref/[3 of i32] during a) during b) -> ref/i32 during a => p@follow[0]@ref\n")]
+    // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
+    [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
     public void AProvenRelationIsAccepted(string body)
     {
         var output = DiagnosticCorpus.Check(body + Main);

@@ -9,8 +9,8 @@ using Xunit;
 
 namespace XunitTest;
 
-// The drops of MIR code generation (R5 C0c, C4a; package C 3.6 and 3.8; DECISIONS R5-M78, R5-M95, R5-M96): the Drop rows, the glue
-// functions, and gate step 2, which writes no body A1 or A2 left inexact.
+// The drops of MIR code generation (R5 C0c, C4a, C4b; package C 3.6 and 3.8; DECISIONS R5-M78, R5-M95, R5-M96, R5-M99): the Drop rows,
+// the drop flags, the glue functions, and gate step 2, which writes no body A1 or A2 left inexact.
 public sealed partial class FunctionCodegenTest
 {
     // Two literals' temporaries, one on a conditional path, each borrowed and destroyed (Keep), and a string never initialized (Elide).
@@ -25,6 +25,17 @@ public sealed partial class FunctionCodegenTest
         "    public var n: i32\n    public var y: Guard\n    public init(x: string, b: string) : base(b@move)\n        self.x = x@move\n" +
         "        self.n = 1\n        self.y = Guard.init()\nenum Shape\n    Pair(string, i32, Guard)\n    Empty\n    One(Holder)\n" +
         "func leaf(v: Leaf) => ()\nfunc tuple(v: (Holder, i32, Guard)) => ()\nfunc shape(v: Shape) => ()\nfunc row(v: [3 of string]) => ()\n";
+
+    // A Library's values destroyed under A2's flags (R5 C4b; DECISIONS R5-M99): an argument and a local string, each moved on one path; a
+    // zero-sized Guard declaring a drop, made by a call; a generic value at i32, which needs no drop, and at string; a pair-generic value
+    // replaced through its layer, whose points differ by view, in its owner case (Flag) and its uniq case (Elide).
+    private const string Flags =
+        "struct Guard\n    drop => ()\nfunc take(s: string) => ()\nfunc keep(g: Guard) => ()\nfunc sink<T>(x: T) => ()\n" +
+        "func argument(c: bool, s: string)\n    if c => take(s@move)\nfunc local(c: bool)\n    let s = \"x\"\n    if c => take(s@move)\n" +
+        "func guard(c: bool)\n    let g = Guard.init()\n    if c => keep(g@move)\nfunc give<T>(c: bool, x: T)\n    if c => sink(x@move)\n" +
+        "func view<s/T>(c: bool, value: s/T, x: T)\n    s is owner or uniq\n    var v = value@move\n    v@follow = x@move\n" +
+        "    if c => sink(v@move)\nfunc use()\n    give(true, 1)\n    give(true, \"a\")\n    var k = \"k\"\n    view(true, \"b\", \"c\")\n" +
+        "    view(true, k@uniq, \"d\")\n";
 
     // A whole fixed array's indices after one element moved out, which A1 rejects (MovedPlace_Kd at a.indices) and the old analysis
     // accepts: MIR difference row a1-whole-incomplete.
@@ -93,6 +104,84 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([text], CalleesOf(row));
         Assert.Contains(row.Instructions, static x => x.Shape == "sub i64 48, %");
         Assert.Contains(row.Instructions, static x => x.Shape == "icmp eq i64 %, 3");
+    }
+
+    // R4-M6a, DECISIONS R5-M99: each of A2's flags is a bool slot of the entry block, cleared there, and the entry's flag points follow: an
+    // argument moved on one path has its flag set before the first block; a body without flags has no flag slot.
+    [Fact]
+    public void AFlagIsABoolSlotClearedAtEntryWhereAnArgumentIsSet()
+    {
+        var (c, ir) = Flagged();
+        var argument = Assert.Single(FunctionsOf(ir, c, "argument"));
+        var flag = Assert.Single(FlagsOf(argument));
+        var entry = argument.Blocks[0];
+        Assert.Equal(["store i8 0, ptr %, align 1", "store i8 1, ptr %, align 1"], StoresOf(entry.Instructions, flag));
+        Assert.Equal("br label %", entry.Terminator.Shape);
+        Assert.Empty(FlagsOf(Assert.Single(FunctionsOf(ir, c, "take"))));
+    }
+
+    // SPEC 16.2.1, R4-M6a, DECISIONS R5-M99: a flag point is written where its location completes, in the MIR dump's order (StorageLive
+    // clears, the definition sets, the Drop's own point clears after its test, the Move clears, StorageDead clears): a statement's after
+    // it, a call's after the call and before its branch; the Drop loads its flag and branches on it as a bool to a block that calls the
+    // Place's glue once on its address and joins the other path, whose join writes the Drop's clear point, then the Drop's branch.
+    [Fact]
+    public void AFlagFollowsItsPointsAndGuardsItsDrop()
+    {
+        var (c, ir) = Flagged();
+        var local = Assert.Single(FunctionsOf(ir, c, "local"));
+        var flag = Assert.Single(FlagsOf(local));
+        Assert.Equal(
+            ["store i8 0, ptr %, align 1", "store i8 0, ptr %, align 1", "store i8 1, ptr %, align 1", "store i8 0, ptr %, align 1",
+                "store i8 0, ptr %, align 1", "store i8 0, ptr %, align 1"],
+            StoresOf(local.Instructions, flag));
+        var text = Assert.Single(local.Instructions, static x => x.Shape.StartsWith("store %kimi.string {", StringComparison.Ordinal));
+        Assert.Equal("store i8 1, ptr %, align 1", local.Instructions[local.Instructions.IndexOf(text) + 1].Shape);
+        var test = Assert.Single(local.Blocks, x => x.Terminator.Shape == "br i1 %, label %, label %");
+        var set = Assert.Single(test.Terminator.Operands);
+        Assert.Equal("trunc i8 % to i1", set.Shape);
+        Assert.Equal(("load i8, ptr %, align 1", flag), (set.Operands[0].Shape, Assert.Single(set.Operands[0].Operands)));
+        var (drop, joined) = (test.Successors[0], test.Successors[1]);
+        var destroy = Assert.Single(drop.Instructions, static x => x.Opcode == "call");
+        Assert.Same(Assert.Single(text.Operands), destroy.Operands[0]);
+        Assert.Same(ir.Function("__kimi_destroy_string"), Assert.Single(CalleesOf(destroy.Callee!)));
+        Assert.Equal([joined], drop.Successors);
+        Assert.Equal(["store i8 0, ptr %, align 1", "br label %"], joined.Instructions.Select(static x => x.Shape));
+        Assert.Same(flag, Assert.Single(joined.Instructions[0].Operands));
+
+        var guard = Assert.Single(FunctionsOf(ir, c, "guard"));
+        var init = Assert.Single(guard.Blocks, static x => x.Instructions.Any(static x => x.Shape == "store i8 1, ptr %, align 1")).Instructions;
+        Assert.Equal(["call void @()", "store i8 1, ptr %, align 1", "br label %"], init.Skip(init.Count - 3).Select(static x => x.Shape));
+    }
+
+    // DECISIONS R5-M99, R5-M95: a Flag destroys exactly when its instance Type may need a drop: give<i32>'s keeps its flag's slot and points
+    // but writes no test or destruction, give<string>'s tests its flag; a zero-sized Guard's glue is called on the zero-sized symbol and
+    // calls its destructor with no argument. A pair-generic body writes only its view's points: replacing the value through its layer
+    // destroys the old one, clearing the flag, then sets it, in the owner case only (A2's [clear f0 in v0] and [set f0 in v0], which block
+    // 0's points interleave by view); every view's shared points are written once; and only the owner case's Drop tests its flag (the uniq
+    // case's verdict is Elide).
+    [Fact]
+    public void AFlagDestroysWhereItsInstanceMayNeedADrop()
+    {
+        var (c, ir) = Flagged();
+        var give = FunctionsOf(ir, c, "give");
+        var number = Assert.Single(give, static x => x.Signature == "internal void (i1, i32)");
+        var flag = Assert.Single(FlagsOf(number));
+        Assert.DoesNotContain(number.Instructions, x => x.Opcode == "load" && x.Operands.Contains(flag));
+        Assert.DoesNotContain(number.Blocks, static x => x.Terminator.Shape == "br i1 %, label %, label %");
+        Assert.Single(Assert.Single(give, x => x != number).Blocks, static x => x.Terminator.Shape == "br i1 %, label %, label %");
+
+        var guard = Assert.Single(FunctionsOf(ir, c, "guard"));
+        var test = Assert.Single(guard.Blocks, static x => x.Terminator.Shape == "br i1 %, label %, label %");
+        var destroy = Assert.Single(test.Successors[0].Instructions, static x => x.Opcode == "call");
+        Assert.StartsWith("call void @(ptr @, ptr @, i64 ", destroy.Shape, StringComparison.Ordinal);
+        Assert.Equal("internal void ()", Assert.Single(CalleesOf(destroy.Callee!)).Signature);
+
+        var views = FunctionsOf(ir, c, "view");
+        var owner = Assert.Single(views, static x => x.Blocks.Any(static x => x.Terminator.Shape == "br i1 %, label %, label %"));
+        var unique = Assert.Single(views, x => x != owner);
+        var (set, clear) = ("store i8 1, ptr %, align 1", "store i8 0, ptr %, align 1");
+        Assert.Equal([clear, clear, set, clear, set, clear, clear, clear], StoresOf(owner.Instructions, Assert.Single(FlagsOf(owner))));
+        Assert.Equal([clear, clear, set, clear, clear, clear], StoresOf(unique.Instructions, Assert.Single(FlagsOf(unique))));
     }
 
     // PD12: in a body gate step 2 writes, A1 and A2 judged every runtime Drop, so one without a verdict group is a broken contract
@@ -193,6 +282,26 @@ public sealed partial class FunctionCodegenTest
     // The glue a Library function's body calls on its parameter (its one DropGlue call).
     private static IrFunction GlueOf(GeneratedIr ir, Compilation c, string name)
         => ir.Function(Regex.Match(Assert.Single(ItemTexts(c, name)), @"call void @(__kimi_drop\d+)\(").Groups[1].Value);
+
+    // The Flags Library analyzed and generated under MIR code generation.
+    private static (Compilation C, GeneratedIr Ir) Flagged()
+    {
+        var c = Analyze(Flags, OutputKind.Library);
+        return (c, GeneratedIr.Parse(Generate(c)));
+    }
+
+    // The functions of a definition's body items, one per instance (ItemTexts).
+    private static IrFunction[] FunctionsOf(GeneratedIr ir, Compilation c, string name)
+        => [.. ItemTexts(c, name).Select(x => ir.Function(Regex.Match(x, @"define internal \S+ @(__kimi_f\d+)\(").Groups[1].Value))];
+
+    // A function's drop flags (DECISIONS R5-M99): its entry block's i8 slots, each stored only the constants 0 and 1.
+    private static IrValue[] FlagsOf(IrFunction function) => [.. function.Blocks[0].Instructions.Where(x => x.Shape == "alloca i8, align 1" &&
+        StoresOf(function.Instructions, x).All(static x => x is "store i8 0, ptr %, align 1" or "store i8 1, ptr %, align 1") &&
+        StoresOf(function.Instructions, x).Length > 0)];
+
+    // The stores into a slot among instructions, in order.
+    private static string[] StoresOf(List<IrValue> instructions, IrValue slot)
+        => [.. instructions.Where(x => x.Opcode == "store" && x.Operands[^1] == slot).Select(static x => x.Shape)];
 
     // A function's calls, and their callees in order.
     private static IrValue[] CallsOf(IrFunction function) => [.. function.Instructions.Where(static x => x.Opcode == "call")];

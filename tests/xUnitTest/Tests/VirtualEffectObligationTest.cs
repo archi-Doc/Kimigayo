@@ -121,15 +121,4 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         var c = MinimalEmissionTest.Analyze("group State\n    public var count: i32 = 0\nopen struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => " + body + "\n()");
         Assert.Equal(0, AllocationMeasurement.Measure(() => c.Bind()));
     }
-
-    [Theory]
-    [InlineData("", false)]
-    [InlineData("        self.value@follow += 1\n", true)]
-    public void PreservesResultsComparesLoansRetainedByTheDeclaredResult(string mutation, bool fails)
-    {
-        var source = "open struct Base {a}\n    let value: uniq/i32 during a\n    public virtual func read(self: objuniq/Self) -> ref/i32 during a\n        effect preserves results\n" + mutation + "        return self.value\n()";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.Equal(fails, c.Binding.Issues.Any(x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd));
-        Assert.All(c.Binding.Issues, x => Assert.True(x.Code is DiagnosticCode.UnsatisfiedEffectBound_Kd or DiagnosticCode.Unsupported_Kd, x.ToString()));
-    }
 }

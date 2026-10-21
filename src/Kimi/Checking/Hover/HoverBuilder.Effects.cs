@@ -42,8 +42,7 @@ internal sealed partial class HoverBuilder
                 evidence = [];
                 text = new();
                 var available = query.AvailableEffectBounds(requirement, call.ConformingType, query.ConstraintScope(syntax), evidence, call.RequirementContract);
-                if ((available.Confined && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.Confined)) ||
-                    (available.Preserves && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.PreservesResults)))
+                if (available.Confined && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.Confined))
                 {
                     return null; // Incomplete conformance evidence must not become a public guarantee.
                 }
@@ -195,22 +194,7 @@ internal sealed partial class HoverBuilder
     }
 
     private static void WriteBounds(StringBuilder text, (bool Confined, bool Preserves) available)
-    {
-        if (available.Confined)
-        {
-            text.AppendLine("Available bound: confined");
-        }
-
-        if (available.Preserves)
-        {
-            text.AppendLine("Available bound: preserves results");
-        }
-
-        if (!available.Confined && !available.Preserves)
-        {
-            text.AppendLine("Available bound: none");
-        }
-    }
+        => text.AppendLine(available.Confined ? "Available bound: confined" : "Available bound: none");
 
     private HoverKey ConstraintIdentity(BoundConstraint? fact)
     {

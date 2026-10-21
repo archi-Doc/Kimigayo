@@ -175,9 +175,9 @@ internal sealed partial class FunctionCodegen
     }
 
     // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
-    // the copy slot %s<n> (Prefix s; never c, a check's success label), the pooled constant @<name> of index Number (Prefix @), the home of
-    // local Number, its address (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the
-    // null pointer (Prefix n) or the literal integer Number (Prefix NUL).
+    // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
+    // pooled constant @<name> of index Number (Prefix @), the home of local Number, its address (Prefix h), the floating constant whose
+    // double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 
     // A location as IMPL 21.3.1 passes it (Location): its text's address and its byte length.

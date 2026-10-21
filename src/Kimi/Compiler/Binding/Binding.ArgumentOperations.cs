@@ -269,13 +269,12 @@ public sealed partial class Binding
     // SPEC 15.6.3: a Reborrow through an exclusive reference stored in a Place is contained in that reference's Origin and in the
     // Origin of each safe borrow through which the Place is reached, counting outward up to and including the first shared
     // layer, so a result reached through a borrowed receiver or parameter stays within that borrow. A shared reference is Copied
-    // and keeps its own Origin. Body-local borrows on the path stay ancestors in ownership analysis (SPEC 15.6.2), and an
-    // implementation verified under `preserves results` publishes results independent of its receiver Loan (SPEC 8.11.3).
+    // and keeps its own Origin. Body-local borrows on the path stay ancestors in ownership analysis (SPEC 15.6.2).
     private BoundOrigin? PathReborrowOrigin(Koto place, BoundOrigin? origin)
     {
-        if (origin is null || this.PublishesIndependentResults(place))
+        if (origin is null)
         {
-            return origin;
+            return null;
         }
 
         var path = KotoHelper.UnwrapParentheses(place);
@@ -326,57 +325,6 @@ public sealed partial class Binding
         }
 
         return origin;
-    }
-
-    // SPEC 8.11.3, 15.6.3: whether the named function enclosing a node implements a requirement whose Contract declares
-    // `preserves results`, such as an Iterator's `next`, so that the bound's verification establishes the independence of its
-    // published results.
-    private bool PublishesIndependentResults(Koto node)
-    {
-        var function = node.Parent;
-        while (function is not null and not FunctionKoto { IsAnonymous: false })
-        {
-            function = function.Parent;
-        }
-
-        if (function is not FunctionKoto { BoundSymbol: { } symbol } named || symbol.Scope.Owner.BoundSymbol is not { } owner ||
-            !this.conformancesByType.TryGetValue(owner, out var conformances))
-        {
-            return false;
-        }
-
-        for (var i = 0; i < conformances.Count; i++)
-        {
-            if (conformances[i].Contract.Contract is { HasEffectBounds: true } shape && PreservesRequirement(shape, named))
-            {
-                return true;
-            }
-
-            for (var a = 0; conformances[i].Contract.Contract is { } contract && a < contract.Ancestors.Count; a++)
-            {
-                if (contract.Ancestors[a].Contract is { HasEffectBounds: true } ancestor && PreservesRequirement(ancestor, named))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return false;
-
-        static bool PreservesRequirement(BoundContract shape, FunctionKoto function)
-        {
-            for (var b = 0; b < shape.EffectBoundStorage.Count; b++)
-            {
-                var bound = shape.EffectBoundStorage[b];
-                if (bound.Bound == EffectBoundKind.PreservesResults && bound.Requirement.Name == function.Name &&
-                    bound.Requirement.Declaration is FunctionKoto requirement && requirement.Parameters.Count == function.Parameters.Count)
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
     }
 
     // The Origin a followed reference's referent keeps: an exclusive reference's own Origin met with its reaching borrows.

@@ -16,7 +16,7 @@ public class CallReservationTest(ITestOutputHelper output)
     private const string Both = "func both(c: uniq/Cell, other: uniq/Cell) => ()\n";
     private const string Change = "func change(c: uniq/Cell) -> i32\n    c.value = 2\n    return 3\n";
     private const string Counter = "struct Counter\n    public var value: i32 = 1\n    public func add(self: uniq/Self, n: i32) => self.value += n\n    public func take(self: uniq/Self) -> i32\n        let n = self.value\n        self.value = 0\n        return n\n";
-    private const string Drain = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\n        effect preserves results\nstruct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public init(inner: J) => self.inner = inner@move\n    public func take(self: uniq/Self) -> Option<J.Item> => self.inner.next()\n    public func reset(self: uniq/Self, fresh: J) => self.inner = fresh@move\n";
+    private const string Drain = "contract Source\n    associate Item\n    func take(self: uniq/Self) -> Option<Self.Item>\nstruct Drain<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var inner: J\n    public init(inner: J) => self.inner = inner@move\n    public func take(self: uniq/Self) -> Option<J.Item> => self.inner.next()\n    public func reset(self: uniq/Self, fresh: J) => self.inner = fresh@move\n";
     private const string Keeper = "struct Store\n    public var value: i32 = 1\n    public func lend(self: uniq/Self during source) -> Lent during source => Lent.init(self)\nstruct Lent {source}\n    var store: uniq/Store during source\n    public init(store: uniq/Store during source) => self.store = store\nstruct Keeper {source}\n    var inner: Lent during source\n    public init(inner: Lent during source) => self.inner = inner@move\n    public func reset(self: uniq/Self, fresh: Lent during source) => self.inner = fresh@move\n    public func peek(self: ref/Self) -> i32 => 1\n";
     private const string ActivationConflict = "An exclusive call reservation cannot activate while a conflicting argument or retained loan remains live";
     private const string ReservationConflict = "This operation conflicts with an exclusive call reservation; only shared inspection is permitted during preparation";
@@ -304,6 +304,33 @@ public class CallReservationTest(ITestOutputHelper output)
         var source = Cell + "var pair = (Cell.init(), Cell.init())\nset(pair.0@uniq, (label scope: do\n    pair.1.value = 2\n    exit to scope 3\n))\n";
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(("Unsupported_Kd", source.IndexOf("pair.1.value", StringComparison.Ordinal), "pair.1.value".Length), (error.Code, error.Span!.Value.Start, error.Span.Value.Length));
+    }
+
+    // SPEC 15.6.7: a write of a reference that a pending reservation's receiver was reached through is an error at the write. A
+    // recorded difference (the owner's (b), 2026-10-22; closes at R6-check): the default pipeline accepts rewriting, during an
+    // argument, a local reference outside the last loaded reference of the receiver's route (`cur.0.takeWith(…)` with
+    // `cur = b@follow@uniq` in the argument), concrete and generic, and its generated code still uses the receiver located before the
+    // argument; the MIR reports CallReservationConflict_Kd at the write (MirBorrowsTest.AWriteOfAReservationsRouteReachesIt).
+    [Theory]
+    [InlineData(true, true)]
+    [InlineData(true, false)]
+    [InlineData(false, true)]
+    [InlineData(false, false)]
+    public void ARouteReferenceRewrittenInAnArgumentIsARecordedDifference(bool generic, bool clear)
+    {
+        var declarations = generic
+            ? "contract Take\n    associate Item\n    func takeWith(self: uniq/Self, f: i32) -> Option<Self.Item>\n    func clear(self: uniq/Self) -> ()\n" +
+                "func inspect<T>(value: ref/T) => ()\nfunc f<S>(a: uniq/(uniq/S during s, i32), b: uniq/(uniq/S during s, i32)) -> ()\n    S is Take\n"
+            : "struct Inner\n    public var v: i32 = 0\n    public init() => ()\n    public func takeWith(self: uniq/Self, f: i32) -> i32 => self.v + f\n" +
+                "    public func clear(self: uniq/Self) => self.v = 0\nfunc inspect<T>(value: ref/T) => ()\nfunc f(a: uniq/(uniq/Inner during s, i32), b: uniq/(uniq/Inner during s, i32)) -> ()\n";
+        var source = declarations + "    var cur = a@follow@uniq\n    let first = cur.0.takeWith(label w: do\n        cur = b@follow@uniq\n        exit to w 0\n    )\n" +
+            (clear ? "    a.0.clear()\n" : string.Empty) + "    inspect(first@ref)\npublic func main() => ()\n";
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+        var write = source.IndexOf("cur = b@follow@uniq", StringComparison.Ordinal);
+        var problem = Assert.Single(c.BuildMir().Problems.All.ToArray(), static x => x.Subject.Module == 0);
+        Assert.Equal((DiagnosticCode.CallReservationConflict_Kd, write), (problem.Code, c.SyntaxOf(problem.Subject).Span.Start));
     }
 
     // Two independent overlaps keep one record each.
