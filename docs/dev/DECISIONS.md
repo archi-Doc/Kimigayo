@@ -3080,7 +3080,7 @@ resumed by R4-M86 (2026-10-20).
   result), is no Place (SPEC 3.4, 3.6): `BorrowableTemporary` (`Binding.PlaceAuthority.cs`) refuses a root that `IsBarePlace` or
   `IsStaticField` names a Place and admits any other (a call result, a Case construction, a callable value, a getter result, a length
   parameter), lending a getter result only shared (SPEC 11.5); its refusal of an exclusive borrow through an inline part
-  (`pair().0@uniq`) is an implementation limit reported as a Language error (PLAN G200), not part of the rule. `IsStaticField` (a
+  (`pair().0@uniq`) is an implementation limit reported as a Language error (PLAN G203), not part of the rule. `IsStaticField` (a
   group's Property read through its standard getter, qualified or in its group) is the one static-root predicate; `LendsPlace`'s
   static root (BU-18) reads it. `IsBarePlace` takes a user index as a Place whatever its key. Why: the clauses read the written node,
   so `take((State.limit)@uniq)` built, borrowing a copy, and a static's parts and a parenthesized computed getter were temporaries.
