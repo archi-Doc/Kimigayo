@@ -939,43 +939,4 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
     }
-
-    private sealed class OriginDeclaration(Koto owner)
-    {
-        internal Koto Owner { get; } = owner;
-
-        internal BindingScope? Scope { get; set; }
-
-        internal int State { get; set; }
-
-        internal Koto? Failure { get; set; }
-
-        internal Dictionary<string, TypeSemanticsKoto> Sets { get; } = new(StringComparer.Ordinal);
-
-        internal Dictionary<BoundOrigin, BoundOrigin> Replacements { get; } = new(ReferenceEqualityComparer.Instance);
-
-        internal List<PendingOriginSlot> Pending { get; } = new(2);
-
-        internal List<OriginRelation> Relations { get; } = new(2);
-
-        // A local's omitted Origins inferred from its initializer (SPEC 15.4.4), with the variance of their positions in its Type;
-        // allocated only for a local that has such Origins and kept across binds.
-        internal Dictionary<BoundOrigin, OriginVariance>? Inferred { get; set; }
-
-        internal void Reset()
-        {
-            this.State = 0;
-            this.Failure = null;
-            this.Scope = null;
-            this.Sets.Clear();
-            this.Replacements.Clear();
-            this.Pending.Clear();
-            this.Relations.Clear();
-            this.Inferred?.Clear();
-        }
-    }
-
-    private readonly record struct PendingOriginSlot(Koto Use, BindingScope Scope, TypeBindingContext Context, LoanRequirement Requirement, int Slot, BoundOrigin Origin, BindingSymbol? BorrowCondition);
-
-    private readonly record struct OriginRelation(BoundOrigin Longer, BoundOrigin Shorter, bool Equality, OriginRelationKoto Syntax);
 }
