@@ -5,9 +5,9 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler.Mir;
 
 // A5-F9's template rules (SPEC 7.2.3; DECISIONS R4-M90, R4-M95): in a default template, a preceding parameter's PreparedInput p_i references
-// the caller's pending slot, which the default may only inspect, shared. A Deref directly on p_i is the slot itself (A3 E17, the slot step of
-// MirBorrows.Walk), so a Borrow of the slot forms a Loan of the template; a Place is slot-rooted when it is rooted at a PreparedInput, passes
-// that step and no raw pointer's referent after it (D2; SPEC 15.6.2, 5.2.1: a raw Place has its own anchor), which both rules read.
+// the caller's pending slot, which the default may only inspect, shared. A Deref directly on p_i is the slot itself, an inline step (A3 E17, the
+// slot step of MirBorrows.Walk), so a Borrow of the slot forms a Loan of the template; a Place is slot-rooted when it is rooted at a PreparedInput,
+// passes that step and no raw pointer's referent after it (D2; SPEC 15.6.2, 5.2.1: a raw Place has its own anchor), which both rules read.
 // - R26-borrow: at each Return of the checks replay, one gather with the checks' Based pass and closure from E and _0's holder (the result
 //   and storage the body does not own); each slot-rooted Loan it finds is DefaultArgumentBorrow_Kd at the Loan's site, once per Loan and
 //   view.
