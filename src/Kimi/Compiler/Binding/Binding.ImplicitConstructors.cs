@@ -64,7 +64,7 @@ public sealed partial class Binding
         var shape = MeasureCandidates(candidates, true);
         var obligationCount = this.obligations.Count;
         var acquisition = this.acquisitionFailure;
-        var failedConformance = this.failedConformance;
+        var failedCause = this.failedCause;
         var requirementContract = this.activeRequirementContract;
         var (mappings, comparisons, checks) = (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks);
         var scratch = this.typeScratch.Rent(Math.Max(1, shape.Generics));
@@ -104,7 +104,7 @@ public sealed partial class Binding
                 PremisesOnly = true,
             };
             this.acquisitionFailure = null;
-            this.failedConformance = null;
+            this.failedCause = null;
             this.EvaluateCallCandidates(ref evaluation, candidates);
             var (selection, winner) = this.ClassifySelection(ref evaluation);
 
@@ -115,7 +115,7 @@ public sealed partial class Binding
                 CallSelection.NoneApplicable => new(OmittedBaseOutcome.NoneApplicable),
                 CallSelection.Ambiguous => new(OmittedBaseOutcome.Ambiguous),
                 CallSelection.Unproven => new(OmittedBaseOutcome.Unproven, Cause: evaluation.PendingCount != 1 ? null : evaluation.CallableFailure?.Clause ?? evaluation.ConstraintFailure?.Clause),
-                CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedConformance()),
+                CallSelection.InvalidDeclaration => new(OmittedBaseOutcome.Dependent, Cause: evaluation.InvalidDeclaration ?? this.TakeFailedCause()),
                 CallSelection.FailedSignature => new(OmittedBaseOutcome.Dependent, Cause: evaluation.FailedPendingSignature),
                 _ => new(OmittedBaseOutcome.Dependent, Cause: evaluation.IncompleteSignature),
             };
@@ -129,7 +129,7 @@ public sealed partial class Binding
 
             this.obligations.RemoveRange(obligationCount, this.obligations.Count - obligationCount);
             this.acquisitionFailure = acquisition;
-            this.failedConformance = failedConformance;
+            this.failedCause = failedCause;
             this.activeRequirementContract = requirementContract;
             (this.inferenceMappings, this.inferenceComparisons, this.inferenceCandidateChecks) = (mappings, comparisons, checks);
             this.argumentOperationScratch.Return(operations, clearArray: true);

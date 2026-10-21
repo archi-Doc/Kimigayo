@@ -3474,6 +3474,55 @@ resumed by R4-M86 (2026-10-20).
   Borrow that fails with `PrerequisiteUnavailable_Kd` until 2b-6 (b)); a declaration-symbol test (an open family; it rejected
   `(Color.Red)@ref`, B1). Open: `IsStaticField` joins `IsBarePlace` after 2b-6 (b), with a Non-Copy static's bare acquisition, which
   binds as a transfer (PLAN G100).
+- **BU-22** (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
+  `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
+  component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
+  struct or enum, what its storage adds, in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments
+  (SPEC 15.2.3, 15.3.5): ExcludesOwned (`TryLeafCapability`'s Owned leaves), Error (an Invalid stored Type, 8.7.3's ill-formed object
+  forms among them; F6: it propagates through components), Unresolved (Unknown, as before), the projections of its formals, and the
+  sites of a located `Unsupported_Kd`; the least fixed point over every declaration one solve reaches, never instantiating storage,
+  for one capability epoch (`ClearCapabilityResults` ends it), a warm rebind allocating nothing. Owned of D⟨A, o⟩ reads it: Error;
+  else ExcludesOwned, Unresolved, every Type argument, every Origin argument `static`, every projection substituted; Owned's stored
+  walk is gone (`StoredCapability` keeps Copy's derivation). Rules: the owner's choice for 2x-P12 (2026-10-21, verbatim
+  「案2: その場で U (推奨)」): a component's obligation that would name outer(X) or target(X) of D's plain formal, projection or pair
+  target passed whole is not recorded and D's stored Type is a site (for Owned unreachable while Binding rejects such a Field, PLAN
+  G201); the planning session's rulings: P < U < L < R < E (N3-1), L an Unknown carrying its site; F5 (a): a projection link on a cycle
+  of the projection-link graph stops its target's projections being mapped and makes the stored Type naming it a site; F3, F4, the
+  core reduction (resting on SPEC 8.7.3's Object Target well-formedness: Binding rejects ill-formed object forms) and R2-1's
+  owner-known split are Transferable's and move to 2b-4 with ExcludesTransferable and the PairU site (R4's Q1, 2026-10-21: their first
+  reader lands there); the rest of the prototype's "What 2b-4a implements" lands here. Ruling (the planning session and R4, round 2,
+  2026-10-21; it withdraws round 1's "the outermost capability request answers L as Error" and "a summary judgment marks its sites
+  needed whatever reads it", which broke N3-1) on the limit's answer: L is a value of every proof that combines it. A proof scope
+  (`BeginProof`/`EndProof`: `ProveConstraint` and so each connective's operand, a clause list (`CheckConstraints`,
+  `CheckTypeConstraints`, `CheckClosedDeclarationConstraints`, `ProveConditionalPremises`), a candidate's applicability, the
+  disjunction of conformance paths (`ResolveConformance`), a capability request, inside which `CapabilityWork.Cause` carries it) keeps
+  the limit its own answer rests on; only where the answer is no longer combined (the outermost scope) and is L does it answer Error,
+  the site in the rested-on-cause channel (`ICheckCause`, generalized from OCC-X's conformance path in a behavior-preserving commit,
+  the planning session's Q2), which about 20 consumers already derive from; a check that fails on it takes it (`TakeFailedCause`),
+  which publishes the site once, after `Binding.Check`'s loop (`PublishSites`, the one publication path); an exact refutation or proof
+  elsewhere decides. A summary's Error rests on the stored Type that decided it (the summary is its `ICheckCause`). Readers that record
+  their own failure on Owned rest on the channel too: a common Function conversion (`FailOwnedConversion`) and a result Origin's
+  Owned inputs (`MissingOrigin`); `AssociatedFormation` reads only abstract Types, which no summary decides. A call selection whose
+  candidate reads L rests on the site and selects no other candidate. Bound (R4's Q4 within R4-M89's F5 (a), round 2: length, so a wide
+  declaration stays exact): a projection of more than 64 steps (a conformance binding can lengthen a projection with no projection
+  link) makes its summary a site; it only yields the located `Unsupported_Kd`, never a verdict; the census of the default suite
+  (22,164 tests, 186,760 solved summaries) found no summary holding a projection. Growth (R4's Q3, round 2): a proof can re-enter a
+  declaration with ever larger arguments through Copy's conditional premise over a projection and through Owned's projection
+  normalized at the use by a conformance binding that uses itself (review N1; round 1's census probe had no Owned requirement on the
+  instance), so the engine's growth guard covers every intrinsic at the use, as before, its second growth step Unknown; removal
+  condition: SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200). The walk resolving a concrete projection through a
+  conformance binding it is already resolving through, at a deeper instance, is that conformance using itself (SPEC 8.3.3, review
+  N2), which has its own record: the summary is Error resting on the stored Type; a deeper instance of a declaration reached through
+  another conformance is no such growth and stays exact. Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive
+  Type is exact (Unknown → Proven for `Chain<i32>`, `Nest`, `Nest15`, `Ping`/`Pong`, `Grow`, `Fold`); a requirement resting on a
+  projection family gets one located `Unsupported_Kd` at the family's stored Type, its use derived, in place of
+  `UnprovenConstraint_Kd`; no old-path guard (R4's Q6): such a value meets the old Emission's existing generation depth limit.
+  X-2 register (PD28): the family site, the bound and the option-2 site. Open (PLAN G207): a reader that combines two scoped proofs
+  itself settles each. Rejected: L as an Unknown that `RequireConstraint` takes (the other consumers), a fifth `ConstraintProof`, a
+  second channel, publishing a site where its proof settles whatever the reader does (an explanation such as
+  `CandidateConstraintFailure` reads a clause whose L decides nothing), a solve per strongly connected set (a conformance binding can
+  name a declaration no written storage of the set names), option 1 (the owner's X-2 candidate). Not temporary; the guard and the
+  bound keep their conditions above.
 
 ## R5 and R6 (adopted 2026-10-18)
 
