@@ -98,19 +98,7 @@ internal sealed partial class MirBorrows
         }
 
         this.Work += stores;
-        this.Pass(Based);
-        this.Reach(Escaped, scan: true);
-        this.Work += (this.holderCount + 63) >> 6;
-        for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
-        {
-            for (var bits = this.live[word]; bits != 0; bits &= bits - 1)
-            {
-                var slot = (word << 6) + BitOperations.TrailingZeroCount(bits);
-                this.Reach(slot, scan: !this.Overwritten(slot));
-            }
-        }
-
-        this.Drain(state);
+        this.BasePass(state);
         this.Pass(Stored);
         while (this.pending.Count > 0)
         {
@@ -129,6 +117,25 @@ internal sealed partial class MirBorrows
         }
 
         this.TakenValues(state, at);
+    }
+
+    // The Based pass from E and the live holders (an overwritten one is reached for its stores but not read), each holder's state read and
+    // closed through the holders its direct Loans name; also Entry(B)'s gather (MirBorrows.Defaults), where no entry is listed yet.
+    private void BasePass(ulong[] state)
+    {
+        this.Pass(Based);
+        this.Reach(Escaped, scan: true);
+        this.Work += (this.holderCount + 63) >> 6;
+        for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
+        {
+            for (var bits = this.live[word]; bits != 0; bits &= bits - 1)
+            {
+                var slot = (word << 6) + BitOperations.TrailingZeroCount(bits);
+                this.Reach(slot, scan: !this.Overwritten(slot));
+            }
+        }
+
+        this.Drain(state);
     }
 
     // The passes of what the location's accesses and activations take (A3 E13 (1)): a borrow's R2 parents and an observing destruction's

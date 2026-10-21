@@ -3,6 +3,7 @@
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -643,8 +644,8 @@ public sealed partial class MirBorrowsTest
     // G171; addOther and addRead the disjoint and read-only twins, Counter.add the effect form), f's omits g's (§4 row 1), f2 keeps its own
     // Loan across g's copy (row 2), g5 and add5 conflict inside themselves (r before the poke),
     // f5 omits g5's (row 5), local3 conflicts on its own local, addg is generic, addh is held (e17's store prefix, then g5's conflict), addl's
-    // default passes A4's Limit, setd replaces a static whose old value's drop reads it (R3), gd's guard lets its candidate escape and keepd
-    // copies a preceding argument (DefaultAccessTest :17's form).
+    // default passes A4's Limit, setd replaces a static whose old value's drop reads it (R3), gd's guard lets its candidate escape, keepd
+    // copies a preceding argument (DefaultAccessTest :17's form) and effOwn's touch meets its own Loan of counter (err(effect)).
     private const string Copies = """
         struct Counter
             public var count: i32 = 0
@@ -732,6 +733,11 @@ public sealed partial class MirBorrowsTest
                 exit to w saved.count
             ) -> i32 => y
             public func keepd(a: ref/Data during p, b: ref/Data during p = a) -> ref/Data during p => b
+            public func effOwn(y: i32 = label w: do
+                let r = counter@ref
+                let t = State.touch()
+                exit to w t + r.count
+            ) -> i32 => y
 
         """;
 
@@ -745,10 +751,11 @@ public sealed partial class MirBorrowsTest
     // and explicit twins; a Limit inside a copy, at its operation (limit's copy of addl's default, so the record names addl's Lim.run()); a
     // guard across a copy (guardAcross, the caller's EndBorrow). Template-owned, omitted in the caller with the template's record: n2 (f2's own
     // Loan met in g's copy, f2's record at its State.g(), which R4-M69 dropped: fail-before), n5, a caller loop around g5's or local3's copy
-    // (dc20-loop-own, local Loans only too), R3 in a copy, a guard escaping inside a copy. Not Binding-valid, as their earlier or sibling Loan
-    // rides in a default's value (SPEC 15.6: a Borrow of mutable static storage is bounded by the body): dc20-n3, -n3top, -n4, -sib, -twice,
-    // -indep, dc20-loop, -loop-nested and the review's loop rows (dc20r-loop-e, -fx, -slot, -closure, -nested-entry, -loop-guard);
-    // ALoopedCopysEarlierLoanIsTheCallers builds the loops' shape at the MIR layer.
+    // (dc20-loop-own, local Loans only too), R3 in a copy, a guard escaping inside a copy, an effect conflict on effOwn's own Loan in a copy,
+    // alone and in a loop (the group review's N3). Not Binding-valid, as their earlier or sibling Loan rides in a default's value (SPEC 15.6:
+    // a Borrow of mutable static storage is bounded by the body): dc20-n3, -n3top, -n4, -sib, -twice, -indep, dc20-loop, -loop-nested and the
+    // review's loop rows (dc20r-loop-e, -fx, -slot, -closure, -nested-entry, -loop-guard); ALoopedCopysEarlierLoanIsTheCallers builds the
+    // loops' shape at the MIR layer.
     [Fact]
     public void ACopysFailureIsItsTemplatesOnlyWithinOneEvaluation()
     {
@@ -802,13 +809,17 @@ public sealed partial class MirBorrowsTest
                         _ = State.local3(1)
                 public func r3() => _ = State.setd()
                 public func guardIn() => _ = State.gd()
+                public func callEffOwn() => _ = State.effOwn()
+                public func loopEffOwn(c: bool)
+                    while c
+                        _ = State.effOwn()
             """);
         var program = Analyze(c);
         Assert.Equal(
             [
                 "f2: State.g() CallActivationConflict_Kd", "g5: State.poke(counter@uniq) CallActivationConflict_Kd",
                 "add5: State.poke(counter@uniq) CallActivationConflict_Kd", "local3: t = 2", "addh: State.poke(counter@uniq) Unsupported_Kd",
-                "setd: watch = Watch.init()", "gd: let d", "g171: State.add(counter@uniq) CallReservationConflict_Kd",
+                "setd: watch = Watch.init()", "gd: let d", "effOwn: State.touch()", "g171: State.add(counter@uniq) CallReservationConflict_Kd",
                 "g171Explicit: State.poke(counter@uniq) CallReservationConflict_Kd", "fx: counter.add() CallReservationConflict_Kd",
                 "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
                 "twiceBoth: State.add(counter@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(counter@uniq) CallReservationConflict_Kd",
@@ -835,13 +846,18 @@ public sealed partial class MirBorrowsTest
     // outer copy O (800), as f6's copy in its caller: O's template reports it, so the caller omits it (B's boundary moves out to O, whose
     // entry carries no earlier Loan). "own" (dc20-loop-own): B issues k = &x, writes x and reads k, its template's own failure; the caller
     // keeps k in prev but overwrites prev before its next use, so prev, dead at B's entry, carries nothing in (the gather reads the holders
-    // live into the entry) and the failure stays B's. R4-M69 dropped all three as their copies' (fail-before: "loop").
+    // live into the entry) and the failure stays B's. The gather's two other routes: "viaE", B stores k through a raw pointer argument, so
+    // the earlier Loan reaches the entry in E; "closure", the caller keeps k in cell and only prev = &cell is live, so it reaches the entry
+    // through the closure of prev's direct Loan (the group review's N3). R4-M69 dropped all five as their copies' (fail-before: "loop",
+    // "viaE", "closure"; under R20Own alone those three would be omitted).
     [Fact]
     public void ALoopedCopysEarlierLoanIsTheCallers()
     {
         Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Use 13; Evaluated 11]"], HandBuilt("loop"));
         Assert.Empty(HandBuilt("nested"));
         Assert.Empty(HandBuilt("own"));
+        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Store 11; Evaluated 11]"], HandBuilt("viaE"));
+        Assert.Equal(["ComparisonLoanConflict_Kd 900 [Anchor 12; Use 20; Evaluated 11]"], HandBuilt("closure"));
     }
 
     // D11's selection at the MIR layer (dc20-first, -first-rev): a covered candidate is skipped and the scan goes on, so the caller's Loan h
@@ -859,11 +875,15 @@ public sealed partial class MirBorrowsTest
     // Each problem: its code, subject and facts by number.
     private static string[] HandBuilt(string form)
     {
-        var c = MirBuildTest.Compile("func w(r: ref/i32, f: bool) => ()\n");
+        var c = MirBuildTest.Compile(
+            "func w(f: bool)\n    var o = 3\n    var cell = o@ref\n    var prev = cell@ref\n    let p: raw/(ref/i32) = Raw.allocate(1)\n" +
+            "    inspect(prev)\n    unsafe => inspect(p[0])\nfunc inspect<T>(value: ref/T) => ()\n");
         var program = c.BuildMir();
         program.Problems.Clear();
         var shape = Body(program, "w");
-        var (reference, flagType) = (shape.Locals[1].Type, shape.Locals[2].Type);
+        var refs = shape.Statements.ToArray().Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref }).ToArray();
+        var (reference, twice, flagType) = (refs[0].Rvalue.Type!, refs[1].Rvalue.Type!, shape.Locals[1].Type); // ref/i32, ref/(ref/i32)
+        var raw = shape.Locals.ToArray().First(static x => x.Type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw }).Type;
         var body = new MirBody();
         body.Reset(shape.Key, default);
         var outer = form == "nested" ? body.AddScope(0, MirScopeKind.Inlined, new(0, 800)) : 0;
@@ -893,11 +913,18 @@ public sealed partial class MirBorrowsTest
         }
         else
         {
-            var (flag, x, o, prev, k) = (Local(flagType), Local(BoundType.I32), Local(BoundType.I32), Local(reference), Local(reference, MirLocalKind.Temp));
+            var p = form == "viaE" ? Local(raw, MirLocalKind.Arg) : default; // A raw pointer argument, whose referent is E.
+            var (flag, x, o, cell, k) = (Local(flagType), Local(BoundType.I32), Local(BoundType.I32), Local(reference), Local(reference, MirLocalKind.Temp));
+            var prev = form == "closure" ? Local(twice) : cell; // For "closure", prev = &cell, through which cell is reached.
             var (head, loop, exit) = (body.AddBlock(), body.AddBlock(), body.AddBlock());
             Write(entry, x, 2, outer);
             Write(entry, o, 3, outer);
-            Borrow(entry, prev, o, 4, outer);
+            Borrow(entry, cell, o, 4, outer);
+            if (form == "closure")
+            {
+                Assign(entry, prev, MirRvalue.Ref(MirRefKind.Shared, cell, twice), 7, outer);
+            }
+
             body.Terminate(entry, MirTerminator.Goto(head, At(5, outer)));
             body.AddCase(0, exit);
             body.Terminate(head, MirTerminator.SwitchInt(MirOperand.Copy(flag), body.Cases.Length - 1, 1, loop, At(6, outer)));
@@ -911,10 +938,19 @@ public sealed partial class MirBorrowsTest
             {
                 Write(loop, x, 11, copy);
                 Borrow(loop, k, x, 12, copy);
-                Read(loop, prev, 13, outer);
+                if (form != "viaE")
+                {
+                    Read(loop, prev, 13, outer);
+                }
             }
 
-            Assign(loop, prev, MirRvalue.Use(body.AddOperand(MirOperand.Copy(k))), 14, outer);
+            var (into, scope) = form == "viaE" ? (body.Project(p, MirProjectionKind.Deref, 0), copy) : (cell, outer);
+            Assign(loop, into, MirRvalue.Use(body.AddOperand(MirOperand.Copy(k))), 14, scope);
+            if (form == "closure")
+            {
+                Assign(loop, prev, MirRvalue.Ref(MirRefKind.Shared, cell, twice), 20, outer);
+            }
+
             body.Terminate(loop, MirTerminator.Goto(head, At(15, outer)));
             Read(exit, prev, 17, outer);
             entry = exit;

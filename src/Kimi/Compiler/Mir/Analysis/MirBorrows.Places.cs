@@ -54,7 +54,8 @@ internal sealed partial class MirBorrows
             var prefix = place with { Projection = row.Prefix };
             var @class = row.Kind switch
             {
-                MirProjectionKind.Deref => row.Prefix == 0 && this.Prepared(place.Root) ? StepClass.Inline : Deref(cases.Type(this.body.TypeOf(prefix)!).Semantics),
+                MirProjectionKind.Deref => row.Prefix == 0 && this.Prepared(place.Root)
+                    ? StepClass.Inline : Deref(cases.Type(this.body.TypeOf(prefix)!).Semantics),
                 MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is { } layer ? Deref(layer.Semantics) : (StepClass?)null,
                 MirProjectionKind.Index => MirTypes.View(cases.Type(this.body.TypeOf(prefix)!)) is { } view ? Deref(view) : StepClass.Index,
                 _ => StepClass.Inline,

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Numerics;
 using Kimi.Diagnostics;
 
 namespace Kimi.Compiler.Mir;
@@ -216,24 +215,14 @@ internal sealed partial class MirBorrows
         this.Work += locations;
     }
 
-    // Entry(B) at a location where issuing copies are entered, before its plan: one gather from E and the holders live into it (the replay's
-    // live bits before Advance) on the state before it, closed as a check set closes; each copy entered there keeps the Loans found whose
-    // issue lies in it.
+    // Entry(B) at a location where issuing copies are entered, before its plan: one gather, the checks' Based pass (BasePass) from E and the
+    // holders live into it (the replay's live bits before Advance) on the state before it; each copy entered there keeps the Loans found
+    // whose issue lies in it.
     private void Entering(ulong[] state, int location)
     {
         this.stamp++;
         this.candidateCount = 0;
-        this.Pass(Based);
-        this.Reach(Escaped, scan: true);
-        for (var word = 0; word < (this.holderCount + 63) >> 6; word++)
-        {
-            for (var bits = this.live[word]; bits != 0; bits &= bits - 1)
-            {
-                this.Reach((word << 6) + BitOperations.TrailingZeroCount(bits), scan: true);
-            }
-        }
-
-        this.Drain(state);
+        this.BasePass(state);
         this.pending.Clear();
         for (var c = 0; c < this.candidateCount; c++)
         {
@@ -247,6 +236,6 @@ internal sealed partial class MirBorrows
             }
         }
 
-        this.Work += this.candidateCount + ((this.holderCount + 63) >> 6);
+        this.Work += this.candidateCount;
     }
 }

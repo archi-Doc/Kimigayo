@@ -2149,8 +2149,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
   2b-8a waits for the qualified part only. In short:
   - A template's PreparedInput Deref is an Inline step (A3 erratum E17 (numbered at adoption in 2e-2's entry)); R26-borrow and
     R26-access share one slot-rooted definition up to the first raw step; template calls take P9's Content rows, a raw slot
-    `MirWrites.Raw` the raw row, any other slot whose Type holds raw, at a call whose inputs' Contents hold a Loan, a located
-    `Unsupported_Kd` (r3, registered under PD28, removed by G160's representation); R-a ends the inspection Loans of every moved
+    `MirWrites.Raw` the raw row (the raw row replaced by r3's `Unsupported_Kd` for every slot that holds raw, R4-M93's ruling), any
+    other slot whose Type holds raw, at a call whose inputs' Contents hold a Loan, a located `Unsupported_Kd` (r3, registered under
+    PD28, removed by G160's representation); R-a ends the inspection Loans of every moved
     pending slot before the omitting call's checks and deletes R4-M70's default taint.
   - The copy disposition (PLAN G171): a failure found in a copy is its template's only when every participating event lies in the
     current evaluation of one copy (round 20's `R20Own` with `R20Entry`: a Loan live into the copy's entry from outside moves the
@@ -2561,10 +2562,11 @@ and migration obligations remain in force; no numeric cap changes are authorized
     lines); each of the three added one fact of that pre-pass, and this unit's edit simplifies it (two flags become one, plus the
     slot-write term). Rejected: splitting the one pass mechanically; moving the effect rule's facts, which would set one flag in two files.
     Its next changing unit restructures it first. `MirBorrows.cs` has three changing units (2b-3, 2e-1, 2e-2): a response before 2e-3.
-  - Ledger (mir Functional, against a base run at the unit's start): a5-old-default-access's 5 missing rows and 10 of
+  - Ledger (mir Functional, against a base run at the unit's start): 4 of a5-old-default-access's 5 rows and 10 of
     a5-old-default-borrow's 11 pair (14 old rows become both, e0ffa5a60934, 9fcd0c360b5d, b29228117a54 and dc7ace954713 among them);
-    DefaultAccessTest :26 (6a5c8d8bb5e4) becomes a location row (the old path at `x`, the MIR at the write; non-blocking, A6's); the one
-    blocking row left is :28 (c52d8d51a301, `x@follow@ref`), valid by PD15 (i), whose OldRule and (d) row are 2e-5's; one new
+    the fifth access row, DefaultAccessTest :26 (6a5c8d8bb5e4), becomes a location row (the old path at `x`, the MIR at the write;
+    non-blocking, A6's); the one blocking row left is :28 (c52d8d51a301, `x@follow@ref`), valid by PD15 (i), whose OldRule and (d) row
+    are 2e-5's; one new
     non-blocking record in an incomplete compilation (CallReservationTest's `bad(c)`, c4b1e403567a: the default's `c.value = 2`, a failure
     independent of the call's Binding error, SPEC 23.1.2). Open blocking rows 254 → 239; no other row moved.
   - Cost: one role compare per Deref walked and per write; per template view one gather per Return and one pass over its Loans. Templates
