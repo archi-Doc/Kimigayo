@@ -4,6 +4,7 @@ using System.Text;
 using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -51,6 +52,38 @@ public sealed partial class MirBuildTest
         var top = program.Bodies.ToArray().Single(static x => x.Key.Decl is null && x.Source.Module == 0);
         Assert.DoesNotContain(top.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Fn, Arg: > 0 } });
         Assert.True(top.HasOpaque);
+    }
+
+    // Plan 5.6.2, SPEC 7.2.3 (DECISIONS R4-M90 D6): a template's prepared input p_i is located at its parameter, not at the function, so a
+    // fact about the slot (A5's Anchor) names the parameter. A parameter has no syntax node of its own, so that is its Type node: the
+    // written annotation, or the `self` shorthand's inferred Type on its name. The receiver, a parameter and a later default's own.
+    [Fact]
+    public void ATemplatesPreparedInputsAreLocatedAtTheirParameters()
+    {
+        var c = Compile("struct Box\n    var size: i32\n    public init(size: i32) => self.size = size\n" +
+            "    public func grow(self, by: i32 = self.size, more: i32 = by) -> i32 => by + more\n" +
+            "func scale(x: i32, y: i32 = x, z: i32 = x + y) -> i32 => z\n");
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var inputs = 0;
+        foreach (var template in program.Bodies.ToArray().Where(static x => x.Key.Kind == MirBodyKind.DefaultTemplate))
+        {
+            var function = (FunctionKoto)template.Key.Decl!.Declaration;
+            for (var i = 1; i <= template.Key.Index; i++)
+            {
+                var local = template.Locals[i];
+                Assert.Equal(MirLocalRole.PreparedInput, local.Role);
+                Assert.Same(function.Parameters[i - 1].Type, Syntax(template, local.Source));
+                Assert.Equal((0, false), (local.Source.Scope, local.Source.StatementStart));
+                inputs++;
+            }
+
+            Assert.Same(function, Syntax(template, template.Locals[0].Source)); // The result stays the function's.
+        }
+
+        Assert.Equal(6, inputs); // grow: by (self), more (self, by); scale: y (x), z (x, y).
+
+        Koto Syntax(MirBody body, in SourceInfo source) => c.SyntaxOf(body.Subject(source));
     }
 
     // Plan 5.6.2, SPEC 7.2.3: each statement and terminator of a copy is its template's, folded: at its template's location, in the
