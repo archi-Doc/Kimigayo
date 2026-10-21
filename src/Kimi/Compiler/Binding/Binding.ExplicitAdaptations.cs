@@ -8,11 +8,6 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PairCase> adaptationCaseScratch = new();
 
-    // SPEC 23.1.1: the case adaptation one of whose cases borrows a Place SPEC lends but Binding does not yet (BorrowFailure: Unsupported),
-    // set while its cases are judged; the form is unsupported only when no case violates SPEC, so `State.limit@s` with `s is ref or uniq`
-    // keeps the uniq case's InvalidAssignment.
-    private ConversionKoto? unsupportedCase;
-
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
     internal CallPlan ResolveObjectCreation(ConversionKoto conversion, BoundType source, BoundType target, CallPlan destination)
     {
@@ -97,11 +92,9 @@ public sealed partial class Binding
         BoundType? creationTarget = null;
         var caseCount = this.caseBinders.Count;
         var cases = this.adaptationCaseScratch.Rent(caseCount);
-        var enclosing = this.unsupportedCase;
-        this.unsupportedCase = null;
         try
         {
-            if (!this.CheckAdaptationRows(
+            var verdict = this.CheckAdaptationRows(
                 conversion,
                 scope,
                 source,
@@ -113,19 +106,14 @@ public sealed partial class Binding
                 0,
                 ref operations,
                 ref creationSource,
-                ref creationTarget))
+                ref creationTarget);
+            if (verdict != true)
             {
-                return null;
-            }
-
-            if (ReferenceEquals(this.unsupportedCase, conversion))
-            {
-                return this.Fail(conversion, BindingFailure.Unsupported);
+                return verdict is null ? this.Fail(conversion, BindingFailure.Unsupported) : null;
             }
         }
         finally
         {
-            this.unsupportedCase = enclosing;
             this.adaptationCaseScratch.Return(cases, clearArray: true);
         }
 
@@ -151,7 +139,9 @@ public sealed partial class Binding
         return Complete(conversion, target);
     }
 
-    private bool CheckAdaptationRows(
+    // Judges the cases a row selects up to the first that fails (false); otherwise null when some hold only but for a Borrow Binding
+    // cannot form yet, true when all hold (CheckAdaptationCase).
+    private bool? CheckAdaptationRows(
         ConversionKoto conversion,
         BindingScope scope,
         BoundType source,
@@ -174,6 +164,7 @@ public sealed partial class Binding
                 return false;
             }
 
+            var unsupported = false;
             foreach (var mode in SemanticsOrder)
             {
                 if (admitted.Contains(mode))
@@ -188,7 +179,7 @@ public sealed partial class Binding
                         return false;
                     }
 
-                    if (!this.CheckAdaptationRows(
+                    var row = this.CheckAdaptationRows(
                         conversion,
                         scope,
                         actual,
@@ -200,14 +191,17 @@ public sealed partial class Binding
                         caseCount + 1,
                         ref operations,
                         ref creationSource,
-                        ref creationTarget))
+                        ref creationTarget);
+                    if (row == false)
                     {
                         return false;
                     }
+
+                    unsupported |= row is null;
                 }
             }
 
-            return true;
+            return unsupported ? null : true;
         }
 
         var operation = ExplicitAdaptationPlan.Select(source, target, shorthand);
@@ -217,7 +211,8 @@ public sealed partial class Binding
             return false;
         }
 
-        if (!this.CheckAdaptationCase(conversion, scope, source, target, operation, cases[..caseCount]))
+        var verdict = this.CheckAdaptationCase(conversion, scope, source, target, operation, cases[..caseCount]);
+        if (verdict == false)
         {
             return false;
         }
@@ -229,10 +224,14 @@ public sealed partial class Binding
             creationTarget ??= target;
         }
 
-        return true;
+        return verdict;
     }
 
-    private bool CheckAdaptationCase(ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, ConversionBinding operation, ReadOnlySpan<PairCase> cases)
+    // Judges one case: true when it holds, null when it holds but for a Borrow SPEC lends and Binding cannot form yet (BorrowFailure:
+    // Unsupported, not recorded, so that another case's Language error is reported instead, SPEC 23.1.1), false once its failure is
+    // recorded or it depends on one.
+    private bool? CheckAdaptationCase(
+        ConversionKoto conversion, BindingScope scope, BoundType source, BoundType target, ConversionBinding operation, ReadOnlySpan<PairCase> cases)
     {
         if (operation == ConversionBinding.None)
         {
@@ -277,8 +276,7 @@ public sealed partial class Binding
                 var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
                 if (failure == BindingFailure.Unsupported)
                 {
-                    this.unsupportedCase = conversion; // Reported after the other cases (BindCaseAdaptation).
-                    return true;
+                    return null;
                 }
 
                 this.Fail(conversion, failure);
