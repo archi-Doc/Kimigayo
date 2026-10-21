@@ -30,7 +30,7 @@ internal sealed partial class TyCtxt
             return null;
         }
 
-        var requirement = row.Runs is { } runs ? library.GetSymbol(runs)!.Contract!.Requirements[0].Symbol : null; // Its one requirement.
+        var requirement = row.Runs is { } runs ? this.OwnRequirement(runs) : null; // The one its Contract declares, not an inherited one.
         return (requirement, row.On, row.Destroys, row.InPlace);
     }
 

@@ -206,7 +206,7 @@ public sealed partial class Binding
                 {
                     this.Fail(target, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
                 }
-                else if (contract.Intrinsic is IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned)
+                else if (IntrinsicContract.Of(contract.Intrinsic).Declaration == BindingFailure.None)
                 {
                     this.RegisterConformanceDeclaration(container.BoundSymbol!, contract, target, scope, premises);
                     if (IsRefinement(contract, this.Library.Copy))
@@ -329,7 +329,7 @@ public sealed partial class Binding
             return ConstraintProof.Unknown;
         }
 
-        if (InvalidConstraintType(type) || contract.Declaration.BindingState == BindingState.Invalid)
+        if (this.OperandContexts(type).Invalid || contract.Declaration.BindingState == BindingState.Invalid)
         {
             return ConstraintProof.Error;
         }

@@ -30,9 +30,10 @@ public sealed partial class Binding
             return this.BindObjectUpcast(conversion, scope, source, target);
         }
 
-        if (!this.CheckAdaptationCase(conversion, scope, source, target, operation, []))
+        var verdict = this.CheckAdaptationCase(conversion, scope, source, target, operation, []);
+        if (verdict != true)
         {
-            return Complete(conversion, null);
+            return verdict is null ? this.Fail(conversion, BindingFailure.Unsupported) : Complete(conversion, null);
         }
 
         return this.BindObjectCreationCall(conversion, scope, source, target);

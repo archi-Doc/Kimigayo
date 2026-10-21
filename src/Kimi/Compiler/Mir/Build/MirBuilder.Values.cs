@@ -181,7 +181,7 @@ internal sealed partial class MirBuilder
         if (InPlace(adjust))
         {
             return HirTables.Op(node) == HirOp.Literal && this.Literal(node) is var constant and >= 0 ? MirOperand.Const(constant)
-                : MirOperand.Move(this.Value(node, into, reserves));
+                : MirOperand.Move(this.Value(node, into, reserves, expected));
         }
 
         if (adjust.Acquire == HirAcquire.Unset || adjust.Adaptation == HirAdaptation.StorageProjection || (adjust.Adaptation == HirAdaptation.BaseBorrow &&

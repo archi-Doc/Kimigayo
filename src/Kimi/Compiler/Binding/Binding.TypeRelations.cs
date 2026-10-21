@@ -464,7 +464,35 @@ public sealed partial class Binding
         return whole;
     }
 
+    // A Type with its binder's slots, lengths and pair Origins substituted. One outermost call is one query of the substitution table, its
+    // binder, arguments and lengths fixed, so a part shared within the Type is substituted once (DECISIONS BU-19).
     private BoundType? SubstituteType(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths = default)
+        => this.SubstitutePart(type, binder, arguments, lengths, this.substitutedParts.Begin(this.storageVersion));
+
+    // A part of a substitution query. Without length arguments a part with neither an abstract part nor an Origin is its own image: every
+    // arm that changes a part substitutes a slot of an abstract kind, a length or an Origin.
+    private BoundType? SubstitutePart(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, uint query)
+    {
+        if (lengths.IsEmpty && !type.HasAbstractPart && !type.CarriesOrigin)
+        {
+            return type;
+        }
+
+        if (type.Components.Count == 0)
+        {
+            return this.SubstituteTypeCore(type, binder, arguments, lengths, query);
+        }
+
+        if (!this.substitutedParts.TryGet(type, query, out var image))
+        {
+            image = this.SubstituteTypeCore(type, binder, arguments, lengths, query);
+            this.substitutedParts.Set(type, query, image);
+        }
+
+        return image;
+    }
+
+    private BoundType? SubstituteTypeCore(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, uint query)
     {
         var slot = type.Symbol is { } parameter ? ContainerSlot(binder, parameter) : -1;
         if (type.Kind == BoundTypeKind.SemanticsAdaptation && slot >= 0 && slot < arguments.Length && arguments[slot] is { } selection)
@@ -476,7 +504,7 @@ public sealed partial class Binding
 
             if (selection.Kind != BoundTypeKind.Parameter && selection.Semantics != SemanticsKind.Parameter)
             {
-                return FamilyCase(type, selection.Semantics) is { } child ? this.SubstituteType(child, binder, arguments, lengths) : null;
+                return FamilyCase(type, selection.Semantics) is { } child ? this.SubstitutePart(child, binder, arguments, lengths, query) : null;
             }
         }
 
@@ -546,7 +574,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < type.Components.Count; i++)
             {
-                var substituted = this.SubstituteType(type.Components[i], binder, arguments, lengths);
+                var substituted = this.SubstitutePart(type.Components[i], binder, arguments, lengths, query);
                 if (substituted is null)
                 {
                     return null;

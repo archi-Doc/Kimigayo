@@ -531,21 +531,13 @@ public sealed partial class Binding
             {
                 this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7: the conforming Types of a closed Contract are fixed.
             }
-            else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Intrinsic: IntrinsicKind.None or IntrinsicKind.Copy or IntrinsicKind.Owned, Contract: not null } contract })
+            else if (constraint.Contract is { } intrinsic && IntrinsicContract.Of(intrinsic.Intrinsic).Declaration is not BindingFailure.None and var failure)
+            {
+                this.Fail(use, failure); // SPEC 8.7.1: decided by the Type's structure alone.
+            }
+            else if (constraint is { Kind: ConstraintKind.Contract, Contract: { Contract: not null } contract })
             {
                 this.RegisterConformanceDeclaration(type, contract, use, this.scopes[type.Declaration], null);
-            }
-            else if (constraint.Contract?.Intrinsic == IntrinsicKind.Sealed)
-            {
-                this.Fail(use, BindingFailure.InvalidConstraint);
-            }
-            else if (constraint.Contract?.Intrinsic == IntrinsicKind.ObjectPayload)
-            {
-                this.Fail(use, BindingFailure.InvalidSelfClause); // SPEC 8.7.3: users cannot grant ObjectPayload.
-            }
-            else if (constraint.Contract?.Intrinsic == IntrinsicKind.PrimitiveInteger)
-            {
-                this.Fail(use, BindingFailure.ClosedContractConformance); // SPEC 8.7.4: exactly the twelve integer Types conform.
             }
             else if (constraint.Kind == ConstraintKind.Not)
             {

@@ -191,38 +191,6 @@ public sealed partial class Binding
         this.types.ResetViews();
     }
 
-    private static bool InvalidDeclarationContext(Koto declaration)
-        => InvalidDeclarationContextCause(declaration) is not null;
-
-    // The nearest enclosing declaration (or conditional conformance) that failed; a member's check in that context rests on it.
-    // A declaration whose only failure keeps its signature valid (KeepsSignature: a form rule or the case bound) is no such context.
-    private static Koto? InvalidDeclarationContextCause(Koto declaration)
-    {
-        for (Koto? node = declaration; node is not null; node = node.Parent)
-        {
-            if ((node is DeclarationKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance }) && node.BindingState == BindingState.Invalid &&
-                !KeepsSignature(node))
-            {
-                return node;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool UnresolvedTypeDeclarationContext(Koto declaration)
-    {
-        for (Koto? node = declaration; node is not null; node = node.Parent)
-        {
-            if ((node is StructKoto or EnumKoto or ContractKoto && node.BindingState == BindingState.Unresolved) || node is ContractKoto { BoundSymbol.Contract.HasUnresolvedParents: true })
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     /// <summary>Gets the receiver shape of a function with a receiver (SPEC 7.3): its receiver's Semantics, or null.</summary>
     private static SemanticsKind? ReceiverShape(BindingSymbol symbol)
         => symbol.ReceiverIndex >= 0 && symbol.Declaration is FunctionKoto { IsSpecialization: false } function &&
