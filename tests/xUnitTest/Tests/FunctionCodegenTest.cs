@@ -94,6 +94,10 @@ public sealed class FunctionCodegenTest
         "    return 1\nfunc keep<T>(value: T) -> T => value@move\nfunc kept() -> i32 => keep(1)\n" +
         "func count(n: i32, m: i32 = if n <= 0 => 0 else => count(n - 1) + 1) -> i32 => m\nfunc counted() -> i32 => count(3)\n";
 
+    // A #LibraryImport call (SPEC 22.6; DECISIONS R5-M89), its C signature memoized per Write.
+    private const string Imports = "group Native\n    #LibraryImport(\"kernel32\", \"GetLastError\")\n    public unsafe func lastError() -> u32\n" +
+        "func last() -> u32\n    var e: u32 = 0\n    unsafe => e = Native.lastError()\n    return e\n";
+
     // Functions with scalar, string-borrow, zero-sized and Never signatures, a Library's roots.
     private const string Signatures =
         "func identity(flag: bool, value: i32, text: ref/string, unit: ()) -> i32\n    if flag => return value\n    return 0\n" +
@@ -962,19 +966,20 @@ public sealed class FunctionCodegenTest
         Assert.Matches(@"\n  store %kimi.string \{ ptr @[^,]+, i64 1, i8 \d+ \}, ptr %c0, align 8\n  call void @__kimi_f\d+\(ptr %c0\)\n", constant);
     }
 
-    // An ABI requirement (IMPL 21.3.1; DECISIONS R5-M89): a slot result is written through the caller's destination, which is never an
-    // argument's pointer: a moved argument's Place is moved out and a copied one's is a copy slot.
+    // An ABI requirement (IMPL 21.3.1; DECISIONS R5-M89): a slot result is written through the caller's destination, which is never one of
+    // the arguments' pointers: a moved argument's Place is moved out and a copied one's is a copy slot.
     [Theory]
     [InlineData("func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc f(q: (i32, i64)) -> (i64, i32) => swap(q)")]
     [InlineData("func swap(p: (i32, i64)) -> (i64, i32) => (p.1, p.0)\nfunc f(q: (i32, i64)) -> i64\n    let r = swap(q)\n    return r.0")]
     [InlineData("func echo(s: string) -> string => s@move\nfunc f(t: string) -> string => echo(t@move)")]
+    [InlineData("func join(p: (i32, i64), q: (i32, i64)) -> (i64, i64) => (p.1, q.1)\nfunc f(a: (i32, i64), b: (i32, i64)) -> (i64, i64) => join(a, b@move)")]
     public void AResultSlotIsNeverAnArgumentsPointer(string source)
     {
         var ir = Parse(source).Ir;
         var calls = ir.Functions.SelectMany(static x => x.Instructions)
             .Where(static x => x.Opcode == "call" && x.Shape.StartsWith("call void @(ptr %, ptr %", StringComparison.Ordinal)).ToArray();
         Assert.NotEmpty(calls);
-        Assert.All(calls, static x => Assert.NotEqual(x.Operands[0], x.Operands[1]));
+        Assert.All(calls, static x => Assert.DoesNotContain(x.Operands[0], x.Operands.Skip(1)));
     }
 
     // SPEC 14.10.3, the O2 parity list: a callee of result Never is defined noreturn, and a call without a target is followed by unreachable.
@@ -1120,18 +1125,18 @@ public sealed class FunctionCodegenTest
     }
 
     // PD11: a form the frame does not cover yet is one Unsupported_Kd in the Emission partition at its location, and no module is written;
-    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a,
-    // a generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89); a requirement's call is
-    // C3b's, at the call; the
-    // Utf8Slice overload of writeLine is another legacy row (C9a), at its call; the records of a for loop's statement and of the siblings
-    // its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location (DECISIONS R5-M65), which the
-    // diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at the static. The operator rows
-    // (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations; the conversion
-    // rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a, at the Cast that reads it; the place
-    // writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87)
-    // write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from
-    // none to C8d, at the literal. K11: an Application's
-    // function nothing calls is not generated, so its form records nothing; a Library generates it.
+    // its valid counterpart is. A string's Move into another local is written since C2b (DECISIONS R5-M87), a function's call since C3a, a
+    // generic callee's instance whose Keep of a T instanced at i32 needs no drop included (R5-M78, R5-M89); a requirement's call is C3b's,
+    // at the call, a property witness's too; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
+    // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
+    // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
+    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
+    // the static. The operator rows (DECISIONS R5-M76) leave raw pointers to C8a and checked 128-bit arithmetic to ModuleCodegen's wide
+    // overflow declarations; the conversion rows (DECISIONS R5-M80) leave an erasure to C5b, at its Cast, and a raw pointer's null to C8a,
+    // at the Cast that reads it; the place writer (DECISIONS R5-M83) leaves an object borrow's payload to C6a, at the Place read through
+    // it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate and a zero-sized local's address and leave a Dictionary's length to
+    // C8e, at the member, and an Array from none to C8d, at the literal. K11: an Application's function nothing calls is not generated, so
+    // its form records nothing; a Library generates it.
     [Theory]
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
@@ -1154,6 +1159,7 @@ public sealed class FunctionCodegenTest
         OutputKind.Library,
         new[] { "a == b" })]
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
+    [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
     [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
     [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
@@ -1184,6 +1190,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Acquisitions, OutputKind.Library)]
     [InlineData(Adaptations, OutputKind.Library)]
     [InlineData(Calls, OutputKind.Library)]
+    [InlineData(Imports, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1268,6 +1275,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Acquisitions, OutputKind.Library)]
     [InlineData(Adaptations, OutputKind.Library)]
     [InlineData(Calls, OutputKind.Library)]
+    [InlineData(Imports, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

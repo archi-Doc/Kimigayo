@@ -43,6 +43,7 @@ internal sealed partial class ModuleCodegen
     private FunctionAbi?[] signatures = []; // By item.
     private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
     private FunctionAbi?[] importSignatures = []; // By import.
+    private int[] importSigned = []; // By import, the Write whose signature importSignatures holds (0: none).
     private string?[] importSymbols = []; // By import, the external symbol its signature is named by.
     private BoundType[] parameters = []; // A signature's parameter Types in slot order.
     private int writes; // The number of Writes.
@@ -108,7 +109,7 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>Gets the signature of a body item from its own body (IMPL 21.3.1; DECISIONS R5-M89), the one its definition and every call of
     /// it write: under the internal convention, its result Type local 0's and its parameters its Arg locals' in slot order
-    /// (FunctionCodegen.ArgumentLocal), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1); named
+    /// (FunctionCodegen.ArgumentPosition), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1); named
     /// <c>__kimi_f</c> with its index, computed once per Write and the previous one while it still matches.</summary>
     /// <param name="item">The item, a body item of a kind the frame writes.</param>
     /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of its signature.</returns>
@@ -145,7 +146,7 @@ internal sealed partial class ModuleCodegen
         this.Reserve(count);
         for (var slot = 0; slot < count; slot++)
         {
-            if (this.collector.TypeOf(item, body.Locals[FunctionCodegen.ArgumentLocal(body, slot)].Type) is not { } parameter)
+            if (this.collector.TypeOf(item, body.Locals[1 + FunctionCodegen.ArgumentPosition(body.Key, slot)].Type) is not { } parameter)
             {
                 this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // The collector laid out every local of an admitted item.
                 return null;
@@ -237,15 +238,30 @@ internal sealed partial class ModuleCodegen
     }
 
     // The C signature of an import from its declared Types (TyCtxt.Signature), named by its external symbol: the first import's of that
-    // symbol, so imports of one symbol share one declaration (the old generator's rule); the previous one while it still matches.
+    // symbol, so imports of one symbol share one declaration (the old generator's rule); computed once per Write and the previous one
+    // while it still matches.
     private FunctionAbi ImportSignature(int index)
     {
+        if (index >= this.importSignatures.Length)
+        {
+            Array.Resize(ref this.importSignatures, Math.Max(index + 1, 2 * this.importSignatures.Length));
+            Array.Resize(ref this.importSymbols, this.importSignatures.Length);
+            Array.Resize(ref this.importSigned, this.importSignatures.Length);
+        }
+
+        if (this.importSigned[index] == this.writes && this.importSignatures[index] is { } current)
+        {
+            return current;
+        }
+
         var symbol = this.imports[index].Symbol;
+        this.importSigned[index] = this.writes;
         for (var first = 0; first < index; first++)
         {
             if (string.Equals(this.imports[first].Symbol, symbol, StringComparison.Ordinal))
             {
-                return this.ImportSignature(first);
+                this.importSymbols[index] = symbol;
+                return this.importSignatures[index] = this.ImportSignature(first);
             }
         }
 
@@ -255,12 +271,6 @@ internal sealed partial class ModuleCodegen
         for (var slot = 0; slot < count; slot++)
         {
             this.parameters[slot] = TyCtxt.Signature(function, null, slot, out _)!;
-        }
-
-        if (index >= this.importSignatures.Length)
-        {
-            Array.Resize(ref this.importSignatures, Math.Max(index + 1, 2 * this.importSignatures.Length));
-            Array.Resize(ref this.importSymbols, this.importSignatures.Length);
         }
 
         var types = this.parameters.AsSpan(0, count);

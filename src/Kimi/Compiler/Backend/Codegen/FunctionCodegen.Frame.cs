@@ -48,12 +48,13 @@ internal sealed partial class FunctionCodegen
         _ => throw new InvalidOperationException($"The MIR body kind {kind} has no code generation row."),
     };
 
-    /// <summary>Gets the Arg local of a body's parameter at a slot (OrderOf); a call passes its operands in the same order.</summary>
-    /// <param name="body">A written body.</param>
+    /// <summary>Gets the position of a callee's parameter at a slot among its Arg locals, which follow local 0, and so among the operands of
+    /// every call of it (OrderOf): a body's own key, or a #LibraryImport function's, which has no body (a Fn of its declaration).</summary>
+    /// <param name="callee">The callee's key: its declaration and body kind.</param>
     /// <param name="slot">The parameter's slot.</param>
-    /// <returns>The local.</returns>
-    internal static int ArgumentLocal(MirBody body, int slot)
-        => 1 + (OrderOf(body.Key.Kind) == ArgumentOrder.Slots ? slot : MirCallee.Position(body.Key.Decl, slot));
+    /// <returns>The position.</returns>
+    internal static int ArgumentPosition(MirDefKey callee, int slot)
+        => OrderOf(callee.Kind) == ArgumentOrder.Slots ? slot : MirCallee.Position(callee.Decl, slot);
 
     // Lays out every local in the item's instance (I7), then gets the item's signature, which ModuleCodegen gives from the item's own body
     // (DECISIONS R5-M89); null after a record.
@@ -83,7 +84,8 @@ internal sealed partial class FunctionCodegen
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory that a runtime-reached Call passes to a parameter by pointer,
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string
     // constant so passed is written into one as its record. One pass over the reached Calls' operands numbers the slots before the prologue
-    // allocates them; the call writer finds an operand's by its index.
+    // allocates them; the call writer finds an operand's by its index. The pass covers every reached Call's in-memory Copy operands, whatever
+    // its callee's row, until a later call row (C3b, C5a, C6c, C8a) uses these slots or narrows the scan.
     private void Copies()
     {
         var operands = this.body.Operands;
@@ -194,8 +196,8 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
     }
 
-    // The local an argument parameter passes (ArgumentLocal).
-    private int LocalOf(in AbiParameter parameter) => ArgumentLocal(this.body, parameter.LogicalIndex);
+    // The local an argument parameter passes: Arg local 1 plus its position (ArgumentPosition).
+    private int LocalOf(in AbiParameter parameter) => 1 + ArgumentPosition(this.body.Key, parameter.LogicalIndex);
 
     // Return (IMPL 21.3.1): void for a zero-sized result or a result slot, else local 0's value in its computation representation.
     private void Return()

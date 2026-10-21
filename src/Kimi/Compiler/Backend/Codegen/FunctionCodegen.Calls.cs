@@ -60,7 +60,7 @@ internal sealed partial class FunctionCodegen
         {
             if (this.module.Import(call.Callee.Symbol!) is { } import)
             {
-                this.Invoke(call, import, null);
+                this.Invoke(call, import, new(call.Callee.Symbol, MirBodyKind.Fn));
                 return;
             }
 
@@ -77,7 +77,7 @@ internal sealed partial class FunctionCodegen
                     return;
                 }
 
-                this.Invoke(call, signature, this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal]);
+                this.Invoke(call, signature, this.program.Bodies[this.collector.Set.Items[target].BodyOrdinal].Key);
                 return;
             case MonoKind.Body:
                 return; // A broken contract, recorded.
@@ -92,18 +92,17 @@ internal sealed partial class FunctionCodegen
 
     // A call by its signature (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument), the destination's address as the result slot,
     // the call, its value put into the destination, then the call's target, or unreachable after a call without one (SPEC 14.10.3). The
-    // operands are in the callee's Arg-local order (ArgumentLocal; a #LibraryImport function's by its positions). A result slot is the
-    // destination, a fresh temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
-    private void Invoke(in MirTerminator call, FunctionAbi signature, MirBody? callee)
+    // operands are in the callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a
+    // pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
+    private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee)
     {
         var parameters = signature.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
-            var position = callee is null ? MirCallee.Position(call.Callee.Symbol, parameter.LogicalIndex) : ArgumentLocal(callee, parameter.LogicalIndex) - 1;
             var found = parameter.Kind == AbiParameterKind.ResultSlot ? this.Address(call.Place, out this.arguments[i])
-                : this.Argument(call.Start + position, parameter, out this.arguments[i]);
+                : this.Argument(call.Start + ArgumentPosition(callee, parameter.LogicalIndex), parameter, out this.arguments[i]);
             if (!found)
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
@@ -200,7 +199,8 @@ internal sealed partial class FunctionCodegen
             switch (parameters[i].Kind)
             {
                 case AbiParameterKind.Value or AbiParameterKind.SharedReference:
-                    if (!this.Operand(this.body.Operands[call.Start + MirCallee.Position(symbol, parameters[i].LogicalIndex)], out this.arguments[i]))
+                    var operand = this.body.Operands[call.Start + ArgumentPosition(new(symbol, MirBodyKind.Fn), parameters[i].LogicalIndex)];
+                    if (!this.Operand(operand, out this.arguments[i]))
                     {
                         this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
                         return;
