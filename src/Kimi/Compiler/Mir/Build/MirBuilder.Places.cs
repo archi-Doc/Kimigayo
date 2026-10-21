@@ -171,27 +171,32 @@ internal sealed partial class MirBuilder
             ? this.body.Project(receiver, MirProjectionKind.Field, (int)element) : this.Field(receiver, HirTables.Symbol(member), member);
     }
 
-    // The stored Field of a symbol in a struct Place: AdtDef.FindField's position, the bases' Fields first, as the Base that declares it
-    // (the receiver's StorageProjection) and the Field's own index there.
+    // The stored Field of a symbol in a struct Place (AdtDef.FindField's position), or the value derived from the error of one that has
+    // no Place (Stored).
     private MirPlace Field(MirPlace receiver, BindingSymbol? field, Koto node)
     {
         var type = this.body.TypeOf(receiver);
         var position = -1;
-        if (type is null || !AdtDef.FindField(type, field, out _, out position))
-        {
-            return this.Unsupported(node, position >= 0); // A Field whose stored Type Binding could not substitute is derived from that error.
-        }
+        _ = type is not null && AdtDef.FindField(type, field, out _, out position);
+        return position >= 0 && this.Stored(receiver, type!, position) is { } place ? place : this.Unsupported(node, position >= 0);
+    }
 
+    // The Place of the stored Field at a storage position of a struct Place, the bases' Fields first: the Field's own index in the Base
+    // that declares it (the receiver's StorageProjection); none for a Field Binding formed no stored Type for, a value derived from that
+    // error (SPEC 23.1.2).
+    private MirPlace? Stored(MirPlace receiver, BoundType type, int position)
+    {
         var depth = 0;
         for (; position < Inherited(type); depth++)
         {
             type = AdtDef.Base(type)!;
         }
 
-        return this.body.Project(
+        position -= Inherited(type);
+        return AdtDef.FieldType(type, position) is null ? null : this.body.Project(
             depth == 0 ? receiver : this.body.Project(receiver, MirProjectionKind.Base, depth),
             MirProjectionKind.Field,
-            position - Inherited(type));
+            position);
 
         static int Inherited(BoundType type) => AdtDef.Base(type) is { } parent ? AdtDef.StorageCount(parent) : 0;
     }

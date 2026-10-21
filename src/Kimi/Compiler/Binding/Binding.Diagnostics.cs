@@ -74,9 +74,6 @@ public sealed partial class Binding
     // object handle, recorded only when the check fails.
     private Dictionary<Koto, (Koto Place, bool Object)>? acquisitionPlaces;
 
-    // SPEC 7.7.2: the explicit capture entry a closure failed at, with its outer binding's Type, recorded only when it fails.
-    private Dictionary<Koto, (CaptureKoto Capture, BoundType Type, BindingSymbol? Source)>? captureFailures;
-
     // SPEC 23.1.1: the part of an unsupported node that shows the form, such as one capture entry or a callee.
     private Dictionary<Koto, SourceSpan>? unsupportedSpans;
 
@@ -593,6 +590,7 @@ public sealed partial class Binding
             case OriginKind.Projection or OriginKind.Anchor:
                 // Without its Borrow, the Place: a local or a parameter by name, and a temporary by its text.
                 var text = value is not null && KotoHelper.UnwrapParentheses(value) is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow ? borrow.ToString()
+                    : origin.Slot == HelperSlot ? "self"
                     : origin.Binder is VariableKoto variable ? variable.NameKoto.IdentifierName
                     : origin.Binder is FunctionKoto function && origin.Slot >= 0 && origin.Slot < function.Parameters.Count ? function.Parameters[origin.Slot].InternalName
                     : origin.Binder?.ToString() ?? origin.Name;
@@ -718,24 +716,6 @@ public sealed partial class Binding
             "closure" => "the closure's " + origin.Text,
             _ => origin.Text,
         };
-    }
-
-    // SPEC 7.7.2: an anonymous function without a capture list never captures contextual self or a setter's value; its use is
-    // the location, and the declaration of the binding is related. In a later default of the receiver's function, an entry can
-    // neither move self nor keep a new borrow of it (SPEC 7.2.3), so only a Copy that holds no borrow, [self], can be offered.
-    private void ReportContextualCapture(Koto node, BindingSymbol contextual, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var declaring = contextual.Declaration!;
-        var self = contextual.Name == "self";
-        var prepared = self && DefaultParameters.InLaterDefault(node, contextual);
-        var note = self ? "Contextual self is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)"
-            : "A setter's value is never captured implicitly; an anonymous function without a capture list captures only ordinary bindings (SPEC 7.7.2)";
-        if (prepared)
-        {
-            note += "; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)";
-        }
-
-        node.Report(requirement, code, note: note, related: [("declaration", declaring is FunctionKoto { Accessor.Declaration: { } accessor } ? accessor : declaring, null)]);
     }
 
     private BoundType? CompleteDependent(Koto node, Koto cause)
@@ -1028,52 +1008,6 @@ public sealed partial class Binding
 
         var judgment = TakeJudgment(place);
         node.Report(requirement, code, at: place, evidence: [text], repairs: judgment == AcquisitionJudgment.Refuted ? null : TransferRepair(node, place, judgment));
-    }
-
-    // SPEC 7.7.2: a capture entry initializes its environment binding as `let x = x` or `let x = x@op` would. The report is
-    // located at the entry and names the initialization it stands for; a bare entry of a Non-Copy binding offers the transfer
-    // and the borrow as candidates (SPEC 23.1.3). In a default, the binding of a preceding argument admits neither, nor an
-    // exclusive borrow (SPEC 7.2.3), so no candidate is offered.
-    private void ReportCaptureEntry(Koto node, CaptureKoto capture, BoundType type, BindingSymbol? source, DiagnosticRequirement requirement, DiagnosticCode code)
-    {
-        var name = capture.Name;
-        switch (code)
-        {
-            case DiagnosticCode.InvalidAssignment_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would; a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)", evidence: [name], span: capture.Span);
-                break;
-            case DiagnosticCode.InvalidAssignment_Kd:
-                node.Report(requirement, code, note: $"The capture entry {name}@uniq borrows the slot of the let binding {name} exclusively, as let {name} = {name}@uniq would", evidence: [name], span: capture.Span);
-                break;
-            case DiagnosticCode.TransferRequired_Kd when source is not null && DefaultParameters.InLaterDefault(node, source):
-                node.Report(
-                    requirement,
-                    code,
-                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is not proven Copy, and a default can neither move a preceding argument nor keep a borrow of it (SPEC 7.2.3)",
-                    evidence: [name],
-                    span: capture.Span);
-                break;
-            case DiagnosticCode.TransferRequired_Kd:
-                node.Report(
-                    requirement,
-                    code,
-                    note: $"The bare capture entry {name} initializes its environment binding as let {name} = {name} would; {DiagnosticTypeName(type)} is neither proven Copy nor an exclusive reference{this.FailingCaseNote(type, node)}",
-                    evidence: [name],
-                    span: capture.Span,
-                    repairs:
-                    [
-                        new(RepairKind.Transfer, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@move")], RepairConditionSet.Take, RepairConditionSet.UsageLegality),
-                        new(RepairKind.Borrow, [name, "the closure's environment"], [node.Edit(new(capture.Span.End, 0), "@ref")], RepairConditionSet.None, RepairConditionSet.UsageLegality),
-                    ]);
-                break;
-            case DiagnosticCode.InvalidCaptureBinding_Kd:
-                // SPEC 7.7.2: an explicit capture of self obeys the construction and destruction restrictions.
-                node.Report(requirement, code, note: "In a constructor or destructor, self is reached only through its Fields, so a capture entry cannot take self (SPEC 7.7.2)", span: capture.Span);
-                break;
-            default:
-                node.Report(requirement, code, span: capture.Span);
-                break;
-        }
     }
 
     // Reports a write failure at its target; an assignment names the target. An

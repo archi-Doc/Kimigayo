@@ -235,18 +235,7 @@ internal sealed partial class MirBuilder(Compilation compilation)
         this.targets.Add(new(declaration, done, -1, -1, At: default, Reached: false)); // A return's target, opened at the body's scope.
         if (self is not null)
         {
-            if (((FunctionKoto)declaration).BaseInitializer is { } baseCall)
-            {
-                this.Initialize(body.Project(new(0), MirProjectionKind.Base, 1), baseCall);
-            }
-
-            for (var i = 0; i < AdtDef.Count(self); i++)
-            {
-                if (AdtDef.Field(self, i) is { InitializerKoto: { } initializer } field)
-                {
-                    this.Initialize(body.Project(new(0), MirProjectionKind.Field, i), initializer, HirTables.Op(field) != HirOp.Body);
-                }
-            }
+            this.Construct(self, (FunctionKoto)declaration);
         }
 
         this.Result(done, value, value, input: false);
@@ -274,27 +263,5 @@ internal sealed partial class MirBuilder(Compilation compilation)
         }
 
         return local;
-    }
-
-    // A step of a constructor as a statement of its own (SPEC 6.3.3): the base call into the base subobject, or a Field's initializer,
-    // as its Adjust takes it, into the Field; that of a Field declaration Binding did not bind (no Body) is derived from its error.
-    private void Initialize(MirPlace place, Koto node, bool rejected = false)
-    {
-        this.statementStart = true;
-        var temporaries = this.OpenScope(block: false);
-        if (rejected)
-        {
-            this.Opaque(node, place);
-        }
-        else if (HirTables.AdjustOf(node).Acquire == HirAcquire.Unset)
-        {
-            this.Into(place, node);
-        }
-        else
-        {
-            this.Assign(place, node);
-        }
-
-        this.CloseScope(temporaries);
     }
 }

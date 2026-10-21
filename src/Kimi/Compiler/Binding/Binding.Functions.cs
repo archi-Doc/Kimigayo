@@ -109,6 +109,7 @@ public sealed partial class Binding
             }
         }
 
+        this.JudgeHelperCaptures(function);
         if (function.IsAnonymous || (function.IsSpecialization && !this.specializations.ContainsKey(function)))
         {
             return this.Fail(function, BindingFailure.Unsupported, true);

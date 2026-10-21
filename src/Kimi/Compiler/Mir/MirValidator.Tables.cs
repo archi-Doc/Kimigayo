@@ -9,7 +9,8 @@ namespace Kimi.Compiler.Mir;
 //   admitted by its root's Type.
 // - Inputs: the body's tables; each location's Places with their access. Outputs: Local, TargetRange, Scope, Opaque, Projection,
 //   UnknownKind and Place findings; a written root's write bits for G131 and G136 (MirValidator.Diverged, MirValidator.Inputs).
-// - Invariants: Tables returns false exactly when a projection chain or an Opaque site cannot be walked, and Validate then stops.
+// - Invariants: Tables returns false exactly when a projection chain or an Opaque site cannot be walked, and Validate then stops; a
+//   scope chain that cannot be walked marks the body Unscoped, so Validate runs every check but Entries.
 // - Prohibitions: no rule of the operation a location performs (MirValidator.Blocks, .Rvalues, .Calls) and no Type agreement.
 internal sealed partial class MirValidator
 {
@@ -83,6 +84,7 @@ internal sealed partial class MirValidator
                 if (i == 0 ? scopes[i].Outer != -1 : (uint)scopes[i].Outer >= (uint)i)
                 {
                     this.Report(MirViolation.Scope);
+                    this.Unscoped = true;
                 }
             }
 

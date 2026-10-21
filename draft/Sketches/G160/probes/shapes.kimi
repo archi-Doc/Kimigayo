@@ -1,0 +1,89 @@
+struct RawBox {a}
+    public var p: raw/(ref/i32 during a)
+    public var r: ref/i32 during a
+    public init(p: raw/(ref/i32 during a), r: ref/i32 during a)
+        self.p = p
+        self.r = r
+func storeRaw(b: uniq/(RawBox during a), v: ref/i32 during a)
+    unsafe => b.p[0] = v
+func putRaw(slot: uniq/(raw/(ref/i32 during a)), value: ref/i32 during a)
+    unsafe => slot@follow[0] = value
+func putRR(slot: uniq/(raw/(raw/(ref/i32 during a))), value: ref/i32 during a)
+    unsafe => slot@follow[0][0] = value
+func putRS(slot: uniq/(ref/(raw/(ref/i32 during a)) during c), value: ref/i32 during a)
+    unsafe => slot@follow@follow[0] = value
+func putRV(slot: raw/(ref/i32 during a), value: ref/i32 during a)
+    unsafe => slot[0] = value
+func aCallTwin()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = RawBox.init(p: cell, r: y@ref)
+    storeRaw(b@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func aDirectTwin()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var b = RawBox.init(p: cell, r: y@ref)
+    let q = b@uniq
+    unsafe => q.p[0] = x@ref
+    x = 5
+    unsafe => inspect(cell[0])
+func aRawOnlyTwin()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var c = cell
+    putRaw(c@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func bRawRaw()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    let cells: raw/(raw/(ref/i32)) = Raw.allocate(1)
+    unsafe => Raw.initialize(cells, cell)
+    var c = cells
+    putRR(c@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func cRawShared()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var c = cell
+    var r = c@ref
+    putRS(r@uniq, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func cRawSharedLive()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    var c = cell
+    var r = c@ref
+    putRS(r@uniq, x@ref)
+    x = 5
+    inspect(r)
+func rawValue()
+    var x = 1
+    var y = 2
+    let cell: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(cell, y@ref)
+    putRV(cell, x@ref)
+    x = 5
+    unsafe => inspect(cell[0])
+func rawInit()
+    var x = 1
+    let p: raw/(ref/i32) = Raw.allocate(1)
+    unsafe => Raw.initialize(p, x@ref)
+    x = 2
+    unsafe => inspect(p[0])

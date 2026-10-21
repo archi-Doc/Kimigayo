@@ -1,0 +1,29 @@
+struct OwnRefs {a}
+    public var data: raw/(ref/i32 during a)
+    public init(seed: ref/i32 during a)
+        self.data = Raw.allocate(1)
+        unsafe => Raw.initialize(self.data, seed)
+    public func get(self: ref/Self) -> ref/i32 during a
+        unsafe => return self.data[0]
+func storeO(o: uniq/(OwnRefs during a), v: ref/i32 during a)
+    unsafe => o.data[0] = v
+func initThenGet()
+    var x = 1
+    var o = OwnRefs.init(seed: x@ref)
+    x = 5
+    inspect(o.get())
+func initThenRead()
+    var x = 1
+    var z = 3
+    var q = z@ref
+    var o = OwnRefs.init(seed: x@ref)
+    unsafe => q = o.data[0]
+    x = 5
+    inspect(q)
+func storeThenGet()
+    var x = 1
+    let y = 2
+    var o = OwnRefs.init(seed: y@ref)
+    storeO(o@uniq, x@ref)
+    x = 5
+    inspect(o.get())

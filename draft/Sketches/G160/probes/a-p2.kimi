@@ -1,0 +1,27 @@
+struct BU<T> {a}
+    public var data: raw/T
+    public var u: uniq/(ref/i32 during a) during a
+    public init(u: uniq/(ref/i32 during a) during a)
+        self.data = Raw.allocate<T>(1)
+        self.u = u
+    public init(u: uniq/(ref/i32 during a) during a, seed: T)
+        self.data = Raw.allocate<T>(1)
+        unsafe => Raw.initialize(self.data, seed@move)
+        self.u = u
+func storeBU<T>(b: uniq/(BU<T> during a), v: T)
+    unsafe => Raw.initialize(b.data, v@move)
+func untiedInit()
+    var x = 1
+    var z = 3
+    var w: ref/i32 = z@ref
+    var b = BU<ref/i32>.init(u: w@uniq)
+    storeBU(b@uniq, x@ref)
+    x = 5
+func tiedInit()
+    var x = 1
+    var z = 3
+    var y = 4
+    var w: ref/i32 = z@ref
+    var b = BU<ref/i32>.init(u: w@uniq, seed: y@ref)
+    storeBU(b@uniq, x@ref)
+    x = 5

@@ -1,0 +1,24 @@
+struct KB2<T> {a}
+    public var p: raw/T
+    public var r: ref/i32 during a
+    public init(p: raw/T, r: ref/i32 during a)
+        self.p = p
+        self.r = r
+func phiLoss()
+    var x = 1
+    var y = 2
+    var z = 3
+    var w = z@ref
+    var b = KB2<uniq/(ref/i32)>.init(p: Raw.allocate(1), r: y@ref)
+    unsafe => Raw.initialize(b.p, w@uniq)
+    unsafe => put(*b.p, x@ref)
+    x = 5
+    inspect(w)
+func phiLoss2()
+    var x = 1
+    var y = 2
+    let cell2: raw/(ref/i32) = Raw.allocate(1)
+    var b = KB2<uniq/(ref/i32)>.init(p: Raw.allocate(1), r: y@ref)
+    unsafe => Raw.initialize(b.p, cell2[0]@uniq)
+    unsafe => put(*b.p, x@ref)
+    x = 5

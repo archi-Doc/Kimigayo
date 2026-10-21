@@ -1,0 +1,23 @@
+func viewsAppend()
+    var a = Data.init()
+    var b = Data.init()
+    var views: Array<ref/Data> = [a@ref]
+    for v in views
+        inspect(v)
+    views.append(b@ref)
+    inspect(views)
+func ownedAppend()
+    var a = Data.init()
+    var b = Data.init()
+    var views: Array<ref/Data> = [a@ref]
+    var more: Array<ref/Data> = [b@ref]
+    for v in views@move
+        more.append(v)
+    a.value = 3
+func initOwned()
+    var a = Data.init()
+    var views: Array<ref/Data> = []
+    views.append(a@ref)
+    for v in views@move
+        inspect(v)
+    a.value = 3
