@@ -75,7 +75,7 @@ internal sealed partial class MirValidator
             ref readonly var block = ref body.Blocks[index];
             for (var i = 0; i <= block.Count; i++)
             {
-                this.at = i < block.Count ? body.Statements[block.Start + i].Source : block.Terminator.Source;
+                this.at = Source(body, new(index, i));
                 MirUses.ForEach(body, new(index, i), ref this);
             }
         }
