@@ -24,7 +24,6 @@ public class OriginRecoveryTest(ITestOutputHelper output)
     [InlineData("[2 of i32]{a}", "OriginBindingSetTarget_Kd")]
     [InlineData("ref/i32 during a and b", "BorrowOriginIntersection_Kd")]
     [InlineData("i32 during a", "BorrowOriginTarget_Kd")]
-    [InlineData("raw/i32 during a", "BorrowOriginSemantics_Kd")]
     [InlineData("ref/i32 during a?", "BorrowOriginSuffixOrder_Kd")]
     [InlineData("ref/i32 during a during b", "DuplicateBorrowOrigin_Kd")]
     public void MalformedAnnotationsEstablishNoTypeAndKeepIndependentErrors(string type, string code)

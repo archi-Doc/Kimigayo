@@ -194,6 +194,13 @@ public sealed partial class Binding
         }
         else
         {
+            // SPEC 5.7: a raw layer may state an Origin, which Binding does not represent yet: the written annotation is the located
+            // limit and the layer forms no Type. Unit G160-1 (DECISIONS R4-M95) replaces this arm with the raw Origin.
+            if (written && type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw })
+            {
+                return this.FailExplained(ref this.unsupportedSpans, use, BindingFailure.Unsupported, annotation!.BorrowOriginSpan);
+            }
+
             var target = type;
             var objectLayer = type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Obj or SemanticsKind.Rc or SemanticsKind.Arc;
             if (objectLayer)
