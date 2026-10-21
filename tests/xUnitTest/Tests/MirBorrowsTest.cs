@@ -1896,16 +1896,16 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0).Select(x => $"{x.Code} {Line(c, x.Subject)}"));
     }
 
-    // R4-M70 (SPEC 7.2.3; until A5-F9, unit 2e): the value a default's evaluation places into its pending slot carries the slot's default
-    // taint: a default template's result (the 1c design's p06, a recursive generic default and a recursive Function-typed one) and an inline
-    // copy's store (p15, whose copy keeps the slot of x borrowed in y's). A conflict whose Loan only sets with a taint hold is one located
-    // Unsupported_Kd per omitting call, never a Language problem; a Loan a holder without a taint also keeps stays one (`both`), as does an
-    // explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean value: unsupported too.
-    // A copy's store into its slot that acquires again by case, a PairAcquire (R5's F18 probe shapes), lies in the copy and taints: from a
-    // concrete caller (`copied`), a generic one (`copiedGeneric`) and a uniq argument's reborrow (`reborrowed`, whose template the old
-    // analysis rejects, DefaultAccessTest), as does a template call's result into the slot (`called`). A clean route stays the Language
-    // problem, witnessed by its clean holder (`copiedClean`). A destroying call's observing destruction (err(destroy)) reports the clean
-    // Loan before the tainted one whichever holder comes first (`dz`, `dzSwapped`: the group 1c final review's B1).
+    // R4-M70 (SPEC 7.2.3; until A5-F9's R-a, unit 2e-3): the value an inline default copy's store places into its pending slot carries the
+    // slot's default taint (p15, whose copy keeps the slot of x borrowed in y's); a template call's value carries none (P9, R4-M93), so the
+    // 1c design's p06, a recursive generic default and a recursive Function-typed one, are valid. A conflict whose Loan only sets with a
+    // taint hold is one located Unsupported_Kd per omitting call, never a Language problem; a Loan a holder without a taint also keeps stays
+    // one (`both`), as does an explicit argument's, whose slot no default fills (`given`). `joined`'s one holder joins a tainted and a clean
+    // value: unsupported too. A copy's store into its slot that acquires again by case, a PairAcquire (R5's F18 probe shapes), lies in the
+    // copy and taints: from a concrete caller (`copied`), a generic one (`copiedGeneric`) and a uniq argument's reborrow (`reborrowed`,
+    // whose template the old analysis rejects, DefaultAccessTest), as does the result of a call inside the copy (`called`). A clean route
+    // stays the Language problem, witnessed by its clean holder (`copiedClean`). A destroying call's observing destruction (err(destroy))
+    // reports the clean Loan before the tainted one whichever holder comes first (`dz`, `dzSwapped`: the group 1c final review's B1).
     [Fact]
     public void ADefaultsTaintMakesItsConflictsUnsupported()
     {
@@ -2007,7 +2007,6 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
         var program = Analyze(c);
         Assert.Equal(
             [
-                "f: f(n - 1, x) Unsupported_Kd", "g: g(n - 1) Unsupported_Kd", "p06: f(3, k@ref) Unsupported_Kd", "p06: g(3) Unsupported_Kd",
                 "p15: fc(n@uniq) Unsupported_Kd", "both: k = 2", "joined: same(k@ref) Unsupported_Kd", "given: k = 2",
                 "copied: pick(r) Unsupported_Kd", "copiedClean: k = 2", "copiedGeneric: pick(r) Unsupported_Kd",
                 "reborrowed: grab(u) Unsupported_Kd", "called: via(r) Unsupported_Kd",

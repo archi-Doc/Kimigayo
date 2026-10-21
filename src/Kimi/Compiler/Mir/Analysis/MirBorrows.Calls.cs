@@ -2,9 +2,10 @@
 
 namespace Kimi.Compiler.Mir;
 
-// A5's Call transfer (A3 5, Calls; E14, E16): a Call's retention rows (Rows), its callee's contract by operand position, carry its
-// inputs' values into its result or into every holder an argument's store reaches (W, MirBorrows.Values), one W per output; a store of a
-// non-empty value past a holder that passes the guard only by argument holds the view (P13's interim, R4-M73).
+// A5's Call transfer (A3 5, Calls; E14, E16): a Call's retention rows (Rows), its callee's contract by operand position or a default
+// template's P9 rows (R4-M93), carry its inputs' values into its result or into every holder an argument's store reaches (W,
+// MirBorrows.Values), one W per output; a store of a non-empty value past a holder that passes the guard only by argument holds the view
+// (P13's interim, R4-M73); a template call whose slot holds raw authority beside a Loan is a located Unsupported_Kd (r3, R4-M93).
 internal sealed partial class MirBorrows
 {
     private int[] argValues = [];
@@ -16,11 +17,12 @@ internal sealed partial class MirBorrows
     private static bool Borrows(BoundType? type) => MirTypes.IsReference(type) || MirTypes.View(type) is not null;
 
     // A Call at a location (A3 5, Calls; E14, E16): its arguments' Moves, then each row of its retention (Rows) into the result or into
-    // W of an argument's value, then the result into the destination (Placed: a default template's result carries its slot's default taint);
-    // Φ_E for an untied result. A Value callee's environment, its value or what a reference to it refers to, reaches the result too (its
-    // captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the forward solve, never in the checks replay, a non-empty value that W
-    // stores past a by-argument holder holds the view (R4-M73): the solve applies every chain at its converged state, so the fact includes the
-    // fixpoint's, and the replay reports with it known.
+    // W of an argument's value, then the result into the destination (Placed: an inline default copy's store into its slot carries the
+    // slot's default taint); Φ_E for an untied result. A Value callee's environment, its value or what a reference to it refers to, reaches
+    // the result too (its captures; temporary until F7 reads TyCtxt.Closure, unit 2c). In the forward solve, never in the checks replay, a
+    // non-empty value that W stores past a by-argument holder holds the view (R4-M73): the solve applies every chain at its converged state,
+    // so the fact includes the fixpoint's, and the replay reports with it known. In the replay, a default template's call whose slot holds
+    // raw authority beside a Loan is a located Unsupported_Kd at the call (r3, R4-M93).
     private void Call(ulong[] state, MirLocation at, in MirTerminator call, bool checks)
     {
         MirDataflow.Grow(ref this.argValues, call.Count);
@@ -63,6 +65,11 @@ internal sealed partial class MirBorrows
             }
         }
 
+        if (checks && callee is { Kind: MirCalleeKind.Fn, Arg: > 0 } && this.RawBesideLoan(call, result))
+        {
+            this.Unsupported(at); // r3 (R4-M93): the default may write by raw authority where no row follows (PLAN G160).
+        }
+
         result = untied ? this.sets.Union(result, this.escapedSet) : result;
         if (call.Target >= 0)
         {
@@ -72,25 +79,17 @@ internal sealed partial class MirBorrows
 
     // A Call's retention rows by operand position, each output's together, into the scratch (A3 E14): its callee's contract (Retaining),
     // slots to positions, with an intrinsic's row for the operand the builder adds beyond its declaration (MirDescriptors); a default
-    // template's call is an unknown callee until F9 (unit 2e): every input reaches the result and each exclusive input's referents, and its
-    // result is untied.
+    // template's call P9's (SPEC 7.2.3, R4-M93): its inputs are the prologue's shared borrows of the slots, and each input's Content, its
+    // slot's value, reaches the untied result; no store row (a slot that holds raw authority is r3's).
     private ReadOnlySpan<Retention> Rows(in MirTerminator call, out bool untied)
     {
         var (callee, count) = (call.Callee, 0);
         if (callee is { Kind: MirCalleeKind.Fn, Arg: > 0 })
         {
-            MirDataflow.Grow(ref this.rows, call.Count * (call.Count + 1));
-            for (var output = Retention.Result; output < call.Count; output++)
+            MirDataflow.Grow(ref this.rows, call.Count);
+            for (var i = 0; i < call.Count; i++)
             {
-                if (output >= 0 && !MirTypes.IsExclusive(this.TypeOf(call.Start + output)))
-                {
-                    continue;
-                }
-
-                for (var i = 0; i < call.Count; i++)
-                {
-                    this.rows[count++] = new(i, RetentionKind.Value, output);
-                }
+                this.rows[count++] = new(i, RetentionKind.Content, Retention.Result);
             }
 
             untied = true;
@@ -143,6 +142,29 @@ internal sealed partial class MirBorrows
         }
 
         return Borrows(this.TypeOf(operand)) ? this.sets.Union(value, this.Content(state, value)) : value;
+    }
+
+    // r3 (R4-M93; registered for X-2, PD28, until G160's representation): whether a default template's call, whose inputs' Contents hold a
+    // Loan, has a slot whose case Type holds raw authority (MirTypes.HoldsRaw: a raw pointer, an rc handle or a Weak of one), through which
+    // the default may write by raw authority (SPEC 5.2.1) where no row follows; an input's case Type is a shared reference to its slot,
+    // whose referent the walk reaches.
+    private bool RawBesideLoan(in MirTerminator call, int contents)
+    {
+        if (this.sets.Elements(contents) is not [.., var last] || last < this.loanBase)
+        {
+            return false;
+        }
+
+        this.Work += call.Count; // The Type walks (A3 6.2).
+        for (var i = 0; i < call.Count; i++)
+        {
+            if (MirTypes.HoldsRaw(this.TypeOf(call.Start + i), this.seen))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     // An operand's case Type.
