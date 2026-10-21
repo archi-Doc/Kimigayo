@@ -400,7 +400,7 @@ public sealed partial class Binding
             (ElementAccess.IsSharedElement(index) || ElementAccess.IsUserIndex(index) ||
                 (index.Right is not RangeKoto && index.Left.BoundType?.Kind == BoundTypeKind.Array && element?.Semantics is not (null or SemanticsKind.Owner))))
         {
-            this.SharedElement(left, index.Left, element);
+            this.SharedElement(left, element);
         }
     }
 
@@ -430,7 +430,7 @@ public sealed partial class Binding
         this.CompareInPlace(selection.Left);
         if (ElementAccess.IsBorrowedReceiver(ElementAccess.AccessType(selection.Left)) || ElementAccess.IsRuntimeFixedElement(selection))
         {
-            this.SharedElement(operand, selection.Left, selection.BoundType);
+            this.SharedElement(operand, selection.BoundType);
         }
     }
 
@@ -440,16 +440,16 @@ public sealed partial class Binding
     {
         if (KotoHelper.UnwrapParentheses(receiver) is IndexKoto element && element.BoundType is { Kind: BoundTypeKind.FixedArray, Semantics: SemanticsKind.Owner } array && ElementAccess.IsSharedElement(element))
         {
-            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element.Left)));
+            this.adaptations[element] = new(ExpectedAdaptationKind.SharedBorrow, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [array], origin: this.PlaceOrigin(element)));
         }
     }
 
     // Records the one shared borrow of a Non-Copy element Place that is read in place below its receiver.
-    private void SharedElement(Koto node, Koto receiver, BoundType? element)
+    private void SharedElement(Koto node, BoundType? element)
     {
         if (element is not null && this.ProveCopy(element, node) == ConstraintProof.Refuted && SharedReadTypes.BorrowSemantics(element) is { } semantics)
         {
-            var origin = this.PlaceOrigin(receiver);
+            var origin = this.PlaceOrigin(node);
             var referent = element.Semantics == SemanticsKind.Owner ? element : element.Components[0];
             var dependency = element.Origin is { } stored ? this.Meet(origin, stored) : origin;
             var read = this.ElementRead(element, origin) ?? this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: dependency);
