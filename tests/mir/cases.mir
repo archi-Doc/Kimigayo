@@ -1,6 +1,6 @@
 defaulttemplate peek#1 @100
   _0: U return @87
-  _1: ref/t/U arg value (PreparedInput) @87
+  _1: ref/t/U arg value (PreparedInput) @97
   b0: U Value, Uniq
   bb0:
     * _0 = copy ((*_1)@b0) @100

@@ -277,7 +277,7 @@ public sealed partial class Binding
             else if (!BorrowsWrittenSlot(stored) ||
                 !this.AdaptInput(conversion.Left, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Ref, [stored]), stored, scope, null, null, out borrowed, out _, out _, explicitBorrow: true))
             {
-                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
             }
 
             Complete(conversion.Right, borrowed);
@@ -348,7 +348,7 @@ public sealed partial class Binding
                 !IsSubtype(adapted.Components[0], pattern.Components[0]) ||
                 (pattern.Origin is not null && !this.CheckTypeUse(adapted, pattern, conversion)))
             {
-                return this.Fail(conversion, BindingFailure.InvalidAssignment);
+                return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, pattern.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq));
             }
 
             var result = pattern.Origin is null ? adapted : pattern;
@@ -428,7 +428,7 @@ public sealed partial class Binding
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType.Components[0]]);
                 if (!this.AdaptObjectBorrow(conversion.Left, pattern, operandType, scope, true, out var adapted, out _, out _))
                 {
-                    return this.Fail(conversion, semantics == SemanticsKind.ObjUniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
+                    return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.ObjUniq));
                 }
 
                 Complete(conversion.Right, adapted);
@@ -448,7 +448,7 @@ public sealed partial class Binding
                 var pattern = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [operandType]);
                 if (!this.AdaptInput(conversion.Left, pattern, operandType, scope, null, null, out var adapted, out _, out _, explicitBorrow: true))
                 {
-                    return this.Fail(conversion, semantics == SemanticsKind.Uniq ? AccessFailure(conversion.Left) : BindingFailure.InvalidAssignment);
+                    return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, semantics == SemanticsKind.Uniq));
                 }
 
                 Complete(conversion.Right, adapted);
