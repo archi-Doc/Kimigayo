@@ -5362,7 +5362,7 @@ structure is recorded here by the unit that first implements it.
     a code outside the table is `InternalInvariant_Kd`); Initialize (the
     value `Put` at the storage, R5-M87's copy form); Slice (the storage and length put at the Slice record's Fields 0 and 1, the Unit
     backing ignored); Copy (transferBytes as `llvm.memcpy`: R5-M18 reversed PD23, the declaration rules out overlap, so `MoveBytes`'
-    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues; C6a MakeObj, MakeRc, MakeArc,
+    comment is corrected). Every other row is `Unwritten`, its unit named in the table: C4a DestroyValues (no producer: R5-M95); C6a MakeObj, MakeRc, MakeArc,
     Clone, TypeTest; C7 StaticEnsure; C8d Capacity; C9a WriteStdout; C9b FormatFloat, ErasedWriter, ErasedReserve, FormatInteger128; C9c
     the format buffer rows; C10a and C10b the test rows. Stride and ReinterpretLoan have no MIR producer yet (no compiler function's
     disposition serves them; an open PLAN row), so their rows are written with their first producer. Allocate and Fail call through
@@ -5432,3 +5432,33 @@ structure is recorded here by the unit that first implements it.
   - Rejected: a "forwarded" sentinel that each location writer tests (a sentinel and a branch per consumer); hidden location operands
     from the MIR builder (a held builder change, where package C names them code generation's); `%a<slot>` kept with a forwarded form of
     its own (option B, a second naming rule).
+- **R5-M95 The drop glue of MIR code generation, one level per Type (C4a-1)** (2026-10-21, C lane; plan C4a, package C 3.6 and §4's C4a
+  row, X3 and X27, PD18; the planning session's decisions on C4a's design and its split; under R5-M18 form 1, R5-M60 and R5-M78)
+  - Rows: `DropGlue.Row` gives a closed Type's glue row, which `FunctionCodegen.Glue.cs` writes: a string's calls the runtime release
+    with the glue's own parameters (R5-M78); a struct's, Tuple's, enum's or fixed array's destroys one level, its parts in destruction
+    order from `DropGlue.Parts`, the enumeration the collector targets from (X27), each read target once: a struct that declares a drop
+    calls its destructor instance alone, its receiver the value (none for a zero-sized Self; PD18, R4-M6b); otherwise each part whose
+    instance Type may need a drop (`MirTypes.MayNeedDrop`, the collector's rule) calls the part's glue at its address from the aggregate
+    writer's `Component` (a base at the value's own address, X1), passing the glue's location on; an enum's parts under one switch on its
+    i32 tag over the Cases holding such a part; a fixed array's element in one counted loop from the last element (Fill's shape, R4-M81).
+    A Closure environment's row is C5a's, an erased function's C5b's, a handle's C6b's, a collection's C8d's and C8e's, each one located
+    `Unsupported_Kd` at the glue item's site, where a glue function's records now lie. A target missing or left over is
+    `InternalInvariant_Kd`.
+  - `DropPart` gains its position, (Ordinal, Index) in the aggregate writer's numbering (a struct's base 0 and its Fields after it, a
+    Tuple's or a Case payload's elements under the Case's ordinal; -1 for a fixed array's element, standing for every element, and for a
+    part without one), so the writer addresses the parts `Parts` gives. This closes PLAN G157 (6) with
+    `InstanceCollectorTest.DropGluePartsAgreeWithTheDestructionWalk`: over a glue Type of each kind the destruction walk's direct descents
+    are the parts in reverse, a struct's base last and an enum's Case payloads each reversed. One enumeration of both in Mir is rejected:
+    it changes the held `MirTypes` and a shared representation (the full process) for a fact the agreement test holds.
+  - `DestroyValues` has no MIR producer (no compiler function's disposition serves it; R4-M63's "never built", the K package's
+    "producer-less until R8"), so its row is written with its first producer, as `Stride`'s and `ReinterpretLoan`'s (PLAN G198); R5-M92's
+    "C4a DestroyValues" yields.
+  - Split (the planning session, 2026-10-21): C4a-1 lands the glue; gate step 2 waits for the per-body fact its owner publishes (ask
+    A-2b, `MirDropTable.Incomplete`; F1), which C4a-2 reads, so R5-M78's program-wide stand-in stays until then: it is sound (it refuses
+    every Drop of a program whose MIR analyses recorded an Ownership problem), and a per-body gate composed from `MirProblem.Body` would
+    need a second copy of A1's and A2's recording rules and would miss an inline copy's problem, which `MirReport.Add` drops as its
+    template's (C4a's design §0).
+  - Rejected: reusing the old generator's `__kimi_drop_aggregate`, which also destroys the Fields after a destructor (PD18); the writer
+    walking a Type itself beside `Parts` (a second enumeration, X27); glue text in `DropGlue` (its contract; R5-M86 confirmed the writer
+    in FunctionCodegen); inlining a part's glue into its parent's (no function per Type, X3, and text growing with nesting); writing the
+    collection and handle rows through the legacy helpers here (C6b's and C8d's/C8e's rows).

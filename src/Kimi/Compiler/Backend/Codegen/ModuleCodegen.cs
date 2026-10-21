@@ -8,7 +8,8 @@
 // around the output roots (IMPL 21.4.2: an Application's __kimi_start calls its startup root and exits with 0, a Library has no entry) and
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
-// (__kimi_drop<item>, written by FunctionCodegen for a Type DropGlue has a row for, the string's, R5-M78; C4a the others), ClosureErasure
+// (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
+// array's (R5-M95); a Closure environment's C5a, an erased function's C5b, a handle's C6b, a collection's C8d and C8e), ClosureErasure
 // and ItemAdapter (C5b), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a
 // test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the

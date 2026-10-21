@@ -34,6 +34,15 @@ public sealed class FunctionCodegenTest
     private const string Drops =
         "Console.writeLine(\"a\")\nlet s: string\nlet flag = true\nif flag\n    Console.writeLine(\"b\")\n";
 
+    // A Library's parameters, each destroyed by its Type's glue (R5 C4a; DECISIONS R5-M95): a derived struct with a string, an i32 and a
+    // zero-sized Guard Field and a base, a Tuple, an enum with an empty Case and a fixed array; Guard and Holder declare drops.
+    private const string Glues =
+        "struct Guard\n    drop => ()\nstruct Holder\n    var s: string\n    public init(s: string) => self.s = s@move\n    drop => ()\n" +
+        "open struct Base\n    public var b: string\n    protected init(b: string) => self.b = b@move\nstruct Leaf : Base\n    public var x: string\n" +
+        "    public var n: i32\n    public var y: Guard\n    public init(x: string, b: string) : base(b@move)\n        self.x = x@move\n" +
+        "        self.n = 1\n        self.y = Guard.init()\nenum Shape\n    Pair(string, i32, Guard)\n    Empty\n    One(Holder)\n" +
+        "func leaf(v: Leaf) => ()\nfunc tuple(v: (Holder, i32, Guard)) => ()\nfunc shape(v: Shape) => ()\nfunc row(v: [3 of string]) => ()\n";
+
     private const string Arithmetic =
         "func f(a: i32, b: i32) -> i32 => a / b + a % b - (a << b) * 3\nfunc g(a: Wrapping<u8>, c: char) -> bool => -a > 3 and not (c < 'z')\n";
 
@@ -546,6 +555,39 @@ public sealed class FunctionCodegenTest
         Assert.Equal(["call void @(ptr %, ptr %, i64 %)", "ret void"], glue.Instructions.Select(static x => x.Shape));
         Assert.Same(ir.Function("__kimi_destroy_string"), glue.Instructions[0].Callee);
         Assert.Equal(glue.Parameters, glue.Instructions[0].Operands);
+    }
+
+    // SPEC 16.3.2, PD18, R4-M6b (R5 C4a; DECISIONS R5-M95): a glue destroys one level of its Type in destruction order, each part that may
+    // need a drop through that part's glue at its address: a derived struct's Fields last to first, the i32 none, then its base at the
+    // value's own address (X1); a Tuple's elements by decreasing index; an enum's active Case under one switch on its i32 tag at the value's
+    // address, its payload last to first, the empty Case nothing; a fixed array's elements from the last in one loop; a struct that declares
+    // a drop its destructor alone, on the value's address or, zero-sized, with no argument; a string the runtime release.
+    [Fact]
+    public void ADropGlueDestroysOneLevelInDestructionOrder()
+    {
+        var c = Analyze(Glues, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var (leaf, tuple, shape, row) = (GlueOf(ir, c, "leaf"), GlueOf(ir, c, "tuple"), GlueOf(ir, c, "shape"), GlueOf(ir, c, "row"));
+        var (guard, text, parent) = (CalleesOf(leaf)[0], CalleesOf(leaf)[1], CalleesOf(leaf)[2]);
+        var holder = CalleesOf(tuple)[1];
+        Assert.Equal([guard, text, parent], CalleesOf(leaf));
+        Assert.Same(leaf.Parameters[0], CallsOf(leaf)[2].Operands[0]);
+        Assert.Equal([text], CalleesOf(parent));
+        Assert.Same(parent.Parameters[0], CallsOf(parent)[0].Operands[0]);
+        Assert.Equal([ir.Function("__kimi_destroy_string")], CalleesOf(text));
+        Assert.Equal(text.Parameters, CallsOf(text)[0].Operands);
+        Assert.Equal("internal void ()", Assert.Single(CalleesOf(guard)).Signature);
+        Assert.Equal("internal void (ptr)", Assert.Single(CalleesOf(holder)).Signature);
+        Assert.Same(holder.Parameters[0], Assert.Single(CallsOf(holder)).Operands[0]);
+        Assert.Equal([guard, holder], CalleesOf(tuple));
+        var entry = shape.Blocks[0];
+        Assert.Same(shape.Parameters[0], Assert.Single(entry.Instructions, static x => x.Opcode == "load").Operands[0]);
+        Assert.Equal("switch i32 %, label % [ i32 0, label % i32 2, label % ]", entry.Terminator.Shape);
+        Assert.Equal([guard, text], CalleesOf(entry.Successors[1].Instructions));
+        Assert.Equal([holder], CalleesOf(entry.Successors[2].Instructions));
+        Assert.Equal([text], CalleesOf(row));
+        Assert.Contains(row.Instructions, static x => x.Shape == "sub i64 48, %");
+        Assert.Contains(row.Instructions, static x => x.Shape == "icmp eq i64 %, 3");
     }
 
     // Gate step 2's stand-in (DECISIONS R5-M78): A2's verdicts are exact only for programs A1 accepts (R4-M6a), and under sel the old analysis
@@ -1402,6 +1444,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Raws, OutputKind.Library)]
     [InlineData(RequirementWitnesses, OutputKind.Application)]
     [InlineData(CallerLocations, OutputKind.Application)]
+    [InlineData(Glues, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1490,6 +1533,7 @@ public sealed class FunctionCodegenTest
     [InlineData(Raws, OutputKind.Library)]
     [InlineData(RequirementWitnesses, OutputKind.Application)]
     [InlineData(CallerLocations, OutputKind.Application)]
+    [InlineData(Glues, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
@@ -1573,6 +1617,17 @@ public sealed class FunctionCodegenTest
         Assert.Contains(Constant(location), text);
         return abort;
     }
+
+    // The glue a Library function's body calls on its parameter (its one DropGlue call).
+    private static IrFunction GlueOf(GeneratedIr ir, Compilation c, string name)
+        => ir.Function(Regex.Match(Assert.Single(ItemTexts(c, name)), @"call void @(__kimi_drop\d+)\(").Groups[1].Value);
+
+    // A function's calls, and their callees in order.
+    private static IrValue[] CallsOf(IrFunction function) => [.. function.Instructions.Where(static x => x.Opcode == "call")];
+
+    private static IrFunction[] CalleesOf(IrFunction function) => CalleesOf(function.Instructions);
+
+    private static IrFunction[] CalleesOf(List<IrValue> instructions) => [.. instructions.Where(static x => x.Opcode == "call").Select(static x => x.Callee!)];
 
     private static string Generate(Compilation c)
     {

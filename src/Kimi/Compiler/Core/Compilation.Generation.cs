@@ -20,10 +20,10 @@
 // Invariants: every product generation request (EmissionArtifacts.Publish, and through Project.PublishArtifacts kimi build and kimi test)
 // and the out-string adapters pass this gate, and under sel none of them runs the old generator. Outside the gate until G7 deletes
 // LlvmEmitter, and with it Compilation.Emission: its direct readers in tests (TryPrepare inspections and failure facts, which G5 deletes)
-// and src/Benchmark (four stage measurements of the old generator) run the old generator without the gate, under sel too. One
-// ModuleCodegen per compilation keeps MIR code generation's storage.
+// and src/Benchmark (three stage measurements of the old generator; the pipeline benchmark generates through this entry under sel, R5-M94)
+// run the old generator without the gate, under sel too. One ModuleCodegen per compilation keeps MIR code generation's storage.
 // Must not: decide acceptance again, return failure text from new code (the adapters' text is transitional) or fall back to the old
-// generator under sel. C4a adds gate step 2 here.
+// generator under sel. C4a-2 adds gate step 2 here (R5-M95: it reads the per-body fact A1 and A2 publish).
 
 using System.Runtime.InteropServices;
 using Kimi.Diagnostics;

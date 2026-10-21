@@ -926,6 +926,44 @@ public sealed class InstanceCollectorTest
         Assert.DoesNotContain(set.Items.ToArray(), x => Label(program, x) == "DropGlue Plain");
     }
 
+    // PLAN G157 (6), K 4.5 "DropGlue" (X27; DECISIONS R5-M95): DropGlue.Parts, which the collector targets and code generation writes from,
+    // and MirTypes.Destruction, which drop elaboration and the effects walk, decompose a Type alike. Over a glue Type of each kind (a struct
+    // with a base, its base, a Tuple, an enum, a struct that declares a drop, a nested generic struct, a fixed array, an Array, a Dictionary, a
+    // Sealed rc handle and a Closure environment) the walk's direct descents are the parts in reverse, a struct's base last and an enum's Case
+    // payloads each reversed; a struct that declares a drop and a handle are not descended, their part the destructor and the Sealed payload.
+    // Each part's position names its component in the aggregate writer's numbering (a struct's base 0, its Fields after it).
+    [Fact]
+    public void DropGluePartsAgreeWithTheDestructionWalk()
+    {
+        var c = MirBuildTest.Compile("open struct Base\n    public var log: Array<u8> = []\n    public init() => ()\nstruct Triple: Base\n" +
+            "    public var a: string = \"a\"\n    public var n: i32 = 0\n    public var b: Array<i32> = []\n" +
+            "    public var c: (Array<bool>, string) = ([], \"c\")\n    public init() : base() => ()\n" +
+            "enum Shape\n    Pair(string, Array<i32>)\n    Single(Array<bool>)\n    Empty\n" +
+            "struct Res\n    public var s: string = \"s\"\n    public init() => ()\n    drop => ()\n" +
+            "struct Holder<T>\n    public var value: T\n    public var n: i32 = 0\n    public init(value: T) => self.value = value@move\n" +
+            "struct Leaf\n    public var name: string\n    public init(name: string) => self.name = name@move\n" +
+            "func use(text: string) -> ()\n    let t = Triple.init()\n    let s = Shape.Pair(\"a\", [1])\n    let r = Res.init()\n" +
+            "    let h = Holder<(string, Holder<string>)>.init((\"a\", Holder<string>.init(\"b\")))\n    let f: [2 of string] = [\"x\", \"y\"]\n" +
+            "    let d: Dictionary<string, Array<i32>> = [:]\n    let o = Kimi.Intrinsics.makeRc(Leaf.init(\"o\"))\n" +
+            "    let e = func [text@move] () -> i32 => 1\n    return\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var set = new InstanceCollector(c.Types, c.Layout).Run(c.BuildMir(), 1);
+        var (parts, descents, names) = (new List<DropPart>(), new List<BoundType>(), new HashSet<string>());
+        foreach (var type in set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.DropGlue).Select(static x => x.RepresentativeType!))
+        {
+            parts.Clear();
+            descents.Clear();
+            DropGlue.Parts(c.Types, type, parts);
+            var walk = new Descents(descents);
+            _ = MirTypes.Destruction(type, ref walk);
+            Assert.Equal(Expected(c.Types, type, descents), parts.Select(static x => x.Type));
+            Assert.All(parts, x => Assert.Same(Component(type, x), x.Type));
+            names.Add(TyCtxt.Name(type));
+        }
+
+        Assert.Subset(names, new HashSet<string>(["Triple", "Base", "Shape", "Res", "Holder<(string, Holder<string>)>", "[2 of string]", "rc/Leaf"]));
+    }
+
     // K 4.5 "DropGlue", SPEC 16.3.2: a fixed array's glue destroys its elements through its element Type's glue, and a fixed array of
     // elements that need no drop has none; a derived struct's glue ends with its base's, which is the base's declared destructor alone, as
     // a base without one ends with its Fields.
@@ -1584,5 +1622,68 @@ public sealed class InstanceCollectorTest
         return (body.Source.Module == 0 ? $"{body.Key.Kind} {name}" : $"library {body.Key.Kind} {name} in {body.Key.Decl!.Scope.Owner}") + instance;
 
         static FunctionKoto Enclosing(Koto node) => node is FunctionKoto { IsAnonymous: false } named ? named : Enclosing(node.Parent!);
+    }
+
+    // The parts the destruction walk's direct descents give: a destructor's struct and a handle are not descended (the destructor; a Sealed
+    // payload), an enum's Case payloads each last to first, any other Type's descents last to first with a struct's base, the last, kept last.
+    private static IEnumerable<BoundType> Expected(TyCtxt types, BoundType type, List<BoundType> descents)
+    {
+        if (AdtDef.Destructor(type) is not null || type.Kind == BoundTypeKind.Semantics)
+        {
+            Assert.Empty(descents);
+            return AdtDef.Destructor(type) is not null ? [type] : types.Sealed(null, type.Components[0]) ? [type.Components[0]] : [];
+        }
+
+        if (AdtDef.IsEnum(type))
+        {
+            return descents.SelectMany(static x => x.Components.Reverse());
+        }
+
+        var fields = AdtDef.Base(type) is null ? descents.Count : descents.Count - 1;
+        return descents.Take(fields).Reverse().Concat(descents.Skip(fields));
+    }
+
+    // The component a part's position names in the aggregate writer's numbering (FunctionCodegen.Component), or the part's own Type for a
+    // part without one (Index -1).
+    private static BoundType Component(BoundType type, DropPart part)
+    {
+        if (part.Index < 0)
+        {
+            return part.Type;
+        }
+
+        if (AdtDef.IsEnum(type))
+        {
+            return AdtDef.CaseTypes(type)![part.Ordinal].Components[part.Index];
+        }
+
+        if (!AdtDef.IsStruct(type))
+        {
+            return type.Components[part.Index];
+        }
+
+        var parent = AdtDef.Base(type);
+        return parent is not null && part.Index == 0 ? parent : AdtDef.FieldType(type, parent is null ? part.Index : part.Index - 1)!;
+    }
+
+    // The destruction walk's direct descents below its root: each Type it enters after the root, none entered further.
+    private struct Descents(List<BoundType> into) : IMirDestruction
+    {
+        private bool root;
+
+        public bool First(BoundType type)
+        {
+            if (!this.root)
+            {
+                return this.root = true;
+            }
+
+            into.Add(type);
+            return false;
+        }
+
+        public readonly bool Visit(BoundType type, int depth) => false;
+
+        public readonly bool Deep() => false;
     }
 }

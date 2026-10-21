@@ -1,9 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, package C 3.2 and 3.9, design 2 2.2; DECISIONS R5-M65, R5-M73,
-// R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93), MIR code generation: the LLVM definition of one body item of the checked
-// set from its validated, analyzed MIR body in the item's instance, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one
-// located Unsupported_Kd, never wrong code.
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, C4a, package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65,
+// R5-M73, R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93, R5-M95), MIR code generation: the LLVM definition of one body item
+// of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue item by its Type's row, and the
+// coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and analysis problems
 // (A2, R4-M6a); the compilation's Layout and runtime location texts; ModuleCodegen's signatures (Signature and Import: Abi.Of under the
@@ -43,7 +43,7 @@
 // and the text's spelling (FunctionCodegen.Values.cs); the function's frame: its kind's argument order, homes, copy slots, prologue and
 // return (.Frame.cs); the place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues
 // (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs), intrinsics
-// (.Intrinsics.cs) and drops (.Drops.cs).
+// (.Intrinsics.cs) and drops (.Drops.cs); the DropGlue items' functions (.Glue.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -60,6 +60,7 @@ internal sealed partial class FunctionCodegen
     private readonly ModuleCodegen module;
     private readonly MirReach reach = new();
     private readonly MirCases cases; // The item's case view (X13).
+    private readonly TyCtxt typeContext; // Its Sealed proofs, which a handle's glue parts read (DropGlue.Parts).
     private Slot[] slots = []; // By local.
     private BoundType[] types = []; // By local, in the item's instance.
     private Value[] arguments = []; // A runtime call's arguments in parameter order, or a fixed-array aggregate's element values.
@@ -73,7 +74,7 @@ internal sealed partial class FunctionCodegen
     /// <summary>Initializes a new instance of the <see cref="FunctionCodegen"/> class.</summary>
     /// <param name="module">The module whose signatures and records it uses.</param>
     /// <param name="types">The Type context of the program, whose case Types the item's view selects.</param>
-    internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.cases) = (module, new(types));
+    internal FunctionCodegen(ModuleCodegen module, TyCtxt types) => (this.module, this.typeContext, this.cases) = (module, types, new(types));
 
     /// <summary>Writes the definition of a body item, or records why not.</summary>
     /// <param name="program">The program, whose body the item replays and whose drop table and problems its drops read.</param>
@@ -244,6 +245,10 @@ internal sealed partial class FunctionCodegen
         output.Write(" ]\n");
     }
 
-    // A record at a site of the body, located by the collector's rule (K package 4.9).
-    private void Report(DiagnosticCode code, in SourceInfo source) => this.module.Report(code, this.collector.Subject(this.item, this.body, source));
+    // A record at a site of a body item's body, located by the collector's rule (K package 4.9), or at a type-driven item's site (a glue's).
+    private void Report(DiagnosticCode code, in SourceInfo source)
+    {
+        var entry = this.collector.Set.Items[this.item];
+        this.module.Report(code, entry.Key.Kind == MonoKind.Body ? this.collector.Subject(this.item, this.body, source) : entry.Site);
+    }
 }
