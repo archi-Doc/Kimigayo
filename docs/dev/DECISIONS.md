@@ -2817,6 +2817,11 @@ resumed by R4-M86 (2026-10-20).
   `AddType` visits a (part, bound) once per Place, since a repeat records only dependencies `RecordDependency` already holds (it only
   strengthens) and so recurses nowhere. Rejected for U2: a per-analysis table for parts without an abstract part (instance storage
   keeps projections unnormalized, so such a part can still reach `CopyProof` in the Place's context; PLAN G187).
+  Cost on ordinary programs (recorded under ARCH's performance rule; interleaved runs pinned to one core, the final review's and the
+  implementer's): warm Bind stays 0 B and takes +0.5% (Milestone27) and +1.3–1.7% (Milestone32); cold allocation +33–66 KB in Bind
+  and +107–134 KB after it; a checked compilation retains about 100 KB more (+1.2%). Skipping the table for parts whose components
+  are all leaves recovered nothing (the review's variant), and no cheaper exact form is known, so the cost is accepted as recorded
+  against exponential time on shared Types.
   Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)

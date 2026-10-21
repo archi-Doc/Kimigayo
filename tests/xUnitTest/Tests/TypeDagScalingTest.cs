@@ -171,6 +171,37 @@ public class TypeDagScalingTest
         Assert.Equal(Codes(code), Problems(OldPath(source)));
     }
 
+    // SPEC 15.6.2: a Tuple sharing a borrow's parts keeps the Loan, so a write while it is live conflicts once (AddType's set per Place).
+    [Theory]
+    [InlineData(false, "")]
+    [InlineData(true, "ComparisonLoanConflict_Kd")]
+    public void ALoanThroughSharedOriginCarryingPartsIsKept(bool written, string code)
+    {
+        var source = new System.Text.StringBuilder("public func main() -> ()\n    var v = 1\n    let t = v@ref\n    let a0 = (t, t)\n");
+        for (var i = 1; i < 8; i++)
+        {
+            source.Append($"    let a{i} = (a{i - 1}, a{i - 1})\n");
+        }
+
+        source.Append(written ? "    v = 2\n" : string.Empty).Append("    let z = a7\n    return\n");
+        Assert.Equal(Codes(code), Problems(OldPath(source.ToString())));
+    }
+
+    // SPEC 8.15: Copy proofs over shared Tuples of an associated projection hold (an interned constraint's projection walk).
+    [Fact]
+    public void CopyProofsOverSharedProjectionTuplesHold()
+    {
+        var source = new System.Text.StringBuilder("contract HasElem\n    associate Element\nstruct Src\n    Self is HasElem\n    associate Element is i32\n" +
+            "func f<S>(e: S.Element) -> ()\n    S is HasElem\n    S.Element is Copy\n    let a0 = (e, e)\n");
+        for (var i = 1; i < 10; i++)
+        {
+            source.Append($"    let a{i} = (a{i - 1}, a{i - 1})\n");
+        }
+
+        source.Append("    return\npublic func main() -> ()\n    f<Src>(1)\n    return\n");
+        Assert.Empty(DiagnosticCorpus.Check(source.ToString()).Diagnostics);
+    }
+
     // A ring through a handle reaches the bound, which retains the Loan; a closed instance whose Field is a projection is checked in its
     // Place's context.
     [Theory]
