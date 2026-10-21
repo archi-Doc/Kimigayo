@@ -2063,12 +2063,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
     left unresolved with no Type, also in parentheses or labeled, since no destination Type holds a kept operand (built at `()`,
     `return v[if c => i else => missing]`, `v[(if …)]` and `v[label l: do … if c => exit to l i … exit to l missing]` got a finding
     and lost the record of a move before it; under a unary operator, `v[-(if …)]`, the operator stays kept and replaces the `if`). The
-    labeled case is the owner's choice (2026-10-21, verbatim 「置き換えて取り込む（推奨）」, the question relayed by R5's planning session): a
-    labeled do or loop whose exits deliver derived values is replaced too, its body's problems lost (`other + label l: do … exit to l
-    missing`; `other + label l: loop … exit to l 1` no longer a finding), PLAN G121's failed-construct residual. A kept-construct
-    design the owner chooses for G121 removes the exception. `Keeps` reads the node's binding state first and the parent's form Op
-    once per parent (the walk's `unresolvedOperation`). Its kept right operand evaluated unconditionally, a Logical's moves there are
-    definite rather than possible; A1 reports a later use as `MovedPlace_Kd` either way.
+    labeled do is the owner's choice (2026-10-21, verbatim 「置き換えて取り込む（推奨）」, the question relayed by R5's planning session): an untyped
+    unresolved labeled do is replaced too, its body's problems lost (`other + label l: do … exit to l missing`), PLAN G121's
+    failed-construct residual. `Loop` joins `Construct` by meaning, a planning-session decision: a loop's exits deliver its value
+    (SPEC 14.6.3; a `for` or `while` gives Unit, 14.6.1), so the same replacement follows for an untyped loop, labeled or not
+    (`other + label l: loop … exit to l 1` is no longer a finding). A kept-construct design the owner chooses for G121 removes the
+    exception. `Keeps` reads the node's binding state first and the parent's form Op once per parent (the walk's
+    `unresolvedOperation`). Its kept right operand evaluated unconditionally, a Logical's moves there are definite rather than
+    possible; A1 reports a later use as `MovedPlace_Kd` either way.
   - Part 3 (`MirBuilder.Value`, from `Operand`): a value Binding gave no Type, a construct it left unresolved or a derived value, is held
     at the Type its consumer expects. It is one rule with `Unsupported(node, derived, expected)`, which held a derived value so already:
     SPEC 14.9.2 makes a construct's Expression Type its Target Result Type, the fixed expectation, which Binding does not publish for
