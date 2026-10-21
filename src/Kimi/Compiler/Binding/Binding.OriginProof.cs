@@ -44,6 +44,10 @@ public sealed partial class Binding
         return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
     }
 
+    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
+    // is not fixed (an Unbound end counts); a fixed-fixed relation is Binding's to judge (A3 §7, until R7).
+    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter) => !FixedOrigin(longer) || !FixedOrigin(shorter);
+
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
