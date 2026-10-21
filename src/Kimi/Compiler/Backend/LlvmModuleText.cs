@@ -1,8 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the module frame of the generated LLVM text (SPEC 21.3, 21.4, 22.6; DECISIONS R5-M14): the header with the pooled
-// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the checked splice every
-// runtime template takes (ExpandRuntime; LegacyRuntimeHelpers' formatting runtime too), the external declarations,
+// constants, the Windows runtime template with its ABI definitions spliced in and its test variant, the runtime routine a module
+// defines only where a body calls it (TryAllocate, the nullable Alloc), the checked splice every runtime template takes (ExpandRuntime;
+// LegacyRuntimeHelpers' formatting runtime too), the external declarations,
 // the overflow and memory intrinsic declarations, the footer's profile attributes, the spelling of external symbols, numbered names,
 // numbers formatted on the stack (or once, as text, for a template filled at startup) and the bits of a floating constant's
 // hexadecimal spelling. Both generators write the frame through it (PD2: promoted, never copied; Name came from the old writer with
@@ -79,6 +80,31 @@ internal static partial class LlvmModuleText
         declare { i128, i1 } @llvm.usub.with.overflow.i128(i128, i128)
         declare { i128, i1 } @llvm.umul.with.overflow.i128(i128, i128)
         """ + "\n";
+
+    // SPEC 21.4.3, 22.2: the nullable form of Alloc (RuntimeAbi.TryAllocateBytes), defined where a body calls it: null wherever Alloc
+    // would Abort (a size above isize's range, no process heap, a failed allocation); a zero-byte request allocates one byte, so the
+    // result is a fresh start; no location to report.
+    internal static readonly string TryAllocate = ExpandRuntime(
+        """
+        {{__kimi_try_allocate}}
+        entry:
+          %invalid = icmp ugt i64 %bytes, 9223372036854775807
+          br i1 %invalid, label %failed, label %heap
+        heap:
+          %process_heap = call ptr @GetProcessHeap()
+          %no_heap = icmp eq ptr %process_heap, null
+          br i1 %no_heap, label %failed, label %try
+        try:
+          %zero = icmp eq i64 %bytes, 0
+          %actual = select i1 %zero, i64 1, i64 %bytes
+          %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
+          ret ptr %memory
+        failed:
+          ret ptr null
+        }
+
+        """,
+        [RuntimeAbi.TryAllocateBytes]);
 
     // Target information, shared Types, and exactly one strong _fltused definition (SPEC 21.4.7).
     private static readonly string Header =

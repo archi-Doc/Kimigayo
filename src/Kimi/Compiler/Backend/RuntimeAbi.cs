@@ -67,7 +67,8 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi DictionaryInit = new("__kimi_dictionary_init", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi ArrayFree = new("__kimi_array_free", Unit.ComputationType, ArrayHandleParameters);
     internal static readonly FunctionAbi RawAllocate = new("__kimi_raw_allocate", "ptr", [new("i64", "count"), new("i64", "stride"), Location, LocationLength]);
-    internal static readonly FunctionAbi StorageRelease = new("__kimi_free", Unit.ComputationType, [new("ptr", "storage"), Location, LocationLength]);
+    internal static readonly FunctionAbi StorageRelease =
+        new("__kimi_free", Unit.ComputationType, [new("ptr", "storage", AbiParameterKind.Value, 0), Location, LocationLength]);
 
     // SPEC 4.9.5, 4.9.8: capacity routines move element bytes by stride and run no user code; the writer emits them only for
     // modules that use Arrays.
@@ -80,9 +81,9 @@ internal static class RuntimeAbi
     internal static readonly FunctionAbi ArrayShrink =
         new("__kimi_array_shrink", Unit.ComputationType, [new("ptr", "handle"), new("i64", "stride"), Location, LocationLength]);
 
-    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage; the writer emits them only for modules whose
-    // bodies call them.
-    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes")]);
+    // SPEC 22.2: the private nullable Alloc and byte copy behind Kimi.Storage, defined only in modules whose bodies call them (the first
+    // by LlvmModuleText.TryAllocate for both generators).
+    internal static readonly FunctionAbi TryAllocateBytes = new("__kimi_try_allocate", "ptr", [new("i64", "bytes", AbiParameterKind.Value, 0)]);
 
     internal static readonly FunctionAbi TransferBytes =
         new("__kimi_transfer_bytes", Unit.ComputationType, [new("ptr", "destination"), new("ptr", "source"), new("i64", "size")]);
