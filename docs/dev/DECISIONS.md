@@ -4613,11 +4613,11 @@ structure is recorded here by the unit that first implements it.
   the body is region 0 and the builder targets no entry block anywhere, so one rule states both clauses with no body-kind branch.
   The validator walks the raw scope table, building its own region tree, rather than `MirBody.Common` (2e-4) or `Inlining`: it is
   the one owner that checks that table and must not rest on a query that trusts validated IR, so 2e-4's query is no second copy of
-  this rule. A table the walk cannot follow stops it, as a projection chain stops `Tables`: `Tables` returns false for a broken scope
-  table and `Block` for a location outside the scopes (the `Scope` finding is unchanged). Census: no finding in the library, the 44
-  milestones, the `tests/mir` goldens, the SPEC variants, a probe of nested copies (depth 3, in a `while` condition and a `loop`) and
-  the suite under the default pipeline and `-Pipeline mir` (4.48 million body validations, 28,625 copies, 1,492 templates). Cost: one
-  pass over the locations and edges and one over the edges, scratch per scope; warm 0 B. Rejected: a block-0 clause for
+  this rule. A scope chain that does not lead out or a location outside the scopes, each a `Scope` finding, skips this walk alone
+  (`Checker.Unscoped`); every other rule still reports. Census: no finding in the library, the 44 milestones, the `tests/mir`
+  goldens, the SPEC variants, a probe of nested copies (depth 3, in a `while` condition and a `loop`) and the suite under the default
+  pipeline and `-Pipeline mir` (4.48 million body validations, 28,625 copies, 1,492 templates). Cost: one pass over the locations and
+  edges where the body has a copy and one over the edges, scratch per scope; warm 0 B. Rejected: a block-0 clause for
   DefaultTemplate bodies only (a body-kind branch for a fact every body holds); the first location by layout, the least block and
   index in the region (a fact of block allocation, not of control flow); validating templates only and trusting the fold (A5 reads
   the caller's MIR; a fold defect would go unseen); publishing each copy's entry in `MirScope` (a new column the edges determine);

@@ -109,7 +109,11 @@ internal sealed partial class MirValidator(TyCtxt types)
         {
             this.Diverged(body, findings);
             this.Reach(body, findings);
-            this.Entries(body, findings);
+        }
+
+        if (walked && !checker.Unscoped)
+        {
+            this.Entries(body, findings); // It walks the scope table and each location's scope.
         }
     }
 
@@ -126,6 +130,9 @@ internal sealed partial class MirValidator(TyCtxt types)
         private int opaqueValues;
         private bool acquires; // Whether the operands walked are a marked Use's assigned to a local's whole Place, a PairAcquire's one position.
         private bool used; // Whether the operands walked are an Assign's Use's, a function item constant's one position.
+
+        // Gets a value indicating whether the scope table or a location's scope cannot be walked, a Scope finding; only Entries needs them.
+        internal bool Unscoped { get; private set; }
 
         public readonly void Effect(MirEffect effects, int site)
         {

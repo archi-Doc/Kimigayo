@@ -500,14 +500,16 @@ public sealed class MirValidatorTest
     }
 
     // DECISIONS R5-M90 (2e-D 5.7): a region, the body or an Inlined scope's locations (a default's copy), is entered only at its first
-    // location, and no edge from inside it targets the block that location lies in. Valid: a copy the caller's statement before it enters
-    // mid-block, with a nested copy that shares its first location, and a copy at a block's start that two caller edges enter (a loop's).
-    // Each broken form is an Entry finding at the edge: a caller jump into the first copy's second block, the caller's statement between
-    // two parts of it, its edge back into the block it began in, and the second copy's edge to its first location. An edge to block 0,
-    // the body's first location, is EachRuleRejectsTheBodyThatBreaksIt's.
+    // location, and no edge from inside it targets the block that location lies in. Valid: a copy at (0, 0), which the body's entry enters;
+    // a copy the caller's statement before it enters mid-block, with a nested copy that shares its first location and a loop inside it;
+    // and a copy at a block's start that two caller edges enter (a loop's). Each broken form is an Entry finding at the edge: a caller jump
+    // into the second copy's second block, a check edge there from the third copy, the caller's statement between two parts of the second
+    // copy, its edge back into the block it began in, and the third copy's edge to its first location. An edge to block 0, the body's
+    // first location, is EachRuleRejectsTheBodyThatBreaksIt's.
     [Theory]
     [InlineData(null)]
     [InlineData("jump")]
+    [InlineData("check")]
     [InlineData("fall")]
     [InlineData("back")]
     [InlineData("again")]
@@ -515,6 +517,7 @@ public sealed class MirValidatorTest
     {
         var body = MirModelTest.NewBody(Fixture.Value.Types);
         var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
+        var first = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
         var copy = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
         var inner = (ushort)body.AddScope(copy, MirScopeKind.Inlined, default);
         var loop = (ushort)body.AddScope(0, MirScopeKind.Inlined, default);
@@ -528,6 +531,7 @@ public sealed class MirValidatorTest
             return MirTerminator.SwitchInt(MirOperand.Copy(flag), body.Cases.Length - 1, 1, otherwise, source);
         }
 
+        Read(entry, In(first));
         Read(entry, At);
         body.Terminate(entry, MirTerminator.Goto(call, At));
         Read(call, At); // The caller's statement before the copy, its slot's StorageLive.
@@ -541,17 +545,36 @@ public sealed class MirValidatorTest
 
         body.Terminate(call, MirTerminator.Goto(rest, In(copy)));
         Read(rest, In(copy));
-        body.Terminate(rest, broken == "back" ? Branch(call, after, In(copy, "back")) : MirTerminator.Goto(after, In(copy)));
+        body.Terminate(rest, Branch(broken == "back" ? call : rest, after, In(copy, "back")));
         Read(after, At);
         body.Terminate(after, Branch(broken == "jump" ? rest : head, head, In(0, "jump")));
         Read(head, In(loop));
-        body.Terminate(head, MirTerminator.Goto(next, In(loop)));
+        body.Terminate(head, MirTerminator.Goto(next, In(loop, "check"), broken == "check" ? rest : -1));
         Read(next, In(loop));
         body.Terminate(next, broken == "again" ? Branch(head, tail, In(loop, "again")) : MirTerminator.Goto(tail, In(loop)));
         Read(tail, At);
         body.Terminate(tail, Branch(head, done, At));
         body.Terminate(done, MirTerminator.Return(At));
         Assert.Equal(broken is null ? [] : [(MirViolation.Entry, Broken.Syntax)], Validate(body).Select(static x => (x.Rule, x.Subject)));
+    }
+
+    // R5-M90's guard: the region walk follows the scope table and each location's scope, so a scope chain that does not lead out (an
+    // Inlined scope its own outer scope) or a location outside the scopes stops that walk alone: the Scope finding and the other rules'
+    // findings (an unreachable block) are reported, and the edge to block 0 is not walked.
+    [Theory]
+    [InlineData("outer")]
+    [InlineData("location")]
+    public void AScopeTheRegionWalkCannotFollowStopsOnlyIt(string broken)
+    {
+        var body = MirModelTest.NewBody(Fixture.Value.Types);
+        var flag = MirModelTest.Local(body, BoundType.Boolean, MirLocalKind.Temp);
+        var scope = body.AddScope(broken == "outer" ? body.Scopes.Length : 0, MirScopeKind.Inlined, default);
+        var (entry, loop) = (body.AddBlock(), body.AddBlock());
+        body.Push(entry, MirStatement.Of(MirStatementKind.FakeRead, flag, At with { Scope = (ushort)(broken == "outer" ? scope : 9) }));
+        body.Terminate(entry, MirTerminator.Goto(loop, At));
+        body.Terminate(loop, MirTerminator.Goto(entry, At));
+        body.Terminate(body.AddBlock(), MirTerminator.Return(Broken));
+        Assert.Equal([MirViolation.Scope, MirViolation.Unreachable], Validate(body).Select(static x => x.Rule));
     }
 
     // V11: validating a body again, the Type tier's and its Adapt's case views included, and enumerating its uses, of the body and under

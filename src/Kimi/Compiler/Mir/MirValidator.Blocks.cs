@@ -12,9 +12,9 @@ namespace Kimi.Compiler.Mir;
 // - Inputs: the body's blocks, statements, terminators and scopes. Outputs: UnknownKind, StatementRange, StorageLocal, EndBorrowLocal,
 //   NeverWrite, Unterminated, TargetRange, CheckTarget, Operation, Type, Unreachable and Entry findings; an Assign's rvalue goes to
 //   MirValidator.Rvalues, a Call to MirValidator.Calls, a lending write to MirValidator.Inputs, then MirUses walks the location.
-// - Invariants: Block and Terminator return false when a successor is out of range, a location lies outside the scopes or MirUses
-//   cannot walk a location, and Validate then runs none of Diverged, Reach and Entries. Entries walks the raw scope table, which
-//   MirValidator.Tables checked, not a MirBody query that trusts validated IR.
+// - Invariants: Block and Terminator return false when a successor is out of range or MirUses cannot walk a location, and Validate
+//   then runs none of Diverged, Reach and Entries; a location outside the scopes marks the body Unscoped, and Validate then skips only
+//   Entries. Entries walks the raw scope table, which MirValidator.Tables checked, not a MirBody query that trusts validated IR.
 // - Prohibitions: no rule of an rvalue, an operand or a callee (MirValidator.Rvalues, MirValidator.Calls).
 internal sealed partial class MirValidator
 {
@@ -33,7 +33,8 @@ internal sealed partial class MirValidator
     // a template's included; a copy where its template's block 0 continues the caller's block, so that location dominates the copy and
     // A5 gathers what is live into the copy there. An edge, from a location to the next in its block or a runtime or check edge to a
     // block's first location, enters each region holding its target but not its source; the body's entry each region holding (0, 0).
-    // The first pass records each region's first location and the edges entering it elsewhere, the second the edges back into its block.
+    // The first pass (Copies) records each region's first location and the edges entering it elsewhere, the second the edges back into
+    // its block; without a copy, every location lies in the body's region alone, entered at (0, 0), so only the second runs.
     private void Entries(MirBody body, List<MirFinding> findings)
     {
         var blocks = body.Blocks;
@@ -44,36 +45,18 @@ internal sealed partial class MirValidator
             this.entries = new MirLocation[this.regions.Length];
         }
 
+        var copies = false;
         for (var scope = 0; scope < scopes.Length; scope++)
         {
+            copies |= scopes[scope].Kind == MirScopeKind.Inlined;
             this.regions[scope] = scope == 0 || scopes[scope].Kind == MirScopeKind.Inlined ? scope : this.regions[scopes[scope].Outer];
             this.entries[scope] = new(-1, 0);
         }
 
         this.Enter(body, -1, new(0, 0), default, findings);
-        var statements = body.Statements;
-        for (var block = 0; block < blocks.Length; block++)
+        if (copies)
         {
-            var (start, count, terminator) = blocks[block];
-            var from = count > 0 ? statements[start].Source : terminator.Source;
-            for (var i = 1; i <= count; i++)
-            {
-                var to = i < count ? statements[start + i].Source : terminator.Source;
-                if (to.Scope != from.Scope)
-                {
-                    this.Enter(body, this.regions[from.Scope], new(block, i), from, findings);
-                }
-
-                from = to;
-            }
-
-            for (var edge = -1; edge < MirUses.Successors(terminator); edge++)
-            {
-                if (MirUses.Successor(body, terminator, edge) is >= 0 and var target)
-                {
-                    this.Enter(body, this.regions[from.Scope], new(target, 0), from, findings);
-                }
-            }
+            this.Copies(body, findings);
         }
 
         for (var block = 0; block < blocks.Length; block++)
@@ -84,6 +67,35 @@ internal sealed partial class MirValidator
                 if (MirUses.Successor(body, terminator, edge) is >= 0 and var target && this.Begins(scopes, this.regions[terminator.Source.Scope], target))
                 {
                     findings.Add(new(MirViolation.Entry, body.Subject(terminator.Source))); // Into the block a region holding it begins in.
+                }
+            }
+        }
+    }
+
+    // The first pass: each edge, from a location to the next in its block or a terminator's runtime or check edge.
+    private void Copies(MirBody body, List<MirFinding> findings)
+    {
+        var blocks = body.Blocks;
+        for (var block = 0; block < blocks.Length; block++)
+        {
+            var from = Source(body, new(block, 0));
+            for (var i = 1; i <= blocks[block].Count; i++)
+            {
+                var to = Source(body, new(block, i));
+                if (to.Scope != from.Scope)
+                {
+                    this.Enter(body, this.regions[from.Scope], new(block, i), from, findings);
+                }
+
+                from = to;
+            }
+
+            var terminator = blocks[block].Terminator;
+            for (var edge = -1; edge < MirUses.Successors(terminator); edge++)
+            {
+                if (MirUses.Successor(body, terminator, edge) is >= 0 and var target)
+                {
+                    this.Enter(body, this.regions[from.Scope], new(target, 0), from, findings);
                 }
             }
         }
@@ -185,7 +197,7 @@ internal sealed partial class MirValidator
         // False when MirUses cannot walk it.
         private bool Statement(MirLocation location, in MirStatement statement)
         {
-            var placed = this.At(statement.Source);
+            this.Unscoped |= !this.At(statement.Source);
             if (!MirDescriptors.Of(statement.Kind).Defined)
             {
                 this.Report(MirViolation.UnknownKind);
@@ -222,13 +234,13 @@ internal sealed partial class MirValidator
             this.used = statement is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Use };
             MirUses.ForEach(body, location, ref this);
             (this.acquires, this.used) = (false, false);
-            return placed;
+            return true;
         }
 
         // False when a successor is out of range or MirUses cannot walk it.
         private bool Terminator(MirLocation location, in MirTerminator terminator)
         {
-            var placed = this.At(terminator.Source);
+            this.Unscoped |= !this.At(terminator.Source);
             if (!MirDescriptors.Of(terminator.Kind).Defined)
             {
                 this.Report(MirViolation.UnknownKind);
@@ -278,7 +290,7 @@ internal sealed partial class MirValidator
             }
 
             MirUses.ForEach(body, location, ref this);
-            return valid && placed;
+            return valid;
         }
     }
 }
