@@ -2578,15 +2578,15 @@ and migration obligations remain in force; no numeric cap changes are authorized
     for the Inlined exception.
 - **R4-M100 A5's Place steps as a canonical component** (2026-10-21; unit 2x-R15 under R4-M94 D12 and the package's §10 row;
   behavior-preserving)
-  - `MirSteps` (`Mir/Analysis/MirSteps.cs`) owns `StepClass`, `Step` and `Walk`: a Place's projections under the selected view as
+  - `MirSteps` (`Mir/Analysis/MirSteps.cs`) owns `MirStepClass`, `MirStep` and `Walk`: a Place's projections under the selected view as
     classed steps, root first (A3 3, E13 (4), E17). `MirBorrows` reads it now and `MirOrigins` from 2a-1a (D14). Its inputs are
     explicit: the body (per call), `MirCases` (at construction) and the roles of the body's locals; it reads none of `MirBorrows`'
     state. `Prepared(body, root)`, E17's slot-step test, moved there from `MirBorrows.Defaults` so that one function answers it
-    (`SlotRooted` and the pre-pass call it). E17's row (R4-M98's `MirBorrows.Walk`) is `MirSteps.Walk`'s.
-  - `Step` gains `Prefix`, the projection id of the Place prefix the step applies to (0 at the root; the whole Place for a Reborrow's
+    (`SlotRooted` and the pre-pass call it). E17's row (R4-M98's `StepClass.Inline` in `MirBorrows.Walk`) is `MirSteps.Walk`'s, `MirStepClass.Inline`.
+  - `MirStep` gains `Prefix`, the projection id of the Place prefix the step applies to (0 at the root; the whole Place for a Reborrow's
     added Deref): a Deref's class and a pair layer's are read from its case Type, which is the layer Type D14's containment edge
-    needs. `Class` follows `Kind` in the record so that `Step` stays 12 bytes.
-  - Moved verbatim: `StepClass`, the Deref class by Semantics, `Walk`, `Step`. `Through` stays in `MirBorrows.Places.cs` (it reads the
+    needs. `Class` follows `Kind` in the record so that `MirStep` stays 12 bytes.
+  - Moved verbatim: `StepClass` and `Step` (renamed `MirStepClass` and `MirStep`, the Mir prefix of the namespace's top-level types), the Deref class by Semantics, `Walk`. `Through` stays in `MirBorrows.Places.cs` (it reads the
     walk). Rejected: a static `MirSteps` with every caller passing the chain scratch; the classifier on `MirCases` (it serves A1 and
     A4 too); `MirBorrows` members made internal for `MirOrigins` (couples Origin judgment to Loan state).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;

@@ -14,7 +14,7 @@ internal sealed partial class MirBorrows
     private bool[] borrowed = []; // By root key (Key): whether a Loan's Place has that root.
     private MirPlace[] lent = []; // By local: the Place a Ref lent into it, or the local itself.
     private Loan[] loans = [];
-    private Step[] loanSteps = []; // The Loans' Places, each a run.
+    private MirStep[] loanSteps = []; // The Loans' Places, each a run.
     private int[] loanAt = []; // By location (Location): the Loan its Ref or Reborrowing PairAcquire issues, or -1.
     private int loanCount;
     private int loanStepCount;
@@ -102,12 +102,12 @@ internal sealed partial class MirBorrows
         var direct = true;
         for (var i = 0; i < count; i++)
         {
-            if (this.walk[i].Class == StepClass.Shared)
+            if (this.walk[i].Class == MirStepClass.Shared)
             {
                 return -1;
             }
 
-            direct &= this.walk[i].Class is not (StepClass.Uniq or StepClass.Raw);
+            direct &= this.walk[i].Class is not (MirStepClass.Uniq or MirStepClass.Raw);
         }
 
         MirDataflow.Grow(ref this.loans, this.loanCount + 1);

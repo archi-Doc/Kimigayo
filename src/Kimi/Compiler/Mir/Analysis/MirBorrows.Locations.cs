@@ -14,7 +14,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private Access[] accesses = [];
-    private Step[] accessSteps = [];
+    private MirStep[] accessSteps = [];
     private int accessCount;
 
     // The checks at a location (A3 5, E13 (1)): its accesses of borrowed roots, a guard candidate's EndBorrow, its activations and its

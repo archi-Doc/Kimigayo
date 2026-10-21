@@ -38,16 +38,16 @@ internal sealed partial class MirBorrows
     private bool copying; // Whether a copy issues a Loan in the view, so entering and the entry sets hold.
 
     // Whether a Place's steps on a root are slot-rooted (D2): a PreparedInput's, past its slot step, through no raw pointer's referent.
-    private bool SlotRooted(int root, ReadOnlySpan<Step> steps)
+    private bool SlotRooted(int root, ReadOnlySpan<MirStep> steps)
     {
-        if (!MirSteps.Prepared(this.body, root) || steps.IsEmpty || steps[0] is not { Kind: MirProjectionKind.Deref, Class: StepClass.Inline })
+        if (!MirSteps.Prepared(this.body, root) || steps.IsEmpty || steps[0] is not { Kind: MirProjectionKind.Deref, Class: MirStepClass.Inline })
         {
             return false;
         }
 
         foreach (var step in steps)
         {
-            if (step.Class == StepClass.Raw)
+            if (step.Class == MirStepClass.Raw)
             {
                 return false;
             }

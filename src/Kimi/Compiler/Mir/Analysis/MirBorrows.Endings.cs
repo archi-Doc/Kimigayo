@@ -107,7 +107,7 @@ internal sealed partial class MirBorrows
         var count = this.placeSteps.Walk(this.body, destroyed, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
-            if (this.walk[i].Class != StepClass.Inline)
+            if (this.walk[i].Class != MirStepClass.Inline)
             {
                 return 0;
             }

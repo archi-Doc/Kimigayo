@@ -68,8 +68,8 @@ internal sealed partial class MirBorrows
         {
             value = this.walk[i].Class switch
             {
-                StepClass.Shared or StepClass.Uniq => this.Content(state, value),
-                StepClass.Raw => this.escapedSet,
+                MirStepClass.Shared or MirStepClass.Uniq => this.Content(state, value),
+                MirStepClass.Raw => this.escapedSet,
                 _ => value,
             };
         }
@@ -86,13 +86,13 @@ internal sealed partial class MirBorrows
         {
             switch (this.walk[i].Class)
             {
-                case StepClass.Shared:
+                case MirStepClass.Shared:
                     (parents, layer) = (layer, this.Content(state, layer));
                     break;
-                case StepClass.Uniq:
+                case MirStepClass.Uniq:
                     (parents, layer) = (this.sets.Union(parents, layer), this.Content(state, layer));
                     break;
-                case StepClass.Raw:
+                case MirStepClass.Raw:
                     (parents, layer) = (this.sets.Union(parents, this.escapedSet), this.escapedSet);
                     break;
             }

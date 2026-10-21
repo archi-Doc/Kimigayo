@@ -6,7 +6,7 @@ namespace Kimi.Compiler.Mir;
 internal sealed partial class MirBorrows
 {
     private readonly MirSteps placeSteps = new(cases);
-    private Step[] walk = []; // A Place's steps.
+    private MirStep[] walk = []; // A Place's steps.
 
     // Whether a Place passes a borrow or raw Deref, so writing it uses its root.
     private bool Through(MirPlace place)
@@ -14,7 +14,7 @@ internal sealed partial class MirBorrows
         var count = this.placeSteps.Walk(this.body, place, reborrow: false, ref this.walk);
         for (var i = 0; i < count; i++)
         {
-            if (this.walk[i].Class is StepClass.Shared or StepClass.Uniq or StepClass.Raw)
+            if (this.walk[i].Class is MirStepClass.Shared or MirStepClass.Uniq or MirStepClass.Raw)
             {
                 return true;
             }
