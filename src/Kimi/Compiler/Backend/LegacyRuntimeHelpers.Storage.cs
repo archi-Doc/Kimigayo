@@ -61,10 +61,37 @@ internal delegate void StorageKernelWriter(TextWriter output, in StorageKernelIn
 internal sealed record StorageKernelRow(StorageKernelKind Kind, StorageKernelWriter Write, HelperNeeds Needs);
 
 /// <summary>SPEC 22.2: the storage-boundary kernels written inline in their caller's body, the kernels of the Raw.slice and
-/// capacity intrinsics (SPEC 5.6, 4.9.5), and the addressing of a library record's Field that they share with the old writer
-/// (Windows x64 profile).</summary>
+/// capacity intrinsics (SPEC 5.6, 4.9.5), the private storage byte primitives, and the addressing of a library record's Field that
+/// they share with the old writer (Windows x64 profile).</summary>
 internal sealed partial class LegacyRuntimeHelpers
 {
+    // SPEC 22.2, 21.4.3: the nullable form of Alloc returns null wherever Alloc would Abort, and the byte copy moves no
+    // responsibility; neither has a location to report.
+    private const string StorageBytePrimitives = """
+        define internal ptr @__kimi_try_allocate(i64 %bytes) #0 {
+        entry:
+          %invalid = icmp ugt i64 %bytes, 9223372036854775807
+          br i1 %invalid, label %failed, label %heap
+        heap:
+          %process_heap = call ptr @GetProcessHeap()
+          %no_heap = icmp eq ptr %process_heap, null
+          br i1 %no_heap, label %failed, label %try
+        try:
+          %zero = icmp eq i64 %bytes, 0
+          %actual = select i1 %zero, i64 1, i64 %bytes
+          %memory = call ptr @HeapAlloc(ptr %process_heap, i32 0, i64 %actual)
+          ret ptr %memory
+        failed:
+          ret ptr null
+        }
+        define internal void @__kimi_transfer_bytes(ptr %destination, ptr %source, i64 %size) #0 {
+        entry:
+          call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)
+          ret void
+        }
+
+        """;
+
     // One row per kind, in StorageKernelKind order; a new kind adds a row.
     private static readonly StorageKernelRow[] StorageKernelRows =
     [
@@ -77,6 +104,9 @@ internal sealed partial class LegacyRuntimeHelpers
         new(StorageKernelKind.BorrowDictionary, WriteDictionaryBorrow, HelperNeeds.None),
         new(StorageKernelKind.OwnDictionary, WriteDictionaryOwn, HelperNeeds.None),
     ];
+
+    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
+    internal bool NeedsStorageBytes { get; set; }
 
     /// <summary>Gets the row of an inline storage kernel kind; a kind without a row is a broken contract.</summary>
     /// <param name="kind">The kernel kind.</param>
@@ -300,5 +330,14 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write(", ptr ");
         WriteField(output, input.Result, "%dfield", input.Id, offset);
         output.Write(", align 8\n");
+    }
+
+    // The storage byte primitives, written before the Dictionary runtime when a body uses them.
+    private void WriteStorageBytes(TextWriter output)
+    {
+        if (this.NeedsStorageBytes)
+        {
+            output.Write(StorageBytePrimitives);
+        }
     }
 }

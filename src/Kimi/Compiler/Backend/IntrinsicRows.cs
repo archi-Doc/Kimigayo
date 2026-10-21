@@ -6,7 +6,7 @@
 // by-value use whose layout the collector checks (K 4.8; DECISIONS R5-M44). The first code generation unit that writes an intrinsic call (C3a,
 // C8a; DECISIONS R5-M65) adds the writer column.
 // Input: an IntrinsicId other than None. Output: its row.
-// Invariants: one row per IntrinsicId; an id without a row, None included, is a broken MIR contract.
+// Invariants: one row per IntrinsicId, in its order, checked once; an id without a row, None included, is a broken MIR contract.
 // Must not: resolve a target's item (the collector's), or restate the descriptor table's columns (MirDescriptors).
 
 namespace Kimi.Compiler.Backend;
@@ -22,51 +22,67 @@ internal enum IntrinsicTarget : byte
 }
 
 /// <summary>A row of the intrinsic table.</summary>
+/// <param name="Id">The intrinsic, the row's index plus 1.</param>
 /// <param name="Target">The item a call names as its collector target.</param>
 /// <param name="LaysOutType">Whether the call's Type argument is a by-value use (K package 4.8).</param>
-internal readonly record struct IntrinsicRow(IntrinsicTarget Target, bool LaysOutType = false);
+internal readonly record struct IntrinsicRow(IntrinsicId Id, IntrinsicTarget Target, bool LaysOutType = false);
 
 /// <summary>The intrinsic table of the Backend: one row per <see cref="IntrinsicId"/>.</summary>
 internal static class IntrinsicRows
 {
+    // One row per IntrinsicId but None, in the enum's order (Complete).
+    private static readonly IntrinsicRow[] Rows = Complete(
+    [
+        new(IntrinsicId.RawAllocate, IntrinsicTarget.None, LaysOutType: true),
+        new(IntrinsicId.RawRelease, IntrinsicTarget.None),
+        new(IntrinsicId.RawInitialize, IntrinsicTarget.None),
+        new(IntrinsicId.RawSlice, IntrinsicTarget.None),
+        new(IntrinsicId.TryAllocateBytes, IntrinsicTarget.None),
+        new(IntrinsicId.MoveBytes, IntrinsicTarget.None),
+        new(IntrinsicId.Stride, IntrinsicTarget.None, LaysOutType: true),
+        new(IntrinsicId.DestroyValues, IntrinsicTarget.Glue, LaysOutType: true),
+        new(IntrinsicId.ReinterpretLoan, IntrinsicTarget.None),
+        new(IntrinsicId.Abort, IntrinsicTarget.None),
+        new(IntrinsicId.Fail, IntrinsicTarget.None),
+        new(IntrinsicId.WriteStdout, IntrinsicTarget.None),
+        new(IntrinsicId.FormatFloat, IntrinsicTarget.None),
+        new(IntrinsicId.ErasedWriter, IntrinsicTarget.Witness),
+        new(IntrinsicId.ErasedReserve, IntrinsicTarget.None),
+        new(IntrinsicId.FormatInteger128, IntrinsicTarget.None),
+        new(IntrinsicId.MakeObj, IntrinsicTarget.Descriptor),
+        new(IntrinsicId.MakeRc, IntrinsicTarget.Descriptor),
+        new(IntrinsicId.MakeArc, IntrinsicTarget.Descriptor),
+        new(IntrinsicId.Clone, IntrinsicTarget.None), // Payload-independent (IMPL 21.1.3).
+        new(IntrinsicId.TypeTest, IntrinsicTarget.None), // Acquires nothing (SPEC 13.6.4); codegen numbers its target (R5-M74).
+        new(IntrinsicId.TestObserve, IntrinsicTarget.None),
+        new(IntrinsicId.TestMessage, IntrinsicTarget.None),
+        new(IntrinsicId.TestRequireAbort, IntrinsicTarget.None),
+        new(IntrinsicId.TestRecordValue, IntrinsicTarget.None),
+        new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None),
+        new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None),
+        new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None),
+        new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit),
+        new(IntrinsicId.Capacity, IntrinsicTarget.None),
+        new(IntrinsicId.FormatBuffer, IntrinsicTarget.None),
+        new(IntrinsicId.FormatHint, IntrinsicTarget.None),
+        new(IntrinsicId.FormatFinish, IntrinsicTarget.None),
+    ]);
+
     /// <summary>Gets the row of an intrinsic.</summary>
     /// <param name="id">The intrinsic, not None.</param>
     /// <returns>The row.</returns>
-    internal static IntrinsicRow Of(IntrinsicId id) => id switch
+    internal static IntrinsicRow Of(IntrinsicId id)
+        => (uint)((int)id - 1) < (uint)Rows.Length ? Rows[(int)id - 1] : throw new InvalidOperationException($"The intrinsic {id} has no Backend row.");
+
+    // The table, its rows in IntrinsicId order from the first member after None; a row missing or out of order is a broken contract.
+    private static IntrinsicRow[] Complete(IntrinsicRow[] rows)
     {
-        IntrinsicId.RawAllocate => new(IntrinsicTarget.None, LaysOutType: true),
-        IntrinsicId.RawRelease => new(IntrinsicTarget.None),
-        IntrinsicId.RawInitialize => new(IntrinsicTarget.None),
-        IntrinsicId.RawSlice => new(IntrinsicTarget.None),
-        IntrinsicId.TryAllocateBytes => new(IntrinsicTarget.None),
-        IntrinsicId.MoveBytes => new(IntrinsicTarget.None),
-        IntrinsicId.Stride => new(IntrinsicTarget.None, LaysOutType: true),
-        IntrinsicId.DestroyValues => new(IntrinsicTarget.Glue, LaysOutType: true),
-        IntrinsicId.ReinterpretLoan => new(IntrinsicTarget.None),
-        IntrinsicId.Abort => new(IntrinsicTarget.None),
-        IntrinsicId.Fail => new(IntrinsicTarget.None),
-        IntrinsicId.WriteStdout => new(IntrinsicTarget.None),
-        IntrinsicId.FormatFloat => new(IntrinsicTarget.None),
-        IntrinsicId.ErasedWriter => new(IntrinsicTarget.Witness),
-        IntrinsicId.ErasedReserve => new(IntrinsicTarget.None),
-        IntrinsicId.FormatInteger128 => new(IntrinsicTarget.None),
-        IntrinsicId.MakeObj => new(IntrinsicTarget.Descriptor),
-        IntrinsicId.MakeRc => new(IntrinsicTarget.Descriptor),
-        IntrinsicId.MakeArc => new(IntrinsicTarget.Descriptor),
-        IntrinsicId.Clone => new(IntrinsicTarget.None), // Payload-independent (IMPL 21.1.3).
-        IntrinsicId.TypeTest => new(IntrinsicTarget.None), // Acquires nothing (SPEC 13.6.4); codegen numbers its target (R5-M74).
-        IntrinsicId.TestObserve => new(IntrinsicTarget.None),
-        IntrinsicId.TestMessage => new(IntrinsicTarget.None),
-        IntrinsicId.TestRequireAbort => new(IntrinsicTarget.None),
-        IntrinsicId.TestRecordValue => new(IntrinsicTarget.None),
-        IntrinsicId.TestPhaseEnter => new(IntrinsicTarget.None),
-        IntrinsicId.TestPhaseLeave => new(IntrinsicTarget.None),
-        IntrinsicId.TestTempDirectory => new(IntrinsicTarget.None),
-        IntrinsicId.StaticEnsure => new(IntrinsicTarget.StaticInit),
-        IntrinsicId.Capacity => new(IntrinsicTarget.None),
-        IntrinsicId.FormatBuffer => new(IntrinsicTarget.None),
-        IntrinsicId.FormatHint => new(IntrinsicTarget.None),
-        IntrinsicId.FormatFinish => new(IntrinsicTarget.None),
-        _ => throw new InvalidOperationException($"The intrinsic {id} has no Backend row."),
-    };
+        var complete = rows.Length == Enum.GetValues<IntrinsicId>().Length - 1;
+        for (var i = 0; complete && i < rows.Length; i++)
+        {
+            complete = rows[i].Id == (IntrinsicId)(i + 1);
+        }
+
+        return complete ? rows : throw new InvalidOperationException("The intrinsic table needs one row per IntrinsicId, in its order.");
+    }
 }
