@@ -15,7 +15,8 @@ internal static class DefaultParameters
     /// whose slot is no parameter index (Binding.ReceiverSlot).</returns>
     internal static bool InLaterDefault(Koto node, BindingSymbol symbol)
     {
-        if (symbol.Kind != BindingSymbolKind.Parameter || symbol.Scope.Owner is not FunctionKoto declaration || (uint)symbol.Slot >= (uint)declaration.Parameters.Count)
+        if (symbol.Kind != BindingSymbolKind.Parameter || symbol.Scope.Owner is not FunctionKoto declaration ||
+            (uint)symbol.Slot >= (uint)declaration.Parameters.Count)
         {
             return false;
         }

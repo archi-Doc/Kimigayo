@@ -111,11 +111,12 @@ and migration obligations remain in force; no numeric cap changes are authorized
   「コンストラクタの引数上限は撤廃します。6個は、コンストラクタ以外に適用します。」).
   - Reading: the count of 6 parameters no longer applies to a constructor; it applies to every other member. The sub-limits (at most
     2 optional, 1 `out` and 1 `bool`) are unchanged (confirmed by the owner, 2026-10-22, to R4, relayed by R4:
-    「「コンストラクタの引数上限の撤廃」について、推奨の内容でOKです。」).
-  - Reason (owner): constructors tend to take many parameters, and many parameters there rarely lead to an inefficient structure. A
-    constructor that wires many components is watched by the dependency rules and by review, which the count no longer signals.
-  - Trigger: `BoundType`'s constructor and `TyCtxt.Intern` were both at 10 parameters when G160 added the raw Origin (unit bu20, C1a).
-    Methods such as `Intern` stay limited: being over the limit, they may not grow (C1a keeps one `origin` parameter at `Intern`).
+    「「コンストラクタの引数上限の撤廃」について、推奨の内容でOKです。」; confirmed to BU directly the same day: 「OKです。」).
+  - Reason (the owner's, as R4 relayed it): constructors tend to take many parameters, and many parameters there rarely lead to an
+    inefficient structure. R4's recommendation, which the owner accepted: a constructor that wires many components is watched by the
+    dependency rules and by review, which the count no longer signals.
+  - Trigger: `BoundType`'s constructor and `TyCtxt.Intern` were both at 10 parameters when G160 added the raw Origin, which keeps one
+    `origin` parameter at `Intern`, a method that stays limited: being over the limit, it may not grow.
 
 
 - **CR-A0** (owner). Begin the adopted Code Rules Analyzer A0–A8 before R4. KR3003 covers only
@@ -3425,7 +3426,9 @@ resumed by R4-M86 (2026-10-20).
   other reader of `BindingSymbol.Slot` compares unsigned or never meets a receiver (audit in the commit). Diagnostics show the atom
   as `self`, as the helper borrow's. G160-1's `during self` in a special receiver's body names this atom (design §13 A3). Reason:
   two holders shared one Origin (F4's lesson), so the old analysis gave a receiver Field borrow the first parameter's Loan (G178).
-  BU-17's rejected "own slot for the receiver symbol" was a way to separate the helper borrow, which keeps `HelperSlot`; it stands.
+  Rejected: numbering parameters from 1 (moves every parameter atom and Input index); a receiver `OriginKind` (BU-17's reason: a copy
+  of Projection's meaning in every reader, the frozen old path's among them). BU-17's rejected "own slot for the receiver symbol" was a
+  way to separate the helper borrow, which keeps `HelperSlot`; it stands.
 
 ## R5 and R6 (adopted 2026-10-18)
 

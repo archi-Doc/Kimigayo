@@ -106,15 +106,16 @@ public class InheritedStorageTest
     [Fact]
     public void TheSpecialReceiversArePlacesOfTheirOwn()
     {
-        var c = MinimalEmissionTest.Analyze("struct S\n    var n: i32\n    public init(x: i32)\n        self.n = x\n        let a = self.n@ref\n        let b = x@ref\n" +
-            "        _ = a\n        _ = b\n    drop\n        let c = self.n@ref\n        _ = c\n");
+        var c = MinimalEmissionTest.Analyze("struct S\n    var n: i32\n    public init(x: i32)\n        self.n = x\n        let a = self.n@ref\n" +
+            "        let b = x@ref\n        _ = a\n        _ = b\n    drop\n        let c = self.n@ref\n        _ = c\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        var borrows = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>().Select(static x => (Text: x.ToString(), Origin: x.TypeOf()!.Origin!)).ToArray();
+        var borrows = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ConversionKoto>()
+            .Select(static x => (Text: x.ToString(), Origin: x.TypeOf()!.Origin!)).ToArray();
         var receiver = borrows.Where(static x => x.Text == "self.n@ref").Select(static x => x.Origin).ToArray();
         var parameter = Assert.Single(borrows, static x => x.Text == "x@ref").Origin;
         Assert.Equal(2, receiver.Length);
         Assert.NotSame(receiver[0], parameter);
-        Assert.Equal(receiver[0].Slot, receiver[1].Slot);
+        Assert.All(receiver, static x => Assert.Equal(Binding.ReceiverSlot, x.Slot));
     }
 
     // SPEC 6.3.4, 15.6.5: a borrow of a construction receiver's Field is no borrow of a parameter, so moving a parameter while the

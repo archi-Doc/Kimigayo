@@ -119,7 +119,8 @@ public sealed partial class Binding
     internal const int HelperSlot = int.MinValue + 1;
 
     // The slot of a constructor's or destructor's receiver `self` and so the Projection slot of its Place (SPEC 6.3.4, 16.3.1;
-    // DECISIONS BU-23): no parameter index, so the receiver's Place is never a parameter's (Receiver).
+    // DECISIONS BU-23): no parameter index, so the receiver's Place is never a parameter's (Receiver). Its binder is always a
+    // constructor or destructor, never a closure, so no reader of an environment slot (Slot <= EnvironmentSlot(0)) meets it.
     internal const int ReceiverSlot = int.MinValue + 2;
 
     // The Projection slot that names a binding's own Place.
