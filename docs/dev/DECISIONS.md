@@ -3598,6 +3598,9 @@ resumed by R4-M86 (2026-10-20).
   outlive. `KimiLibraryCatalog.Entry` gains the column `Within` (the parameter whose argument's pre-fit raw Origin the result lies
   within; `Raw.slice`'s storage), judged with the callee's clauses. The repair candidates (the claim; the borrow and claim) need
   `Repair.*` kinds the SPEC 23.3 schema does not have (open).
+  C3 (typed paths, SPEC 5.4, 5.7): `P@raw` states `PathOrigin`'s Origin formed with its borrow's mode (a pair follow admitting a
+  non-borrow case is a located `Unsupported_Kd`, U2). Q-O3 is moot under B′+, so design §10's M is C3's own evidence: the
+  `-DiagnosticSnapshot` over the census and the native fixture sweep, in C3's commit.
 
 ## R5 and R6 (adopted 2026-10-18)
 

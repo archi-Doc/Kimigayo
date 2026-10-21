@@ -89,16 +89,17 @@ public class RawPointerSyntaxTest
 
     // SPEC 5.7 (Q-O6): a var local keeps its initializer's raw Origin; raw Origins that differ have the unstated common Type, never a meet,
     // also where one branch is a call whose result states its argument's Origin.
-    [Fact]
-    public void AVarLocalKeepsItsRawOrigin()
-        => Assert.Equal(
-            ["UnprovenOriginRelation_Kd: q"],
-            Records("func f(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b)\n    var x = p\n    x = q"));
+    [Theory]
+    [InlineData("func f(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b)\n    var x = p\n    x = q", "UnprovenOriginRelation_Kd: q")]
+    [InlineData("func f(a: ref/i32, b: ref/i32)\n    var x = a@follow@raw\n    x = b@follow@raw", "UnprovenOriginRelation_Kd: b@follow@raw")]
+    public void AVarLocalKeepsItsRawOrigin(string declarations, string record)
+        => Assert.Equal([record], Records(declarations));
 
     [Theory]
     [InlineData("func f(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b)\n    var x = p\n    x = p")]
     [InlineData("func f(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b)\n    let both = [p, q]\n    let x: raw/i32 = both[0]")]
     [InlineData("func f(a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b) -> bool => p == q")]
+    [InlineData("func f(a: ref/i32, n: i32)\n    var x = a@follow@raw\n    x = a@follow@raw\n    let both = [a@follow@raw, n@raw]")]
     [InlineData("func get(b: ref/i32, q: raw/i32 during b) -> raw/i32 during b => q\nfunc f(c: bool, a: ref/i32, b: ref/i32, p: raw/i32 during a, q: raw/i32 during b) -> raw/i32\n    let x = if c => get(b, q) else => p\n    return x")]
     public void DifferingRawOriginsJoinUnstated(string declarations)
         => Assert.Empty(Records(declarations));

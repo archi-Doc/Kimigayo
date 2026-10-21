@@ -16,6 +16,12 @@ public class RawPlaceAccessTest
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
     private const string View = "struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\n";
 
+    // SPEC 5.7's example as written: its one marked error is the write through `source`, which keeps only a shared Loan.
+    private const string SpecLens = "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+        "    internal init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
+        "func read(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at\nfunc clear(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0\n" +
+        "func adopt(pointer: raw/i32) -> raw/i32 during static\n    unsafe => return pointer@(raw/i32 during static)";
+
     // SPEC 5.7's Lens, whose slot keeps a shared Loan, its exclusive twin ULens, a struct pointee and a `during self` holder.
     private const string Lenses = "struct P\n    public var f: i32\n    public init() => self.f = 0\n" +
         "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
@@ -192,4 +198,16 @@ public class RawPlaceAccessTest
     [InlineData("func choose(c: bool, a: uniq/B, b: uniq/B) -> uniq/B => if c => a else => b\nfunc f(c: bool, x: uniq/B, y: uniq/B)\n    unsafe => *choose(c, x, y).data = 1")]
     public void AnExclusiveOrUnstatedRawOriginGrantsWrite(string declarations)
         => Assert.Empty(RawPointerSyntaxTest.Records(Lenses + declarations));
+
+    // SPEC 5.7 (Typed paths, Authority; DECISIONS R4-M105): a typed path keeps the mode of the borrow it is reached through, a meet's
+    // included, so a write through a shared one is SharedPathAccess while SPEC 5.4's exclusive example and SPEC 5.7's Lens hold.
+    [Theory]
+    [InlineData("func f(y: uniq/i32)\n    let r = y@follow@ref\n    unsafe => *(r@follow@raw) = 3", "SharedPathAccess_Kd: *(r@follow@raw)")]
+    [InlineData("func choose(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 => if c => a else => b\nfunc f(c: bool, x: ref/i32, y: ref/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1", "SharedPathAccess_Kd: *(choose(c, x, y)@follow@raw)")]
+    [InlineData(SpecLens, "SharedPathAccess_Kd: *lens.at")]
+    [InlineData("func f()\n    var number: i32 = 1\n    let r = number@uniq\n    let q = r@follow@raw\n    unsafe => *q = 2\n    r@follow += 1", null)]
+    [InlineData("func f(y: uniq/i32)\n    unsafe => *(y@follow@raw) = 3", null)]
+    [InlineData("func choose(c: bool, a: uniq/i32, b: uniq/i32) -> uniq/i32 => if c => a else => b\nfunc f(c: bool, x: uniq/i32, y: uniq/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1", null)]
+    public void ATypedPathKeepsItsBorrowsMode(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
 }

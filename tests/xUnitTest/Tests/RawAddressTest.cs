@@ -142,6 +142,29 @@ public class RawAddressTest
         ScalarEmissionTest.EmitFixture("RawAddressPart", source, "parts\n");
     }
 
+    // SPEC 5.7 (Typed paths): P@raw states the Origin of the last borrow or raw pointer P is reached through, formed in that borrow's
+    // mode (a shared one gives the shared view); through no dereference, or through a pointer that states none, it states none.
+    [Theory]
+    [InlineData("var number: i32 = 1\n    let r = number@uniq\n    let address = r@follow@raw\n", "r", false)]
+    [InlineData("var number: i32 = 1\n    let r = number@ref\n    let address = r@follow@raw\n", "r", true)]
+    [InlineData("var number: i32 = 1\n    let address = number@raw\n", null, false)]
+    [InlineData("var point = Point.init(1, 2)\n    let p = point@raw\n    unsafe\n        let address = (*p).y@raw\n", null, false)]
+    public void ATypedPathStatesTheOriginItIsReachedThrough(string body, string? borrow, bool shared)
+    {
+        var c = MinimalEmissionTest.Analyze(Point + "public func main()\n    " + body);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var fields = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FieldKoto>().ToArray();
+        var raw = fields.Single(static x => x.NameKoto.IdentifierName == "address").TypeOf()!.RawOrigin;
+        if (borrow is null)
+        {
+            Assert.Null(raw);
+            return;
+        }
+
+        Assert.Same(fields.Single(x => x.NameKoto.IdentifierName == borrow).TypeOf()!.Origin, Binding.RegionOf(raw));
+        Assert.Equal(shared, raw!.Kind == OriginKind.Shared);
+    }
+
     private static string Text(BoundType type)
         => type.Kind == BoundTypeKind.Semantics ? type.Semantics.ToString().ToLowerInvariant() + "/" + Text(type.Components[0]) : type.Name;
 }

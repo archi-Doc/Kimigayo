@@ -15,7 +15,8 @@ public sealed partial class Binding
         => !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
 
     // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and converts the
-    // borrowed address, which keeps no Loan. The operation's borrow is recorded on the operator.
+    // borrowed address, which keeps no Loan. The operation's borrow is recorded on the operator. SPEC 5.7 (Typed paths): the pointer
+    // states the Origin of the last borrow or raw pointer P is reached through (PathOrigin), formed with that borrow's mode.
     private BoundType? BindAddress(ConversionKoto conversion, BindingScope scope)
     {
         var stored = this.BindNode(conversion.Left, scope);
@@ -42,9 +43,14 @@ public sealed partial class Binding
             return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
         }
 
+        if (this.PathOrigin(conversion.Left, out var origin, out var mode) is null)
+        {
+            return this.Fail(conversion, BindingFailure.Unsupported); // U2: a pair follow admitting a non-borrow case.
+        }
+
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Address;
-        return Complete(conversion, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
+        return Complete(conversion, this.types.Pointer(stored, origin is null ? null : this.Formed(origin, mode)));
     }
 
     // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer. SPEC 5.7: a pointer keeps its raw
