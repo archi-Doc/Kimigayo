@@ -250,6 +250,11 @@ public sealed partial class Binding
             return null;
         }
 
+        if (recordPair)
+        {
+            _ = this.FailStaticBorrow(node, operation, adapted); // The selected destination's Borrow; a probe adapts a call result.
+        }
+
         return operation switch
         {
             ArgumentOperationKind.CopyRead => new(ExpectedAdaptationKind.ReferentRead, adapted),
@@ -586,7 +591,8 @@ public sealed partial class Binding
         if (receiver && pattern.Semantics == SemanticsKind.Ref && declaringType is not null &&
             IsObjectSemantics(actual.Semantics) && actual.Components.Count == 1 && ReferenceEquals(pattern.Components[0], declaringType) &&
             (projected || ReferenceEquals(actual.Components[0], declaringType)) &&
-            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.BorrowableHandle(source, scope, false, true)))
+            (actual.Semantics is SemanticsKind.ObjRef or SemanticsKind.ObjUniq || this.LendsPlace(source, scope, false, out _) ||
+            BorrowableTemporary(source, false, true, false)))
         {
             adapted = this.types.Reference(SemanticsKind.Ref, declaringType, this.PlaceOrigin(source));
             quality = ArgumentAdaptation.CrossSemanticsBorrow;
@@ -660,9 +666,10 @@ public sealed partial class Binding
         }
         else if (actual.Semantics == SemanticsKind.Owner || (explicitBorrow && actual.Kind == BoundTypeKind.SemanticsApplication))
         {
-            // SPEC 13.5.6: an explicit borrow of a slot storing a pair application borrows that slot like a stored value.
+            // SPEC 13.5.6: an explicit borrow of a slot storing a pair application borrows that slot like a stored value. A written
+            // Borrow is lent as Binding lends it, an implicit one (a receiver's too) as SPEC does (BorrowablePlace).
             var exclusive = target == SemanticsKind.Uniq;
-            if (this.BorrowablePlace(source, scope, exclusive))
+            if (explicitBorrow && !receiver ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _))
             {
                 // SPEC 15.1.5 lending rule: an owned Place is lent exclusively by @uniq at every position other
                 // than a Receiver Expression, whatever its access path; a receiver is acquired implicitly (SPEC 7.3).
@@ -744,8 +751,11 @@ public sealed partial class Binding
             quality = exclusive ? ArgumentAdaptation.SameSemanticsReborrow : ArgumentAdaptation.CrossSemanticsBorrow;
         }
         else if (actual.HandleMode is { } mode && (!exclusive || mode.PayloadAuthority == LoanRequirement.Uniq) &&
-            this.BorrowableHandle(source, scope, exclusive, explicitOwner || receiver, fixedExpectation))
+            ((explicitOwner && !receiver ? this.BorrowablePlace(source, scope, exclusive) : this.LendsPlace(source, scope, exclusive, out _)) ||
+            BorrowableTemporary(source, exclusive, explicitOwner || receiver, fixedExpectation)))
         {
+            // SPEC 13.5.5, 13.5.6: a handle lends its object from a Place, as Binding lends it to a written Borrow and as SPEC does to an
+            // implicit one (BorrowablePlace), or from a Temporary Value.
             if (exclusive && !explicitOwner && !receiver)
             {
                 // SPEC 15.1.5 lending rule: an owned handle is lent exclusively by @objuniq except as a receiver (SPEC 7.3).

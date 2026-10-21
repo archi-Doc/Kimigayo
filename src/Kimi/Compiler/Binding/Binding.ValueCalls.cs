@@ -346,7 +346,7 @@ public sealed partial class Binding
             return false;
         }
 
-        var unsupported = IndirectObjectCallee(handle) || (!view && !this.BorrowableHandle(handle, scope, receiver == SemanticsKind.Uniq, true));
+        var unsupported = IndirectObjectCallee(handle) || (!view && !this.BorrowableHandle(handle, scope, receiver == SemanticsKind.Uniq));
         var payload = handleType.Components[0];
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
@@ -501,7 +501,9 @@ public sealed partial class Binding
             {
                 var parameter = ownBinder is null ? parameters.Components[i] :
                     this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
-                if (!this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!))
+                // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
+                if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter) &&
+                    !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!))
                 {
                     return this.Fail(call, BindingFailure.NoApplicableCandidate);
                 }

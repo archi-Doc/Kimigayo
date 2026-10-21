@@ -1,0 +1,26 @@
+struct Counter
+    public var n: i32 = 0
+    public init() => ()
+    public func add(self: uniq/Self, k: i32) => self.n = self.n + k
+    public func view(self: ref/Self) -> ref/i32 during self => self.n@ref
+group State
+    public var counter: Counter = Counter.init()
+    public var count: i32 = 0
+    public func inspect<T>(value: ref/T) => ()
+    public func takes(value: ref/i32) => ()
+    public func keep(value: ref/i32 during a) -> ref/i32 during a => value
+    public func retained()
+        let c = counter.view()
+        inspect(c)
+    public func reserved() => counter.add(1)
+    public func adapted() => takes(count)
+    public func kept()
+        let r = keep(count)
+        inspect(r)
+    public func expected()
+        let r: ref/Counter = counter
+        inspect(r)
+    public func written()
+        let r = counter@ref
+        inspect(r)
+public func main() => ()

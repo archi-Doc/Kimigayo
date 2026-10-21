@@ -1,0 +1,12 @@
+struct Tally
+    public var n: i32 = 0
+    public init() => ()
+    public func view(self: ref/Self) -> ref/i32 during self => self.n@ref
+group Statics
+    public var tally: Tally = Tally.init()
+    public func peek(value: ref/i32) => ()
+    public func effect(g: () -> ())
+        let t = tally.view()
+        g()
+        peek(t)
+public func main() => ()
