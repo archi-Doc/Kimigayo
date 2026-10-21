@@ -62,12 +62,15 @@ public class EffectBoundCallerTest
         var head = generic ? "func f<S>() -> ()\n    S is Opener\n" : "func f() -> ()\n";
         var opened = (head + "    var values: Array<i32> = [1, 2]\n    var it = S.start(values@uniq)\n" + body).Replace("S.start", generic ? "S.start" : "Concrete.start", StringComparison.Ordinal);
         var write = generic ? at : at.Replace("S.start", "Concrete.start", StringComparison.Ordinal);
-        var c = MinimalEmissionTest.Analyze(opener + opened + Main);
+        var source = opener + opened + Main;
+        var start = source.LastIndexOf(write, StringComparison.Ordinal);
+        Assert.True(start >= 0, write);
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         c.ReportAnalysis();
         var errors = TestDiagnostics.Of(c);
         Assert.Contains(errors, x => x.Code is nameof(DiagnosticCode.ComparisonLoanConflict_Kd) or nameof(DiagnosticCode.CallActivationConflict_Kd) &&
-            x.Text is { Length: > 0 } text && write.Contains(text, StringComparison.Ordinal));
+            x.Span.Start >= start && x.Span.End <= start + write.Length);
     }
 
     // A lending item keeps the receiver borrow itself; the existing activation check reports it once.

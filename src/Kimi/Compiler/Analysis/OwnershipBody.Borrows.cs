@@ -12,8 +12,6 @@ public sealed partial class OwnershipBody
     // borrowDependencies still records the descendant's access mode; no extra per-Place/root table is needed.
     private const LoanRequirement RetainedCallExclusive = (LoanRequirement)3;
 
-    // SPEC 8.11.4: each Place that keeps the result of a generic requirement call, with that result's index.
-
     // SPEC 15.6.5: each destroyed root and holder already reported, and the work list of the carrying-definition walk.
     private readonly List<(int Root, int Holder)> destroyedLoans = new();
     private readonly List<int> carryingWork = new();

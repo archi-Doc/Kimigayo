@@ -40,7 +40,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string Temporary = "func make() -> i32 => 4\n\npublic func main() -> ()\n    let r = make()@ref\n    Console.writeLine(\"\\(r@follow)\")\n";
 
-    // SPEC 15.6.5: in a generic body with a loop over `C is Iterable`, the exit delivering z@ref keeps no Loan of n, so the escaping
+    // SPEC 15.6.6: in a generic body with a loop over `C is Iterable`, the exit delivering z@ref keeps no Loan of n, so the escaping
     // exit has the record (review k06; it was at the z@ref exit only).
     private const string GenericRequirement = "func show<C>(values: ref/C, c: bool) -> ()\n    C is Iterable\n    var count: i32 = 0\n    for a in values\n        count += 1\n" +
         "    let z = 1\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow) \\(count)\")\n\n" +
@@ -51,7 +51,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         "    let r = label block: do\n        let n = 5\n        if c\n            exit to block z@ref\n        exit to block n@ref\n    Console.writeLine(\"\\(r@follow)\")\n\n" +
         "public func main() -> ()\n    let v = 3\n    show(v@ref, true)\n";
 
-    // SPEC 15.6.5: a holder whose Type has an abstract part is decided like any other, so the exit delivering `other` keeps no Loan of
+    // SPEC 15.6.6: a holder whose Type has an abstract part is decided like any other, so the exit delivering `other` keeps no Loan of
     // n (the walk gave up on it while requirement calls had region dependencies, before the adoption of Abstract Calls Reach by Paths).
     private const string AbstractHolder = "func show<C, T>(values: ref/C, other: ref/T, c: bool) -> ()\n    C is Iterable\n    T is Copy\n    var count: i32 = 0\n" +
         "    for a in values\n        count += 1\n    let r = label block: do\n        let n: T = other@follow\n        if c\n            exit to block other\n" +
@@ -108,10 +108,11 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
 
     private const string LoanLabel = "value retaining the conflicting loan";
 
-    // A holder whose element is written, a change the carrying walk does not follow.
-    private const string UndecidedHolder = "func show(c: bool, other: ref/i32) -> ()\n    var r: (ref/i32, i32) = label block: do\n        let n = 5\n        if c\n" +
-        "            exit to block (other, 0)\n        exit to block (n@ref, 0)\n    r.1 = 1\n    Console.writeLine(\"\\(r.0@follow)\")\n\n" +
-        "public func main() -> ()\n    let v = 3\n    show(true, v@ref)\n";
+    // A local that keeps n's Loan through an Option payload written in the block, a definition the carrying walk does not decide; both
+    // exits destroy n while it keeps the Loan.
+    private const string UndecidedHolder = "func inspect<T>(value: ref/T) => ()\nfunc show(c: bool) -> ()\n    let z = 1\n    var o: Option<ref/i32> = .Some(z@ref)\n" +
+        "    let k = label block: do\n        let n = 5\n        o = .Some(n@ref)\n        if c\n            exit to block 0\n        exit to block 1\n" +
+        "    inspect(o@ref)\n    Console.writeLine(\"\\(k)\")\n\npublic func main() -> ()\n    show(true)\n";
 
     // Top-level forms of the reproducers: the valid counterparts and the escapes, for the warm allocation checks.
     private const string ValidWorkload = "func pick(c: bool, z: ref/i32) -> i32\n    let r = label block: do\n        let n = 5\n        if c\n            exit to block z\n        exit to block z\n    return r@follow\n" +
@@ -213,16 +214,23 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Null(records[0].Note);
     }
 
-    // SPEC 15.6.5: where the carrying walk gives up, the per-root deduplication never drops the escaping exit, whose record relates
-    // only the value keeping the Loan, while the join still adds none.
+    // SPEC 15.6.5: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
+    // Loan reaches keeps a record relating only the value keeping it, while the join still adds none. The same body over a plain
+    // reference is decided: one record, at the first destruction its carrying definition reaches.
     [Fact]
-    public void AnUndecidedHolderKeepsTheEscapingDestruction()
+    public void AnUndecidedHolderKeepsEveryDestruction()
     {
-        var record = Assert.Single(DiagnosticCorpus.Check(UndecidedHolder).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), record.Code);
-        Assert.Equal((UndecidedHolder.IndexOf("exit to block (n@ref, 0)", StringComparison.Ordinal), "exit to block (n@ref, 0)"), (record.Span!.Value.Start, Text(UndecidedHolder, record.Span)));
-        Assert.Equal(("loan", "do"), (Assert.Single(record.Related!).Role, Text(UndecidedHolder, record.Related![0].Span)[..2]));
-        Assert.Equal("`n` is destroyed here while a live value keeps its Loan" + Transfer, record.Note);
+        var records = DiagnosticCorpus.Check(UndecidedHolder).Diagnostics;
+        Assert.All(records, static x => Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), x.Code));
+        Assert.Equal(["exit to block 0", "exit to block 1"], records.Select(x => Text(UndecidedHolder, x.Span)));
+        Assert.Equal(UndecidedHolder.IndexOf("exit to block 1", StringComparison.Ordinal), records[1].Span!.Value.Start);
+        Assert.All(records, x => Assert.Equal(("loan", "var o"), (Assert.Single(x.Related!).Role, Text(UndecidedHolder, x.Related![0].Span)[..5])));
+        Assert.All(records, static x => Assert.Equal("`n` is destroyed here while a live value keeps its Loan" + Transfer, x.Note));
+        var decided = UndecidedHolder.Replace("var o: Option<ref/i32> = .Some(z@ref)", "var o = z@ref", StringComparison.Ordinal)
+            .Replace("o = .Some(n@ref)", "o = n@ref", StringComparison.Ordinal);
+        var record = Assert.Single(DiagnosticCorpus.Check(decided).Diagnostics);
+        Assert.Equal("exit to block 0", Text(decided, record.Span));
+        Assert.Equal(["borrow", "loan"], record.Related!.Select(static x => x.Role));
     }
 
     // SPEC 3.6, 8.15.1: an abstract receiver temporary ends with its statement as well, so the iterator it lends cannot outlive it.
