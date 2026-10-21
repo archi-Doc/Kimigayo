@@ -19,10 +19,17 @@ namespace Kimi.Compiler;
 // unpublished, R4-M1).
 public partial class Compilation
 {
+    /// <summary>The pipeline of a new compilation, read once per process from <c>KIMI_PIPELINE</c> (R3–R5) by the type initializer, which
+    /// the runtime runs once, so every thread reads the one value (a Nullable set on first read could be read as its default by a thread
+    /// racing the first, PLAN G199).</summary>
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
-    private static CompilerPipeline? defaultPipeline;
+    internal static readonly CompilerPipeline DefaultPipeline = PipelineOf(Environment.GetEnvironmentVariable("KIMI_PIPELINE"));
+
+    /// <summary>The code generator of a new compilation, read once per process from <c>KIMI_CODEGEN</c> (R5 PD4) after
+    /// <see cref="DefaultPipeline"/>, which this file's textual order initializes first.</summary>
     [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-    private static CompilerCodegen? defaultCodegen;
+    internal static readonly CompilerCodegen DefaultCodegen = CodegenOf(DefaultPipeline, Environment.GetEnvironmentVariable("KIMI_CODEGEN"));
+
     private readonly List<Problem> problems = [];
     [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
     private CompilerPipeline pipeline = DefaultPipeline;
@@ -54,14 +61,6 @@ public partial class Compilation
     /// generation with <c> [mir, codegen mir]</c>.</summary>
     internal static string CompilerIdentity => DefaultPipeline != CompilerPipeline.Mir ? CompilerVersion
         : DefaultCodegen == CompilerCodegen.Mir ? CompilerVersion + " [mir, codegen mir]" : CompilerVersion + " [mir]";
-
-    /// <summary>Gets the pipeline of a new compilation, read once per process from <c>KIMI_PIPELINE</c> (R3–R5).</summary>
-    [Transitional("R6", Reason = "The legacy/MIR selection disappears when R6 makes MIR the only pipeline.")]
-    internal static CompilerPipeline DefaultPipeline => defaultPipeline ??= PipelineOf(Environment.GetEnvironmentVariable("KIMI_PIPELINE"));
-
-    /// <summary>Gets the code generator of a new compilation, read once per process from <c>KIMI_CODEGEN</c> (R5 PD4).</summary>
-    [Transitional("R6-gen", Reason = "G4 removes the code generator selection once MIR code generation is the only one.")]
-    internal static CompilerCodegen DefaultCodegen => defaultCodegen ??= CodegenOf(DefaultPipeline, Environment.GetEnvironmentVariable("KIMI_CODEGEN"));
 
     /// <summary>Gets or sets the pipeline the entry points run; the code generator follows it, the process default's under mir and the
     /// old one otherwise. Changing it revokes prior analysis.</summary>
