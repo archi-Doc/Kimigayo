@@ -189,11 +189,13 @@ public sealed partial class Binding
     {
         this.capabilitiesReady = false;
         this.capabilityMode = mode;
+        this.ClearNeededSites();
         this.ClearCapabilityResults();
     }
 
     private void ClearCapabilityResults()
     {
+        this.summaryEpoch++; // Component summaries follow the capability results' lifecycle.
         this.capabilityQueue.Clear();
         this.capabilityEdges.Clear();
         this.capabilityConsumer = null;
@@ -226,9 +228,10 @@ public sealed partial class Binding
             return leaf;
         }
 
-        // Expanding recursive generic storage must not materialize an infinite sequence of Types.
-        // Exact recursive instances use graph edges; changing instances retain an explicit unknown.
-        if (!derivation && type.Symbol is not null)
+        // Copy's conditional premises over a projection can re-enter a declaration with ever larger arguments (2b-4a's census, DECISIONS
+        // BU-22: Copy is the only grower; Owned reads component summaries); the second growth step stays Unknown. Removal condition:
+        // Copy reads a per-declaration summary, or SPEC 8.3.3's proof-depth limit is a resource failure (PLAN G200).
+        if (!derivation && type.Symbol is not null && intrinsic.Intrinsic == IntrinsicKind.Copy)
         {
             var growing = false;
             var depth = 0;
@@ -274,6 +277,11 @@ public sealed partial class Binding
                 work.Dependents.Add(consumer);
             }
 
+            if (work.Result == ConstraintProof.Unknown)
+            {
+                consumer.ReadLimit ??= work.Limit; // P < U < L < R < E: an Unknown resting on a site stays limited in its readers.
+            }
+
             return work.Result;
         }
 
@@ -283,14 +291,17 @@ public sealed partial class Binding
             {
                 next.Queued = false;
                 next.Evaluated = true;
+                next.ReadLimit = null;
                 this.capabilityConsumer = next;
                 var result = this.ComputeCapability(next);
-                if (result == next.Result)
+                var limit = result == ConstraintProof.Unknown ? next.ReadLimit : null;
+                if (result == next.Result && ReferenceEquals(limit, next.Limit))
                 {
                     continue;
                 }
 
                 next.Result = result;
+                next.Limit = limit;
                 for (var i = 0; i < next.Dependents.Count; i++)
                 {
                     var dependent = next.Dependents[i];
@@ -305,6 +316,14 @@ public sealed partial class Binding
         finally
         {
             this.capabilityConsumer = null;
+        }
+
+        if (work.Result == ConstraintProof.Unknown && work.Limit is { } site)
+        {
+            // L (DECISIONS BU-22): inside the engine it combines as Unknown, so Refuted and Error win; the outermost request answers Error
+            // resting on the site, from which a failing check derives its record (TakeFailedCause, SPEC 23.1.2).
+            this.failedCause ??= site;
+            return ConstraintProof.Error;
         }
 
         return work.Result;
@@ -457,7 +476,7 @@ public sealed partial class Binding
 
         if (work.Type.Symbol?.Declaration is DeclarationContainerKoto container)
         {
-            return container.BoundSymbol?.Adt is { } shape ? this.StoredCapability(work, shape) : ConstraintProof.Unknown;
+            return this.SummaryCapability(work, container);
         }
 
         var result = ConstraintProof.Proven;
@@ -489,23 +508,10 @@ public sealed partial class Binding
         return result;
     }
 
+    // Copy's derivation over the stored Types of a declaration's Self (SPEC 3.5.2); Owned reads component summaries.
     private ConstraintProof StoredCapability(CapabilityWork work, AdtDef shape)
     {
         var result = ConstraintProof.Proven;
-        if (work.Intrinsic.Intrinsic == IntrinsicKind.Owned && work.Type.Symbol?.Declaration is DeclarationContainerKoto declaration)
-        {
-            // Every complete Type argument is retained, including unused and inherited slots.
-            for (var i = 0; i < work.Type.Components.Count; i++)
-            {
-                result = CombineProof(result, this.RequestCapability(work.Type.Components[i], work.Intrinsic, work.Scope), true);
-            }
-
-            for (var i = 0; i < work.Type.OriginArguments.Count; i++)
-            {
-                result = CombineProof(result, work.Type.OriginArguments[i] is { } origin && this.ProvesOriginOutlives(origin, BoundOrigin.Static, work.Scope.Owner) ? ConstraintProof.Proven : ConstraintProof.Unknown, true);
-            }
-        }
-
         for (var i = 0; i < shape.Types.Count; i++)
         {
             var type = this.StoredType(shape.Types[i], work.Type);
@@ -623,6 +629,12 @@ public sealed partial class Binding
 
         internal CapabilityWork? Parent { get; set; }
 
+        // The site of an Unknown that a component summary decided (L, DECISIONS BU-22), or one it read through an Unknown child.
+        internal ICheckCause? Limit { get; set; }
+
+        // The first limit the evaluation in progress met.
+        internal ICheckCause? ReadLimit { get; set; }
+
         internal List<CapabilityWork> Dependents { get; } = new();
 
         internal void Reset()
@@ -631,6 +643,8 @@ public sealed partial class Binding
             this.Evaluated = false;
             this.Queued = false;
             this.Parent = null;
+            this.Limit = null;
+            this.ReadLimit = null;
             this.Dependents.Clear();
         }
 

@@ -3074,6 +3074,42 @@ resumed by R4-M86 (2026-10-20).
   chains (review A-3's open family). A new intrinsic adds a row (2b-4: Transferable). Outside it: the capability engine's
   leaves, the `not ObjectPayload` opt-out and Copy's derivation. Open: the conditional Self clause keeps its own failure
   code (PLAN G190). Rejected: per-column pattern methods (a new intrinsic extends each) and a flags enum (more code).
+- **BU-22** (2026-10-21; the BU planning session; A5 step 2 plan 2b-4a under R4-M89 (OQ-F5-2 (b), OQ-F5-3 (a)), the contract of
+  `draft/Sketches/A5 Step 2/ComponentSummaryPrototype.md` revision 3; PLAN G174; DEC Q6 form 1, R4 reviewing) The per-declaration
+  component summary is a canonical component (`Binding/Binding.ComponentSummaries.cs`, its contract at the file's head): for each
+  struct or enum, what its storage adds, in its own formals, to an instance's Owned beyond the instance's Type and Origin arguments
+  (SPEC 15.2.3, 15.3.5): ExcludesOwned (`TryLeafCapability`'s Owned leaves), Error (an Invalid stored Type, 8.7.3's ill-formed object
+  forms among them; F6: it propagates through components), Unresolved (Unknown, as before), the projections of its formals, and the
+  sites of a located `Unsupported_Kd`; the least fixed point over every declaration one solve reaches, never instantiating storage,
+  for one capability epoch (`ClearCapabilityResults` ends it), a warm rebind allocating nothing. Owned of D⟨A, o⟩ reads it: Error;
+  else ExcludesOwned, Unresolved, every Type argument, every Origin argument `static`, every projection substituted; Owned's stored
+  walk is gone (`StoredCapability` keeps Copy's derivation). Rules: the owner's choice for 2x-P12 (2026-10-21, verbatim
+  「案2: その場で U (推奨)」): a component's obligation that would name outer(X) or target(X) of D's plain formal, projection or pair
+  target passed whole is not recorded and D's stored Type is a site (for Owned unreachable while Binding rejects such a Field, PLAN
+  G201); the planning session's rulings: P < U < L < R < E (N3-1), L an Unknown carrying its site (`CapabilityWork.Limit`), which the
+  engine's readers inherit, so Refuted and Error win; F5 (a): a projection link on a cycle of the projection-link graph stops its
+  target's projections being mapped and makes the stored Type naming it a site; F3, F4, the core reduction (resting on SPEC 8.7.3's
+  Object Target well-formedness: Binding rejects ill-formed object forms) and R2-1's owner-known split are Transferable's and move to
+  2b-4 with ExcludesTransferable and the PairU site (R4's Q1, 2026-10-21: their first reader lands there); the rest of the
+  prototype's "What 2b-4a implements" lands here. Ruling (planning session and R4, 2026-10-21) on the limit's answer: the outermost
+  capability request answers L as Error with its site in the rested-on-cause channel (`ICheckCause`, generalized from OCC-X's
+  conformance path in a behavior-preserving commit, the planning session's Q2), because that is the channel's existing path (a
+  conformance limited by OCC-X already answers Error, `Rest` marking it needed, `Binding.Check` publishing it) and about 20 consumers
+  would otherwise turn an Unknown into `UnprovenConstraint_Kd` by themselves; a summary judgment that decides L marks its sites needed
+  whatever reads it, so no path accepts a program whose summary hit a limit; a call selection whose candidate reads one rests on the
+  site and selects no other candidate. Bound (R4's Q4, within R4-M89's F5 (a)): a summary holding more than 64 projections (a
+  conformance binding can lengthen a projection with no projection link) is a site; it only yields the located `Unsupported_Kd`, never
+  a verdict; the census of the default suite (22,164 tests, 186,760 solved summaries) found no summary holding a projection (maximum
+  0). Growth guard (R4's Q3): the census before deleting it (22,147 tests) found it deciding only the pinned `Chain<i32>` (Owned, the
+  stored walk) and, in a probe, Copy's conditional premise over a projection whose conformance binding grows; it now guards Copy only;
+  removal condition: Copy reads a per-declaration summary, or SPEC 8.3.3's proof-depth limit becomes a resource failure (PLAN G200).
+  Acceptance (OQ-F5-3 (a)), both pipelines: Owned of a non-regular recursive Type is exact (Unknown → Proven for `Chain<i32>`,
+  `Nest`, `Nest15`, `Ping`/`Pong`, `Grow`, `Fold`); a requirement resting on a projection family gets one located `Unsupported_Kd` at
+  the family's stored Type, its use derived, in place of `UnprovenConstraint_Kd`; no old-path guard (R4's Q6): such a value meets the
+  old Emission's existing generation depth limit. X-2 register (PD28): the family site, the bound and the option-2 site. Rejected: L
+  as an Unknown that `RequireConstraint` takes (the other consumers), a fifth `ConstraintProof`, a second channel, a solve per strongly
+  connected set (a conformance binding can name a declaration no written storage of the set names), option 1 (the owner's X-2
+  candidate). Not temporary; the guard and the bound keep their conditions above.
 
 ## R5 and R6 (adopted 2026-10-18)
 

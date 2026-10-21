@@ -6,8 +6,9 @@ namespace Kimi.Compiler;
 
 // Owns what a failing check rests on (SPEC 23.1.1, 23.1.2): a cause a proof met, whose Use the check's record is derived from, and,
 // when the cause is a location-only limit, the mark by which Binding.Check publishes that limit's one Unsupported_Kd.
-// Input: a producer met while a check proved its requirement (a conformance path resting on its specification or limited by OCC-X).
-// Output: the Use a failing check's record rests on; Rest, which records that a failing check needed the cause.
+// Input: a producer met while a check proved its requirement: a conformance path resting on its specification or limited by OCC-X, or
+// a component summary's site, a located Unsupported_Kd that decided the outermost capability request (L, answered Error; DECISIONS BU-22).
+// Output: the Use a failing check's record rests on; Rest, which records that a failing check needed it.
 // Invariants: a check clears Binding's one channel before its proof and takes the cause after it (Binding.TakeFailedCause); a limit is
 // published once per pass, only when a failing check rested on it.
 // Must not publish a record itself or decide a proof.

@@ -555,6 +555,25 @@ public sealed partial class Binding
         return cause.Use;
     }
 
+    // SPEC 23.1.1: each limit a failing check rested on, reported once at its location: an inherited conformance limited by OCC-X at the
+    // derived Type's base clause (an explicit one was reported at its declaration, ValidateConformances); a component summary's site at
+    // its stored Type.
+    private void PublishNeededLimits()
+    {
+        for (var i = 0; i < this.activeConformancePaths.Count; i++)
+        {
+            if (this.activeConformancePaths[i] is { Needed: true } path)
+            {
+                this.Fail(path.Use, BindingFailure.Unsupported);
+            }
+        }
+
+        foreach (var site in this.neededSites)
+        {
+            this.Fail(site.Use, BindingFailure.Unsupported);
+        }
+    }
+
     // SPEC 8.1.1, 8.1.2, 8.7.3: the independent causes for which a Type occurrence's role or pair formation is not proven, None when
     // it is. A missing outer-Origin slot under an admitted borrow and a static slot under an admitted exclusive borrow are Language
     // causes; a target that is not proven a value Type or an Object Target is a Proof cause, judged separately.
