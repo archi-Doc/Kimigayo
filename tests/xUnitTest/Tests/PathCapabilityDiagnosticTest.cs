@@ -41,6 +41,15 @@ public class PathCapabilityDiagnosticTest
     // subscripts select index, which shares the element (SPEC 4.7.1, 15.1.5; DECISIONS BU-13).
     private const string LetEntries = "func f(value: uniq/Point during a)\n    let entries: Dictionary<i32, uniq/Point during a> = [1: value@move]\n";
 
+    // Group storage: a var and a let Field, a var and a let struct, a Tuple, an object handle, a var whose setter is private and one
+    // whose setter is custom; the group's function bump has its body appended.
+    private const string Statics =
+        "struct Point\n    public var x: i32 = 0\n    public init() => ()\nfunc take(x: uniq/i32) -> () => x@follow = 1\n" +
+        "group State\n    public var counter: i32 = 0\n    public let limit: i32 = 5\n    public var point: Point = Point.init()\n" +
+        "    public let fixed: Point = Point.init()\n    public var pair: (i32, i32) = (1, 2)\n    public var handle: obj/Point = Point.init()@obj\n" +
+        "    public var guarded: i32 = 0\n        private set\n    public var custom: i32 = 0\n" +
+        "        set(value: i32) -> () => State.counter = value\n    public func bump()\n";
+
     [Theory]
     [InlineData("var values: Array<string> = [\"a\"]\nlet view = values[..]\nlet m = view[0]@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: uniq/S) -> string => r.f@move", DiagnosticCode.ExclusivePathTake_Kd)]
@@ -50,6 +59,8 @@ public class PathCapabilityDiagnosticTest
     [InlineData(S + "func f(r: ref/S) => r.n = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) -> uniq/i32 during r => r.n@uniq", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f(v: ref/i32) -> uniq/i32 during v => v@follow@uniq", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData("func f(v: ref/i32) -> uniq/i32 during v => v@follow@uniq/i32", DiagnosticCode.SharedPathAccess_Kd)]
+    [InlineData(S + "func f(r: ref/S) -> uniq/i32 during r => r.n@uniq/i32", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("var values: Array<i32> = [1]\nlet view = values[..]\nview[0] = 3", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData(S + "func f(r: ref/S) -> string => r.f@move", DiagnosticCode.SharedPathAccess_Kd)]
     [InlineData("func f(x: i32) => x = 2", DiagnosticCode.InvalidAssignment_Kd)]
@@ -97,6 +108,46 @@ public class PathCapabilityDiagnosticTest
         Assert.False(c.Binding.Result.IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == code);
         Assert.DoesNotContain(c.Problems, x => x.Code is DiagnosticCode.Unsupported_Kd or DiagnosticCode.UninitializedPlace_Kd);
+    }
+
+    // SPEC 15.6.2, 15.6.4, 11.2: a static Field and its parts are lent as their accessors allow, but no analysis models static Loans (PLAN
+    // P42), so a Borrow through the Field's qualified name, in its group too, is one located Unsupported_Kd in every Borrow form (DECISIONS
+    // R4-M89 PD12 (i)); a Borrow SPEC denies (a let, a private or custom setter, a let ancestor) keeps its Language error.
+    [Theory]
+    [InlineData("        ()\nfunc f()\n    let r = State.counter@uniq\n    r@follow = 3", "State.counter@uniq", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32\n    let r = State.counter@ref\n    return r@follow", "State.counter@ref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32\n    let r = State.limit@ref\n    return r@follow", "State.limit@ref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        let r = State.counter@uniq\n        r@follow += 1", "State.counter@uniq", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() => take(State.counter@uniq)", "State.counter@uniq", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() => take(State.point.x@uniq)", "State.point.x@uniq", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@ref", "State.fixed.x@ref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() => take(State.pair.0@uniq)", "State.pair.0@uniq", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.handle@objuniq", "State.handle@objuniq", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.guarded@ref", "State.guarded@ref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() => take(State.counter@uniq/i32)", "State.counter@uniq/i32", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.counter@raw", "State.counter@raw", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.limit@uniq", "State.limit@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.guarded@uniq", "State.guarded@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.custom@uniq", "State.custom@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@uniq", "State.fixed.x@uniq", DiagnosticCode.InvalidAssignment_Kd)]
+    public void AQualifiedStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
+    {
+        var source = Statics + body + "\npublic func main() => ()\n";
+        var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length));
+        Assert.Equal([(code.ToString(), source.IndexOf(at, StringComparison.Ordinal), at.Length)], observed);
+    }
+
+    // Reads, writes and calls through the group borrow no static Field in Binding, and an unqualified Borrow in its group binds until
+    // A5-F9 lands (DECISIONS R4-M90 PQ-1).
+    [Theory]
+    [InlineData("        ()\nfunc f() -> i32 => State.counter + State.point.x")]
+    [InlineData("        ()\nfunc f()\n    State.counter = 1\n    State.counter += 1\n    State.point.x = 3")]
+    [InlineData("        State.counter += 1\nfunc f() => State.bump()")]
+    [InlineData("        let r = counter@uniq\n        r@follow += 1")]
+    public void StaticAccessesWithoutAQualifiedBorrowBind(string body)
+    {
+        var c = MinimalEmissionTest.Analyze(Statics + body + "\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
     [Fact]

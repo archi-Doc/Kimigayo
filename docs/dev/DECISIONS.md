@@ -2772,6 +2772,23 @@ resumed by R4-M86 (2026-10-20).
   `InvalidConstraint_Kd` at `Audit.see(f@ref)` and the MIR an `Unsupported_Kd` at `let h = f`); failing a capture-site node at the
   body's end (an explicit entry has no node: `CaptureKoto` is a struct, and an unused entry `func [w] () => ()` has no use either).
   Not temporary.
+- **BU-18** (2026-10-21; the BU planning session; A5 step 2 plan unit 2b-6 (a) under R4-M89 PD12 (i) and R4-M90 PQ-1, PLAN G100; one
+  design, one review) A written Borrow that SPEC lends of a Place rooted at a static Field reached through its qualified name (SPEC
+  15.6.2's static root, 15.6.4, 11.2) is Binding's located `Unsupported_Kd`: `State.counter@uniq`, `@ref`, a group `let`'s `@ref`,
+  `@raw`, typed (`@uniq/i32`), `@objuniq`, an inline part (`State.point.x@uniq`, `State.pair.0@uniq`), as an argument and inside the
+  group. Representation (`Binding.PlaceAuthority`): `LendsPlace`, the former `BorrowablePlace`, decides as SPEC lends, a static Field
+  being a root Place lent as its accessors allow, and reports that root (`staticRoot`); `BorrowablePlace`, which every other consumer
+  reads, lends only without one, so nothing newly binds; `BorrowFailure` is the one diagnostic for a written Borrow it denies, read by
+  the shorthand, typed, `@raw`, object-borrow and explicit-adaptation arms in place of their ternaries and literals: `Unsupported_Kd`
+  for a lent static root, else `AccessFailure` (exclusive) or `InvalidAssignment_Kd` (shared). A Borrow SPEC denies keeps its Language
+  error (`State.limit@uniq`, a private or custom setter's `@uniq`, a Field of a `let` static). A typed exclusive borrow now gets the
+  shorthand's code (`v@follow@uniq/i32` through `ref/i32` `SharedPathAccess_Kd`, a constructor's `self.total@uniq/i32` BU-15's
+  `Unsupported_Kd`; both were a literal `InvalidAssignment_Kd`). Rejected: an `AccessFailure` arm (it also names writes and Takes and
+  has no scope for 11.2's accessor access, so a private setter's `@uniq` and a failed static write would become `Unsupported_Kd`); a
+  clause per Borrow arm; a mode parameter on `BorrowablePlace`. Temporary: the `staticRoot` denial goes when P42 models static Loans;
+  part (b) extends it to the unqualified name in the group after G:A5-F9. Open (PLAN G100): a Borrow through a static object handle's
+  payload (`State.h.v@uniq`, `State.h@follow.v@ref` stay `InvalidAssignment_Kd`; `State.h.v@ref` binds) and implicit argument and
+  receiver borrows of a qualified static (`NoApplicableOverload_Kd`).
 
 ## R5 and R6 (adopted 2026-10-18)
 

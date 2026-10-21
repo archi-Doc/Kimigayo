@@ -260,7 +260,7 @@ public sealed partial class Binding
             var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
             if (exclusive && !this.BorrowablePlace(conversion.Left, scope, true) && !BorrowableTemporary(conversion.Left, true, true, false))
             {
-                this.Fail(conversion, AccessFailure(conversion.Left));
+                this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: true));
                 return false;
             }
         }
