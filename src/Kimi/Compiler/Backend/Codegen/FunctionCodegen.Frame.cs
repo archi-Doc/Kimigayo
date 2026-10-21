@@ -10,7 +10,7 @@ namespace Kimi.Compiler.Backend;
 // arguments passed by pointer, the entry block (the prologue) and the return.
 internal sealed partial class FunctionCodegen
 {
-    private TypeLayout[] copies = []; // The copy slots %c<k>, by number.
+    private TypeLayout[] copies = []; // The copy slots %s<k>, by number.
     private int[] copyOf = []; // By operand of the body, its copy slot or -1.
     private int copyCount;
 
@@ -84,8 +84,10 @@ internal sealed partial class FunctionCodegen
     // SPEC 3.5 with IMPL 21.3.1 (DECISIONS R5-M89): a Copy of a value in memory that a runtime-reached Call passes to a parameter by pointer,
     // which the callee owns from the call on, is copied into a copy slot of its own, so the callee never sees its source change; a string
     // constant so passed is written into one as its record. One pass over the reached Calls' operands numbers the slots before the prologue
-    // allocates them; the call writer finds an operand's by its index. The pass covers every reached Call's in-memory Copy operands, whatever
-    // its callee's row, until a later call row (C3b, C5a, C6c, C8a) uses these slots or narrows the scan.
+    // allocates them; the call writer finds an operand's by its index. The pass covers the operands a reached Call passes to an OwnedSlot
+    // parameter (DECISIONS R5-M92 narrowed R5-M89's every operand): a body's callee takes a value in memory by pointer, so every in-memory
+    // operand of a Fn, Requirement, Value or Virtual call; an intrinsic only through its row's routine (Raw.release, $abort), so a Fail's
+    // code or Raw.initialize's value gets none.
     private void Copies()
     {
         var operands = this.body.Operands;
@@ -100,10 +102,29 @@ internal sealed partial class FunctionCodegen
         {
             if (this.reach[block] && this.body.Blocks[block].Terminator is { Kind: MirTerminatorKind.Call } call)
             {
-                for (var i = call.Start; i < call.Start + call.Count; i++)
-                {
-                    this.CopySlot(i);
-                }
+                this.CopySlots(call);
+            }
+        }
+    }
+
+    // The copy slots of a Call's operands that an OwnedSlot parameter takes (Copies).
+    private void CopySlots(in MirTerminator call)
+    {
+        if (call.Callee.Kind != MirCalleeKind.Intrinsic)
+        {
+            for (var i = call.Start; i < call.Start + call.Count; i++)
+            {
+                this.CopySlot(i);
+            }
+
+            return;
+        }
+
+        foreach (var parameter in IntrinsicRows.Of((IntrinsicId)call.Callee.Arg).Routine?.Parameters ?? [])
+        {
+            if (parameter.Kind == AbiParameterKind.OwnedSlot)
+            {
+                this.CopySlot(call.Start + ArgumentPosition(new(call.Callee.Symbol, MirBodyKind.Fn), parameter.LogicalIndex));
             }
         }
     }
@@ -168,7 +189,7 @@ internal sealed partial class FunctionCodegen
 
         for (var i = 0; i < this.copyCount; i++)
         {
-            this.WriteSlot("  %c", i, this.copies[i]);
+            this.WriteSlot("  %s", i, this.copies[i]);
         }
 
         foreach (var parameter in this.abi.Parameters)

@@ -61,10 +61,21 @@ internal delegate void StorageKernelWriter(TextWriter output, in StorageKernelIn
 internal sealed record StorageKernelRow(StorageKernelKind Kind, StorageKernelWriter Write, HelperNeeds Needs);
 
 /// <summary>SPEC 22.2: the storage-boundary kernels written inline in their caller's body, the kernels of the Raw.slice and
-/// capacity intrinsics (SPEC 5.6, 4.9.5), and the addressing of a library record's Field that they share with the old writer
-/// (Windows x64 profile).</summary>
+/// capacity intrinsics (SPEC 5.6, 4.9.5), the private storage byte primitives, and the addressing of a library record's Field that
+/// they share with the old writer (Windows x64 profile).</summary>
 internal sealed partial class LegacyRuntimeHelpers
 {
+    // SPEC 22.2: the byte copy moves no responsibility and has no location to report; the nullable Alloc it follows is the runtime's
+    // (LlvmModuleText.TryAllocate).
+    private const string TransferBytes = """
+        define internal void @__kimi_transfer_bytes(ptr %destination, ptr %source, i64 %size) #0 {
+        entry:
+          call void @llvm.memcpy.p0.p0.i64(ptr %destination, ptr %source, i64 %size, i1 false)
+          ret void
+        }
+
+        """;
+
     // One row per kind, in StorageKernelKind order; a new kind adds a row.
     private static readonly StorageKernelRow[] StorageKernelRows =
     [
@@ -77,6 +88,9 @@ internal sealed partial class LegacyRuntimeHelpers
         new(StorageKernelKind.BorrowDictionary, WriteDictionaryBorrow, HelperNeeds.None),
         new(StorageKernelKind.OwnDictionary, WriteDictionaryOwn, HelperNeeds.None),
     ];
+
+    /// <summary>Gets or sets a value indicating whether a lowered body uses the private storage byte primitives (SPEC 22.2).</summary>
+    internal bool NeedsStorageBytes { get; set; }
 
     /// <summary>Gets the row of an inline storage kernel kind; a kind without a row is a broken contract.</summary>
     /// <param name="kind">The kernel kind.</param>
@@ -300,5 +314,16 @@ internal sealed partial class LegacyRuntimeHelpers
         output.Write(", ptr ");
         WriteField(output, input.Result, "%dfield", input.Id, offset);
         output.Write(", align 8\n");
+    }
+
+    // The storage byte primitives, written before the Dictionary runtime when a body uses them: the runtime's nullable Alloc, then the
+    // byte copy.
+    private void WriteStorageBytes(TextWriter output)
+    {
+        if (this.NeedsStorageBytes)
+        {
+            output.Write(TryAllocate);
+            output.Write(TransferBytes);
+        }
     }
 }
