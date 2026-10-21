@@ -27,6 +27,32 @@ public class CallSignatureFormationBindingTest
         Assert.Null(Call(restored).CallOf());
     }
 
+    // SPEC 23.1.2: a candidate whose parameter Type failed rests the selection on that failure at every call, whether the call supplies
+    // the parameter or omits it for its default, so the call publishes nothing of its own (bu21: an omitted one faulted beside an
+    // unsolved slot, was refused beside a waiting argument and was passed over for another overload). The last row is the valid
+    // neighbour: `during x` names the Origin of a borrowed `x`, and the default Copies that shared borrow (SPEC 7.2.3, 15.2.1).
+    [Theory]
+    [InlineData("func take<T>(x: T, y: ref/T during x = x@ref) => ()\n", "take(3)", "InvalidOriginBinding_Kd", "x")]
+    [InlineData("func take<T>(x: T, y: ref/T during x = x@ref) => ()\n", "take(a, a@ref)", "InvalidOriginBinding_Kd", "x")]
+    [InlineData("func take<T>(x: T, y: ref/T during x = x@ref) => ()\n", "take(a@ref)", "InvalidOriginBinding_Kd", "x")]
+    [InlineData("func take(x: i32, y: ref/i32 during x = x@ref) => ()\n", "take(3)", "InvalidOriginBinding_Kd", "x")]
+    [InlineData("func take<T>(x: T, y: Missing = 0) => ()\n", "take(3)", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func take<T>(x: Option<T>, y: Missing = 0) => ()\n", "take(.None)", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func take<F>(f: F, y: Missing = 0)\n    F is Callable<(i32) -> ()>\n    return\n", "take(func (v: i32) => ())", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func take<T>(x: T, y: Missing = 0) => ()\nfunc take(x: i32) => ()\n", "take(a)", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func take<T>(x: T, y: Missing) => ()\nfunc take(x: i32, y: i32) => ()\n", "take(a, 4)", "UnresolvedBinding_Kd", "Missing")]
+    [InlineData("func take<T>(x: ref/T, y: ref/T during x = x) => ()\n", "take(a@ref)", null, null)]
+    public void FailedParameterTypeHoldsEveryCall(string callee, string call, string? code, string? text)
+    {
+        var c = MinimalEmissionTest.Analyze(callee + "func call(a: i32) => " + call);
+        c.Binding.ReportDiagnostics();
+        (string?, string?)[] expected = code is null ? [] : [(code, text)];
+        Assert.Equal(expected, TestDiagnostics.Of(c).Select(static x => ((string?)x.Code, x.Text)));
+        Assert.Equal(code is null, c.Binding.Result.IsComplete);
+        var function = c.Kotonoha.RootKoto.Members.OfType<FunctionKoto>().Concat(c.Kotonoha.GeneratedFunction?.Body?.Items.OfType<FunctionKoto>() ?? []).Single(x => x.Name == "call");
+        Assert.Equal(code is null, Assert.IsType<InvocationKoto>(function.ExpressionBody).CallOf() is not null);
+    }
+
     [Fact]
     public void InvalidEnclosingDeclarationCannotSupplyCallTarget()
     {

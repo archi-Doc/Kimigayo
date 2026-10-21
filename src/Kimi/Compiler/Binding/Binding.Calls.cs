@@ -734,8 +734,8 @@ public sealed partial class Binding
                     if (!used[i])
                     {
                         var parameter = selected.Parameters[i];
-                        if (parameter.DefaultValue is not { } expression || parameter.Type.BoundType is not { } pattern ||
-                            this.CallType(pattern, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) is not { } parameterType)
+                        if (parameter.DefaultValue is not { } expression ||
+                            this.CallType(parameter.Type.BoundType!, selected, scratch, scope, self, origins, inputs, selectedType, lengthArguments) is not { } parameterType)
                         {
                             return this.Fail(call, BindingFailure.MissingType, true);
                         }
@@ -1050,6 +1050,17 @@ public sealed partial class Binding
                 return CandidateApplicability.Inapplicable;
             }
 
+            // SPEC 23.1.2: a candidate whose parameter Type failed is never judged, whether the call supplies that parameter or omits it
+            // for its default; it stays pending, and the selection rests on the failed signature (FailedSignature). Every parameter
+            // pattern read below is therefore bound.
+            for (var i = 0; i < function.Parameters.Count; i++)
+            {
+                if (function.Parameters[i].Type.BoundType is null)
+                {
+                    return CandidateApplicability.Pending;
+                }
+            }
+
             var receiverSlot = receiver is null ? -1 : function.BoundSymbol!.ReceiverIndex;
             var receiverPath = receiver is not null && (generic?.Identifier ?? KotoHelper.UnwrapParentheses(call.Method)) is MemberAccessKoto member && this.memberSelections.TryGetValue(member, out var selection) ? selection.Path : null;
             if (receiver is not null)
@@ -1059,11 +1070,7 @@ public sealed partial class Binding
                     return CandidateApplicability.Inapplicable;
                 }
 
-                if (function.Parameters[receiverSlot].Type.BoundType is not { } parameterType)
-                {
-                    return CandidateApplicability.Pending;
-                }
-
+                var parameterType = function.Parameters[receiverSlot].Type.BoundType!;
                 if (!solution.InferInput(parameterType, receiverType, receiver, receiverPath, receiver: true))
                 {
                     if (this.CallMemberPattern(parameterType, function, declaringType) is { } memberType && this.ContractType(memberType, scope, self) is { } required && SharedObjectAuthorityMismatch(receiverType, required))
@@ -1083,12 +1090,7 @@ public sealed partial class Binding
                 var part = call.ArgumentNodes[i];
                 contextualInputs |= this.KindOf(part) == ArgumentKind.Composite;
                 contextualCallables |= KotoHelper.UnwrapParentheses(part) is FunctionKoto { IsAnonymous: true } || IsWaitingFunctionReference(part);
-                var type = function.Parameters[mapping[i]].Type.BoundType;
-                if (type is null)
-                {
-                    return CandidateApplicability.Pending;
-                }
-
+                var type = function.Parameters[mapping[i]].Type.BoundType!;
                 if (this.FormedApplication(type, CallSlotOwner(function), arguments).Kind == BoundTypeKind.SemanticsApplication)
                 {
                     waiting.Add(i); // SPEC 10.2: solved together; s/U is matched once another argument fixes s.
