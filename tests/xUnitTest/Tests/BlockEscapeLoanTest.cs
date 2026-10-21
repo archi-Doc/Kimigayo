@@ -214,7 +214,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Null(records[0].Note);
     }
 
-    // SPEC 15.6.5: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
+    // SPEC 15.6.6: where the carrying walk gives up, the per-root deduplication never drops the escaping exit; every destruction the
     // Loan reaches keeps a record relating only the value keeping it, while the join still adds none. The same body over a plain
     // reference is decided: one record, at the first destruction its carrying definition reaches.
     [Fact]
