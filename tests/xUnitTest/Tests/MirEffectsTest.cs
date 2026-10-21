@@ -208,17 +208,22 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
 
     // SPEC 8.11.6: a call through a Callable input composes the actual Closure's or function item's summary at the caller; a bounded
     // input's binding owes its bound after selection, decided by the premises where they can (a missing premise, an erased Function Type)
-    // at the argument; an owner call also destroys the remaining environment.
+    // at the argument; an owner call also destroys the remaining environment. Declared before the helpers, the worker is evaluated before
+    // invoke has its atom, so the Closure's body is a read only a later evaluation makes: a dependency recorded only at a node's first
+    // evaluation would lose the failure (the 2b-7 review's mutant).
     [Theory]
-    [InlineData("42", "")]
-    [InlineData("Helpers.noisy()", "IncompatibleContractImplementation_Kd Self is Work 1")]
-    public void SummariesComposeCallbacksThroughActualArguments(string expression, string expected)
-        => Assert.Equal(
+    [InlineData("42", false, "")]
+    [InlineData("Helpers.noisy()", false, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    [InlineData("Helpers.noisy()", true, "IncompatibleContractImplementation_Kd Self is Work 1")]
+    public void SummariesComposeCallbacksThroughActualArguments(string expression, bool workerFirst, string expected)
+    {
+        const string Helpers = "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
+            "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n";
+        var worker = $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\n";
+        Assert.Equal(
             Expected(expected),
-            Problems("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\n" +
-                "group Helpers\n    public func invoke<F>(f: ref/F) -> i32\n        F is Callable<() -> i32>\n        return f()\n" +
-                "    public func noisy() -> i32\n        Console.writeLine(\"noisy\")\n        return 0\n" +
-                $"struct Worker\n    Self is Work\n    public func run(self: ref/Self) -> i32 => Helpers.invoke(func [] () -> i32 => {expression})\n"));
+            Problems("contract Work\n    func run(self: ref/Self) -> i32\n        effect confined\n" + (workerFirst ? worker + Helpers : Helpers + worker)));
+    }
 
     [Theory]
     [InlineData("func entry() -> i32 => apply(func [] () -> i32 => 42)\n", "")]
@@ -497,7 +502,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
     // R4-M1 (G126): A4 records the program version MirProgram.Version names, whatever body comes first: a fresh A4 recording the bodies
     // last first, so that body 0's first view comes last and must not start a version, finds the witness's failure, which composes its
     // call of G.noisy (before, that view restarted the recording and lost every other body); the next version starts empty, so recording
-    // it in the driver's order takes a fresh A4's evaluations.
+    // it in the driver's order takes a fresh A4's evaluations; and a version whose bodies Local never recorded, here one without bodies,
+    // solves no node (before, Run evaluated the previous version's nodes against it).
     [Fact]
     public void LocalRecordsTheProgramsVersion()
     {
@@ -512,6 +518,8 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
         var fresh = new MirEffects(c.Types, cases, flow);
         Analyze(fresh, flow, cases, program, new MirReport());
         Assert.Equal(fresh.Evaluations, effects.Evaluations);
+        effects.Run(new MirProgram { Version = program.Version + 1 }, new MirReport());
+        Assert.Equal(0, effects.Evaluations);
 
         string[] Record(bool lastFirst)
         {
@@ -531,33 +539,6 @@ public sealed partial class MirEffectsTest(ITestOutputHelper output)
             effects.Run(program, report);
             return Problems(c, report);
         }
-    }
-
-    // G126, V16: Compose records each (reader, node) dependency once per Run. N callers declared before their printing callee read it, and
-    // read it again once it grows, each after the others read it in between; the program's dependencies grow by one per caller (before,
-    // by two from the second caller on: a re-evaluation recorded its read again).
-    [Fact]
-    public void EachReaderIsRecordedOnce()
-    {
-        int[] callers = [1, 4];
-        var dependencies = new int[callers.Length];
-        for (var i = 0; i < callers.Length; i++)
-        {
-            var text = new StringBuilder();
-            for (var n = 0; n < callers[i]; n++)
-            {
-                text.Append(System.Globalization.CultureInfo.InvariantCulture, $"func caller{n}() => callee()\n");
-            }
-
-            var c = MirBuildTest.Compile(text.Append("func callee() => Console.writeLine(\"x\")\npublic func main() => ()\n").ToString());
-            var program = c.BuildMir();
-            var (cases, flow) = (new MirCases(c.Types), new MirDataflow(new MirReach()));
-            var effects = new MirEffects(c.Types, cases, flow);
-            Analyze(effects, flow, cases, program, new MirReport());
-            dependencies[i] = effects.Dependencies;
-        }
-
-        Assert.Equal(callers[1] - callers[0], dependencies[1] - dependencies[0]);
     }
 
     // V16 (plan "New V-checks"): A4 is linear: an N-deep call chain whose last member prints and an N-member ring of mutual calls (one

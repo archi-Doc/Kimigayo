@@ -21,10 +21,9 @@ internal sealed partial class MirEffects
     private Atom[] scratch = []; // The atoms of the current evaluation.
     private int[] queue = [];
     private ulong[] queued = [];
-    private int[] readers = []; // The reader that recorded or stamped its read of each node last, so a reader records each node once,
-    private int[] dependentHeads = []; // each node's readers, a list in dependents (Node, Next),
-    private int[] readHeads = []; // and each reader's recorded reads, a list through the same entries (Read, Prior).
-    private (int Node, int Next, int Read, int Prior)[] dependents = [];
+    private int[] readers = []; // The last node that read each node, so consecutive reads record one dependency,
+    private int[] dependentHeads = []; // and each node's readers, a list in dependents.
+    private (int Node, int Next)[] dependents = [];
     private MirProgram program = null!;
     private BindingSymbol? definition; // The definition whose premises resolve atoms: the evaluated node's, or an obligation's.
     private int reader; // The evaluated node, -1 while judging an obligation, whose atoms are resolved at once.
@@ -35,9 +34,6 @@ internal sealed partial class MirEffects
     /// <summary>Gets the node evaluations of the last <see cref="Run"/>, linear in the program's calls (V16).</summary>
     internal int Evaluations { get; private set; }
 
-    /// <summary>Gets the dependencies the last <see cref="Run"/> recorded, each reader of a node once (V16).</summary>
-    internal int Dependencies => this.dependentCount;
-
     /// <summary>Solves the summaries of the nodes <see cref="Local"/> recorded (driver step 3) and judges each <c>confined</c> obligation:
     /// per view of its target an environment or unknown effect is its code at its subject, else a limit <c>Unsupported_Kd</c>; a failure the
     /// premises decide covers every view.</summary>
@@ -47,14 +43,13 @@ internal sealed partial class MirEffects
     {
         this.program = program;
         (this.atomCount, this.dependentCount, this.Evaluations) = (0, 0, 0);
-        var count = this.nodeCount;
+        var count = program.Version == this.version ? this.nodeCount : 0; // A version Local recorded no view of has no node.
         MirDataflow.Grow(ref this.classes, count);
         MirDataflow.Grow(ref this.atomStarts, count);
         MirDataflow.Grow(ref this.atomCounts, count);
         MirDataflow.Grow(ref this.queue, count);
         MirDataflow.Grow(ref this.queued, (count + 63) >> 6);
         MirDataflow.Grow(ref this.readers, count);
-        MirDataflow.Grow(ref this.readHeads, count);
         MirDataflow.Grow(ref this.dependentHeads, count);
         var words = ((2 * this.fields.Count) + 63) >> 6;
         MirDataflow.Grow(ref this.keys, count * words);
@@ -65,7 +60,6 @@ internal sealed partial class MirEffects
         this.atomCounts.AsSpan(0, count).Clear();
         this.readers.AsSpan(0, count).Fill(-1);
         this.dependentHeads.AsSpan(0, count).Fill(-1);
-        this.readHeads.AsSpan(0, count).Fill(-1);
         this.queued.AsSpan(0, (count + 63) >> 6).Fill(ulong.MaxValue);
         for (var node = 0; node < count; node++)
         {
@@ -113,8 +107,7 @@ internal sealed partial class MirEffects
         }
     }
 
-    // A node's summary from its local facts and its callees' current summaries: whether it grew. The reads it recorded before are stamped
-    // first, so Compose records none of them again.
+    // A node's summary from its local facts and its callees' current summaries: whether it grew.
     private bool Evaluate(int node)
     {
         var body = this.program.Bodies[this.owners[node]];
@@ -122,11 +115,6 @@ internal sealed partial class MirEffects
         cases.Select(body, node - this.bases[this.owners[node]]);
         (this.definition, this.reader, this.found, this.scratchCount) = (body.Key.Decl, node, this.local[node], 0);
         this.glued.Clear();
-        for (var d = this.readHeads[node]; d >= 0; d = this.dependents[d].Prior)
-        {
-            this.readers[this.dependents[d].Read] = node;
-        }
-
         this.Inputs(node == 0 ? 0 : this.itemEnds[node - 1], this.itemEnds[node], node == 0 ? 0 : this.edgeEnds[node - 1], this.edgeEnds[node]);
         if (this.found == this.classes[node] && this.scratchCount == this.atomCounts[node])
         {
@@ -155,7 +143,7 @@ internal sealed partial class MirEffects
     }
 
     // The summaries of a body's views a call selects, composed through its substitution under the selected view, their keys unchanged
-    // (P5); a read node records the reader once per Run.
+    // (P5); read nodes record the reader.
     private void Compose(int body, ulong views, Subst? subst)
     {
         for (var mask = views; mask != 0; mask &= mask - 1)
@@ -165,8 +153,8 @@ internal sealed partial class MirEffects
             {
                 this.readers[node] = this.reader;
                 MirDataflow.Grow(ref this.dependents, this.dependentCount + 1);
-                this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node], node, this.readHeads[this.reader]);
-                this.dependentHeads[node] = this.readHeads[this.reader] = this.dependentCount++;
+                this.dependents[this.dependentCount] = (this.reader, this.dependentHeads[node]);
+                this.dependentHeads[node] = this.dependentCount++;
             }
 
             this.found |= this.classes[node];

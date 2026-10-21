@@ -157,7 +157,6 @@ internal static class StaticKeyMeasurements
             words,
             formulaKeyWords = nodes * words,
             evaluations = effects!.Evaluations,
-            dependencies = effects.Dependencies,
             sites = cold[0].Sites,
             unknownSites = cold[0].Unknown,
             keysReturned = cold[0].Keys,
