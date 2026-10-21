@@ -3,9 +3,10 @@
 namespace Kimi.Compiler.Mir;
 
 // A5's Loans of the view (A3 4's issued, E3, E13 (4)): one per non-raw Ref and Reborrowing PairAcquire past no shared borrow Deref, by
-// location, each with its Place's steps, in group order; whether the body has a guard candidate, whose guard-local Origin a check follows
-// without a Loan (E7); and for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are on, whether the body
-// drops a mutable static (R3) and each static's A4 Field number.
+// location, each with its Place's steps, in group order; whether the view has an input of a Loan-stratum producer (D5, R4-M95): a Loan, a
+// guard candidate, whose guard-local Origin a check follows without a Loan (E7), a Drop of a mutable static (R3) or a write rooted at a
+// default template's PreparedInput (R26-access); and for the effect rule (R4-M92) the view's effect roots, the mutable statics its Loans are
+// on, and each static's A4 Field number.
 internal sealed partial class MirBorrows
 {
     private readonly List<int> effectRoots = []; // The root keys of the mutable statics the view's Loans are on, each once.
@@ -20,8 +21,7 @@ internal sealed partial class MirBorrows
     private int[] renumbered = []; // By Loan in issue order: its id in group order.
     private int loanCount;
     private int loanStepCount;
-    private bool guarded; // Whether a local's marker is a guard candidate's γ (MarkerOf).
-    private bool staticDrops; // Whether the body drops a mutable static (R3, MirBorrows.Effects).
+    private bool producing; // Whether the view has an input of a Loan-stratum producer, which each producer's scan below sets (D5).
     private int[] fields = []; // By static: A4's number of its Field (MirEffects.Field), -1 for none.
 
     // The Reborrow a statement's PairAcquire makes under the view (A3 E13 (4)): the borrow its Use's marker names (Uniq, or TwoPhaseUniq for
@@ -49,12 +49,12 @@ internal sealed partial class MirBorrows
             this.fields[i] = effects.Field(this.body.Statics[i].Symbol);
         }
 
-        (this.guarded, this.staticDrops) = (false, false);
+        this.producing = false;
         this.effectRoots.Clear();
         for (var i = 0; i < locals; i++)
         {
             this.lent[i] = new(i);
-            this.guarded |= this.MarkerOf(i) == Marker.Guard;
+            this.producing |= this.MarkerOf(i) == Marker.Guard;
         }
 
         (this.loanCount, this.loanStepCount) = (0, 0);
@@ -69,6 +69,7 @@ internal sealed partial class MirBorrows
                     continue;
                 }
 
+                this.producing |= this.Prepared(statement.Place.Root);
                 var rvalue = statement.Rvalue.Kind == MirRvalueKind.Adapt ? cases.Adapt(statement.Rvalue, out _) : statement.Rvalue;
                 if (rvalue.Kind == MirRvalueKind.Ref && (MirRefKind)rvalue.Op != MirRefKind.Raw)
                 {
@@ -85,8 +86,11 @@ internal sealed partial class MirBorrows
                 }
             }
 
-            this.staticDrops |= this.DroppedStatic(data.Terminator) >= 0;
+            var terminator = data.Terminator;
+            this.producing |= this.DroppedStatic(terminator) >= 0 || (terminator.Kind == MirTerminatorKind.Call && this.Prepared(terminator.Place.Root));
         }
+
+        this.producing |= this.loanCount > 0;
 
         this.Order(moves.Paths.Length + this.body.Statics.Length);
         this.Renumber(this.loanAt.AsSpan(0, locations));

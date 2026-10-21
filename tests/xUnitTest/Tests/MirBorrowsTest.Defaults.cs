@@ -5,9 +5,9 @@ using Xunit;
 
 namespace XunitTest;
 
-/// <summary>A5-F9's default rules (SPEC 7.2.3, 15.6.4, 15.6.7; docs/dev/DECISIONS.md R4-M90, R4-M93): a recursive default's template call
-/// carries the Loans of every preceding argument into its value (P9), and one whose slot holds raw authority beside a Loan is a located
-/// Unsupported_Kd (r3).</summary>
+/// <summary>A5-F9's default rules (SPEC 7.2.3, 15.6.4, 15.6.7; docs/dev/DECISIONS.md R4-M90, R4-M93, R4-M95): a recursive default's template
+/// call carries the Loans of every preceding argument into its value (P9), and one whose slot holds raw authority beside a Loan is a located
+/// Unsupported_Kd (r3); a template's preceding parameters are the caller's slots, which it may only inspect (R26-borrow, R26-access).</summary>
 public sealed partial class MirBorrowsTest
 {
     // Recursive defaults: a generic one, a Function-typed one, one with a reserved input and a Loan-capable value (rr, round 19's
@@ -169,10 +169,228 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["live: n = 4", "hid: putb(box@ref, v@ref, 3) Unsupported_Kd"], Problems(c, program, [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
-    // The Loan and Unsupported_Kd problems of a program's own bodies.
+    // R26-borrow (SPEC 7.2.3, PD15 (iv); R4-M95 D3): a default's result keeps no new Borrow or Reborrow of a preceding argument, nor does
+    // storage the body does not own; the slot step (A3 E17) makes such a Borrow a Loan of the template, found at its Return in the closure
+    // of σ(_0) and σ(E): DefaultAccessTest's :27 (fc) and :29–:32 (a local, a Tuple, `shared(x)`'s and `choose`'s results), a Reborrow
+    // stored through a raw pointer (round 19's dt-raw-borrow, whose `p[0] = x@ref` of an i32 slot Binding rejects, UnsatisfiedOriginRelation_Kd:
+    // the Binding-valid Reborrow of a reserved input instead) and a nested copy's result (dt-nested-bad: inner's value keeps x's Reborrow).
+    [Fact]
+    public void ATemplateKeepsNoNewBorrowOfASlot()
+        => Assert.Equal(
+            [
+                "fc: x DefaultArgumentBorrow_Kd", "flet: x DefaultArgumentBorrow_Kd", "ftuple: x DefaultArgumentBorrow_Kd",
+                "fshared: x DefaultArgumentBorrow_Kd", "fchoose: x DefaultArgumentBorrow_Kd", "keepRaw: z DefaultArgumentBorrow_Kd",
+                "outer: x DefaultArgumentBorrow_Kd",
+            ],
+            AllProblems("""
+                func shared(x: ref/i32 during a) -> ref/i32 during a => x
+                func choose(c: bool, x: ref/i32 during a, z: ref/i32 during a) -> ref/i32 during a => if c => x else => z
+                func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+                func flet(x: uniq/i32 during a, y: ref/i32 during a = label work: do
+                    let shared: ref/i32 during a = x
+                    exit to work shared
+                ) => ()
+                func ftuple(x: uniq/i32 during a, y: (ref/i32 during a, i32) = (x, 1)) => ()
+                func fshared(x: uniq/i32 during a, y: ref/i32 during a = shared(x)) => ()
+                func fchoose(x: uniq/i32 during a, z: ref/i32 during a, y: ref/i32 during a = choose(true, x, z)) => ()
+                func keepRaw(z: uniq/i32 during a, p: raw/(ref/i32 during a), y: i32 = label w: do
+                    unsafe => p[0] = z
+                    exit to w 0
+                ) => ()
+                func inner(a: ref/i32 during q, b: ref/i32 during q = a) -> ref/i32 during q => b
+                func outer(x: uniq/i32 during q, y: ref/i32 during q = inner(x)) => ()
+                """));
+
+    // R26-access (SPEC 7.2.3; R4-M95 D4): a default cannot modify a preceding slot or borrow it exclusively: DefaultAccessTest's :25 (fa,
+    // the reservation of increment's input) and :26 (fb, a write through the reserved input, in a view with no Loan, which the stratum still
+    // checks, D5), an exclusive capture entry (round 19's dt-cap-uniq, whose `[x@uniq]` of an i32 slot Binding rejects, InvalidAssignment_Kd:
+    // the Binding-valid `[x@follow@uniq]` instead), and a write that stores a Reborrow of another slot into storage the body does not own,
+    // both failures kept (dt-twice, whose `x@follow = z@ref` of an i32 slot Binding rejects, UnsatisfiedOriginRelation_Kd: the Reborrow of a
+    // reserved input instead). A Loan R26-borrow reports is not an Access too (ExclusiveCase below).
+    [Fact]
+    public void ATemplateNeitherWritesNorExclusivelyBorrowsASlot()
+        => Assert.Equal(
+            [
+                "fa: x DefaultArgumentAccess_Kd", "fb: x@follow = 9 DefaultArgumentAccess_Kd", ": func [x]() => x@follow DefaultArgumentAccess_Kd",
+                "twice: x@follow = z DefaultArgumentAccess_Kd", "twice: z DefaultArgumentBorrow_Kd",
+            ],
+            AllProblems("""
+                func increment(x: uniq/i32) -> i32
+                    x@follow += 1
+                    return x@follow
+                func fa(x: uniq/i32, y: i32 = increment(x)) => ()
+                func fb(x: uniq/i32, y: i32 = label work: do
+                    x@follow = 9
+                    exit to work 1
+                ) => ()
+                func capUniq(x: uniq/i32, y: i32 = label w: do
+                    let c = func [x@follow@uniq] () => x@follow
+                    exit to w c()
+                ) => ()
+                func twice(z: uniq/i32 during a, x: uniq/(ref/i32 during a) during b, y: i32 = label w: do
+                    x@follow = z
+                    exit to w 0
+                ) => ()
+                """));
+
+    // SPEC 7.2.3: a default may read a preceding slot, Copy a stored shared borrow and inspect a reserved input through a shared Borrow
+    // that ends inside it: DefaultAccessTest's :16–:20 and the plan base's :44 (equalOrigins); a Borrow past a shared Deref forms no Loan
+    // (:28, fd: valid by SPEC 15.6.3, PD15 (i); the old path's Borrow is OldRule); SPEC 7.2.3's label and erased; a shared capture entry
+    // (dt-cap-ref); a write through a raw pointer read from a slot (dt-raw-copy) and a Borrow of raw storage it reaches (dt-raw-ref), which
+    // have their own anchor (SPEC 15.6.2, 5.2.1); a nested copy of an inspecting default (dt-nested, ReceiverDefaultTest's NestedOrigins).
+    [Fact]
+    public void ATemplateMayInspectItsSlots()
+        => Assert.Empty(AllProblems("""
+            func increment(x: uniq/i32) -> i32
+                x@follow += 1
+                return x@follow
+            struct Counter
+                public var n: i32 = 3
+                public func increment(self: uniq/Self) -> i32
+                    self.n += 1
+                    return self.n
+            struct Meter
+                public var raw: i32 = 4
+                public func read(self) -> i32 => self.raw
+            func inc(value: i32) -> i32 => value + 1
+            func read(x: uniq/i32, y: i32 = x) -> i32
+                x@follow = y + 1
+                return y
+            func copyRef(x: uniq/(ref/i32 during a) during b, y: ref/i32 during a = x) -> i32 => y@follow
+            func share(x: uniq/i32 during a, y: i32 = label read: do
+                let r: ref/i32 during a = x
+                exit to read r@follow
+            ) -> i32
+                x@follow = y + 1
+                return y
+            func independent(value: i32 = label work: do
+                var local = 3
+                exit to work increment(local@uniq)
+            ) -> i32 => value
+            func receiver(value: i32 = label work: do
+                var local = Counter.init()
+                exit to work local.increment()
+            ) -> i32 => value
+            func equalOrigins(x: uniq/(ref/i32 during a) during a, y: ref/i32 during a = x) -> i32 => y@follow
+            func fd(x: ref/i32 during a, y: ref/i32 during a = x@follow@ref) => ()
+            func label(x: string, y: string = Text.toString(x)) => ()
+            func erased(action: (i32) -> i32 = inc) => ()
+            func capRef(x: i32, y: i32 = label w: do
+                let c = func [x@ref] () => x@follow
+                exit to w c()
+            ) => ()
+            func putRaw(p: raw/(ref/i32 during a), x: ref/i32 during a, y: i32 = label w: do
+                unsafe => p[0] = x
+                exit to w 0
+            ) => ()
+            func rawRef(p: raw/i32, y: ref/i32 = label w: do
+                unsafe => exit to w p[0]@ref
+            ) => ()
+            func leaf(m: ref/Meter, value: i32 = m.read()) -> i32 => value
+            func nested(a: ref/Meter, b: ref/Meter, value: i32 = leaf(a) + leaf(b)) -> i32 => value
+            """));
+
+    // SPEC 7.2.3, 8.15: a generic default is checked per Semantics case: `y: s/T = x` copies the slot for s = owner and s = ref (audit-calls
+    // row 26) and keeps its exclusive Reborrow for s = uniq, one failure with one code (SemanticsDefaultTest's ExclusiveCase, round 19's
+    // dt-sem-u), as DefaultAccessTest's grab in its uniq case.
+    [Fact]
+    public void AGenericTemplateFailsOnlyInItsExclusiveCase()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func excl<s/T>(x: s/T, y: s/T = x) -> ()
+                s is owner or ref or uniq
+                T is Copy
+                return
+            func grab<s/T>(a: s/T, b: s/T = a) -> i32
+                s is ref or uniq
+                return 0
+            """);
+        var program = Analyze(c);
+        Assert.Equal(
+            ["x DefaultArgumentBorrow_Kd views 4", "a DefaultArgumentBorrow_Kd views 2"],
+            program.Problems.All.ToArray().Where(x => DefaultCodes.Contains(x.Code) && x.Subject.Module == 0)
+                .Select(x => $"{Line(c, x.Subject)} {x.Code} views {x.Views}"));
+    }
+
+    // PD31 (R4-M90 D6): an R26 record's one fact is the parameter, its Anchor at the parameter's Type node, where the template's
+    // PreparedInput is located; no witness.
+    [Fact]
+    public void ATemplateSlotProblemNamesItsParameter()
+    {
+        var c = MirBuildTest.Compile(Prelude + """
+            func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()
+            func fb(n: i32, x: uniq/i32, y: i32 = label work: do
+                x@follow = n
+                exit to work 1
+            ) => ()
+            """);
+        var program = Analyze(c);
+        Assert.Equal(
+            ["x: Anchor uniq/i32 during a", "x@follow = n: Anchor uniq/i32"],
+            program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => DefaultCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
+                $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
+    }
+
+    // R4-M73 (R4-M95 D7): R26 records through the body hold, so a held template's (g1's loop inside the default) is the located
+    // Unsupported_Kd at the Borrow, beside the hold's own record.
+    [Fact]
+    public void AHeldTemplatesSlotProblemIsUnsupported()
+        => Assert.Equal(
+            ["heldT: xs.append(b) Unsupported_Kd", "heldT: var xs: Array<T> = [] Unsupported_Kd", "heldT: x Unsupported_Kd"],
+            AllProblems("""
+                func heldT<T>(a: T, b: T, x: uniq/i32 during q, y: ref/i32 during q = label w: do
+                    var xs: Array<T> = []
+                    xs.append(a)
+                    for e in xs
+                        _ = e
+                    xs.append(b)
+                    exit to w x
+                ) -> ()
+                    T is Copy
+                    return
+                """));
+
+    // V16 "F9 prepared inputs" (A3 6.2; VERIFICATION has no V16 table): a default keeping a Reborrow of each of N preceding parameters in its
+    // result. Its work is dense, as its twin's, a function returning the same Tuple: each Reborrow's check scans the temps live across it
+    // (shape 8's accesses × distinct live nodes); the template rules' own work, the template's over its twin's (R26-borrow's one gather per
+    // Return and R26-access's pass over the Loans), is linear in N.
+    [Fact]
+    public void APreparedInputsWorkStaysLinear()
+    {
+        const string Template = "func fN(«N:x{0}: uniq/i32 during q, »y: («N:ref/i32 during q, »i32) = («N:x{0}, »0)) => ()\n";
+        const string Twin = "func fN(«N:x{0}: uniq/i32 during q, ») -> («N:ref/i32 during q, »i32) => («N:x{0}, »0)\n";
+        long[] template = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Expand(Template, n, 0)).Work)];
+        long[] twin = [.. new[] { 16, 32, 64 }.Select(n => this.Measured(Prelude + Expand(Twin, n, 0)).Work)];
+        long[] rules = [.. template.Zip(twin, static (x, y) => x - y)];
+        output.WriteLine($"N 16, 32, 64: work {string.Join(", ", template)}, twin {string.Join(", ", twin)}");
+        Assert.True(Grows(template, 5), $"work {string.Join(", ", template)}");
+        Assert.True(Grows(rules, 2), $"the rules' work {string.Join(", ", rules)}");
+    }
+
+    // V16: the template rules allocate nothing on a program version A5 checked before.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void ATemplatesWarmRunAllocatesNothing()
+    {
+        var c = MirBuildTest.Compile(Prelude + "func fc(x: uniq/i32 during a, y: ref/i32 during a = x) => ()\n" +
+            "func fb(x: uniq/i32, y: i32 = label work: do\n    x@follow = 9\n    exit to work 1\n) => ()\n" +
+            "func excl<s/T>(x: s/T, y: s/T = x) -> ()\n    s is owner or ref or uniq\n    T is Copy\n    return\n");
+        var program = c.BuildMir();
+        var stratum = new Stratum(c.Types);
+        Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
+        Assert.Equal(
+            ["fc: x DefaultArgumentBorrow_Kd", "fb: x@follow = 9 DefaultArgumentAccess_Kd", "excl: x DefaultArgumentBorrow_Kd"],
+            Problems(c, program, DefaultCodes));
+    }
+
+    // The codes of A5's Loan stratum, its template rules and its located Unsupported_Kd.
+    private static DiagnosticCode[] DefaultCodes => [.. LoanCodes, DiagnosticCode.Unsupported_Kd, DiagnosticCode.DefaultArgumentAccess_Kd,
+        DiagnosticCode.DefaultArgumentBorrow_Kd];
+
+    // The Loan, default and Unsupported_Kd problems of a program's own bodies.
     private static string[] AllProblems(string source)
     {
         var c = MirBuildTest.Compile(Prelude + source);
-        return Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, Analyze(c), DefaultCodes);
     }
 }

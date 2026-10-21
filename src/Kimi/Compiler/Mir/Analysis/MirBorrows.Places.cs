@@ -34,8 +34,9 @@ internal sealed partial class MirBorrows
     };
 
     // The steps of a Place under the view, root first (A3 3): a Base of depth d is d steps, an owner-case pair layer is none (SPEC 13.5.5)
-    // and another a Deref, the step a borrow Deref of its case is (A3 E13 (4), review N3), and a Reborrow adds its referent's exclusive
-    // Deref; returns their number.
+    // and another a Deref, the step a borrow Deref of its case is (A3 E13 (4), review N3), a default template's Deref directly on a
+    // PreparedInput is the caller's pending slot itself, Inline (A3 E17, SPEC 7.2.3; MirBorrows.Defaults), and a Reborrow adds its
+    // referent's exclusive Deref; returns their number.
     private int Walk(MirPlace place, bool reborrow, ref Step[] into)
     {
         var projections = this.body.Projections;
@@ -53,7 +54,7 @@ internal sealed partial class MirBorrows
             var prefix = place with { Projection = row.Prefix };
             var @class = row.Kind switch
             {
-                MirProjectionKind.Deref => Deref(cases.Type(this.body.TypeOf(prefix)!).Semantics),
+                MirProjectionKind.Deref => row.Prefix == 0 && this.Prepared(place.Root) ? StepClass.Inline : Deref(cases.Type(this.body.TypeOf(prefix)!).Semantics),
                 MirProjectionKind.PairLayer => cases.Layer(place with { Projection = id }) is { } layer ? Deref(layer.Semantics) : (StepClass?)null,
                 MirProjectionKind.Index => MirTypes.View(cases.Type(this.body.TypeOf(prefix)!)) is { } view ? Deref(view) : StepClass.Index,
                 _ => StepClass.Inline,

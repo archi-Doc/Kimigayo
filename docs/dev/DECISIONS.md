@@ -1719,7 +1719,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     supersede A3 §5's Effect row, which coded every effect `CallEffectConflict_Kd`. No rule reports either on the MIR yet: unit 2b
     implements the first (none arises while no static Loan exists, since Binding rejects every borrow of group storage, PLAN G100) and
     2f the second, under R4-M68's condition for a Φ_c met at a receiver's formation.
-  - Defaults (superseded by R4-M90): `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no Loan-stratum producer: in a
+  - Defaults (superseded by R4-M90; its producers are R4-M95's): `DefaultArgumentAccess_Kd` and `DefaultArgumentBorrow_Kd` have no
+    Loan-stratum producer: in a
     template the preceding
     parameters a default reads are the template's own parameters, whose callers' Loans lie outside its body, and a copy reaches its
     pending slots only past the prologue's shared borrows, where no Loan forms (E3; R4-M69's premise). They are A5-F9's (unit 2e), as
@@ -1729,7 +1730,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Merge: E7's and E12's merge (the `destroy` conflict on a Loan `_0` carries whose Borrow the Origin stratum refuted, and err(ended)
     where γ_H reaches `_0`) moves from unit 1c to 2a (2a-2, completed by 2g-5; the step-2 plan's PD11), since the Refuted relations it
     reads come from the Origin stratum (A5-F4).
-  - View skip (unit 1c-3): `MirBorrows.Run` skips a body view only when it has no Loan and no guard candidate, since E7's γ needs no
+  - View skip (unit 1c-3; one pre-pass flag since R4-M95 D5): `MirBorrows.Run` skips a body view only when it has no Loan and no guard
+    candidate, since E7's γ needs no
     Loan; A3 §6.1's skip of a view without a Loan accepted a guard value escaping in a Loan-free view (the design review's r02, an
     unsound acceptance). The root flags only select the accesses checked.
   - Publication: R4-M71 places the merge across bodies by (code, subject, Reason) at publication. R4 publishes no MIR problem (R4-M1),
@@ -2292,6 +2294,58 @@ and migration obligations remain in force; no numeric cap changes are authorized
     2-6 %. Warm 0 B.
   - Rejected: D9's raw row (above); (a) until shown sound; reading a slot's Type through `lent` (an input's Type is a shared reference
     to its slot, which `HoldsRaw` walks).
+- **R4-M95 A5-F9's template rules: the slot step (A3 E17), R26-borrow and R26-access** (2026-10-21; unit 2e-2 of G:A5-F9 under R4-M90,
+  the package's §2 (D1–D7) and its precedence table, with the planning session's rulings of 2026-10-21; supersedes R4-M72's Defaults
+  bullet and its view skip's form)
+  - E17 (SPEC 7.2.3): in a default template a Deref directly on a `PreparedInput` root is the caller's pending slot itself,
+    `StepClass.Inline`: one row of `MirBorrows.Walk`, decided by the local's role. A copy's `p_i` are prologue temps (role None), whose
+    Deref stays Shared. A Borrow of the slot is a Loan of the template (direct, naming `p_i`, whose state is {Φ_E}); a read through the
+    slot gives σ(p_i) = {Φ_E}, as an ordinary parameter's (the shared step gave σ(E)), so a stored slot read is a non-empty value for
+    P13's hold as a parameter's is (a held template gives g1's records). A write to the slot itself (`Flow.Store` into `p_i`, `Through`,
+    `Ending` as an inline path) arises only on R26-access's error paths.
+  - Slot-rooted (D2): a Place rooted at a `PreparedInput`, past its slot step, through no raw pointer's referent (SPEC 15.6.2, 5.2.1: a raw
+    Place has its own anchor); both rules read `MirBorrows.SlotRooted` (new `MirBorrows.Defaults.cs`).
+  - R26-borrow (D3; PD15 (iv)): at each Return of a template view in the checks replay, one gather with the checks' Based pass and
+    closure from E and `_0`'s holder; each slot-rooted Loan found is `DefaultArgumentBorrow_Kd` at its site, once per Loan and view.
+  - R26-access (D4): (1) a write, an Assign's or a Call's destination, to a slot-rooted Place, found in `Accessing.Place` before the
+    borrowed-root filter, at the write; (2) after the replay, an exclusive (`Uniq`, `TwoPhaseUniq`) slot-rooted Loan that R26-borrow did
+    not report, at its site: one code per failure. Every Loan's issue is replayed (`MirValidator` rejects an unreached block, so the
+    forward solve reaches every head), so nothing tracks it. Moves stay A1's (R4-M69); ordinary conflicts in a template are independent
+    (SPEC 23.1.2); 2g-5 drops an Origin-stratum problem whose chain end R26-borrow reported (the package's precedence table).
+  - The view skip (D5): one pre-pass flag, set by each producer's scan in `Loans()`: a Loan, a guard candidate, a Drop of a mutable
+    static (R3, 2b-3's term) or a write rooted at a `PreparedInput`; a later producer adds its scan's term.
+  - Records (D6, D7): the subject is the Loan's site or the write; the one fact is the parameter, `Anchor` at the `PreparedInput`'s
+    location (`Ownership.DefaultArgumentBorrow` or `.DefaultArgumentAccess`; no witness, no new fact kind). D6's reading (planning
+    session, 2e-0): a parameter has no node of its own (`FunctionParameterKoto` is not a Koto; a parameter symbol's Declaration is the
+    function), so its node is `FunctionParameterKoto.Type`: the written annotation, the `self` shorthand's InferredType on its name, or an
+    ErrorKoto with an empty span where the annotation failed. Rejected: parameters as Kotos (node-id churn); a span-carrying SourceRef (a
+    new representation). A record whose subject is that Type node shares its SourceRef with any other record there; A6 merges by (code,
+    subject, body), so only same-code records merge. `MirBorrows.Record(code, requirement, subject, facts)` applies R4-M73's hold once
+    for every producer (the Loan conflict's `Report` builds its facts and calls it), except a problem with an Inlined fact (R4-M69, until
+    2e-4): a held template's R26 records are the located `Unsupported_Kd`.
+  - Kept: R4-M93's ruling (no raw store row); D2 excludes raw writes (dt-raw-copy valid).
+  - Tests: Binding rejects round 19's dt-cap-uniq `[x@uniq]` of an i32 slot (`InvalidAssignment_Kd`), and dt-raw-borrow's `p[0] = x@ref`
+    and dt-twice's `x@follow = z@ref` of an i32 slot (`UnsatisfiedOriginRelation_Kd`); `MirBorrowsTest.Defaults` checks the Binding-valid
+    forms of the same rule (`[x@follow@uniq]`; a reserved input `z: uniq/i32 during a` stored or written), as the planning session
+    confirmed. DefaultAccessTest :28 (`x@follow@ref`) is valid on the MIR (PD15 (i)).
+  - PD21 ruling (planning session, 2026-10-21): `MirBorrows.Loans.cs` was due (1c-3, 1c-7, 2b-3 since 8213c83f) and is not split: it has
+    one responsibility, the view's pre-pass (its Loans in group order and the per-view facts the skip and the effect rule read; 216
+    lines); each of the three added one fact of that pre-pass, and this unit's edit simplifies it (two flags become one, plus the
+    slot-write term). Rejected: splitting the one pass mechanically; moving the effect rule's facts, which would set one flag in two files.
+    Its next changing unit restructures it first. `MirBorrows.cs` has three changing units (2b-3, 2e-1, 2e-2): a response before 2e-3.
+  - Ledger (mir Functional, against a base run at the unit's start): a5-old-default-access's 5 missing rows and 10 of
+    a5-old-default-borrow's 11 pair (14 old rows become both, e0ffa5a60934, 9fcd0c360b5d, b29228117a54 and dc7ace954713 among them);
+    DefaultAccessTest :26 (6a5c8d8bb5e4) becomes a location row (the old path at `x`, the MIR at the write; non-blocking, A6's); the one
+    blocking row left is :28 (c52d8d51a301, `x@follow@ref`), valid by PD15 (i), whose OldRule and (d) row are 2e-5's; one new
+    non-blocking record in an incomplete compilation (CallReservationTest's `bad(c)`, c4b1e403567a: the default's `c.value = 2`, a failure
+    independent of the call's Binding error, SPEC 23.1.2). Open blocking rows 254 → 239; no other row moved.
+  - Cost: one role compare per Deref walked and per write; per template view one gather per Return and one pass over its Loans. Templates
+    now form their slot Loans, so their views run the existing dense terms (V16 "F9 prepared inputs",
+    `MirBorrowsTest.APreparedInputsWorkStaysLinear`: the rules' own work is linear in N; the shape's is dense, as its twin function's).
+    Census: no problem in the library, milestones, goldens or accepted spec variants.
+  - Rejected: slots as non-references in the builder (the package: a W1 change for an A5 classification); a mode on `Gather` seeding
+    `_0`; reading `_0` through the live-before bits at the Return; a per-Loan replayed stamp (dead under the validator); a bool on `Record`
+    for the Inlined exception.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
