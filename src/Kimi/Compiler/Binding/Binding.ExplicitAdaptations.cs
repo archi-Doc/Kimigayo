@@ -8,6 +8,11 @@ public sealed partial class Binding
 {
     private readonly ScratchBuffers<PairCase> adaptationCaseScratch = new();
 
+    // SPEC 23.1.1: the case adaptation one of whose cases borrows a Place SPEC lends but Binding does not yet (BorrowFailure: Unsupported),
+    // set while its cases are judged; the form is unsupported only when no case violates SPEC, so `State.limit@s` with `s is ref or uniq`
+    // keeps the uniq case's InvalidAssignment.
+    private ConversionKoto? unsupportedCase;
+
     // Inputs and acquisition were verified at definition. A context substitutes them and selects the canonical factory.
     internal CallPlan ResolveObjectCreation(ConversionKoto conversion, BoundType source, BoundType target, CallPlan destination)
     {
@@ -92,6 +97,8 @@ public sealed partial class Binding
         BoundType? creationTarget = null;
         var caseCount = this.caseBinders.Count;
         var cases = this.adaptationCaseScratch.Rent(caseCount);
+        var enclosing = this.unsupportedCase;
+        this.unsupportedCase = null;
         try
         {
             if (!this.CheckAdaptationRows(
@@ -110,9 +117,15 @@ public sealed partial class Binding
             {
                 return null;
             }
+
+            if (ReferenceEquals(this.unsupportedCase, conversion))
+            {
+                return this.Fail(conversion, BindingFailure.Unsupported);
+            }
         }
         finally
         {
+            this.unsupportedCase = enclosing;
             this.adaptationCaseScratch.Return(cases, clearArray: true);
         }
 
@@ -261,7 +274,14 @@ public sealed partial class Binding
             var exclusive = target.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
             if (!this.BorrowablePlace(conversion.Left, scope, exclusive) && !BorrowableTemporary(conversion.Left, exclusive, true, false))
             {
-                this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive));
+                var failure = this.BorrowFailure(conversion.Left, scope, exclusive);
+                if (failure == BindingFailure.Unsupported)
+                {
+                    this.unsupportedCase = conversion; // Reported after the other cases (BindCaseAdaptation).
+                    return true;
+                }
+
+                this.Fail(conversion, failure);
                 return false;
             }
         }
