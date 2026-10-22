@@ -88,27 +88,41 @@ public class AbstractCallReachTest
     private const string LendingTwice = "func twice<I>(source: uniq/I) -> ()\n    I is LendingIterator\n    let first = source.next()\n    let second = source.next()\n    _ = first@move\n    _ = second@move\n";
 
     // The proposal's section 6 again: a first result through a Reborrow of the receiver, then a call on the receiver itself.
-    private const string Again = "func again<I>(it: uniq/I) -> (Option<I.Item>, Option<I.Item>)\n    I is Iterator\n    var r = it@follow@uniq\n    let first = r.next()\n    let second = it.next()\n    return (first@move, second@move)\n";
+    private const string Again = "func again<I>(it: uniq/I) -> (Option<I.Item>, Option<I.Item>)\n    I is Iterator\n" +
+        "    var r = it@follow@uniq\n    let first = r.next()\n    let second = it.next()\n    return (first@move, second@move)\n";
 
     // PLAN G217's gx9 body: a shared read of the source while an exclusive item lives.
     private const string SharedRead = "    let item = it.next()\n    inspect(values@ref)\n    inspect(item@ref)\n";
 
     // Instances whose implementations use most of their contracts: a Source whose items keep a uniq Loan of its source, a LendingIterator
     // whose item keeps the step Loan, and a View that lends its own Field.
-    private const string Cells = "struct Cells {src}\n    Self is Source\n    associate Source.Item is uniq/i32 during src\n    var rest: ArrayUniqIterator<i32> during src\n" +
-        "    public func take(self: uniq/Self) -> Option<uniq/i32 during src> => self.rest.next()\n";
+    private const string Cells = "struct Cells {src}\n    Self is Source\n    associate Source.Item is uniq/i32 during src\n" +
+        "    var rest: ArrayUniqIterator<i32> during src\n    public func take(self: uniq/Self) -> Option<uniq/i32 during src> => self.rest.next()\n";
 
-    private const string Cursor = "struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n" +
-        "    public func next(self: uniq/Self during step) -> Option<ref/i32 during step>\n        return .Some(self.value)\n";
+    private const string Cursor = "struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n" +
+        "    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step>\n" +
+        "        return .Some(self.value)\n";
 
     private const string Cell = "struct Cell\n    Self is View\n    var value: i32 = 1\n    public func read(self: ref/Self) -> ref/i32 => self.value@ref\n";
 
+    // A conformance to RequirementIdentityTest's Q<i32>, one take per key Type, and one to Q<uniq/i32 during src> whose results keep a
+    // uniq Loan of its source.
+    private const string Keyed = "struct Keyed\n    Self is Q<i32>\n    public func take(self: uniq/Self, key: i32) -> i32 => key\n" +
+        "    public func take(self: uniq/Self, key: i64) -> i32 => 2\n";
+
+    private const string KeyedCells = "struct KeyedCells {src}\n    Self is Q<uniq/i32 during src>\n    var rest: ArrayUniqIterator<i32> during src\n" +
+        "    public func take(self: uniq/Self, key: i32) -> uniq/i32 during src\n        match self.rest.next()\n" +
+        "            .Some(let item) => return item@move\n            .None => $abort(\"empty\")\n" +
+        "    public func take(self: uniq/Self, key: i64) -> uniq/i32 during src\n        match self.rest.next()\n" +
+        "            .Some(let item) => return item@move\n            .None => $abort(\"empty\")\n";
+
     // L1's generic cases: the section 7 generic programs and section 6's again, U1's guard rows with gx9, and the 2f-S1 and spec-readings
-    // ids that exist as tests (c11 takeFirst, c13/h5 takeTwo, c14 tupled, c15/h1 through, c17 and c18 the Callable rows, c19 zip and
-    // both, c20 pairs, c21 takeLate and sumTwo, c30 Merge, c31 and c32 the ordinary conformances, c33 Lending, c35 Swapped and Topped),
-    // each with the Type parameter its instances replace and their names: the concrete Types its tests use and one whose implementation
-    // uses most of the contract, whose items keep a Loan of their source, except under a Callable constraint, which cannot name the
-    // instance's Origin (InvalidConstraint_Kd).
+    // ids that exist as tests (c11 takeFirst, c13/h5 takeTwo, c14 tupled, c15/h1 through, c16 either, c17 and c18 the Callable rows, c19
+    // zip and both, c20 pairs, c21 takeLate and sumTwo, c30 Merge, c31 and c32 the ordinary conformances, c33 Lending, c35 Swapped and
+    // Topped), each with the Type parameter its instances replace and their names: the concrete Types its tests use and one whose
+    // implementation uses most of the contract, whose items keep a Loan of their source, except under a Callable constraint, which cannot
+    // name the instance's Origin (InvalidConstraint_Kd). Either fixes its R. Left out, adding no form: shared-item Iterators such as
+    // ArrayIterator (p4's own, whose again instance shows again's pinned record) and zip with the right call first.
     private static readonly (string Name, string Parameter, string Text, string Instances)[] Generics =
     [
         ("takeTwo", "S", TakeTwo, "Merge Cells"),
@@ -116,7 +130,10 @@ public class AbstractCallReachTest
         ("through", "S", Through, "Merge Cells"),
         ("takeLate", "S", TakeLate, "Merge Cells"),
         ("both", "S", Both, "Merge Cells"),
-        ("takeFirst", "S", DiagnosticCorpus.SpecExample("15.6.3", "func takeFirst<S>").Replace("S is Take", "S is Source", StringComparison.Ordinal), "Merge Cells"),
+        ("takeFirst", "S", DiagnosticCorpus.SpecExample("15.6.3", "func takeFirst<S>").Replace("S is Take", "S is Source", StringComparison.Ordinal),
+            "Merge Cells"),
+        ("either", "S", Instantiate(RequirementIdentityTest.EitherRequirement("i64"), "R", "i32", string.Empty), "Keyed"),
+        ("eitherLent", "S", Instantiate(RequirementIdentityTest.EitherRequirement("i64"), "R", "uniq/i32 during q", string.Empty), "KeyedCells"),
         ("nextPair", "I", NextPair, "Counter UniqItems"),
         ("zip", "I", Zip, "Counter UniqItems"),
         ("again", "I", Again, "Counter UniqItems"),
@@ -160,6 +177,8 @@ public class AbstractCallReachTest
         ["Array"] = ("Array<i32>", string.Empty, string.Empty),
         ["i32"] = ("i32", string.Empty, string.Empty),
         ["Shared"] = ("ref/i32 during q", string.Empty, string.Empty),
+        ["Keyed"] = ("Keyed", string.Empty, RequirementIdentityTest.KeyedTake + Keyed),
+        ["KeyedCells"] = ("(KeyedCells during q)", string.Empty, RequirementIdentityTest.KeyedTake + KeyedCells),
     };
 
     // The default pipeline's two listed L1 exceptions (PLAN G217), each pinned as the one record its generic does not cover, so the row
@@ -313,13 +332,13 @@ public class AbstractCallReachTest
         text = Regex.Replace(text, $@"(?m)^ +{p} is .*$", string.Empty);
         text = Regex.Replace(text, @"(?m)^( *(?:public )?(func|struct) \w+)<([^>\n]*)>(?: \{([^}\n]*)\})?", m =>
         {
-            var parameters = m.Groups[3].Value.Split(',');
+            var parameters = m.Groups[3].Value.Split(',', StringSplitOptions.TrimEntries);
             if (!parameters.Contains(parameter))
             {
                 return m.Value;
             }
 
-            var kept = string.Join(',', parameters.Where(x => x != parameter));
+            var kept = string.Join(", ", parameters.Where(x => x != parameter));
             var origins = string.Join(", ", new[] { m.Groups[4].Value, m.Groups[2].Value == "struct" ? origin : string.Empty }.Where(static x => x.Length > 0));
             return m.Groups[1].Value + (kept.Length > 0 ? $"<{kept}>" : string.Empty) + (origins.Length > 0 ? $" {{{origins}}}" : string.Empty);
         });
@@ -348,7 +367,15 @@ public class AbstractCallReachTest
 
         int Line(Koto? node) => node is null ? -1 : source.AsSpan(0, node.Span.Start).Count('\n');
 
-        static Koto? Function(Koto node) => node is FunctionKoto ? node : node.Parent is { } parent ? Function(parent) : null;
+        static Koto? Function(Koto? node)
+        {
+            while (node is not null and not FunctionKoto)
+            {
+                node = node.Parent;
+            }
+
+            return node;
+        }
     }
 
     // An instance's records that no generic record of the same declaration reports at the same or an earlier line.
