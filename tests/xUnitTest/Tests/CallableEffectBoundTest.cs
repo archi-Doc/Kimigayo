@@ -35,14 +35,15 @@ public class CallableEffectBoundTest
         Assert.Contains("mutable static", error.Label);
     }
 
-    // The Specification row pins code and location only: its Reason waits for PLAN G219's one rule for an effect specification.
+    // SPEC 8.11.4: the Reason names the cause and the Note the rule; `confined` appears at most once in one Constraint. The
+    // Specification row pins code and location only: its Reason and Note wait for PLAN G219's one rule for an effect specification.
     [Theory]
-    [InlineData("Copy", "F is Copy", "effect confined", "single Callable")]
-    [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable")]
-    [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable")]
-    [InlineData("Specification", "F is Callable<() -> i32>", "effect Runner.run confined", null)]
-    [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined")]
-    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string? cause)
+    [InlineData("Copy", "F is Copy", "effect confined", "single Callable", "separate clauses")]
+    [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable", "separate clauses")]
+    [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable", "separate clauses")]
+    [InlineData("Specification", "F is Callable<() -> i32>", "effect Runner.run confined", null, null)]
+    [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined", "declares confined at most once")]
+    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string? cause, string? note)
     {
         var source = $"func check<F>(f: F) -> ()\n    {constraint}\n        {bounds}\n    return\npublic func main() => ()\n";
         var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
@@ -51,6 +52,11 @@ public class CallableEffectBoundTest
         if (cause is not null)
         {
             Assert.Contains(cause, record.Label);
+        }
+
+        if (note is not null)
+        {
+            Assert.Contains(note, record.Note);
         }
 
         Assert.NotEmpty(record.Related!);
