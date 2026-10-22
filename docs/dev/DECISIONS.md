@@ -3719,8 +3719,9 @@ resumed by R4-M86 (2026-10-20).
   existing clause derives it when the binder failed; any other, fixed-fixed, by the position judge `JudgeCallPosition` and one
   `PublishCallRelations` (a failing meet operand per record, first and further records per node), from the premises visible at the
   use (`ExtractOriginPremises`; no new entailment, 2a0-D §4). A row failing E2's test stays, and the view reports any remaining row
-  with no body (`OriginFinding`, `InternalInvariant_Kd` in a complete compilation); so no declaration row reaches a slice, MIR or
-  the old walk, and R6-check deletes nothing for G210.
+  with no body (`OriginFinding`, `InternalInvariant_Kd` in a complete compilation); so no row whose resolved ends are declaration
+  atoms reaches a slice, MIR or the old walk (a row failing E2's test still reaches the old walk on the default pipeline, beside the
+  view's finding), and R6-check deletes nothing for G210.
   - Catalog row (owner, Q1: 「足す (推奨)」): a use in a computed or requirement Property's header has its getter's input premises
     (R2), since the header is the getter's result (SPEC 11.4, 11.5, 15.6.1) and its body assumes them (`HeaderGetter`). A
     receiver-covered header (`computed view: ref/Self`, ReceiverShorthandTest's program) is accepted. G214 keeps the result-only
