@@ -127,11 +127,7 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
         LlvmScalarText.WriteFailure(output, "%started", AbortReasons.StaticCycle, this.Failure(id, Accessed, stackalloc char[3 * SpellingLength]));
         this.StoreAt(new('w', item), StateLayout, new('\0', (int)StaticState.Initializing));
-        if (initializer.Parameters.Length != (initializer.ResultSlot ? 1 : 0))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A StaticInit body has no Arg local (MIR's StaticInit kind).
-        }
-        else if (this.WriteCall(initializer, initializer.ResultSlot ? [new Value('v', item)] : []) is { } result)
+        if (this.WriteCall(initializer, initializer.ResultSlot ? [new Value('v', item)] : []) is { } result)
         {
             this.Put(new('v', item), this.types[0], lowering, this.Widen(lowering, result));
         }

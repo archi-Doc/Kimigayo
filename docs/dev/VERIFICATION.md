@@ -125,9 +125,11 @@ before it, on the same inputs and configuration:
 - the generated IR: `./scripts/compare-fixtures.ps1 -Baseline <previous run> -Candidate <run>` reports the `.ll` files
   under `fixtures-<Configuration>`, their expectation sidecars and the native results identical (regression:
   `tests/scripts/FixtureComparisonTest.ps1`); fixture IR records no checkout path, so runs from any worktree compare
-  equal byte for byte. A fixture whose runs carry the same `.deviation` sidecar, each run's outcome its side's (the
-  old generator's or MIR code generation's, by `summary.json`'s `codegen`), deviates by a decided item and is counted
-  as deviating, not as a difference (R5, until G4; DECISIONS R5-M85, R5-M106).
+  equal byte for byte. Between runs of different code generators (`summary.json`'s `codegen`) only, a fixture whose
+  runs carry the same `.deviation` sidecar, each run's `.stdout`, `.exit` and `.stderr` its side's (the old generator's
+  or MIR code generation's), deviates by a decided item: it is counted as deviating and only those three sidecars are
+  not differences; its `.ll` and native outcomes stay compared, and within one generator nothing deviates (R5, until G4;
+  DECISIONS R5-M85, R5-M106).
 
 A difference means the commit changes behavior: split it, or treat it as a behavior change with its own tests. Do not
 compare `Kimi.dll` bytes instead: its informational version embeds the commit id (`0.1.1+<commit>`) and its PDB path

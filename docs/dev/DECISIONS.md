@@ -6293,7 +6293,9 @@ structure is recorded here by the unit that first implements it.
   - Fold (package C 3.7, ruling Q6): a StaticInit whose block 0 holds only storage markers and one `_0 = Use(Const)`, then Return, is
     that constant: its slot an `internal unnamed_addr constant` spelled as an operand's constant (`Constant`, a float's exact double bits),
     with no state, ensure function or function, and its accesses test nothing. No kind list: a static's Type is a scalar (R5-M82), whose
-    constants all have a value; the old generator's folded set (bool and signed integer literals, parenthesized) is among them.
+    constants all have a value; the old generator's folded set (bool and signed integer literals, parenthesized) is among them. Folded
+    slots are `internal unnamed_addr constant`, so LLVM may merge two equal folded statics; unobservable while borrowing a static is
+    `Unsupported_Kd`; the unit that admits static borrows revisits it.
   - D2 rows: none in code generation. R5-M82's `StaticStorage` capability row refuses at check a static that can be set, whose Type is not
     a scalar or that belongs to a generic container's group (X33 (a)), so the writer tests no Type; package C 3.7's D2 rows are that row.
   - P42 (R4-M103) replaces: the per-body static-to-slot map's source (one root per Field; P42's MIR publishes each access's key), the fold
@@ -6304,9 +6306,12 @@ structure is recorded here by the unit that first implements it.
   - E12's native half (R5-M85's format): `LegacyNative(deviation, stdout, exit, stderr)` is taken by `ScalarEmissionTest.EmitFixture` and
     `WriteFixture`; the fixture's sidecars carry the running generator's side, and both runs write the same `<stem>.deviation`
     (`Codegen.Sidecar`: UTF-8 without a byte order mark, LF, keys id, class, item, clause, reason, legacy and target {stdout, exit, stderr});
-    `compare-fixtures.ps1` counts a fixture whose runs carry byte-equal sidecars, each run's outcome its side's (`summary.json`'s
-    `codegen`), as deviating, not as a difference. Removal with R5-M85's form: G3 reduces a row to its target, G4 deletes `LegacyNative`,
-    the sidecar and the deviating count. First entry: `static-cycle` (class (a), SPEC 22.4.3 22.5.1 22.5.2), the old generator's
+    `compare-fixtures.ps1`, only between runs whose `summary.json` `codegen` differ, counts a fixture whose runs carry byte-equal sidecars,
+    each run's `.stdout`, `.exit` and `.stderr` its side's, as deviating and leaves only those three sidecars out of the differences: its
+    `.ll` and its native outcomes (each run's result against its own sidecars) stay compared, so a failure stays visible, and within one
+    generator nothing deviates and `.deviation` compares like any file (review round 1 rejected the first rule, which counted a stem
+    deviating in every comparison and so dropped a same-generator `.ll` change and native failure). Removal with R5-M85's form: G3 reduces a
+    row to its target, G4 deletes `LegacyNative`, the sidecar and the deviating count. First entry: `static-cycle` (class (a), SPEC 22.4.3 22.5.1 22.5.2), the old generator's
     `KIMI_E_ABORT` at the Field's declaration against `KIMI_E_STATIC_CYCLE` at the access (`StaticInitializationTest.DetectsIndirectCycle`).
     C5b's `inline-env` rows deviate only in allocation bounds, managed values `Codegen.Expect` states, and need no native half.
   - Departure (for the owner's departures list), confirmed by the owner (R5-M107): plan row E12 names `NativeAllocationAudit.WriteFixture`
@@ -6324,7 +6329,7 @@ structure is recorded here by the unit that first implements it.
     `StaticInitializationCycle` as the one deviating fixture, no other expected outcome differing; `FunctionCodegenTest` (the slot, state
     and ensure function of i32, bool and i128 statics, an access's test and its location, one slot for two generic instances, the fold
     of legacy's set and of f32 and f64 literals, M9's 0 B and I1 over the statics source), `CodegenDeviationTest` (the native use; the
-    sidecar's bytes) and `FixtureComparisonTest.ps1` (a deviating pair; a mismatched side; a one-run sidecar). O2 (a temp kernel: 4e8
+    sidecar's bytes) and `FixtureComparisonTest.ps1` (a deviating pair, its `.ll` and native failure kept; a mismatched side; a one-run sidecar; one generator's changed `.ll` and native failure). O2 (a temp kernel: 4e8
     reads of a first-access and a folded static), old generator A against sel B, 15 interleaved samples: the old loop calls the getter
     each iteration, sel's has no access left (the ensure function inlined, one iteration peeled, the slot read hoisted); B/A median 0.79
     (max 0.88), A over its neighbours 0.73-1.67.
