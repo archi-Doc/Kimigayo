@@ -2833,7 +2833,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     U3's STYLE.md:116 and SPECJ_TERMINOLOGY.md:30 edits; a SETTLED entry on rejecting an effect bound that relates two calls is
     the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
     no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
-    before their next adding change. Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
+    before their next adding change; AC-U4's one Note string in the due `Binding.EffectDeclarations.cs` adds no responsibility and
+    follows the same rule (its review). Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
     from Binding's operation instead of the HIR column (2x-E8 decides).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
