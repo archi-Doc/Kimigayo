@@ -2836,8 +2836,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
     no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
     before their next adding change; AC-U4's one Note string in the due `Binding.EffectDeclarations.cs` adds no responsibility and
-    follows the same rule (its review). Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
-    from Binding's operation instead of the HIR column (2x-E8 decides).
+    follows the same rule (its review). `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
+    R4-M109 (the getter takes the HIR's plan-row Adjust).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
     clause for some forms (no counterexample; a counterexample to the base rule is one for concrete calls too); C with P12 (Q1 (b),
