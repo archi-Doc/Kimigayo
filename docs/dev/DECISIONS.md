@@ -6022,3 +6022,52 @@ structure is recorded here by the unit that first implements it.
   glue item's targets per level, the collector's own resolution in `DropGlue.Parts` order (against package C 3.2's `Find(MonoKey)` and
   3.6's "the part's glue from `Find`", which would need the erased Type that code generation must not compose). They leave the list;
   R5's group reviews check the code against those entries.
+- **R5-M102 Closure environments and value calls in MIR code generation (C5a)** (2026-10-22, C lane; plan C5a, package C 3.2 I8,
+  3.6 and row 14, SPEC 7.7.1-7.7.4, 8.10, 16.4 and 22.5.1, IMPL 21.1.2, 21.1.3 and 21.3.1; the planning session's go and rulings on
+  C5a's design; under R5-M18 form 1, R5-M43, R5-M58, R5-M60, R5-M89 and R5-M100)
+  - Environment (IMPL 21.1.2): a Closure's environment is the Closure value, its captures placed as a Tuple's elements in the Place's own
+    storage at every size; `Aggregate(Closure)` puts each capture at its component (the Tuple arm), so forming a Closure never allocates.
+    IMPL 21.1.3's inline environment of 8 bytes or less (PD19) governs an erased value, C5b's.
+  - Body: a Closure body's Arg local 1 is its environment, Abi's `[environment]` (`Abi.Flags.ConcreteClosure`: the pointer first, the
+    context last), its parameters after it in slot order (`ArgumentOrder.Environment`, `ArgumentPosition` slot + 1). The prologue passes
+    local 1 as Abi passes an argument of its Type: an owned (Consuming) environment in place, a borrowed one stored, a zero-sized one none.
+    Every concrete call passes a null context.
+  - Value calls (`FunctionCodegen.Closures.cs`), by the callee value's Type below its reference layer, a closed vocabulary: a Closure's body
+    by the collector's target, the environment a borrow's pointer or an owned operand's storage (a Move's Place; a Copy's copy slot, numbered
+    after the body's operands by block, since a block's terminator is its one call); a function Item's body or a requirement Item's witness
+    directly; an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
+    C5b, C6a or C8*, a Builtin shim C8f or C9b, a property witness C3c); a common Function value through its table `{entry, context, drop}`
+    (offsets 0, 8, 16, the layout C5b's erasure writes) with its environment word, under `ModuleCodegen.Erased`, `Abi.Of(ErasedClosure |
+    CallerLocation)` of the call's Callable signature (SPEC 22.5.1: the call's location), reused by `Abi.Matches`. The old generator writes
+    the context after the location (IR information, PD9; the generators never call each other's entries). A Value call's operands are its
+    Callable signature's inputs in order, placed by the call's own key (`MirCallee.Position` without a function); a pair-layer callee is a
+    located `Unsupported_Kd`. A function item constant is zero-sized and writes nothing. Every call writes its parameters' attributes
+    (package C row 14; the old generator omits them on value calls).
+  - Glue: `DropGlue.Row` of a Closure is `Parts` (`DropGlueRow.Closure` deleted): its captures last to first (SPEC 16.4, X23), each
+    addressed as a Tuple element and governed by its Field step, so a glue function and an Open row of a Consuming body's environment share
+    the level writer.
+  - SPEC 8.10 (the planning session's ruling (a)): an owner Callable call whose callee borrows its environment (a Closure body whose
+    environment is a reference in its instance, or any common Function value) destroys the operand after the call. The collector adds the
+    operand Type's glue, when `MirTypes.MayNeedDrop` holds, as the call's second target, after the body (`InstanceCollector.Rest`); code
+    generation destroys the value at the address it passed, after the call returns and before its branch, at the call's location. The
+    cursor reads a site's targets in their order, each once (`Target` consumes the target it returns). A Function value's glue row stays
+    C5b's.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M103): package C 3.2 I8's and the collector's "at most one
+    target per site" becomes "one target per site, plus the operand glue at a borrowing-callee owner Value call".
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M103): the plan row's PD19 clause (8 bytes or less inline), its
+    inline-environment requirement test and `ContextualClosureTest` "Object" through E12 move to C5b ("Object" also needs C6a and C6b),
+    since a concrete environment never allocates; C5a's own requirement test is that a 32-byte and an 8-byte drop-needing environment
+    allocate nothing. E12's native half lands with C7b (within R5-M85).
+  - Rulings: `DropGlue.cs`'s due restructure is a keep (one responsibility in 156 lines; a split would be mechanical, as R5-M92's
+    `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it. Restructured first, behavior unchanged:
+    ModuleCodegen's item signatures in `ModuleCodegen.Signatures.cs`.
+  - Verified: the sel ledger loses 368 rows (closure 89, C-frame 192, call 63, C-aggregate 19, object 5), all this unit's (at the merge
+    base none passes); the 61 fixture families the flipped tests write run natively under sel (447 fixtures, O0 and O2); `FunctionCodegenTest`
+    (environment layout, body ABI, the four call forms, the operand destroyed after an owner call, the callee operand's copy slot; the
+    `ClosureRows*` fixtures, also under the old generator) and `InstanceCollectorTest` (the second target).
+  - Rejected: heap environments over 8 bytes at creation (IMPL 21.1.2 places captures inline; the heap is erasure's); an environment
+    parameter kind per receiver (Abi gives the pointer, the frame's home rule decides by the local's Type); a slot-order body key for Value
+    calls (the call's own key is the builder's rule); calling Items through their adapters (one more call); a separate Closure glue writer
+    beside `Parts`; a MIR environment role or operand (held MIR; the body kind publishes it); a MIR Drop of the moved receiver (the template
+    cannot know the instance's receiver); a `ConsumingCall` shim item (a `MonoKind`, one more function per Type and call); deferring SPEC
+    8.10 as a located `Unsupported_Kd`.

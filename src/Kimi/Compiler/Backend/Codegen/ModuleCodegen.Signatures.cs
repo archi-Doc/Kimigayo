@@ -5,11 +5,13 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1, SPEC 22.6; DECISIONS R5-M65, R5-M89): a body item's from its own
-// body, the one its definition and every call write; a DropGlue item's; a called #LibraryImport function's C signature and its
-// declaration request; each computed once per Write and the previous one reused while it still matches, so a warm module allocates nothing.
+// The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1, SPEC 22.6; DECISIONS R5-M65, R5-M89, R5-M102): a body item's from its
+// own body, the one its definition and every call write; a DropGlue item's; a called #LibraryImport function's C signature and its
+// declaration request; a common Function value's entry under a Callable signature; each computed once per Write, or kept, and the previous
+// one reused while it still matches, so a warm module allocates nothing.
 internal sealed partial class ModuleCodegen
 {
+    private readonly List<FunctionAbi> erased = []; // The erased entries' signatures (Erased), kept across Writes.
     private FunctionAbi?[] signatures = []; // By item.
     private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
     private FunctionAbi?[] importSignatures = []; // By import.
@@ -19,7 +21,8 @@ internal sealed partial class ModuleCodegen
 
     /// <summary>Gets the signature of a body item from its own body (IMPL 21.3.1; DECISIONS R5-M89), the one its definition and every call of
     /// it write: under the internal convention, its result Type local 0's and its parameters its Arg locals' in slot order
-    /// (FunctionCodegen.ArgumentPosition), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1); named
+    /// (FunctionCodegen.ArgumentPosition), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1), a
+    /// Closure body's environment Abi's [environment] (ConcreteClosure, SPEC 7.7.3; DECISIONS R5-M102), not a parameter slot; named
     /// <c>__kimi_f</c> with its index, computed once per Write and the previous one while it still matches.</summary>
     /// <param name="item">The item, a body item of a kind the frame writes.</param>
     /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of its signature.</returns>
@@ -47,7 +50,8 @@ internal sealed partial class ModuleCodegen
         }
 
         var body = this.program.Bodies[entry.BodyOrdinal];
-        var count = 0;
+        var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
+        var count = closure ? -1 : 0; // A Closure body's environment, its Arg local 1, is no parameter slot.
         foreach (var local in body.Locals)
         {
             count += local.Kind == MirLocalKind.Arg ? 1 : 0;
@@ -73,7 +77,8 @@ internal sealed partial class ModuleCodegen
 
         // SPEC 22.5.1: a caller-location library function receives its caller's location; the old generator's constructor and destructor
         // result slot is its own ABI choice, which local 0's Type replaces here (IMPL 21.3.1).
-        var flags = KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None;
+        var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
+            (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
         var types = this.parameters.AsSpan(0, count);
         this.signed[item] = this.writes;
         if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, flags, result, types))
@@ -134,6 +139,30 @@ internal sealed partial class ModuleCodegen
         }
 
         return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
+    }
+
+    /// <summary>Gets the signature of a common Function value's entry under a Callable signature (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102):
+    /// Abi.Of's internal convention with an i64 environment word first and the context last (ErasedClosure), taking the call's location
+    /// (SPEC 22.5.1: a Kimi operation called through a function value reports that call); unnamed, since a call reaches it through the
+    /// value's table, and kept across Writes, the previous one reused while it matches.</summary>
+    /// <param name="signature">The closed Callable signature, a Function Type: its inputs' Tuple (or Unit) and its result.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Erased(BoundType signature)
+    {
+        const Abi.Flags Flags = Abi.Flags.ErasedClosure | Abi.Flags.CallerLocation;
+        ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
+        var result = signature.Components[1];
+        foreach (var candidate in this.erased)
+        {
+            if (Abi.Matches(candidate, this.Layout, Abi.Convention.Internal, Flags, result, inputs))
+            {
+                return candidate;
+            }
+        }
+
+        var abi = Abi.Of(this.Layout, Abi.Convention.Internal, Flags, result, inputs);
+        this.erased.Add(abi);
+        return abi;
     }
 
     // The C signature of an import from its declared Types (TyCtxt.Signature), named by its external symbol: the first import's of that
