@@ -113,7 +113,7 @@ declares; the restatement is valid but adds nothing.
   signatures or simple stored declarations may stay consecutive.
 - `[Advice]` Inside a body, separate logical steps with a blank line.
 
-`[Kimi]` Declare a Callable effect bound only where the body relies on it. Adding one restricts callers and removing one admits more; treat both as API changes (SPEC §8.11.6).
+`[Kimi]` Declare a Callable effect bound only where the body relies on it. Adding one restricts callers and removing one admits more; treat both as API changes (SPEC §8.11.4).
 
 ## 3. API design
 

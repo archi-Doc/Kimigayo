@@ -1858,7 +1858,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - OQ11 (b): until R6-check, Binding keeps its records of relations through local regions or inferred ends, adds their rows and
     labels those records with A5's requirement `Ownership.UnprovenOrigin` (code and span unchanged) until H11; the ledger
     compares each record with A5's problem. Assigned by R4-M94 to 2a0-3a (position rows at recorded body chains; the twin's Opaque
-    limit recorded).
+    limit recorded). The label is superseded by R4-M108: the record keeps `Binding.OriginRelation`.
   - OQ12 (a): S3's clarification of SPEC 15.3.6 ("A variable's bounds are followed through other variables to fixed or finite
     Origins and `static`. If none is reached, the variable has no candidate") is made as a SPEC revision before 2a0-3b.
     R4-M94 assigns it to 2a0-3b at the plan's letter; a `let` slot as a region (D4) is BU's later unit (OQ-1 (c), PLAN G194).
@@ -2120,6 +2120,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     for effect (drops the Loan a typed destination receives: `let r: ref/i32 = if c => x@ref else => missing`); a new-Error test by
     node state (reaches unresolved calls, G121); building an untyped construct operand's parts for effect (G121's kept-construct design,
     owner-reserved).
+  - R4-M109 amends Rule 2 (an Error node a consumer takes is its derived value, `(Temporary, None)`, in the column and a plan row)
+    and Part 3 (an Error node's value at its consumer's Type; a located one evaluated once, each consumer its own derived value).
 - **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
   「推奨どおり承認 (推奨)」
   to the package with OQ-F5-1 to OQ-F5-6 at their recommendations; R4-M74 OQ2) The package is
@@ -2335,10 +2337,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     view (an `ArchitectureRulesTest` row, G163). One owner of fixed–fixed entailment: the premise catalog and
     `OriginPremiseClosure`, read per body by `UniversalRelations.For`, with an agreement test until R7.
   - Boundary: 2a0-3a forms position rows at the body chains Binding records (non-call fits; a local's clause in `JudgeLocalClause`)
-    and labels the twin `Ownership.UnprovenOrigin`; a new default-pipeline record stops the unit; the twin's Opaque limit (a Borrow
-    formed inside the failed node) is recorded; at H11 non-call rows become verdict-independent. 2a0-3b at the plan's letter
-    (no-candidate variables are body regions; "no principal candidate" is the clause's relation judgment). 2a0-4 splits the
-    ledger by owner.
+    and labels the twin `Ownership.UnprovenOrigin` (the label superseded by R4-M108); a new default-pipeline record stops the unit;
+    the twin's Opaque limit (a Borrow formed inside the failed node) is recorded; at H11 non-call rows become verdict-independent.
+    2a0-3b at the plan's letter (no-candidate variables are body regions; "no principal candidate" is the clause's relation
+    judgment). 2a0-4 splits the ledger by owner.
   - `MirOrigins` (2a-1a, 2a-1b), a canonical component: step 4 per body runs `Judge` (all classes), then `MirBorrows` per view,
     then `Record`; containment per borrow layer through the shared classifier `MirSteps` (2x-R15), up to the first shared layer,
     stopping at a raw Deref; MeetNode; Refuted by finite-source and Unknown by fixed-source bitsets; Reason `(Longer, Shorter,
@@ -2863,6 +2865,104 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `NextUse` no Use); a stand-in Type check by identity (it fails where Origins legitimately differ); re-expecting the source tests
     with vacuous guards (OQ-1 (a)).
   - PD21: `MirBorrowsTest.Defaults.cs`'s edit extracts `Validated` and adds no responsibility; no restructure.
+- **R4-M108 Rows at Binding's recorded body chains; the record keeps its label** (2026-10-22; unit 2a0-3a under R4-M94's package;
+  after the unit's stop, the owner chose its recommendations M1-A and M2-(i), relayed by the R4 planning session, verbatim
+  「推奨通りで、お願いします」; one BU review, DEC Q6 form 1)
+  - Rule (SPEC 15.6.1, 15.6.5; 2a0-D D1, D9): a relation Binding records at a body chain (an end, resolved at its use, is not fixed;
+    `Binding.BodyChain`, an `Unbound` end included) is also rows of the body Binding forms it in, for A5 (no MIR reader yet; 2a-1a
+    reads the rows): at a non-call fit (`RecordOriginFitFailure`) every position of the fit through `CheckTypeUse`, once, when any
+    recorded chain is a body chain; at a local's clause (`JudgeLocalClause`) the clause's row when its record is a body chain (a finite
+    end over a fixed one; local regions and inferred shorter ends were rows already). Rows go by node, not by record: a fit with a body
+    chain and a fixed-fixed chain has both as rows (BU's `mixed`: `Projection[local] -> x` and `y -> x`), so the twins at a fit are
+    every relation record of a node any of whose recorded chains is a body chain; a node whose records are all fixed-fixed has no row
+    (Binding's until R7). `FailedDeclaredRelation`, shared with `JudgeDeclaredRelation`, is unchanged. Binding's other relation
+    records: call positions are rows without a record (2a0-2), declaration clauses are fixed-fixed, no principal candidate is
+    2a0-3b's. Until H11 a non-call fit has rows only where Binding records a failure (R4-M94 OQ-3 (10)).
+  - Departure from R4-M74 OQ11 (b) and 2a0-D D9, D11 and §5.1 item 4: the record (the twin) keeps `Binding.OriginRelation`, its code
+    and location; no `Twin` field, no label branch. The label cannot hold: a requirement carries its partition and `Koto.Report`
+    records under it; Binding reports before `Compilation.Analyze`, whose `OwnershipAnalysis.Analyze` invalidates the Ownership
+    partition before its incomplete-Binding return, on both pipelines; derived records name a failed node's key as `Binding(failure)`
+    (`CauseKeys`, `PrerequisiteKeys`), so a relabelled record leaves them unexplained; DIAGNOSTICS rule 1 has a requirement judged by
+    its own partition's phase. Probe (SPEC 15.6.5's `bad`, the label set at the report site): on legacy and mir its
+    `UnsatisfiedOriginRelation_Kd` at `local@ref` vanished and `PrerequisiteUnavailable_Kd` appeared at `return local@ref`. The
+    ledger already pairs `Binding(OriginRelation)` records with A5's `Ownership(UnprovenOrigin)` problems (renamed at H5); 2a0-4
+    splits the twins (the records of a node with rows, a mixed fit's fixed-fixed one included) from the records of an all-fixed-fixed
+    node by a published fact.
+  - N-3 (a failed relation adds no constraint, SPEC 15.6.1): the rows change no default-pipeline record (diagnostic snapshot, 0
+    differences; the ledger keeps every raw row of the base run and adds only the records of the unit's new tests, in existing (b)
+    signatures). It holds by measurement, not by construction: failed rows reach Binding's region graph and admit Intersection
+    targets, but no consumer changes a record (BU's review, N2).
+  - The Closure result (M2-(i)): an inferred Closure result over call-local storage (`Binding.Closures.cs`, `CallLocalOrigin`) keeps
+    Binding's record without a row until A5-F7's 2c-6 judges closure results on the MIR (R5-M63's finding A); it is on 2c-D's list
+    and goes with `CallLocalOrigin` at H11.
+  - H11's list (AR-4, with R5): the twins (at a fit, every relation record of a node with a recorded body chain; at a clause, its
+    body-chain record); `RecordOriginFitFailure`'s `Fail(node, Unsupported)` gate; non-call fits' rows independent of Binding's
+    verdict, as `JudgeCallPosition`'s, including the first differing Function Type component and every position after it in
+    `CheckTypeUse`'s order, which have no row today (BU's `fncomp`: `(g, local@ref)` gives `local@ref`'s chain no row, `(local@ref, g)`
+    does; pinned); the Closure result with `CallLocalOrigin`.
+  - Conditions for 2a-1a, 2a0-4 and H11 (BU's N1; unchanged here): a fit row's Site is the failed node (`return local@ref`), while
+    Binding's record is at the value (`local@ref`) and the same fit on the local-region path forms its rows at the returned expression
+    (`Binding.Expressions.cs`, `jump.Expression ?? jump`; element keys likewise, `Binding.Elements.cs`). One rule for a fit's Site
+    decides 2a-1a's report location, 2a0-4's pairing on the subject and H11's "code and location unchanged"; neither the node nor the
+    value fits every caller, and H11's verdict-independent producer at the fit settles it.
+  - The Opaque limit (OQ-B3, as R4-M104 left it): a twin's node is an Opaque in the MIR; values it reads keep their Loans, but a
+    Borrow formed inside it is not built, so an independent conflict on that Loan is lost when the twin's relation is Unknown (an
+    Unknown relation derives nothing under W); m-write4's single report conforms (R4-M104).
+  - Rejected: the label under an Ownership key in the Binding partition (a partition other than its requirement's, against rule 1,
+    with every failure key made twin-aware); the twins published by the old ownership analysis (a responsibility moved across
+    phases); a row for the Closure result now (2c-6's result relation).
+  - PD21 (BU's ruling): G160-1 and 2a0-3a count as in flight; `Binding.OriginProof.cs` (2a0-2, 2a0-3a, G160-1) is due before the next
+    adding change after both, as 2a0-D marks it due after 2a0-3b; `Binding.OriginFits.cs` counts one (2a0-3a).
+- **R4-M109 An Error node is each consumer's derived value** (2026-10-22; unit 2x-E8 under the full process: design B2 of two
+  independent designs, chosen by the planning session, R5's design review round 2 with its five non-blocking fixes; amends R4-M88's
+  Rule 2 and Part 3, consistent with R5-M63) SPEC 23.1.2, 13.7.2, 11.3.
+  - Cause: the publisher kept a consumer's Adjust on an input it published Error (an Error has no Place, PlaceShape Value, and no value
+    of its own), so the builder held the Error at its own Type and applied the adjustment to that temp: a Loan on the derived temp,
+    which A5 reported as `ComparisonLoanConflict_Kd` beside Binding's record where the result was kept. On dev: an input
+    `PublishCallRelations` fails after selection (`let r = keepStatic(c.n); peek(r)`, an Origin relation between fixed Origins); with
+    bu22, every implicit static Borrow. An update's getter took its located receiver by a builder copy of the publisher's mapping
+    (`HirAdjust.Of(argument)` with its own ByCase/None choice), and `Value` returned a located Error before any Type rule.
+  - Rule 2, added after "with its own kept operands;": "Wherever a consumer wrote an acquisition or adaptation for an Error node, in
+    the Adjust column or in the node's plan row (a consumer's earlier call, the getter of a compound update), the publisher replaces it
+    by `(Temporary, None)`: the node has no Place and no value of its own to acquire or adapt, so the consumer's acquisition and
+    adaptation fold into the derived value it receives. `(None, None)` under an Error parent stays the kept-operand mark, which only
+    Keeps writes there (R5-M63); the fold never writes it. An Error assignment or update target folds too, but the builder derives the
+    whole assignment and never reads it. Bare's `(Unset, None)`, the column's default, is not folded." (`HirPublisher.Visit`, `Derived`.)
+  - Part 3, amended: "A value Binding gave no Type, a construct it left unresolved or a derived value is held at the Type its consumer
+    expects; an Error node's value also where Binding gave it a Type, at its own Type only where the consumer expects none. A located
+    Error node is evaluated once where it is located (its kept operands); each consumer that takes it receives its own derived value,
+    whose Opaque site names the located root (R5-M84) and evaluates no kept operand again. One rule with
+    `Unsupported(node, derived, expected)`; temporary with Part 3, it goes with residual R1 when Binding publishes the Expression Type
+    (option C)." (`MirBuilder.Value`, `SiteRoots`.)
+  - `PlanRow.Adjust` (the planning session's decision: one owner, the publisher; an existing per-node row, 48 bytes measured): the
+    Adjust by which the earlier of two calls of one consumer takes the node where the two take it by different Adjusts, the column
+    keeping the later's; default otherwise, written at each call input of each pass (`HirPublisher.Write` under `callOrdinal`). Its one
+    reader is an update's receiver, which exactly its getter and setter take (`MirBuilder.Update`: the getter by the plan row's Adjust,
+    else the column's); a node three or more calls take (a `$tryWrite`'s storage) has no defined value there (PLAN G103 (ii)).
+  - Invariant, both ways: (a) no consumer forms a Copy, Move, Reborrow, Ref, reservation or Loan on an Error node's value through the
+    column, a plan-row Adjust or a located Place; each receives a derived value formed for it (an Opaque in a temp of its Type, moved
+    into it, or formed in its destination). Its one exception is L1. (b) The derived value is held at the consumer's expected Type.
+  - L1: an in-place step is not a consumer: an update whose accessor side is standard reads and writes its receiver's storage in place,
+    for an Error receiver a Field of the located derived temp (R5-M63: an Error evaluated as its Place is a value in a temp); a
+    getter-only update's Writeback reserves `&uniq two-phase` on that Field, which the update's own write activates (its window holds
+    only the getter's call, which takes its own derived value: no record can arise, unverified beyond the probes). L2: a consumer
+    passing no expected Type (an operator's inspected operand, a formatting writer operand, a value call's callee without
+    `AdaptedType`, an upcast's operand, a rejected jump's operand) holds a folded Error at its own Type; validator-clean (an Opaque
+    temp's Type reads as unknown), no Loan; no censused failure site produces such a consumer over an Error. Both in PLAN G103.
+  - Deleted: `MirBuilder.Expansions.cs`' copy of the getter's Adjust (`HirAdjust.Of(argument)` and its ByCase/None choice).
+  - Rejected: design A's `(Unset, …)` (the column's default, which `Blocks.Result` reads as not consumed); A5 ignoring Loans on Opaque
+    stand-ins (suppressing a derived report afterwards, and hiding a kept operand's Loans); failing the call (hides its independent
+    records); locating the receiver at the column's Type and borrowing through it (a Ref through a derived value; a getter-only update
+    would reserve through a shared derived reference); a `HirAcquire` member (a vocabulary entry `(Temporary, None)` already states);
+    folding in `Take`/`Write` (the Op is unknown there); the builder testing the Op in `Operand` (the consumer would decide); Binding
+    recording failed inputs unadapted (five failure sites); the getter's Adjust in the update's plan row (the fold would write a
+    parent's row) or in a second column (memory per node for one form); a located Error taken per consumer without a located entry
+    (its kept operands evaluated twice).
+  - PD21 (the planning session, 2026-10-22): `MirBuilder.Opaque.cs` was due (Q21, Q16, W1 F19 since 8701eaaa): ruling (b), a bp split
+    first, root collection into `MirBuilder.Opaque.Roots.cs` (a split by responsibility exists, unlike R4-M97's and R4-M102's
+    one-responsibility rulings; 2g-2a may restructure again, G103's staging does not block it); `HirFormsTest.cs` was due (Q21, Q16,
+    2x-E2): ruling (a), partial, its Error rows in `HirFormsTest.Errors.cs`; `Binding.Hir.Adjust.cs`: a comment-only citation sweep
+    (fc24641c) is not a changing unit, so 2, not due.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

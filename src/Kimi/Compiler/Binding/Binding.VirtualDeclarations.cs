@@ -134,18 +134,16 @@ public sealed partial class Binding
             }
 
             EffectBoundKoto? confined = null;
-            EffectBoundKoto? preserves = null;
             for (var i = 0; i < function.EffectBounds.Count; i++)
             {
                 var effect = function.EffectBounds[i];
-                ref var earlier = ref (effect.Bound == EffectBoundKind.Confined ? ref confined : ref preserves);
-                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, earlier))
+                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
                 {
-                    earlier = effect;
+                    confined = effect;
                 }
             }
 
-            this.virtualEffectBounds[function] = (confined, preserves);
+            this.virtualEffectBounds[function] = confined;
         }
     }
 }

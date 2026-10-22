@@ -4,7 +4,7 @@ using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
 
-// The requirement-witness core (SPEC 8.6.1, 8.11.4, 11.9.2, 22.1; IMPL 21.3.1; DECISIONS R5-M22).
+// The requirement-witness core (SPEC 8.6.1, 8.11.3, 11.9.2, 22.1; IMPL 21.3.1; DECISIONS R5-M22).
 // - Responsibility: the one rule from a requirement, a Self that is not abstract, the Contract reference the call selected and a premise
 //   scope to what the requirement runs.
 // - Inputs: verified conformance paths under the caller's scope; the built-in targets, which take their requirements' signatures once
@@ -40,7 +40,7 @@ public sealed partial class Binding
         internal BoundPropertyWitness Property { get; init; }
     }
 
-    // SPEC 8.11.4: what a requirement runs on a Self that is not abstract, under the Contract reference the call selected (null when it
+    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, under the Contract reference the call selected (null when it
     // recorded none) and the caller's premise scope.
     internal RequirementWitness ResolveRequirementWitness(BindingSymbol requirement, BoundType self, BindingSymbol? contract, BindingScope scope)
     {
@@ -86,7 +86,7 @@ public sealed partial class Binding
     private static bool Refused(BoundMemberPath? basePath, bool receives, BoundType? requirementReceiver)
         => basePath is not null && receives && requirementReceiver is not { Semantics: SemanticsKind.Ref };
 
-    // SPEC 8.11.4: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
+    // SPEC 8.11.3: the witness a verified conformance of a Self to a Contract maps a requirement to, and the instance of the Type
     // that declares it (a base's for an inherited witness); null where none resolves.
     private BoundType? ConformanceWitness(BindingSymbol requirement, BoundType self, BindingSymbol contract, BindingScope scope, out BoundWitness witness)
     {

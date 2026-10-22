@@ -31,11 +31,15 @@ public class IteratorIndependenceTest
     public void IndependentCleanupAndAccessorsKeepEarlierItemsUsable()
         => ScalarEmissionTest.EmitFixture("AssociatedIteratorIndependentCleanup", CleanupProgram, "drop\ndrop\nindependent cleanup\n");
 
+    // SPEC 8.11.3, 8.11.2: warm Binding, analysis and generation reuse the confined check's call and destruction state: the cleanup program
+    // conforms to a Contract bounded by confined, its next calls a generic helper and destroys a Trace whose drop touches no environment.
     [Trait("Purpose", "Allocation")]
     [Fact]
-    public void RecompilingIndependentItemsReusesItsState()
+    public void EffectCheckingReusesCallAndDestructionState()
     {
-        var c = MinimalEmissionTest.Analyze(CleanupProgram);
+        var source = "contract Feed\n    associate Item\n    func next(self: uniq/Self) -> Option<Self.Item>\n        effect confined\n" +
+            CleanupProgram.Replace("drop => Console.writeLine(\"drop\")", "drop => ()", StringComparison.Ordinal).Replace("Iterator", "Feed", StringComparison.Ordinal);
+        var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

@@ -213,15 +213,18 @@ internal sealed partial class MirBuilder
     // A value held in a temp of its Type where its consumer needs a Place, or in the place given where that has its Type, unless an expansion
     // holds it already; a call's input as the call's (input). One Binding gave no Type, a construct it left unresolved or a derived value,
     // is held at the Type its consumer expects (expected), as Unsupported holds a derived one: SPEC 14.9.2 makes a construct's Type the
-    // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1).
+    // fixed expectation, which Binding does not publish for one it left unresolved (DECISIONS R4-M88; PLAN G103 R1). An Error node's value is
+    // held there also where Binding gave the node a Type, and it is never taken from where an expansion located the node: each consumer
+    // receives its own derived value, whose site names the located root (SiteRoots; DECISIONS R4-M109).
     private MirPlace Value(Koto node, MirPlace? into = null, bool input = false, BoundType? expected = null)
     {
-        if (this.Located(node) is { } located)
+        var derived = HirTables.Op(node) == HirOp.Error;
+        if (!derived && this.Located(node) is { } located)
         {
             return located;
         }
 
-        var temp = this.Temp(HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit, node, into);
+        var temp = this.Temp((derived ? expected : null) ?? HirTables.Meaning(node) as BoundType ?? expected ?? BoundType.Unit, node, into);
         this.Into(temp, node, input);
         return temp;
     }

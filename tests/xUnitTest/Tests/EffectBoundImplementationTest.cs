@@ -7,7 +7,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 8.11.4: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
+// SPEC 8.11.3: a conformance checks each witness against the bounds its Contract and the ancestors declare, from
 // the declarations alone; user Contracts bound their requirements exactly as the standard ones do.
 public class EffectBoundImplementationTest
 {
@@ -127,7 +127,7 @@ public class EffectBoundImplementationTest
         Assert.Equal(11, operations);
     }
 
-    // SPEC 8.11.4, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
+    // SPEC 8.11.3, 8.11.2: confined is judged over every body the witness reaches, which its calls select: a helper, a recursive generic
     // helper, every specialization the call may still select (by Type, length or a compound key), the accessor or indexer a Place's use
     // selects, and a destructor ownership analysis plans; a member no call reaches is not judged. (These forms were preserves results
     // checks of Iterator conformances before the adopted proposal Abstract Calls Reach by Paths removed that bound.)

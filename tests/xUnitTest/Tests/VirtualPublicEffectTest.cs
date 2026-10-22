@@ -15,9 +15,9 @@ public class VirtualPublicEffectTest
     {
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n" + clauses + "        return 1\nstruct Derived : Base\n    override func read(self: objref/Self) -> i32 => 2\n()");
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
-        Assert.Equal((confined, false), c.Binding.AvailableEffectBounds(original, null, original));
+        Assert.Equal(confined, c.Binding.AvailableEffectBounds(original, null, original));
         var implementation = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
-        Assert.Equal((false, false), c.Binding.AvailableEffectBounds(implementation, null, implementation));
+        Assert.False(c.Binding.AvailableEffectBounds(implementation, null, implementation));
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -27,14 +27,14 @@ public class VirtualPublicEffectTest
         const string Source = "open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\n()";
         var c = MinimalEmissionTest.Analyze(Source);
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
-        Assert.Equal((true, false), c.Binding.AvailableEffectBounds(original, null, original));
+        Assert.True(c.Binding.AvailableEffectBounds(original, null, original));
         var donor = MinimalEmissionTest.Analyze(Source);
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
-        Assert.Equal((false, false), c.Binding.AvailableEffectBounds(original, null, original));
+        Assert.False(c.Binding.AvailableEffectBounds(original, null, original));
         c.Bind();
-        Assert.Equal((false, false), c.Binding.AvailableEffectBounds(original, null, original));
-        Assert.Equal((true, false), c.Binding.AvailableEffectBounds(replacement, null, replacement));
+        Assert.False(c.Binding.AvailableEffectBounds(original, null, original));
+        Assert.True(c.Binding.AvailableEffectBounds(replacement, null, replacement));
     }
 
     [Trait("Purpose", "Allocation")]
@@ -44,7 +44,7 @@ public class VirtualPublicEffectTest
         var c = MinimalEmissionTest.Analyze("open struct Base\n    public virtual func read(self: objref/Self) -> i32\n        effect confined\n        return 1\n()");
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Binding.AvailableEffectBounds(original, null, original) == (true, false)));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Binding.AvailableEffectBounds(original, null, original)));
         Assert.True(valid);
     }
 }
