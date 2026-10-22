@@ -56,7 +56,8 @@ public sealed partial class Binding
         }
         else
         {
-            if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 || function.EffectBounds.Count != 0)
+            if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 ||
+                function.TypeConstraints.Count != 0)
             {
                 return "an override inherits access, attributes, the named-argument boundary, constraints and effects; do not redeclare them";
             }
@@ -121,29 +122,6 @@ public sealed partial class Binding
                 // Binding a body can complete its result Type without discharging the earlier subset gate.
                 function.BindingState = BindingState.Unresolved;
             }
-        }
-    }
-
-    private void PrepareVirtualEffectBounds()
-    {
-        foreach (var function in this.virtualDeclarations)
-        {
-            if (!function.IsVirtual || function.BindingFailure != BindingFailure.None)
-            {
-                continue;
-            }
-
-            EffectBoundKoto? confined = null;
-            for (var i = 0; i < function.EffectBounds.Count; i++)
-            {
-                var effect = function.EffectBounds[i];
-                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
-                {
-                    confined = effect;
-                }
-            }
-
-            this.virtualEffectBounds[function] = confined;
         }
     }
 }
