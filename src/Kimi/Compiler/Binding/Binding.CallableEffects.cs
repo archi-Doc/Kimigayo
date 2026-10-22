@@ -138,9 +138,13 @@ public sealed partial class Binding
             {
                 var effect = clause.EffectBounds[e];
                 EffectRejection? rejection = null;
-                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable || effect.IsSpecification)
+                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable)
                 {
                     rejection = EffectRejection.CallableForm;
+                }
+                else if (effect.IsSpecification)
+                {
+                    rejection = EffectRejection.CallableSpecification;
                 }
                 else if (clause.IsAssociatedConstraint || clause.Parent is not (FunctionKoto or StructKoto or EnumKoto))
                 {

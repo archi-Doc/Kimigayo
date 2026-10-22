@@ -84,6 +84,7 @@ public sealed partial class Binding
         OverloadedRequirement,
         Duplicate,
         CallableForm,
+        CallableSpecification,
         CallablePosition,
         CallableDuplicate,
     }
@@ -558,6 +559,7 @@ public sealed partial class Binding
             EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
             EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
+            EffectRejection.CallableSpecification => ("an effect specification in a Callable effect list", "A Callable effect list holds effect clauses; an effect specification names an inherited requirement and is a Contract item"),
             EffectRejection.CallablePosition => ("a Callable effect bound in an excluded position", "Callable bounds belong to function, struct, enum or function-requirement Constraint regions"),
             EffectRejection.CallableDuplicate => ($"the Callable Constraint already declares {spelling}", "Each effect bound kind appears once in one Callable Constraint"),
             EffectRejection.NotContract => ($"{selector} names no Contract", "An effect specification names a requirement of an ancestor through the ancestor's Contract selector"),

@@ -39,6 +39,7 @@ public class CallableEffectBoundTest
     [InlineData("Copy", "F is Copy", "effect confined", "single Callable")]
     [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable")]
     [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable")]
+    [InlineData("Specification", "F is Callable<() -> i32>", "effect Runner.run confined", "an effect specification in a Callable effect list")]
     [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined")]
     public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string cause)
     {
@@ -203,7 +204,7 @@ public class CallableEffectBoundTest
         if (invalid)
         {
             var bound = Assert.Single(records, static record => record.Code == "InvalidEffectBound_Kd");
-            Assert.Contains("single Callable", bound.Label);
+            Assert.Contains("an effect specification in a Callable effect list", bound.Label);
         }
 
         if (independent)
