@@ -1,0 +1,220 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+// Owns A5's Origin stratum, its Refuted part (SPEC 15.6.1, 15.6.3, 15.6.5; 2a0-D §6, D13-D16, D18, D19; DECISIONS R4-M94, R4-M113), per body
+// and per class of its views: the graph of the body's rows (the C1-F4 view) with its Refs' containment edges, the Refuted chains through it
+// (MirOrigins.Chains.cs), and the located limit at an end the view leaves unclassed. Unknown, the oracle and the arena's limit are 2a-1b's,
+// the merge's facts 2a-2's.
+// - Inputs: a validated body and the views A1 and A2 completed (MirDropTable.ViewsOf); MirCases (a view's borrow binders and case Types);
+//   MirSteps (a Ref's classed steps); the C1-F4 view (TyCtxt.OriginRows, OriginAtom), keyed by MirDefKey.Body.
+// - Outputs, which Record adds with each class's views: UnsatisfiedOriginRelation_Kd (Ownership.UnprovenOrigin) at a chain's last edge's
+//   site (a row's Site, or the Ref's statement for a containment edge), with Reason (finite source, fixed end, false) of the view's canonical
+//   atoms and the facts Relation (the edge's row, -1 for a containment edge) and Anchor (the first Ref whose Origin is the source); and
+//   Unsupported_Kd (Ownership.Unsupported) at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19), whatever Binding's completeness
+//   (an end that a Binding failure caused is 2a-1c's, DECISIONS R4-M113).
+// - Invariants: no liveness, CFG order, Loan set or syntax is read; every Origin comes through the view, a row's ends by index and a Ref's
+//   or a dereferenced layer's through OriginAtom at the Ref's site; a chain's verdict does not depend on reachability; views whose active
+//   rows and containment edges are equal form one class, judged once; a Ref inside an Inlined scope adds no containment (a default's rows
+//   are its template's, R4-M101 (b)); storage is pooled, so a warm run allocates nothing.
+// - Must not: judge a relation between two fixed ends (Unknown is 2a-1b's); decode a slot or read a binder (only the view does); port the
+//   preserves-results skip or the top-like Anchor (PD9); add a problem in Judge (Record adds them after MirBorrows', for 2a-2's rules); or
+//   drop a problem (MirReport's).
+
+using System.Runtime.InteropServices;
+using Kimi.Diagnostics;
+
+namespace Kimi.Compiler.Mir;
+
+/// <summary>A5's Origin stratum, Refuted part (2a0-D §6): <see cref="Judge"/> judges a body's classes of views, then <see cref="Record"/>
+/// adds their problems.</summary>
+/// <param name="types">The Type context, whose C1-F4 view gives the rows and the atoms.</param>
+/// <param name="cases">The Semantics case views.</param>
+internal sealed partial class MirOrigins(TyCtxt types, MirCases cases)
+{
+    private readonly MirSteps steps = new(cases);
+    private readonly List<Pending> pending = []; // The problems Judge found, in order, with their class's views.
+    private readonly List<MirFact> pendingFacts = [];
+    private MirStep[] walk = [];
+    private Ref[] refs = []; // The body's Refs with an Origin outside every Inlined scope, in body order.
+    private int[] anchors = []; // Per table index below anchorCount: the first of those Refs whose Origin it is, or -1.
+    private ulong[] rowBits = []; // Per class: its active rows, rowWords words each.
+    private Edge[] contained = []; // Per class: its containment edges, from the class's start.
+    private Class[] classes = [];
+    private int refCount;
+    private int anchorCount; // The table's size when the Refs were collected; a later index (a layer's or meet operand's Origin) has none.
+    private int classCount;
+    private int containedCount;
+    private int rowWords;
+    private MirBody body = null!;
+    private ExecutableBody key;
+    private Binding.OriginRowSet slice = null!;
+
+    /// <summary>Gets the work of the last <see cref="Judge"/> (2a0-D §6.4): node visits, edge steps and bitset words, summed over its
+    /// classes.</summary>
+    internal long Work { get; private set; }
+
+    /// <summary>Gets the containment edges the last <see cref="Judge"/> formed, over its classes (V16's "F4 containment").</summary>
+    internal int ContainmentEdges => this.containedCount;
+
+    /// <summary>Judges a body over the views A1 and A2 completed (step 4, before MirBorrows): forms its classes of views and finds each
+    /// class's problems, which <see cref="Record"/> adds.</summary>
+    /// <param name="body">The validated body.</param>
+    /// <param name="views">The number of views judged, from view 0 (MirDropTable.ViewsOf).</param>
+    internal void Judge(MirBody body, long views)
+    {
+        (this.body, this.classCount, this.containedCount, this.Work) = (body, 0, 0, 0);
+        this.pending.Clear();
+        this.pendingFacts.Clear();
+        if (views == 0)
+        {
+            return;
+        }
+
+        this.key = body.Key.Body;
+        this.slice = types.OriginRows(this.key);
+        this.CollectRefs();
+        this.rowWords = (this.slice.Rows.Count + 63) >> 6;
+        for (var view = 0L; view < views; view++)
+        {
+            cases.Select(body, view);
+            this.Classify(view, cases.Borrows());
+        }
+
+        for (var c = 0; c < this.classCount; c++)
+        {
+            this.JudgeClass(c);
+        }
+    }
+
+    /// <summary>Adds the problems the last <see cref="Judge"/> found, after MirBorrows' (step 4).</summary>
+    /// <param name="report">The program's problems.</param>
+    internal void Record(MirReport report)
+    {
+        var facts = CollectionsMarshal.AsSpan(this.pendingFacts);
+        foreach (var found in this.pending)
+        {
+            var problem = new MirProblem(found.Code, found.Requirement, found.Subject, this.body.Ordinal, found.Views, found.Reason);
+            report.Add(problem, facts.Slice(found.FactStart, found.FactCount));
+        }
+    }
+
+    // The body's Refs that issue a borrow with an Origin (SPEC 15.6.3): a non-raw Ref outside every Inlined scope, its own Origin its
+    // Type's outer Origin classed at its statement; and per table index the first of them in body order whose Origin it is (the Anchor).
+    private void CollectRefs()
+    {
+        this.refCount = 0;
+        var statements = this.body.Statements;
+        for (var s = 0; s < statements.Length; s++)
+        {
+            ref readonly var statement = ref statements[s];
+            if (statement is not { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Ref, Type.Origin: { } origin } rvalue } ||
+                (MirRefKind)rvalue.Op == MirRefKind.Raw || this.body.Inlining(statement.Source.Scope) >= 0)
+            {
+                continue;
+            }
+
+            var site = this.body.Subject(statement.Source);
+            MirDataflow.Grow(ref this.refs, this.refCount + 1);
+            this.refs[this.refCount++] = new(s, types.OriginAtom(this.key, origin, site), site);
+        }
+
+        var count = this.anchorCount = this.slice.Atoms.Count;
+        MirDataflow.Grow(ref this.anchors, count);
+        Array.Fill(this.anchors, -1, 0, count);
+        for (var r = this.refCount - 1; r >= 0; r--)
+        {
+            this.anchors[this.refs[r].Own] = r;
+        }
+    }
+
+    // A view's class (2a0-D §6.2): its active rows (a row's case mask within the view's borrow binders) and its Refs' containment edges; a
+    // view equal to an earlier one joins that class.
+    private void Classify(long view, ulong borrows)
+    {
+        var words = this.rowWords;
+        MirDataflow.Grow(ref this.rowBits, (this.classCount + 1) * words);
+        MirDataflow.Grow(ref this.classes, this.classCount + 1);
+        var bits = this.rowBits.AsSpan(this.classCount * words, words);
+        bits.Clear();
+        var rows = this.slice.Rows;
+        for (var r = 0; r < rows.Count; r++)
+        {
+            if ((rows[r].CaseMask & ~borrows) == 0)
+            {
+                bits[r >> 6] |= 1UL << r;
+            }
+        }
+
+        var start = this.containedCount;
+        for (var r = 0; r < this.refCount; r++)
+        {
+            this.Contain(r);
+        }
+
+        var edges = this.contained.AsSpan(start, this.containedCount - start);
+        for (var c = 0; c < this.classCount; c++)
+        {
+            ref var known = ref this.classes[c];
+            if (this.rowBits.AsSpan(c * words, words).SequenceEqual(bits) && this.contained.AsSpan(known.Start, known.Count).SequenceEqual(edges))
+            {
+                known.Views |= 1UL << (int)view;
+                this.containedCount = start;
+                return;
+            }
+        }
+
+        this.classes[this.classCount++] = new(1UL << (int)view, start, edges.Length);
+    }
+
+    // A Ref's containment edges under the view (SPEC 15.6.3; 2a0-D D14): from its last step outward, a uniq layer's Origin outlives the
+    // Ref's and the walk continues, a shared one's too and the walk stops (a Slice's Index is a shared one, E6), an own or inline step adds
+    // no edge, and a raw Deref stops. MirSteps gives a pair layer its case's step (none in the owner case) and a PreparedInput Deref Inline.
+    private void Contain(int r)
+    {
+        ref readonly var found = ref this.refs[r];
+        var place = this.body.Statements[found.Statement].Rvalue.Place;
+        var count = this.steps.Walk(this.body, place, reborrow: false, ref this.walk);
+        for (var i = count - 1; i >= 0; i--)
+        {
+            var step = this.walk[i];
+            if (step.Class == MirStepClass.Raw)
+            {
+                return;
+            }
+
+            if (step.Class is not (MirStepClass.Uniq or MirStepClass.Shared))
+            {
+                continue;
+            }
+
+            if (cases.Type(this.body.TypeOf(place with { Projection = step.Prefix })!).Origin is { } layer)
+            {
+                MirDataflow.Grow(ref this.contained, this.containedCount + 1);
+                this.contained[this.containedCount++] = new(types.OriginAtom(this.key, layer, found.Site), found.Own, r);
+            }
+
+            if (step.Class == MirStepClass.Shared)
+            {
+                return;
+            }
+        }
+    }
+
+    // A problem Judge found: its code, requirement, subject, Reason, its class's views and its facts.
+    private readonly record struct Pending(
+        DiagnosticCode Code,
+        DiagnosticRequirement Requirement,
+        SourceRef Subject,
+        MirReason Reason,
+        ulong Views,
+        int FactStart,
+        int FactCount);
+
+    // A Ref that issues a borrow: its statement, its own Origin's table index and its site.
+    private readonly record struct Ref(int Statement, int Own, SourceRef Site);
+
+    // A containment edge: the layer's Origin outlives the Ref's (both table indices), at Ref.
+    private readonly record struct Edge(int Tail, int Head, int Ref);
+
+    // A class of views: their bits and its containment edges in `contained`.
+    private record struct Class(ulong Views, int Start, int Count);
+}

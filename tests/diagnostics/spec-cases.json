@@ -73,7 +73,7 @@
     {"Uncomment": null, "Expected": []}]},
   {"Name": "15.3.6-inference", "Section": "15.3.6", "Anchor": "func choose<T>(x: ref/T, y: ref/T) -> ref/T", "Family": "F4", "Prelude": "()\n", "Variants": [
     {"Uncomment": null, "Expected": []}]},
-  {"Name": "15.5-exclusive-origins", "Section": "15.5", "Anchor": "struct UniqView<T> {source}", "Family": "F2", "Prelude": "()\n", "Variants": [
+  {"Name": "15.5-exclusive-origins", "Section": "15.5", "Anchor": "struct UniqView<T> {source}", "Family": "F4", "Prelude": "()\n", "Variants": [
     {"Uncomment": null, "Expected": [{"Code": "UnprovenOriginRelation_Kd", "Line": "// Error: a Reborrow through self stays within self."}]}]},
   {"Name": "15.6-replaced-holder", "Section": "15.6", "Anchor": "r no longer carries the Loan on a.", "Family": "F1", "Prelude": "func inspect<T>(value: ref/T) => ()\n", "Variants": [
     {"Uncomment": null, "Expected": []}]},

@@ -108,7 +108,7 @@ public sealed partial class OriginRowsTest
         foreach (var body in Rows(c, false).Select(static x => x.Body).Distinct())
         {
             var slice = c.Types.OriginRows(body);
-            foreach (var row in slice.Rows.Where(x => First(x.Site) == site))
+            foreach (var row in slice.Rows.Where(x => Site(c, x) == site))
             {
                 rows.Add($"{Describe(body)} {row.Source} {slice.Atoms[row.Longer].Kind} {slice.Atoms[row.Shorter].Kind}");
             }

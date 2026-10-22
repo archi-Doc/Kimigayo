@@ -6,7 +6,8 @@ namespace Kimi.Compiler;
 
 // The producer of the C1-F4 view, under its contract (TyCtxt.Origins.cs; 2a0-D §2-§4 with DECISIONS R4-M101): one walk over the
 // obligations on a pass's first read, each Origin row in the unit of the body Binding formed it in (BindingObligation.Body); a body's slice
-// on its first read, its atoms classed by 2a0-D §3's precedence relative to it; and a body's fixed-fixed oracle (UniversalRelations).
+// on its first read, its atoms classed by 2a0-D §3's precedence relative to it, each row's Site converted once to the SourceRef MIR names
+// syntax by (DECISIONS R4-M113); and a body's fixed-fixed oracle (UniversalRelations).
 public sealed partial class Binding
 {
     // The pass's rows by body, each unit's in obligation order (ends resolved and canonical, CaseMask in the body's binder order), the
@@ -15,7 +16,7 @@ public sealed partial class Binding
     private readonly List<List<OriginRowDraft>> originUnits = [];
     private readonly Dictionary<ExecutableBody, int> originSliceIndex = [];
     private readonly List<OriginRowSet> originSlices = [];
-    private readonly List<Koto> originFindings = [];
+    private readonly List<SourceRef> originFindings = [];
     private readonly List<PairBinder> originUseBinders = [];
     private readonly List<PairBinder> originBodyBinders = [];
     private readonly List<UniversalRelations> universalRelations = [];
@@ -41,7 +42,7 @@ public sealed partial class Binding
         void EndOwnRows();
     }
 
-    internal IReadOnlyList<Koto> OriginFindings
+    internal IReadOnlyList<SourceRef> OriginFindings
     {
         get
         {
@@ -91,11 +92,13 @@ public sealed partial class Binding
         return slice;
     }
 
-    // An atom MIR reads (a Ref's or a dereferenced layer's Origin), resolved at its use and classed in the body's table.
-    internal OriginAtomEntry OriginAtomIn(ExecutableBody body, BoundOrigin origin, Koto site)
+    // An atom MIR reads (a Ref's or a dereferenced layer's Origin) at a MIR site: resolved at the site's syntax, classed in the body's table,
+    // and returned as its index there.
+    internal int OriginAtomIn(ExecutableBody body, BoundOrigin origin, SourceRef site)
     {
         var slice = this.OriginRows(body);
-        return slice.Atoms[this.InternAtom(slice, this.CanonicalOrigin(this.OriginAtUse(origin, site)), site, 0)];
+        var use = this.compilation.SyntaxOf(site);
+        return this.InternAtom(slice, this.CanonicalOrigin(this.OriginAtUse(origin, use)), use, 0);
     }
 
     // A body's fixed-fixed oracle (2a0-D §4, D8): one premise environment rented at the body's root, the catalog's premises from there
@@ -174,7 +177,7 @@ public sealed partial class Binding
         return body.Definition?.Declaration ?? ((uint)body.Index < (uint)modules.Length ? modules[body.Index].GeneratedFunction : null);
     }
 
-    private void OriginFinding(Koto site)
+    private void OriginFinding(SourceRef site)
     {
         if (this.Result.IsComplete)
         {
@@ -207,7 +210,7 @@ public sealed partial class Binding
             {
                 // DECISIONS BU-26: Binding's declaration judge consumes every row formed with no body whose ends are declaration atoms
                 // (JudgeDeclarationRows), so a remaining one is a broken contract.
-                this.OriginFinding(obligation.Use);
+                this.OriginFinding(SourceRef.Of(obligation.Use));
                 continue;
             }
 
@@ -260,7 +263,7 @@ public sealed partial class Binding
             var at = bit < this.originUseBinders.Count ? this.BodyBinder(this.originUseBinders[bit].Target) : -1;
             if (at < 0)
             {
-                this.OriginFinding(obligation.Use);
+                this.OriginFinding(SourceRef.Of(obligation.Use));
                 continue;
             }
 
@@ -295,7 +298,7 @@ public sealed partial class Binding
         {
             var longer = this.InternAtom(slice, draft.Longer, draft.Site, part);
             var shorter = this.InternAtom(slice, draft.Shorter, draft.Site, part);
-            builder.Rows.Add(new(draft.Site, longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
+            builder.Rows.Add(new(SourceRef.Of(draft.Site), longer, shorter, draft.Equality, draft.Source, draft.Clause, draft.Destination, draft.CaseMask));
         }
     }
 
@@ -309,7 +312,7 @@ public sealed partial class Binding
             builder.Index.Add(atom, index);
             if (this.ClassifyAtom(atom, slice) is not { } entry)
             {
-                this.OriginFinding(site);
+                this.OriginFinding(SourceRef.Of(site));
                 entry = new(atom, OriginAtomKind.Unclassed, RoleOf(atom));
             }
 

@@ -41,8 +41,8 @@ public sealed partial class OriginRowsTest
         var closure = Bodies(c).Single(IsProgramClosure);
         var h = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "h");
         var input = new BoundOrigin(OriginKind.Projection, h, 0);
-        Assert.Equal(OriginAtomKind.Fixed, c.Types.OriginAtom(BodyOf(closure.Key), input, h).Kind);
-        Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(new ExecutableBody(h.SymbolOf(), 1), input, h).Kind);
+        Assert.Equal(OriginAtomKind.Fixed, Atom(c, closure.Key.Body, input, h).Kind);
+        Assert.Equal(OriginAtomKind.Finite, Atom(c, new ExecutableBody(h.SymbolOf(), 1), input, h).Kind);
     }
 
     // 2a0-D §3 with DECISIONS R4-M101 E5: one class per precedence row and slot role, on rows the programs form.
@@ -97,8 +97,8 @@ public sealed partial class OriginRowsTest
     {
         var c = MirBuildTest.Compile(Util + source + Main);
         Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
-        var getter = Bodies(c).Select(x => c.Types.OriginRows(BodyOf(x.Key))).Single(static x => x.Rows.Any(static y => First(y.Site) == "storage@ref"));
-        var storage = getter.Atoms[getter.Rows.First(static x => First(x.Site) == "storage@ref").Longer];
+        var getter = Bodies(c).Select(x => c.Types.OriginRows(x.Key.Body)).Single(x => x.Rows.Any(y => Site(c, y) == "storage@ref"));
+        var storage = getter.Atoms[getter.Rows.First(x => Site(c, x) == "storage@ref").Longer];
         Assert.Equal((kind, ProjectionRole.Storage), (storage.Kind.ToString(), storage.Role));
         Assert.Empty(c.Types.OriginFindings);
     }
@@ -119,8 +119,8 @@ public sealed partial class OriginRowsTest
         var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).Single(static x => x is ConversionKoto && First(x) == "storage@ref");
         var storage = ((BoundType)HirTables.Meaning(borrow)!).Origin!;
         var accessor = Bodies(c).Single(static x => x.Key is { Kind: MirBodyKind.Getter, Decl: { } decl } && InProgram(decl.Declaration));
-        var getter = c.Types.OriginAtom(BodyOf(accessor.Key), storage, borrow);
-        var closure = c.Types.OriginAtom(BodyOf(Bodies(c).Single(IsProgramClosure).Key), storage, borrow);
+        var getter = Atom(c, accessor.Key.Body, storage, borrow);
+        var closure = Atom(c, Bodies(c).Single(IsProgramClosure).Key.Body, storage, borrow);
         Assert.Equal((kind, ProjectionRole.Storage), (getter.Kind.ToString(), getter.Role));
         Assert.Equal((OriginAtomKind.Fixed, ProjectionRole.Storage), (closure.Kind, closure.Role));
         Assert.Empty(c.Types.OriginFindings);
@@ -131,9 +131,9 @@ public sealed partial class OriginRowsTest
     public void APlaceReadThroughAReferenceIsInferred()
     {
         var c = MirBuildTest.Compile("func g(r: ref/i32) -> i32\n    let y: i32 = r\n    return y\n" + Main);
-        var g = BodyOf(Bodies(c).Single(static x => x.Key.Decl?.Name == "g").Key);
+        var g = Bodies(c).Single(static x => x.Key.Decl?.Name == "g").Key.Body;
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).Single(x => x is IdentifierNameKoto && First(x) == "r" && c.Binding.ReadsReferent(x));
-        var atom = c.Types.OriginAtom(g, new BoundOrigin(OriginKind.Projection, read, 0) { Body = g }, read);
+        var atom = Atom(c, g, new BoundOrigin(OriginKind.Projection, read, 0) { Body = g }, read);
         Assert.Equal((OriginAtomKind.Inferred, ProjectionRole.Place), (atom.Kind, atom.Role));
     }
 
@@ -146,12 +146,12 @@ public sealed partial class OriginRowsTest
     public void AClosureHeadersOmittedInnerOriginIsAPinnedLimit(string source, string body, bool namedByCalls)
     {
         var c = MirBuildTest.Compile(source + Main);
-        var slice = c.Types.OriginRows(BodyOf(Bodies(c).Single(x => x.Key.Decl?.Name == body).Key));
-        var header = slice.Rows.First(static x => First(x.Site) == "ref/(ref/i32)");
+        var slice = c.Types.OriginRows(Bodies(c).Single(x => x.Key.Decl?.Name == body).Key.Body);
+        var header = slice.Rows.First(x => Site(c, x) == "ref/(ref/i32)");
         var (longer, shorter) = (slice.Atoms[header.Longer], slice.Atoms[header.Shorter]);
         Assert.Equal((OriginKind.Inference, OriginAtomKind.Inferred), (longer.Atom.Kind, longer.Kind));
         Assert.Equal((OriginKind.Input, OriginAtomKind.Unclassed), (shorter.Atom.Kind, shorter.Kind));
-        Assert.Equal(namedByCalls, slice.Rows.Any(x => !ReferenceEquals(x.Site, header.Site) && x.Shorter == header.Longer));
+        Assert.Equal(namedByCalls, slice.Rows.Any(x => x.Site != header.Site && x.Shorter == header.Longer));
     }
 
     // Row 5 and the receiver's part (E5, DECISIONS R4-M103): a Closure literal's value is Fixed in its own body and a Finite temporary of
@@ -162,16 +162,16 @@ public sealed partial class OriginRowsTest
         var c = MirBuildTest.Compile(EnvStore + Destructors + Main);
         var program = c.BuildMir();
         var bodies = program.Bodies.ToArray();
-        var g = BodyOf(bodies.Single(static x => x.Key.Decl?.Name == "g").Key);
+        var g = bodies.Single(static x => x.Key.Decl?.Name == "g").Key.Body;
         var closure = bodies.Single(IsProgramClosure);
         var literal = (FunctionKoto)closure.Key.Decl!.Declaration;
         var value = new BoundOrigin(OriginKind.Projection, literal, Binding.ClosureValueSlot);
-        Assert.Equal(OriginAtomKind.Fixed, c.Types.OriginAtom(BodyOf(closure.Key), value, literal).Kind);
-        Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(g, value, literal).Kind);
-        Assert.Equal(OriginAtomKind.Fixed, c.Types.OriginAtom(BodyOf(closure.Key), new(OriginKind.Projection, literal, Binding.CallResultSlot), literal).Kind);
+        Assert.Equal(OriginAtomKind.Fixed, Atom(c, closure.Key.Body, value, literal).Kind);
+        Assert.Equal(OriginAtomKind.Finite, Atom(c, g, value, literal).Kind);
+        Assert.Equal(OriginAtomKind.Fixed, Atom(c, closure.Key.Body, new(OriginKind.Projection, literal, Binding.CallResultSlot), literal).Kind);
         var init = bodies.First(IsProgramConstructor);
         var constructor = (FunctionKoto)init.Key.Decl!.Declaration;
-        var receiver = c.Types.OriginAtom(BodyOf(init.Key), new(OriginKind.Projection, constructor, Binding.ReceiverSlot), constructor);
+        var receiver = Atom(c, init.Key.Body, new(OriginKind.Projection, constructor, Binding.ReceiverSlot), constructor);
         Assert.Equal((OriginAtomKind.Finite, ProjectionRole.Receiver), (receiver.Kind, receiver.Role));
     }
 
@@ -180,9 +180,9 @@ public sealed partial class OriginRowsTest
     {
         var c = MirBuildTest.Compile(source + Main);
         var key = Bodies(c).First(x => (body.Length == 0 ? IsProgramClosure(x) : x.Key.Decl?.Name == body) && Has(c, x.Key, site)).Key;
-        var slice = c.Types.OriginRows(BodyOf(key));
-        return (slice, slice.Rows.First(x => First(x.Site) == site));
+        var slice = c.Types.OriginRows(key.Body);
+        return (slice, slice.Rows.First(x => Site(c, x) == site));
     }
 
-    private static bool Has(Compilation c, MirDefKey key, string site) => c.Types.OriginRows(BodyOf(key)).Rows.Any(x => First(x.Site) == site);
+    private static bool Has(Compilation c, MirDefKey key, string site) => c.Types.OriginRows(key.Body).Rows.Any(x => Site(c, x) == site);
 }

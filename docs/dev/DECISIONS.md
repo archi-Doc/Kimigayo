@@ -3070,6 +3070,57 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: verifying an unbound inference without the region (round 1, B1); choosing the region at the first incomparable pair
     (round 1, B2); resolving the variables at the body's deadline (later uses already read the local's Type); one enumeration of the
     local's Type only (misses an initializer's Origin outside it, x1).
+- **R4-M113 MirOrigins, A5's Origin stratum (Refuted part)** (2026-10-23; unit 2a-1a, the first of group G:A5-F4, DEC Q6 form 2,
+  under R4-M94's package §6.1-§6.3, D13-D16, D18, D19; the R4 planning session's rulings on its design (Site rule (A), PD21, R4-M101 (b),
+  scope), on parked.md (the view's SourceRef sites; no completeness read), on stop-row9.md and on stop-containment.md)
+  - Contract: per body and class of views (equal active rows, a row's case mask within the view's borrow binders `MirCases.Borrows`, and
+    equal containment edges), one graph of the body's C1-F4 rows (a meet by MeetNode's rule, D15) and of each Ref's containment edges
+    (SPEC 15.6.3, D14, through `MirSteps`: an exclusive layer's Origin outlives the Ref's and the walk continues, a shared one's too and it
+    stops, a raw Deref stops; a Ref inside an Inlined scope forms none); Tarjan's components of the inner nodes; finite-source bitsets in
+    topological order; `UnsatisfiedOriginRelation_Kd` (`Ownership.UnprovenOrigin`) at each edge into a Fixed node per source reaching its
+    tail. Step 4: `Judge` before the Loan stratum, `Record` after it. Unknown, the oracle and the arena's limit are 2a-1b's; the arena has
+    no limit check yet, acceptable only because G:A5-F4 merges after 2a-1b (its group review), and no 2a-1a test body comes near 64 MiB.
+  - Site rule: an Origin problem's subject is its last edge's site, the row's Site or the Ref's statement for a containment edge; the
+    row's producer owns the location and MirOrigins reads no syntax. H11's list gains (R4-M108): non-call fits' rows are formed at the value
+    Binding's record names, so the location users see is unchanged when the twins leave.
+  - D18: `MirProblem.Reason (Longer, Shorter, Equality)` of the view's canonical atoms, in `MirReport`'s key (code, subject, body, Reason);
+    `MirFactKind.Relation` with `MirFact.Row`, the row's index in the body's view or -1 for a containment edge at its Ref; `Anchor`, the
+    first Ref whose Origin is the finite source; DIAGNOSTICS' source value `contained`.
+  - The view (a departure from R4-M101's published record, by ARCH rows 29 and 90: MIR names syntax only by SourceRef): `OriginRow.Site`
+    and `OriginFindings` are `SourceRef`, converted once by the producer (`Binding.OriginRows.cs`); `TyCtxt.OriginAtom` takes a MIR site
+    as a `SourceRef` (the view reads its syntax) and returns the atom's table index (Mir keeps no second atom index). MirOrigins never
+    reads `Clause` or `Destination`, which stay the diagnostics adapter's. Atoms MIR appends stay per pass (the view's contract):
+    `OriginRowsTest`'s warm-rebind test keeps its baseline and its 0 B first rebind, and reads the new pass with the same MIR reader
+    before comparing whole tables.
+  - Row 9 (D19): a row or Ref with an Unclassed end forms no edge and is the located `Unsupported_Kd` whatever Binding's completeness
+    (MirOrigins reads none; G216 and meet-trans keep their limits). Known residual until 2a-1c: an end a Binding failure left unresolved
+    (a local clause naming an unknown Origin) is then a derived problem reported as direct (SPEC 23.1.2; unpublished until R6-check),
+    pinned in `MirOriginsTest`; 2a-1c, under the full process, marks such ends (`OriginAtomKind.Dependent` as the direction to start from).
+  - R4-M101's conditions: (a) `MirDefKey.Body` is Mir's one conversion to `ExecutableBody`, which the tests use (`OriginRowsTest.BodyOf`
+    deleted); (b) by construction: a default's rows are its template's, a caller's Ref inside the inline copy adds no containment, and the
+    copy programs form no node in a caller (`AnInlineDefaultCopyFormsNoNodeInItsCaller`).
+  - `MirTypes.IsBorrow` is Mir's one borrow-Semantics rule (`IsReference`, `MirCases.Borrows`). `MirOrigins.Work` (node visits, edge
+    steps, bitset words) and `ContainmentEdges` are published for V16: "F4 Refuted", N finite Borrows into one chain into one fixed
+    Origin, Work within c·(N_o + E_o·⌈Fin/64⌉) at N = 16, 32, 64; "F4 containment", a Reborrow through N exclusive layers then M shared
+    ones forms N + 1 edges whatever M (`MirOriginsTest`); a warm judgment allocates 0 B.
+  - Found (rulings on stop-containment.md): Binding names a Borrow reached through a call result's shared layer and a stored layer by the
+    stored layer's Origin alone (`entries[1]@follow@ref` with `Dictionary<i32, uniq/i32 during a>` is `during a`), so the containment
+    edge from the shared layer into that Fixed name is Refuted on SPEC-valid programs, and the default pipeline accepts the converse
+    (`leak`, returning such a Borrow `during a`). The cause is Binding's naming: PLAN G226 (BU, with its census) names a Borrow by the
+    meet of its layers; MirOrigins stays as it is. Rejected: not reporting a containment edge whose head is one of the Ref's layers (a
+    special case that also loses `leak`).
+  - Census and ledger (base 87ab31915, its mir Functional ledger): MirCensusTest passes (no A5 problem in the library, the milestones,
+    the goldens or the accepting SPEC variants); the default Functional suite and its diagnostic snapshot are unchanged. Rows 2,958 ->
+    3,032, open blocking 182 -> 164: 31 complete old `UnsatisfiedOriginRelation_Kd` rows pair (no complete old row of that code stays
+    unpaired, 27 at the base, 14 blocking); 53 incomplete twins pair with a requirement difference ((d), a5-twin-requirement: Binding's
+    label until H11); new MIR rows: 3 capture stores at `local@ref` ((a), SPEC 15.6.5), 35 of PLAN G226 and 36 row-9 limits (G216's form,
+    the 2a-1c residual, I-1's shape in `$tryWrite`), each (b) (a5-new-origins, a5-row9, a5-row9-incomplete).
+  - PD21: `MirProblem.cs` and `MirProgram.cs` were due and are split first, behavior-preserving (`MirFact.cs`, `MirDefKey.cs`);
+    `MirReport.cs` reaches 3 with this unit, so 2a-2's design starts with its PD21 response (2a0-D §10); `TyCtxt.Origins.cs` and
+    `Binding.OriginRows.cs` reach 3, so they are due before 2a-1c's adding change.
+  - Rejected: (B) and (C) of the Site rule (a per-row value fact; moving the row Site now); reading Binding's completeness for row 9 (it
+    also hides genuine limits in incomplete compilations, meet-trans); no row-9 report until the derived marking exists (it would accept
+    uncovered forms silently); keeping appended atoms across passes (stale atoms after an edit, a second table).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4
