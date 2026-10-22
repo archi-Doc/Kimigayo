@@ -7,7 +7,9 @@ namespace Kimi.Compiler.Backend;
 // The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a; DECISIONS R5-M89, R5-M92, R5-M93, R5-M102): a
 // callee by its kind's row (a Value callee's in FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once
 // in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too;
-// each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot).
+// each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). Rows not written yet: a virtual slot (C6c), a Builtin
+// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions'
+// legacy rows (C8b-C8e, C9a).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).

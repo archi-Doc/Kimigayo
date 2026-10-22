@@ -8,6 +8,8 @@ namespace Kimi.Compiler.Backend;
 
 // The values of FunctionCodegen (R5 package C 3.2 I4, I5 and I7): an operand's value and a constant's, a Type's representation in the
 // item's instance, bool's widening and narrowing, a site's location (SPEC 22.5.1), and the spelling of the text's values and labels.
+// Rows not written yet: a string constant other than into a string Place (C8c); Location and TypeToken constants, intrinsic operands
+// (C10a's TestObserve; C6a's TypeTest, C9a).
 internal sealed partial class FunctionCodegen
 {
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
