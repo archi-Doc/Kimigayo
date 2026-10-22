@@ -8,14 +8,15 @@ namespace Kimi.Compiler;
 // - Responsibility: the first, or with `all` every, Origin position of a fit, in the order of the outer borrow layer, the Semantics
 //   target, then slots and Type arguments, by the variance FitsTypeCore and CheckTypeUse compose, whose relation is not proven or,
 //   with `judged`, that the relation judge fails (FailedOriginRelation, FailedOriginPart); for a meet at the longer end, the chain of
-//   a failing operand, Refuted before Unknown (FailedChain, AddFailingChains, FailingOperand, OriginPartFails); and RecordMismatch's
-//   Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure).
+//   a failing operand, Refuted before Unknown (FailedChain, AddFailingChains, FailingOperand, OriginPartFails); RecordMismatch's
+//   Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure); and the reset of the pass's Origin relation
+//   records, a failed node's first chain and its others (ResetOriginRecords).
 // - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
 //   other chains through RecordMoreRelation, completes it as a dependent of a failed Origin environment (FailedOriginEnvironment)
 //   or fails it Unsupported, and returns whether a position failed; a record at a body chain adds the fit's position rows
-//   (CheckTypeUse, DECISIONS R4-M108).
+//   (CheckTypeUse, DECISIONS R4-M108) and makes its node a twin (IsTwinRecord, DECISIONS R4-M111).
 // - Invariants: the position search reads proof and judgment only and changes no inference, obligation or declaration state; an
 //   `outlives` record names a failing operand's chain, the whole longer end only when no operand fails alone; `relationScratch`
 //   is empty when RecordOriginFitFailure returns.
@@ -26,12 +27,32 @@ public sealed partial class Binding
     // The failed chains of one fit (FailedOriginRelation with `all`), which RecordOriginFitFailure publishes.
     private readonly List<OriginRelationFact> relationScratch = new();
 
+    // The pass's twin nodes (DECISIONS R4-M108, R4-M111): a fit's node with a recorded body chain and a local clause whose record is one,
+    // each added where its rows are formed.
+    private HashSet<Koto>? originTwins;
+
+    /// <summary>Gets whether a node's Origin relation records are twins, the records of a relation that is also a row A5 judges, which the
+    /// MIR difference ledger compares with A5 (DECISIONS R4-M108, R4-M111).</summary>
+    /// <param name="node">The records' node.</param>
+    /// <returns>Whether its records are twins.</returns>
+    [Transitional("R6", Reason = "The ledger's twin subset; H11 deletes it with the twins (DECISIONS R4-M111).")]
+    internal bool IsTwinRecord(Koto node) => this.originTwins?.Contains(node) == true;
+
+    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and its others, and the
+    // twin nodes.
+    private void ResetOriginRecords()
+    {
+        this.originRelations?.Clear();
+        this.callRelations?.Clear();
+        this.originTwins?.Clear();
+    }
+
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records. A position the relation judge fails records every failed chain; a position that is only unproven is recorded when an
     // end is unresolved and is otherwise Unsupported. Either is a dependent of a failed Origin environment instead, the first only
     // when no failed chain is Refuted. A record at a body chain (2a0-D D1, ends resolved at the use) gives every position of the fit,
     // fixed-fixed ones included, a row of its body for A5 (CheckTypeUse's obligations, up to its first differing Function Type
-    // component); the records stay Binding's until H11 (DECISIONS R4-M108).
+    // component); the records stay Binding's until H11 (DECISIONS R4-M108), and the node is a twin (R4-M111).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
         var all = this.relationScratch;
@@ -96,6 +117,7 @@ public sealed partial class Binding
         this.FailExplained(ref this.originRelations, node, BindingFailure.OriginRelation, recorded with { At = at, Destination = expected });
         if (rows)
         {
+            (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(node);
             _ = this.CheckTypeUse(actual, expected, node);
         }
 

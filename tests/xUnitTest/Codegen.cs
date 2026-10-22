@@ -75,6 +75,15 @@ internal static class CodegenDeviations
         "6.7.1 8.15.3",
         "MIR code generation reports the Language error at check; the old generator accepts the program and reports a resource limit at generation. Native outcomes stay equal.");
 
+    /// <summary>C5b: an erased environment of 8 bytes or less and alignment 8 or less that needs destruction is stored in the common
+    /// Function value's word under MIR code generation (PD19, IMPL 21.1.3); the old generator allocates it.</summary>
+    internal static readonly Deviation InlineEnvironment = new(
+        "inline-env",
+        DeviationClass.A,
+        "R5-M104",
+        "7.7.4",
+        "IMPL 21.1.3 stores such an environment inline even when it needs destruction; the old generator heap-allocates every environment that needs destruction, one allocation more. Values, Moves and cleanup stay equal.");
+
     /// <summary>K13b: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at check under MIR code generation.</summary>
     internal static readonly Deviation OversizedLayoutAtCheck = new(
         "oversized-layout-at-check",

@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Globalization;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -8,6 +9,8 @@ namespace Kimi.Compiler.Backend;
 
 // The values of FunctionCodegen (R5 package C 3.2 I4, I5 and I7): an operand's value and a constant's, a Type's representation in the
 // item's instance, bool's widening and narrowing, a site's location (SPEC 22.5.1), and the spelling of the text's values and labels.
+// Rows not written yet: a string constant other than into a string Place (C8c); Location and TypeToken constants, intrinsic operands
+// (C10a's TestObserve; C6a's TypeTest, C9a).
 internal sealed partial class FunctionCodegen
 {
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
@@ -159,10 +162,20 @@ internal sealed partial class FunctionCodegen
         this.output.Write(this.Spelled(value, stackalloc char[SpellingLength]));
     }
 
-    // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, or
-    // Spell's.
+    // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, an
+    // adapter item's table's @__kimi_erase<item>_table (ModuleCodegen.AdapterPrefix), or Spell's.
     private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
     {
+        if (value.Prefix == 'g')
+        {
+            text[0] = '@';
+            ModuleCodegen.AdapterPrefix.CopyTo(text[1..]);
+            var at = 1 + ModuleCodegen.AdapterPrefix.Length;
+            value.Number.TryFormat(text[at..], out var digits, default, CultureInfo.InvariantCulture);
+            ModuleCodegen.TableSuffix.CopyTo(text[(at + digits)..]);
+            return text[..(at + digits + ModuleCodegen.TableSuffix.Length)];
+        }
+
         if (value.Prefix is not ('@' or 'p'))
         {
             return Spell(value, text);
@@ -176,8 +189,9 @@ internal sealed partial class FunctionCodegen
 
     // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
     // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
-    // pooled constant @<name> of index Number (Prefix @), the home of local Number, its address (Prefix h), the floating constant whose
-    // double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer Number (Prefix NUL).
+    // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the home of local Number, its address
+    // (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or
+    // the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 
     // A location as IMPL 21.3.1 passes it (Location): its text's address and its byte length.

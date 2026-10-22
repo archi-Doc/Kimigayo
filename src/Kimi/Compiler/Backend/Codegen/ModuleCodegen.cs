@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// ModuleCodegen (R5 plan C0b1, K11, C3a, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77, R5-M89), one per
-// Compilation.
+// ModuleCodegen (R5 plan C0b1, K11, C3a, C5b, package C 3.3 and 3.9, design 2 2.3 and 2.12; DECISIONS R5-M65, R5-M77, R5-M89, R5-M104),
+// one per Compilation.
 // Responsibility: one module of a program version from its checked set: every Generated item in admission order, a body item written by
 // FunctionCodegen as __kimi_f<item> under its signature (Abi.Of, internal convention), which this owner gives from the item's own body to
 // its definition and every call (Signature), a called #LibraryImport function's C signature and declaration (Import), the output form
@@ -9,9 +9,10 @@
 // the module frame through LlvmModuleText in the old generator's order (header with the pooled constants, runtime, the called imports'
 // declarations, overflow declarations, functions, entry, footer); the coverage rows (PD11) of the item kinds and output forms: DropGlue
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
-// array's (R5-M95); a Closure environment's C5a, an erased function's C5b, a handle's C6b, a collection's C8d and C8e), ClosureErasure
-// and ItemAdapter (C5b), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a, C6c), a
-// test build's TestEntry (C10a).
+// array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104); a handle's C6b, a collection's C8d and C8e),
+// ClosureErasure and ItemAdapter (__kimi_erase<item>, its table and its heap environment's release, written by FunctionCodegen; one
+// without a body target C5c's), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a,
+// C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
@@ -130,7 +131,7 @@ internal sealed partial class ModuleCodegen
                 this.bodies.WriteGlue(collector, item, this.functions);
                 return;
             case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
-                this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C5b writes the erasure and item adapters.
+                this.bodies.WriteAdapter(collector, item, this.functions);
                 return;
             case MonoKind.Builtin or MonoKind.PropertyWitness:
                 this.Report(DiagnosticCode.Unsupported_Kd, entry.Site); // C3c writes property witnesses; C8f and C9b the Builtin shims (R5-M67).
