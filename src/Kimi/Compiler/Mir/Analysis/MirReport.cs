@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns the problems the MIR analyses find in one program version (A6; DECISIONS R4-M3a, R5-M23, R4-M71); their records are MirProblem
-// and MirFact (MirProblem.cs).
+// and MirFact (MirProblem.cs, MirFact.cs).
 // Input: Add calls, each a problem with its requirement, which its recording rule names (R5-M23), its body and its facts (related sites,
 // added by their first producer). Output: one problem per code, subject and body (R4-M71: views number one body's cases; Reason joins the
 // key with U11's facts) with the views that have it merged, in insertion order (bodies in program order), and each problem's facts by its

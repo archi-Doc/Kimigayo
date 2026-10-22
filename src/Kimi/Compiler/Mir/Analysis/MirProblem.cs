@@ -1,19 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns the record of a problem a MIR analysis finds and of its related sites (A6; DECISIONS R4-M3a, R4-M57, R5-M23, R4-M71).
-// Input: the values a recording rule gives: its code, the requirement it judged, its subject, the body it found it in, the Semantics case
-// views that have it, and each related site with what it is. Output: MirProblem and MirFact values, which MirReport keeps and the
-// difference ledger reads.
+// Owns the record of a problem a MIR analysis finds (A6; DECISIONS R4-M3a, R4-M57, R5-M23, R4-M71); its related sites are MirFact values
+// (MirFact.cs).
+// Input: the values a recording rule gives: its code, the requirement it judged, its subject, the body it found it in and the Semantics case
+// views that have it. Output: MirProblem values, which MirReport keeps and the difference ledger reads.
 // Invariants: a problem's requirement is the one its recording rule names (the Ownership partition's, or ControlFlow for A3, DIAGNOSTICS
 // rule 1); its views are bits of its body's MirCases views, and a problem no body describes (A4's obligation rows, at Binding's rows) has
-// NoBody, whose views name no body's cases (A4's codes take no case fact); a fact is a site the problem relates, never a message: an
-// Inlined fact names the inline default copy whose template an A1 or A2 Language problem belongs to, which a limit record never carries
-// (R4-M69, until 2g-6), an Evaluated fact the default's operation of a Loan problem a body owns inside a copy, recorded at the omitting
-// call (R4-M97), and an effect fact the static Field an effect met, its kind what decided it (R4-M92); a problem has at most one fact of
-// each kind but its witness's.
+// NoBody, whose views name no body's cases (A4's codes take no case fact).
 // Must not derive a requirement from a code, carry message text, or merge or drop problems (MirReport's).
-
-#pragma warning disable SA1402 // The problem and fact records belong together.
 
 using Kimi.Diagnostics;
 
@@ -34,25 +28,3 @@ internal readonly record struct MirProblem(DiagnosticCode Code, DiagnosticRequir
     /// body's cases.</summary>
     internal const int NoBody = -1;
 }
-
-/// <summary>What a related site of a problem is (R4-M3a): a Loan's anchor, its witness holder's next use, the store whose value
-/// carries it, the anchor of the reservation the problem's activation or destruction is of (design A3 6.4), the call of the inline
-/// default copy an A1 or A2 Language problem was found in (R4-M69), the default's operation of a Loan problem a body owns inside a copy
-/// (R4-M97), or the declaration of the static Field a Call's or Drop's effects met, by what decided it (R4-M92).</summary>
-internal enum MirFactKind : byte
-{
-    Anchor,
-    Use,
-    Store,
-    Reservation,
-    Inlined, // The call of the Inlined scope an A1 or A2 problem lies in: its template's check (SPEC 7.2.3), which MirReport drops.
-    EffectRead, // A read key of the Field (SPEC 15.6.4): it meets a unique Loan.
-    EffectWrite, // A write key of the Field: it meets a Loan in any mode.
-    EffectUnknown, // An unknown effect or an erased destruction (SPEC 15.6.4, 16.3.3): it meets every mutable-static Loan.
-    Evaluated, // The default's operation of a Loan problem a body owns inside a copy, whose subject is the omitting call (SPEC 15.6).
-}
-
-/// <summary>A related site of a problem (R4-M3a).</summary>
-/// <param name="Kind">What the site is.</param>
-/// <param name="Site">The syntax.</param>
-internal readonly record struct MirFact(MirFactKind Kind, SourceRef Site);
