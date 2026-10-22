@@ -350,6 +350,13 @@ public sealed partial class Binding
                 {
                     return this.FailCaptureEntry(function, repeats, capture, failure, source.Type!, source);
                 }
+
+                if (capture.IsMutable && NamesLetRegion(source.Type!))
+                {
+                    // [Transitional] PLAN G227 (NamesLetRegion): a `var` capture of a value naming a region 2a0-3b made for a `let` is a
+                    // located limit at its entry, as an unsupported captured Type is (Capture).
+                    return this.FailExplained(ref this.unsupportedSpans, function, BindingFailure.Unsupported, capture.Span);
+                }
             }
 
             if (repeats is not null)

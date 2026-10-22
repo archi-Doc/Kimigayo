@@ -25,9 +25,9 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         "    origin c outlives b\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        CLAUSES\n    let local: i32 = 5\n    return h.call(local@ref)\n" +
         "public func main() => ()\n";
 
-    // A Closure appends a call-local borrow to the `var` capture of a local whose element Origin has no candidate.
-    private const string Capture = "func leak() -> i32\n    LOCAL\n    var f = func [var arr@move] () -> i32\n        let local: i32 = 1\n        STORE\n        return 0\n" +
-        "    return f@uniq()\npublic func main() => ()\n";
+    // A `var` local takes a local whose element Origin has no candidate, then a block-local borrow is stored into it and read after the block.
+    private const string Moved = "func leak() -> i32\n    LOCAL\n    var w = arr@move\n    if true\n        let local: i32 = 1\n        STORE\n    return w[0]@follow\n" +
+        "public func main() => ()\n";
 
     // PLAN G65's h2: a Closure stores a call-local borrow into its `var` capture of a `let` local whose two qualifier slots bind each other.
     private const string H2 = "func leak() -> i32\n    let o = Option<Array<ref/i32>>.Some(Array<ref/i32>.init(capacity: 0))\n" +
@@ -38,6 +38,22 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     // h2b: the next call reads the stored borrow in place.
     private const string H2bRead = "        match o\n            .Some(let a)\n                if a.length > 0\n                    let old: i32 = a[0]@follow\n" +
         "                    return old\n            _ => return 0\n";
+
+    // BU's v6a: a Closure stores its own borrowed argument into its `var` capture of a `let` local whose qualifier slot is a region, and a
+    // later call reads it after the argument's referent died.
+    private const string V6a = "func leak() -> i32\n    let arr = Array<ref/i32>.init(capacity: 0)\n    var f = func [var arr@move] (x: ref/i32) -> i32\n" +
+        "        if arr.length > 0\n            let old: i32 = arr[0]@follow\n            return old\n        arr.append(x)\n        return 0\n" +
+        "    var first: i32 = 0\n    if true\n        let inner: i32 = 41\n        first = f@uniq(inner@ref)\n    let other: i32 = 5\n" +
+        "    return first + f@uniq(other@ref)\npublic func main() => ()\n";
+
+    // BU's c8a: a Copy capture `[var o]` of an annotated `let` whose written slot is bound only to itself, assigned a call-local borrow.
+    private const string C8a = "func leak() -> i32\n    let o: Option<ref/i32> = .None\n    var f = func [var o] (n: i32) -> i32\n        let local: i32 = n\n" +
+        "        o = .Some(local@ref)\n        return 0\n    let first = f@uniq(41)\n    return first + f@uniq(7)\npublic func main() => ()\n";
+
+    // B3's raw form (SPEC 5.7 judges a raw Origin by fits): a raw pointer stating a `let` region through a typed path, assigned in a
+    // `[var q@move]` Closure a pointer stating the call's own Origin.
+    private const string RawB3 = "func leak(x: ref/i32) -> i32\n    let arr = Array<ref/i32>.init(capacity: 0)\n    let q = arr[0]@follow@raw\n" +
+        "    var f = func [var q@move] (y: ref/i32) -> i32\n        q = y@follow@raw\n        return 0\n    return f@uniq(x)\npublic func main() => ()\n";
 
     // The S3 demo (audit-origins 5): a local Function input bounded through a clause by another inferred slot.
     private const string S3Demo = "struct View<T> {source}\n    public let data: ref/T during source\n" +
@@ -155,35 +171,40 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 15.3.6, 15.4.4, 15.6.5: the region records the Loans later stored into it, so a call-local borrow stored through a `var` capture
-    // is followed past the call (BU's review of 2a0-3b, B1; PLAN G225): an initializer qualifier's slot, a written slot bound only to
-    // itself, and a store through a call.
+    // SPEC 15.3.6, 15.4.4, 15.6.5: the region records the Loans later stored into it, so a block-local borrow stored into a value that
+    // names it is followed past the block (BU's review of 2a0-3b, B1; PLAN G225): an initializer qualifier's slot and a written slot bound
+    // only to itself, stored by a method and through a call.
     [Theory]
-    [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "arr.append(local@ref)")]
-    [InlineData("let arr: Array<ref/i32> = []", "arr.append(local@ref)")]
-    [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "keep(arr@uniq, local@ref)")]
+    [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "w.append(local@ref)")]
+    [InlineData("let arr: Array<ref/i32> = []", "w.append(local@ref)")]
+    [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "keep(w@uniq, local@ref)")]
     public void AStoreIntoARegionWithNoCandidateIsFollowed(string local, string store)
     {
         var source = "func keep(slot: uniq/Array<ref/i32 during s>, v: ref/i32 during s) => slot@follow.append(v)\n" +
-            Capture.Replace("LOCAL", local, StringComparison.Ordinal).Replace("STORE", store, StringComparison.Ordinal);
+            Moved.Replace("LOCAL", local, StringComparison.Ordinal).Replace("STORE", store, StringComparison.Ordinal);
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
         Assert.StartsWith("let local", source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
-    // Pinned, a recorded difference until R6-check (the owner, 2026-10-23, on PLAN G65's h2; DECISIONS R4-M112): SPEC 15.6.5 refutes a
-    // call-local borrow stored into a capture's fixed Origin, but a Closure body's environment bindings are not yet fixed Origins (A5-F7,
-    // 2c-D; DECISIONS R4-M99), so h2, a `let` local's region captured `[var o@move]` and assigned a call-local borrow that nothing reads
-    // again, is accepted on the default pipeline as dev accepts the `var` forms h3 and h5; h2b's later read of the stored borrow is
-    // rejected, as every route that reaches it after its call is.
+    // Pinned, a temporary limit until PLAN G227 (the owner, 2026-10-23, (d)+(a); DECISIONS R4-M112): SPEC 15.3.4 and 15.6.5 refute a
+    // call-local or per-call borrow stored into a capture's fixed Origin, but a Closure body does not fix its environment's Origins (A5-F7,
+    // 2c-D; DECISIONS R4-M99), so a `var` capture of a `let` local naming a region 2a0-3b made is the located Unsupported_Kd at its entry,
+    // a Binding record both pipelines publish: h2 (store only), h2b (a later read), BU's v6a (the call's own argument, read after it died)
+    // c8a (a Copy capture) and B3's raw form (a raw layer naming a local region, HasLocalRegion). BU's Closure-environment fix removes
+    // it, and these take its verdict.
     [Theory]
-    [InlineData("", null)]
-    [InlineData(H2bRead, nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    public void ACallLocalBorrowStoredIntoACapturedRegionIsRejectedOnlyWhenReachedAgain(string read, string? code)
+    [InlineData(H2, "", "var o@move")]
+    [InlineData(H2, H2bRead, "var o@move")]
+    [InlineData(V6a, "", "var arr@move")]
+    [InlineData(C8a, "", "var o]")]
+    [InlineData(RawB3, "", "var q@move")]
+    public void AVarCaptureOfALetRegionIsTheTemporaryLimit(string program, string read, string entry)
     {
-        var source = H2.Replace("READ", read, StringComparison.Ordinal);
-        string[] expected = code is null ? [] : [code];
-        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var source = program.Replace("READ", read, StringComparison.Ordinal);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.Unsupported_Kd), DiagnosticCategory.Unsupported), (error.Code, error.Category));
+        Assert.StartsWith(entry, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.3.6: the principal lower bound is chosen after every bound is seen, whatever the clause order, so both orders keep the one

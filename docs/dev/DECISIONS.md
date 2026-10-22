@@ -3050,26 +3050,48 @@ and migration obligations remain in force; no numeric cap changes are authorized
     into a `var` capture's region outlives the call): c3 (G225, accepted on dev), and c2, c5, c6, c6b, c9, u3, h1 with
     `ComparisonLoanConflict_Kd` instead of `UnprovenConstraint_Kd`; invalid programs keep their other records without
     `UnprovenConstraint_Kd` (u1, u2, u4, u9, u12, m5, h4) or get their row records instead of `MissingOriginBinding_Kd` (i1–i4, k1,
-    s-noprincipal-c-err) or the located `Unsupported_Kd` (c4, m1, m2); newly accepted and valid: s-none, u8, u11, x1–x4, v1, v2, v6, w1,
+    s-noprincipal-c-err) or the located `Unsupported_Kd` (c4, m1, m2); newly accepted and valid: s-none, u8, u11, x1–x4, v1, v2, w1,
     w6, incomparable, s-noprincipal-c, u5 (and u6's `Unsupported_Kd` leaves; its `InvalidAssignment_Kd` stays). o4/o5 keep dev's one
     record at `local@ref`; o6, g1, g2, s2, u10, the S3 demo and s-vars are unchanged.
   - Found by the census, pre-existing and outside this cause: h2 (a `let` whose two qualifier slots are bound to each other, captured
-    `[var o@move]` by a Closure that assigns it a call-local borrow) becomes accepted, as dev already accepts the `var` forms h3 and h5:
+    `[var o@move]` by a Closure that assigns it a call-local borrow) became accepted (now the guard below), as dev accepts the `var` forms h3 and h5:
     SPEC 15.6.5's fixed capture Origins in a Closure body are not represented (PLAN G65's environment Origins); a later read is the
     `ComparisonLoanConflict_Kd` it is for `var` (h2b, h5b). v3, w3 and w4 (a `let` initialized through `Option<…>.Some(…)` whose payload
     a `match` `var` binding extends) stay rejected, now with `ComparisonLoanConflict_Kd` at the initializer, as dev rejects w5, their
     bounded form: the old analysis's retention through a region's equality bounds.
-  - h2, the owner's decision (2026-10-23, verbatim): 「記録された差： R6-check まで受け入れます。」 h2 is in dev's class of the `var` forms
-    h3 and h5: SPEC 15.6.5 refutes the store (a call-local Origin outliving the capture's fixed Origin), which a Closure body does not
-    represent until A5-F7 (2c-D; R4-M99: environment bindings fixed in the Closure body), so the default pipeline accepts it as a
-    recorded difference until R6-check (`LocalRegionInferenceTest`, pinned beside h2b's rejected read). Evidence (PLAN G65's probes, two
-    rounds, dev and this unit, both pipelines): every route reaching the stored borrow after its call is rejected, a reading `drop` at
-    environment destruction, at reassignment and at an `rc` final release, an exchange out and a read in place
-    (`ComparisonLoanConflict_Kd`); a generic element Type and erased objects or Function values cannot form the route (the call
-    contract; SPEC 7.7.4, 15.8.1); native runs of the accepted programs (default and `KIMI_PIPELINE=mir`) touch no dead borrow, and MIR
-    code generation builds none of them. The property rests on the old analysis's retention and destruction-lifetime check (SPEC
-    15.6.6), which A5's Loan stratum must keep at R6-check. The MIR rejects h2: its Loan stratum already does, at the end of `local`
-    (storage the body does not own; ledger row `a5-raw-store`), and its Origin stratum refutes the store from A5-F7.
+  - B3 (BU's re-check of ba28de15b): a Closure storing its own borrowed argument into a `[var arr@move]` capture whose element Origin is a
+    region and reading it in a later call is newly accepted here for the qualifier form v6a (dev: `UnprovenConstraint_Kd`, the stop that
+    hid it) and accepted on dev for v6b (`var arr`) and v6c (the written slot); native runs read the dead argument. SPEC 15.3.4 (a
+    per-call Origin cannot escape its binder) and 15.6.5 (a capture's Origin is fixed in the Closure body) reject the store. This refutes
+    PLAN G65's "not a soundness defect" for a stored borrowed argument; the G65 probes had covered call-local borrows only. The cause is
+    pre-existing and outside this unit: the Closure body does not fix its environment's Origins (PLAN G227).
+  - The owner, 2026-10-23, verbatim: 「(d)+(a) で進めてください。2a0-3b は、その単位が領域にした let の slot を [var x@move] で捕まえる形に
+    一時的なその場の Unsupported_Kd を付けて今入れ、G225 を直す。h2 の記録された差は取り消す。並行して BU が Closure の環境の保持（環境の Origin
+    を Closure 本体で固定）の誤ったコードの修正を始めてよい。それが入ったら一時的な U を外す。」 This withdraws the earlier decision that
+    accepted h2 as a recorded difference until R6-check (「記録された差： R6-check まで受け入れます。」, the same day).
+  - The temporary guard (`[Transitional]`, removed when PLAN G227's Closure-environment fix lands; then v6a, h2 and their tests take the
+    fix's verdict): a `var` capture entry, by Move or by Copy, of a value whose Type names a region this unit made for a `let` local is a
+    located `Unsupported_Kd` at the entry, on both pipelines (`NamesLetRegion`, one predicate where the entry is bound, in
+    `Binding.Closures.cs`). The fact is the one the region slot carries: `LocalRegionSlot`'s form (an `Inference` atom with a negative slot)
+    whose binder is a `let`; a `var` local's own regions are not this unit's, so v6b keeps dev's acceptance (PLAN G227). A raw layer's
+    Origin is read only at the raw role's sites (BU-24), and SPEC 5.7 judges it by fits, so B3 has a raw form: `let q = arr[0]@follow@raw`
+    of a `let arr` whose element Origin is a region, assigned `y@follow@raw` of the Closure's own argument in `[var q@move]` (this unit
+    without the guard accepts it; dev gives the located limit at the store). A raw layer is guarded when it or its pointee names any local
+    region (`HasLocalRegion`, which reads the raw role at its own site). This over-guards a `var` capture of a value whose raw layer or
+    pointee names a `var` local's region (`let q = v@follow@raw` with `var v = a@ref`, which dev accepts), the conservative side of G227's
+    dev class (v6b is its `var` form), not a narrowing of a sound form (planning ruling (C), 2026-10-23; rejected: (A) a new raw-role site,
+    widening BU-24's closed family for a temporary guard; (B) the Origin role alone, which newly allows the raw form). It is the located
+    limit an unsupported captured Type is (`Capture`): one per Closure, at its first guarded entry, and the Closure's body is not bound.
+    One record per entry with the body bound would need a located span per entry (Binding keys them by node, and a capture entry is no
+    node), a new representation, so it is not done. Guarded now: h2, h2b, h1, v6a, v6c, c8a, c8b, y1, y8 and the capture forms c3–c6, c6b,
+    c9, u3 and k1 (their closure-body records, c4's `UnsatisfiedOriginRelation_Kd` and k1's three, go with the body). Not pinned: dev's v6b
+    and v6c acceptance (PLAN G227 holds it; BU's fix adds the regressions). B1's store-following stays tested through a `var` local that
+    takes the `let` value (`AStoreIntoARegionWithNoCandidateIsFollowed`).
+  - The re-check's non-blocking items: N8, a cycle whose resolution is a meet of its own variables is not detected by R1's test (no
+    instance found; y1–y4 and y7 are rejected on the read route); N9, R2's post-pass leaves a covariant dependent's meet on the replaced
+    candidate (z1, rejected on dev and here, names `p ∧ a` where 15.3.6 reads `p` alone); N11, c8a, a Copy capture of h2's class, is in
+    the census (now guarded); N12, the MIR rejection of h2 that the withdrawn decision cited was the MIR analysis's shadow verdict, and the
+    published `KIMI_PIPELINE=mir` check accepted h2; both now give the guard's record.
   - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
     for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
     (R4-M4) needs the row; it goes with the old reporter at R6-check.
