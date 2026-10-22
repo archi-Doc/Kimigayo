@@ -80,6 +80,12 @@ internal sealed class ShapeTable
         return this.Intern(TupleHead, ks);
     }
 
+    /// <summary>The shape variable numbered n.</summary>
+    public int Variable(int n) => this.Var(n);
+
+    /// <summary>A shape node over an encoding (hash-consed).</summary>
+    public int Node(Head head, int[] kids) => this.Intern(head, kids);
+
     public bool IsVar(int shape) => this.heads[-1 - shape] is VarHead;
 
     public int VarIndex(int shape) => ((VarHead)this.heads[-1 - shape]).Index;

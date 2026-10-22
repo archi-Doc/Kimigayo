@@ -734,7 +734,10 @@ public static class Runner
         failures += Expect("a need under a ground Type's kid", Kid, "List<T.(K1).X> is Cp", "+ C");
 
         // Seed 7 model 395: A is Kz<A> binds A = i64 from the argument; the subject i32 must then be i64's class: the classes meet.
-        failures += Expect("a bound variable meets the subject class", "contract Kz<A>\n  associate Y is i32\n  clause A is Kz<A>\nconformance S1 is Kz<i64>\n  binding Y = i64", "i32 is Kz<i64>", "+ C");
+        // Proposal B (2026-10-22) changes this case's meaning: the binding Y = i64 fails its Contract's associated requirement
+        // `Y is i32` (B 3.7, an obligation; the reference's `!`: i32 and i64 in one class), and i32 and i64 never meet (rule 7),
+        // so the request supplies nothing; before B it was `+ C` through that identity.
+        failures += Expect("a bound variable meets the subject class", "contract Kz<A>\n  associate Y is i32\n  clause A is Kz<A>\nconformance S1 is Kz<i64>\n  binding Y = i64", "i32 is Kz<i64>", "none C");
         failures += Expect("closed parameter side, identity goal", "contract Kk<A>\n  clause A is List<i32>\ninput T is Kk<U>", "U is List<i32>", "+ C");
         failures += Expect("many bindings: through the projection", Many(50), "S7.(Pp).X is Copy", "+ C");
         failures += Expect("many bindings: an unrelated compound", Many(50), "List<i32> is Copy", "none C");
@@ -783,8 +786,30 @@ public static class Runner
 
         // Round 4 (R4-B2): only the top is matched by head; a kid that is not a Type yet is decided once built (152dda62: none).
         const string Shape5 = "contract Copy\ncontract W\n  associate X\ncontract Gz\n  associate Z\ncontract G<A>\n  clause Self.(Gz).Z is Opt<A>.(W).X\ncontract Q<A>\n  clause List<A>.(W).X is Copy\ninput T is G<B0>\ninput T is Gz\ninput Opt<B0> is List<i32>\ninput S is Q<i32>";
-        failures += Expect("a kid that is not a Type yet (shape5): a free Contract argument under the pattern's kid", Shape5, "T.(Gz).Z is Copy", "+ C");
-        failures += Expect("a kid that is not a Type yet, one level deeper (shape7)", Shape5.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X").Replace("List<A>.(W).X", "Ev<List<A>>.(W).X"), "T.(Gz).Z is Copy", "+ C");
+        // Proposal B (2026-10-22) changes these two cases' meaning: the premise `Opt<B0> is List<i32>` is a structural conflict
+        // (B 3.3, 3.10: a premise error of the declaration; the reference's `!`), and a conflicting class agrees with nothing
+        // (rule 7), so the request supplies nothing; before B they were `+ C` through that identity. The R4-B2 witness keeps a
+        // valid form below (`B0 is i32`, both clauses over `Opt`): the kid `Opt<B0>` of the promise is still not a Type when the
+        // promise is matched and is decided once built.
+        failures += Expect("a kid that is not a Type yet (shape5): a free Contract argument under the pattern's kid", Shape5, "T.(Gz).Z is Copy", "none C");
+        failures += Expect("a kid that is not a Type yet, one level deeper (shape7)", Shape5.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X").Replace("List<A>.(W).X", "Ev<List<A>>.(W).X"), "T.(Gz).Z is Copy", "none C");
+        const string Shape5B = """
+            contract Copy
+            contract W
+              associate X
+            contract Gz
+              associate Z
+            contract G<A>
+              clause Self.(Gz).Z is Opt<A>.(W).X
+            contract Q<A>
+              clause Opt<A>.(W).X is Copy
+            input T is G<B0>
+            input T is Gz
+            input B0 is i32
+            input S is Q<i32>
+            """;
+        failures += Expect("a kid that is not a Type yet is decided once built (shape5, valid under B)", Shape5B, "T.(Gz).Z is Copy", "+ C");
+        failures += Expect("a kid that is not a Type yet, one level deeper (shape7, valid under B)", Shape5B.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X"), "T.(Gz).Z is Copy", "+ C");
 
         // The round-4 review's seven variants of R3-B1 (each none on f550b474, + here and in the reference).
         const string Inv3 = "contract Copy\ncontract R\n  associate N\n  clause Self.(R).N.(R).N.(R).N is Self\ninput T is R\ninput V is R\ninput V is Copy\ninput T.(R).N is i32\ninput V.(R).N is i32";

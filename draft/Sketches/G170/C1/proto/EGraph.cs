@@ -21,6 +21,7 @@ public sealed class EGraph
     private readonly List<(int A, int B)> pending = new();
     private readonly List<int> constructorOf = new();
     private readonly List<bool> conflicting = new();
+    private readonly List<bool> retired = new();
 
     public int Nodes => this.memo.Count;
 
@@ -54,7 +55,11 @@ public sealed class EGraph
 
     public int ClassOfNode(int node) => this.Find(this.classOf[node]);
 
-    public IEnumerable<int> UsesOf(int c) => this.usesOf[this.Find(c)];
+    public IEnumerable<int> UsesOf(int c) => this.usesOf[this.Find(c)].Where(n => !this.retired[n]);
+
+    /// <summary>Whether the node's key is owned by another node since a merge: the same Type, no member of any class (one node per
+    /// Type; a duplicate member would be matched as another one).</summary>
+    public bool Retired(int node) => this.retired[node];
 
     /// <summary>The class's constructor (its Prim or Con node; -1 when abstract). A conflicting class answers one of its constructors.</summary>
     public int Constructor(int c) => this.constructorOf[this.Find(c)];
@@ -125,6 +130,7 @@ public sealed class EGraph
         this.memo.Add(key, node);
         this.constructorOf.Add(head is SymHead { Kind: SymKind.Prim or SymKind.Con } ? node : -1);
         this.conflicting.Add(false);
+        this.retired.Add(false);
         this.Classes++;
         foreach (var k in canonical)
         {
@@ -249,12 +255,20 @@ public sealed class EGraph
                 this.keyOf[node] = key;
                 if (this.memo.TryGetValue(key, out var other) && other != node)
                 {
-                    // Congruence: same head over identical kids. Its explanation is that of the kids.
+                    // Congruence: same head over identical kids. Its explanation is that of the kids. The node is the key's owner's
+                    // Type: it leaves its class (one node per Type; a duplicate member would be matched as another one, and
+                    // duplicates multiply through nested patterns).
                     var pc = this.Find(this.classOf[node]);
                     var oc = this.Find(this.classOf[other]);
                     if (pc != oc)
                     {
                         this.pending.Add((pc, oc));
+                    }
+
+                    if (!this.retired[node])
+                    {
+                        this.retired[node] = true;
+                        this.nodesOf[pc].Remove(node);
                     }
                 }
                 else
