@@ -35,26 +35,33 @@ public class CallableEffectBoundTest
         Assert.Contains("mutable static", error.Label);
     }
 
-    // The Specification row pins code and location only: its Reason waits for PLAN G219's one rule for an effect specification.
     [Theory]
     [InlineData("Copy", "F is Copy", "effect confined", "single Callable")]
     [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable")]
     [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable")]
-    [InlineData("Specification", "F is Callable<() -> i32>", "effect Runner.run confined", null)]
     [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined")]
-    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string? cause)
+    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string cause)
     {
         var source = $"func check<F>(f: F) -> ()\n    {constraint}\n        {bounds}\n    return\npublic func main() => ()\n";
         var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal("InvalidEffectBound_Kd", record.Code);
         Assert.Equal(bounds[(bounds.LastIndexOf('\n') + 1)..].TrimStart(), source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
-        if (cause is not null)
-        {
-            Assert.Contains(cause, record.Label);
-        }
-
+        Assert.Contains(cause, record.Label);
         Assert.NotEmpty(record.Related!);
         Assert.False(string.IsNullOrEmpty(name));
+    }
+
+    // SPEC 8.11.3, 8.11.4: an invalid item supplies no bound, so the clause after it is no duplicate (PLAN G219, c2).
+    [Theory]
+    [InlineData("effect Runner.run confined", "InvalidEffectBound_Kd", "effect Runner.run confined")]
+    [InlineData("effect bogus", "ExpectedSyntax_Kd", "bogus")]
+    public void AnInvalidItemIsNoEarlierBound(string invalid, string code, string at)
+    {
+        var source = "contract Runner\n    func run(self: ref/Self) -> i32\n" +
+            $"func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        {invalid}\n        effect confined\n    return\npublic func main() => ()\n";
+        var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, record.Code);
+        Assert.Equal(source.IndexOf(at, StringComparison.Ordinal), record.Span!.Value.Start);
     }
 
     [Theory]
@@ -209,9 +216,9 @@ public class CallableEffectBoundTest
         Assert.Equal((invalid ? 1 : 0) + (independent ? 1 : 0), records.Length);
         if (invalid)
         {
-            // Code and location only: the Reason waits for PLAN G219's one rule for an effect specification.
             var bound = Assert.Single(records, static record => record.Code == "InvalidEffectBound_Kd");
             Assert.Equal("effect Runner.run confined", source.Substring(bound.Span!.Value.Start, bound.Span.Value.Length));
+            Assert.Equal("an effect specification outside a Contract's items", bound.Label);
         }
 
         if (independent)

@@ -56,7 +56,8 @@ public sealed partial class Binding
         }
         else
         {
-            if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 || function.TypeConstraints.Count != 0 || function.EffectBounds.Count != 0)
+            if (function.Modifier != ModifierKind.Override || function.AttributeChain is not null || function.NameBoundaryIndex >= 0 ||
+                function.TypeConstraints.Count != 0)
             {
                 return "an override inherits access, attributes, the named-argument boundary, constraints and effects; do not redeclare them";
             }

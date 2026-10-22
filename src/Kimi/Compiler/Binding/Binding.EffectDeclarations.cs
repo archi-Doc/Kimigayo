@@ -8,7 +8,9 @@
 //   PrepareEffectBounds runs once per pass after them and before conformances are verified.
 // - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, and one rejection
 //   fact per invalid item (EffectBoundRejection), published as InvalidEffectBound_Kd at the item (ReportEffectBound).
-// - Invariants: every table is rebuilt per pass in reused storage; a rejection records facts, its text is formed at publication.
+// - Invariants: an item's position is decided by Misplaced alone, before its position's own checks; an item AppliesBound
+//   rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per pass in reused storage; a rejection records facts,
+//   its text is formed at publication.
 // - Prohibitions: no bound is searched for in implementations; no other component decides an effect item.
 
 using System.Diagnostics;
@@ -39,7 +41,7 @@ public sealed partial class Binding
     // SPEC 8.11.1: why an effect item declares no bound.
     private enum EffectRejection : byte
     {
-        SpecificationInRequirement,
+        SpecificationOutsideContract,
         ClauseOutsideRequirement,
         OutsideContract,
         NotContract,
@@ -214,6 +216,17 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 8.11.1, F.6: the one rule for where an effect item stands. A specification is a Contract item; a clause stands in a
+    // requirement's Constraint region, a Callable Constraint's effect list or an original virtual function's leading region,
+    // whose own checks follow; any other item declares no bound.
+    private static EffectRejection? Misplaced(EffectBoundKoto effect) => effect.Parent switch
+    {
+        ContractKoto => effect.IsSpecification ? null : EffectRejection.ClauseOutsideRequirement,
+        FunctionKoto { IsRequirement: true, Parent: ContractKoto } or IsKoto or FunctionKoto { IsVirtual: true } =>
+            effect.IsSpecification ? EffectRejection.SpecificationOutsideContract : null,
+        _ => EffectRejection.OutsideContract,
+    };
+
     // SPEC 8.11.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
     // conformances are verified against them.
     private void PrepareEffectBounds()
@@ -282,32 +295,15 @@ public sealed partial class Binding
             {
                 for (var e = 0; e < function.EffectBounds.Count; e++)
                 {
-                    var clause = function.EffectBounds[e];
-                    if (clause.CodeContext.RecoveryCause(clause) is not null)
+                    if (this.AppliesBound(function.EffectBounds[e]))
                     {
-                        continue;
-                    }
-
-                    if (clause.IsSpecification)
-                    {
-                        this.RejectEffectBound(clause, new(EffectRejection.SpecificationInRequirement, Requirement: function));
-                    }
-                    else
-                    {
-                        this.DeclareEffectBound(shape, clause, new(requirement, shape.Symbol));
+                        this.DeclareEffectBound(shape, function.EffectBounds[e], new(requirement, shape.Symbol));
                     }
                 }
             }
-            else if (contract.Members[m] is EffectBoundKoto effect && effect.CodeContext.RecoveryCause(effect) is null)
+            else if (contract.Members[m] is EffectBoundKoto effect && this.AppliesBound(effect) && this.EffectTarget(shape, effect, scope) is { } target)
             {
-                if (!effect.IsSpecification)
-                {
-                    this.RejectEffectBound(effect, new(EffectRejection.ClauseOutsideRequirement));
-                }
-                else if (this.EffectTarget(shape, effect, scope) is { } target)
-                {
-                    this.DeclareEffectBound(shape, effect, target);
-                }
+                this.DeclareEffectBound(shape, effect, target);
             }
         }
 
@@ -330,8 +326,15 @@ public sealed partial class Binding
             for (var e = 0; e < clause.EffectBounds.Count; e++)
             {
                 var effect = clause.EffectBounds[e];
+                if (!this.AppliesBound(effect))
+                {
+                    // A misplaced item or a recovery has its own cause and supplies no bound, so it is no earlier one (SPEC 8.11.3).
+                    this.BindEffectBound(effect);
+                    continue;
+                }
+
                 EffectRejection? rejection = null;
-                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable || effect.IsSpecification)
+                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable)
                 {
                     rejection = EffectRejection.CallableForm;
                 }
@@ -369,7 +372,7 @@ public sealed partial class Binding
             for (var i = 0; i < function.EffectBounds.Count; i++)
             {
                 var effect = function.EffectBounds[i];
-                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
+                if (this.AppliesBound(effect) && this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
                 {
                     confined = effect;
                 }
@@ -484,10 +487,10 @@ public sealed partial class Binding
     private void RejectEffectBound(EffectBoundKoto effect, EffectBoundRejection rejection)
         => (this.effectBoundRejections ??= new(ReferenceEqualityComparer.Instance))[effect] = rejection;
 
-    // SPEC 8.11.1: an effect item declares a bound of its Contract. A rejected bound word leaves a recovery whose checks
-    // rest on the syntax Error; an item outside a Contract declares nothing.
-    // Whether an effect bound applies: one the declaration checks rejected, or a recovery, declares nothing.
-    private bool AppliesBound(EffectBoundKoto bound) => this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
+    // SPEC 8.11.3: whether an effect item supplies its bound. A misplaced item, one a declaration check rejected and a recovery,
+    // whose checks rest on its syntax Error, supply none; every reader of an item asks this first.
+    private bool AppliesBound(EffectBoundKoto bound)
+        => Misplaced(bound) is null && this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
 
     private BoundType? BindEffectBound(EffectBoundKoto effect)
     {
@@ -504,9 +507,9 @@ public sealed partial class Binding
             return Complete(effect, null);
         }
 
-        if (DeclaringContract(effect) is null && effect.Parent is not IsKoto and not FunctionKoto { IsVirtual: true })
+        if (Misplaced(effect) is { } position)
         {
-            this.RejectEffectBound(effect, new(EffectRejection.OutsideContract));
+            this.RejectEffectBound(effect, new(position));
         }
 
         return this.effectBoundRejections?.ContainsKey(effect) == true ? this.Fail(effect, BindingFailure.InvalidEffectBound) : Complete(effect, BoundType.Unit);
@@ -528,7 +531,8 @@ public sealed partial class Binding
         var earlierOwner = rejection.Earlier is { } previous ? DeclaringContract(previous)?.BoundSymbol?.Name ?? (previous.Parent as FunctionKoto)?.Name : null;
         var (cause, note) = rejection.Kind switch
         {
-            EffectRejection.SpecificationInRequirement => ("an effect specification in a requirement", "An effect specification names an inherited requirement and is a Contract item; a requirement's own bound is an effect clause"),
+            EffectRejection.SpecificationOutsideContract => ("an effect specification outside a Contract's items",
+                "An effect specification is a Contract item and bounds a requirement the Contract inherits; this position takes effect clauses"),
             EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
             EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
