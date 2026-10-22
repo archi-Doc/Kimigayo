@@ -21,10 +21,10 @@
 // Proven Aborts at its site's location (SPEC 22.5.1; in a caller-location body the location it received, R5-M93); I7 every Type is
 // Layout.Of(TypeOf(item, t)); I8 a call's target is the collector's at its site, read by one forward cursor; I9 no nsw, nuw or inbounds;
 // I10 no store i1. A warm write allocates nothing.
-// Files: the dispatch, the unconditional branch and the records (this file); the operands' and constants' values, the representations,
-// a site's location and the text's spelling (FunctionCodegen.Values.cs); the function's frame: homes, prologue and return (.Frame.cs);
-// parameter passing: its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place writer
-// (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs),
+// Files: the dispatch, the unconditional branch and the records (this file); the operands' and constants' values, the representations
+// and a site's location (FunctionCodegen.Values.cs); the text's spelling (.Spelling.cs); the function's frame: homes, prologue and return
+// (.Frame.cs); parameter passing: its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place
+// writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs),
 // operators (.Arithmetic.cs), casts by their kind (.Casts.cs) and the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value
 // calls (.Closures.cs), intrinsics (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a
 // value's destruction one level per Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the

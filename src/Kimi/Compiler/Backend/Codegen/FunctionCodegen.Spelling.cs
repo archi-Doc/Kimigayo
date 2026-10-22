@@ -1,0 +1,103 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Globalization;
+using static Kimi.Compiler.Backend.LlvmModuleText;
+
+namespace Kimi.Compiler.Backend;
+
+// The text's spelling of FunctionCodegen (R5 package C 3.2 I1): a value of the text and its name (Value), a local's or literal's spelling
+// (Spell, LlvmScalarText's operand precondition), a named one's (Spelled: a pooled constant, a parameter, an item's global), a value and a
+// branch target written into the function's text (WriteValue, WriteLabel), and a check's failure operands spelled for LlvmScalarText's
+// failure block (Failure), which writes the branch and the Abort. Spelling writes nothing but names and allocates nothing.
+internal sealed partial class FunctionCodegen
+{
+    // The longest spelling of an operand, a label or a location operand: a two-character prefix and an Int128, or @ and a constant's name.
+    private const int SpellingLength = 48;
+
+    // A value's spelling (LlvmScalarText's operand precondition): a prefixed name such as %t<n>, a floating constant's hexadecimal double
+    // or an integer's signed decimal.
+    private static ReadOnlySpan<char> Spell(Value value, Span<char> text)
+    {
+        if (value.Prefix == 'n')
+        {
+            "null".CopyTo(text);
+            return text[..4];
+        }
+
+        if (value.Prefix == 'x')
+        {
+            "0x".CopyTo(text);
+            unchecked((ulong)value.Number).TryFormat(text[2..], out var hex, "X16", CultureInfo.InvariantCulture);
+            return text[..(2 + hex)];
+        }
+
+        var start = 0;
+        if (value.Prefix != '\0')
+        {
+            text[0] = '%';
+            text[1] = value.Prefix;
+            start = 2;
+        }
+
+        value.Number.TryFormat(text[start..], out var digits, default, CultureInfo.InvariantCulture);
+        return text[..(start + digits)];
+    }
+
+    // The failure of a check named by the number id (abort<id>, the success label c<id>), which Aborts at its site's location (SPEC 22.5.1,
+    // Location), spelled into text (3 * SpellingLength characters).
+    private ScalarCheck Failure(int id, Site site, Span<char> text) => new(
+        id,
+        Spell(new('c', id), text[..SpellingLength]),
+        this.Spelled(site.Text, text.Slice(SpellingLength, SpellingLength)),
+        this.Spelled(site.Length, text[(2 * SpellingLength)..]));
+
+    // A branch target: the label of a block, b<index> (I1).
+    private void WriteLabel(int block)
+    {
+        this.output.Write("label %b");
+        WriteNumber(this.output, block);
+    }
+
+    private void WriteValue(Value value)
+    {
+        if (value.Prefix == 'h')
+        {
+            this.WriteHome((int)value.Number);
+            return;
+        }
+
+        this.output.Write(this.Spelled(value, stackalloc char[SpellingLength]));
+    }
+
+    // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, an
+    // adapter item's table's @__kimi_erase<item>_table (ModuleCodegen.AdapterPrefix), or Spell's.
+    private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
+    {
+        if (value.Prefix == 'g')
+        {
+            text[0] = '@';
+            ModuleCodegen.AdapterPrefix.CopyTo(text[1..]);
+            var at = 1 + ModuleCodegen.AdapterPrefix.Length;
+            value.Number.TryFormat(text[at..], out var digits, default, CultureInfo.InvariantCulture);
+            ModuleCodegen.TableSuffix.CopyTo(text[(at + digits)..]);
+            return text[..(at + digits + ModuleCodegen.TableSuffix.Length)];
+        }
+
+        if (value.Prefix is not ('@' or 'p'))
+        {
+            return Spell(value, text);
+        }
+
+        var name = value.Prefix == '@' ? this.module.Constants[(int)value.Number].Name : this.abi.Parameters[(int)value.Number].Name;
+        text[0] = value.Prefix == '@' ? '@' : '%';
+        name.CopyTo(text[1..]);
+        return text[..(name.Length + 1)];
+    }
+
+    // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
+    // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
+    // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the home of local Number, its address
+    // (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or
+    // the literal integer Number (Prefix NUL).
+    private readonly record struct Value(char Prefix, Int128 Number);
+}

@@ -1,6 +1,5 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-using System.Globalization;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
 using static Kimi.Compiler.Backend.LlvmModuleText;
@@ -13,9 +12,6 @@ namespace Kimi.Compiler.Backend;
 // 22.5.1-22.5.2).
 internal sealed partial class FunctionCodegen
 {
-    // The longest spelling of an operand, a label or a location operand: a two-character prefix and an Int128, or @ and a constant's name.
-    private const int SpellingLength = 48;
-
     // The first UnaryOp's row.
     private static readonly int UnaryRows = Enum.GetValues<MirBinaryOp>().Length;
 
@@ -128,35 +124,6 @@ internal sealed partial class FunctionCodegen
         return complete ? rows : throw new InvalidOperationException("The operator table needs a row per MIR operator and an entry per column.");
     }
 
-    // A value's spelling (LlvmScalarText's operand precondition): a prefixed name such as %t<n>, a floating constant's hexadecimal double
-    // or an integer's signed decimal.
-    private static ReadOnlySpan<char> Spell(Value value, Span<char> text)
-    {
-        if (value.Prefix == 'n')
-        {
-            "null".CopyTo(text);
-            return text[..4];
-        }
-
-        if (value.Prefix == 'x')
-        {
-            "0x".CopyTo(text);
-            unchecked((ulong)value.Number).TryFormat(text[2..], out var hex, "X16", CultureInfo.InvariantCulture);
-            return text[..(2 + hex)];
-        }
-
-        var start = 0;
-        if (value.Prefix != '\0')
-        {
-            text[0] = '%';
-            text[1] = value.Prefix;
-            start = 2;
-        }
-
-        value.Number.TryFormat(text[start..], out var digits, default, CultureInfo.InvariantCulture);
-        return text[..(start + digits)];
-    }
-
     // An operator into its Place: its operands in their computation representation, its row's entry for the left operand's Type, the
     // operation with its check unless Proven, and the result stored in the Place's storage representation (bool widened).
     private void Operator(in MirStatement statement)
@@ -255,14 +222,6 @@ internal sealed partial class FunctionCodegen
                 throw new InvalidOperationException($"The check {check} has no writer.");
         }
     }
-
-    // The failure of a check named by the number id (abort<id>, the success label c<id>), which Aborts at its site's location (SPEC 22.5.1,
-    // Location), spelled into text (3 * SpellingLength characters).
-    private ScalarCheck Failure(int id, Site site, Span<char> text) => new(
-        id,
-        Spell(new('c', id), text[..SpellingLength]),
-        this.Spelled(site.Text, text.Slice(SpellingLength, SpellingLength)),
-        this.Spelled(site.Length, text[(2 * SpellingLength)..]));
 
     // SPEC 5.3: p + n and p - n displace a raw pointer by n * stride(T) bytes, T's stride in the item's instance, unchecked (overflow is
     // undefined behavior); a zero stride keeps the pointer, null included. The bytes go through the place writer's Offset.
