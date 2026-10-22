@@ -1,7 +1,9 @@
 // Signatures implemented by the compiler; loaded into Kimi.Storage (SPEC 22.2). Their comments state their operation
 // contracts (SPEC 5.2).
 // Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
-// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4).
+// borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4). A remainder's `storage` lies where its Field's
+// Origin states (SPEC 5.7): within what `a` covers for a borrowing remainder, in storage the remainder owns for an
+// owning one. A pointer read from a shared remainder's `storage` has no write authority (SPEC 5.2.1).
 // Array element storage is raw storage (SPEC 3.4). Its pointer is null while the capacity is zero, and otherwise a
 // zero-byte `Raw.allocate` result or the start of an unreleased allocation of `capacity` elements, which `Raw.release`
 // accepts as an `allocate` result. A pointer to it has that storage as provenance, a zero-byte result its own
@@ -54,7 +56,7 @@ internal func borrowStorageUniq<E>(value: uniq/(UniqSlice<E> during source) duri
 ///
 /// - safety: Writes through the result keep the Handle consistent with its slot storage and the slot invariant that
 ///   DictionaryStorage.Links states.
-internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/u8, isize)
+internal unsafe func dictionaryStorage<K, V>(value: uniq/Dictionary<K, V>) -> (raw/Dictionary<K, V> during value, isize)
     K is Equatable
 // Fails with the caller location carried by the standard operation's private ABI.
 internal func missingDictionaryKey() -> Never
@@ -78,4 +80,5 @@ internal unsafe func transferBytes(destination: raw/u8, source: raw/u8, count: i
 ///
 /// - safety: `handle` is the address that `dictionaryStorage<K, V>` returned, and the Dictionary stores no key equal to
 ///   `key`, as the ordinary source decides.
-internal unsafe func placeEntry<K, V>(handle: raw/u8, key: K, value: V)
+internal unsafe func placeEntry<K, V>(handle: raw/Dictionary<K, V>, key: K, value: V)
+    K is Equatable

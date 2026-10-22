@@ -816,6 +816,21 @@ public sealed partial class MirBorrowsTest(ITestOutputHelper output)
             Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4): a Dictionary literal places each entry through placeEntry, whose handle `raw/Dictionary<K, V>`
+    // admits K and V, so an element keeps its Loan: writing the borrowed Place while the Dictionary is used afterwards errs. A5 has no raw
+    // holders or addresses until G160-4 (R4-M95), so the valid twins (the Dictionary dead, the entry removed) are G160-4's ledger rows.
+    [Fact]
+    public void ADictionaryLiteralKeepsItsElementsLoans()
+        => Assert.Equal(
+            ["literal: value = 99"],
+            Problems("""
+                func literal()
+                    var value = 42
+                    let entries = [1: value@ref]
+                    value = 99
+                    inspect(entries)
+                """));
+
     // SPEC 15.6, 15.6.4 (A3 E14, review B4): an intrinsic's call retains as its library declaration says. Raw.initialize stores its value
     // into the raw storage, which the body does not own (E), so its Loans are checked at every later point: a write or an exclusive use of
     // the borrowed Place after it errs, and a local's borrow outlives the local (its end errs) unless a write ended it first; a parameter's

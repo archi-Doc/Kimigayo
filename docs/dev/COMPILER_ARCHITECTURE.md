@@ -208,7 +208,9 @@ first. IntrinsicId returns to 30 at R8.
   owner's second exception for G160 (2026-10-22): the old Emission's `HasInferenceOrigin` treats a meet with an inferred operand as
   inferred until R6-gen (DECISIONS BU-24), and the owner's third exception for G160 (2026-10-22, 「D5 例外を広げる (推奨)」): the old
   analysis's `ProjectPointer` compares a stored part's Type with the node's without raw Origins until R6-check (DECISIONS BU-24),
-  and the owner's exception for Abstract
+  and the owner's exception for G160-3 (2026-10-22, 「認める」): the old Emission's Dictionary layout and placement checks take
+  G160-3's `raw/Dictionary<K, V>` handle in place of `raw/u8` until R6-gen (`BodyLowering.DictionaryStorage`,
+  `BodyLowering.Dictionaries`; DECISIONS BU-24), and the owner's exception for Abstract
   Calls Reach by Paths (2026-10-22): the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
   and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and rejects G193's
   forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner (DECISIONS

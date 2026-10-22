@@ -292,7 +292,7 @@ internal sealed partial class MirBuilder
     {
         var find = CallPlan.Of(dictionary)!;
         var type = TypeOf(dictionary);
-        var layout = compilation.Library.Function(CompilerFunctionKind.StorageDictionaryLayout)!.Type!;
+        var layout = compilation.Types.Tuple([compilation.Types.Pointer(type), BoundType.ISize]);
         ReadOnlySpan<BoundType?> slots = [type.Components[0], type.Components[1]];
         this.Set(destination, MirRvalue.Aggregate(MirAggregateKind.FixedArray, this.body.Operands.Length, 0, type), dictionary);
         foreach (var entry in dictionary.Entries)

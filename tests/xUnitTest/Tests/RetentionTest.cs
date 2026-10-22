@@ -428,6 +428,15 @@ public sealed class RetentionTest
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));
 
+    // G147 (1), G160-3 (SPEC 5.7, 15.6.4): placeEntry's handle `raw/Dictionary<K, V>` admits K and V, so the call stores its key and value
+    // (and, as Raw.initialize, possibly the handle) in the Dictionary the handle addresses; the earlier `raw/u8` handle admitted nothing.
+    [Fact]
+    public void PlaceEntryStoresThePairThroughItsHandle()
+    {
+        var c = Bind(string.Empty);
+        Assert.Equal("0 Value store 0, 1 Value store 0, 2 Value store 0", Show(c.Types.Retains(c.Library.GetSymbol(KimiDeclarationId.StoragePlaceDictionaryEntry)!, null, null)));
+    }
+
     // Every call of the Kimi library and the milestone programs, an intrinsic's included, has a retention under its substitution, for the
     // callee MIR names (a direct base call's implementation, an intrinsic's library declaration), or over its declared Callable signature,
     // whose rows name its inputs: each call's Subst instantiates the contract.
