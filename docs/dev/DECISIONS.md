@@ -5851,9 +5851,9 @@ structure is recorded here by the unit that first implements it.
   deletes A5-F6 and A5P-S2 (abstract calls reach by paths: `preserves results`, rule 3, delegation and P12 deleted), so ask A-7 ("A5-F6
   (with A5P-S2) before R4's exit") and rank 13's "need A5-F6 and A5P-S2" have no object. H5's prerequisite A-7 becomes R4's units U0-U5,
   which R4's exit counts in place of G:A5-F6 (R4-M106). H5's deletions shrink to match: U2 removes `EffectSummary`'s `preserves` half
-  (about -810 lines over Binding, the grammar and the library) and U1 retires `CallEffectConflict_Kd` with the old Analysis's rules 1 and 3 (its DIAGNOSTICS rows and the
-  difference ledger's `a5-old-effects` cells), so H5 deletes what remains of the old effect checks, `confined`'s, by the same row. The
-  plan's text is frozen; this entry supersedes those clauses. Nothing in R5's code depends on them.
+  (about -810 lines over Binding, the grammar and the library) and U1 retires `CallEffectConflict_Kd` with the old Analysis's rules 1
+  and 3 (its DIAGNOSTICS rows and the difference ledger's `a5-old-effects` cells), so H5 deletes what remains of the old effect checks,
+  `confined`'s, by the same row. The plan's text is frozen; this entry supersedes those clauses. Nothing in R5's code depends on them.
 - **R5-M99 Drop flags in MIR code generation (C4b)** (2026-10-22, C lane; plan C4b, package C 3.2 I2 and I6, 3.9; the planning session's
   rulings on C4b's design (Q1-Q4); under R5-M18 form 1, R4-M6a and R5-M95)
   - Rule (SPEC 16.2.1, 15.1, 16.3.2; R4-M6a): a value initialized or moved on some paths only is destroyed exactly where it is Initialized
