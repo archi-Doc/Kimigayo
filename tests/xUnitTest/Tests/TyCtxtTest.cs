@@ -106,6 +106,14 @@ public sealed class TyCtxtTest
     private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
         "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
 
+    // A raw Field and a Case payload stating `self`, and a raw Field stating a slot, held under a local's Origin and under `static`.
+    private const string RawShapeSource = "struct Block\n    internal let data: raw/u8 during self\n    public init() => self.data = null\n" +
+        "enum Cell\n    Some(raw/u8 during self)\n    None\n" +
+        "struct View<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+        "    public init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
+        "func held(view: View<i32> during static) -> View<i32> during static => view\n" +
+        "func local(x: ref/i32) -> i32\n    let v = View<i32>.init(x)\n    let b = Block.init()\n    let c = Cell.None\n    return 0\n";
+
     // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
     // function over the struct's Type parameter.
     private const string ComposeSource = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
@@ -387,41 +395,27 @@ public sealed class TyCtxtTest
     public void AnErasedInstanceStoresTheErasedTypes(string name)
     {
         var (c, _) = SemanticSnapshotTest.Bind(name);
-        var types = c.Types;
-        var seen = new HashSet<BoundType>();
-        var problems = new List<string>();
-        var instances = 0;
-        foreach (var body in c.BuildMir().Bodies)
-        {
-            foreach (var local in body.Locals)
-            {
-                Visit(local.Type);
-            }
-        }
+        var instances = new List<BoundType>();
+        var problems = ErasedStoreProblems(c, instances);
+        Assert.True(problems.Count == 0 && instances.Count > 0, $"{instances.Count} instances; {problems.Count} differ:\n{string.Join('\n', problems.Take(20))}");
+    }
 
-        Assert.True(problems.Count == 0 && instances > 0, $"{instances} instances; {problems.Count} differ:\n{string.Join('\n', problems.Take(20))}");
-
-        void Visit(BoundType type)
-        {
-            if (!seen.Add(type))
-            {
-                return;
-            }
-
-            foreach (var part in type.Components)
-            {
-                Visit(part);
-            }
-
-            if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
-            {
-                instances++;
-                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
-                {
-                    problems.Add(TyCtxt.Name(type));
-                }
-            }
-        }
+    // DECISIONS BU-24 (design-final §15): an instance's stored shapes state no raw Origin, so the property above holds where the erased
+    // instance is the user's own Type: a raw Field and payload stating `self` (a Type without Origins erases to itself) and a raw Field
+    // stating a slot (its erased instance is the `during static` Type a parameter states).
+    [Fact]
+    public void AnInstanceStoresNoRawOrigin()
+    {
+        var c = MinimalEmissionTest.Analyze(RawShapeSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var instances = new List<BoundType>();
+        var problems = ErasedStoreProblems(c, instances);
+        Assert.True(problems.Count == 0, $"{problems.Count} differ:\n{string.Join('\n', problems)}");
+        var views = instances.Where(static x => TyCtxt.Name(x) == "View<i32>").ToArray();
+        Assert.Equal(2, views.Length);
+        var erased = Assert.Single(views, x => ReferenceEquals(c.Types.Erase(x), x));
+        Assert.All(views, x => Assert.Same(erased, c.Types.Erase(x)));
+        Assert.All(["Block", "Cell"], x => Assert.Contains(instances, y => TyCtxt.Name(y) == x && ReferenceEquals(c.Types.Erase(y), y)));
     }
 
     // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it is the call Binding forwards into that
@@ -622,6 +616,46 @@ public sealed class TyCtxtTest
     }
 
     // A struct's Fields and base, or an enum's Case payloads.
+    // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store
+    // the erasure of what they store.
+    private static List<string> ErasedStoreProblems(Compilation c, List<BoundType> instances)
+    {
+        var types = c.Types;
+        var seen = new HashSet<BoundType>();
+        var problems = new List<string>();
+        foreach (var body in c.BuildMir().Bodies)
+        {
+            foreach (var local in body.Locals)
+            {
+                Visit(local.Type);
+            }
+        }
+
+        return problems;
+
+        void Visit(BoundType type)
+        {
+            if (!seen.Add(type))
+            {
+                return;
+            }
+
+            foreach (var part in type.Components)
+            {
+                Visit(part);
+            }
+
+            if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
+            {
+                instances.Add(type);
+                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
+                {
+                    problems.Add(TyCtxt.Name(type));
+                }
+            }
+        }
+    }
+
     private static IEnumerable<BoundType?> Stored(BoundType type) => AdtDef.IsStruct(type)
         ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(type, x)).Append(AdtDef.Base(type)) : AdtDef.CaseTypes(type) ?? [];
 

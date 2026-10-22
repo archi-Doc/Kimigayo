@@ -28,8 +28,8 @@ public enum OriginKind : byte
     // destination like static, while ownership analysis checks the borrow's Loan and those derived from it under the anchor.
     Anchor,
 
-    // SPEC 5.7 (DECISIONS BU-24): `self` on a raw layer in inline storage, the holding value; only in stored shapes, every read
-    // replaces it (Binding.ReadHolder).
+    // SPEC 5.7 (DECISIONS BU-24): `self` on a raw layer in inline storage, the holding value; only in declared Field and payload
+    // Types, never in an instance's stored Types; every read replaces it (Binding.ReadHolder).
     Holder,
 
     // SPEC 5.7 (DECISIONS BU-24): Shared(L), Operands [L], the region of the label L reached through a shared borrow; only as a raw

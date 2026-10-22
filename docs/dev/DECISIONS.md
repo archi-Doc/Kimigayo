@@ -3781,7 +3781,7 @@ resumed by R4-M86 (2026-10-20).
   Q-O3 (owner, directly, 2026-10-22): 「D5 例外を認める (推奨)」. D5 exception: the old paths read every Type through
   `Binding.WithoutRawOrigins` (one view: every raw layer's Origin dropped) at their Type intake: `OwnershipAnalysis.Place` and
   `OwnershipBody.Resolve` together (removed with the old analysis at R6-check) and Emission's `AdtDef.CaseTypes` reads in
-  `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (removed at R6-gen). `RawStorageTest`'s `RawOriginLegacy`
+  `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (deleted with instance shapes below). `RawStorageTest`'s `RawOriginLegacy`
   fixtures emit and run the measured programs and B1's newly valid forms on the default pipeline. Ruling on `PublishedStep`:
   `Reached` records a located `InternalInvariant_Kd` at the dereference; `Restep`'s throw stays, unreachable by Raw Origins' contract.
   bu23's findings (G160-3's library annotations, 2026-10-22): S1, `BindDeclarations` computes the Origin requirements before
@@ -3798,6 +3798,17 @@ resumed by R4-M86 (2026-10-20).
   and publishes a rejected layer unstated in every Type written around it up to the declared Type its symbol holds (`Unpublish`,
   through `TyCtxt.Rebuild`), so no substitution, inline layout or dereference re-steps it (they faulted before); a body's annotations
   are judged in `ValidateOriginRequirements` as before.
+  Instance shapes (design-final §15; the planning session, R4 agreed, 2026-10-22): an instance's stored Types (`Binding.Instance`,
+  read as `AdtDef.FieldType`, `Base` and `CaseTypes`) state no raw Origin (`WithoutRawOrigins` at `Substitute`'s three stores). An
+  erased instance is often the user's own Type (no Origins, or only `static`), so R5-M39's property (the erasure of a stored Type is
+  the stored Type of the erased instance; `TyCtxtTest`, over G160-3's annotated library and a `self` and slot twin) and M11 hold only
+  then. This supersedes design-final §7.1's stored-shape sentence ("AdtDef.FieldType, CaseTypes, which keep Holder"), with R4's
+  agreement and conditions: one published reader answers the raw Origin of an instance's stored layer, `TyCtxt.RawStep` with
+  `Restep`, from the declared Field Type or Case payload (`Holder` kept) under the instance's substitution, `self` read as the
+  holding value; A5 (G160-4 included) reads only it, never an instance's `FieldType` or `CaseTypes` for raw Origins nor its own
+  substitution; its contract states its cost (per layer, no allocation when warm) and that it is total over what Binding accepts
+  (an Unbound or erased slot gives Unstated, never a fault). The reader lands with C4. D5's third site, Emission's `CaseTypes`
+  reads, is deleted.
 
 ## R5 and R6 (adopted 2026-10-18)
 
