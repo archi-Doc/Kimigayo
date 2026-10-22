@@ -120,24 +120,6 @@ public sealed partial class Binding
     private static ExecutableBody AccessorBody(ExecutableBody body)
         => body.Definition?.Declaration is FunctionKoto { Accessor.SignatureSymbol: { } accessor } ? new(accessor) : body;
 
-    private static bool DeclarationAtom(BoundOrigin origin)
-    {
-        if (origin.Kind != OriginKind.Intersection)
-        {
-            return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.Unbound;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (!DeclarationAtom(origin.Operands[i]))
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
     // A Projection slot's role (2a0-D D7: only the view decodes slots; DECISIONS R4-M101 E5): a declaration binder (a function, accessor
     // or Property) by its slot, any other binder its own place.
     private static ProjectionRole RoleOf(BoundOrigin atom) => atom.Kind != OriginKind.Projection ? ProjectionRole.None : atom.Binder switch
@@ -200,7 +182,7 @@ public sealed partial class Binding
         }
     }
 
-    // The walk: every Origin obligation of the body-origin deadline, each in its body's unit, or a declaration's validated and left out.
+    // The walk: every Origin obligation of the body-origin deadline, each in its body's unit; a declaration's is a finding.
     private void PrepareOriginRows()
     {
         if (this.originRowsVersion == this.storageVersion)
@@ -221,17 +203,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            longer = this.CanonicalOrigin(this.OriginAtUse(longer, obligation.Use));
-            shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation.Use));
             if (!obligation.Body.IsBody)
             {
-                // E2: a declaration's row (its signature, a declared Property Type, a clause) names only the declaration's atoms.
-                if (!DeclarationAtom(longer) || !DeclarationAtom(shorter))
-                {
-                    this.OriginFinding(obligation.Use);
-                }
+                // DECISIONS BU-26: Binding's declaration judge consumes every row formed with no body whose ends are declaration atoms
+                // (JudgeDeclarationRows), so a remaining one is a broken contract.
+                this.OriginFinding(obligation.Use);
+                continue;
             }
-            else if (!ReferenceEquals(longer, shorter))
+
+            longer = this.CanonicalOrigin(this.OriginAtUse(longer, obligation.Use));
+            shorter = this.CanonicalOrigin(this.OriginAtUse(shorter, obligation.Use));
+            if (!ReferenceEquals(longer, shorter))
             {
                 var source = obligation.Clause is not null ? OriginRowSource.Declared : obligation.WellFormed ? OriginRowSource.WellFormed
                     : obligation.Discharge == OriginDischarge.CallBorrows ? OriginRowSource.CallBorrows : OriginRowSource.Fit;

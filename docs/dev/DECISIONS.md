@@ -2641,8 +2641,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Getter or Setter key (the execution function) to it, since that function is created lazily with state (a reading of E1).
   - E2 declaration rows: a row formed with no body lies in no slice; its ends must be `Parameter`, `Input`, `Static`, `Unbound` or meets
     of them, else `InternalInvariant_Kd` in a complete compilation. The old walk judges them until PLAN G210 (BU) gives them the
-    `Definition` deadline and a judge; then a body-origin row with no body is a broken contract. E3: signature rows are declaration rows
-    (SPEC 15.6.1, a definition's signature well-formedness is its premise), superseding the first round's ruling.
+    `Definition` deadline and a judge (superseded by BU-26: no deadline; Binding's judge consumes them); then a body-origin row with no
+    body is a broken contract. E3: signature rows are declaration rows (SPEC 15.6.1, a definition's signature well-formedness is its
+    premise; superseded by BU-26 in that such a row still needs a judge where the catalog publishes no premise), superseding the first
+    round's ruling.
   - E4 layer unit: rows and atoms of an instance Field's initializer belong to its struct; a constructor's slice is its own rows, then
     its layer's (`LayerStart`), the layer found by `AdtDef`'s constructor facts, never by listing Fields; the parts share Fixed atoms
     only (else `InternalInvariant_Kd`); layer rows are judged with the layer's oracle, the Type's public premises (Q1 (a): today's
@@ -3807,6 +3809,43 @@ resumed by R4-M86 (2026-10-20).
   Rejected: numbering parameters from 1 (moves every parameter atom and Input index); a receiver `OriginKind` (BU-17's reason: a copy
   of Projection's meaning in every reader, the frozen old path's among them). BU-17's rejected "own slot for the receiver symbol" was a
   way to separate the helper borrow, which keeps `HelperSlot`; it stands.
+- **BU-26** (2026-10-22; the BU planning session after the full process: designs A and B, the design review's merge M, R4
+  agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
+  body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
+  signature's well-formedness (a requirement's, an override's, a specialization's, a nested Function Type part) and a clause's
+  unrepresentable end. `Binding.JudgeDeclarationRows`, at the end of `ValidateOriginRelations` in every pass, consumes each such row
+  whose resolved ends are declaration atoms (E2's test; `DeclarationAtom` moved from the view to the judge, its only user): a `CallBorrows`
+  row unjudged (each call's borrow formation; the old walk's skip); a row with an `Unbound` end that the judge does not prove is the
+  located `Unsupported_Kd` at its use, whose part prerequisite is that end's binder (the pending Type occurrence), so `IsDerived`'s
+  existing clause derives it when the binder failed; any other, fixed-fixed, by the position judge `JudgeCallPosition` and one
+  `PublishCallRelations` (a failing meet operand per record, first and further records per node), from the premises visible at the
+  use (`ExtractOriginPremises`; no new entailment, 2a0-D §4). A row failing E2's test stays, and the view reports any remaining row
+  with no body (`OriginFinding`, `InternalInvariant_Kd` in a complete compilation); so no row whose resolved ends are declaration
+  atoms reaches a slice, MIR or the old walk (a row failing E2's test still reaches the old walk on the default pipeline, beside the
+  view's finding), and R6-check deletes nothing for G210.
+  - Catalog row (owner, Q1: 「足す (推奨)」): a use in a computed or requirement Property's header has its getter's input premises
+    (R2), since the header is the getter's result (SPEC 11.4, 11.5, 15.6.1) and its body assumes them (`HeaderGetter`). A
+    receiver-covered header (`computed view: ref/Self`, ReceiverShorthandTest's program) is accepted. G214 keeps the result-only
+    form: accessor R3 needs a Property read's result-premise check with it (probe `two-leak-use`: R3 alone returns a borrow of a
+    local as `ref/i32 during x`).
+  - Superseded in R4-M101 (reasons no longer holding): E2's "until G210 gives them the `Definition` deadline and a judge": the judge
+    consumes the rows, so no deadline exists (a `Definition` deadline would state `Body` none twice, reach `FailTypeRole` without a
+    kind arm and judge only in Final). E3's reading that signature rows need no judge overreached: a signature row is a tautology
+    only where the catalog publishes its premise; a nested Function Type part's per-call Origin is none (SPEC 15.3.4, 15.6.1; R3
+    stops there), so leaving it unjudged would accept an escape once R6-check removes the old walk. The slice rule (declaration
+    rows in no slice) stays R4-M101's.
+  - Default pipeline: the record's requirement moves from `Ownership.UnprovenOrigin` to `Binding.OriginRelation` (code, span,
+    label, Reason and related unchanged), and Binding is incomplete, so the old analysis stops for that compilation (G56). The owner
+    (Q2: 「受け入れる (推奨)」) accepts that ResultPremiseTest's `annotated` loses its body record (2 records to 1) as G56's recorded
+    limit until 2a0-3a changes the stop or R6-check. Independent records beside another Binding failure become visible (SPEC
+    23.1.2): a Field beside `return local@ref`, `mk`'s result in `converted`, an associated specification's Type beside
+    `InvalidOriginBinding_Kd`. Census (library, milestones, goldens, accepting SPEC variants): 57 rows with no body, 43
+    `CallBorrows` and 14 Proven; no verdict changes.
+  - Rejected: A's own `JudgeDeclarationRow` (a second copy of the per-operand meet rule and the record pairing); B's selection
+    without E2's test (a non-declaration end would form a row inside the compaction); the `Definition` deadline (above); a
+    declaration-relation table (a side table and a branch in `AddObligation`); judging class 1 only (leaves nested Function Type
+    obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
+    (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
 ## R5 and R6 (adopted 2026-10-18)
 
