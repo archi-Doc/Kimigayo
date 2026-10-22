@@ -1341,6 +1341,8 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Glues, OutputKind.Library)]
     [InlineData(Flags, OutputKind.Library)]
     [InlineData(Opens, OutputKind.Library)]
+    [InlineData(Closures, OutputKind.Library)]
+    [InlineData(Owners, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1432,6 +1434,8 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Glues, OutputKind.Library)]
     [InlineData(Flags, OutputKind.Library)]
     [InlineData(Opens, OutputKind.Library)]
+    [InlineData(Closures, OutputKind.Library)]
+    [InlineData(Owners, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

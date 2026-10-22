@@ -138,6 +138,19 @@ public class OriginPremiseCatalogTest
         Assert.Equal(code is null ? [] : [code], codes);
     }
 
+    // SPEC 11.4, 11.5, 15.6.1 (DECISIONS BU-26): a computed Property's header is its getter's result, so a use in it has the getter's
+    // input premises (R2): a header the receiver covers is well formed (ReceiverShorthandTest's program; two slots; a Property fulfilling
+    // a requirement). A relation the receiver does not cover stays unproven at the header and at the getter's result (PLAN G214).
+    [Theory]
+    [InlineData("struct S {source}\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
+    [InlineData("struct S {a, b}\n    var item: ref/i32 during a\n        get() -> ref/i32 during self.a => storage\n    var other: ref/i32 during b\n        get() -> ref/i32 during self.b => storage\n    computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
+    [InlineData("contract C\n    property view: ref/Self\n        get() -> ref/Self\nstruct S {source}\n    Self is C\n    var item: ref/i32 during source\n        get() -> ref/i32 during self.source => storage\n    public computed view: ref/Self\n        get() -> ref/Self during self => self\n", 0)]
+    [InlineData("struct Two {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", 2)]
+    public void AComputedHeaderHasItsGettersInputPremises(string body, int unproven)
+    {
+        Assert.Equal(Enumerable.Repeat(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), unproven), Check(body + Main).Codes);
+    }
+
     // SPEC 15.3.3, 15.6.1: a local's clause is an obligation, never a premise: it does not prove itself, and the enclosing clause
     // that would prove it does.
     [Fact]
