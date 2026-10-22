@@ -44,6 +44,14 @@ public class RawStorageTest
 
     private const string Remainder = "struct R<E> {source}\n    internal let at: raw/E during source\n    internal let loan: Loan<uniq/E during source>\n";
 
+    // The remainder's initializer from one exclusive element, and a pair taken from it by two raw Place borrows, written through.
+    private const string PairInit = "    public init(target: uniq/E during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n";
+
+    private const string PairUse = "    var state = source@move\n    unsafe\n        let lower = state.at[0]@uniq\n        let upper = state.at[1]@uniq\n" +
+        "        return .Some((lower@move, upper@move))\npublic func main()\n    var xs: [2 of i32] = [1, 2]\n    match pair(R<i32>.init(xs[0]@uniq))\n" +
+        "        .Some((let a, let b))\n            a@follow = 3\n            b@follow = 4\n        .None => ()\n" +
+        "    require xs[0] == 3 and xs[1] == 4 else => $abort(\"pair\")\n    Console.writeLine(\"Pair\")";
+
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
 
     [Fact]
@@ -302,8 +310,12 @@ public class RawStorageTest
 
     // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): the default pipeline generates and runs the programs Q-O3's
     // measurement found failing (q-o3-measure: `during self` holders, Case payloads built with null and matched, SPEC 5.6's Buffer and
-    // BufferView, Lenses, typed paths and pointers stating different Origins) and the forms B1 made valid; each runs natively.
+    // BufferView, Lenses, typed paths and pointers stating different Origins) and the forms B1 made valid; each runs natively. A generic
+    // instance's raw Place borrows of a remainder's slot-stated Field, met with their anchors, generate as the closed twin does (the
+    // owner's second D5 exception, design-final §15 B).
     [Theory]
+    [InlineData("RawOriginLegacyPairGeneric", Remainder + PairInit + "func pair<E>(source: R<E> during a) -> Option<(uniq/E during a, uniq/E during a)>\n" + PairUse, "Pair\n")]
+    [InlineData("RawOriginLegacyPairClosed", Remainder + PairInit + "func pair(source: R<i32> during a) -> Option<(uniq/i32 during a, uniq/i32 during a)>\n" + PairUse, "Pair\n")]
     [InlineData("RawOriginLegacyHolderNull", "struct Buf\n    internal var data: raw/i32 during self\n    public init() => self.data = null\npublic func main()\n    let b = Buf.init()\n    require b.data == null else => $abort(\"data\")\n    Console.writeLine(\"HolderNull\")", "HolderNull\n")]
     [InlineData("RawOriginLegacyHolderClaim", "struct Buf\n    internal let data: raw/i32 during self\n    public init()\n        unsafe\n            self.data = Raw.allocate<i32>(1)@(raw/i32 during self)\n            Raw.initialize(self.data, 7)\n    public func get(self: ref/Self) -> i32\n        unsafe => return self.data[0]\n    drop => unsafe => Raw.release(self.data)\npublic func main()\n    let b = Buf.init()\n    require b.get() == 7 else => $abort(\"get\")\n    Console.writeLine(\"HolderClaim\")", "HolderClaim\n")]
     [InlineData("RawOriginLegacyHolderDrop", "struct Holder\n    internal var data: raw/i32 during self\n    public init()\n        unsafe => self.data = Raw.allocate<i32>(1)@(raw/i32 during self)\n    drop => unsafe => Raw.release(self.data)\npublic func main()\n    let h = Holder.init()\n    Console.writeLine(\"HolderDrop\")", "HolderDrop\n")]

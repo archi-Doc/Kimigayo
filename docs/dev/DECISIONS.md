@@ -3809,6 +3809,12 @@ resumed by R4-M86 (2026-10-20).
   substitution; its contract states its cost (per layer, no allocation when warm) and that it is total over what Binding accepts
   (an Unbound or erased slot gives Unstated, never a fault). The reader lands with C4. D5's third site, Emission's `CaseTypes`
   reads, is deleted.
+  Second D5 exception (owner, directly, 2026-10-22: 「認める (推奨)」; design-final §15 B): the old Emission's escape for an
+  inferred Origin (`HasInferenceOrigin`, `BodyLowering.Values.cs`) treats a meet with an inferred operand as inferred, S3's
+  per-operand rule, removed at R6-gen. A raw Place borrow's Origin is its anchor met with the pointer's region (C2), often a local's
+  inferred region; `FitsVerifiedTypeAt` already judges a meet per operand, but a generic instance compares that body-local region
+  with the caller's substituted Origin, so its Aggregate transfer failed (`tryGetPairUniq` with G160-3's library, Milestone 33).
+  `RawOriginLegacyPairGeneric` and its closed twin emit and run.
 
 ## R5 and R6 (adopted 2026-10-18)
 
