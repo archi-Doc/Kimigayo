@@ -40,8 +40,8 @@ internal sealed partial class InstanceCollector
             return this.Implementation(program, item, subject, target.Target!, target.Subst);
         }
 
-        var key = target.Kind == RequirementTargetKind.Builtin ? new MonoKey(MonoKind.Builtin, default, Symbol: target.Target)
-            : new MonoKey(MonoKind.PropertyWitness, default, Symbol: target.Target, Variant: (byte)target.Access);
+        var key = target.Kind == RequirementTargetKind.Builtin ? new MonoKey(MonoKind.Builtin, default, null, target.Target, 0)
+            : new MonoKey(MonoKind.PropertyWitness, default, null, target.Target, (byte)target.Access);
         return this.AdmitType(item, subject, key, target.Subst!.Self!);
     }
 

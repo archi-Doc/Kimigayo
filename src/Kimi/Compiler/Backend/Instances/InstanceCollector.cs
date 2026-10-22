@@ -108,7 +108,7 @@ internal sealed partial class InstanceCollector
         {
             if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
             {
-                set.Add(new() { Key = new(MonoKind.Body, new(body.Key, null)), BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
+                set.Add(new() { Key = new(MonoKind.Body, new(body.Key, null), null, null, 0), BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
             }
         }
 

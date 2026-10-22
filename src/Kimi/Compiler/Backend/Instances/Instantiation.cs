@@ -32,7 +32,7 @@ internal enum MonoKind : byte
 /// <param name="Type">A type-driven item's erased Type (<see cref="TyCtxt.Erase(BoundType)"/>).</param>
 /// <param name="Symbol">A Builtin's compiler function or a property witness's Field.</param>
 /// <param name="Variant">A property witness's operation.</param>
-internal readonly record struct MonoKey(MonoKind Kind, Instantiation Body, BoundType? Type = null, BindingSymbol? Symbol = null, byte Variant = 0);
+internal readonly record struct MonoKey(MonoKind Kind, Instantiation Body, BoundType? Type, BindingSymbol? Symbol, byte Variant);
 
 /// <summary>A mono item of the checked set (K package 4.3, KD3): its key; a body item's representative, the first unerased closed
 /// substitution that admitted it, on which its proofs and Types are computed (null for a closed item, whose Types are its own), the MIR

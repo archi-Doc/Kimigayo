@@ -195,7 +195,7 @@ internal sealed partial class InstanceCollector
         _ when argument is null => -1,
         IntrinsicTarget.None => -1,
         IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
-        IntrinsicTarget.Descriptor => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default), argument),
+        IntrinsicTarget.Descriptor => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0), argument),
         IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
         _ => throw new InvalidOperationException($"The intrinsic target {target} has no Type argument row."),
     };
@@ -225,7 +225,8 @@ internal sealed partial class InstanceCollector
             return (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure ? this.Callee(program, item, subject, closed) : -1;
         }
 
+        var adapter = closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter;
         return rvalue.Kind != MirRvalueKind.Cast ? this.Callee(program, item, subject, closed)
-            : this.AdmitType(item, subject, new(closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter, default), closed);
+            : this.AdmitType(item, subject, new(adapter, default, null, null, 0), closed);
     }
 }

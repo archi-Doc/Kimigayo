@@ -65,7 +65,7 @@ internal sealed partial class InstanceCollector
             return -1;
         }
 
-        var key = new MonoKey(MonoKind.Body, new(target.Key, erased));
+        var key = new MonoKey(MonoKind.Body, new(target.Key, erased), null, null, 0);
         if (set.Find(key) is >= 0 and var found)
         {
             return found;
