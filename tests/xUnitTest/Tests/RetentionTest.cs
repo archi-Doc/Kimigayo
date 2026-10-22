@@ -278,7 +278,7 @@ public sealed class RetentionTest
         Assert.Equal(["0 Value result", "0 Value result"], ValueCalls(generic));
     }
 
-    // SPEC 15.6.4, 15.6.3, 8.11.4: a generic callee and a requirement are read under the call's Subst: an Iterator's `next` retains its
+    // SPEC 15.6.4, 15.6.3, 8.11.3: a generic callee and a requirement are read under the call's Subst: an Iterator's `next` retains its
     // receiver's referent only (descent), the instance a generic call makes too, and a requirement under an abstract Self keeps the
     // relation its contract declares.
     [Fact]

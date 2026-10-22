@@ -72,10 +72,10 @@ internal sealed class SemanticQuery(Compilation compilation, Binding binding, Li
 
     internal FunctionKoto? SpecializationOriginal(FunctionKoto function) => binding.GetSpecializationOriginal(function);
 
-    internal (bool Confined, bool Preserves) AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, List<EffectEvidence>? evidence, BindingSymbol? reference = null)
+    internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, BindingScope scope, List<EffectEvidence>? evidence, BindingSymbol? reference = null)
         => binding.AvailableEffectBounds(requirement, conforming, scope, evidence, reference);
 
-    internal (bool Confined, bool Preserves) AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence)
+    internal bool AvailableCallableEffects(BoundType type, BoundType signature, SemanticsKind receiver, BindingScope scope, List<EffectEvidence>? evidence)
         => binding.AvailableCallableEffects(type, signature, receiver, scope, evidence);
 
     internal BoundType SelfType(BindingSymbol symbol) => binding.SelfType(symbol);

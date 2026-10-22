@@ -1,6 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.4, 8.11.6, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
+// Owns A4 (plan 5.5; SPEC 8.11.2, 8.11.3, 8.11.4, 15.6.4; DECISIONS R4-M22): per body view the effect summary — the classes
 // Environment, Unknown, Limit and Derived and atoms over the definition's abstract Types (Drop(T), a call through a Callable input T) — and
 // the `confined` obligations Binding publishes (TyCtxt.EffectObligations).
 // Input: validated bodies per MirCases view, their uses (MirUses), the blocks the runtime edges reach (MirDataflow.Begin), A2's verdicts
@@ -12,8 +12,8 @@
 // recursive base where it arises, SPEC 15.6.4: the fixed point is finite where the view finds the base, and a base G170 hides still ends at
 // G128's bound); requirement and virtual calls take the bounds of the caller's own premises; one worklist with recorded dependencies solves
 // the least fixed point; storage is pooled and reset by counts, so a warm version allocates nothing.
-// Must not read syntax or HIR, re-derive premises, bounds or obligations, decide `preserves results` (A5-3), or report a failure that only
-// an Opaque site or a callee Binding rejected causes (derived, R4-M10).
+// Must not read syntax or HIR, re-derive premises, bounds or obligations, or report a failure that only an Opaque site or a callee
+// Binding rejected causes (derived, R4-M10).
 
 using System.Numerics;
 using SemanticsKind = Kimi.Compiler.Parsing.SemanticsKind;
@@ -120,7 +120,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return false;
     }
 
-    // SPEC 8.11.2, 8.11.4, 8.11.6: what a terminator adds. A published operation adds its row through the call's substitution, never
+    // SPEC 8.11.2, 8.11.3, 8.11.4: what a terminator adds. A published operation adds its row through the call's substitution, never
     // its body (SPEC 4.9.6); a call of another function with a body enters each body its substitution may select (SPEC 8.13.3,
     // TyCtxt.Implementation), one without a body is what Binding classifies (TyCtxt.Bodyless). A requirement call that selects a built-in
     // target runs what its Self's witnesses run; any other requirement or dynamic virtual call has the bounds of the caller's
@@ -148,7 +148,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         else if (callee.Kind is MirCalleeKind.Requirement or MirCalleeKind.Virtual)
         {
             var subject = callee.Kind == MirCalleeKind.Requirement ? callee.Subst?.Self : null;
-            this.found |= types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract)?.Confined == true ? (byte)0 : Unknown;
+            this.found |= types.DispatchBounds(body.Key.Decl, callee.Symbol!, subject, callee.Contract) == true ? (byte)0 : Unknown;
             this.Given(body, terminator);
         }
         else if (callee.Kind == MirCalleeKind.Value)
@@ -289,7 +289,7 @@ internal sealed partial class MirEffects(TyCtxt types, MirCases cases, MirDatafl
         return next;
     }
 
-    // SPEC 8.11.4 rule 1: a call the caller's premises bound may destroy each value moved into it.
+    // SPEC 8.11.3 rule 1: a call the caller's premises bound may destroy each value moved into it.
     private void Given(MirBody body, in MirTerminator terminator)
     {
         foreach (var operand in body.Operands.Slice(terminator.Start, terminator.Count))

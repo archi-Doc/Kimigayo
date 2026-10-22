@@ -8,8 +8,8 @@ using Kimi.Diagnostics;
 namespace Kimi.Compiler;
 
 // An obligation of `confined` that Binding decided and A4 judges (DECISIONS R4-M22, R4-M23), reported as Code at Subject under Requirement
-// (DECISIONS R5-M23): a conformance's witness (SPEC 8.11.4, at the `Self is C` clause; EffectBound), a virtual function under its slot's
-// bound (virtual-dispatch 6; VirtualEffectBound) or a selected Callable binding (SPEC 8.11.6, at the argument or Type argument;
+// (DECISIONS R5-M23): a conformance's witness (SPEC 8.11.3, at the `Self is C` clause; EffectBound), a virtual function under its slot's
+// bound (virtual-dispatch 6; VirtualEffectBound) or a selected Callable binding (SPEC 8.11.4, at the argument or Type argument;
 // CallableEffectBound). Definition: the definition whose body owes, or whose premises judge the Callable (null at a module's top-level
 // statements); without a Callable, null where the premises already decide a failure. A Callable binding is its subject Type called with
 // Receiver; Owner: its owner acquisition also destroys the Closure's remaining environment.
@@ -38,7 +38,7 @@ public sealed partial class Binding
             for (var w = 0; shape.HasEffectBounds && w < path.WitnessStorage.Count; w++)
             {
                 var witness = path.WitnessStorage[w];
-                if (witness.Requirement.Declaration is not FunctionKoto || this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.Confined) is null)
+                if (witness.Requirement.Declaration is not FunctionKoto || this.DeclaredEffectBound(shape, witness.Identity) is null)
                 {
                     continue;
                 }
@@ -46,7 +46,7 @@ public sealed partial class Binding
                 // A virtual witness dispatches: its slot's bound decides, never its own body (virtual-dispatch 6).
                 var slot = witness.Implementation.Declaration as FunctionKoto;
                 var dispatched = slot is { IsVirtual: true };
-                if (!dispatched || !this.AvailableEffectBounds(slot!, null, path.Scope).Confined)
+                if (!dispatched || !this.AvailableEffectBounds(slot!, null, path.Scope))
                 {
                     var target = dispatched ? null : witness.Implementation;
                     var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.EffectBound);
@@ -59,7 +59,7 @@ public sealed partial class Binding
         foreach (var function in this.virtualDeclarations)
         {
             var original = function.IsVirtual ? function : this.virtualOverrides.GetValueOrDefault(function).Slot.Original;
-            var bounded = original is not null && this.virtualEffectBounds.TryGetValue(original, out var bounds) && bounds.Confined is not null;
+            var bounded = original is not null && this.virtualEffectBounds.GetValueOrDefault(original) is not null;
 
             // R6: likewise the old virtual effect check's violations, until R6 deletes it.
             if (bounded && function.BoundSymbol is { } symbol &&
@@ -75,7 +75,7 @@ public sealed partial class Binding
             for (var e = 0; e < use.Clause.EffectBounds.Count; e++)
             {
                 var bound = use.Clause.EffectBounds[e];
-                if (bound.Bound == EffectBoundKind.Confined && this.AppliesBound(bound))
+                if (this.AppliesBound(bound))
                 {
                     this.AddCallableObligation(rows, use);
                 }
@@ -83,10 +83,10 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 8.11.4 (X2: the calling definition's own premises, never an instance's): the bounds a requirement or virtual call may use,
+    // SPEC 8.11.3 (X2: the calling definition's own premises, never an instance's): the bounds a requirement or virtual call may use,
     // every bound for a requirement of a closed Contract, else the requirement's or the virtual slot's available bounds; null for a callee
     // that does not dispatch. The contract is the requirement's dispatching Contract reference, null for its own Contract.
-    internal (bool Confined, bool Preserves)? DispatchBounds(BindingSymbol? definition, BindingSymbol callee, BoundType? self, BindingSymbol? contract)
+    internal bool? DispatchBounds(BindingSymbol? definition, BindingSymbol callee, BoundType? self, BindingSymbol? contract)
     {
         if (callee.Declaration is not FunctionKoto function || (!function.IsRequirement && !function.IsVirtual))
         {
@@ -95,13 +95,13 @@ public sealed partial class Binding
 
         // SPEC 8.7: every implementation of a closed Contract reads only its boundaries and the length and has no other effect.
         return callee.Scope.Owner.BoundSymbol?.LibraryDeclaration is KimiDeclarationId.Position or KimiDeclarationId.PositionRange
-            ? (true, true) : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), reference: contract);
+            ? true : this.AvailableEffectBounds(function, self, this.EffectPremises(definition), reference: contract);
     }
 
-    // SPEC 8.11.6: the bounds a call through an abstract Callable input may use under the calling definition's premises, those its one
+    // SPEC 8.11.4: the bounds a call through an abstract Callable input may use under the calling definition's premises, those its one
     // Callable signature declares for the receiver (TryCallable, the selection rule of the call); null where the input has several
     // signatures, among which only the call's arguments chose (MIR does not keep that choice).
-    internal (bool Confined, bool Preserves)? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
+    internal bool? CallableBounds(BindingSymbol? definition, BoundType input, SemanticsKind receiver)
     {
         var scope = this.EffectPremises(definition);
         return this.TryCallable(input, scope, out var signature, out _) ? this.AvailableCallableEffects(input, signature, receiver, scope) : null;
@@ -114,7 +114,7 @@ public sealed partial class Binding
     [Transitional("R6", Reason = "The ledger's old-side effect subset; R6 deletes it with the old effect checks.")]
     internal bool IsEffectRecord(Koto node) => this.effectViolations?.ContainsKey(node) == true || this.IsEffectLimit(node);
 
-    // SPEC 8.11.4, virtual-dispatch 6: the premises a definition's effects are judged under (null: a module's top-level statements),
+    // SPEC 8.11.3, virtual-dispatch 6: the premises a definition's effects are judged under (null: a module's top-level statements),
     // an override's inherited implementation premises where present.
     internal BindingScope EffectPremises(BindingSymbol? definition)
     {
@@ -126,7 +126,7 @@ public sealed partial class Binding
     // which holds none.
     internal Koto DefinitionUse(BindingSymbol? definition) => definition?.Declaration ?? this.Library.Kotonoha.RootKoto;
 
-    // SPEC 8.11.6: the obligation of a confined bound at a selected use, under the premises of the use's definition: an abstract subject
+    // SPEC 8.11.4: the obligation of a confined bound at a selected use, under the premises of the use's definition: an abstract subject
     // by its Callable premises over the selected signature (a holding premise adds no row); any other A4 judges as a call through it.
     private void AddCallableObligation(List<EffectObligation> rows, in CallableEffectUse use)
     {
@@ -138,7 +138,7 @@ public sealed partial class Binding
             var owner = use.Receiver == SemanticsKind.Owner && type.Symbol?.Declaration is FunctionKoto { BoundClosure.Receiver: not SemanticsKind.Owner };
             rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, definition, type, use.Receiver, owner));
         }
-        else if (!this.AvailableCallableEffects(type, use.Signature, use.Receiver, this.EffectPremises(definition)).Confined)
+        else if (!this.AvailableCallableEffects(type, use.Signature, use.Receiver, this.EffectPremises(definition)))
         {
             rows.Add(new(SourceRef.Of(use.At), DiagnosticCode.UnsatisfiedEffectBound_Kd, requirement, null, null, default, Owner: false));
         }

@@ -84,9 +84,8 @@ public sealed class BoundContract
 
 /// <summary>An effect bound a Contract declares for a function requirement, as its effect item states it (SPEC 8.11.1).</summary>
 /// <param name="Identity">The requirement's declaration and bound declaring Contract.</param>
-/// <param name="Bound">The bound.</param>
 /// <param name="Declaration">The effect item.</param>
-public readonly record struct BoundEffectBound(BoundRequirement Identity, EffectBoundKind Bound, EffectBoundKoto Declaration)
+public readonly record struct BoundEffectBound(BoundRequirement Identity, EffectBoundKoto Declaration)
 {
     /// <summary>Gets the original requirement declaration.</summary>
     public BindingSymbol Requirement => this.Identity.Symbol;
