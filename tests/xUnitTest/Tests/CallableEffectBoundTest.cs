@@ -12,6 +12,17 @@ namespace XunitTest;
 // SPEC 8.11.4: bounds constrain selected uses, never overload applicability.
 public class CallableEffectBoundTest
 {
+    // The generic programs of LaterCallsOfACallableValueReachByPaths and ReplacingTheCallableChangesNoVerdict's second calls (the same, a
+    // replaced and another Callable value), which AbstractCallReachTest also instantiates (L1).
+    internal const string TwiceByReference = "func twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
+        "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\n";
+
+    internal const string SameCallable = "    let second = f(source)\n";
+
+    internal const string ReplacedCallable = "    f = two@move\n    let second = f(source)\n";
+
+    internal const string OtherCallable = "    var g = two@move\n    let second = g(source)\n";
+
     private const string Apply = "func apply<F>(f: ref/F) -> i32\n    F is Callable<() -> i32>\n        effect confined\n    return f()\n";
 
     [Fact]
@@ -143,8 +154,7 @@ public class CallableEffectBoundTest
     [Fact]
     public void LaterCallsOfACallableValueReachByPaths()
     {
-        var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, next: ref/F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<(uniq/S) -> S.Item>\n" +
-            "    let first = next(source)\n    let second = next(source)\n    return (first@move, second@move)\npublic func main() => ()\n";
+        var source = "contract Source\n    associate Item\n" + TwiceByReference + "public func main() => ()\n";
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
@@ -356,17 +366,21 @@ public class CallableEffectBoundTest
     // SPEC 8.11.4, 8.11.3 (the adopted proposal): nothing relates two calls, so the same, a replaced or another Callable value makes
     // no difference (R1g's Unsupported_Kd and CallEffectConflict_Kd before the adoption).
     [Theory]
-    [InlineData("    let second = f(source)\n")]
-    [InlineData("    f = two@move\n    let second = f(source)\n")]
-    [InlineData("    var g = two@move\n    let second = g(source)\n")]
+    [InlineData(SameCallable)]
+    [InlineData(ReplacedCallable)]
+    [InlineData(OtherCallable)]
     public void ReplacingTheCallableChangesNoVerdict(string second)
     {
-        var source = "contract Source\n    associate Item\nfunc twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n    var f = one@move\n    let first = f(source)\n" +
-            second + "    return (first@move, second@move)\npublic func main() => ()\n";
+        var source = "contract Source\n    associate Item\n" + Replacing(second) + "public func main() => ()\n";
         Assert.Empty(DiagnosticCorpus.Check(source).Diagnostics);
     }
 
     [Fact]
     public void ConfinedCallbacksRunNatively()
         => ScalarEmissionTest.EmitFixture("CallableEffectsConfined", Apply + "let f = func [] () -> i32 => 19\nrequire apply(f@ref) == 19 else => $abort(\"callback\")\n", string.Empty);
+
+    // A generic function that takes a first result through a Callable value, then makes a second call.
+    internal static string Replacing(string second)
+        => "func twice<S,F>(source: uniq/S, one: F, two: F) -> (S.Item, S.Item)\n    S is Source\n    F is Callable<uniq, (uniq/S) -> S.Item>\n    var f = one@move\n    let first = f(source)\n" +
+            second + "    return (first@move, second@move)\n";
 }
