@@ -1,0 +1,149 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using Kimi.Compiler.Parsing;
+
+namespace Kimi.Compiler;
+
+// Raw Origins, `during self` layers (SPEC 5.7 Reading and Writing a Field; DECISIONS BU-24, R4-M105; contract in Binding.RawOrigins.cs):
+// a Type holding one in inline storage (HoldsHolder), the layer read at a Place with the Origin its path is reached through
+// (ReadHolder, ReplaceHolder), and the allowlist of its Place reached through no dereference (HolderPlaceFailure, HolderWriteFailure).
+public sealed partial class Binding
+{
+    // Whether a Type holds a `during self` layer in its inline storage.
+    private static bool HoldsHolder(BoundType type)
+    {
+        if (type.RawOrigin?.Kind == OriginKind.Holder)
+        {
+            return true;
+        }
+
+        for (var i = 0; i < type.Components.Count && type.CarriesRawOrigin && type.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray; i++)
+        {
+            if (HoldsHolder(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // SPEC 5.1, 5.7 (R4-M105, OQ-R1 (a)): what a write of `source` puts in a `during self` layer that `stored` is or holds inline, other
+    // than the null literal: `source` itself at the layer, or the first such element at a layer's position of a Tuple or array literal,
+    // recursively; any other source reaches the layers as a whole. Null when every layer receives null.
+    private static Koto? NonNullAtLayers(BoundType stored, Koto source)
+    {
+        source = KotoHelper.UnwrapParentheses(source);
+        if (stored.RawOrigin?.Kind == OriginKind.Holder)
+        {
+            return source is NullLiteralKoto ? null : source;
+        }
+
+        var elements = (stored.Kind, source) switch
+        {
+            (BoundTypeKind.Tuple, TupleLiteralKoto tuple) => tuple.Elements,
+            (BoundTypeKind.FixedArray, ArrayLiteralKoto array) => array.Elements,
+            _ => null,
+        };
+        for (var i = 0; elements is not null && i < elements.Count; i++)
+        {
+            var part = stored.Components[stored.Kind == BoundTypeKind.FixedArray ? 0 : i];
+            if (HoldsHolder(part) && NonNullAtLayers(part, elements[i]) is { } written)
+            {
+                return written;
+            }
+        }
+
+        return elements is null ? source : null;
+    }
+
+    // SPEC 5.7, Reading a Field: a `during self` layer read at `place` (a Field, or a Subject a payload is selected from in place)
+    // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), formed with that dereference's mode, the
+    // special receiver's in a constructor or drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
+    private BoundType? ReadHolder(BoundType type, Koto place, Koto node)
+    {
+        if (!type.CarriesRawOrigin || !HoldsHolder(type))
+        {
+            return type;
+        }
+
+        var path = this.PathOrigin(place);
+        if (path.Dereferences is null)
+        {
+            this.Fail(node, BindingFailure.Unsupported);
+            return null;
+        }
+
+        return this.ReplaceHolder(type, path.Origin is { } origin ? this.Formed(origin, path.Mode) : null);
+    }
+
+    private BoundType ReplaceHolder(BoundType type, BoundOrigin? image)
+    {
+        if (type.RawOrigin?.Kind == OriginKind.Holder)
+        {
+            return this.types.Pointer(type.Components[0], image);
+        }
+
+        if (!type.CarriesRawOrigin || type.Kind is not (BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
+        {
+            return type;
+        }
+
+        var components = this.RentTypes(type.Components.Count);
+        try
+        {
+            for (var i = 0; i < type.Components.Count; i++)
+            {
+                components[i] = this.ReplaceHolder(type.Components[i], image);
+            }
+
+            return this.types.Rebuild(type, components.AsSpan(0, type.Components.Count), type.Origin, (BoundOrigin[])type.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
+        }
+    }
+
+    // SPEC 5.7 (DECISIONS R4-M105, OQ-R1 (a)): through no dereference, except through `self` in the constructors and drop of the Type
+    // whose inline storage holds the layer, a `during self` layer's Place admits reads, shared borrows and writes of null only; an
+    // enclosing Tuple or fixed-array Place's write is one of the layer's Place. Whether `access` to `place`, writing `source`, failed
+    // at `at` (HolderWriteFailure); PathOrigin publishes the stored Field and the Place's stored Type.
+    private bool HolderPlaceFailure(Koto place, HolderAccess access, Koto? source, Koto at)
+        => this.PathOrigin(place) is { Dereferences: false, Field: { } field, Stored: { } stored } && HoldsHolder(stored) && Receiver(field.Left) is null &&
+            this.HolderWriteFailure(stored, access, source, at);
+
+    // `access` to storage whose Type `stored` is, or encloses, a `during self` layer reached through no dereference. A write whose value
+    // puts null in every layer is admitted (NonNullAtLayers). Any other write, an update and an exclusive borrow of the layer's Place
+    // record an Origin relation failure at `at` and form no relation: the holder's storage, which no Origin expression names, outlives
+    // no Origin. Its longer end is the Origin of the value reaching the layer, none for an update or a borrow, which admit the Place's
+    // read Type. A Move of the layer's Place, and an exclusive borrow of an enclosing one, are located Unsupported_Kd (PLAN G212).
+    private bool HolderWriteFailure(BoundType stored, HolderAccess access, Koto? source, Koto at)
+    {
+        var written = access == HolderAccess.Write && source is not null ? NonNullAtLayers(stored, source) : null;
+        if (access == HolderAccess.Write && written is null)
+        {
+            return false;
+        }
+
+        if (access == HolderAccess.Move || (access == HolderAccess.ExclusiveBorrow && stored.Kind is BoundTypeKind.Tuple or BoundTypeKind.FixedArray))
+        {
+            this.Fail(at, BindingFailure.Unsupported);
+            return true;
+        }
+
+        var longer = RegionOf(written?.BoundType?.RawOrigin) ?? BoundOrigin.Unstated;
+        var relation = new OriginRelationFact(at, longer, BoundOrigin.Holder, Equality: false, stored, Refuted: true);
+        this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, relation);
+        return true;
+    }
+
+    // The accesses of a `during self` layer's Place the allowlist decides (HolderPlaceFailure).
+    private enum HolderAccess : byte
+    {
+        Write,
+        Update,
+        ExclusiveBorrow,
+        Move,
+    }
+}
