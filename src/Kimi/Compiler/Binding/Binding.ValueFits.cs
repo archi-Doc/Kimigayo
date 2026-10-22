@@ -32,7 +32,7 @@ public sealed partial class Binding
 
     // Lowering rechecks the already verified contract without adding constraints or reopening inference.
     internal bool FitsVerifiedTypeAt(BoundType actual, BoundType expected, Koto use)
-        => this.FitsTypeAt(actual, expected, use) || ((actual.CarriesOrigin || expected.CarriesOrigin) &&
+        => this.FitsTypeAt(actual, expected, use) || ((actual.CarriesAnyOrigin || expected.CarriesAnyOrigin) &&
             this.FitsStructurallyAt(actual, expected, use) && this.FailedOriginRelation(actual, expected, use, OriginVariance.Covariant, verified: true) is null);
 
     internal bool FitsStructurallyAt(BoundType actual, BoundType expected, Koto use)

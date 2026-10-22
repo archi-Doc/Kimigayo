@@ -20,6 +20,9 @@ public sealed partial class OriginRowsTest
 
     private const string Bad = "func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n";
 
+    private const string RawPlaceBorrow = "func f(x: uniq/i32) -> uniq/i32 during x\n    var n: i32 = 1\n    let r = n@uniq\n    let p = r@follow@raw\n    unsafe\n" +
+        "        let item = p[0]@uniq\n        return item@move\n";
+
     private const string LocalClause = Holder + "func f(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n" +
         "    return h.item@follow\n";
 
@@ -59,6 +62,28 @@ public sealed partial class OriginRowsTest
     {
         var source = $"func f(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> {result}\n    let local = 1\n    let t = {value}\n    return t\n";
         Assert.Equal(rows.Split('|'), Recorded(source, [$"{Unsatisfied} t", $"{Unproven} t"], "return t"));
+    }
+
+    // SPEC 5.7 with R4-M108 (DECISIONS BU-24; design-final §13 A2): a raw fit recorded at a body chain has its rows like any fit, their ends
+    // the regions of the raw Origins (a shared view's label, a Place borrow's anchor met with the pointer's region), and a record whose end
+    // is Unstated or the holder of a `during self` layer has none, so no row end is Shared, Holder or Unstated.
+    [Theory]
+    [InlineData("func f(x: ref/i32) -> raw/i32 during static\n    let n = 1\n    let r = n@ref\n    return r@follow@raw\n", "r@follow@raw", "Fn:f Fit Finite Fixed return r@follow@raw")]
+    [InlineData(RawPlaceBorrow, "item@move", "Fn:f Fit Inferred Fixed return item@move")]
+    [InlineData("func f(x: ref/i32, p: raw/i32) -> raw/i32 during x => p\n", "p", "")]
+    [InlineData("struct B\n    internal var data: raw/u8 during self\n    public init() => self.data = null\nfunc f(fresh: raw/u8)\n    var b = B.init()\n    b.data = fresh\n", "b.data = fresh", "")]
+    public void ARawFitsRowsEndAtRegions(string source, string at, string rows)
+    {
+        Assert.Empty(Recorded(source, [$"{Unsatisfied} {at}"], string.Empty));
+        var c = MirBuildTest.Compile(source + Main);
+        var all = new List<string>();
+        foreach (var body in Rows(c, false).Select(static x => x.Body).Distinct())
+        {
+            var slice = c.Types.OriginRows(body);
+            all.AddRange(slice.Rows.Select(x => $"{Describe(body)} {x.Source} {slice.Atoms[x.Longer].Kind} {slice.Atoms[x.Shorter].Kind} {First(x.Site)}"));
+        }
+
+        Assert.Equal(rows.Length == 0 ? [] : [rows], all);
     }
 
     // Pinned until 2c-6 (DECISIONS R4-M108, R5-M63's finding A): a Closure result over call-local storage keeps Binding's record without a

@@ -5,8 +5,8 @@ using Kimi.Compiler.Parsing;
 namespace Kimi.Compiler;
 
 // The Origin of a layer in a Type annotation (SPEC 15.3.1, 15.4.2, 15.4.4): its Type position (TypeContext), a written Origin
-// (BindOrigin, BindOriginName) or an omitted one (OmittedOrigin), and a binder's inputs, whose atoms the omitted Origins of its
-// signature are.
+// (BindOrigin, BindOriginName, through the candidate a name resolves to: OriginCandidate) or an omitted one (OmittedOrigin), and a
+// binder's inputs, whose atoms the omitted Origins of its signature are.
 public sealed partial class Binding
 {
     private static int InputCount(Koto owner) => owner is FunctionKoto f ? f.Parameters.Count : owner is PropertyAccessorKoto ? 2 : owner is FunctionTypeKoto t ? t.Parameters is TupleTypeKoto tuple ? tuple.ElementNodes.Count : 1 : 0;
@@ -16,6 +16,26 @@ public sealed partial class Binding
     private static Koto? InputType(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].Type : owner is PropertyAccessorKoto a ? index == 0 ? a.ReceiverType : a.ValueType : owner is FunctionTypeKoto t ? t.Parameters is TupleTypeKoto tuple ? tuple.ElementNodes[index] : t.Parameters : null;
 
     private static string InputName(Koto owner, int index) => owner is FunctionKoto f ? f.Parameters[index].InternalName : index == 0 ? "self" : "value";
+
+    // SPEC 15.3.4: the slot a projection's name selects in the Type of its value past that Type's borrow layers (`type` becomes that
+    // Type); -1 when the Type declares none.
+    private static int ProjectedSlot(ref BoundType? type, string name)
+    {
+        while (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics))
+        {
+            type = type.Components[0];
+        }
+
+        for (var i = 0; type?.Symbol?.Schema is { } schema && i < schema.Origins.Count; i++)
+        {
+            if (schema.Origins[i].Name == name)
+            {
+                return i;
+            }
+        }
+
+        return -1;
+    }
 
     private BoundType? BoundInputType(Koto owner, int index)
         => ReferenceEquals(owner, this.closureHeader) && InputType(owner, index) is SyntaxFormKoto { Akind: KotoKind.InferredType }
@@ -95,6 +115,11 @@ public sealed partial class Binding
                 return origin;
             }
 
+            if (use.BoundSymbol is { Slot: ReceiverSlot } receiver)
+            {
+                return this.ReceiverOrigin(receiver); // SPEC 5.7, 15.2.1: in a constructor or drop, `self` is the receiver's Origin.
+            }
+
             this.Fail(use, BindingFailure.InvalidOrigin);
             return null;
         }
@@ -133,21 +158,12 @@ public sealed partial class Binding
         {
             if (this.OriginCandidate(input.IdentifierName, syntax, scope, out _, out var type, out var repeated))
             {
-                while (type is { Kind: BoundTypeKind.Semantics } && IsBorrow(type.Semantics))
-                {
-                    type = type.Components[0];
-                }
-
+                var slot = ProjectedSlot(ref type, target.IdentifierName);
                 var schema = type?.Symbol?.Schema;
-                var declared = false;
-                for (var i = 0; schema is not null && i < schema.Origins.Count; i++)
+                var declared = slot >= 0;
+                if (declared)
                 {
-                    if (schema.Origins[i].Name == target.IdentifierName)
-                    {
-                        declared = true;
-                        result = type!.Kind == BoundTypeKind.Slice ? type.Origin : i < type.OriginArguments.Count ? type.OriginArguments[i] : null;
-                        break;
-                    }
+                    result = type!.Kind == BoundTypeKind.Slice ? type.Origin : slot < type.OriginArguments.Count ? type.OriginArguments[slot] : null;
                 }
 
                 if (repeated is not null && (declared || schema is null))
@@ -184,6 +200,87 @@ public sealed partial class Binding
         }
 
         return result;
+    }
+
+    // A name that resolves to a binding set that failed as a repeat yields that set as repeated (RestOnRepeatedSet) beside its Type.
+    private bool OriginCandidate(string name, Koto use, BindingScope scope, out BoundOrigin? scalar, out BoundType? carrier, out TypeSemanticsKoto? repeated)
+    {
+        scalar = null;
+        carrier = null;
+        repeated = null;
+        var owner = OriginOwner(use);
+        if (owner is not null && !ReferenceEquals(owner, scope.Owner) &&
+            this.originDeclarations.GetValueOrDefault(owner)?.Sets.TryGetValue(name, out var localSet) == true)
+        {
+            carrier = this.BindOriginSetType(localSet, scope);
+            repeated = RepeatedSet(localSet) ? localSet : null;
+            return true;
+        }
+
+        for (var current = scope; current is not null; current = current.Parent)
+        {
+            var visibleValue = current.Values.TryGetValue(name, out var competing) &&
+                competing.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture &&
+                (competing.Kind != BindingSymbolKind.Local || ReferenceEquals(competing.Declaration, owner) || competing.Declaration.Span.End <= use.Span.Start);
+            var sets = this.originDeclarations.GetValueOrDefault(current.Owner)?.Sets;
+            if (visibleValue && (current.Origins?.ContainsKey(name) == true || sets?.ContainsKey(name) == true))
+            {
+                this.Fail(use, BindingFailure.Duplicate);
+                return true;
+            }
+
+            if (sets?.TryGetValue(name, out var set) == true)
+            {
+                carrier = this.BindOriginSetType(set, current);
+                repeated = RepeatedSet(set) ? set : null;
+                return true;
+            }
+
+            if (current.OriginSets?.TryGetValue(name, out var local) == true && OriginOwner(local) is { } localOwner &&
+                (ReferenceEquals(localOwner, owner) || localOwner.Span.End <= use.Span.Start))
+            {
+                carrier = this.BindOriginSetType(local, current);
+                repeated = RepeatedSet(local) ? local : null;
+                return true;
+            }
+
+            if (current.Origins?.TryGetValue(name, out scalar) == true)
+            {
+                return true;
+            }
+
+            var count = InputCount(current.Owner);
+            for (var i = 0; i < count; i++)
+            {
+                if (InputName(current.Owner, i) == name)
+                {
+                    var nameNode = use is MemberAccessKoto member ? member.Left : use;
+                    if (current.Values.TryGetValue(name, out var parameter))
+                    {
+                        nameNode.BoundSymbol = parameter;
+                    }
+
+                    carrier = this.BoundInputType(current.Owner, i) ?? (InputType(current.Owner, i) is { } syntax ? this.BindType(syntax, current) : null);
+                    return true;
+                }
+            }
+
+            if (current.Values.TryGetValue(name, out var symbol) &&
+                symbol.Kind is BindingSymbolKind.Local or BindingSymbolKind.Parameter or BindingSymbolKind.Capture)
+            {
+                if (symbol.Kind == BindingSymbolKind.Local && !ReferenceEquals(symbol.Declaration, owner) && symbol.Declaration.Span.End > use.Span.Start)
+                {
+                    continue;
+                }
+
+                (use is MemberAccessKoto member ? member.Left : use).BoundSymbol = symbol;
+                carrier = symbol.Type ?? (symbol.Declaration is VariableKoto { TypeKoto: { } type } ? this.BindType(type, current) : null);
+
+                return true; // An unsuitable nearest candidate never falls through.
+            }
+        }
+
+        return false;
     }
 
     private BoundOrigin? OmittedOrigin(Koto use, BindingScope scope, TypeBindingContext context, LoanRequirement requirement = LoanRequirement.Ref, int aggregateSlot = -1, BindingSymbol? borrowCondition = null)

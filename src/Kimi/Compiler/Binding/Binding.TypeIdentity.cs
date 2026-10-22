@@ -79,7 +79,7 @@ public sealed partial class Binding
 
             // A substituted struct or enum is another Type: its stored fields and cases follow the substitution, as for the
             // declared Types whose storage is prepared, so a field of it keeps the substituted Type (SPEC 8.2).
-            var substituted = this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, count), type.Length, type.Origin, (BoundOrigin[])type.OriginArguments, type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            var substituted = this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments);
             this.PrepareTypeStorage(substituted);
             return substituted;
         }

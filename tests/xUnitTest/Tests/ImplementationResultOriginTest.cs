@@ -133,4 +133,16 @@ public class ImplementationResultOriginTest(ITestOutputHelper output)
         Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid, MinimalEmissionTest.Describe(c, null));
     }
+
+    // SPEC 5.7, 15.3.7: a contract compares raw Origins by subtyping: an override may state an Origin its slot leaves unstated, but not
+    // drop one its slot states (an Origin contract record naming the unstated end).
+    [Theory]
+    [InlineData(" during self", "", "UnprovenOriginContract_Kd")]
+    [InlineData("", " during self", null)]
+    public void ARawResultOriginIsComparedBySubtyping(string original, string implementation, string? code)
+    {
+        var records = RawPointerSyntaxTest.Records("open struct Base\n    public init() => ()\n    public virtual func at(self: objref/Self) -> raw/i32" + original + " => null\n" +
+            "struct Derived : Base\n    public init() => ()\n    override func at(self: objref/Self) -> raw/i32" + implementation + " => null");
+        Assert.Equal(code is null ? [] : [code], records.Select(static x => x.Split(':')[0]));
+    }
 }

@@ -6,14 +6,19 @@
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output) and Untied, one per callee or signature, Type instantiation and
 // the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit; CallRetention.Limit
 // where Binding's storage instantiation does not complete the contract (storage nested past its depth bound, which a growing recursive
-// Type of SPEC 15.3.5 always reaches), never an exception.
+// Type of SPEC 15.3.5 always reaches) or a raw layer's member walk (a keeper cycle that changes its Type arguments; Binding.RawMembers),
+// never an exception.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
 // one abstract carrier. An erased callable, one whose implementation the call cannot see (a Function Type value or a value of a
 // Callable-bounded Type parameter, each callable Type its contract names and each Callable bound of the callee's premises), was compared
 // under premises no view reads, so it relates each fixed Origin of an input to each fixed Origin of an output, an abstract carrier's
-// hidden Origins among them (owner decision 2026-10-17, DECISIONS R4-M52). An unproven absence of retention is a row.
+// hidden Origins among them (owner decision 2026-10-17, DECISIONS R4-M52). An unproven absence of retention is a row. Raw layers
+// (SPEC 5.7 Calls; D6, D10, D15; DECISIONS BU-24): nothing is written past a shared layer or a raw layer whose step is Shared; a raw
+// parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive what that
+// Origin's borrows admit (their referents, a slot's Keepers) as that input's storage; a raw result layer with an Origin retains as that
+// borrow would, one without retains every input and is untied. The row shape is the same for every layer.
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).
@@ -51,8 +56,9 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 internal sealed class CallRetention(Retention[]? rows, bool untied)
 {
     /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (storage nested
-    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), as A4's effects take it: no rows are computed,
-    /// and A5 records a located Unsupported_Kd at the call. Reading its rows or Untied is a broken contract.</summary>
+    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw layer's member walk is incomplete
+    /// (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed, and A5 records a located
+    /// Unsupported_Kd at the call. Reading its rows or Untied is a broken contract.</summary>
     internal static readonly CallRetention Limit = new(null, untied: false);
 
     private readonly Retention[]? rows = rows;

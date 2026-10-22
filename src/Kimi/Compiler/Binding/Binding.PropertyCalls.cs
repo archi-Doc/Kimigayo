@@ -175,7 +175,7 @@ public sealed partial class Binding
                 (receiverType.Components[0].Kind == BoundTypeKind.Constructed && declaringType is null));
             if ((requirement is null && accessor.Declaration?.Body is null) || accessor.Result is not { } declaredResult ||
                 Signature(declaredResult) is not { } result ||
-                (accessor.Input is not null && inputType is null) || inputType is { CarriesOrigin: true } ||
+                (accessor.Input is not null && inputType is null) || inputType is { CarriesAnyOrigin: true } ||
                 receiverUnsupported)
             {
                 if (!(receiverUnsupported && receiver?.BoundType is { } shapedActual && this.ReceiverRestsOnAccessorShape(node, accessor, receiver, shapedActual, declaringType, null, scope, false)))

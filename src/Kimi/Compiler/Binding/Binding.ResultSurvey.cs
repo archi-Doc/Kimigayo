@@ -113,7 +113,7 @@ public sealed partial class Binding
         }
 
         context.Expected = this.SelectCommonType(context.Evidence, scope, out var conflict);
-        if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesOrigin: true })
+        if ((context.PartialEvidence || !context.HasLiteral) && context.Expected is { CarriesAnyOrigin: true })
         {
             // SPEC 14.9.2, 15.6.5: a borrow result waits for every source; one fixed source's Origin is not the common Type
             // of a later body-local Borrow.
@@ -302,7 +302,7 @@ public sealed partial class Binding
     // A signature's result Origins belong to the declaration and must be instantiated by the actual call before a join.
     // Its terminal read Type can still fit a literal; no borrowed Origin is taken from this survey.
     private BoundType? CallResultEvidence(BoundType? result, BindingScope scope, bool readConversions)
-        => result is not { CarriesOrigin: true } ? result : readConversions ? this.ReadTypeReferent(result, scope) : null;
+        => result is not { CarriesAnyOrigin: true } ? result : readConversions ? this.ReadTypeReferent(result, scope) : null;
 
     private void FindResultEvidence(Koto target, BindingScope scope, ResultContext context)
     {
