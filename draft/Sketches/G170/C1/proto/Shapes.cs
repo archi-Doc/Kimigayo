@@ -79,6 +79,86 @@ public sealed class ShapeTable
         return this.heads[-1 - s] is VarHead || ks.Any(k => k < 0) ? -1 : this.g.Lookup(this.heads[-1 - s], ks);
     }
 
+    /// <summary>The pattern lifted through a constructor position (rule 8 down): head&lt;$n, …, kid at i, …&gt; with fresh shape
+    /// variables, numbered after kid's, at every other position.</summary>
+    public int Lift(Head head, int arity, int i, int kid)
+    {
+        var ks = new int[arity];
+        var next = this.VarCount(kid);
+        for (var j = 0; j < arity; j++)
+        {
+            ks[j] = j == i ? kid : this.Node(new VarHead(next++), []);
+        }
+
+        return this.Node(head, ks);
+    }
+
+    /// <summary>The shape with its variables renumbered by first occurrence (renaming-equal shapes are one).</summary>
+    public int Canonical(int s) => this.Rename(s, new());
+
+    /// <summary>The bare-variable shape `$0`: a promise of any shape, and the pattern every promise agrees with.</summary>
+    public int Fresh() => this.Node(new VarHead(0), []);
+
+    /// <summary>The kid at a path of constructor positions, through a shape node's kids or a class's constructor, renumbered;
+    /// null when the path leaves the structure.</summary>
+    public int? Sub(int s, int[] path)
+    {
+        foreach (var i in path)
+        {
+            if (s >= 0)
+            {
+                var n = this.g.Constructor(s);
+                if (n < 0 || this.g.KidCount(n) <= i)
+                {
+                    return null;
+                }
+
+                s = this.g.KidOf(n, i);
+            }
+            else
+            {
+                if (this.heads[-1 - s] is VarHead || this.kids[-1 - s].Length <= i)
+                {
+                    return null;
+                }
+
+                s = this.kids[-1 - s][i];
+            }
+        }
+
+        return s >= 0 ? this.g.Find(s) : this.Canonical(s);
+    }
+
+    private int Rename(int s, List<int> map)
+    {
+        if (s >= 0)
+        {
+            return s;
+        }
+
+        var head = this.heads[-1 - s];
+        if (head is VarHead v)
+        {
+            var n = map.IndexOf(v.Index);
+            if (n < 0)
+            {
+                n = map.Count;
+                map.Add(v.Index);
+            }
+
+            return this.Node(new VarHead(n), []);
+        }
+
+        var ks = this.kids[-1 - s];
+        var rs = new int[ks.Length];
+        for (var i = 0; i < ks.Length; i++)
+        {
+            rs[i] = this.Rename(ks[i], map);
+        }
+
+        return this.Node(head, rs);
+    }
+
     private int Node(Head head, int[] ks)
     {
         var key = new Key(head, ks);

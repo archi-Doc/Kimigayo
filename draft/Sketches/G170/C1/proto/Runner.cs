@@ -834,7 +834,7 @@ public static class Runner
             input T is Slot<Array<W>>
             """;
         failures += Expect("B fill: a conditional conformance's condition Refuted by heads", Fill, "Array<W> is Option<i32>", "- C");
-        failures += Expect("B fill: the conformance does not apply", Fill, "T is Flag", "none C");
+        failures += Expect("B fill: the conformance does not apply (vacuous today: an identity condition is outside C1's rows, Condition requires Is)", Fill, "T is Flag", "none C");
         failures += Expect("B independent: projections are not decomposed", "contract Source\n  associate Element\ninput T is Source\ninput U is Source\ninput T.(Source).Element is U.(Source).Element", "T is U", "none C");
         failures += Expect("B cyclic: a Type identical to its own proper part", "input T is Option<U>\ninput U is Option<T>", "T is Option<U>", "+- C");
         failures += Expect("B reconstructed: a projection of the Type itself is no cycle", "contract Linked\n  associate Next\nconformance Cell<V> is Linked\n  binding Next = V\ninput T is Linked\ninput T is Cell<T.(Linked).Next>", "T is Cell<T.(Linked).Next>", "+ C");
@@ -844,7 +844,7 @@ public static class Runner
         failures += Expect("B two-variable-kids: neither node exists before the rows fire (rule 8 up)", "contract K0\n  associate Y\ncontract K1<A>\n  clause Self.(K0).Y is Option<A>\ncontract K2<A>\n  clause Self.(K0).Y is Option<A>\ninput T is K0\ninput T is K1<U>\ninput T is K2<W>", "U is W", "+ C");
         failures += Expect("B ground-kid: a ground side and a variable kid (rule 8 up)", "contract K0\n  associate X\ncontract K1\n  clause Self.(K0).X is List<i32>\ncontract K2<A>\n  clause Self.(K0).X is List<A>\ninput T is K0\ninput T is K1\ninput T is K2<U>", "U is i32", "+ C");
         failures += Expect("B limit-keeps-proven: the polarity established before the item limit stands (seed 20261022 model 312)", LimitKeepsProven, "i32 is Cp", "+ R", limits: new Limits { Rounds = 300, Items = 3000 });
-        failures += Expect("B conflict-reached-by-row: the row fires on need and the conflict is the request's", "contract K<A>\n  clause Self is Array<A>\ninput T is K<U>\ninput T is Option<U>", "T is Array<U>", "+- C");
+        failures += Expect("B conflict-reached-by-row: the row fires through (c) or the structure need and the conflict is the request's", "contract K<A>\n  clause Self is Array<A>\ninput T is K<U>\ninput T is Option<U>", "T is Array<U>", "+- C");
         failures += ExpectLinear("B open-live: unrelated request, live constructor sides with a variable kid (rule 8 up)", OpenLive, "T is Copy", "none C");
 
         // Rule 7 (design review of the addendum, round 1): only constructors have a head; a projection-headed node or pattern decides
@@ -868,6 +868,12 @@ public static class Runner
         failures += Expect("B proj-kids: projection kids of two promises stay deferred (the V~W meeting)", ProjKids, "V is Cp", "+ C");
         failures += Expect("B proj-vs-con: a projection kid against a constructor stays deferred", ProjKids.Replace("contract R<A>\n  clause Self is Pair<A.(K).Y, i32>", "contract R\n  clause Self is Pair<List<i64>, i32>").Replace("input T.(K).Y is U.(K).X\n", "input T.(K).Y is U.(K).X\ninput T.(K).Y is List<i64>\n").Replace("input W is R<T>", "input W is R"), "V is Cp", "+ C");
         failures += Expect("B negated-component: a negated identity fact refutes a kid pair", "input T is Option<U>\ninput U is not i32", "T is Option<i32>", "- C");
+
+        // The structure need (rule 9; design review rounds 1 and 2): an identity goal's negative polarity is decided by Refuted over
+        // materialized constructors and negated facts, so the goal's classes and their constructors' kids request every promise at
+        // them and select the negated identity rows there as at the goal pair.
+        failures += Expect("B projection-side: a promise at the goal's class materialized by the structure need", "contract K\n  associate X is List<i32>\ninput T is K", "T.(K).X is Array<U>", "- C");
+        failures += Expect("B negated-row-kid: a negated identity row selected at a constructor's kid class", "contract K\n  associate X\n  clause Self.(K).X is not i32\ninput T is K\ninput U is Option<T.(K).X>", "U is Option<i32>", "- C");
         return failures;
     }
 
@@ -1352,6 +1358,7 @@ public static class Runner
         }
 
         sb.Append("contract Cp\n");
+        var constructed = new HashSet<string>(); // "i:z": a projection with a constructed declared requirement in its Contract
         for (var i = 0; i < n; i++)
         {
             sb.Append("contract ").Append(Own(i));
@@ -1382,7 +1389,12 @@ public static class Runner
                 sb.Append("  associate ").Append(z);
                 if (r.Next(10) < 6)
                 {
-                    sb.Append(" is ").Append(Requirement(i));
+                    var requirement = Requirement(i);
+                    sb.Append(" is ").Append(requirement);
+                    if (requirement is "i32" or "List<i32>")
+                    {
+                        constructed.Add(i + ":" + z);
+                    }
                 }
 
                 sb.Append('\n');
@@ -1420,6 +1432,12 @@ public static class Runner
                     requirement = "Cp";
                 }
 
+                var own = "Self.(" + Own(i) + ").";
+                if (requirement is "i32" or "List<i32>" && subject.StartsWith(own, StringComparison.Ordinal) && !subject[own.Length..].Contains('.'))
+                {
+                    constructed.Add(i + ":" + subject[own.Length..]);
+                }
+
                 sb.Append("  clause ").Append(subject).Append(" is ").Append(requirement).Append('\n');
             }
 
@@ -1447,7 +1465,9 @@ public static class Runner
             inputs.Add("U is " + Ref(r.Next(n), -1));
         }
 
-        string? tProjection = assocs[tContract].Length != 0 ? "T.(" + tRef + ")." + assocs[tContract][r.Next(assocs[tContract].Length)] : null;
+        var tAssoc = assocs[tContract].Length != 0 ? assocs[tContract][r.Next(assocs[tContract].Length)] : null;
+        string? tProjection = tAssoc is null ? null : "T.(" + tRef + ")." + tAssoc;
+        var projectionConstructed = constructed.Contains(tContract + ":" + tAssoc);
         if (tProjection is not null && r.Next(10) < 3)
         {
             inputs.Add(r.Next(2) == 0 ? tProjection + " is U" : "U is " + tProjection);
@@ -1467,6 +1487,7 @@ public static class Runner
         if (tProjection is not null && r.Next(100) < 15)
         {
             inputs.Add(tProjection + " is i32");
+            projectionConstructed = true;
         }
 
         // Compound subjects (this revision): a fact on a compound Type and an identity with one, so congruence through kids is
@@ -1481,15 +1502,13 @@ public static class Runner
             inputs.Add("U is List<" + tProjection + ">");
         }
 
-        // The structural profile (proposal B): the T-projection's other side may be a constructed Type, one or two such inputs, so
-        // decomposition, structural Refuted and conflicts occur. The other profiles draw nothing here (their seeds stay comparable).
-        if (structural && tProjection is not null)
+        // The structural profile (proposal B): one constructed Type on the T-projection's other side, where the projection's declared
+        // requirement in its Contract is not itself a constructed Type and the generator gave it none above, so decomposition,
+        // structural Refuted and conflicts occur without most models being declaration errors. The other profiles draw nothing here
+        // (their model sets stay comparable with 152dda62's).
+        if (structural && tProjection is not null && !projectionConstructed)
         {
             inputs.Add(tProjection + " is " + Pick("List<i32>", "List<U>", "Option<U>"));
-            if (r.Next(2) == 0)
-            {
-                inputs.Add(tProjection + " is " + Pick("List<i32>", "List<U>", "Option<U>"));
-            }
         }
 
         // The nested profile: a second subject V of T's Contract whose projection is the same Type as T's (both i32), so nested
