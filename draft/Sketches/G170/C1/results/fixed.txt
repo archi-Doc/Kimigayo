@@ -9,19 +9,19 @@ PASS G170 depth 8 | T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree)
 PASS G170 depth 8, unrelated contract | T.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child.(Tree).Child is Foo | C none Complete rounds=0 V=2 E=1 J=0 N=12 | ref6 none ref8 none | expected none C
 PASS non-recursive variant | T.(Outer).Inner.(Holder).Item is Copy | C + Complete rounds=4 V=10 E=5 J=27 N=8 | ref6 + ref8 + | expected + C
 PASS B: identity to another subject (input) | U is Copy | C + Complete rounds=2 V=6 E=4 J=13 N=5 | ref6 + ref8 + | expected + C
-PASS B: identity to another subject (derived) | U is Copy | C + Complete rounds=6 V=12 E=8 J=123 N=8 | ref6 + ref8 + | expected + C
+PASS B: identity to another subject (derived) | U is Copy | C + Complete rounds=6 V=12 E=8 J=125 N=8 | ref6 + ref8 + | expected + C
 PASS B: identity, other direction | U is Copy | C + Complete rounds=2 V=6 E=4 J=13 N=5 | ref6 + ref8 + | expected + C
 PASS B: Contract argument clause | T.(Cc).Y is Ee | C + Complete rounds=4 V=9 E=5 J=24 N=6 | ref6 + ref8 + | expected + C
 PASS B: Contract argument clause, other subject | T.(Cc).X is Ee | C none Complete rounds=1 V=6 E=1 J=7 N=4 | ref6 none ref8 none | expected none C
 PASS deep subject | T.(Aa).X.(Bb).Y is Copy | C + Complete rounds=2 V=8 E=3 J=16 N=6 | ref6 + ref8 + | expected + C
 PASS deep subject through an identity (non-prefix) | U.(Bb).Y is Copy | C + Complete rounds=2 V=8 E=4 J=19 N=7 | ref6 + ref8 + | expected + C
 PASS absent-head binder, instance available | T.(Tree).Child is Copy | C + Complete rounds=2 V=6 E=3 J=13 N=6 | ref6 + ref8 + | expected + C
-PASS absent-head binder, no instance | T.(Tree).Child is Copy | C none Complete rounds=1 V=6 E=1 J=7 N=4 | ref6 none ref8 none | expected none C
+PASS absent-head binder, no instance | T.(Tree).Child is Copy | C none Complete rounds=0 V=2 E=1 J=0 N=4 | ref6 none ref8 none | expected none C
 PASS ancestor with arguments | T is Pp<i32> | C + Complete rounds=2 V=5 E=3 J=7 N=4 | ref6 + ref8 + | expected + C
 PASS ancestor, other arguments | T is Pp<i64> | C none Complete rounds=1 V=3 E=1 J=2 N=4 | ref6 none ref8 none | expected none C
-PASS inherited identity on the argument | T.(Pp<i32>).X is i32 | C + Complete rounds=5 V=15 E=11 J=279 N=5 | ref6 + ref8 + | expected + C
-PASS G180 associate X is D<Self> | T.(Cc).X is Dd<T> | C + Complete rounds=2 V=6 E=3 J=15 N=4 | ref6 + ref8 + | expected + C
-PASS G180 not D<U> | T.(Cc).X is Dd<U> | C none Complete rounds=1 V=5 E=1 J=10 N=5 | ref6 none ref8 none | expected none C
+PASS inherited identity on the argument | T.(Pp<i32>).X is i32 | C + Complete rounds=5 V=15 E=9 J=443 N=5 | ref6 + ref8 + | expected + C
+PASS G180 associate X is D<Self> | T.(Cc).X is Dd<T> | C + Complete rounds=2 V=6 E=3 J=12 N=4 | ref6 + ref8 + | expected + C
+PASS G180 not D<U> | T.(Cc).X is Dd<U> | C none Complete rounds=1 V=5 E=1 J=7 N=5 | ref6 none ref8 none | expected none C
 PASS G180 contract C2: D<Self> | T is Dd<T> | C + Complete rounds=2 V=4 E=3 J=7 N=3 | ref6 + ref8 + | expected + C
 PASS G180 h6 N | T.(Cc).X.(Dd<T.(Cc).Y>).N is Dd<T.(Cc).X.(Dd<T.(Cc).Y>).M> | C + Complete rounds=4 V=12 E=5 J=64 N=8 | ref6 + ref8 + | expected + C
 PASS G180 h6 M | T.(Cc).X.(Dd<T.(Cc).Y>).M is Ee | C + Complete rounds=4 V=14 E=7 J=75 N=9 | ref6 + ref8 + | expected + C
@@ -37,60 +37,114 @@ PASS exact conjunction | T.(Cc).Y is Aa and Bb | C + Complete rounds=2 V=6 E=3 J
 PASS negated compound input | T is Aa or Bb | C - Complete rounds=0 V=2 E=1 J=0 N=3 | ref6 - ref8 - | expected - C
 PASS unseeded proof cycle | S1 is Aa | C none Complete rounds=2 V=6 E=1 J=6 N=4 | ref6 none ref8 none | expected none C
 PASS cycle with an independent support | S2 is Aa | C + Complete rounds=2 V=5 E=3 J=8 N=3 | ref6 + ref8 + | expected + C
-PASS recursive Contract, concrete conformance | S1 is Tree | C none Complete rounds=1 V=4 E=0 J=15 N=2 | ref6 none ref8 none | expected none C
+PASS recursive Contract, concrete conformance | S1 is Tree | C none Complete rounds=0 V=2 E=0 J=7 N=2 | ref6 none ref8 none | expected none C
 PASS recursive through an argument route: projection | T.(Cr).X is Cr | C + Complete rounds=4 V=11 E=5 J=28 N=4 | ref6 + ref8 + | expected + C
 PASS recursive through an argument route: concrete conformance | S1 is Cr | C none Complete rounds=1 V=6 E=1 J=10 N=3 | ref6 none ref8 none | expected none C
-PASS recursive through an identity with a closed Type: projection | T.(Kb).Y is Kb | C + Complete rounds=6 V=20 E=7 J=150 N=6 | ref6 + ref8 + | expected + C
+PASS recursive through an identity with a closed Type: projection | T.(Kb).Y is Kb | C + Complete rounds=6 V=19 E=7 J=174 N=6 | ref6 + ref8 + | expected + C
 PASS recursive through an identity with a closed Type: concrete conformance | S1 is Kb | C none Complete rounds=1 V=5 E=1 J=6 N=3 | ref6 none ref8 none | expected none C
 PASS pending declaration | T.(Aa).X is Copy | C none Provisional rounds=1 V=4 E=1 J=3 N=4 | ref6 none ref8 none | expected none P
 PASS pending declaration, discovery | enumerate T.(Aa).X | C none Complete rounds=3 V=7 E=3 J=18 N=4 facts [+Copy] members [T.(Aa).X] | expected C
-PASS Resource conformance: its fact | S1 is Aa | C Resource Resource (source state Resource: S1 is Aa) rounds=0 V=2 E=1 J=1 N=4 | ref6 none ref8 none | expected R
-PASS Resource conformance: its binding | S1.(Aa).X is i32 | C Resource Resource (source state Resource: binding 0) rounds=1 V=5 E=1 J=16 N=6 | ref6 none ref8 none | expected R
-PASS Resource declaration: its clause | T.(Bb).Y is Copy | C Resource Resource (source state Resource: Bb) rounds=1 V=4 E=1 J=3 N=4 | ref6 none ref8 none | expected R
+PASS Resource conformance: its fact | S1 is Aa | C none Resource (source state Resource: S1 is Aa) rounds=0 V=2 E=1 J=1 N=4 | ref6 none ref8 none | expected R
+PASS Resource conformance: its binding | S1.(Aa).X is i32 | C none Resource (source state Resource: binding 0) rounds=1 V=5 E=1 J=22 N=6 | ref6 none ref8 none | expected R
+PASS Resource declaration: its clause | T.(Bb).Y is Copy | C none Resource (source state Resource: Bb) rounds=1 V=4 E=1 J=3 N=4 | ref6 none ref8 none | expected R
 PASS Resource sources, independent evidence | S2 is Aa | C + Complete rounds=1 V=2 E=2 J=2 N=4 | ref6 + ref8 + | expected + C
 PASS Resource sources, an input | T is Bb | C + Complete rounds=0 V=2 E=1 J=0 N=2 | ref6 + ref8 + | expected + C
 PASS the conformance under its own check (SPEC 8.3.3) | S2 is Aa | C none Complete rounds=0 V=2 E=1 J=1 N=4 | ref6 none ref8 none | expected none C
-PASS view: own inferred value excluded | S1.(Pp).X is i32 | C none Complete rounds=1 V=5 E=0 J=35 N=4 | ref6 none ref8 none | expected none C
-PASS view: completed external value admissible | S1.(Pp).X is i32 | C + Complete rounds=1 V=4 E=4 J=37 N=4 | ref6 + ref8 + | expected + C
-PASS view: own value through another definition | S2.(Qq).W is i32 | C none Complete rounds=1 V=5 E=0 J=48 N=4 | ref6 none ref8 none | expected none C
-PASS view: ordinary, through both values | S2.(Qq).W is i32 | C + Complete rounds=2 V=8 E=2 J=85 N=7 | ref6 + ref8 + | expected + C
-PASS view: independent explicit support | S1.(Pp).X is i32 | C + Complete rounds=1 V=3 E=1 J=9 N=4 | ref6 + ref8 + | expected + C
-PASS closed identity, recursive: projection | T.(It).Value is Copy | C + Complete rounds=2 V=10 E=5 J=60 N=5 | ref6 + ref8 + | expected + C
-PASS closed identity, recursive: the closed Type | i32 is Copy | C + Complete rounds=4 V=10 E=11 J=57 N=8 | ref6 + ref8 + | expected + C
-PASS closed identity through a binding | i32 is Copy | C + Complete rounds=5 V=13 E=12 J=94 N=11 | ref6 + ref8 + | expected + C
-PASS closed identity through a binding: a frozen view settles like an ordinary one | i32 is Copy | C + Complete rounds=5 V=13 E=12 J=94 N=11 | ref6 + ref8 + | expected + C
-PASS closed identity, argument bound by the goal | i32 is Dd<T.(It).Child> | C + Complete rounds=6 V=13 E=11 J=68 N=7 | ref6 + ref8 + | expected + C
-PASS closed identity, argument not derivable | i32 is Dd<U> | C none Complete rounds=2 V=6 E=1 J=10 N=5 | ref6 none ref8 none | expected none C
-PASS closed identity, enumerate the closed Type | enumerate i32 | C Resource Resource (rounds>200) rounds=201 V=993 E=1185 J=300664 N=595 facts [] members [] | expected R
-PASS congruence through a kid: a fact on List<i32> | List<S1.(Pp).X> is Copy | C + Complete rounds=1 V=5 E=3 J=23 N=6 | ref6 + ref8 + | expected + C
-PASS congruence through a kid: a member through List<i32> | List<S1.(Pp).X> is Copy | C + Complete rounds=4 V=9 E=5 J=40 N=9 | ref6 + ref8 + | expected + C
-PASS a chain through a chain | List<i32> is Copy | C + Complete rounds=7 V=15 E=9 J=193 N=8 | ref6 + ref8 + | expected + C
-PASS an input's Contract is concludable | T.(Kj).Y is Kk | C + Complete rounds=2 V=8 E=4 J=117 N=4 | ref6 + ref8 + | expected + C
-PASS an identity goal's classes meet | i32 is List<i32> | C + Complete rounds=3 V=16 E=5 J=371 N=5 | ref6 + ref8 + | expected + C
-PASS a chain through another instance of the same row | T.(Kd).Y is Kc<U> | C + Complete rounds=8 V=27 E=10 J=321 N=9 | ref6 + ref8 + | expected + C
-PASS a chain through a virtual node's first kid | T.(K1).X is Cp | C + Complete rounds=10 V=18 E=19 J=280 N=9 | ref6 + ref8 + | expected + C
-PASS a need under a ground Type's kid | List<T.(K1).X> is Cp | C + Complete rounds=13 V=24 E=19 J=460 N=9 | ref6 + ref8 + | expected + C
-PASS a bound variable meets the subject class | i32 is Kz<i64> | C + Complete rounds=3 V=23 E=14 J=428 N=5 | ref6 + ref8 + | expected + C
-PASS closed parameter side, identity goal | U is List<i32> | C + Complete rounds=6 V=22 E=9 J=418 N=5 | ref6 + ref8 + | expected + C
-PASS many bindings: through the projection | S7.(Pp).X is Copy | C + Complete rounds=2 V=4 E=3 J=22 N=7 | ref6 + ref8 + | expected + C
+PASS view: own inferred value excluded | S1.(Pp).X is i32 | C none Complete rounds=2 V=7 E=1 J=109 N=7 | ref6 none ref8 none | expected none C
+PASS view: completed external value admissible | S1.(Pp).X is i32 | C + Complete rounds=1 V=4 E=4 J=66 N=4 | ref6 + ref8 + | expected + C
+PASS view: own value through another definition | S2.(Qq).W is i32 | C none Complete rounds=2 V=7 E=1 J=128 N=7 | ref6 none ref8 none | expected none C
+PASS view: ordinary, through both values | S2.(Qq).W is i32 | C + Complete rounds=2 V=7 E=4 J=119 N=7 | ref6 + ref8 + | expected + C
+PASS view: independent explicit support | S1.(Pp).X is i32 | C + Complete rounds=1 V=3 E=2 J=19 N=4 | ref6 + ref8 + | expected + C
+PASS closed identity, recursive: projection | T.(It).Value is Copy | C + Complete rounds=2 V=10 E=5 J=92 N=5 | ref6 + ref8 + | expected + C
+PASS closed identity, recursive: the closed Type | i32 is Copy | C + Complete rounds=4 V=10 E=11 J=59 N=8 | ref6 + ref8 + | expected + C
+PASS closed identity through a binding | i32 is Copy | C + Complete rounds=5 V=15 E=14 J=167 N=11 | ref6 + ref8 + | expected + C
+PASS closed identity through a binding: a frozen view settles like an ordinary one | i32 is Copy | C + Complete rounds=5 V=15 E=14 J=167 N=11 | ref6 + ref8 + | expected + C
+PASS closed identity, argument bound by the goal | i32 is Dd<T.(It).Child> | C + Complete rounds=6 V=13 E=11 J=70 N=7 | ref6 + ref8 + | expected + C
+PASS closed identity, argument not derivable | i32 is Dd<U> | C none Complete rounds=2 V=6 E=1 J=11 N=5 | ref6 none ref8 none | expected none C
+PASS closed identity, enumerate the closed Type | enumerate i32 | C none Resource (rounds>200) rounds=201 V=993 E=1185 J=300863 N=595 facts [] members [] | expected R
+PASS congruence through a kid: a fact on List<i32> | List<S1.(Pp).X> is Copy | C + Complete rounds=1 V=5 E=3 J=25 N=6 | ref6 + ref8 + | expected + C
+PASS congruence through a kid: a member through List<i32> | List<S1.(Pp).X> is Copy | C + Complete rounds=4 V=9 E=5 J=38 N=9 | ref6 + ref8 + | expected + C
+PASS a chain through a chain | List<i32> is Copy | C + Complete rounds=7 V=13 E=11 J=274 N=8 | ref6 +! ref8 +! | expected + C
+PASS an input's Contract is concludable | T.(Kj).Y is Kk | C + Complete rounds=2 V=8 E=4 J=189 N=4 | ref6 + ref8 + | expected + C
+PASS an identity goal's classes meet | i32 is List<i32> | C +- Complete rounds=2 V=6 E=5 J=142 N=5 | ref6 +-! ref8 +-! | expected +- C
+PASS a chain through another instance of the same row | T.(Kd).Y is Kc<U> | C + Complete rounds=8 V=26 E=18 J=436 N=9 | ref6 + ref8 + | expected + C
+PASS a chain through a virtual node's first kid | T.(K1).X is Cp | C + Complete rounds=11 V=15 E=18 J=241 N=9 | ref6 +! ref8 +! | expected + C
+PASS a need under a ground Type's kid | List<T.(K1).X> is Cp | C + Complete rounds=13 V=16 E=18 J=401 N=9 | ref6 +! ref8 +! | expected + C
+PASS a bound variable meets the subject class | i32 is Kz<i64> | C none Complete rounds=1 V=3 E=0 J=3 N=3 | ref6 +! ref8 +! | expected none C
+PASS closed parameter side, identity goal | U is List<i32> | C + Complete rounds=5 V=17 E=5 J=365 N=5 | ref6 + ref8 + | expected + C
+PASS many bindings: through the projection | S7.(Pp).X is Copy | C + Complete rounds=2 V=4 E=3 J=23 N=7 | ref6 + ref8 + | expected + C
 PASS many bindings: an unrelated compound | List<i32> is Copy | C none Complete rounds=1 V=3 E=1 J=1 N=5 | ref6 none ref8 none | expected none C
-PASS many bindings: a projection needed in the closed class (each binding is a candidate) | i32 is Ww | C + Complete rounds=4 V=153 E=54 J=1066 N=106 | ref6 + ref8 + | expected + C
-PASS a variable identity side, needed through a projection | T.(W3).X.(Holder).Item is Copy | C + Complete rounds=4 V=12 E=8 J=386 N=6 | ref6 + ref8 + | expected + C
-PASS an open identity side, needed by an identity goal through two rows | U.(W1).Y is Option<List<U>> | C + Complete rounds=2 V=10 E=6 J=104 N=8 | ref6 + ref8 + | expected + C
-PASS an open identity side, not provable | U.(W2).Y is Option<List<U>> | C none Complete rounds=1 V=11 E=2 J=59 N=8 | ref6 none ref8 none | expected none C
+PASS many bindings: a projection needed in the closed class (each binding is a candidate) | i32 is Ww | C + Complete rounds=4 V=153 E=54 J=1117 N=106 | ref6 + ref8 + | expected + C
+PASS a variable identity side, needed through a projection | T.(W3).X.(Holder).Item is Copy | C + Complete rounds=4 V=12 E=6 J=244 N=6 | ref6 + ref8 + | expected + C
+PASS an open identity side, needed by an identity goal through two rows | U.(W1).Y is Option<List<U>> | C + Complete rounds=4 V=22 E=6 J=673 N=8 | ref6 + ref8 + | expected + C
+PASS an open identity side, not provable | U.(W2).Y is Option<List<U>> | C none Complete rounds=6 V=29 E=6 J=684 N=10 | ref6 none ref8 none | expected none C
 PASS unrelated request, variable identity sides | T is Copy | n=4: C none Complete rounds=0 V=2 E=1 J=0 N=3 | n=64: C none Complete rounds=0 V=2 E=1 J=0 N=3 | expected none C, equal work
 PASS related request, variable identity sides | T.(Holder).Item is Copy | n=4: C + Complete rounds=2 V=6 E=3 J=11 N=4 | n=64: C + Complete rounds=2 V=6 E=3 J=11 N=4 | expected + C, equal work
-PASS unrelated request, open identity sides | List<T> is Copy | n=4: C none Complete rounds=1 V=3 E=2 J=1 N=6 | n=64: C none Complete rounds=1 V=3 E=2 J=1 N=6 | expected none C, equal work
-PASS identity goal, open identity sides | U.(W1).Y is Option<List<U>> | n=4: C + Complete rounds=2 V=10 E=6 J=104 N=8 | n=64: C + Complete rounds=2 V=10 E=6 J=104 N=8 | expected + C, equal work
-PASS related identity goal, variable identity sides | T.(W3).X is T | n=4: C + Complete rounds=2 V=7 E=6 J=234 N=4 | n=64: C + Complete rounds=2 V=7 E=6 J=2094 N=4 | expected + C, equal rows
-PASS a meeting, variable identity sides | T is Copy | n=4: C none Complete rounds=1 V=4 E=2 J=61 N=4 | n=64: C none Complete rounds=1 V=4 E=2 J=901 N=4 | expected none C, equal rows
-PASS a meeting, parameter identity sides | T is Copy | n=4: C none Complete rounds=1 V=4 E=3 J=61 N=6 | n=64: C none Complete rounds=1 V=4 E=3 J=901 N=6 | expected none C, equal rows
-PASS a meeting, nested-projection identity sides | T is Copy | n=4: C none Complete rounds=1 V=4 E=3 J=61 N=5 | n=64: C none Complete rounds=1 V=4 E=3 J=901 N=5 | expected none C, equal rows
-PASS an involution law: virtual nodes one Type modulo classes | T is Copy | C + Complete rounds=2 V=5 E=10 J=64 N=7 | ref6 + ref8 + | expected + C
-PASS an involution law: the identity | T is V | C + Complete rounds=3 V=6 E=10 J=96 N=7 | ref6 + ref8 + | expected + C
-PASS a nested-projection identity side met modulo classes | T is Copy | C + Complete rounds=2 V=5 E=10 J=64 N=7 | ref6 + ref8 + | expected + C
-PASS a free Contract argument inside a virtual node's subterm (decided once its row binds it) | T is Copy | C + Complete rounds=2 V=5 E=10 J=84 N=8 | ref6 + ref8 + | expected + C
-PASS a bound pattern needs a virtual node modulo classes | V.(M).P is D<T> | C + Complete rounds=4 V=13 E=8 J=137 N=11 | ref6 + ref8 + | expected + C
-PASS same-declaration facts meet (one parameter) | enumerate S1 | C none Complete rounds=6 V=24 E=15 J=314 N=6 facts [+K3<i32> +K4<i64>] members [S1] | expected C
-PASS same-declaration facts meet (two parameters) | enumerate S1 | C none Complete rounds=7 V=27 E=18 J=418 N=10 facts [+K3<i32> +K4<i64, List<i32>>] members [S1] | expected C
+PASS unrelated request, open identity sides | List<T> is Copy | n=4: C none Complete rounds=4 V=12 E=4 J=22 N=8 | n=64: C none Complete rounds=4 V=12 E=4 J=22 N=8 | expected none C, equal work
+PASS identity goal, open identity sides | U.(W1).Y is Option<List<U>> | n=4: C + Complete rounds=4 V=22 E=6 J=673 N=8 | n=64: C + Complete rounds=4 V=22 E=6 J=673 N=8 | expected + C, equal work
+PASS related identity goal, variable identity sides | T.(W3).X is T | n=4: C + Complete rounds=3 V=7 E=4 J=270 N=4 | n=64: C + Complete rounds=3 V=7 E=4 J=270 N=4 | expected + C, equal rows
+PASS a meeting, variable identity sides | T is Copy | n=4: C none Complete rounds=1 V=3 E=2 J=1 N=4 | n=64: C none Complete rounds=1 V=3 E=2 J=1 N=4 | expected none C, equal rows
+PASS a meeting, parameter identity sides | T is Copy | n=4: C none Complete rounds=1 V=4 E=3 J=11 N=6 | n=64: C none Complete rounds=1 V=4 E=3 J=11 N=6 | expected none C, equal rows
+PASS a meeting, nested-projection identity sides | T is Copy | n=4: C none Complete rounds=4 V=19 E=7 J=1301 N=7 | n=64: C none Complete rounds=4 V=19 E=7 J=1301 N=7 | expected none C, equal rows
+PASS an involution law: virtual nodes one Type modulo classes | T is Copy | C + Complete rounds=2 V=5 E=10 J=48 N=7 | ref6 + ref8 + | expected + C
+PASS an involution law: the identity | T is V | C + Complete rounds=4 V=13 E=10 J=1162 N=7 | ref6 + ref8 + | expected + C
+PASS a nested-projection identity side met modulo classes | T is Copy | C + Complete rounds=2 V=5 E=10 J=48 N=7 | ref6 + ref8 + | expected + C
+PASS a free Contract argument inside a virtual node's subterm (decided once its row binds it) | T is Copy | C + Complete rounds=2 V=5 E=10 J=58 N=8 | ref6 + ref8 + | expected + C
+PASS a bound pattern needs a virtual node modulo classes | V.(M).P is D<T> | C + Complete rounds=4 V=13 E=8 J=139 N=11 | ref6 + ref8 + | expected + C
+PASS same-declaration facts meet (one parameter) | enumerate S1 | C none Complete rounds=6 V=18 E=13 J=240 N=6 facts [+K3<i32> +K4<i64>] members [S1] | expected C
+PASS same-declaration facts meet (two parameters) | enumerate S1 | C none Complete rounds=7 V=21 E=16 J=321 N=10 facts [+K3<i32> +K4<i64, List<i32>>] members [S1] | expected C
+PASS shared identity sides, n = 3: unrelated request | T is Copy | C none Complete rounds=1 V=3 E=1 J=1 N=3 | ref6 none ref8 none | expected none C
+PASS shared identity sides, n = 10: unrelated request | T is Copy | C none Complete rounds=1 V=3 E=1 J=1 N=3 | ref6 none ref8 none | expected none C
+PASS unrelated request, shared identity sides | T is Copy | n=4: C none Complete rounds=1 V=3 E=1 J=1 N=3 | n=64: C none Complete rounds=1 V=3 E=1 J=1 N=3 | expected none C, equal work
+PASS unrelated request, shared identity sides, two live | W is Copy | n=4: C none Complete rounds=5 V=57 E=13 J=2246 N=11 | n=64: C none Complete rounds=5 V=57 E=13 J=2246 N=11 | expected none C, equal rows
+PASS shared identity sides, every row live, n = 3: unrelated request | T is Copy | C none Complete rounds=2 V=26 E=2 J=298 N=4 | ref6 none ref8 none | expected none C
+PASS shared identity sides, every row live, n = 10: unrelated request | T is Copy | C none Complete rounds=2 V=68 E=2 J=683 N=4 | ref6 none ref8 none | expected none C
+PASS unrelated request, shared identity sides, every row live | T is Copy | n=4: C none Complete rounds=2 V=32 E=2 J=353 N=4 | n=8: C none Complete rounds=2 V=56 E=2 J=573 N=4 | n=64: C none Complete rounds=2 V=392 E=2 J=3653 N=4 | expected none C, V and J linear
+PASS a kid that is not a Type yet (shape5): a free Contract argument under the pattern's kid | T.(Gz).Z is Copy | C none Complete rounds=2 V=6 E=4 J=71 N=11 | ref6 +! ref8 +! | expected none C
+PASS a kid that is not a Type yet, one level deeper (shape7) | T.(Gz).Z is Copy | C none Complete rounds=2 V=6 E=4 J=71 N=11 | ref6 +! ref8 +! | expected none C
+PASS a kid that is not a Type yet is decided once built (shape5, valid under B) | T.(Gz).Z is Copy | C + Complete rounds=4 V=18 E=10 J=359 N=12 | ref6 + ref8 + | expected + C
+PASS a kid that is not a Type yet, one level deeper (shape7, valid under B) | T.(Gz).Z is Copy | C + Complete rounds=4 V=19 E=10 J=396 N=13 | ref6 + ref8 + | expected + C
+PASS an involution law of period 3: Copy | T is Copy | C + Complete rounds=2 V=5 E=10 J=65 N=8 | ref6 + ref8 + | expected + C
+PASS an involution law of period 3: the identity | T is V | C + Complete rounds=4 V=20 E=10 J=4651 N=8 | ref6 + ref8 + | expected + C
+PASS Contract arguments identical by identity: Copy | T is Copy | C + Complete rounds=2 V=5 E=11 J=64 N=9 | ref6 + ref8 + | expected + C
+PASS Contract arguments identical by identity: the identity | T is V | C + Complete rounds=4 V=18 E=13 J=1673 N=9 | ref6 + ref8 + | expected + C
+PASS kid classes identical by congruence: Copy | T is Copy | C + Complete rounds=2 V=5 E=11 J=52 N=9 | ref6 + ref8 + | expected + C
+PASS kid classes identical by congruence: the identity | T is V | C + Complete rounds=4 V=14 E=11 J=1182 N=9 | ref6 + ref8 + | expected + C
+PASS a depth-3 need through a bound pattern | V.(M).P is D<T> | C + Complete rounds=4 V=15 E=8 J=191 N=12 | ref6 + ref8 + | expected + C
+PASS an involution law through conformances: the subjects are not one Type | S1 is Copy | C none Complete rounds=0 V=2 E=0 J=0 N=2 | ref6 none ref8 none | expected none C
+PASS the join with a wildcard kid: Copy | T.(G).Z is Copy | C + Complete rounds=2 V=28 E=10 J=1031 N=10 | ref6 + ref8 + | expected + C
+PASS the join with a wildcard kid: the identity | T.(G).Z is V | C + Complete rounds=7 V=57 E=14 J=6428 N=10 | ref6 + ref8 + | expected + C
+PASS the join with a wildcard kid: an unrelated request | T is Copy | C none Complete rounds=6 V=56 E=12 J=5173 N=10 | ref6 none ref8 none | expected none C
+PASS a shape variable at two positions | T.(W).X is U.(Q).Z | C + Complete rounds=5 V=53 E=22 J=3433 N=13 | ref6 + ref8 + | expected + C
+PASS a round whose only effects are need rows does not settle (m41) | T is Cp | C + Complete rounds=18 V=25 E=59 J=2677 N=7 | ref6 + ref8 + | expected + C
+PASS need rows are effects of the round (seed 20261022 model 41) | T is Cp | C + Provisional rounds=18 V=27 E=61 J=3230 N=9 | ref6 + ref8 + | expected + P
+PASS need rows are effects of the round (minimal) | T is Cp | C + Complete rounds=18 V=25 E=59 J=2677 N=7 | ref6 + ref8 + | expected + C
+PASS kid meeting deferred: identity through a conformance subject | T.(K1).X is Cp<i32> | C + Complete rounds=6 V=46 E=19 J=2426 N=9 | ref6 + ref8 + | expected + C
+PASS kid meeting deferred: identity goal through a conformance subject | T.(K1).X is F<i32> | C + Complete rounds=7 V=87 E=37 J=12460 N=9 | ref6 + ref8 + | expected + C
+PASS kid meeting deferred: identity by an input on the compound | T.(K1).X is Cp<i32> | C + Complete rounds=4 V=16 E=9 J=113 N=8 | ref6 + ref8 + | expected + C
+PASS kid meeting deferred: identity through a parameter side | T.(K1).X is Cp<i32> | C + Complete rounds=7 V=43 E=21 J=1693 N=9 | ref6 + ref8 + | expected + C
+PASS kid meeting deferred: identity goal through a parameter side | T.(K1).X is F<i32> | C + Complete rounds=7 V=73 E=37 J=5690 N=9 | ref6 + ref8 + | expected + C
+PASS B same: two inputs decomposed | U is i32 | C + Complete rounds=0 V=1 E=2 J=5 N=4 | ref6 + ref8 + | expected + C
+PASS B same-nested: decomposed two levels down | U is i32 | C + Complete rounds=0 V=1 E=2 J=8 N=5 | ref6 + ref8 + | expected + C
+PASS B conflict: different heads in one class, reached by the request | T is Option<U> | C +- Complete rounds=0 V=1 E=2 J=2 N=4 | ref6 +-! ref8 +-! | expected +- C
+PASS B refuted-open: different heads with an unbound argument | T is Option<i32> | C - Complete rounds=1 V=4 E=1 J=3 N=5 | ref6 - ref8 - | expected - C
+PASS B refuted-kid: a Refuted kid pair | T is Option<i32> | C - Complete rounds=1 V=4 E=2 J=5 N=6 | ref6 - ref8 - | expected - C
+PASS B fill: a conditional conformance's condition Refuted by heads | Array<W> is Option<i32> | C - Complete rounds=1 V=4 E=1 J=3 N=6 | ref6 - ref8 - | expected - C
+PASS B fill: the conformance does not apply (vacuous today: identity conditions are outside C1's rows, Condition requires Is) | T is Flag | C none Complete rounds=2 V=4 E=1 J=8 N=5 | ref6 none ref8 none | expected none C
+PASS B independent: projections are not decomposed | T is U | C none Complete rounds=0 V=2 E=3 J=1 N=5 | ref6 none ref8 none | expected none C
+PASS B cyclic: a Type identical to its own proper part | T is Option<U> | C +- Complete rounds=0 V=1 E=2 J=4 N=4 | ref6 +-! ref8 +-! | expected +- C
+PASS B reconstructed: a projection of the Type itself is no cycle | T is Cell<T.(Linked).Next> | C + Complete rounds=3 V=9 E=5 J=455 N=6 | ref6 + ref8 + | expected + C
+PASS B number: an associated-Type specification decomposed against a binding | Number.(Wrapped).Inner is i32 | C + Complete rounds=6 V=10 E=4 J=193 N=6 | ref6 + ref8 + | expected + C
+PASS B args-not-decomposed: Contract arguments are two conformances | U is i32 | C none Complete rounds=0 V=2 E=2 J=0 N=5 | ref6 none ref8 none | expected none C
+PASS B decomp-down: the demand on a kid class is answered by the parent's promise (rule 8 down) | T.(Holder).Item is Copy | C + Complete rounds=4 V=51 E=11 J=881 N=9 | ref6 + ref8 + | expected + C
+PASS B two-variable-kids: neither node exists before the rows fire (rule 8 up) | U is W | C + Complete rounds=6 V=37 E=11 J=320 N=8 | ref6 + ref8 + | expected + C
+PASS B ground-kid: a ground side and a variable kid (rule 8 up) | U is i32 | C + Complete rounds=5 V=23 E=9 J=191 N=8 | ref6 + ref8 + | expected + C
+PASS B limit-keeps-proven: the polarity established before the item limit stands (seed 20261022 model 312) | i32 is Cp | C + Resource (items 5438>3000) rounds=14 V=3661 E=2356 J=36352 N=597 | ref6 + ref8 + | expected + R
+PASS B conflict-reached-by-row: the row fires on need and the conflict is the request's | T is Array<U> | C +- Complete rounds=2 V=21 E=8 J=387 N=5 | ref6 +-! ref8 +-! | expected +- C
+PASS B open-live: unrelated request, live constructor sides with a variable kid (rule 8 up) | T is Copy | n=4: C none Complete rounds=2 V=19 E=2 J=17 N=4 | n=8: C none Complete rounds=2 V=35 E=2 J=33 N=4 | n=64: C none Complete rounds=2 V=259 E=2 J=257 N=4 | expected none C, V and J linear
+PASS B negated-component: a negated component refutes the parent | T is Option<i32> | C - Complete rounds=1 V=4 E=2 J=3 N=5 | ref6 - ref8 - | expected - C
+PASS B proj-kids: projection-headed kids are deferred, not compared by head | V is Cp | C + Complete rounds=2 V=9 E=10 J=275 N=12 | ref6 + ref8 + | expected + C
+PASS B proj-vs-con: a projection kid against a constructor kid is deferred | V is Cp | C + Complete rounds=2 V=9 E=11 J=445 N=14 | ref6 + ref8 + | expected + C
+PASS B projection-side: the negative polarity needs the projection's structure (the structure need) | T.(K).X is Array<U> | C - Complete rounds=4 V=15 E=5 J=208 N=7 | ref6 - ref8 - | expected - C
+PASS B negated-row-kid: the kid pair selects the negated row | U is Option<i32> | C - Complete rounds=3 V=8 E=4 J=16 N=7 | ref6 - ref8 - | expected - C
 FAILURES 0

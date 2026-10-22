@@ -1,20 +1,20 @@
 == G170: lexical Copy of value under T is CopyTree; Binding today vs C over Binding's own clauses
-d1 absent: Binding ProveCopy Proven; C + Complete rounds=4 V=12 E=5 J=29 N=5; reference(bound 3) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d2 absent: Binding ProveCopy Unknown; C + Complete rounds=6 V=15 E=7 J=57 N=6; reference(bound 4) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d2 before: Binding ProveCopy Proven; C + Complete rounds=6 V=15 E=7 J=57 N=6; reference(bound 4) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d2 after: Binding ProveCopy Proven; C + Complete rounds=6 V=15 E=7 J=57 N=6; reference(bound 4) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d4 absent: Binding ProveCopy Unknown; C + Complete rounds=10 V=21 E=11 J=144 N=8; reference(bound 6) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d4 before: Binding ProveCopy Proven; C + Complete rounds=10 V=21 E=11 J=144 N=8; reference(bound 6) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d4 after: Binding ProveCopy Proven; C + Complete rounds=10 V=21 E=11 J=144 N=8; reference(bound 6) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d8 absent: Binding ProveCopy Unknown; C + Complete rounds=18 V=33 E=19 J=470 N=12; reference(bound 10) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d8 before: Binding ProveCopy Proven; C + Complete rounds=18 V=33 E=19 J=470 N=12; reference(bound 10) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-d8 after: Binding ProveCopy Proven; C + Complete rounds=18 V=33 E=19 J=470 N=12; reference(bound 10) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
-generated depth 3: C + Complete rounds=8 V=18 E=9 J=95 N=7
-generated depth 8: C + Complete rounds=18 V=33 E=19 J=470 N=12
-generated depth 16: C + Complete rounds=34 V=57 E=35 J=1954 N=20
+d1 absent: Binding ProveCopy Proven; C + Complete rounds=4 V=8 E=5 J=25 N=5; reference(bound 3) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d2 absent: Binding ProveCopy Unknown; C + Complete rounds=6 V=11 E=7 J=53 N=6; reference(bound 4) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d2 before: Binding ProveCopy Proven; C + Complete rounds=6 V=11 E=7 J=53 N=6; reference(bound 4) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d2 after: Binding ProveCopy Proven; C + Complete rounds=6 V=11 E=7 J=53 N=6; reference(bound 4) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d4 absent: Binding ProveCopy Unknown; C + Complete rounds=10 V=17 E=11 J=140 N=8; reference(bound 6) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d4 before: Binding ProveCopy Proven; C + Complete rounds=10 V=17 E=11 J=140 N=8; reference(bound 6) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d4 after: Binding ProveCopy Proven; C + Complete rounds=10 V=17 E=11 J=140 N=8; reference(bound 6) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d8 absent: Binding ProveCopy Unknown; C + Complete rounds=18 V=29 E=19 J=466 N=12; reference(bound 10) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d8 before: Binding ProveCopy Proven; C + Complete rounds=18 V=29 E=19 J=466 N=12; reference(bound 10) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+d8 after: Binding ProveCopy Proven; C + Complete rounds=18 V=29 E=19 J=466 N=12; reference(bound 10) +; model 30 Contracts, 10 clauses (0 not dependent or not modeled), 1 inputs
+generated depth 3: C + Complete rounds=8 V=14 E=9 J=91 N=7
+generated depth 8: C + Complete rounds=18 V=29 E=19 J=466 N=12
+generated depth 16: C + Complete rounds=34 V=53 E=35 J=1950 N=20
 == Non-recursive variant (R4's nonrec)
-absent: Binding ProveCopy Unknown; C + Complete rounds=4 V=14 E=5 J=31 N=8; reference +
-before: Binding ProveCopy Proven; C + Complete rounds=4 V=14 E=5 J=31 N=8; reference +
+absent: Binding ProveCopy Unknown; C + Complete rounds=4 V=10 E=5 J=27 N=8; reference +
+before: Binding ProveCopy Proven; C + Complete rounds=4 V=10 E=5 J=27 N=8; reference +
 == G180: Self inside a Contract reference's Type arguments (BU's 2b-S5 review probes)
 stale0 (D<i32>, control): Binding issues []; C T.(C).X is D<i32> => + Complete rounds=2 V=7 E=3 J=12 N=5; reference +
 stale1 (associate X is D<Self>): Binding issues [UnprovenConstraint_Kd]; C T.(C).X is D<T> => + Complete rounds=2 V=6 E=3 J=12 N=4; reference +
@@ -24,24 +24,24 @@ h4, D's argument clause U is E: Binding issues []; C T.(C).Y is E => + Complete 
 h6 (N is D<Self.(D<U>).M>): Binding issues []; C T.(C).X.(D<T.(C).Y>).N is D<T.(C).X.(D<T.(C).Y>).M> => + Complete rounds=4 V=12 E=5 J=64 N=8; reference +
 == Frozen inference views over real bindings (the owner's state after Bind; admissibility as today's owner publishes it)
 external, D first: bindings #0 D.(P).X = i32 (inferred); #1 E.(Q).W = i32 (inferred); Binding verified D True, E True
-  in E's view, D.(P).X is i32: + Complete rounds=1 V=4 E=4 J=46 N=4 (a completed external value)
-  in D's view, D.(P).X is i32: none Complete rounds=1 V=5 E=0 J=38 N=4 (D's own inferred value is excluded)
-  in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) none, so E.W is inadmissible: none Complete rounds=1 V=5 E=0 J=32 N=4; with today's owner state (E.W admissible) + Complete rounds=1 V=4 E=4 J=46 N=4
-  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=5 J=75 N=7
+  in E's view, D.(P).X is i32: + Complete rounds=1 V=4 E=4 J=69 N=4 (a completed external value)
+  in D's view, D.(P).X is i32: none Complete rounds=2 V=7 E=1 J=112 N=7 (D's own inferred value is excluded)
+  in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) none, so E.W is inadmissible: none Complete rounds=1 V=5 E=0 J=44 N=4; with today's owner state (E.W admissible) + Complete rounds=1 V=4 E=4 J=69 N=4
+  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=6 J=101 N=7
 external, E first: bindings #0 D.(P).X = i32 (inferred); #1 E.(Q).W = i32 (inferred); Binding verified D True, E True
-  in E's view, D.(P).X is i32: + Complete rounds=1 V=4 E=4 J=46 N=4 (a completed external value)
-  in D's view, D.(P).X is i32: none Complete rounds=1 V=5 E=0 J=38 N=4 (D's own inferred value is excluded)
-  in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) none, so E.W is inadmissible: none Complete rounds=1 V=5 E=0 J=32 N=4; with today's owner state (E.W admissible) + Complete rounds=1 V=4 E=4 J=46 N=4
-  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=5 J=75 N=7
+  in E's view, D.(P).X is i32: + Complete rounds=1 V=4 E=4 J=69 N=4 (a completed external value)
+  in D's view, D.(P).X is i32: none Complete rounds=2 V=7 E=1 J=112 N=7 (D's own inferred value is excluded)
+  in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) none, so E.W is inadmissible: none Complete rounds=1 V=5 E=0 J=44 N=4; with today's owner state (E.W admissible) + Complete rounds=1 V=4 E=4 J=69 N=4
+  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=6 J=101 N=7
 same definition: bindings #0 S.(P).X = i32 (inferred); Binding issues [AssociatedTypeInferenceFailed_Kd]
-  in S's own view, S.(P).X is i32: none Complete rounds=1 V=5 E=0 J=16 N=4 (no value inferred for S enters its frozen premises)
+  in S's own view, S.(P).X is i32: none Complete rounds=1 V=5 E=0 J=22 N=4 (no value inferred for S enters its frozen premises)
 == Cost on the G170 programs (warm, same process; Binding's ProveCopy reads today's materialized facts)
-d2 absent: Binding ProveCopy 4.10 us 96 B; C prototype 136.0 us 83512 B (interleaved medians of 41); whole warm Bind 27.3 ms; model templates 20
-d2 before: Binding ProveCopy 5.90 us 96 B; C prototype 139.8 us 83512 B (interleaved medians of 41); whole warm Bind 27.9 ms; model templates 20
-d8 absent: Binding ProveCopy 7.50 us 96 B; C prototype 1198.3 us 426448 B (interleaved medians of 41); whole warm Bind 26.5 ms; model templates 20
-d8 before: Binding ProveCopy 17.20 us 96 B; C prototype 1129.6 us 426448 B (interleaved medians of 41); whole warm Bind 28.4 ms; model templates 20
+d2 absent: Binding ProveCopy 3.70 us 96 B; C prototype 119.4 us 80416 B (interleaved medians of 41); whole warm Bind 27.4 ms; model templates 20
+d2 before: Binding ProveCopy 5.10 us 96 B; C prototype 123.0 us 80416 B (interleaved medians of 41); whole warm Bind 27.8 ms; model templates 20
+d8 absent: Binding ProveCopy 15.40 us 96 B; C prototype 806.5 us 451368 B (interleaved medians of 41); whole warm Bind 27.3 ms; model templates 20
+d8 before: Binding ProveCopy 16.80 us 96 B; C prototype 1100.0 us 451368 B (interleaved medians of 41); whole warm Bind 28.7 ms; model templates 20
 == Corpus: every function scope with input premises (milestones and the Kimi library)
-scopes 121, requests 400, 5.7 s in all; warm rebinds of the 44 programs 1550 ms; the 400 C requests 99 ms, 21476 KB
+scopes 121, requests 400, 3.9 s in all; warm rebinds of the 44 programs 1022 ms; the 400 C requests 42 ms, 17791 KB
 outcomes: copy Complete=99, enumerate Complete=146, input Complete=155
 Copy of abstract parameters: today Proven / C evidence=55, today Unknown / C no evidence=44
-V median 6, p95 41, max 45; E median 2, p95 10, max 12; J median 7, p95 62, max 62
+V median 3, p95 34, max 34; E median 2, p95 10, max 12; J median 1, p95 38, max 38

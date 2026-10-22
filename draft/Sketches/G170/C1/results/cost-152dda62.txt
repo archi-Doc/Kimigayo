@@ -1,0 +1,73 @@
+== COST (prototype, Release; median of 15 timed requests after 5 untimed; allocation per request)
+G170 Copy depth 1: + Complete rounds=4 V=8 E=5 J=25 N=5 peak 16; 55 us, 43824 B
+G170 Copy depth 2: + Complete rounds=6 V=11 E=7 J=53 N=6 peak 21; 101 us, 74880 B
+G170 Copy depth 4: + Complete rounds=10 V=17 E=11 J=140 N=8 peak 31; 210 us, 154168 B
+G170 Copy depth 8: + Complete rounds=18 V=29 E=19 J=466 N=12 peak 51; 644 us, 412024 B
+G170 Copy depth 16: + Complete rounds=34 V=53 E=35 J=1950 N=20 peak 91; 1867 us, 1286864 B
+G170 Copy depth 32: + Complete rounds=66 V=101 E=67 J=10038 N=36 peak 171; 6889 us, 4481576 B
+G170 Copy depth 64: + Complete rounds=130 V=197 E=131 J=61030 N=68 peak 331; 30748 us, 16778944 B
+G170 unrelated Foo depth 8 (exhausted): none Complete rounds=0 V=2 E=1 J=0 N=12 peak 15; 13 us, 23608 B
+G170 unrelated Foo depth 64 (exhausted): none Complete rounds=0 V=2 E=1 J=0 N=68 peak 71; 64 us, 129176 B
+wide: 8 Contracts on T: + Complete rounds=2 V=6 E=10 J=46 N=11 peak 26; 30 us, 47896 B
+wide: 32 Contracts on T: + Complete rounds=2 V=6 E=34 J=166 N=35 peak 74; 67 us, 113768 B
+wide: 128 Contracts on T: + Complete rounds=2 V=6 E=130 J=646 N=131 peak 266; 208 us, 395416 B
+diamond refinements height 4: + Complete rounds=2 V=74 E=3 J=126 N=3 peak 79; 108 us, 156176 B
+diamond refinements height 16: + Complete rounds=2 V=650 E=3 J=1230 N=3 peak 655; 892 us, 1288800 B
+diamond refinements height 64: + Complete rounds=2 V=8714 E=3 J=17166 N=3 peak 8719; 16952 us, 17388064 B
+growing argument, derivable depth 6: + Complete rounds=14 V=34 E=15 J=652 N=22 peak 64; 131 us, 399560 B
+growing argument, not derivable depth 6: none Complete rounds=7 V=24 E=1 J=77 N=11 peak 36; 37 us, 129168 B
+scaling n=10: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9; 5 us, 15608 B
+scaling n=10: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 8 us, 25832 B
+scaling n=10: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8; 5 us, 14928 B
+scaling n=10: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=3 J=22 N=7 peak 14; 17 us, 40312 B
+scaling n=10: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7; 3 us, 10232 B
+scaling n=100: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9; 4 us, 15608 B
+scaling n=100: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 8 us, 25832 B
+scaling n=100: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8; 5 us, 14928 B
+scaling n=100: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=3 J=22 N=7 peak 14; 17 us, 40312 B
+scaling n=100: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7; 3 us, 10232 B
+scaling n=400: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9; 12 us, 15608 B
+scaling n=400: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 20 us, 25832 B
+scaling n=400: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8; 4 us, 14928 B
+scaling n=400: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=3 J=22 N=7 peak 14; 16 us, 40312 B
+scaling n=400: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7; 3 us, 10088 B
+scaling n=1600: List<i32> is Copy: none Complete rounds=1 V=3 E=1 J=1 N=5 peak 9
+scaling n=1600: T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12
+scaling n=1600: i32 is Copy: + Complete rounds=1 V=2 E=2 J=2 N=4 peak 8
+scaling n=1600: S1.(Pp).X is Copy: + Complete rounds=2 V=4 E=3 J=22 N=7 peak 14
+scaling n=1600: i32 is Pp: none Complete rounds=0 V=2 E=1 J=0 N=4 peak 7
+scaling n=10: selfid T is Copy: none Complete rounds=0 V=2 E=1 J=0 N=3 peak 6; 7 us, 9448 B
+scaling n=10: selfid T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 21 us, 26544 B
+scaling n=10: open List<T> is Copy: none Complete rounds=1 V=3 E=2 J=1 N=6 peak 11; 12 us, 16952 B
+scaling n=10: open U.(W1).Y is Option<List<U>>: + Complete rounds=2 V=10 E=6 J=104 N=8 peak 22; 95 us, 159128 B
+scaling n=10: selfid + T is W3 T.(W3).X is T: + Complete rounds=2 V=7 E=6 J=420 N=4 peak 16; 762 us, 415256 B
+scaling n=10: selfid + T is W3 T.(W3).X.(Holder).Item is Copy: + Complete rounds=4 V=12 E=8 J=448 N=6 peak 23; 811 us, 446928 B
+scaling n=10: selfid + V is Copy T is Copy: none Complete rounds=1 V=4 E=2 J=145 N=4 peak 10; 364 us, 185784 B
+scaling n=10: palias T is Copy: none Complete rounds=1 V=4 E=3 J=145 N=6 peak 13; 388 us, 202000 B
+scaling n=10: palias T.(K3<i32>).X is i32: + Complete rounds=2 V=10 E=9 J=502 N=7 peak 23; 352 us, 453232 B
+scaling n=10: deep2 T is Copy: none Complete rounds=1 V=4 E=3 J=145 N=5 peak 12; 171 us, 257224 B
+scaling n=10: deep2 T.(Holder).Item is Copy: + Complete rounds=2 V=8 E=5 J=156 N=6 peak 18; 176 us, 272400 B
+scaling n=400: selfid T is Copy: none Complete rounds=0 V=2 E=1 J=0 N=3 peak 6; 7 us, 9448 B
+scaling n=400: selfid T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 22 us, 26544 B
+scaling n=400: open List<T> is Copy: none Complete rounds=1 V=3 E=2 J=1 N=6 peak 11; 5 us, 16952 B
+scaling n=400: open U.(W1).Y is Option<List<U>>: + Complete rounds=2 V=10 E=6 J=104 N=8 peak 22; 264 us, 159128 B
+scaling n=400: selfid + T is W3 T.(W3).X is T: + Complete rounds=2 V=7 E=6 J=12510 N=4 peak 16; 12361 us, 11532680 B
+scaling n=400: selfid + T is W3 T.(W3).X.(Holder).Item is Copy: + Complete rounds=4 V=12 E=8 J=12538 N=6 peak 23; 11062 us, 11564352 B
+scaling n=400: selfid + V is Copy T is Copy: none Complete rounds=1 V=4 E=2 J=5605 N=4 peak 10; 2868 us, 6372200 B
+scaling n=400: palias T is Copy: none Complete rounds=1 V=4 E=3 J=5605 N=6 peak 13; 3090 us, 6894112 B
+scaling n=400: palias T.(K3<i32>).X is i32: + Complete rounds=2 V=10 E=9 J=14152 N=7 peak 23; 5430 us, 12235688 B
+scaling n=400: deep2 T is Copy: none Complete rounds=1 V=4 E=3 J=5605 N=5 peak 12; 3361 us, 9097904 B
+scaling n=400: deep2 T.(Holder).Item is Copy: + Complete rounds=2 V=8 E=5 J=5616 N=6 peak 18; 2743 us, 9113080 B
+scaling n=1600: selfid T is Copy: none Complete rounds=0 V=2 E=1 J=0 N=3 peak 6; 6 us, 9408 B
+scaling n=1600: selfid T.(Holder).Item is Copy: + Complete rounds=2 V=6 E=3 J=11 N=4 peak 12; 8 us, 26504 B
+scaling n=1600: open List<T> is Copy: none Complete rounds=1 V=3 E=2 J=1 N=6 peak 11; 4 us, 16912 B
+scaling n=1600: open U.(W1).Y is Option<List<U>>: + Complete rounds=2 V=10 E=6 J=104 N=8 peak 22; 142 us, 159088 B
+scaling n=1600: selfid + T is W3 T.(W3).X is T: + Complete rounds=2 V=7 E=6 J=49710 N=4 peak 16; 32710 us, 46138992 B
+scaling n=1600: selfid + T is W3 T.(W3).X.(Holder).Item is Copy: + Complete rounds=4 V=12 E=8 J=49738 N=6 peak 23; 21750 us, 46170664 B
+scaling n=1600: selfid + V is Copy T is Copy: none Complete rounds=1 V=4 E=2 J=22405 N=4 peak 10; 12136 us, 25710576 B
+scaling n=1600: palias T is Copy: none Complete rounds=1 V=4 E=3 J=22405 N=6 peak 13; 11100 us, 27756504 B
+scaling n=1600: palias T.(K3<i32>).X is i32: + Complete rounds=2 V=10 E=9 J=56152 N=7 peak 23; 26892 us, 48872520 B
+scaling n=1600: deep2 T is Copy: none Complete rounds=1 V=4 E=3 J=22405 N=5 peak 12; 13297 us, 36565024 B
+scaling n=1600: deep2 T.(Holder).Item is Copy: + Complete rounds=2 V=8 E=5 J=22416 N=6 peak 18; 14331 us, 36580200 B
+repeated: 1000 top-level requests of G170 depth 8: 208.6 ms, 409785 B per request
+FAILURES 0

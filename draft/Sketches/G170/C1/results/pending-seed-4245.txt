@@ -1,5 +1,1 @@
-== PENDING seed 4245: Complete 2663, pending would change 0; Provisional 147, pending changes 12
-
-real	21m1.927s
-user	0m0.000s
-sys	0m0.031s
+== PENDING seed 4245: Complete 2629, pending would change 0; Provisional 123, pending changes 19
