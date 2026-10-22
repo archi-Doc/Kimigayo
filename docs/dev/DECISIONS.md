@@ -3781,7 +3781,7 @@ resumed by R4-M86 (2026-10-20).
   Q-O3 (owner, directly, 2026-10-22): 「D5 例外を認める (推奨)」. D5 exception: the old paths read every Type through
   `Binding.WithoutRawOrigins` (one view: every raw layer's Origin dropped) at their Type intake: `OwnershipAnalysis.Place` and
   `OwnershipBody.Resolve` together (removed with the old analysis at R6-check) and Emission's `AdtDef.CaseTypes` reads in
-  `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (removed at R6-gen). `RawStorageTest`'s `RawOriginLegacy`
+  `BodyLowering.Aggregates` (two) and `BodyLowering.CompositeMatch` (deleted with instance shapes below). `RawStorageTest`'s `RawOriginLegacy`
   fixtures emit and run the measured programs and B1's newly valid forms on the default pipeline. Ruling on `PublishedStep`:
   `Reached` records a located `InternalInvariant_Kd` at the dereference; `Restep`'s throw stays, unreachable by Raw Origins' contract.
   bu23's findings (G160-3's library annotations, 2026-10-22): S1, `BindDeclarations` computes the Origin requirements before
@@ -3793,6 +3793,43 @@ resumed by R4-M86 (2026-10-20).
   15.6.5; as `OriginOutlives` and `VerifiedRegionOutlives` read a meet): a raw Place borrow kept in a local is the meet of its
   anchor, an inferred region (SPEC 5.2.2), and the pointer's Origin, which was refuted whole when that Origin was a `var` local's
   region, since the anchor counted as body-local; now it has the direct return's verdict.
+  Never published (design-final §7.3, the planning session's ruling): right after the first requirement fixed point,
+  `RejectRawOrigins` judges each declaration's written raw Origin (`InvalidRawOrigin`: a Phantom slot, U1, an atom no borrow holds)
+  and publishes a rejected layer unstated in every Type written around it up to the declared Type its symbol holds (`Unpublish`,
+  through `TyCtxt.Rebuild`), so no substitution, inline layout or dereference re-steps it (they faulted before); a body's annotations
+  are judged in `ValidateOriginRequirements` as before.
+  Instance shapes (design-final §15; the planning session, R4 agreed, 2026-10-22): an instance's stored Types (`Binding.Instance`,
+  read as `AdtDef.FieldType`, `Base` and `CaseTypes`) state no raw Origin (`WithoutRawOrigins` at `Substitute`'s three stores). An
+  erased instance is often the user's own Type (no Origins, or only `static`), so R5-M39's property (the erasure of a stored Type is
+  the stored Type of the erased instance; `TyCtxtTest`, over G160-3's annotated library and a `self` and slot twin) and M11 hold only
+  then. This supersedes design-final §7.1's stored-shape sentence ("AdtDef.FieldType, CaseTypes, which keep Holder"), with R4's
+  agreement and conditions: one published reader answers the raw Origin of an instance's stored layer, `TyCtxt.RawStep` with
+  `Restep`, from the declared Field Type or Case payload (`Holder` kept) under the instance's substitution, `self` read as the
+  holding value; A5 (G160-4 included) reads only it, never an instance's `FieldType` or `CaseTypes` for raw Origins nor its own
+  substitution; its contract states its cost (per layer, no allocation when warm) and that it is total over what Binding accepts
+  (an Unbound or erased slot gives Unstated, never a fault). The reader lands with C4. D5's third site, Emission's `CaseTypes`
+  reads, is deleted.
+  Second D5 exception (owner, directly, 2026-10-22: 「認める (推奨)」; design-final §15 B): the old Emission's escape for an
+  inferred Origin (`HasInferenceOrigin`, `BodyLowering.Values.cs`) treats a meet with an inferred operand as inferred, S3's
+  per-operand rule, removed at R6-gen. A raw Place borrow's Origin is its anchor met with the pointer's region (C2), often a local's
+  inferred region; `FitsVerifiedTypeAt` already judges a meet per operand, but a generic instance compares that body-local region
+  with the caller's substituted Origin, so its Aggregate transfer failed (`tryGetPairUniq` with G160-3's library, Milestone 33).
+  `RawOriginLegacyPairGeneric` and its closed twin emit and run.
+  C4 (G160-2, design-final §6, §7.3, §13 A5; lands with or after G160-3): retention reads raw layers by their steps and their Origins'
+  borrows. `RetentionAtom.Shared` is set past a shared layer (also a shared input's referent) and past a raw layer whose step is
+  Shared; a raw layer opens its pointee only without an Origin or with `static` and not past a shared one, which supersedes R4-M51's
+  raw clause ("unless a raw pointer is followed again") and `raw ||` (D10; R4-M95 re-expects `ref/(raw/…)` to store nothing). A raw
+  layer whose Origin steps Exclusive walks what the Origin's borrows admit as that input's writable content (`RawContent`: the
+  referent of each input whose outer Origin it is, and `Keepers` of each slot it binds in a nominal Type of the contract, substituted
+  by that Type; D15); a raw layer's atom is its Origin's region (`OwnedOrigin`); an unstated raw result layer outside a callable Type
+  retains every input as Value and is untied (D6; `Raw.allocate` now `0 Value result, untied`). `Keepers` (Raw Origins): the planning
+  session's decision (D15), collected in `AccumulateRequirements`' borrow arm and Origin-argument arm during the requirement fixed
+  point, per declaration and pass (a pass-stamped list reused across passes). `TyCtxt.RawStep(raw)`: A5's view, `PublishedStep` of
+  the layer's raw Origin, total over published Types. `TyCtxt.RawStep(instance, part, positions)`: §15's one reader of a layer an
+  instance stores (`StoredStep`, Raw Origins): the declared Field Type or Case payload under the instance's substitution
+  (`StoredType`, `Holder` kept as Own), then inline positions; an Origin without a step gives Unstated; its contract states the
+  cost (one interned substitution, no allocation when warm, `TyCtxtTest`'s allocation row). `ArchitectureRulesTest`'s raw-role
+  sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit).
 
 ## R5 and R6 (adopted 2026-10-18)
 

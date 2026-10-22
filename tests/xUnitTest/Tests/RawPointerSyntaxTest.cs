@@ -63,6 +63,22 @@ public class RawPointerSyntaxTest
     public void ARawOriginIsOneAtomOfABorrow(string declarations, string record)
         => Assert.Equal([record], Records(declarations));
 
+    // SPEC 5.7 (design-final §7.3): a declaration's raw Origin that has no step once the slots' requirements exist is rejected at its
+    // annotation and published unstated, so holding the Type inline, a dereference and a call substituting it keep that one record: a
+    // Phantom slot, U1's case-dependent pair input, and an atom no borrow holds (bound only by a slot that keeps no Loan).
+    [Theory]
+    [InlineData(
+        "struct W<T> {s}\n    internal let at: raw/T during s\nstruct X<T> {a}\n    internal let w: W<T> during a\nfunc use(x: ref/X<i32>) -> raw/i32 => x.w.at",
+        "InvalidOriginBinding_Kd: raw/T during s")]
+    [InlineData(
+        "func f<s/T>(x: s/T during a, p: raw/T during a) -> T\n    s is ref or uniq\n    T is Copy\n    unsafe => return *p\nfunc g(r: ref/i32, q: raw/i32 during r) -> i32 => f(r, q)",
+        "Unsupported_Kd: raw/T during a")]
+    [InlineData(
+        "struct V {s}\n    internal let n: i32\nfunc h(v: V during a, p: raw/i32 during a) -> raw/i32 during a => p\nfunc k(v: V during b, q: raw/i32 during b) -> raw/i32 => h(v, q)",
+        "InvalidOriginBinding_Kd: raw/i32 during a | InvalidOriginBinding_Kd: raw/i32 during a | InvalidOriginBinding_Kd: raw/i32 during b")]
+    public void ARejectedRawOriginIsNeverPublished(string declarations, string records)
+        => Assert.Equal(records, string.Join(" | ", Records(declarations)));
+
     // SPEC 5.7, 8.3.4 (design-final §4; U1): a raw layer stating the Origin of a pair input whose admitted cases mix modes or admit a
     // non-borrow case has no one step: a located Unsupported_Kd at the annotation; one mode is the step of every case.
     [Theory]

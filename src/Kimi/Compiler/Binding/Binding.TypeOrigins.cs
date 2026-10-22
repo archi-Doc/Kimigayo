@@ -355,6 +355,7 @@ public sealed partial class Binding
         if (type.Origin is { } origin)
         {
             this.AccumulateOrigin(origin, schema, polarity, IsExclusive(type.Semantics) ? LoanRequirement.Uniq : LoanRequirement.Ref, ref changed);
+            this.Keep(schema, origin, type, null);
         }
 
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
@@ -376,6 +377,7 @@ public sealed partial class Binding
 
             var sign = source.Variance == OriginVariance.Invariant ? 0 : source.Variance == OriginVariance.Contravariant ? -polarity : polarity;
             this.AccumulateOrigin(type.OriginArguments[i], schema, sign, source.LoanRequirement, ref changed);
+            this.Keep(schema, type.OriginArguments[i], type, source);
         }
 
         for (var i = 0; i < type.Components.Count; i++)

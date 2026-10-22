@@ -13,7 +13,11 @@
 // one abstract carrier. An erased callable, one whose implementation the call cannot see (a Function Type value or a value of a
 // Callable-bounded Type parameter, each callable Type its contract names and each Callable bound of the callee's premises), was compared
 // under premises no view reads, so it relates each fixed Origin of an input to each fixed Origin of an output, an abstract carrier's
-// hidden Origins among them (owner decision 2026-10-17, DECISIONS R4-M52). An unproven absence of retention is a row.
+// hidden Origins among them (owner decision 2026-10-17, DECISIONS R4-M52). An unproven absence of retention is a row. Raw layers
+// (SPEC 5.7 Calls; D6, D10, D15; DECISIONS BU-24): nothing is written past a shared layer or a raw layer whose step is Shared; a raw
+// parameter layer without an Origin, or with `static`, lets the call write its pointee, one whose Origin steps Exclusive what that
+// Origin's borrows admit (their referents, a slot's Keepers) as that input's storage; a raw result layer with an Origin retains as that
+// borrow would, one without retains every input and is untied. The row shape is the same for every layer.
 // Must not: read the call's solved Origins or its arguments, judge an Origin relation, cover unknown callees or the operands an intrinsic
 // takes beyond its library declaration (A5's; an intrinsic's declaration is a callee like any other, A3 E14), or expose its premise walk as
 // a view of its own (A3 9, item 9).

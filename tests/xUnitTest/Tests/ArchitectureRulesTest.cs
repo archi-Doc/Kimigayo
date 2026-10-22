@@ -19,9 +19,9 @@ public class ArchitectureRulesTest
     private const string RawOriginRoleSites = "Binding/Binding.ClosureInstances.cs=1;Binding/Binding.ContractCalls.cs=1;Binding/Binding.Conversions.Raw.cs=7;" +
         "Binding/Binding.DiagnosticTypes.cs=1;Binding/Binding.Lints.cs=1;Binding/Binding.LocalRegions.Types.cs=2;" +
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.PlaceAuthority.Raw.cs=1;" +
-        "Binding/Binding.PlaceAuthority.cs=1;Binding/Binding.RawOrigins.cs=9;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.PlaceAuthority.cs=1;Binding/Binding.RawOrigins.cs=10;Binding/Binding.Retention.cs=1;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=3;" +
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
-        "Binding/BindingModel.cs=2;Binding/TyCtxt.cs=4";
+        "Binding/BindingModel.cs=2;Binding/TyCtxt.cs=5";
 
     // Test-only semantic-slot ratchet; production member policy is reviewed against COMPILER_ARCHITECTURE.
     private const string SemanticSlots = "Bound(?:Type|Origin|Symbol|Call|ValueCall|Constraint|RuntimeTest|Meaning|Closure)|BindingState|BindingFailure|HasCurrentBinding|CallStorage|ClosureStorage|ConversionBinding|FoldedConstant|CreationCall|ErasedFunctionType|EntryCall|FormattingStorage|ArithmeticCall|ComparisonCall|IsDirectStorage|FillCount|SemanticsIndexed|RequirementStorage|ImplementationStorage";
@@ -68,6 +68,7 @@ public class ArchitectureRulesTest
     // G160-1 gives its raw arm (Storage, TypeRelations, OriginDeclarations, LocalRegions.Types, TypeRelations.Origins), a closure instance's
     // context change, which passes the raw role on, or an array literal's formation, never a raw layer. The raw role (BoundType.RawOrigin,
     // a Pointer that states one) is read and written only at its named sites; review checks the Intern calls whose Semantics is a variable.
+    // Mir/ has none: A5 reads a raw layer's step only through TyCtxt.RawStep, a stored layer's from its declaration (design-final §15).
     [Theory]
     [InlineData("Self-rebuilds of a Type", "src/Kimi/Compiler", SelfRebuild, SelfRebuildSites)]
     [InlineData("Reads and writes of the raw Origin role", "src/Kimi/Compiler", RawOriginRole, RawOriginRoleSites)]

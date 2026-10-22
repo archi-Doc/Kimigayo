@@ -21,6 +21,9 @@ public sealed partial class Binding
 
     // The stored Types of a struct or enum instance: its declaration's base, Fields and Case payloads under the instance's
     // substitution. They are substituted once per pass after PrepareStorage refilled the declaration, and on every request before.
+    // They state no raw Origin (DECISIONS BU-24; design-final §15): an erased instance is often the user's own Type (no Origins, or only
+    // `static`), so the erasure of a stored Type is the stored Type of the erased instance only then (R5-M39); a raw layer's Origin in
+    // storage is read from the declared Field Type or payload, never from an instance.
     internal AdtDef.InstanceStorage Instance(BoundType type)
     {
         var adt = type.Symbol!.Adt;
@@ -67,7 +70,7 @@ public sealed partial class Binding
     {
         if (type.Symbol!.Declaration is StructKoto declaration)
         {
-            instance.Base = declaration.Bases.Count == 1 ? this.StoredType(declaration.Bases[0], type) : null;
+            instance.Base = declaration.Bases.Count == 1 ? this.WithoutRawOrigins(this.StoredType(declaration.Bases[0], type)) : null;
             var count = adt?.Fields.Length ?? 0;
             if (instance.Fields.Length != count)
             {
@@ -76,7 +79,7 @@ public sealed partial class Binding
 
             for (var i = 0; i < count; i++)
             {
-                instance.Fields[i] = this.StoredType(adt!.Fields[i], type);
+                instance.Fields[i] = this.WithoutRawOrigins(this.StoredType(adt!.Fields[i], type));
             }
 
             return;
@@ -100,7 +103,7 @@ public sealed partial class Binding
                     return;
                 }
 
-                this.enumPayloadTypes.Add(payload);
+                this.enumPayloadTypes.Add(this.WithoutRawOrigins(payload)!);
             }
 
             types[i] = this.types.Tuple(CollectionsMarshal.AsSpan(this.enumPayloadTypes));

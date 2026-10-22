@@ -106,6 +106,14 @@ public sealed class TyCtxtTest
     private const string EraseSource = "func keep<T>(value: T) -> T\n    T is Copy\n    let probe = func [] (x: T) -> T => x\n    return probe(value)\n" +
         "func host(a: ref/i32, b: ref/i32) -> i32\n    _ = keep(a)\n    _ = keep(b)\n    return 0\nlet x = 1\nlet y = 2\n_ = host(x@ref, y@ref)\n";
 
+    // A raw Field and a Case payload stating `self`, and a raw Field stating a slot, held under a local's Origin and under `static`.
+    private const string RawShapeSource = "struct Block\n    internal let data: raw/u8 during self\n    public init() => self.data = null\n" +
+        "enum Cell\n    Some(raw/u8 during self)\n    None\n" +
+        "struct View<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
+        "    public init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
+        "func held(view: View<i32> during static) -> View<i32> during static => view\n" +
+        "func local(x: ref/i32) -> i32\n    let v = View<i32>.init(x)\n    let b = Block.init()\n    let c = Cell.None\n    return 0\n";
+
     // Defaults that call a generic function, a length-generic one, one with an Origin, a requirement and, in a generic struct's method, a
     // function over the struct's Type parameter.
     private const string ComposeSource = "func copy<T>(x: T) -> T\n    T is Copy\n    return x\nfunc f<T>(x: T, y: T = copy(x)) -> T\n    T is Copy\n    return y\n" +
@@ -280,6 +288,59 @@ public sealed class TyCtxtTest
         Assert.Equal(["uniq/i32", "s/T", "s/i32"], [TyCtxt.Name(types.Reference(SemanticsKind.Uniq, BoundType.I32)), TyCtxt.Name(pair), TyCtxt.Name(application)]);
     }
 
+    // SPEC 5.7 (design-final §7.3, §13 A5): A5's view of a raw layer, total over the layers MIR holds: a pointer temporary states
+    // none, a `during self` Field is the holder's own step, `static` static storage, an input's Origin through `ref` Shared and through
+    // `uniq` Exclusive, and a meet formed through exclusive borrows Exclusive (OQ-R2 (a)).
+    [Fact]
+    public void RawStepClassifiesEveryRawLayer()
+    {
+        var c = MinimalEmissionTest.Analyze("struct B\n    internal var data: raw/i32 during self\n    public init() => self.data = null\n" +
+            "func choose(c: bool, a: uniq/i32, b: uniq/i32) -> uniq/i32 => if c => a else => b\n" +
+            "func f(c: bool, x: ref/i32, y: uniq/i32, z: uniq/i32, p: raw/i32 during x, q: raw/i32 during y) -> raw/i32 => choose(c, y, z)@follow@raw\n" +
+            "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var types = c.Types;
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var field = nodes.OfType<PropertyKoto>().Single(static x => x.ToString()!.Contains("data", StringComparison.Ordinal)).SymbolOf()!.Type!;
+        var f = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "f");
+        var meet = nodes.OfType<ConversionKoto>().Single(static x => x.ToString() == "choose(c, y, z)@follow@raw").TypeOf()!;
+        Assert.Equal(
+            [RawStep.Unstated, RawStep.Static, RawStep.Own, RawStep.Shared, RawStep.Exclusive, RawStep.Exclusive],
+            [types.RawStep(types.Pointer(BoundType.I32)), types.RawStep(types.Pointer(BoundType.I32, BoundOrigin.Static)), types.RawStep(field),
+                types.RawStep(f.Parameters[4].Type.TypeOf()!), types.RawStep(f.Parameters[5].Type.TypeOf()!), types.RawStep(meet)]);
+        Assert.Equal(OriginKind.Intersection, meet.RawOrigin!.Kind);
+    }
+
+    // SPEC 5.7 (design-final §15; DECISIONS BU-24): a raw layer an instance stores has the step of its declared Field Type or Case
+    // payload under the instance's substitution, the one reader A5 has for it: `self` the holder's own, a `ref` slot Shared (also under
+    // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the instance's stored Types state
+    // none.
+    [Fact]
+    public void AStoredRawLayerHasItsDeclaredStep()
+    {
+        var (types, p) = StoredLayers();
+        Assert.Equal(
+            [RawStep.Own, RawStep.Own, RawStep.Shared, RawStep.Shared, RawStep.Exclusive, RawStep.Own, RawStep.Own],
+            [types.RawStep(p[3], 0, []), types.RawStep(p[4], 0, [0]), types.RawStep(p[5], 1, []), types.RawStep(p[6], 1, []),
+                types.RawStep(p[7], 0, []), types.RawStep(p[8], 0, [0]), types.RawStep(p[8], 1, [1])]);
+        Assert.All([AdtDef.FieldType(p[3], 0)!, AdtDef.CaseTypes(p[4])![0].Components[0], AdtDef.FieldType(p[5], 1)!], static x => Assert.Null(x.RawOrigin));
+    }
+
+    // design-final §15: the stored-layer reader allocates nothing when warm.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmStoredRawLayerReadAllocatesNothing()
+    {
+        var (types, p) = StoredLayers();
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (types.RawStep(p[3], 0, []) != RawStep.Own || types.RawStep(p[6], 1, []) != RawStep.Shared || types.RawStep(p[8], 1, [1]) != RawStep.Own)
+            {
+                throw new InvalidOperationException("Stored raw steps changed.");
+            }
+        }));
+    }
+
     // DECISIONS BU-24: a layer's stated Origin is one slot whose role its Semantics decides: Origin never reads a raw layer's, RawOrigin
     // only a raw layer's, and a rebuild keeps both. The constructor never stores Unstated, nor Shared or Holder in the borrow role; a raw
     // Origin enters no instance key (R5-M39: Erase gives the unstated layer).
@@ -387,41 +448,27 @@ public sealed class TyCtxtTest
     public void AnErasedInstanceStoresTheErasedTypes(string name)
     {
         var (c, _) = SemanticSnapshotTest.Bind(name);
-        var types = c.Types;
-        var seen = new HashSet<BoundType>();
-        var problems = new List<string>();
-        var instances = 0;
-        foreach (var body in c.BuildMir().Bodies)
-        {
-            foreach (var local in body.Locals)
-            {
-                Visit(local.Type);
-            }
-        }
+        var instances = new List<BoundType>();
+        var problems = ErasedStoreProblems(c, instances);
+        Assert.True(problems.Count == 0 && instances.Count > 0, $"{instances.Count} instances; {problems.Count} differ:\n{string.Join('\n', problems.Take(20))}");
+    }
 
-        Assert.True(problems.Count == 0 && instances > 0, $"{instances} instances; {problems.Count} differ:\n{string.Join('\n', problems.Take(20))}");
-
-        void Visit(BoundType type)
-        {
-            if (!seen.Add(type))
-            {
-                return;
-            }
-
-            foreach (var part in type.Components)
-            {
-                Visit(part);
-            }
-
-            if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
-            {
-                instances++;
-                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
-                {
-                    problems.Add(TyCtxt.Name(type));
-                }
-            }
-        }
+    // DECISIONS BU-24 (design-final §15): an instance's stored shapes state no raw Origin, so the property above holds where the erased
+    // instance is the user's own Type: a raw Field and payload stating `self` (a Type without Origins erases to itself) and a raw Field
+    // stating a slot (its erased instance is the `during static` Type a parameter states).
+    [Fact]
+    public void AnInstanceStoresNoRawOrigin()
+    {
+        var c = MinimalEmissionTest.Analyze(RawShapeSource);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var instances = new List<BoundType>();
+        var problems = ErasedStoreProblems(c, instances);
+        Assert.True(problems.Count == 0, $"{problems.Count} differ:\n{string.Join('\n', problems)}");
+        var views = instances.Where(static x => TyCtxt.Name(x) == "View<i32>").ToArray();
+        Assert.Equal(2, views.Length);
+        var erased = Assert.Single(views, x => ReferenceEquals(c.Types.Erase(x), x));
+        Assert.All(views, x => Assert.Same(erased, c.Types.Erase(x)));
+        Assert.All(["Block", "Cell"], x => Assert.Contains(instances, y => TyCtxt.Name(y) == x && ReferenceEquals(c.Types.Erase(y), y)));
     }
 
     // Plan 5.6.2: a call in an omitted default composed with the substitution of the call omitting it is the call Binding forwards into that
@@ -622,6 +669,59 @@ public sealed class TyCtxtTest
     }
 
     // A struct's Fields and base, or an enum's Case payloads.
+    // The Type context and the parameter Types of `probe` in RawShapeSource with a `uniq` remainder and inline raw parts: x, y, z, then a
+    // Block, a Cell, Views under x and `static`, a remainder under y and the inline parts.
+    private static (TyCtxt Types, BoundType[] Parameters) StoredLayers()
+    {
+        var c = MinimalEmissionTest.Analyze(RawShapeSource + "struct R<E> {source}\n    internal let at: raw/E during source\n    internal let loan: Loan<uniq/E during source>\n" +
+            "struct Parts\n    internal var pair: (raw/u8 during self, isize)\n    internal var cells: [2 of raw/u8 during self]\n" +
+            "    public init()\n        self.pair = (null, 0)\n        self.cells = [null, null]\n" +
+            "func probe(x: ref/i32, y: uniq/i32, z: i32, b: Block, c: Cell, v: View<i32> during x, s: View<i32> during static, r: R<i32> during y, p: Parts) => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var probe = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe");
+        return (c.Types, probe.Parameters.Select(static x => x.Type.TypeOf()!).ToArray());
+    }
+
+    // The struct and enum instances the MIR locals hold, added to `instances`, and the names of those whose erased instance does not store
+    // the erasure of what they store.
+    private static List<string> ErasedStoreProblems(Compilation c, List<BoundType> instances)
+    {
+        var types = c.Types;
+        var seen = new HashSet<BoundType>();
+        var problems = new List<string>();
+        foreach (var body in c.BuildMir().Bodies)
+        {
+            foreach (var local in body.Locals)
+            {
+                Visit(local.Type);
+            }
+        }
+
+        return problems;
+
+        void Visit(BoundType type)
+        {
+            if (!seen.Add(type))
+            {
+                return;
+            }
+
+            foreach (var part in type.Components)
+            {
+                Visit(part);
+            }
+
+            if (AdtDef.IsStruct(type) || AdtDef.IsEnum(type))
+            {
+                instances.Add(type);
+                if (!Stored(type).Select(x => x is null ? null : types.Erase(x)).SequenceEqual(Stored(types.Erase(type))))
+                {
+                    problems.Add(TyCtxt.Name(type));
+                }
+            }
+        }
+    }
+
     private static IEnumerable<BoundType?> Stored(BoundType type) => AdtDef.IsStruct(type)
         ? Enumerable.Range(0, AdtDef.Count(type)).Select(x => AdtDef.FieldType(type, x)).Append(AdtDef.Base(type)) : AdtDef.CaseTypes(type) ?? [];
 

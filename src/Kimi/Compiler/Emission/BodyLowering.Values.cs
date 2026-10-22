@@ -252,14 +252,14 @@ internal sealed partial class BodyLowering
 
     private static bool HasInferenceOrigin(BoundType type)
     {
-        if (type.Origin?.Kind == OriginKind.Inference)
+        if (IsInferred(type.Origin))
         {
             return true;
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
-            if (type.OriginArguments[i].Kind == OriginKind.Inference)
+            if (IsInferred(type.OriginArguments[i]))
             {
                 return true;
             }
@@ -268,6 +268,27 @@ internal sealed partial class BodyLowering
         for (var i = 0; i < type.Components.Count; i++)
         {
             if (HasInferenceOrigin(type.Components[i]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // D5 exception (owner, 2026-10-22), removed at R6-gen (DECISIONS BU-24): a meet with an inferred operand is inferred, as Binding
+    // judges a meet per operand (SPEC 15.6.5). A raw Place borrow's Origin is its anchor met with the pointer's region, often a local's
+    // inferred region, which a generic instance's substituted Origins cannot be related to here.
+    private static bool IsInferred(BoundOrigin? origin)
+    {
+        if (origin?.Kind == OriginKind.Inference)
+        {
+            return true;
+        }
+
+        for (var i = 0; origin?.Kind == OriginKind.Intersection && i < origin.Operands.Count; i++)
+        {
+            if (IsInferred(origin.Operands[i]))
             {
                 return true;
             }

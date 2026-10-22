@@ -25,6 +25,10 @@ public sealed class RetentionTest
         "    public func put(self: uniq/Self, value: ref/T during source) => self.data = value\n" +
         "    public func item(self: uniq/Self) -> ref/T during self.source => self.data\n";
 
+    // A slot kept by an exclusive Loan Field (design review A-B3: a raw parameter during `v.source` may store what the Dictionary admits).
+    private const string KeptView = "struct View<K, V> {source}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during source>\n" +
+        "    public init(d: uniq/Dictionary<K, V> during source) => self.loan = Loan.init(d)\n";
+
     // An object payload that holds a Loan, and a local to lend it.
     private const string Lent = "struct Lent {a}\n    public var r: ref/i32 during a\n    public init(r: ref/i32 during a) => self.r = r\n" +
         "var x = 1\n";
@@ -86,16 +90,16 @@ public sealed class RetentionTest
     // SPEC 15.6, 15.6.4, 15.3.5: an input written through an exclusive or raw layer, also one an owned aggregate holds (an invariant slot),
     // is an output; another input whose Origin outlives the written positions is stored there, the target's own content too. An exclusive
     // input with no Origin below its layer stores nothing. What lies behind a shared layer reached before a writable slot is only read
-    // (SPEC 15.6.2: a shared input, an rc payload held by value) unless a raw pointer is followed again (raw access within its authority,
-    // SPEC 5.2.1); a value stored into a writable slot brings its whole Type, so an Origin below an rc or arc layer there, or below a
-    // pair layer admitting only them, is stored (DECISIONS BU-1).
+    // (SPEC 15.6.2: a shared input, an rc payload held by value), a raw pointer read past it included (SPEC 5.7, 8.11.4 rule 1; the
+    // expectation the SPEC revision R4-M95 changed: `ref/(raw/…)` stores nothing); a value stored into a writable slot brings its whole
+    // Type, so an Origin below an rc or arc layer there, or below a pair layer admitting only them, is stored (DECISIONS BU-1).
     [Theory]
     [InlineData("func f(dst: uniq/(ref/i32 during q), v: ref/i32 during q) => dst@follow = v", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f(dst: uniq/i32, v: ref/i32) => dst@follow = v@follow", "")]
     [InlineData("func f(dst: ref/(ref/i32 during q), v: ref/i32 during q) -> i32 => v@follow", "")]
     [InlineData("func f<T>(dst: uniq/T, value: T) => dst@follow = value@move", "0 Content store 0, 1 Value store 0")]
     [InlineData("func f<T>(storage: raw/T, value: T) => ()", "0 Value store 0, 1 Value store 0")]
-    [InlineData("func f(storage: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0")]
+    [InlineData("func f(storage: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => ()", "")]
     [InlineData(Cell + "func f(dst: Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
     [InlineData(Cell + "func f(dst: ref/Cell<ref/i32 during q>, v: ref/i32 during q) => ()", "")]
     [InlineData(Box + "func f(dst: uniq/(rc/B<ref/i32 during q>), v: rc/B<ref/i32 during q>) => dst@follow = v@move", "0 Content store 0, 1 Value store 0")]
@@ -306,9 +310,30 @@ public sealed class RetentionTest
         Assert.Equal("0 Value result, 0 Content store 0", Show(c.Types.Retains(call.Target, c.Types.SubstOf(call), null)));
     }
 
+    // SPEC 5.7 Calls, 15.6.4 (D6, D15; design-final §6): a raw result layer with an Origin retains as that borrow would; one without
+    // retains every input and is untied. A raw parameter layer without an Origin, or with `static`, lets the call write its pointee; one
+    // whose Origin steps Exclusive lets it write what that Origin's borrows admit (an exclusive input's referent, the keepers of a slot),
+    // as the raw input's storage; a Shared one writes nothing.
+    [Theory]
+    [InlineData("func f(x: ref/i32, n: i32) -> raw/i32 => null", "0 Value result, 1 Value result, untied")]
+    [InlineData("func f(x: ref/i32, n: isize) -> (raw/u8, isize) => (null, n)", "0 Value result, 1 Value result, untied")]
+    [InlineData("func f(b: ref/i32, c: ref/i32, p: raw/i32 during b) -> raw/i32 during b => p", "0 Value result, 2 Value result")]
+    [InlineData("func f(p: raw/(ref/i32 during q) during static, v: ref/i32 during q) => ()", "0 Value store 0, 1 Value store 0")]
+    [InlineData("func f(b: uniq/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "0 Content store 0, 1 Value store 0, 2 Value store 0, 0 Content store 1, 1 Value store 1, 2 Value store 1")]
+    [InlineData("func f(b: ref/(ref/i32 during q), p: raw/(ref/i32 during q) during b, v: ref/i32 during q) => ()", "")]
+    [InlineData(KeptView + "func f<K, V>(v: ref/View<K, V>, p: raw/u8 during v.source, key: K)\n    K is Equatable\n    return", "0 Content store 1, 1 Content store 1, 2 Value store 1")]
+    public void RawLayersRetainByTheirOrigins(string function, string expected)
+        => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
+
+    // SPEC 5.7, 8.11.4 rule 1 (D10): an erased callable's input reached past a shared layer stores nothing through a raw pointer there.
+    [Fact]
+    public void AnErasedSharedRawInputStoresNothing()
+        => Assert.Equal([string.Empty], ValueCalls(Bind("func apply(g: (ref/(raw/(ref/i32 during q)), ref/i32 during q) -> (), s: ref/(raw/(ref/i32 during q)), v: ref/i32 during q) => g(s, v)\n")));
+
     // SPEC 15.6.4 (A3 E14): an intrinsic's call retains as its library declaration says, as any call does: an object creation its value,
     // clone its handle's payload only (Content), Raw.initialize its value into the raw storage, Text.writer its destination; Raw.slice's
-    // and Raw.allocate's results are untied (a fresh anchor), and a row into a raw pointer's own storage carries nothing (it holds no Loan).
+    // result is untied (a fresh anchor), Raw.allocate's, a raw pointer without an Origin, retains every argument and is untied (SPEC 5.7
+    // Calls, D6), and a row into a raw pointer's own storage carries nothing (it holds no Loan).
     [Theory]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeObj(Lent.init(r: x@ref))\n", "makeObj", "0 Value result")]
     [InlineData(Lent + "let h = Kimi.Intrinsics.makeRc(Lent.init(r: x@ref))\n", "makeRc", "0 Value result")]
@@ -317,7 +342,7 @@ public sealed class RetentionTest
     [InlineData("var x = 1\nlet p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.initialize(p, x@ref)\n", "initialize", "0 Value store 0, 1 Value store 0")]
     [InlineData("let p: raw/i32 = Raw.allocate(1)\nunsafe\n    let s = Raw.slice(p, 1)\n", "slice", "untied")]
     [InlineData("var b = Text.heap(8)\nlet w = Text.writer(b@uniq)\n", "writer", "0 Value result")]
-    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "untied")]
+    [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "allocate", "0 Value result, untied")]
     [InlineData("let p: raw/(ref/i32) = Raw.allocate(1)\nunsafe => Raw.release(p)\n", "release", "0 Value store 0")]
     public void IntrinsicsRetainAsTheirDeclarationsSay(string source, string name, string expected)
         => Assert.Equal([expected], Calls(Bind(source), name));

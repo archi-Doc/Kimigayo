@@ -189,6 +189,20 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     internal BoundType Pointer(BoundType referent, BoundOrigin? rawOrigin = null)
         => this.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [referent], origin: rawOrigin);
 
+    // SPEC 5.7 (design-final §7.3, §13 A5; DECISIONS BU-24): A5's view of a raw layer, any MIR holds (its pointer temporaries state none,
+    // a default template's inline copies their substituted Origins): what reaching storage through it is, by the borrow its Origin
+    // belongs to. Total over published Types; A5 reads no Origin kind itself. A layer an instance stores is read by the overload below.
+    internal RawStep RawStep(BoundType raw) => binding.PublishedStep(raw.RawOrigin);
+
+    // SPEC 5.7 (design-final §15, R4's conditions; DECISIONS BU-24): the step of a raw layer an instance stores, the one reader of one:
+    // a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's component, then the inline positions
+    // (a Tuple's component, a fixed array's element). It reads the declared Field Type or payload under the instance's substitution,
+    // `self` the holding value's own step; A5 never reads an instance's FieldType or CaseTypes for a raw Origin (they state none) nor
+    // substitutes one itself. Cost: one substitution of the declared part per call, interned, allocating nothing when warm. Total over
+    // what Binding accepts: an Origin without a step (an Unbound slot argument) gives Unstated, never a fault; a path that ends at no raw
+    // layer is a broken contract.
+    internal RawStep RawStep(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredStep(instance, part, positions);
+
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form
     // of a rebuild that keeps a Type's shape (DECISIONS BU-24). A raw layer takes no `origin` (its role's getter gives none).
     internal BoundType Rebuild(BoundType type, ReadOnlySpan<BoundType> components, BoundOrigin? origin, ReadOnlySpan<BoundOrigin> originArguments)

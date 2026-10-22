@@ -15,8 +15,9 @@ public sealed partial class Binding
         => kinds[atom.Input] = atom.Kind == RetentionKind.Value ? RetentionKind.Value : kinds[atom.Input] ?? RetentionKind.Content;
 
     // One closure from each output atom (OriginPremiseClosure, every Semantics case's premises followed) marks the inputs whose atoms it
-    // reaches, Value over Content, a carrier's through its node. The result is untied when one of its non-static atoms marks no input. The
-    // work is what the closures reach, each node with its incoming premises once per closure.
+    // reaches, Value over Content, a carrier's through its node. The result is untied when one of its non-static atoms marks no input. A
+    // result with a raw layer without an Origin retains every input as Value and is untied (SPEC 5.7 Calls, D6). The work is what the
+    // closures reach, each node with its incoming premises once per closure.
     private CallRetention RetentionRows(OriginPremiseEnvironment environment, int[] nodes, int inputCount)
     {
         // The sources at a node, linked atom indexes.
@@ -39,6 +40,12 @@ public sealed partial class Binding
         for (var output = Retention.Result; output < inputCount; output++)
         {
             Array.Clear(kinds);
+            if (output == Retention.Result && this.retentionUnstatedResult)
+            {
+                Array.Fill(kinds, RetentionKind.Value);
+                untied = true;
+            }
+
             for (var i = 0; i < atoms.Count; i++)
             {
                 if (atoms[i].Input == output && (output == Retention.Result || atoms[i].Writable))
