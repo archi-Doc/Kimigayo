@@ -3056,6 +3056,17 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `ComparisonLoanConflict_Kd` it is for `var` (h2b, h5b). v3, w3 and w4 (a `let` initialized through `Option<…>.Some(…)` whose payload
     a `match` `var` binding extends) stay rejected, now with `ComparisonLoanConflict_Kd` at the initializer, as dev rejects w5, their
     bounded form: the old analysis's retention through a region's equality bounds.
+  - h2, the owner's decision (2026-10-23, verbatim): 「記録された差： R6-check まで受け入れます。」 h2 is in dev's class of the `var` forms
+    h3 and h5: SPEC 15.6.5 refutes the store (a call-local Origin outliving the capture's fixed Origin), which a Closure body does not
+    represent until A5-F7 (2c-D; R4-M99: environment bindings fixed in the Closure body), so the default pipeline accepts it as a
+    recorded difference until R6-check (`LocalRegionInferenceTest`, pinned beside h2b's rejected read). Evidence (PLAN G65's probes, two
+    rounds, dev and this unit, both pipelines): every route reaching the stored borrow after its call is rejected, a reading `drop` at
+    environment destruction, at reassignment and at an `rc` final release, an exchange out and a read in place
+    (`ComparisonLoanConflict_Kd`); a generic element Type and erased objects or Function values cannot form the route (the call
+    contract; SPEC 7.7.4, 15.8.1); native runs of the accepted programs (default and `KIMI_PIPELINE=mir`) touch no dead borrow, and MIR
+    code generation builds none of them. The property rests on the old analysis's retention and destruction-lifetime check (SPEC
+    15.6.6), which A5's Loan stratum must keep at R6-check. The MIR rejects h2: its Loan stratum already does, at the end of `local`
+    (storage the body does not own; ledger row `a5-raw-store`), and its Origin stratum refutes the store from A5-F7.
   - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
     for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
     (R4-M4) needs the row; it goes with the old reporter at R6-check.

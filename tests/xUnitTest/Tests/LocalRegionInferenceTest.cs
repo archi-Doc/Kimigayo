@@ -29,6 +29,16 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     private const string Capture = "func leak() -> i32\n    LOCAL\n    var f = func [var arr@move] () -> i32\n        let local: i32 = 1\n        STORE\n        return 0\n" +
         "    return f@uniq()\npublic func main() => ()\n";
 
+    // PLAN G65's h2: a Closure stores a call-local borrow into its `var` capture of a `let` local whose two qualifier slots bind each other.
+    private const string H2 = "func leak() -> i32\n    let o = Option<Array<ref/i32>>.Some(Array<ref/i32>.init(capacity: 0))\n" +
+        "    var f = func [var o@move] (n: i32) -> i32\nREAD        let local: i32 = n\n        var inner: Array<ref/i32> = []\n" +
+        "        inner.append(local@ref)\n        o = .Some(inner@move)\n        return 0\n    let first = f@uniq(41)\n    return first + f@uniq(7)\n" +
+        "public func main() => ()\n";
+
+    // h2b: the next call reads the stored borrow in place.
+    private const string H2bRead = "        match o\n            .Some(let a)\n                if a.length > 0\n                    let old: i32 = a[0]@follow\n" +
+        "                    return old\n            _ => return 0\n";
+
     // The S3 demo (audit-origins 5): a local Function input bounded through a clause by another inferred slot.
     private const string S3Demo = "struct View<T> {source}\n    public let data: ref/T during source\n" +
         "func demo<T>(x: View<T>, anchor: ref/i32 during s, sink: (View<T> during s) -> ()) -> View<T> during x.source\n    origin x.source outlives s\n" +
@@ -159,6 +169,21 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
         Assert.StartsWith("let local", source[error.Span!.Value.Start..], StringComparison.Ordinal);
+    }
+
+    // Pinned, a recorded difference until R6-check (the owner, 2026-10-23, on PLAN G65's h2; DECISIONS R4-M112): SPEC 15.6.5 refutes a
+    // call-local borrow stored into a capture's fixed Origin, but a Closure body's environment bindings are not yet fixed Origins (A5-F7,
+    // 2c-D; DECISIONS R4-M99), so h2, a `let` local's region captured `[var o@move]` and assigned a call-local borrow that nothing reads
+    // again, is accepted on the default pipeline as dev accepts the `var` forms h3 and h5; h2b's later read of the stored borrow is
+    // rejected, as every route that reaches it after its call is.
+    [Theory]
+    [InlineData("", null)]
+    [InlineData(H2bRead, nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
+    public void ACallLocalBorrowStoredIntoACapturedRegionIsRejectedOnlyWhenReachedAgain(string read, string? code)
+    {
+        var source = H2.Replace("READ", read, StringComparison.Ordinal);
+        string[] expected = code is null ? [] : [code];
+        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
     }
 
     // SPEC 15.3.6: the principal lower bound is chosen after every bound is seen, whatever the clause order, so both orders keep the one
