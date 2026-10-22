@@ -1,56 +1,67 @@
-== build base (152dda62: base; harness 300 rounds, 3,000 items; load 14%)
-inv-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=64 N=7 established-at-stop 3 58 ms; ref5 + 8 ms; ref7 + 0 ms
-inv-meet.txt: T is V: C + Complete rounds=3 V=6 E=10 J=96 N=7 established-at-stop 1 59 ms; ref5 + 8 ms; ref7 + 0 ms
-inv-meet-conf.txt: T is Copy: C none Complete rounds=0 V=2 E=0 J=0 N=2 established-at-stop 2 32 ms; ref5 none 8 ms; ref7 none 0 ms
-need-deep.txt: V.(M).P is D<T>: C + Complete rounds=4 V=13 E=8 J=137 N=11 established-at-stop 3 59 ms; ref5 + 8 ms; ref7 + 0 ms
-inv-param.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=84 N=8 established-at-stop 3 57 ms; ref5 + 8 ms; ref7 + 0 ms
-deep2-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=64 N=7 established-at-stop 3 57 ms; ref5 + 8 ms; ref7 + 0 ms
+== build base (152dda62: base; harness 300 rounds, 3,000 items; load 8%)
+inv-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=64 N=7 established-at-stop 3 57 ms; ref5 + 8 ms; ref7 + 0 ms
+inv-meet.txt: T is V: C + Complete rounds=3 V=6 E=10 J=96 N=7 established-at-stop 1 60 ms; ref5 + 8 ms; ref7 + 0 ms
+inv-meet-conf.txt: T is Copy: C none Complete rounds=0 V=2 E=0 J=0 N=2 established-at-stop 2 33 ms; ref5 none 8 ms; ref7 none 0 ms
+need-deep.txt: V.(M).P is D<T>: C + Complete rounds=4 V=13 E=8 J=137 N=11 established-at-stop 3 62 ms; ref5 + 9 ms; ref7 + 0 ms
+inv-param.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=84 N=8 established-at-stop 3 61 ms; ref5 + 8 ms; ref7 + 0 ms
+deep2-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=64 N=7 established-at-stop 3 58 ms; ref5 + 8 ms; ref7 + 0 ms
 inv3.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=95 N=8 established-at-stop 3 57 ms; ref5 + 8 ms; ref7 + 0 ms
-inv3.txt: T is V: C + Complete rounds=4 V=7 E=10 J=218 N=8 established-at-stop 1 58 ms; ref5 + 8 ms; ref7 + 0 ms
-invarg.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=130 N=9 established-at-stop 3 57 ms; ref5 + 8 ms; ref7 + 0 ms
-invarg.txt: T is V: C + Complete rounds=4 V=7 E=11 J=297 N=9 established-at-stop 1 59 ms; ref5 + 8 ms; ref7 + 0 ms
-invkid.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=69 N=9 established-at-stop 3 58 ms; ref5 + 8 ms; ref7 + 0 ms
-invkid.txt: T is V: C + Complete rounds=4 V=7 E=11 J=132 N=9 established-at-stop 1 58 ms; ref5 + 8 ms; ref7 + 0 ms
-need3.txt: V.(M).P is D<T>: C + Complete rounds=4 V=15 E=8 J=189 N=12 established-at-stop 3 58 ms; ref5 + 8 ms; ref7 + 0 ms
-shape5.txt: T.(Gz).Z is Copy: C none Complete rounds=1 V=4 E=4 J=18 N=11 established-at-stop 2 48 ms; ref5 + 9 ms; ref7 + 0 ms
-shape7.txt: T.(Gz).Z is Copy: C + Complete rounds=4 V=21 E=10 J=327 N=14 established-at-stop 3 60 ms; ref5 + 9 ms; ref7 + 0 ms
-joinwild.txt: T.(G).Z is Copy: C + Complete rounds=2 V=38 E=10 J=2367 N=10 established-at-stop 3 68 ms; ref5 + 8 ms; ref7 + 0 ms
-joinwild.txt: T.(G).Z is V: C + Complete rounds=6 V=124 E=38 J=13709 N=10 established-at-stop 1 89 ms; ref5 + 8 ms; ref7 + 0 ms
-repvar.txt: T.(W).X is U.(Q).Z: C + Complete rounds=4 V=44 E=20 J=1604 N=13 established-at-stop 1 68 ms; ref5 + 8 ms; ref7 + 0 ms
-m41-min.txt: T is Cp: C none Complete rounds=0 V=2 E=1 J=19 N=3 established-at-stop 2 45 ms; ref5 + 11 ms; ref7 + 29 ms
-shared-3.txt: T is Copy: C none Complete rounds=1 V=36 E=1 J=378 N=3 established-at-stop 2 58 ms; ref5 none 8 ms; ref7 none 0 ms
-shared-10.txt: T is Copy: C none Complete rounds=1 V=256 E=2 J=2642 N=4 established-at-stop 2 70 ms; ref5 none 8 ms; ref7 none 0 ms
-shared10-pos.txt: W is Copy: C none Complete rounds=5 V=1121 E=37 J=35543 N=11 established-at-stop 2 279 ms; ref5 none 9 ms; ref7 none 0 ms
-shared-live-10.txt: T is Copy: C none Complete rounds=2 V=456 E=2 J=6782 N=4 established-at-stop 2 77 ms; ref5 none 13 ms; ref7 none 0 ms
-shared-live-40.txt: T is Copy: C Resource Resource (items 3412>3000) rounds=1 V=3406 E=2 J=17101 N=4 established-at-stop 2 232 ms; ref5 none 9 ms; ref7 none 0 ms
-== build final (152dda62: base; harness 300 rounds, 3,000 items; load 14%)
-inv-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=48 N=7 established-at-stop 3 63 ms; ref5 + 8 ms; ref7 + 0 ms
-inv-meet.txt: T is V: C + Complete rounds=4 V=13 E=10 J=1162 N=7 established-at-stop 1 75 ms; ref5 + 8 ms; ref7 + 0 ms
-inv-meet-conf.txt: T is Copy: C none Complete rounds=0 V=2 E=0 J=0 N=2 established-at-stop 2 34 ms; ref5 none 10 ms; ref7 none 0 ms
-need-deep.txt: V.(M).P is D<T>: C + Complete rounds=4 V=13 E=8 J=139 N=11 established-at-stop 3 66 ms; ref5 + 9 ms; ref7 + 0 ms
-inv-param.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=58 N=8 established-at-stop 3 62 ms; ref5 + 8 ms; ref7 + 0 ms
-deep2-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=48 N=7 established-at-stop 3 62 ms; ref5 + 8 ms; ref7 + 0 ms
-inv3.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=65 N=8 established-at-stop 3 61 ms; ref5 + 8 ms; ref7 + 0 ms
-inv3.txt: T is V: C + Complete rounds=4 V=20 E=10 J=4651 N=8 established-at-stop 1 78 ms; ref5 + 8 ms; ref7 + 0 ms
-invarg.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=64 N=9 established-at-stop 3 63 ms; ref5 + 8 ms; ref7 + 0 ms
-invarg.txt: T is V: C + Complete rounds=4 V=18 E=13 J=1673 N=9 established-at-stop 1 76 ms; ref5 + 9 ms; ref7 + 0 ms
-invkid.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=52 N=9 established-at-stop 3 62 ms; ref5 + 9 ms; ref7 + 0 ms
-invkid.txt: T is V: C + Complete rounds=4 V=14 E=11 J=1182 N=9 established-at-stop 1 73 ms; ref5 + 8 ms; ref7 + 0 ms
-need3.txt: V.(M).P is D<T>: C + Complete rounds=4 V=15 E=8 J=191 N=12 established-at-stop 3 70 ms; ref5 + 9 ms; ref7 + 0 ms
-shape5.txt: T.(Gz).Z is Copy: C none Complete rounds=2 V=6 E=4 J=71 N=11 established-at-stop 2 62 ms; ref5 +! 9 ms; ref7 +! 0 ms
+inv3.txt: T is V: C + Complete rounds=4 V=7 E=10 J=218 N=8 established-at-stop 1 59 ms; ref5 + 8 ms; ref7 + 0 ms
+invarg.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=130 N=9 established-at-stop 3 60 ms; ref5 + 9 ms; ref7 + 0 ms
+invarg.txt: T is V: C + Complete rounds=4 V=7 E=11 J=297 N=9 established-at-stop 1 62 ms; ref5 + 8 ms; ref7 + 0 ms
+invkid.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=69 N=9 established-at-stop 3 60 ms; ref5 + 8 ms; ref7 + 0 ms
+invkid.txt: T is V: C + Complete rounds=4 V=7 E=11 J=132 N=9 established-at-stop 1 60 ms; ref5 + 8 ms; ref7 + 0 ms
+need3.txt: V.(M).P is D<T>: C + Complete rounds=4 V=15 E=8 J=189 N=12 established-at-stop 3 60 ms; ref5 + 9 ms; ref7 + 0 ms
+shape5.txt: T.(Gz).Z is Copy: C none Complete rounds=1 V=4 E=4 J=18 N=11 established-at-stop 2 49 ms; ref5 + 9 ms; ref7 + 0 ms
+shape7.txt: T.(Gz).Z is Copy: C + Complete rounds=4 V=21 E=10 J=327 N=14 established-at-stop 3 62 ms; ref5 + 9 ms; ref7 + 0 ms
+joinwild.txt: T.(G).Z is Copy: C + Complete rounds=2 V=38 E=10 J=2367 N=10 established-at-stop 3 72 ms; ref5 + 9 ms; ref7 + 0 ms
+joinwild.txt: T.(G).Z is V: C + Complete rounds=6 V=124 E=38 J=13709 N=10 established-at-stop 1 91 ms; ref5 + 8 ms; ref7 + 0 ms
+repvar.txt: T.(W).X is U.(Q).Z: C + Complete rounds=4 V=44 E=20 J=1604 N=13 established-at-stop 1 71 ms; ref5 + 8 ms; ref7 + 0 ms
+m41-min.txt: T is Cp: C none Complete rounds=0 V=2 E=1 J=19 N=3 established-at-stop 2 46 ms; ref5 + 12 ms; ref7 + 29 ms
+shared-3.txt: T is Copy: C none Complete rounds=1 V=36 E=1 J=378 N=3 established-at-stop 2 57 ms; ref5 none 8 ms; ref7 none 0 ms
+shared-10.txt: T is Copy: C none Complete rounds=1 V=256 E=2 J=2642 N=4 established-at-stop 2 73 ms; ref5 none 9 ms; ref7 none 0 ms
+shared10-pos.txt: W is Copy: C none Complete rounds=5 V=1121 E=37 J=35543 N=11 established-at-stop 2 310 ms; ref5 none 14 ms; ref7 none 0 ms
+shared-live-10.txt: T is Copy: C none Complete rounds=2 V=456 E=2 J=6782 N=4 established-at-stop 2 80 ms; ref5 none 13 ms; ref7 none 0 ms
+shared-live-40.txt: T is Copy: C Resource Resource (items 3412>3000) rounds=1 V=3406 E=2 J=17101 N=4 established-at-stop 2 233 ms; ref5 none 10 ms; ref7 none 0 ms
+== build final (152dda62: base; harness 300 rounds, 3,000 items; load 27%)
+inv-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=57 N=7 established-at-stop 3 66 ms; ref5 + 8 ms; ref7 + 0 ms
+inv-meet.txt: T is V: C + Complete rounds=4 V=13 E=10 J=1179 N=7 established-at-stop 1 77 ms; ref5 + 9 ms; ref7 + 0 ms
+inv-meet-conf.txt: T is Copy: C none Complete rounds=0 V=2 E=0 J=0 N=2 established-at-stop 2 35 ms; ref5 none 10 ms; ref7 none 0 ms
+need-deep.txt: V.(M).P is D<T>: C + Complete rounds=4 V=13 E=8 J=139 N=11 established-at-stop 3 67 ms; ref5 + 9 ms; ref7 + 0 ms
+inv-param.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=71 N=8 established-at-stop 3 66 ms; ref5 + 9 ms; ref7 + 0 ms
+deep2-meet.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=57 N=7 established-at-stop 3 65 ms; ref5 + 8 ms; ref7 + 0 ms
+inv3.txt: T is Copy: C + Complete rounds=2 V=5 E=10 J=77 N=8 established-at-stop 3 65 ms; ref5 + 9 ms; ref7 + 0 ms
+inv3.txt: T is V: C + Complete rounds=4 V=20 E=10 J=4674 N=8 established-at-stop 1 83 ms; ref5 + 9 ms; ref7 + 0 ms
+invarg.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=76 N=9 established-at-stop 3 67 ms; ref5 + 9 ms; ref7 + 0 ms
+invarg.txt: T is V: C + Complete rounds=4 V=18 E=13 J=1699 N=9 established-at-stop 1 80 ms; ref5 + 9 ms; ref7 + 0 ms
+invkid.txt: T is Copy: C + Complete rounds=2 V=5 E=11 J=60 N=9 established-at-stop 3 66 ms; ref5 + 10 ms; ref7 + 0 ms
+invkid.txt: T is V: C + Complete rounds=4 V=14 E=11 J=1206 N=9 established-at-stop 1 78 ms; ref5 + 9 ms; ref7 + 0 ms
+need3.txt: V.(M).P is D<T>: C + Complete rounds=4 V=15 E=8 J=191 N=12 established-at-stop 3 66 ms; ref5 + 9 ms; ref7 + 0 ms
+shape5.txt: T.(Gz).Z is Copy: C none Complete rounds=2 V=6 E=4 J=71 N=11 established-at-stop 2 63 ms; ref5 +! 10 ms; ref7 +! 0 ms
 shape7.txt: T.(Gz).Z is Copy: C none Complete rounds=2 V=6 E=4 J=71 N=11 established-at-stop 2 62 ms; ref5 +! 10 ms; ref7 +! 0 ms
-joinwild.txt: T.(G).Z is Copy: C + Complete rounds=2 V=28 E=10 J=1031 N=10 established-at-stop 3 77 ms; ref5 + 9 ms; ref7 + 0 ms
-joinwild.txt: T.(G).Z is V: C + Complete rounds=7 V=57 E=14 J=6428 N=10 established-at-stop 1 91 ms; ref5 + 9 ms; ref7 + 0 ms
-repvar.txt: T.(W).X is U.(Q).Z: C + Complete rounds=5 V=53 E=22 J=3433 N=13 established-at-stop 1 84 ms; ref5 + 9 ms; ref7 + 0 ms
-m41-min.txt: T is Cp: C + Complete rounds=18 V=25 E=59 J=2677 N=7 established-at-stop 3 77 ms; ref5 + 11 ms; ref7 + 28 ms
-shared-3.txt: T is Copy: C none Complete rounds=1 V=3 E=1 J=1 N=3 established-at-stop 2 31 ms; ref5 none 8 ms; ref7 none 0 ms
-shared-10.txt: T is Copy: C none Complete rounds=1 V=3 E=2 J=1 N=4 established-at-stop 2 33 ms; ref5 none 8 ms; ref7 none 0 ms
-shared10-pos.txt: W is Copy: C none Complete rounds=5 V=57 E=13 J=2246 N=11 established-at-stop 2 78 ms; ref5 none 9 ms; ref7 none 0 ms
-shared-live-10.txt: T is Copy: C none Complete rounds=2 V=68 E=2 J=683 N=4 established-at-stop 2 67 ms; ref5 none 9 ms; ref7 none 0 ms
-shared-live-40.txt: T is Copy: C none Complete rounds=2 V=248 E=2 J=2333 N=4 established-at-stop 2 71 ms; ref5 none 9 ms; ref7 none 1 ms
+joinwild.txt: T.(G).Z is Copy: C + Complete rounds=2 V=28 E=10 J=1025 N=10 established-at-stop 3 80 ms; ref5 + 9 ms; ref7 + 0 ms
+joinwild.txt: T.(G).Z is V: C + Complete rounds=7 V=57 E=14 J=6448 N=10 established-at-stop 1 93 ms; ref5 + 9 ms; ref7 + 0 ms
+repvar.txt: T.(W).X is U.(Q).Z: C + Complete rounds=5 V=53 E=22 J=3634 N=13 established-at-stop 1 90 ms; ref5 + 9 ms; ref7 + 0 ms
+m41-min.txt: T is Cp: C + Complete rounds=18 V=25 E=59 J=2759 N=7 established-at-stop 3 80 ms; ref5 + 12 ms; ref7 + 30 ms
+shared-3.txt: T is Copy: C none Complete rounds=1 V=3 E=1 J=1 N=3 established-at-stop 2 32 ms; ref5 none 9 ms; ref7 none 0 ms
+shared-10.txt: T is Copy: C none Complete rounds=1 V=3 E=2 J=1 N=4 established-at-stop 2 33 ms; ref5 none 9 ms; ref7 none 0 ms
+shared10-pos.txt: W is Copy: C none Complete rounds=5 V=57 E=13 J=2206 N=11 established-at-stop 2 80 ms; ref5 none 9 ms; ref7 none 0 ms
+shared-live-10.txt: T is Copy: C none Complete rounds=2 V=68 E=2 J=643 N=4 established-at-stop 2 73 ms; ref5 none 10 ms; ref7 none 0 ms
+shared-live-40.txt: T is Copy: C none Complete rounds=2 V=248 E=2 J=2173 N=4 established-at-stop 2 76 ms; ref5 none 10 ms; ref7 none 1 ms
 == build final: the round-5 witnesses (seed 4243 order models 307, 122, 164; seed 4242 model 361; models 12, 322, 14 at 3,000 items)
-model.txt: T.(K2).X is K0: C none Resource (items 3078>3000) rounds=58 V=2459 E=995 J=1395894 N=120 established-at-stop 2 2204 ms; ref5 none 9 ms; ref7 none 0 ms
-params-4242-m12.txt: List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=5530566 N=110 established-at-stop 2 2949 ms; ref5 none 17 ms; ref7 none 15 ms
-s7-m322.txt: List<i32> is Cp: C none Resource (items 3041>3000) rounds=62 V=2528 E=673 J=3539594 N=176 established-at-stop 2 3005 ms; ref5 none 30 ms; ref7 none 65 ms
-p4245-m14.txt: T.(K1).Y is Cp or K0: C none Complete rounds=1 V=4 E=3 J=20 N=8 established-at-stop 0 55 ms; ref5 none 59 ms; ref7 none 106 ms
-kid.txt: List<T.(K1).X> is Cp: C + Complete rounds=13 V=16 E=18 J=401 N=9 established-at-stop 3 73 ms; ref5 +! 8 ms; ref7 +! 0 ms
+model.txt: T.(K2).X is K0: C none Resource (items 3078>3000) rounds=58 V=2459 E=995 J=6713615 N=120 established-at-stop 2 2320 ms; ref5 none 9 ms; ref7 none 0 ms
+params-4242-m12.txt: List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=5549062 N=110 established-at-stop 2 3223 ms; ref5 none 14 ms; ref7 none 15 ms
+s7-m322.txt: List<i32> is Cp: C none Resource (items 3041>3000) rounds=62 V=2528 E=673 J=3646792 N=176 established-at-stop 2 3030 ms; ref5 none 31 ms; ref7 none 61 ms
+p4245-m14.txt: T.(K1).Y is Cp or K0: C none Complete rounds=1 V=4 E=3 J=20 N=8 established-at-stop 0 56 ms; ref5 none 62 ms; ref7 none 109 ms
+kid.txt: List<T.(K1).X> is Cp: C + Complete rounds=11 V=17 E=20 J=410 N=9 established-at-stop 3 75 ms; ref5 +! 9 ms; ref7 +! 0 ms
+== build final: the final review's witnesses (round 1: B1 w2b, B2 w13a/w13b/w15, B3 w3) and its other models
+w2b-retire.txt: A is Cp: C + Complete rounds=2 V=6 E=11 J=27 N=15 established-at-stop 3 44 ms; ref5 + 10 ms; ref7 + 0 ms
+w13a-filter-projkid.txt: V is Cp: C + Complete rounds=3 V=17 E=9 J=224 N=11 established-at-stop 3 73 ms; ref5 + 9 ms; ref7 + 0 ms
+w13b-filter-ground.txt: V is Cp: C + Complete rounds=3 V=15 E=8 J=113 N=9 established-at-stop 3 73 ms; ref5 + 9 ms; ref7 + 0 ms
+w15-join-only.txt: V is Cp: C + Complete rounds=2 V=16 E=11 J=189 N=15 established-at-stop 3 78 ms; ref5 + 9 ms; ref7 + 0 ms
+w3-negated-param.txt: T.(K).X is U: C - Complete rounds=2 V=10 E=3 J=29 N=5 established-at-stop 2 48 ms; ref5 - 8 ms; ref7 - 0 ms
+w1-decomp-join.txt: V is Cp: C + Complete rounds=4 V=27 E=12 J=327 N=9 established-at-stop 3 78 ms; ref5 + 9 ms; ref7 + 0 ms
+w1b-decomp-join2.txt: V is Cp: C + Complete rounds=4 V=45 E=24 J=697 N=14 established-at-stop 3 80 ms; ref5 + 9 ms; ref7 + 0 ms
+w14-join-decomp.txt: V is Cp: C + Complete rounds=2 V=38 E=15 J=444 N=13 established-at-stop 3 81 ms; ref5 + 9 ms; ref7 + 0 ms
+w5-depth2.txt: T.(K0).Y is Option<List<Pair<U, i32>>>: C + Complete rounds=3 V=36 E=13 J=1185 N=12 established-at-stop 1 86 ms; ref5 + 10 ms; ref7 + 0 ms
+w2-retire.txt: A is Cp: C + Complete rounds=2 V=6 E=10 J=25 N=13 established-at-stop 3 43 ms; ref5 + 10 ms; ref7 + 0 ms

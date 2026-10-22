@@ -2,8 +2,8 @@
 PASS G170 depth 8: needs rounds 18, peak items 51; limit=need +/Complete, need-1 rounds Resource (rounds>17), need-1 items Resource (items 51>50)
 PASS G170 depth 64: needs rounds 130, peak items 331; limit=need +/Complete, need-1 rounds Resource (rounds>129), need-1 items Resource (items 331>330)
 PASS unbounded enumeration, item limit 1000: none Resource (items 1003>1000) rounds=93 V=457 E=543 J=63858 N=274 (0.1 s)
-PASS unbounded enumeration, item limit 3000: none Resource (items 3005>3000) rounds=275 V=1367 E=1635 J=564267 N=820 (1.3 s)
-PASS unbounded enumeration, item limit 10000: none Resource (items 10001>10000) rounds=911 V=4547 E=5451 J=6214809 N=2728 (4.8 s)
+PASS unbounded enumeration, item limit 3000: none Resource (items 3005>3000) rounds=275 V=1367 E=1635 J=564267 N=820 (1.1 s)
+PASS unbounded enumeration, item limit 10000: none Resource (items 10001>10000) rounds=911 V=4547 E=5451 J=6214809 N=2728 (5.1 s)
 PASS limit keeps proven (seed 20261022 model 312, i32 is Cp at 3,000 items): Proven; records [Resource(limit-keeps-proven: items 5438>3000)]
 PASS transport, check at a 6-round limit, uses first, restarted: S1 Resource; restarted [a=Resource b=Resource c=Resource d=Resource e=Resource]; records [Resource(check S1 is Deep: rounds>6) Unproven(f: independent, unprovable)]
 PASS transport, check at a 6-round limit, check first: S1 Resource; restarted []; records [Resource(check S1 is Deep: rounds>6) Unproven(f: independent, unprovable)]

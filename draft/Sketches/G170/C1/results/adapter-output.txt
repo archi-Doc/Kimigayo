@@ -27,21 +27,21 @@ external, D first: bindings #0 D.(P).X = i32 (inferred); #1 E.(Q).W = i32 (infer
   in E's view, D.(P).X is i32: + Complete rounds=1 V=4 E=4 J=69 N=4 (a completed external value)
   in D's view, D.(P).X is i32: none Complete rounds=2 V=7 E=1 J=112 N=7 (D's own inferred value is excluded)
   in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) none, so E.W is inadmissible: none Complete rounds=1 V=5 E=0 J=44 N=4; with today's owner state (E.W admissible) + Complete rounds=1 V=4 E=4 J=69 N=4
-  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=6 J=101 N=7
+  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=6 J=103 N=7
 external, E first: bindings #0 D.(P).X = i32 (inferred); #1 E.(Q).W = i32 (inferred); Binding verified D True, E True
   in E's view, D.(P).X is i32: + Complete rounds=1 V=4 E=4 J=69 N=4 (a completed external value)
   in D's view, D.(P).X is i32: none Complete rounds=2 V=7 E=1 J=112 N=7 (D's own inferred value is excluded)
   in D's view, E.(Q).W is i32: E.W's evidence (D.(P).X is i32 excluding D) none, so E.W is inadmissible: none Complete rounds=1 V=5 E=0 J=44 N=4; with today's owner state (E.W admissible) + Complete rounds=1 V=4 E=4 J=69 N=4
-  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=6 J=101 N=7
+  ordinary view, E.(Q).W is i32: + Complete rounds=2 V=7 E=6 J=103 N=7
 same definition: bindings #0 S.(P).X = i32 (inferred); Binding issues [AssociatedTypeInferenceFailed_Kd]
-  in S's own view, S.(P).X is i32: none Complete rounds=1 V=5 E=0 J=22 N=4 (no value inferred for S enters its frozen premises)
+  in S's own view, S.(P).X is i32: none Complete rounds=1 V=5 E=0 J=25 N=4 (no value inferred for S enters its frozen premises)
 == Cost on the G170 programs (warm, same process; Binding's ProveCopy reads today's materialized facts)
-d2 absent: Binding ProveCopy 3.70 us 96 B; C prototype 119.4 us 80416 B (interleaved medians of 41); whole warm Bind 27.4 ms; model templates 20
-d2 before: Binding ProveCopy 5.10 us 96 B; C prototype 123.0 us 80416 B (interleaved medians of 41); whole warm Bind 27.8 ms; model templates 20
-d8 absent: Binding ProveCopy 15.40 us 96 B; C prototype 806.5 us 451368 B (interleaved medians of 41); whole warm Bind 27.3 ms; model templates 20
-d8 before: Binding ProveCopy 16.80 us 96 B; C prototype 1100.0 us 451368 B (interleaved medians of 41); whole warm Bind 28.7 ms; model templates 20
+d2 absent: Binding ProveCopy 7.80 us 96 B; C prototype 124.2 us 76192 B (interleaved medians of 41); whole warm Bind 37.2 ms; model templates 20
+d2 before: Binding ProveCopy 7.80 us 96 B; C prototype 139.8 us 76192 B (interleaved medians of 41); whole warm Bind 33.6 ms; model templates 20
+d8 absent: Binding ProveCopy 27.50 us 96 B; C prototype 1088.4 us 409064 B (interleaved medians of 41); whole warm Bind 33.4 ms; model templates 20
+d8 before: Binding ProveCopy 31.80 us 96 B; C prototype 1119.2 us 409064 B (interleaved medians of 41); whole warm Bind 36.5 ms; model templates 20
 == Corpus: every function scope with input premises (milestones and the Kimi library)
-scopes 121, requests 400, 3.9 s in all; warm rebinds of the 44 programs 1022 ms; the 400 C requests 42 ms, 17791 KB
+scopes 121, requests 400, 4.0 s in all; warm rebinds of the 44 programs 1070 ms; the 400 C requests 38 ms, 15170 KB
 outcomes: copy Complete=99, enumerate Complete=146, input Complete=155
 Copy of abstract parameters: today Proven / C evidence=55, today Unknown / C no evidence=44
 V median 3, p95 34, max 34; E median 2, p95 10, max 12; J median 1, p95 38, max 38

@@ -1,1 +1,1 @@
-== NESTED seed 78: 20 models, 324 queries (budget 60 s each, C and both reference bounds): agree 307, disagree 0, C Resource 0, reference unstable 0, overflow 17, over budget 0, declaration errors 0 queries of 0 models; C time on finished queries median 81 ms, p95 2490 ms, max 5834 ms
+== NESTED seed 78: 20 models, 324 queries (budget 60 s each, C and both reference bounds): agree 307, disagree 0, C Resource 0, reference unstable 0, overflow 17, over budget 0, declaration errors 0 queries of 0 models; C time on finished queries median 88 ms, p95 2865 ms, max 6678 ms

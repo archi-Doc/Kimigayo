@@ -3,6 +3,7 @@
 // congruence) and under decomposition of constructed Types (Option<U> = Option<i32> yields U = i32): one constructor (Prim or Con
 // node) per class; a class holding constructors of different heads is conflicting (B 3.10, a premise error) and a class that is its
 // own proper part through constructor kids is cyclic (B 3.6). Projections and Contract arguments are never decomposed (B 3.5).
+// One node per Type: a node made congruent to another by a merge leaves its class and its kids' use lists and owns no key.
 #pragma warning disable
 #nullable enable
 
@@ -21,7 +22,6 @@ public sealed class EGraph
     private readonly List<(int A, int B)> pending = new();
     private readonly List<int> constructorOf = new();
     private readonly List<bool> conflicting = new();
-    private readonly List<bool> retired = new();
 
     public int Nodes => this.memo.Count;
 
@@ -55,11 +55,7 @@ public sealed class EGraph
 
     public int ClassOfNode(int node) => this.Find(this.classOf[node]);
 
-    public IEnumerable<int> UsesOf(int c) => this.usesOf[this.Find(c)].Where(n => !this.retired[n]);
-
-    /// <summary>Whether the node's key is owned by another node since a merge: the same Type, no member of any class (one node per
-    /// Type; a duplicate member would be matched as another one).</summary>
-    public bool Retired(int node) => this.retired[node];
+    public IEnumerable<int> UsesOf(int c) => this.usesOf[this.Find(c)];
 
     /// <summary>The class's constructor (its Prim or Con node; -1 when abstract). A conflicting class answers one of its constructors.</summary>
     public int Constructor(int c) => this.constructorOf[this.Find(c)];
@@ -130,7 +126,6 @@ public sealed class EGraph
         this.memo.Add(key, node);
         this.constructorOf.Add(head is SymHead { Kind: SymKind.Prim or SymKind.Con } ? node : -1);
         this.conflicting.Add(false);
-        this.retired.Add(false);
         this.Classes++;
         foreach (var k in canonical)
         {
@@ -256,8 +251,8 @@ public sealed class EGraph
                 if (this.memo.TryGetValue(key, out var other) && other != node)
                 {
                     // Congruence: same head over identical kids. Its explanation is that of the kids. The node is the key's owner's
-                    // Type: it leaves its class (one node per Type; a duplicate member would be matched as another one, and
-                    // duplicates multiply through nested patterns).
+                    // Type: it leaves its class and its kids' use lists and owns no key (one node per Type: lookups and the join
+                    // read class members, and a duplicate member matched as another node multiplies through nested patterns).
                     var pc = this.Find(this.classOf[node]);
                     var oc = this.Find(this.classOf[other]);
                     if (pc != oc)
@@ -265,10 +260,15 @@ public sealed class EGraph
                         this.pending.Add((pc, oc));
                     }
 
-                    if (!this.retired[node])
+                    this.nodesOf[pc].Remove(node);
+                    foreach (var k in canonical)
                     {
-                        this.retired[node] = true;
-                        this.nodesOf[pc].Remove(node);
+                        this.usesOf[k].Remove(node);
+                    }
+
+                    if (this.constructorOf[pc] == node)
+                    {
+                        this.constructorOf[pc] = other;
                     }
                 }
                 else

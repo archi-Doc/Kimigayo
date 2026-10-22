@@ -1,19 +1,19 @@
-DECLARATION-ERROR model 5: T is V: C none Complete rounds=8 V=32 E=13 J=15663 N=11 established-at-stop 0 239 ms; ref5 none! 19 ms; ref7 none! 3 ms
-DECLARATION-ERROR model 23: T is V: C + Complete rounds=9 V=30 E=22 J=4036 N=11 established-at-stop 1 116 ms; ref5 +! 21 ms; ref7 +! 67 ms
-OVER BUDGET model 36: T is V; C alone + Complete rounds=4 V=22 E=16 J=3099 N=8 0.2 s wall
-OVER BUDGET model 36: T is Cp; C alone + Complete rounds=2 V=6 E=14 J=66 N=8 0.2 s wall
+DECLARATION-ERROR model 5: T is V: C none Complete rounds=8 V=32 E=13 J=15769 N=11 established-at-stop 0 161 ms; ref5 none! 16 ms; ref7 none! 2 ms
+DECLARATION-ERROR model 23: T is V: C + Complete rounds=9 V=30 E=22 J=4085 N=11 established-at-stop 1 106 ms; ref5 +! 17 ms; ref7 +! 42 ms
+OVER BUDGET model 36: T is V; C alone + Complete rounds=4 V=22 E=16 J=3126 N=8 0.2 s wall
+OVER BUDGET model 36: T is Cp; C alone + Complete rounds=2 V=6 E=14 J=79 N=8 0.2 s wall
 OVER BUDGET model 36: T.(K1<i64>).X.(K1<i64>).X is K2; C alone none Complete rounds=0 V=2 E=5 J=22 N=10 0.1 s wall
 OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is K3<U>; C alone none Complete rounds=0 V=2 E=5 J=3 N=12 0.1 s wall
 OVER BUDGET model 36: U is K4; C alone none Complete rounds=0 V=2 E=5 J=2 N=10 0.1 s wall
-OVER BUDGET model 36: i32 is K1<i32>; C alone none Complete rounds=4 V=23 E=20 J=4822 N=9 0.2 s wall
+OVER BUDGET model 36: i32 is K1<i32>; C alone none Complete rounds=4 V=23 E=20 J=4941 N=9 0.2 s wall
 OVER BUDGET model 36: List<i32> is K0<i64>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.1 s wall
-OVER BUDGET model 36: S1 is K3<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.2 s wall
-OVER BUDGET model 36: U is K0<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.2 s wall
+OVER BUDGET model 36: S1 is K3<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.1 s wall
+OVER BUDGET model 36: U is K0<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.1 s wall
 OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is K2; C alone none Complete rounds=0 V=2 E=5 J=3 N=11 0.2 s wall
-OVER BUDGET model 36: List<S1.(K1<i64>).X> is K4; C alone none Complete rounds=0 V=2 E=5 J=5 N=12 0.2 s wall
-OVER BUDGET model 36: U is K0<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.2 s wall
-OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is i32; C alone none Complete rounds=4 V=30 E=16 J=5520 N=10 0.3 s wall
-OVER BUDGET model 36: List<S1.(K1<i64>).X> is List<i32>; C alone none Complete rounds=4 V=52 E=16 J=7032 N=12 0.3 s wall
-OVER BUDGET model 36: S1 is U; C alone none Complete rounds=5 V=35 E=16 J=3593 N=10 0.3 s wall
-OVER BUDGET model 36: T is Cp or K2; C alone none Complete rounds=4 V=24 E=16 J=3548 N=9 0.2 s wall
-== NESTED seed 77: 40 models, 653 queries (budget 60 s each, C and both reference bounds): agree 553, disagree 0, C Resource 0, reference unstable 0, overflow 50, over budget 16, declaration errors 34 queries of 2 models; C time on finished queries median 123 ms, p95 2374 ms, max 8176 ms
+OVER BUDGET model 36: List<S1.(K1<i64>).X> is K4; C alone none Complete rounds=0 V=2 E=5 J=5 N=12 0.1 s wall
+OVER BUDGET model 36: U is K0<i32>; C alone none Complete rounds=0 V=2 E=5 J=3 N=10 0.1 s wall
+OVER BUDGET model 36: T.(K1<i64>).X.(K4).Y is i32; C alone none Complete rounds=4 V=30 E=16 J=6055 N=10 0.2 s wall
+OVER BUDGET model 36: List<S1.(K1<i64>).X> is List<i32>; C alone none Complete rounds=4 V=52 E=16 J=7101 N=12 0.2 s wall
+OVER BUDGET model 36: S1 is U; C alone none Complete rounds=5 V=35 E=16 J=3831 N=10 0.2 s wall
+OVER BUDGET model 36: T is Cp or K2; C alone none Complete rounds=4 V=24 E=16 J=3879 N=9 0.2 s wall
+== NESTED seed 77: 40 models, 653 queries (budget 60 s each, C and both reference bounds): agree 553, disagree 0, C Resource 0, reference unstable 0, overflow 50, over budget 16, declaration errors 34 queries of 2 models; C time on finished queries median 86 ms, p95 1837 ms, max 9299 ms

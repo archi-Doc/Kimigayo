@@ -1,4 +1,4 @@
-RESOURCE-ON-STABLE model 1 view ordinary: i32 is U ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=32536 N=154
+RESOURCE-ON-STABLE model 1 view ordinary: i32 is U ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=36895 N=154
 contract Cp
 contract K0
   associate X is K0
@@ -18,7 +18,7 @@ conformance S1 is K2<i32> pending
   binding X = i64
   binding Y = List<i32>
 
-RESOURCE-ON-STABLE model 1 view ordinary: i32 is T ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=32499 N=154
+RESOURCE-ON-STABLE model 1 view ordinary: i32 is T ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=32500 N=154
 contract Cp
 contract K0
   associate X is K0
@@ -38,7 +38,7 @@ conformance S1 is K2<i32> pending
   binding X = i64
   binding Y = List<i32>
 
-RESOURCE-ON-STABLE model 1 view ordinary: U is i32 ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=32536 N=154
+RESOURCE-ON-STABLE model 1 view ordinary: U is i32 ref (False, False) C none Resource (items 3094>3000) rounds=39 V=2719 E=439 J=36895 N=154
 contract Cp
 contract K0
   associate X is K0
@@ -58,7 +58,7 @@ conformance S1 is K2<i32> pending
   binding X = i64
   binding Y = List<i32>
 
-RESOURCE-ON-STABLE model 1 view ordinary: U is List<i32> ref (False, False) C none Resource (items 3096>3000) rounds=40 V=2720 E=439 J=32758 N=155
+RESOURCE-ON-STABLE model 1 view ordinary: U is List<i32> ref (False, False) C none Resource (items 3096>3000) rounds=40 V=2720 E=439 J=32798 N=155
 contract Cp
 contract K0
   associate X is K0
@@ -78,7 +78,7 @@ conformance S1 is K2<i32> pending
   binding X = i64
   binding Y = List<i32>
 
-RESOURCE-ON-STABLE model 1 view ordinary: T.(K0).Y is List<U> ref (False, True) C - Resource (items 3099>3000) rounds=41 V=2724 E=439 J=38888 N=154
+RESOURCE-ON-STABLE model 1 view ordinary: T.(K0).Y is List<U> ref (False, True) C - Resource (items 3099>3000) rounds=41 V=2724 E=439 J=38935 N=154
 contract Cp
 contract K0
   associate X is K0
@@ -98,7 +98,7 @@ conformance S1 is K2<i32> pending
   binding X = i64
   binding Y = List<i32>
 
-RESOURCE-ON-STABLE model 1 view ordinary: (T.(K0).Y is Cp) or (T.(K0).Y is K0) ref (False, False) C none Resource (items 3098>3000) rounds=41 V=2723 E=439 J=45107 N=154
+RESOURCE-ON-STABLE model 1 view ordinary: (T.(K0).Y is Cp) or (T.(K0).Y is K0) ref (False, False) C none Resource (items 3098>3000) rounds=41 V=2723 E=439 J=45109 N=154
 contract Cp
 contract K0
   associate X is K0
@@ -372,7 +372,7 @@ input T.(K1).Y is Option<U>
 conformance S1 is K4
   binding Y = i64
 
-RESOURCE-ON-STABLE model 37 view ordinary: S1 is K1 ref (False, False) C none Resource (items 3001>3000) rounds=182 V=1754 E=1417 J=14014250 N=537
+RESOURCE-ON-STABLE model 37 view ordinary: S1 is K1 ref (False, False) C none Resource (items 3005>3000) rounds=182 V=1758 E=1417 J=14196129 N=537
 contract Cp
 contract K0
   associate X
@@ -393,7 +393,7 @@ input T is K2<i32>
 input U is T.(K2<i32>).Y
 input T.(K2<i32>).Y is List<i32>
 
-RESOURCE-ON-STABLE model 37 view ordinary: List<T.(K2<i32>).Y> is K2<List<i32>> ref (False, False) C none Resource (items 3002>3000) rounds=172 V=1824 E=1337 J=12505131 N=508
+RESOURCE-ON-STABLE model 37 view ordinary: List<T.(K2<i32>).Y> is K2<List<i32>> ref (False, False) C none Resource (items 3002>3000) rounds=172 V=1824 E=1337 J=12573539 N=508
 contract Cp
 contract K0
   associate X
@@ -414,7 +414,7 @@ input T is K2<i32>
 input U is T.(K2<i32>).Y
 input T.(K2<i32>).Y is List<i32>
 
-RESOURCE-ON-STABLE model 37 view ordinary: T.(K2<i32>).Y is K2<i32> ref (False, False) C none Resource (items 3064>3000) rounds=42 V=2791 E=305 J=605697 N=119
+RESOURCE-ON-STABLE model 37 view ordinary: T.(K2<i32>).Y is K2<i32> ref (False, False) C none Resource (items 3064>3000) rounds=42 V=2791 E=305 J=611332 N=119
 contract Cp
 contract K0
   associate X
@@ -435,7 +435,7 @@ input T is K2<i32>
 input U is T.(K2<i32>).Y
 input T.(K2<i32>).Y is List<i32>
 
-RESOURCE-ON-STABLE model 37 view ordinary: T.(K2<i32>).Y.(K0).X is i32 ref (False, False) C none Resource (items 3002>3000) rounds=191 V=1679 E=1501 J=16584118 N=571
+RESOURCE-ON-STABLE model 37 view ordinary: T.(K2<i32>).Y.(K0).X is i32 ref (False, False) C none Resource (items 3005>3000) rounds=191 V=1682 E=1501 J=16602695 N=571
 contract Cp
 contract K0
   associate X
@@ -456,7 +456,7 @@ input T is K2<i32>
 input U is T.(K2<i32>).Y
 input T.(K2<i32>).Y is List<i32>
 
-RESOURCE-ON-STABLE model 37 view ordinary: S1 is U ref (False, True) C - Resource (items 3110>3000) rounds=41 V=2803 E=371 J=299414 N=120
+RESOURCE-ON-STABLE model 37 view ordinary: S1 is U ref (False, True) C - Resource (items 3110>3000) rounds=41 V=2803 E=371 J=303301 N=120
 contract Cp
 contract K0
   associate X
@@ -477,7 +477,7 @@ input T is K2<i32>
 input U is T.(K2<i32>).Y
 input T.(K2<i32>).Y is List<i32>
 
-RESOURCE-ON-STABLE model 37 view ordinary: T.(K2<i32>).Y.(K0).X is i32 ref (False, False) C none Resource (items 3002>3000) rounds=191 V=1679 E=1501 J=16584118 N=571
+RESOURCE-ON-STABLE model 37 view ordinary: T.(K2<i32>).Y.(K0).X is i32 ref (False, False) C none Resource (items 3005>3000) rounds=191 V=1682 E=1501 J=16602695 N=571
 contract Cp
 contract K0
   associate X
@@ -498,7 +498,7 @@ input T is K2<i32>
 input U is T.(K2<i32>).Y
 input T.(K2<i32>).Y is List<i32>
 
-SLOW model 37: 40 s
+SLOW model 37: 50 s
 DECLARATION-ERROR model 46 view ordinary: conflict
 contract Cp
 contract K0<A>
@@ -1492,7 +1492,7 @@ input U is T.(K3).Y
 input T is Cp or Cp
 input T.(K3).Y is Option<U>
 
-SLOW model 163: 63 s
+SLOW model 163: 73 s
 DECLARATION-ERROR model 164 view ordinary: cyclic
 contract Cp
 contract K0 : Cp
@@ -1775,10 +1775,10 @@ conformance S1 is K2
   binding X = i64
   binding Y = S2
 
-== RANDOM seed 4242: 66 s; models 200 (reference overflow 6, declaration errors 70); Supply queries 2999 (569 of them reference-derived facts, 356 in a frozen view): stable 2999 (agree 2949, disagree 0, C Resource 50), unstable 0 (C Resource 0), provisional 340
+== RANDOM seed 4242: 75 s; models 200 (reference overflow 6, declaration errors 70); Supply queries 2999 (569 of them reference-derived facts, 356 in a frozen view): stable 2999 (agree 2949, disagree 0, C Resource 50), unstable 0 (C Resource 0), provisional 343
    C Resource on stable queries: 50, of which the reference has evidence for neither polarity 41
    answer kinds on stable agreement: Eq=462, Eq-=255, Eq+=54, Is=1289, Is-=6, Is+=639, Is+-=37, Or-compound=203, Or-compound+=4
    Enumerate: 232: agree 227, disagree 0, C Resource 5, unstable 0
    recursive classification (Model's declaration search vs the reference's bounded SPEC 8.3.3 closure): 619 Contracts, 178 recursive, 0 differ
-   cost per stable request: V median 5, p95 24, max 128; E median 3, p95 10, max 52; J median 8, p95 688, max 8731; N median 8, p95 12, max 24; rounds median 1, p95 6, max 15
+   cost per stable request: V median 5, p95 25, max 128; E median 3, p95 10, max 52; J median 8, p95 774, max 9055; N median 8, p95 12, max 24; rounds median 1, p95 6, max 15
 FAILURES 0

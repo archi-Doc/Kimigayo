@@ -1,58 +1,34 @@
-== scale (median of 21 warm runs after 5; harness 300 rounds, 3,000 items unless stated; load 82%)
+== scale (median of 21 warm runs after 5; harness 300 rounds, 3,000 items; load 56%)
 -- final: m185 List<i32> is Cp
-List<i32> is Cp: none Complete rounds=14 V=107 E=137 J=50161 N=23 median 68805 us
+List<i32> is Cp: none Complete rounds=14 V=109 E=137 J=55814 N=23 median 43519 us
 -- 152dda62: m185
-List<i32> is Cp: none Complete rounds=17 V=781 E=487 J=1628852 N=23 median 914436 us
--- final: n39 T is V (3,000 items)
-T is V: C + Complete rounds=17 V=211 E=73 J=395953 N=22 established-at-stop 1 1999 ms; ref5 + 15 ms; ref7 + 21 ms
--- 152dda62: n39 T is V (3,000 items)
-T is V: C Resource Resource (items 3036>3000) rounds=13 V=2636 E=749 J=11497835 N=22 established-at-stop 1 5854 ms; ref5 + 13 ms; ref7 + 21 ms
--- final: seed 4242 model 12 List<i32> is K3 (3,000 items)
-List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=5530566 N=110 established-at-stop 2 3918 ms; ref5 none 15 ms; ref7 none 17 ms
+List<i32> is Cp: none Complete rounds=17 V=781 E=487 J=1628852 N=23 median 619789 us
+-- final: n39 T is V
+T is V: C + Complete rounds=17 V=211 E=73 J=400414 N=22 established-at-stop 1 1575 ms; ref5 + 12 ms; ref7 + 17 ms
+-- 152dda62: n39 T is V
+T is V: C Resource Resource (items 3036>3000) rounds=13 V=2636 E=749 J=11497835 N=22 established-at-stop 1 4229 ms; ref5 + 11 ms; ref7 + 17 ms
+-- final: seed 4242 model 12 List<i32> is K3
+List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=5549062 N=110 established-at-stop 2 2995 ms; ref5 none 14 ms; ref7 none 14 ms
 -- 152dda62: model 12
-List<i32> is K3: C Resource Resource (items 3239>3000) rounds=28 V=2380 E=1653 J=1408939 N=32 established-at-stop 2 1839 ms; ref5 none 22 ms; ref7 none 18 ms
--- final: seed 78 model 2 T is V (3,000 items)
-T is V: C + Resource (items 4671>3000) rounds=12 V=3987 E=941 J=590191 N=209 established-at-stop 1 5354 ms; ref5 + 109 ms; ref7 + 365 ms
+List<i32> is K3: C Resource Resource (items 3239>3000) rounds=28 V=2380 E=1653 J=1408939 N=32 established-at-stop 2 1428 ms; ref5 none 12 ms; ref7 none 15 ms
+-- final: seed 78 model 2 T is V
+T is V: C + Resource (items 4671>3000) rounds=12 V=3987 E=941 J=599764 N=209 established-at-stop 1 4369 ms; ref5 + 84 ms; ref7 + 254 ms
 -- 152dda62: seed 78 model 2
-T is V: C + Complete rounds=4 V=16 E=13 J=1120 N=11 established-at-stop 1 80 ms; ref5 + 151 ms; ref7 + 595 ms
--- final: seed 7 model 322 List<i32> is Cp (3,000 items)
-List<i32> is Cp: C none Resource (items 3041>3000) rounds=62 V=2528 E=673 J=3539594 N=176 established-at-stop 2 4314 ms; ref5 none 54 ms; ref7 none 100 ms
--- final: seed 4242 model 361 T.(K2).X is K0 (3,000 items)
-T.(K2).X is K0: C none Resource (items 3078>3000) rounds=58 V=2459 E=995 J=1395894 N=120 established-at-stop 2 2981 ms; ref5 none 15 ms; ref7 none 1 ms
+T is V: C + Complete rounds=4 V=16 E=13 J=1120 N=11 established-at-stop 1 65 ms; ref5 + 80 ms; ref7 + 365 ms
+-- final: seed 7 model 322 List<i32> is Cp
+List<i32> is Cp: C none Resource (items 3041>3000) rounds=62 V=2528 E=673 J=3646792 N=176 established-at-stop 2 2882 ms; ref5 none 29 ms; ref7 none 72 ms
+-- final: seed 4242 model 361 T.(K2).X is K0
+T.(K2).X is K0: C none Resource (items 3078>3000) rounds=58 V=2459 E=995 J=6713615 N=120 established-at-stop 2 2299 ms; ref5 none 9 ms; ref7 none 0 ms
 -- 152dda62: model 361
-T.(K2).X is K0: C Resource Resource (items 3079>3000) rounds=20 V=1840 E=2387 J=3274706 N=44 established-at-stop 2 1593 ms; ref5 none 10 ms; ref7 none 0 ms
--- final: m185 List<i32> is Cp
-List<i32> is Cp: none Complete rounds=14 V=107 E=137 J=50161 N=23 median 52920 us
--- 152dda62: m185
-List<i32> is Cp: none Complete rounds=17 V=781 E=487 J=1628852 N=23 median 902148 us
--- final: n39 T is V (3,000 items)
-T is V: C + Complete rounds=17 V=211 E=73 J=395953 N=22 established-at-stop 1 2078 ms; ref5 + 24 ms; ref7 + 27 ms
--- 152dda62: n39 T is V (3,000 items)
-T is V: C Resource Resource (items 3036>3000) rounds=13 V=2636 E=749 J=11497835 N=22 established-at-stop 1 6208 ms; ref5 + 22 ms; ref7 + 23 ms
--- final: seed 4242 model 12 List<i32> is K3 (3,000 items)
-List<i32> is K3: C none Resource (items 3016>3000) rounds=106 V=2389 E=1033 J=5530566 N=110 established-at-stop 2 3908 ms; ref5 none 17 ms; ref7 none 19 ms
--- 152dda62: model 12
-List<i32> is K3: C Resource Resource (items 3239>3000) rounds=28 V=2380 E=1653 J=1408939 N=32 established-at-stop 2 2045 ms; ref5 none 26 ms; ref7 none 32 ms
--- final: seed 78 model 2 T is V (3,000 items)
-T is V: C + Resource (items 4671>3000) rounds=12 V=3987 E=941 J=590191 N=209 established-at-stop 1 5121 ms; ref5 + 117 ms; ref7 + 378 ms
--- 152dda62: seed 78 model 2
-T is V: C + Complete rounds=4 V=16 E=13 J=1120 N=11 established-at-stop 1 94 ms; ref5 + 96 ms; ref7 + 501 ms
--- final: seed 7 model 322 List<i32> is Cp (3,000 items)
-List<i32> is Cp: C none Resource (items 3041>3000) rounds=62 V=2528 E=673 J=3539594 N=176 established-at-stop 2 4522 ms; ref5 none 42 ms; ref7 none 192 ms
--- final: seed 4242 model 361 T.(K2).X is K0 (3,000 items)
-T.(K2).X is K0: C none Resource (items 3078>3000) rounds=58 V=2459 E=995 J=1395894 N=120 established-at-stop 2 2908 ms; ref5 none 11 ms; ref7 none 0 ms
--- 152dda62: model 361
-T.(K2).X is K0: C Resource Resource (items 3079>3000) rounds=20 V=1840 E=2387 J=3274706 N=44 established-at-stop 2 1540 ms; ref5 none 11 ms; ref7 none 1 ms
+T.(K2).X is K0: C Resource Resource (items 3079>3000) rounds=20 V=1840 E=2387 J=3274706 N=44 established-at-stop 2 1111 ms; ref5 none 8 ms; ref7 none 0 ms
 -- shared-live-n (final), scale
-final shared-live-10: T is Copy: none Complete rounds=2 V=68 E=2 J=683 N=4 median 1844 us
-final shared-live-40: T is Copy: none Complete rounds=2 V=248 E=2 J=2333 N=4 median 4692 us
-final shared-live-100: T is Copy: none Complete rounds=2 V=608 E=2 J=5633 N=4 median 34286 us
-final shared-live-400: T is Copy: none Complete rounds=2 V=2408 E=2 J=22133 N=4 median 284435 us
-152dda62 shared-live-10: T is Copy: none Complete rounds=2 V=456 E=2 J=6782 N=4 median 28291 us
-152dda62 shared-live-40: T is Copy: none Complete rounds=2 V=6606 E=2 J=290702 N=4 median 1265854 us
+final shared-live-10: T is Copy: none Complete rounds=2 V=68 E=2 J=643 N=4 median 842 us
+final shared-live-40: T is Copy: none Complete rounds=2 V=248 E=2 J=2173 N=4 median 3503 us
+final shared-live-100: T is Copy: none Complete rounds=2 V=608 E=2 J=5233 N=4 median 23147 us
+final shared-live-400: T is Copy: none Complete rounds=2 V=2408 E=2 J=20533 N=4 median 186570 us
 -- open-live-n (final), scale
-final open-live-10: T is Copy: none Complete rounds=2 V=43 E=2 J=41 N=4 median 128 us
-final open-live-40: T is Copy: none Complete rounds=2 V=163 E=2 J=161 N=4 median 393 us
-final open-live-100: T is Copy: none Complete rounds=2 V=403 E=2 J=401 N=4 median 1769 us
-final open-live-400: T is Copy: none Complete rounds=2 V=1603 E=2 J=1601 N=4 median 2848 us
--- G170 depth 1 / 8 / 64 and the 1,000-request repeat: see cost.txt (final) and cost-152dda62.txt; load 96%
+final open-live-10: T is Copy: none Complete rounds=2 V=43 E=2 J=41 N=4 median 92 us
+final open-live-40: T is Copy: none Complete rounds=2 V=163 E=2 J=161 N=4 median 276 us
+final open-live-100: T is Copy: none Complete rounds=2 V=403 E=2 J=401 N=4 median 650 us
+final open-live-400: T is Copy: none Complete rounds=2 V=1603 E=2 J=1601 N=4 median 1979 us
+-- load 0%

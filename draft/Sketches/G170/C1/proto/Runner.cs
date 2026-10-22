@@ -936,6 +936,13 @@ public static class Runner
         failures += Expect("B proj-vs-con: a projection kid against a constructor kid is deferred", "contract Cp\ncontract K\n  associate X\n  associate Y\ncontract Q<A>\n  clause Self is Pair<A.(K).X, i32>\ncontract R\n  clause Self is Pair<List<i64>, i32>\ninput T is K\ninput U is K\ninput T.(K).Y is U.(K).X\ninput T.(K).Y is List<i64>\ninput V is Q<U>\ninput W is R\ninput W is Cp", "V is Cp", "+ C");
         failures += Expect("B projection-side: the negative polarity needs the projection's structure (the structure need)", "contract K\n  associate X is List<i32>\ninput T is K", "T.(K).X is Array<U>", "- C");
         failures += Expect("B negated-row-kid: the kid pair selects the negated row", "contract K\n  associate X\n  clause Self.(K).X is not i32\ninput T is K\ninput U is Option<T.(K).X>", "U is Option<i32>", "- C");
+        // The final independent review (round 1): B1 a duplicate node owned a re-keyed key (w2b); B2 rule 8's kid heads reached no candidate
+        // selection and decomposed promises never entered the join (w13a, w13b, w15); B3 a negated row whose other side the antecedent binds (w3).
+        failures += Expect("B w2b-retire: a duplicate node leaves every list and owns no key (one node per Type)", "contract Cp\nconformance Pair<V, W> is Cp when V is Cp\ninput R is P\ninput Q2 is Q\ninput P is P2\ninput A is Pair<P, Q>\ninput B is Pair<P2, Q2>\ninput X1 is List<R>\ninput X2 is Option<R>\ninput X3 is Set<R>\ninput P is Cp", "A is Cp", "+ C");
+        failures += Expect("B w13b-filter-ground: a row whose subject head the class gains by decomposition is a candidate", "contract Cp\ncontract K0\n  associate Y\ncontract K1\n  clause Self.(K0).Y is Option<List<i32>>\nconformance List<V> is Cp\ninput T is K0\ninput T is K1\ninput T.(K0).Y is Option<V>", "V is Cp", "+ C");
+        failures += Expect("B w13a-filter-projkid: the same with a projection kid", "contract Cp\ncontract K0\n  associate Y\ncontract K9\n  associate Z\ncontract K1<A>\n  clause Self.(K0).Y is Option<List<A.(K9).Z>>\nconformance List<V> is Cp\ninput T is K0\ninput T is K1<U>\ninput U is K9\ninput T.(K0).Y is Option<V>", "V is Cp", "+ C");
+        failures += Expect("B w15-join-only: decomposed promises enter the join and expand their producers", "contract Cp\ncontract K0\n  associate Y\ncontract K9\n  associate Z\ncontract K7\n  associate W is List<i32>\ncontract K1<A>\n  clause Self.(K0).Y is Option<List<A.(K9).Z>>\ninput T is K0\ninput T is K1<U>\ninput U is K9\ninput S is K7\ninput T.(K0).Y is Option<V>\ninput U.(K9).Z is i32\ninput S.(K7).W is Cp", "V is Cp", "+ C");
+        failures += Expect("B w3-negated-param: a negated row whose other side the antecedent binds is requested", "contract K<A>\n  associate X\n  clause Self.(K).X is not A\ninput T is K<U>", "T.(K).X is U", "- C");
         return failures;
     }
 
@@ -1781,15 +1788,18 @@ public static class Runner
         // re-keying must be order-free): the unbounded enumeration at a small item limit, G170 depth 8, nested 39 at 3,000 items.
         var fixedDifferences = 0;
         var fixedRuns = 0;
+        var fixedModels = 0;
         foreach (var (name, text, request, subject, limits) in new (string, string, string?, string?, Limits)[]
         {
             ("unbounded enumeration, 300 items", UnboundedText, null, "i32", new Limits { Items = 300 }),
             ("G170 depth 8", Trees + "\ninput T is CopyTree", Chain(8) + " is Copy", null, Harness),
             ("nested 39 at 3,000 items", Nested39, "T is V", null, new Limits { Rounds = 300, Items = 3000 }),
             ("nested 39 at 300 items", Nested39, "T is V", null, new Limits { Rounds = 300, Items = 300 }),
+            ("fired set re-keyed when facts become one (structural seed 4242 model 37)", FiredRekey, "T.(K1<i32>).Y is K2<U>", null, Harness),
         })
         {
             var m = ModelText.Parse(text);
+            fixedModels++;
             var x = request is null ? new Solver(m).Enumerate(ModelText.ParseType(m, subject!), View.Ordinary, limits) : new Solver(m).Supply(ModelText.ParseFormula(m, request), View.Ordinary, limits);
             for (var k = 0; k < 6; k++)
             {
@@ -1809,7 +1819,7 @@ public static class Runner
             Console.WriteLine($"   {name}: {x} peak {x.PeakItems} [{x.Detail}]");
         }
 
-        Console.WriteLine($"== ORDER (merges every round): {fixedRuns} shuffled runs of 4 fixed requests: {fixedDifferences} differ");
+        Console.WriteLine($"== ORDER (merges every round): {fixedRuns} shuffled runs of {fixedModels} fixed requests: {fixedDifferences} differ");
         return differences + unexpected + fixedDifferences;
 
         int Compare(int model, string q, View view, string setting, Answer x, Answer y)
@@ -1879,6 +1889,36 @@ public static class Runner
 
     /// <summary>The nested profile's model 39 (seed 77; review-assets/round4/models/n39.txt): chain promises multiply with
     /// nested-projection identity rows.</summary>
+    // Two facts that become one when their classes merge (`i32 is K0<List<i32>>`, `U is K0<i32>` under U = List<i32> = i32): a
+    // subscription that fired on one of them fires again on the other unless its fired set follows the facts' union.
+    private const string FiredRekey = """
+        contract Cp
+        contract K0<A> : Cp
+          associate X is K4
+          associate Y is Cp and Cp
+          clause Self.(K0<A>).X is List<i32>
+          clause A is Self.(K0<A>).X
+        contract K1<A> : K0<i32>
+          associate X is K2<List<i32>>
+          associate Y is Self
+          clause A is K0<List<i32>>
+        contract K2<A>
+          associate X is K3
+          associate Y is Cp or K3
+          clause A.(K2<i32>).X is Cp or Cp
+          clause Self.(K2<A>).Y.(K4).Y is K2<Self.(K2<A>).X>
+        contract K3
+          associate X is K3 and Cp
+          associate Y is Self.(K3).X
+        contract K4 pending
+          associate Y
+          clause Self.(K4).Y is Cp or Cp
+        input T is K1<i32>
+        input U is T.(K1<i32>).Y
+        input T.(K1<i32>).Y is List<i32>
+        conformance S2 is K4 when S2 is K1<i32>
+        """;
+
     private const string Nested39 = """
         contract Cp
         contract K0 : Cp
