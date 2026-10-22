@@ -81,7 +81,6 @@ public static partial class Parser
             cause = (name as ErrorKoto)?.Cause;
         }
 
-        var bound = EffectBoundKind.Confined;
         if (reader.IsCurrentIdentifier(Constants.ConfinedKeyword))
         {
             reader.Advance();
@@ -94,7 +93,7 @@ public static partial class Parser
             reader.SkipUntil(TokenKind.Separator, TokenKind.EndBlock);
         }
 
-        var effect = new EffectBoundKoto(ref reader, SourceSpan.FromBounds(start, reader.PreviousSyntaxEnd), bound, selector, name);
+        var effect = new EffectBoundKoto(ref reader, SourceSpan.FromBounds(start, reader.PreviousSyntaxEnd), selector, name);
         if (cause is { } recovery)
         {
             reader.CodeContext.RecordRecovery(effect, recovery);

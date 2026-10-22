@@ -12,6 +12,14 @@ namespace XunitTest;
 // state an Origin (SPEC 5.7).
 public class RawPointerSyntaxTest
 {
+    // A view whose slot a shared Loan keeps (requirement `ref`), and a struct whose slot keeps no Loan (Phantom).
+    internal const string KeptView = "struct View {source}\n    internal let r: ref/i32 during source\n    public init(r: ref/i32 during source) => self.r = r\n";
+
+    private const string PhantomW = "struct W {s}\n    public let n: i32\n    public init() => self.n = 0\n";
+
+    // A struct whose slot an exclusive borrow keeps, with a raw Field stating it.
+    private const string RetainedU = "struct U {s}\n    internal let r: uniq/i32 during s\n    internal let at: raw/i32 during s\n";
+
     [Fact]
     public void UnsafeIsNoSemanticsName()
     {
@@ -63,29 +71,74 @@ public class RawPointerSyntaxTest
     public void ARawOriginIsOneAtomOfABorrow(string declarations, string record)
         => Assert.Equal([record], Records(declarations));
 
-    // SPEC 5.7 (design-final §7.3): a declaration's raw Origin that has no step once the slots' requirements exist is rejected at its
-    // annotation and published unstated, so holding the Type inline, a dereference and a call substituting it keep that one record: a
-    // Phantom slot, U1's case-dependent pair input, and an atom no borrow holds (bound only by a slot that keeps no Loan).
+    // SPEC 5.7 (DECISIONS BU-24): a written raw Origin that belongs to no borrow is rejected at its annotation, once, after the last
+    // requirement fixed point: a Phantom slot and an atom no borrow holds (bound only by a slot that keeps no Loan). Holding the Type
+    // inline, a dereference and a call substituting it add no record.
     [Theory]
     [InlineData(
         "struct W<T> {s}\n    internal let at: raw/T during s\nstruct X<T> {a}\n    internal let w: W<T> during a\nfunc use(x: ref/X<i32>) -> raw/i32 => x.w.at",
         "InvalidOriginBinding_Kd: raw/T during s")]
     [InlineData(
-        "func f<s/T>(x: s/T during a, p: raw/T during a) -> T\n    s is ref or uniq\n    T is Copy\n    unsafe => return *p\nfunc g(r: ref/i32, q: raw/i32 during r) -> i32 => f(r, q)",
-        "Unsupported_Kd: raw/T during a")]
-    [InlineData(
-        "struct V {s}\n    internal let n: i32\nfunc h(v: V during a, p: raw/i32 during a) -> raw/i32 during a => p\nfunc k(v: V during b, q: raw/i32 during b) -> raw/i32 => h(v, q)",
+        "struct V {s}\n    internal let n: i32\nfunc h(v: V during a, p: raw/i32 during a) -> raw/i32 during a => p\nfunc k(v: V during b, q: raw/i32 during b) -> raw/i32 => h(v@move, q)",
         "InvalidOriginBinding_Kd: raw/i32 during a | InvalidOriginBinding_Kd: raw/i32 during a | InvalidOriginBinding_Kd: raw/i32 during b")]
-    public void ARejectedRawOriginIsNeverPublished(string declarations, string records)
+    public void ARejectedRawOriginHasOneRecord(string declarations, string records)
         => Assert.Equal(records, string.Join(" | ", Records(declarations)));
 
-    // SPEC 5.7, 8.3.4 (design-final §4; U1): a raw layer stating the Origin of a pair input whose admitted cases mix modes or admit a
-    // non-borrow case has no one step: a located Unsupported_Kd at the annotation; one mode is the step of every case.
+    // SPEC 5.7 Origins (DECISIONS BU-24, the delta review's D1, the re-read's R2 (a)): a Phantom slot a raw layer states, also through
+    // a written projection, is one record in every position: a body annotation, a body Type argument, a closure parameter and a
+    // declaration, its explicit slot argument (`w: ref/(W during o)`) included.
     [Theory]
-    [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is ref or uniq\n    ()", "Unsupported_Kd: raw/T during a")]
+    [InlineData(PhantomW + "func h<o>(a: ref/i32 during o, w: ref/(W during o), p: raw/i32 during w.s) => ()", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
+    [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => *q = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
+    [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => q[0] = 2", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
+    [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    let r = (q, 1)\n    unsafe => *r.0 = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
+    [InlineData(PhantomW + "struct Box<T>\n    public var v: T\n    public init(v: T) => self.v = v\nfunc f(w: ref/W)\n    var b = Box<raw/i32 during w.s>.init(null)\n    unsafe => *b.v = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
+    [InlineData(PhantomW + "func f(w: ref/W)\n    let g = func (l: ref/W, p: raw/i32 during l.s)\n        unsafe => *p = 1", "InvalidOriginBinding_Kd: raw/i32 during l.s")]
+    public void APhantomRawOriginIsOneRecordInEveryPosition(string declarations, string record)
+        => Assert.Equal([record], Records(declarations));
+
+    // SPEC 5.7 (Authority, Origins; DECISIONS BU-24, the owner's 「静的な権限判定をやめる (推奨)」): a written raw Origin is the atom
+    // its name binds, whatever position it is written in, and no access through it is a compile-time error, so the forms that had a step
+    // the representation could not express (the re-read's R1, a fault: an exclusive borrow outside the binder of a shared-only atom)
+    // and those whose verdict depended on the position (R2 (b)-(d), the delta review's D2), N1-N4 of reading 1 and the owner's examples
+    // are valid with no record; a universal bound to a Slice input belongs to it (SPEC 5.7 Origins), and a pair input admitting only
+    // borrows of mixed modes is a member like any borrow (U1 keeps only the non-borrow case).
+    [Theory]
+    [InlineData(KeptView + "func f(v: ref/View, x: uniq/i32 during v.source)\n    let q: raw/i32 during x = null")]
+    [InlineData("struct V2 {source}\n    internal let r: ref/i32 during source\n    public func m(x: uniq/i32 during source)\n        let q: raw/i32 during x = null")]
+    [InlineData(KeptView + "func f(v: ref/View, x: uniq/i32 during v.source)\n    let g = func (p: raw/i32 during x)\n        unsafe => *p = 1")]
+    [InlineData(RetainedU + "func f<o>(a: ref/i32 during o)\n    let g = func (l: ref/(U during o), p: raw/i32 during l.s) => ()")]
+    [InlineData(RetainedU + "func f<o>(a: ref/i32 during o)\n    let g = func (l: ref/(U during o)) -> raw/i32 during l.s => null")]
+    [InlineData(KeptView + "func h<o>(a: uniq/i32 during o, v: ref/(View during o), p: raw/i32 during v.source)\n    unsafe => *p = 1")]
+    [InlineData(KeptView + "func f<o>(a: uniq/i32 during o)\n    let g = func (v: ref/(View during o), p: raw/i32 during v.source)\n        unsafe => *p = 1")]
+    [InlineData(KeptView + "func h<o>(a: uniq/i32 during o, v: ref/(View during o))\n    let q: raw/i32 during v.source = null\n    unsafe => *q = 1")]
+    [InlineData(KeptView + "func h(l: ref/View, x: uniq/i32 during l.source, p: raw/i32 during x)\n    unsafe => *p = 1")]
+    [InlineData(KeptView + "func h(l: ref/View, x: uniq/i32 during l.source)\n    unsafe => *(x@follow@raw) = 1")]
+    [InlineData(KeptView + "func f()\n    let g = func (l: ref/View, x: uniq/i32 during l.source, p: raw/i32 during l.source)\n        unsafe => *p = 1")]
+    [InlineData(RetainedU + "func outer<q>(a: ref/i32 during q)\n    let g = func (l: ref/(U during q))\n        unsafe => *l.at = 1")]
+    [InlineData(RetainedU + "func h<q>(a: ref/i32 during q, l: ref/(U during q))\n    unsafe => *l.at = 1")]
+    [InlineData(RetainedU + "func outer(a: ref/i32 during q)\n    func inner(l: ref/(U during q))\n        unsafe => *l.at = 1")]
+    [InlineData("struct V2 {source}\n    internal let r: ref/i32 during source\n    public func m(x: uniq/i32 during source)\n        unsafe => *(x@follow@raw) = 1")]
+    [InlineData(KeptView + "func f(v: ref/View, x: uniq/i32 during v.source)\n    unsafe => *(x@follow@raw) = 1")]
+    [InlineData("func f<o>(a: ref/i32 during o)\n    let g = func (y: uniq/i32 during o, p: raw/i32 during y) => ()")]
+    [InlineData("func f(a: ref/i32 during o, q: raw/i32 during static)\n    unsafe\n        let z: uniq/i32 during o = (*q)@uniq\n        let p: raw/i32 during z = null\n        *(z@follow@raw) = 1")]
+    [InlineData("func pick(x: ref/i32 during q, y: uniq/i32 during q) -> ref/i32 during q => x\nfunc f(a: ref/i32 during o, b: uniq/i32 during o)\n    unsafe => *(pick(a, b)@follow@raw) = 3")]
+    [InlineData("func f(a: ref/i32 during o, b: uniq/i32 during o, p: raw/i32 during a)\n    unsafe => *p = 1")]
+    [InlineData(KeptView + "func h(l: ref/View, p: raw/i32 during l.source)\n    unsafe => *p = 1")]
+    [InlineData(KeptView + "func f()\n    let n = 1\n    let v = View.init(n@ref)\n    let g = func (l: ref/View, p: raw/i32 during l.source)\n        unsafe => *p = 1\n    g(v@ref, v.r@follow@raw)")]
+    [InlineData(KeptView + "func f()\n    let n = 1\n    let v = View.init(n@ref)\n    let g = func (l: ref/View) -> raw/i32 during l.source => l.r@follow@raw\n    unsafe => *g(v@ref) = 1")]
+    [InlineData("func f(s: Slice<i32> during o, p: raw/i32 during o) => ()")]
+    [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is ref or uniq\n    ()")]
+    [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a) -> T\n    s is ref or uniq\n    T is Copy\n    unsafe => return *p\nfunc g(r: ref/i32, q: raw/i32 during r) -> i32 => f(r, q)")]
+    public void AWrittenRawOriginNeedsNoStep(string declarations)
+        => Assert.Empty(Records(declarations));
+
+    // SPEC 5.7, 8.3.4 (U1): a raw layer stating the Origin of a pair input that admits a non-borrow case belongs to no borrow in that case:
+    // a located Unsupported_Kd at the annotation.
+    [Theory]
     [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is value or ref\n    ()", "Unsupported_Kd: raw/T during a")]
     [InlineData("func f<s/T>(x: s/T during a, p: raw/T during a)\n    s is ref\n    ()", null)]
-    public void APairOriginOfMixedCasesHasNoStep(string declarations, string? record)
+    public void APairOriginAdmittingANonBorrowCaseIsUnsupported(string declarations, string? record)
         => Assert.Equal(record is null ? [] : [record], Records(declarations));
 
     // SPEC 5.7, Fits and claims: a raw layer without `during` states an Origin every Origin outlives, so dropping or narrowing an Origin
@@ -170,7 +223,7 @@ public class RawPointerSyntaxTest
         {
             OriginKind.Static => true,
             OriginKind.Holder => Declaration(node) is not FunctionKoto,
-            OriginKind.Shared or OriginKind.Intersection => origin.Operands.All(x => Allowed(x, node)),
+            OriginKind.Intersection => origin.Operands.All(x => Allowed(x, node)),
             OriginKind.Unbound or OriginKind.Unstated => false,
             _ => origin.Binder is { } binder && Encloses(Declaration(binder), node),
         };
@@ -232,7 +285,7 @@ public class RawPointerSyntaxTest
         Assert.True(c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
         Assert.DoesNotContain(c.Binding.Obligations, static x => RawOnly(x.Longer) || RawOnly(x.Shorter));
 
-        static bool RawOnly(BoundOrigin? origin) => origin?.Kind is OriginKind.Shared or OriginKind.Holder or OriginKind.Unstated;
+        static bool RawOnly(BoundOrigin? origin) => origin?.Kind is OriginKind.Holder or OriginKind.Unstated;
     }
 
     // SPEC 10.7, 15.3.7 (review 2 B-B1): a conversion's contract compares raw Origins too; a required unstated input the implementation
@@ -254,7 +307,7 @@ public class RawPointerSyntaxTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var result = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.IsAnonymous).SymbolOf()!.Type!;
         Assert.NotNull(result.RawOrigin);
-        Assert.False(Binding.IsLocalRegion(Binding.RegionOf(result.RawOrigin)!));
+        Assert.False(Binding.IsLocalRegion(result.RawOrigin!));
     }
 
     // SPEC 5.4, 5.7: a provable claim needs no unsafe context, so an unsafe block holding only it is unnecessary; an unprovable one needs it.

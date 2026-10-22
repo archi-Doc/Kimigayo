@@ -288,9 +288,9 @@ public sealed class TyCtxtTest
         Assert.Equal(["uniq/i32", "s/T", "s/i32"], [TyCtxt.Name(types.Reference(SemanticsKind.Uniq, BoundType.I32)), TyCtxt.Name(pair), TyCtxt.Name(application)]);
     }
 
-    // SPEC 5.7 (design-final §7.3, §13 A5): A5's view of a raw layer, total over the layers MIR holds: a pointer temporary states
-    // none, a `during self` Field is the holder's own step, `static` static storage, an input's Origin through `ref` Shared and through
-    // `uniq` Exclusive, and a meet formed through exclusive borrows Exclusive (OQ-R2 (a)).
+    // SPEC 5.7, 5.2.1 condition 3 (DECISIONS BU-24 with the owner's decisions of 2026-10-22; R4's constraint 2): A5's view of a raw layer
+    // no declaration states, total over the layers MIR holds: a pointer temporary states none, a `during self` Field is the holder's own
+    // step, `static` static storage, and any other Origin, an input's, a meet or a typed path's, Exclusive: never Shared by default.
     [Fact]
     public void RawStepClassifiesEveryRawLayer()
     {
@@ -305,10 +305,141 @@ public sealed class TyCtxtTest
         var f = nodes.OfType<FunctionKoto>().Single(static x => x.Name == "f");
         var meet = nodes.OfType<ConversionKoto>().Single(static x => x.ToString() == "choose(c, y, z)@follow@raw").TypeOf()!;
         Assert.Equal(
-            [RawStep.Unstated, RawStep.Static, RawStep.Own, RawStep.Shared, RawStep.Exclusive, RawStep.Exclusive],
+            [RawStep.Unstated, RawStep.Static, RawStep.Own, RawStep.Exclusive, RawStep.Exclusive, RawStep.Exclusive],
             [types.RawStep(types.Pointer(BoundType.I32)), types.RawStep(types.Pointer(BoundType.I32, BoundOrigin.Static)), types.RawStep(field),
                 types.RawStep(f.Parameters[4].Type.TypeOf()!), types.RawStep(f.Parameters[5].Type.TypeOf()!), types.RawStep(meet)]);
         Assert.Equal(OriginKind.Intersection, meet.RawOrigin!.Kind);
+    }
+
+    // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): a raw layer written in a signature, parameter or result, is
+    // Shared when every borrow its Origin belongs to in that signature keeps only shared Loans (a `ref` input's outer Origin, a universal
+    // stated only by `ref` inputs, a slot whose Loan requirement is `ref`), else by its
+    // kind; body borrows never count. A `uniq` input, a universal stated by a `ref` and a `uniq` input, an Option's `uniq` borrow and a
+    // projection that an exclusive input states are Exclusive.
+    [Fact]
+    public void ASignatureRawLayerIsSharedOnlyThroughSharedInputs()
+    {
+        var c = MinimalEmissionTest.Analyze(RawPointerSyntaxTest.KeptView +
+            "func f(x: ref/i32, y: uniq/i32, p: raw/i32 during x, q: raw/i32 during y) -> raw/i32 during x => p\n" +
+            "func g(a: ref/i32 during o, b: uniq/i32 during o, p: raw/i32 during o) => ()\n" +
+            "func h(a: ref/i32 during o, b: ref/i32 during o, p: raw/i32 during o, s: raw/i32 during static, n: raw/i32) => ()\n" +
+            "func k(v: ref/View, x: uniq/i32 during v.source, p: raw/i32 during v.source, q: Option<raw/i32 during x>) => ()\n" +
+            "func m(v: ref/View, p: raw/i32 during v.source) => ()\n" +
+            "func n(a: ref/i32 during o, b: Option<uniq/i32 during o>, p: raw/i32 during o) => ()\n" +
+            "func z(a: ref/i32 during o, q: raw/i32 during static, p: raw/i32 during o)\n    unsafe\n        let w: uniq/i32 during o = (*q)@uniq\n" +
+            "        *(w@follow@raw) = 1\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var types = c.Types;
+        var functions = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Where(static x => !x.IsAnonymous).ToDictionary(static x => x.Name);
+        RawStep Step(string name, int input, params int[] positions) => types.RawStep(functions[name].SymbolOf()!, input, positions);
+        Assert.Equal(
+            [RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Exclusive, RawStep.Shared, RawStep.Static, RawStep.Unstated,
+                RawStep.Exclusive, RawStep.Exclusive, RawStep.Shared, RawStep.Shared, RawStep.Exclusive],
+            [Step("f", 2), Step("f", 3), Step("f", Retention.Result), Step("g", 2), Step("h", 2), Step("h", 3), Step("h", 4),
+                Step("k", 2), Step("k", 3, 0), Step("m", 1), Step("z", 2), Step("n", 2)]);
+    }
+
+    // SPEC 5.2.1 condition 3 (the owner's 「Loan 要求で上限 (推奨)」): a raw layer a Field declares with a slot whose Loan requirement is
+    // `ref` is Shared under any instance, its image a `uniq` input's Origin and a member taking an exclusive borrow of the slot included
+    // (R4's cap and reqcap); `during static` is Static, and a `uniq` slot's layer the image's kind.
+    [Fact]
+    public void AStoredLayerOfARefSlotIsShared()
+    {
+        var c = MinimalEmissionTest.Analyze("struct G\n    internal let g: raw/u8 during static\n    public init() => self.g = null\n" +
+            "struct H {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n" +
+            "    public func m(self: uniq/Self, x: uniq/i32 during s)\n        self.at = x@follow@raw\n        unsafe => *self.at = 1\n" +
+            "struct K {s}\n    internal let loan: Loan<uniq/i32 during s>\n    internal var at: raw/i32 during s\n" +
+            "func probe(y: uniq/i32, g: G, h: H during y, k: K during y) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        Assert.Equal([RawStep.Static, RawStep.Shared, RawStep.Exclusive], [c.Types.RawStep(p[1], 0, []), c.Types.RawStep(p[2], 1, []), c.Types.RawStep(p[3], 1, [])]);
+    }
+
+    // SPEC 5.7 Origins, Calls (G160-4's (3a)): the borrows a raw layer's Origin belongs to: a stored layer's are the keepers of the slot the
+    // instance binds it to, under the instance (View's `ref` Loan of i32, K's `uniq` one); a signature's, among its input Types, each
+    // input whose outer Origin it is and each slot it binds there; `static` has none.
+    [Fact]
+    public void RawMembersAreTheBorrowsAnOriginBelongsTo()
+    {
+        var c = MinimalEmissionTest.Analyze("struct G\n    internal let g: raw/u8 during static\n    public init() => self.g = null\n" +
+            "struct H {s}\n    internal let loan: Loan<ref/i32 during s>\n    internal var at: raw/i32 during s\n" +
+            "struct K {s}\n    internal let loan: Loan<uniq/i32 during s>\n    internal var at: raw/i32 during s\n" +
+            "func probe(y: uniq/i32, g: G, h: H during y, k: K during y, a: ref/i32 during o, b: uniq/i32 during o, p: raw/i32 during o) => ()\n" +
+            "public func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var members = new List<RawMember>();
+        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
+        Assert.Empty(members);
+        Assert.True(c.Types.RawMembers(p[2], 1, [], members) && c.Types.RawMembers(p[3], 1, [], members));
+        Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
+        members.Clear();
+        Assert.True(c.Types.RawMembers(p[6].RawOrigin!, p.AsSpan(0, 6), members));
+        Assert.Equal([new(4, BoundType.I32, false), new(5, BoundType.I32, true)], members);
+    }
+
+    // SPEC 5.7 (the final review's R3; DECISIONS BU-24, U2): a keeper reached on many paths is walked once per slot, owner Type, input and
+    // mode, so a ladder of n diamonds (D_i keeps its slot through D_(i-1) and through E_(i-1), which keeps it through D_(i-1)) gives D0's
+    // one keeper once, not once per path (2^n), and the walk is linear in n.
+    [Theory]
+    [InlineData(8)]
+    [InlineData(16)]
+    public void AKeeperReachedOnManyPathsIsWalkedOnce(int n)
+    {
+        var source = "struct D0 {s}\n    internal let r: ref/i32 during s\n";
+        for (var i = 1; i <= n; i++)
+        {
+            source += $"struct E{i - 1} {{s}}\n    internal let x: D{i - 1} during s\nstruct D{i} {{s}}\n    internal let a: D{i - 1} during s\n    internal let b: E{i - 1} during s\n";
+        }
+
+        var c = MinimalEmissionTest.Analyze(source + $"func f(v: ref/D{n}, p: raw/u8 during v.s) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var members = new List<RawMember>();
+        Assert.True(c.Types.RawMembers(p[1].RawOrigin!, p, members));
+        Assert.Equal([new(0, BoundType.I32, false)], members);
+    }
+
+    // The signature-layer reader allocates nothing when warm.
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void AWarmSignatureRawLayerReadAllocatesNothing()
+    {
+        var c = MinimalEmissionTest.Analyze("func f(x: ref/i32, y: uniq/i32, p: raw/i32 during x, q: raw/i32 during y) => ()\npublic func main() => ()\n");
+        var f = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").SymbolOf()!;
+        _ = c.Types.RawStep(f, 2, []);
+        Assert.Equal(0, AllocationMeasurement.Measure(() =>
+        {
+            if (c.Types.RawStep(f, 2, []) != RawStep.Shared || c.Types.RawStep(f, 3, []) != RawStep.Exclusive)
+            {
+                throw new InvalidOperationException("Signature raw steps changed.");
+            }
+        }));
+    }
+
+    // SPEC 5.7 (DECISIONS BU-24): a formed raw Origin is the plain Origin it is formed with, also through a shared borrow: a closure
+    // parameter's projection, an address through a local's shared borrow, a call's result whose Origin is that local's region; A5 reads
+    // each by its kind, Exclusive, since no declaration states them.
+    [Fact]
+    public void AFormedRawOriginIsThePlainOrigin()
+    {
+        var c = MinimalEmissionTest.Analyze(RawPointerSyntaxTest.KeptView +
+            "func id(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => p\n" +
+            "func f()\n    let g = func (l: ref/View, p: raw/i32 during l.source) => ()\n    let n = 1\n    let r = n@ref\n    let a = r@follow@raw\n" +
+            "    let b = id(r, a)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous);
+        var r = nodes.OfType<FieldKoto>().Single(static x => x.NameKoto.IdentifierName == "r").SymbolOf()!.Type!.Origin;
+        BoundType[] layers =
+        [
+            closure.Parameters[1].Type.TypeOf()!,
+            nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "a").SymbolOf()!.Type!,
+            nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "b").SymbolOf()!.Type!,
+        ];
+        Assert.All(layers, x => Assert.Equal(RawStep.Exclusive, c.Types.RawStep(x)));
+        Assert.Same(r, layers[1].RawOrigin);
+        Assert.Contains(layers[0].RawOrigin!.Kind, new[] { OriginKind.Inference, OriginKind.Projection });
     }
 
     // SPEC 5.7 (design-final §15; DECISIONS BU-24): a raw layer an instance stores has the step of its declared Field Type or Case

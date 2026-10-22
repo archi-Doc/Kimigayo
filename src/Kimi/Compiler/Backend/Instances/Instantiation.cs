@@ -20,7 +20,7 @@ internal enum MonoKind : byte
     ClosureErasure, // The Function Type value of a Closure Type (SPEC 10.2): its erased Closure Type.
     ItemAdapter, // The Function Type value of a function item Type (SPEC 10.2): its erased Item Type.
     DropGlue, // The destruction of a value of a Type (SPEC 16.3): its erased Type.
-    Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.4): the function (its kind its CompilerFunction), the erased Self.
+    Builtin, // A compiler function a requirement runs on a Self (SPEC 8.11.3): the function (its kind its CompilerFunction), the erased Self.
     PropertyWitness, // A standard property witness (SPEC 11.9.2, S2-S4 X14): its Field, the erased Self and the PropertyWitnessKind.
     ObjectDescriptor, // The runtime descriptor of an object payload (IMPL 21.1.3, SPEC 13.6): its erased payload Type.
     VTable, // The virtual table of a struct with a slot (SPEC 6.4, F package 4.2): its erased struct Type.

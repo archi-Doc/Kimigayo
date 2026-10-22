@@ -99,7 +99,7 @@ public sealed partial class MirEffectsTest
             Problems(declarations + "contract Visit\n    func visit<U>(self: ref/Self, node: U)\n" + premises + "        effect confined\nstruct V\n" +
                 "    Self is Visit\n    public func visit<U>(self: ref/Self, node: U)\n" + premises + $"        {call}\n"));
 
-    // SPEC 15.6.4, 8.11.6: a widened effect fails a confined Callable bound at its binding, which was the limit's Unsupported_Kd before.
+    // SPEC 15.6.4, 8.11.4: a widened effect fails a confined Callable bound at its binding, which was the limit's Unsupported_Kd before.
     [Fact]
     public void AWidenedEffectFailsACallableBound()
         => Assert.Equal(

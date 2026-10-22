@@ -7,7 +7,9 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The values of FunctionCodegen (R5 package C 3.2 I4, I5 and I7): an operand's value and a constant's, a Type's representation in the
-// item's instance, bool's widening and narrowing, a site's location (SPEC 22.5.1), and the spelling of the text's values and labels.
+// item's instance, bool's widening and narrowing and a site's location (SPEC 22.5.1); their spelling is FunctionCodegen.Spelling's.
+// Rows not written yet: a string constant other than into a string Place (C8c); Location and TypeToken constants, intrinsic operands
+// (C10a's TestObserve; C6a's TypeTest, C9a).
 internal sealed partial class FunctionCodegen
 {
     // An integer's spelling at its width: the signed value of its low bits (two's complement, IMPL 21.1.3), so an unsigned value above the
@@ -33,13 +35,13 @@ internal sealed partial class FunctionCodegen
     }
 
     // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
-    // IEEE bits), Unit (zero-sized).
+    // IEEE bits), Unit and a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit))
+        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
         {
-            return false; // String other than into a string local (C8c), FnItem (C5a), Location (C10a), TypeToken (C6a, C9a).
+            return false; // String other than into a string local (C8c), Location (C10a), TypeToken (C6a, C9a).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
@@ -140,45 +142,6 @@ internal sealed partial class FunctionCodegen
         this.output.Write('\n');
         return converted;
     }
-
-    // A branch target: the label of a block, b<index> (I1).
-    private void WriteLabel(int block)
-    {
-        this.output.Write("label %b");
-        WriteNumber(this.output, block);
-    }
-
-    private void WriteValue(Value value)
-    {
-        if (value.Prefix == 'h')
-        {
-            this.WriteHome((int)value.Number);
-            return;
-        }
-
-        this.output.Write(this.Spelled(value, stackalloc char[SpellingLength]));
-    }
-
-    // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, or
-    // Spell's.
-    private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
-    {
-        if (value.Prefix is not ('@' or 'p'))
-        {
-            return Spell(value, text);
-        }
-
-        var name = value.Prefix == '@' ? this.module.Constants[(int)value.Number].Name : this.abi.Parameters[(int)value.Number].Name;
-        text[0] = value.Prefix == '@' ? '@' : '%';
-        name.CopyTo(text[1..]);
-        return text[..(name.Length + 1)];
-    }
-
-    // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
-    // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
-    // pooled constant @<name> of index Number (Prefix @), the home of local Number, its address (Prefix h), the floating constant whose
-    // double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer Number (Prefix NUL).
-    private readonly record struct Value(char Prefix, Int128 Number);
 
     // A location as IMPL 21.3.1 passes it (Location): its text's address and its byte length.
     private readonly record struct Site(Value Text, Value Length);

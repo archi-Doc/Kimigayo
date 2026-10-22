@@ -33,6 +33,7 @@ internal static class AbortReasons
     internal const int MissingKey = 14;
     internal const int DuplicateKey = 15;
     internal const int ReferenceCount = 16;
+    internal const int StaticCycle = 17;
 
     // Indices are module-local ABI values. The template's table, lengths and call sites
     // are expanded once from these records; the warm writer only copies the resulting text.
@@ -57,6 +58,7 @@ internal static class AbortReasons
         new(MissingKey, "missing_key", "KIMI_E_MISSING_KEY: Dictionary key was not found"),
         new(DuplicateKey, "duplicate_key", "KIMI_E_DUPLICATE_KEY: Dictionary literal contains an equivalent key"),
         new(ReferenceCount, "ref_count", "KIMI_E_REF_COUNT: Reference count limit exceeded"),
+        new(StaticCycle, "static_cycle", "KIMI_E_STATIC_CYCLE: Static initialization cycle"),
     ];
 
     // The runtime template with its reason table, message constants, reason count and call-site indices filled in.

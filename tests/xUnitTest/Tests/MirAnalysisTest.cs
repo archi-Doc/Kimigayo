@@ -15,7 +15,8 @@ namespace XunitTest;
 /// the analyses' costs (V16), A3's (<see cref="MirLints"/>, R4-M7a) first.</summary>
 public sealed class MirAnalysisTest
 {
-    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys).
+    // One problem of each recording rule (MirEffectsTest's, MirDropTest's and MirBorrowsTest's forms, A5's effect rule with A4's keys: R3,
+    // a static's destruction reading itself, which needs no Loan, as Binding reports a static's Borrows as Unsupported_Kd until P42).
     internal const string Requirements = """
         contract Sink
             func put(self: uniq/Self, value: i32) -> i32
@@ -98,14 +99,10 @@ public sealed class MirAnalysisTest
         struct Tally
             public var n: i32 = 0
             public init() => ()
-            public func view(self: ref/Self) -> ref/i32 during self => self.n@ref
+            drop => _ = Statics.tally.n
         group Statics
             public var tally: Tally = Tally.init()
-            public func peek(value: ref/i32) => ()
-            public func effect(g: () -> ())
-                let t = tally.view()
-                g()
-                peek(t)
+            public func effect() => tally = Tally.init()
         public func main() => ()
 
         """;
@@ -284,7 +281,8 @@ public sealed class MirAnalysisTest
         Assert.Equal(
             [
                 "ControlFlow RequireFallthrough_Kd ()", "Ownership.CallableEffectBound UnsatisfiedEffectBound_Kd noisy",
-                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd g()", "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd tally = Tally.init()",
+                "Ownership.ComparisonLoanConflict ComparisonLoanConflict_Kd x = 2",
                 "Ownership.EffectBound IncompatibleContractImplementation_Kd Self is Sink", "Ownership.PossiblyMovedUse MovedPlace_Kd r",
                 "Ownership.PossiblyMovedUse MovedPlace_Kd var box = Box.init(make())", "Ownership.ReassignedLet ReassignedLet_Kd resource = make()",
                 "Ownership.StaticMovePathRequired StaticMovePathRequired_Kd values[i]", "Ownership.UninitializedUse UninitializedPlace_Kd n",
@@ -304,7 +302,8 @@ public sealed class MirAnalysisTest
         var program = c.BuildMir();
         Assert.Equal(
             [
-                "ComparisonLoanConflict_Kd g() effect", "ComparisonLoanConflict_Kd x = 2 conflict", "IncompatibleContractImplementation_Kd Self is Sink -",
+                "ComparisonLoanConflict_Kd tally = Tally.init() effect", "ComparisonLoanConflict_Kd x = 2 conflict",
+                "IncompatibleContractImplementation_Kd Self is Sink -",
                 "MovedPlace_Kd r moved",
                 "MovedPlace_Kd var box = Box.init(make()) layer", "ReassignedLet_Kd resource = make() twice", "RequireFallthrough_Kd () falls",
                 "StaticMovePathRequired_Kd values[i] runtime", "UninitializedPlace_Kd n unset", "UnsatisfiedEffectBound_Kd noisy -",

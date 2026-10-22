@@ -6,7 +6,8 @@
 // Output: an immutable CallRetention, rows Retention(Input, Kind, Output) and Untied, one per callee or signature, Type instantiation and
 // the premise scope or declaration it reads, for the latest Binding pass and reused by later passes until an edit; CallRetention.Limit
 // where Binding's storage instantiation does not complete the contract (storage nested past its depth bound, which a growing recursive
-// Type of SPEC 15.3.5 always reaches), never an exception.
+// Type of SPEC 15.3.5 always reaches) or a raw layer's member walk (a keeper cycle that changes its Type arguments; Binding.RawMembers),
+// never an exception.
 // Invariants: an output retains an input exactly when the callee's body may move a value of the input there under the premises its
 // body is checked under: the instantiated contract (the Subst's Types, Self and declaring Type substituted, the callee's own Origins
 // left as the call's fresh regions, so retention is per argument) and the premises of its enclosing declarations; or when both name
@@ -55,8 +56,9 @@ internal readonly record struct Retention(int Input, RetentionKind Kind, int Out
 internal sealed class CallRetention(Retention[]? rows, bool untied)
 {
     /// <summary>The retention of a call whose contract Binding's storage instantiation does not complete under its Subst (storage nested
-    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), as A4's effects take it: no rows are computed,
-    /// and A5 records a located Unsupported_Kd at the call. Reading its rows or Untied is a broken contract.</summary>
+    /// past its depth bound, which a growing recursive Type of SPEC 15.3.5 always reaches), or whose raw layer's member walk is incomplete
+    /// (a keeper cycle that changes its Type arguments), as A4's effects take it: no rows are computed, and A5 records a located
+    /// Unsupported_Kd at the call. Reading its rows or Untied is a broken contract.</summary>
     internal static readonly CallRetention Limit = new(null, untied: false);
 
     private readonly Retention[]? rows = rows;

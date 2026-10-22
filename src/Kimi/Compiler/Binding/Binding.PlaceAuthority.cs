@@ -10,10 +10,11 @@ namespace Kimi.Compiler;
 //   Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a capability it denies (AccessFailure), and
 //   continued through the Place's own layers (ReferentAuthority); whether a Place offers Write (Writable); whether a receiver can be
 //   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take
-//   (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle, as SPEC
-//   lends it: LendsPlace), with the one diagnostic for a written Borrow it may not (BorrowFailure); and the in-place read Binding
-//   records for a receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement, SharedElementView;
-//   ElementRead through the layers an element stores) or for a compared operand (CompareInPlace).
+//   (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace
+//   and, for a handle, LendsHandle, with the static Field at its root), with the one diagnostic for a written Borrow it may not
+//   (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow); and the in-place read Binding records for a
+//   receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement, SharedElementView; ElementRead through the
+//   layers an element stores) or for a compared operand (CompareInPlace).
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
 //   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
 // - Outputs: the predicates above, and the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which
@@ -21,8 +22,8 @@ namespace Kimi.Compiler;
 // - Invariants: one path computation decides writes, Moves and borrows; a shared layer anywhere on a path bounds it to Read; a node
 //   keeps its own Type, and a recorded read only states how the node is read in place: one shared reference to the Type declaring
 //   the member, never a layer (a path's layer below a Place is its own Type's, LayerAuthority).
-// - Prohibitions: nothing here reports a diagnostic (callers record the failure AccessFailure or BorrowFailure names), selects a
-//   candidate or changes a Type.
+// - Prohibitions: nothing here reports a diagnostic but FailStaticBorrow, called where an implicit Borrow's operation is final (callers
+//   record the failure AccessFailure or BorrowFailure names), selects a candidate or changes a Type.
 public sealed partial class Binding
 {
     // SPEC 15.1.5, 23.1.3: whether a bare Place that needs @move offers Take and is a Movable Place, judged from its path alone
@@ -172,12 +173,8 @@ public sealed partial class Binding
                 case PathStep.Receiver:
                     bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
                     return Receiver(source)?.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
-                case PathStep.RawFollow:
-                    // SPEC 5.7 (Authority), 15.6.2: a raw pointer whose Origin keeps only shared Loans is a shared layer; any other raw
-                    // dereference ends the walk with the authority reached so far, which condition 3 of SPEC 5.2.1 bounds.
-                    bindingDenies = denied;
-                    return source.CodeContext.Compilation.Binding.StepOf(next.BoundType?.RawOrigin) == RawStep.Shared ? SemanticsKind.Ref : authority;
                 default:
+                    // A root, or a raw dereference: no raw Origin denies an access (SPEC 5.7 Authority; condition 3 of SPEC 5.2.1).
                     bindingDenies = denied;
                     return authority;
             }
@@ -257,8 +254,8 @@ public sealed partial class Binding
             return true; // The accessor's Receiver Expression checks its own capability.
         }
 
-        // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission; a pointer whose Origin keeps only shared Loans
-        // does (PathAuthority's raw arm).
+        // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission, nor does any raw Origin (condition 3 of SPEC 5.2.1
+        // bounds the access at run time); a safe shared layer inside the pointee does.
         if (node is DereferenceKoto dereference)
         {
             return ReferenceTypes.IsPointer(dereference.Operand.BoundType) && !ReachedThroughShared(node);
@@ -422,7 +419,7 @@ public sealed partial class Binding
         var place = KotoHelper.UnwrapParentheses(source);
         if (ElementAccess.IsRawPlace(place))
         {
-            return !ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless its pointer keeps only shared Loans.
+            return !ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless a safe shared layer inside it denies.
         }
 
         return !IsBarePlace(place) || (PathAuthority(place, out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
@@ -484,7 +481,7 @@ public sealed partial class Binding
 
     // SPEC 15.6.2, 22.4.4: a static Field, the root Place of a path through the keys of its group's storage: a group's Property read
     // through its standard getter, named qualified or in its group. Not yet a bare Place (IsBarePlace): a Subject borrowed in place
-    // would then need the implicit static Borrow that is unimplemented (PLAN G100 (b)).
+    // would then need an implicit static Borrow, unsupported until P42 (FailStaticBorrow; PLAN G100).
     private static bool IsStaticField(Koto node)
         => KotoHelper.UnwrapParentheses(node).BoundSymbol?.Property is { Getter.IsStandard: true, Symbol.Scope.Owner: GroupKoto };
 
@@ -614,19 +611,21 @@ public sealed partial class Binding
             (terminal.Kind == BoundTypeKind.Tuple || AdtDef.IsStruct(terminal))
             ? this.SharedReferenceThroughLayers(this.types.Reference(SemanticsKind.Ref, element, selection), terminal, out _) : null;
 
-    // SPEC 13.5.5, 13.5.6: an owning handle lends its object or payload from a borrowable Place or from a Temporary Value
-    // materialized for the operation; the handle's own authority (shared for rc/arc) is checked by the caller.
-    private bool BorrowableHandle(Koto source, BindingScope scope, bool exclusive, bool spelled, bool fixedExpectation = false)
-        => this.BorrowablePlace(source, scope, exclusive) || BorrowableTemporary(source, exclusive, spelled, fixedExpectation);
+    // SPEC 13.5.5, 13.5.6, 15.6.2: whether SPEC lends an owning handle's object or payload, from a Place it lends (LendsPlace, with the
+    // static Field at the root of the handle Place's path) or from a Temporary Value materialized for the operation; the handle's own
+    // authority (shared for rc/arc) is checked by the caller.
+    private bool LendsHandle(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
+        => this.LendsPlace(source, scope, exclusive, out staticRoot) || BorrowableTemporary(source, exclusive, true, false);
 
-    // SPEC 15.6.2, PLAN P42: whether Binding lends a Place in a mode: as SPEC does (LendsPlace), except a Place rooted at a static
-    // Field reached through its qualified name, whose Loans no analysis models yet (BorrowFailure names its Borrow unsupported).
+    // SPEC 15.6.2, PLAN P42: whether Binding lends a Place to a written Borrow: as SPEC does (LendsPlace), except a Place rooted at a
+    // static Field, whose Loans no analysis models yet (BorrowFailure names the Borrow unsupported). An implicit Borrow belongs to an
+    // operation that selection may still discard, so it is lent as SPEC lends it and reported once final (FailStaticBorrow).
     private bool BorrowablePlace(Koto source, BindingScope scope, bool exclusive)
         => this.LendsPlace(source, scope, exclusive, out var staticRoot) && staticRoot is null;
 
     // SPEC 15.6.2, 15.6.4: the one diagnostic for a written Borrow of a Place Binding does not lend (BorrowablePlace): one that SPEC
-    // lends but whose root is a qualified static Field is unsupported (an unqualified one in its group binds, PLAN G100); otherwise
-    // an exclusive borrow names the capability its path denies (AccessFailure) and a shared one InvalidAssignment.
+    // lends but whose root is a static Field is unsupported; otherwise an exclusive borrow names the capability its path denies
+    // (AccessFailure) and a shared one InvalidAssignment.
     private BindingFailure BorrowFailure(Koto place, BindingScope scope, bool exclusive)
         => (this.LendsPlace(place, scope, exclusive, out var staticRoot) && staticRoot is not null, exclusive) switch
         {
@@ -635,10 +634,27 @@ public sealed partial class Binding
             _ => BindingFailure.InvalidAssignment,
         };
 
-    // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field reached through its qualified
-    // name at the root of the path that lends it (SPEC 15.6.2), if any; a node, not a bool, as the structure limits leave this member one
-    // bool parameter, the mode. Exception until PLAN G100 (b): below a static object handle or a pair layer the walk asks BorrowablePlace
-    // (BorrowableHandle, PairCapability), so such a payload path reports no root and keeps its Language error or binds.
+    // SPEC 15.6, 15.6.2, PLAN P42: the one diagnostic for an implicit Borrow of a static root (a receiver's, a value call's callee, an
+    // argument's, an expected Type's or a Case payload's adaptation), recorded where its operation is final and before that input's
+    // Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged (BorrowFailure): a Borrow,
+    // base borrow or payload projection in a mode of a Place whose path SPEC roots at a static Field fails its source as the located
+    // Unsupported_Kd. True when it fails.
+    private bool FailStaticBorrow(Koto source, ArgumentOperationKind kind, SemanticsKind mode)
+    {
+        if (kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection) ||
+            !this.LendsPlace(source, this.ConstraintScope(source), IsExclusive(mode), out var staticRoot) || staticRoot is null)
+        {
+            return false;
+        }
+
+        this.Fail(source, BindingFailure.Unsupported);
+        return true;
+    }
+
+    // SPEC 3.4.3, 13.5.5, 15.1.5: whether SPEC lends a Place in a mode, and staticRoot, the static Field at the root of the path that lends
+    // it (SPEC 15.6.2: through inline parts, elements and an owning handle's payload, an own step), if any; a node, not a bool, as the
+    // structure limits leave this member one bool parameter, the mode. Below a pair layer the walk asks BorrowablePlace (PairCapability):
+    // no static's Type has one.
     private bool LendsPlace(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
     {
         staticRoot = null;
@@ -662,14 +678,15 @@ public sealed partial class Binding
 
         if (source is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
         {
-            // SPEC 13.5.5: an owning path inherits the root's mutability; rc/arc/objref paths are shared.
+            // SPEC 13.5.5, 15.6.2: an owning path inherits the root's mutability, the payload of an owning handle extending the handle
+            // Place's path (lent with it, or with the Temporary Value holding it); rc/arc/objref paths are shared.
             var handle = payload.Left.BoundType!;
             return handle.Semantics switch
             {
                 SemanticsKind.ObjRef => !exclusive,
                 SemanticsKind.ObjUniq => !exclusive || !ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => this.BorrowableHandle(payload.Left, scope, exclusive, true),
-                _ => !exclusive && this.BorrowableHandle(payload.Left, scope, false, true),
+                SemanticsKind.Obj => this.LendsHandle(payload.Left, scope, exclusive, out staticRoot),
+                _ => !exclusive && this.LendsHandle(payload.Left, scope, false, out staticRoot),
             };
         }
 
@@ -706,15 +723,15 @@ public sealed partial class Binding
                 return false;
             }
 
+            // SPEC 15.6.2: a static Field, qualified or in its group, is a root Place, lent as its accessors allow (above).
+            if (IsStaticField(source))
+            {
+                staticRoot = source;
+                return true;
+            }
+
             if (source is MemberAccessKoto access)
             {
-                // SPEC 15.6.2: a static Field is a root Place, lent as its accessors allow (above), as one named unqualified is (below).
-                if (IsStaticField(access))
-                {
-                    staticRoot = access;
-                    return true;
-                }
-
                 // SPEC 15.1.5: a special receiver lends its own initialized Fields as its row says, although the receiver itself is
                 // not an assignable binding (Receiver).
                 if (Receiver(access.Left) is { } special)
@@ -722,9 +739,10 @@ public sealed partial class Binding
                     return !exclusive || special.LendsFields;
                 }
 
+                // SPEC 13.5.5, 15.6.2: a payload Field extends the handle Place's path, exclusively only through an exclusive payload.
                 if (access.Left.BoundType?.HandleMode is { } handle)
                 {
-                    return !exclusive || (handle.PayloadAuthority == LoanRequirement.Uniq && this.BorrowableHandle(access.Left, scope, true, true));
+                    return (!exclusive || handle.PayloadAuthority == LoanRequirement.Uniq) && this.LendsHandle(access.Left, scope, exclusive, out staticRoot);
                 }
 
                 // SPEC 3.4.3, 13.5.5: past an exclusive layer of the receiver's own Type, a pair layer admitting only uniq included,

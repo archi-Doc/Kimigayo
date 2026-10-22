@@ -1004,8 +1004,7 @@ public sealed partial class Binding
         this.mismatches?.Clear();
         this.qualificationStops?.Clear();
         this.qualificationFailures?.Clear();
-        this.originRelations?.Clear();
-        this.callRelations?.Clear();
+        this.ResetOriginRecords();
         this.originContracts?.Clear();
         this.ownedConversions?.Clear();
         this.objectErasureFailures?.Clear();

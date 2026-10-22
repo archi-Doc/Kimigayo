@@ -32,10 +32,6 @@ public enum OriginKind : byte
     // Types, never in an instance's stored Types; every read replaces it (Binding.ReadHolder).
     Holder,
 
-    // SPEC 5.7 (DECISIONS BU-24): Shared(L), Operands [L], the region of the label L reached through a shared borrow; only as a raw
-    // layer's Origin (Binding.Formed).
-    Shared,
-
     // SPEC 5.7 (DECISIONS BU-24): the Origin a raw layer without `during` counts as stating, which every Origin outlives; only in
     // relations and their records, never in a Type (Binding.UnstatedRelation).
     Unstated,

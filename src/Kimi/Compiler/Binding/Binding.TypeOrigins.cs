@@ -361,7 +361,7 @@ public sealed partial class Binding
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
         {
             // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
-            this.AccumulateOrigin(RegionOf(raw)!, schema, polarity, LoanRequirement.None, ref changed);
+            this.AccumulateOrigin(raw, schema, polarity, LoanRequirement.None, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -444,6 +444,11 @@ public sealed partial class Binding
                 continue;
             }
 
+            if (node is TypeSemanticsKoto { BoundType.RawOrigin: { } raw } written)
+            {
+                this.JudgeRawOrigin(written, raw); // SPEC 5.7: every written raw Origin, after the last fixed point.
+            }
+
             var invalid = false;
             if (type.Symbol?.Schema is { } schema)
             {
@@ -465,7 +470,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (invalid || (node is TypeSemanticsKoto && type.RawOrigin is { } raw && this.InvalidRawOrigin(node, raw)))
+            if (invalid)
             {
                 continue;
             }

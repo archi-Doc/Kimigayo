@@ -293,4 +293,46 @@ public sealed partial class MirBuildTest
             program.Records.Where(static x => x.Code == DiagnosticCode.InternalInvariant_Kd).Select(static x => x.Subject));
         Assert.DoesNotContain(SourceRef.Of(calls[1]), program.Records.Select(static x => x.Subject));
     }
+
+    // SPEC 23.1.2, 13.7.2 (DECISIONS R4-M109): an input Binding rejected after selection is its consumer's derived value, an Opaque of the
+    // Type the consumer takes, moved into it, with no Ref of a temp of the node's own Type; an update locates an Error receiver once (the
+    // call it keeps evaluated once), and its getter and setter each take their own derived value, whose site names the located root
+    // (fail-before: an Opaque of the node's own Type borrowed by each consumer).
+    [Fact]
+    public void ARejectedInputIsItsConsumersDerivedValue()
+    {
+        const string Source = """
+            struct Tally
+                public var n: i32 = 0
+                public var item: i32 = 0
+                    get(self: ref/Self during static) -> i32 => storage
+                    set(self: uniq/Self, value: i32) -> () => storage = value
+                public init() => ()
+            struct Outer
+                public var inner: Tally = Tally.init()
+                public init() => ()
+            func keepStatic(x: ref/i32 during static) -> ref/i32 during static => x
+            func chosen(c: uniq/Outer, a: string, b: string) -> uniq/Outer during c => c
+            func field(c: ref/Tally) -> ref/i32 during static => keepStatic(c.n)
+            func update(c: uniq/Outer, s: string) => chosen(c, s@move, s@move).inner.item += 1
+            """;
+        var c = Compile(Source);
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var field = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "field");
+        Assert.DoesNotContain(field.Statements.ToArray(), static x => x.Rvalue.Kind == MirRvalueKind.Ref);
+        Assert.Equal(["ref/i32"], Opaques(field).Select(static x => x.Type));
+        var update = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "update");
+        var opaques = Opaques(update);
+        Assert.Equal(["Tally", "ref/Tally", "uniq/Tally"], opaques.Select(static x => x.Type));
+        var located = opaques[0].Root;
+        Assert.All(opaques.Skip(1), x => Assert.Equal([located], x.Roots));
+        Assert.DoesNotContain(update.Statements.ToArray(), x => x.Rvalue.Kind == MirRvalueKind.Ref && x.Rvalue.Place.Root == located);
+        Assert.Single(update.Blocks.ToArray(), static x => x.Terminator is { Kind: MirTerminatorKind.Call, Callee.Symbol.Name: "chosen" });
+    }
+
+    // A body's Opaque values in order: their destination's Type and root, and the roots their sites name.
+    private static (string Type, int Root, int[] Roots)[] Opaques(MirBody body) => [.. body.Statements.ToArray()
+        .Where(static x => x.Kind == MirStatementKind.Assign && x.Rvalue.Kind == MirRvalueKind.Opaque)
+        .Select(x => (TyCtxt.Name(body.TypeOf(x.Place)!), x.Place.Root, body.OpaqueRoots.Slice(body.OpaqueSites[x.Rvalue.Arg].Start, body.OpaqueSites[x.Rvalue.Arg].Count).ToArray()))];
 }

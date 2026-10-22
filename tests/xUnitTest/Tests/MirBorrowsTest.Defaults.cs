@@ -742,20 +742,17 @@ public sealed partial class MirBorrowsTest
         """;
 
     // D11, D13 (SPEC 7.2.3, 15.6, 23.1.1; R4-M97, round 20): a failure found in an inline default copy is the caller's unless every event
-    // taking part lies in one evaluation of one copy, decided per candidate before selection, and the caller's problem in a copy is recorded at
-    // the outermost omitting call with the default's operation as its Evaluated fact. The caller's (R4-M69 dropped each; fail-before): G171,
-    // the copy's poke activating against the caller's reservation of counter (dc20-g171; facts Reservation and Evaluated), its effect form
-    // (dc20-fx), the access in a copy nested in an explicit argument's copy (n1, at State.f()), two calls (twiceBoth: two records), the
-    // template's own candidate scanned first (first: add5's r, then the caller's reservation; ACoveredCandidateHidesNoLaterOne has both
-    // orders), a two-view generic caller (gen: both views), a held caller (the hold's U at the omitting call too). Kept: the disjoint, read
-    // and explicit twins; a Limit inside a copy, at its operation (limit's copy of addl's default, so the record names addl's Lim.run()); a
-    // guard across a copy (guardAcross, the caller's EndBorrow). Template-owned, omitted in the caller with the template's record: n2 (f2's own
-    // Loan met in g's copy, f2's record at its State.g(), which R4-M69 dropped: fail-before), n5, a caller loop around g5's or local3's copy
-    // (dc20-loop-own, local Loans only too), R3 in a copy, a guard escaping inside a copy, an effect conflict on effOwn's own Loan in a copy,
-    // alone and in a loop (the group review's N3). Not Binding-valid, as their earlier or sibling Loan rides in a default's value (SPEC 15.6:
-    // a Borrow of mutable static storage is bounded by the body): dc20-n3, -n3top, -n4, -sib, -twice, -indep, dc20-loop, -loop-nested and the
-    // review's loop rows (dc20r-loop-e, -fx, -slot, -closure, -nested-entry, -loop-guard); ALoopedCopysEarlierLoanIsTheCallers builds the
-    // loops' shape at the MIR layer.
+    // taking part lies in one evaluation of one copy, and the caller's problem in a copy is recorded at the outermost omitting call with the
+    // default's operation as its Evaluated fact. R4-M90 PQ-1: until P42 Binding reports every Borrow of counter or other here, written in a
+    // default or a caller or a receiver's (fx), as the located Unsupported_Kd, so A5 meets none of their Loans: the caller-owned rows (G171,
+    // its effect form, n1, twiceBoth, first, gen, held's omitting call) and the templates' static conflicts (f2, g5, add5, addh, effOwn, the
+    // Limit addl's copy meets) are ACopysFailureIsItsTemplatesOnlyWithinOneEvaluationRooted's (R4-M107). Kept, with local Loans only: local3's
+    // own conflict, held's and limit's callers' own conflicts (held's no longer held, as its call rests on its written Borrow's record and
+    // inlines no copy) and a guard across a copy (guardAcross, the caller's EndBorrow); template-owned
+    // and omitted in the caller with the template's record: R3 in a copy (setd) and a guard escaping inside a copy (gd). Not Binding-valid, as
+    // their earlier or sibling Loan rides in a default's value (SPEC 15.6: a Borrow of mutable static storage is bounded by the body): dc20-n3,
+    // -n3top, -n4, -sib, -twice, -indep, dc20-loop, -loop-nested and the review's loop rows (dc20r-loop-e, -fx, -slot, -closure,
+    // -nested-entry, -loop-guard); ALoopedCopysEarlierLoanIsTheCallers builds the loops' shape at the MIR layer.
     [Fact]
     public void ACopysFailureIsItsTemplatesOnlyWithinOneEvaluation()
     {
@@ -814,27 +811,10 @@ public sealed partial class MirBorrowsTest
                     while c
                         _ = State.effOwn()
             """);
-        var program = Analyze(c);
+        var program = AnalyzeUnsupported(c, ["counter", "counter@ref", "counter@uniq", "other@uniq"]);
         Assert.Equal(
-            [
-                "f2: State.g() CallActivationConflict_Kd", "g5: State.poke(counter@uniq) CallActivationConflict_Kd",
-                "add5: State.poke(counter@uniq) CallActivationConflict_Kd", "local3: t = 2", "addh: State.poke(counter@uniq) Unsupported_Kd",
-                "setd: watch = Watch.init()", "gd: let d", "effOwn: State.touch()", "g171: State.add(counter@uniq) CallReservationConflict_Kd",
-                "g171Explicit: State.poke(counter@uniq) CallReservationConflict_Kd", "fx: counter.add() CallReservationConflict_Kd",
-                "fxExplicit: State.touch() CallReservationConflict_Kd", "n1: State.f() CallReservationConflict_Kd",
-                "twiceBoth: State.add(counter@uniq) CallReservationConflict_Kd", "twiceBoth: State.add(counter@uniq) CallReservationConflict_Kd",
-                "first: State.add5(counter@uniq) CallReservationConflict_Kd", "gen: State.addg(v, counter@uniq) CallReservationConflict_Kd",
-                "held: y0 = 2 Unsupported_Kd", "held: State.addh(counter@uniq) Unsupported_Kd", "addl: Lim.run() Unsupported_Kd", "limit: y0 = 2",
-                "guardAcross: let d",
-            ],
+            ["local3: t = 2", "setd: watch = Watch.init()", "gd: let d", "held: y0 = 2", "limit: y0 = 2", "guardAcross: let d"],
             Problems(c, program, DefaultCodes));
-        Assert.Equal(
-            ["Anchor counter@uniq", "Use State.add(counter@uniq)", "Reservation counter@uniq", "Evaluated State.poke(counter@uniq)"],
-            FactsOf(c, program, "g171"));
-        Assert.Equal(
-            ["Anchor counter@ref", "Use State.g() + r.count", "Reservation counter@uniq", "Evaluated State.poke(counter@uniq)"],
-            FactsOf(c, program, "f2"));
-        Assert.Equal(0b11UL, program.Problems.All.ToArray().Single(x => program.Bodies[x.Body].Key.Decl?.Name == "gen").Views);
     }
 
     // D11's entry test and selection at the MIR layer (R4-M97): Binding admits no default whose value keeps a Loan its copy issued (SPEC
@@ -1000,18 +980,19 @@ public sealed partial class MirBorrowsTest
         Assert.True(Grows(own, 5), $"the copies' work {string.Join(", ", own)}");
     }
 
-    // V16: the copies' entries allocate nothing on a program version A5 checked before (nested copies in a loop, and the caller's loop of
-    // round 20's G171 form).
+    // V16: the copies' entries allocate nothing on a program version A5 checked before (nested copies in a loop, and a caller's loop around
+    // local3's copy, whose own failure is its template's; R4-M90 PQ-1: the caller's loop of round 20's G171 form borrows a static, so its
+    // warm run is ACopysCallerRecordWarmRunAllocatesNothing's, R4-M107).
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void ACopysEntriesWarmRunAllocatesNothing()
     {
         var c = MirBuildTest.Compile(Prelude + Issuing + "func shape(c: bool)\n    while c\n        _ = fO(1)\n        _ = fO(2)\n" + Copies +
-            "    public func g171(c: bool)\n        while c\n            State.add(counter@uniq)\n");
+            "    public func loopLocal(c: bool)\n        while c\n            _ = State.local3(1)\n");
         var program = c.BuildMir();
         var stratum = new Stratum(c.Types);
         Assert.Equal(0, AllocationMeasurement.Measure(() => stratum.Run(program)));
-        Assert.Contains("g171: State.add(counter@uniq) CallReservationConflict_Kd", Problems(c, program, DefaultCodes));
+        Assert.Contains("local3: t = 2", Problems(c, program, DefaultCodes));
     }
 
     // A function's one problem's facts: kind and its site's first line.

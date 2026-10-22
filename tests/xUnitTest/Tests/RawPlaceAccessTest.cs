@@ -24,7 +24,7 @@ public class RawPlaceAccessTest
     private const string Resource = "struct Resource\n    public var value: i32\n    public init(value: i32) => self.value = value\n    drop => Console.writeLine(\"drop\")\n";
     private const string View = "struct View {source}\n    public let item: ref/Resource during source\n    public init(item: ref/Resource during source) => self.item = item\n";
 
-    // SPEC 5.7's example as written: its one marked error is the write through `source`, which keeps only a shared Loan.
+    // SPEC 5.7's example as written.
     private const string SpecLens = "struct Lens<T> {source}\n    internal let loan: Loan<ref/T during source>\n    internal let at: raw/T during source\n" +
         "    internal init(target: ref/T during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n" +
         "func read(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at\nfunc clear(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0\n" +
@@ -174,54 +174,60 @@ public class RawPlaceAccessTest
     public void AccessesAfterTheDerivedLoansEndAreValid(string function)
         => Assert.Empty(DiagnosticCorpus.Check(Resource + View + function + "public func main() => ()\n").Diagnostics);
 
-    // SPEC 5.7 (Authority): a write, Take, in-place destruction or exclusive borrow of a raw Place is a SharedPathAccess error when the
-    // pointer's Origin keeps only shared Loans: a slot whose Loan requirement is ref (Lens.source), however the lens is held, or a
-    // shared borrow's Origin reached through `ref` (dataOf's input, `choose`'s meet); reads and shared borrows stay valid.
+    // SPEC 5.7 (Authority; DECISIONS BU-24, the owner's 「静的な権限判定をやめる (推奨)」): no access through a raw pointer is a
+    // compile-time error for the Origin it states. A write, Take, in-place destruction or exclusive borrow through a pointer whose Origin
+    // keeps only shared Loans (Lens.source, a `ref` input's Origin, `choose`'s meet, a typed path through a shared borrow, a pair follow
+    // admitting `ref`) is undefined behavior by condition 3 of SPEC 5.2.1, not an error; reads, shared borrows and exclusive Origins
+    // stay valid as before.
     [Theory]
-    [InlineData("func f(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0", "SharedPathAccess_Kd: *lens.at")]
-    [InlineData("func f(lens: uniq/Lens<i32>)\n    unsafe => *lens.at += 1", "SharedPathAccess_Kd: *lens.at")]
-    [InlineData("func f(lens: uniq/Lens<P>)\n    unsafe => (*lens.at).f = 1", "SharedPathAccess_Kd: (*lens.at).f")]
-    [InlineData("func f(lens: uniq/Lens<P>)\n    unsafe => _ = (*lens.at)@move", "SharedPathAccess_Kd: (*lens.at)@move")]
-    [InlineData("func f(lens: uniq/Lens<P>) -> uniq/P during lens\n    unsafe => return (*lens.at)@uniq", "SharedPathAccess_Kd: (*lens.at)@uniq")]
-    [InlineData("func f(lens: uniq/Lens<obj/P>)\n    unsafe => _ = (*lens.at)@objuniq", "SharedPathAccess_Kd: (*lens.at)@objuniq")]
-    [InlineData("func dataOf(b: ref/Lens<i32>) -> raw/i32 during b => b.at\nfunc f(y: uniq/Lens<i32>)\n    unsafe => *dataOf(y) = 1", "SharedPathAccess_Kd: *dataOf(y)")]
-    [InlineData("func choose(c: bool, a: ref/B, b: ref/B) -> ref/B => if c => a else => b\nfunc f(c: bool, x: ref/B, y: ref/B)\n    unsafe => *choose(c, x, y).data = 1", "SharedPathAccess_Kd: *choose(c, x, y).data")]
-    public void ASharedRawOriginDeniesWriteTakeAndExclusiveBorrow(string declarations, string record)
-        => Assert.Equal([record], RawPointerSyntaxTest.Records(Lenses + declarations));
-
-    [Theory]
+    [InlineData("func f(lens: uniq/Lens<i32>)\n    unsafe => *lens.at = 0")]
+    [InlineData("func f(lens: uniq/Lens<i32>)\n    unsafe => *lens.at += 1")]
+    [InlineData("func f(lens: uniq/Lens<P>)\n    unsafe => (*lens.at).f = 1")]
+    [InlineData("func f(lens: uniq/Lens<P>)\n    unsafe => _ = (*lens.at)@move")]
+    [InlineData("func f(lens: uniq/Lens<P>) -> uniq/P during lens\n    unsafe => return (*lens.at)@uniq")]
+    [InlineData("func f(lens: uniq/Lens<obj/P>)\n    unsafe => _ = (*lens.at)@objuniq")]
+    [InlineData("func dataOf(b: ref/Lens<i32>) -> raw/i32 during b => b.at\nfunc f(y: uniq/Lens<i32>)\n    unsafe => *dataOf(y) = 1")]
+    [InlineData("func choose(c: bool, a: ref/B, b: ref/B) -> ref/B => if c => a else => b\nfunc f(c: bool, x: ref/B, y: ref/B)\n    unsafe => *choose(c, x, y).data = 1")]
+    [InlineData("func f(x: ref/i32)\n    unsafe => *(x@follow@raw) = 1")]
+    [InlineData("func f(y: uniq/i32)\n    let r = y@follow@ref\n    unsafe => *(r@follow@raw) = 3")]
+    [InlineData("func choose(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 => if c => a else => b\nfunc f(c: bool, x: ref/i32, y: ref/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1")]
+    [InlineData("func f<s/T>(x: s/i32)\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => *p = 1")]
     [InlineData("func f(lens: ref/Lens<i32>) -> i32\n    unsafe => return *lens.at")]
     [InlineData("func f(lens: uniq/Lens<P>) -> ref/P during lens\n    unsafe => return (*lens.at)@ref")]
     [InlineData("func f(lens: ref/ULens<i32>)\n    unsafe => *lens.at = 0")]
     [InlineData("func f(lens: uniq/ULens<P>)\n    unsafe => _ = (*lens.at)@move")]
     [InlineData("func f(y: uniq/B)\n    unsafe => *y.data = 1")]
     [InlineData("func choose(c: bool, a: uniq/B, b: uniq/B) -> uniq/B => if c => a else => b\nfunc f(c: bool, x: uniq/B, y: uniq/B)\n    unsafe => *choose(c, x, y).data = 1")]
-    public void AnExclusiveOrUnstatedRawOriginGrantsWrite(string declarations)
+    [InlineData("func f()\n    var number: i32 = 1\n    let r = number@uniq\n    let q = r@follow@raw\n    unsafe => *q = 2\n    r@follow += 1")]
+    [InlineData("func f(y: uniq/i32)\n    unsafe => *(y@follow@raw) = 3")]
+    [InlineData("func choose(c: bool, a: uniq/i32, b: uniq/i32) -> uniq/i32 => if c => a else => b\nfunc f(c: bool, x: uniq/i32, y: uniq/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1")]
+    [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is ref or uniq\n    return x@follow@raw")]
+    [InlineData("func f<s/T>(x: s/i32)\n    s is uniq\n    let p = x@follow@raw\n    unsafe => *p = 1")]
+    [InlineData("func f<s/T>(x: s/i32) -> i32\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => return *p")]
+    public void NoRawOriginDeniesAnAccess(string declarations)
         => Assert.Empty(RawPointerSyntaxTest.Records(Lenses + declarations));
 
-    // SPEC 5.7 (Typed paths, Authority; DECISIONS R4-M105): a typed path keeps the mode of the borrow it is reached through, a meet's
-    // included, so a write through a shared one is SharedPathAccess while SPEC 5.4's exclusive example and SPEC 5.7's Lens hold.
-    [Theory]
-    [InlineData("func f(y: uniq/i32)\n    let r = y@follow@ref\n    unsafe => *(r@follow@raw) = 3", "SharedPathAccess_Kd: *(r@follow@raw)")]
-    [InlineData("func choose(c: bool, a: ref/i32, b: ref/i32) -> ref/i32 => if c => a else => b\nfunc f(c: bool, x: ref/i32, y: ref/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1", "SharedPathAccess_Kd: *(choose(c, x, y)@follow@raw)")]
-    [InlineData(SpecLens, "SharedPathAccess_Kd: *lens.at")]
-    [InlineData("func f()\n    var number: i32 = 1\n    let r = number@uniq\n    let q = r@follow@raw\n    unsafe => *q = 2\n    r@follow += 1", null)]
-    [InlineData("func f(y: uniq/i32)\n    unsafe => *(y@follow@raw) = 3", null)]
-    [InlineData("func choose(c: bool, a: uniq/i32, b: uniq/i32) -> uniq/i32 => if c => a else => b\nfunc f(c: bool, x: uniq/i32, y: uniq/i32)\n    unsafe => *(choose(c, x, y)@follow@raw) = 1", null)]
-    public void ATypedPathKeepsItsBorrowsMode(string declarations, string? record)
-        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(declarations));
+    // SPEC 5.7's example: `clear`'s write is undefined behavior, no compile-time error.
+    [Fact]
+    public void TheSpecLensHasNoError()
+        => Assert.Empty(RawPointerSyntaxTest.Records(SpecLens));
 
-    // SPEC 5.7, 13.5.5 (design-final §4): a path through a pair follow whose admitted cases are all borrows is reached with the weakest
-    // case's mode, so a write through it is denied when any case is shared; a pair follow admitting a non-borrow case is a located
-    // Unsupported_Kd (U2), for a `during self` read and a typed path alike.
+    // SPEC 15.6.2: a safe shared layer inside a pointee still grants Read only: the write through the pointee's `ref` Field is denied by
+    // that layer, not by a raw Origin.
+    [Fact]
+    public void ASafeSharedLayerInsideAPointeeStillDenies()
+        => Assert.Equal(
+            ["SharedPathAccess_Kd: (*p).r@follow"],
+            RawPointerSyntaxTest.Records("struct Q {s}\n    public let r: ref/i32 during s\n    public init(r: ref/i32 during s) => self.r = r\n" +
+                "func f(a: ref/i32, p: raw/(Q during a))\n    unsafe => (*p).r@follow = 1"));
+
+    // SPEC 5.7, 13.5.5 (U2): a `during self` read or a typed path through a pair follow admitting a non-borrow case is a located
+    // Unsupported_Kd; one admitting only borrows states its slot (NoRawOriginDeniesAnAccess). The default pipeline's old analysis reads
+    // no Field through a pair layer, raw or not: its located Unsupported_Kd, which an access error no longer hides.
     [Theory]
-    [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is ref or uniq\n    return x@follow@raw", null)]
-    [InlineData("func f<s/T>(x: s/i32)\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => *p = 1", "SharedPathAccess_Kd: *p")]
-    [InlineData("func f<s/T>(x: s/B)\n    s is ref or uniq\n    unsafe => *x.data = 1", "SharedPathAccess_Kd: *x.data")]
-    [InlineData("func f<s/T>(x: s/i32)\n    s is uniq\n    let p = x@follow@raw\n    unsafe => *p = 1", null)]
-    [InlineData("func f<s/T>(x: s/i32) -> i32\n    s is ref or uniq\n    let p = x@follow@raw\n    unsafe => return *p", null)]
+    [InlineData("func f<s/T>(x: s/B)\n    s is ref or uniq\n    unsafe => *x.data = 1", "Unsupported_Kd: data")]
     [InlineData("func f<s/T>(x: s/B) -> raw/i32\n    s is value or ref\n    return x.data", "Unsupported_Kd: x.data")]
     [InlineData("func f<s/T>(x: s/T) -> raw/T\n    s is value or valueborrow\n    return x@follow@raw", "Unsupported_Kd: x@follow@raw")]
-    public void APairFollowIsReachedWithItsWeakestBorrowCase(string declarations, string? record)
-        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records(Lenses + declarations));
+    public void APairFollowReadIsUnsupportedWhereStated(string declarations, string record)
+        => Assert.Equal([record], RawPointerSyntaxTest.Records(Lenses + declarations));
 }

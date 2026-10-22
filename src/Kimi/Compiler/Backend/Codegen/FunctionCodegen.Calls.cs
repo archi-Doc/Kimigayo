@@ -4,9 +4,12 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a; DECISIONS R5-M89, R5-M92, R5-M93): a callee by its
-// kind's row, the collector's targets read by one forward cursor, and the one call writer, which the legacy rows, the intrinsic rows, the
-// glue items and the module's entry call too; each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot).
+// The Call terminator of FunctionCodegen (R5 package C 3.2 I8, plan C3a, C3b, C8a, C5a; DECISIONS R5-M89, R5-M92, R5-M93, R5-M102): a
+// callee by its kind's row (a Value callee's in FunctionCodegen.Closures), the collector's targets read by one forward cursor, each once
+// in its site's order, and the one call writer, which the legacy rows, the intrinsic rows, the glue items and the module's entry call too;
+// each argument is FunctionCodegen.Arguments' (its parameter's kind, a copy slot). Rows not written yet: a virtual slot (C6c), a Builtin
+// shim (C8f, C9b), a property witness (C3c), a requirement whose witness has no body (PLAN G157 (10)), the other compiler functions'
+// legacy rows (C8b-C8e, C9a).
 internal sealed partial class FunctionCodegen
 {
     private int cursor; // The item's first target not passed yet (I8).
@@ -30,19 +33,19 @@ internal sealed partial class FunctionCodegen
         {
             case MirCalleeKind.Fn when callee.Symbol!.CompilerFunction is not CompilerFunctionKind.None and var kind &&
                 IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
-                this.Legacy(call);
+                this.Legacy(call, kind);
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
                 return;
             case MirCalleeKind.Value:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C5a calls a Closure or function value.
+                this.ValueCall(call);
                 return;
             case MirCalleeKind.Virtual:
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C6c loads the virtual slot.
                 return;
             case MirCalleeKind.Intrinsic:
-                this.Intrinsic(call);
+                this.Intrinsic(call, IntrinsicRows.Of((IntrinsicId)callee.Arg));
                 return;
             default:
                 throw new InvalidOperationException($"The MIR callee kind {callee.Kind} has no code generation row.");
@@ -91,12 +94,21 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // A call by its signature (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument), the destination's address as the result slot,
-    // the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS R5-M92, R5-M93), a slot-less Value parameter's
-    // the next of the given values (a runtime routine's stride or reason), then the call and its end (Finish). The operands are in the
-    // callee's Arg-local order (ArgumentPosition). A result slot is the destination, a fresh temp or local, never a pointer argument: a
-    // Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89).
+    // A call by its signature (IMPL 21.3.1, SPEC 22.6): its arguments (Pass), then the call and its end (Finish).
     private void Invoke(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given = default)
+    {
+        if (this.Pass(call, signature, callee, given))
+        {
+            this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, signature.Parameters.Length)));
+        }
+    }
+
+    // A call's arguments in its signature's parameter order, into `arguments` (IMPL 21.3.1, SPEC 22.6): each parameter's argument (Argument),
+    // the destination's address as the result slot, the call's location for the location parameters (SPEC 22.5.1, Location; DECISIONS
+    // R5-M92, R5-M93), a parameter without a slot (a runtime routine's stride or reason, a Closure's environment and context) the next of
+    // the given values. The operands are in the order the callee's key gives (ArgumentPosition). A result slot is the destination, a fresh
+    // temp or local, never a pointer argument: a Move's Place is moved out and a Copy's a copy slot (DECISIONS R5-M89). False after a record.
+    private bool Pass(in MirTerminator call, FunctionAbi signature, MirDefKey callee, ReadOnlySpan<Value> given)
     {
         var parameters = signature.Parameters;
         this.arguments = this.arguments.Length < parameters.Length ? new Value[parameters.Length] : this.arguments;
@@ -104,7 +116,7 @@ internal sealed partial class FunctionCodegen
         for (var i = 0; i < parameters.Length; i++)
         {
             var parameter = parameters[i];
-            if (parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 })
+            if (parameter is { Kind: AbiParameterKind.Value, LogicalIndex: < 0 } or { Kind: AbiParameterKind.Environment or AbiParameterKind.Context })
             {
                 this.arguments[i] = given[next++];
                 continue;
@@ -114,23 +126,24 @@ internal sealed partial class FunctionCodegen
             {
                 if (!located && !(located = this.Location(call.Source, out site)))
                 {
-                    return; // Recorded.
+                    return false; // Recorded.
                 }
 
                 this.arguments[i] = parameter.Kind == AbiParameterKind.Location ? site.Text : site.Length;
                 continue;
             }
 
+            var index = call.Start + ArgumentPosition(callee, parameter.LogicalIndex);
             var found = parameter.Kind == AbiParameterKind.ResultSlot ? this.Address(call.Place, out this.arguments[i])
-                : this.Argument(call.Start + ArgumentPosition(callee, parameter.LogicalIndex), parameter, out this.arguments[i]);
+                : this.Argument(this.body.Operands[index], this.copyOf[index], parameter.Kind, out this.arguments[i]);
             if (!found)
             {
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source);
-                return;
+                return false;
             }
         }
 
-        this.Finish(call, this.WriteCall(signature, this.arguments.AsSpan(0, parameters.Length)));
+        return true;
     }
 
     // A call's end: its value, if any, put into the destination in its storage representation, then the call's target (Branch, after its
@@ -151,14 +164,14 @@ internal sealed partial class FunctionCodegen
         this.Branch(call.Target);
     }
 
-    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition): the console
-    // writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one
-    // Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine is called through the one call writer
-    // (Invoke): the call's operands at its parameters' slots and the call site's location; its result is Unit.
-    private void Legacy(in MirTerminator call)
+    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition), by its kind: the
+    // console writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come
+    // from one Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine is called through the one call
+    // writer (Invoke): the call's operands at its parameters' slots, placed by the call's own key, and the call site's location; its result
+    // is Unit.
+    private void Legacy(in MirTerminator call, CompilerFunctionKind kind)
     {
-        var symbol = call.Callee.Symbol!;
-        var routine = symbol.CompilerFunction switch
+        var routine = kind switch
         {
             CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
             _ => null,
@@ -169,12 +182,13 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        this.Invoke(call, routine, new(symbol, MirBodyKind.Fn));
+        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn));
     }
 
-    // A call of a routine, each argument with its parameter's Type and attributes (the O2 parity list's `noundef nonnull ...` at every
-    // call); its value, or null for a void result.
-    private Value? WriteCall(FunctionAbi routine, ReadOnlySpan<Value> arguments)
+    // A call of a routine, its symbol or an entry pointer (an erased value's, FunctionCodegen.Closures), each argument with its parameter's
+    // Type and attributes (the O2 parity list's `noundef nonnull ...` at every call, value calls included, package C row 14); its value, or
+    // null for a void result.
+    private Value? WriteCall(FunctionAbi routine, ReadOnlySpan<Value> arguments, Value? entry = null)
     {
         var output = this.output;
         Value? result = routine.Result == "void" ? null : new Value('t', this.next++);
@@ -187,8 +201,17 @@ internal sealed partial class FunctionCodegen
 
         output.Write("call ");
         output.Write(routine.Result);
-        output.Write(" @");
-        output.Write(routine.Name);
+        output.Write(' ');
+        if (entry is { } pointer)
+        {
+            this.WriteValue(pointer);
+        }
+        else
+        {
+            output.Write('@');
+            output.Write(routine.Name);
+        }
+
         output.Write('(');
         for (var i = 0; i < arguments.Length; i++)
         {
@@ -203,8 +226,9 @@ internal sealed partial class FunctionCodegen
         return result;
     }
 
-    // The item the collector targets at a site of the item's body, or -1 (I8): its targets are in location order (K package 4.3) and the
-    // frame writes the sites in that order, so one forward cursor reads them, passing the sites of blocks no runtime path reaches.
+    // The next item the collector targets at a site of the item's body, or -1 (I8): its targets are in location order (K package 4.3), a
+    // site's in the order its effects run (an owner Value call's body, then its operand's glue; DECISIONS R5-M102), and the frame writes
+    // the sites in that order, so one forward cursor reads each once, passing the sites of blocks no runtime path reaches.
     private int Target(MirLocation site)
     {
         var targets = this.collector.Set.Targets(this.item);
@@ -214,6 +238,6 @@ internal sealed partial class FunctionCodegen
             this.cursor++;
         }
 
-        return this.cursor < targets.Length && targets[this.cursor].At == site ? targets[this.cursor].Item : -1;
+        return this.cursor < targets.Length && targets[this.cursor].At == site ? targets[this.cursor++].Item : -1;
     }
 }

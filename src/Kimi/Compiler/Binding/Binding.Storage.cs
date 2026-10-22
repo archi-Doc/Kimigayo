@@ -397,7 +397,7 @@ public sealed partial class Binding
         var origin = type.Origin is { } outer ? this.SubstituteStoredOrigin(outer, binder, arguments, inputs) : null;
         if (type.RawOrigin is { } raw)
         {
-            origin = this.Restep(raw, this.SubstituteStoredOrigin(RegionOf(raw)!, binder, arguments, inputs));
+            origin = this.SubstituteStoredOrigin(raw, binder, arguments, inputs);
         }
 
         var length = correspondingBinder is null ? type.LengthExpression : this.CorrespondingLength(type.LengthExpression, binder, correspondingBinder);

@@ -1,0 +1,329 @@
+// Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
+
+using System.Globalization;
+using Kimi.Compiler.Mir;
+
+namespace Kimi.Compiler.Backend;
+
+// The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1, SPEC 22.6; DECISIONS R5-M65, R5-M89, R5-M102, R5-M104, R5-M106): a
+// body item's from its own body, the one its definition and every call write; a DropGlue item's; a called #LibraryImport function's C
+// signature and its declaration request; a common Function value's entry under a Callable signature, an adapter item's entry under its
+// source's and the release of its heap environment; a StaticInit item's slot's ensure function; each computed once per Write, or kept, and
+// the previous one reused while it still matches, so a warm module allocates nothing.
+internal sealed partial class ModuleCodegen
+{
+    /// <summary>The name of an adapter item's entry before its index; its table adds <see cref="TableSuffix"/>, its release <c>_drop</c>.</summary>
+    internal const string AdapterPrefix = "__kimi_erase";
+
+    /// <summary>The name of an adapter item's table after its entry's.</summary>
+    internal const string TableSuffix = "_table";
+
+    /// <summary>The name of a StaticInit item's slot before its index (SPEC 22.4.3); its state adds <see cref="StateSuffix"/>, its ensure
+    /// function <c>_ensure</c>.</summary>
+    internal const string StaticPrefix = "__kimi_static";
+
+    /// <summary>The name of a static slot's state after its slot's.</summary>
+    internal const string StateSuffix = "_state";
+
+    private const Abi.Flags ErasedFlags = Abi.Flags.ErasedClosure | Abi.Flags.CallerLocation; // A common Function value's entry (Erased).
+
+    private readonly List<FunctionAbi> erased = []; // The erased entries' signatures (Erased), kept across Writes.
+    private FunctionAbi?[] helpers = []; // By adapter or StaticInit item, its helper function (Release, Ensure), kept across Writes.
+    private FunctionAbi?[] signatures = []; // By item.
+    private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
+    private FunctionAbi?[] importSignatures = []; // By import.
+    private int[] importSigned = []; // By import, the Write whose signature importSignatures holds (0: none).
+    private string?[] importSymbols = []; // By import, the external symbol its signature is named by.
+    private BoundType[] parameters = []; // A signature's parameter Types in slot order.
+
+    /// <summary>Gets the signature of a body item from its own body (IMPL 21.3.1; DECISIONS R5-M89), the one its definition and every call of
+    /// it write: under the internal convention, its result Type local 0's and its parameters its Arg locals' in slot order
+    /// (FunctionCodegen.ArgumentPosition), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1), a
+    /// Closure body's environment Abi's [environment] (ConcreteClosure, SPEC 7.7.3; DECISIONS R5-M102), not a parameter slot; named
+    /// <c>__kimi_f</c> with its index, computed once per Write and the previous one while it still matches.</summary>
+    /// <param name="item">The item, a body item of a kind the frame writes.</param>
+    /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of its signature.</returns>
+    internal FunctionAbi? Signature(int item)
+    {
+        var entry = this.set.Items[item];
+        if (!this.set.IsGenerated(item))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // Only a Generated item is requested (K11).
+        }
+
+        if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
+        {
+            return current;
+        }
+
+        var body = this.program.Bodies[entry.BodyOrdinal];
+        if (this.Inputs(item, body, out var count) is not { } result)
+        {
+            return null; // Recorded.
+        }
+
+        // SPEC 22.5.1: a caller-location library function receives its caller's location; the old generator's constructor and destructor
+        // result slot is its own ABI choice, which local 0's Type replaces here (IMPL 21.3.1).
+        var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
+        var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
+            (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
+        return this.Define(item, "__kimi_f", flags, result, this.parameters.AsSpan(0, count));
+    }
+
+    /// <summary>Gets the C signature of a validated <c>#LibraryImport</c> function a definition calls (SPEC 22.6; Abi.Of's C convention)
+    /// and requests its declaration, one per symbol (DECISIONS R5-M89).</summary>
+    /// <param name="function">The called function.</param>
+    /// <returns>The signature, or null for a function without an import.</returns>
+    internal FunctionAbi? Import(BindingSymbol function)
+    {
+        for (var index = 0; index < this.imports.Count; index++)
+        {
+            if (ReferenceEquals(this.imports[index].Decl, function))
+            {
+                var abi = this.ImportSignature(index);
+                foreach (var external in this.externals)
+                {
+                    if (ReferenceEquals(external.Abi, abi))
+                    {
+                        return abi;
+                    }
+                }
+
+                this.externals.Add(new(abi, this.imports[index].Kind == "import"));
+                return abi;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is
+    /// a glue signature (its parameters <see cref="DropGlue.Parameters"/>).</summary>
+    /// <param name="item">The item.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Glue(int item)
+    {
+        if (!this.set.IsGenerated(item))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
+        }
+
+        if (item >= this.signatures.Length)
+        {
+            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
+        }
+
+        if (this.signatures[item] is { } previous && ReferenceEquals(previous.Parameters, DropGlue.Parameters))
+        {
+            return previous;
+        }
+
+        return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
+    }
+
+    /// <summary>Gets the signature of a common Function value's entry under a Callable signature (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102):
+    /// Abi.Of's internal convention with an i64 environment word first and the context last (ErasedClosure), taking the call's location
+    /// (SPEC 22.5.1: a Kimi operation called through a function value reports that call); unnamed, since a call reaches it through the
+    /// value's table, and kept across Writes, the previous one reused while it matches.</summary>
+    /// <param name="signature">The closed Callable signature, a Function Type: its inputs' Tuple (or Unit) and its result.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Erased(BoundType signature)
+    {
+        ReadOnlySpan<BoundType> inputs = (BoundType[])signature.Components[0].Components;
+        var result = signature.Components[1];
+        foreach (var candidate in this.erased)
+        {
+            if (Abi.Matches(candidate, this.Layout, Abi.Convention.Internal, ErasedFlags, result, inputs))
+            {
+                return candidate;
+            }
+        }
+
+        var abi = Abi.Of(this.Layout, Abi.Convention.Internal, ErasedFlags, result, inputs);
+        this.erased.Add(abi);
+        return abi;
+    }
+
+    /// <summary>Gets the entry signature of a ClosureErasure or ItemAdapter item (IMPL 21.1.3, 21.3.1; DECISIONS R5-M104): the erased
+    /// signature (<see cref="Erased"/>'s form) of its source's own Callable signature, its body target's inputs and result (a Closure body's
+    /// environment not among them), named <see cref="AdapterPrefix"/> with its index, computed once per Write and the previous one while it
+    /// still matches. Temporary until C5c keys an adapter by its target Function Type: an adapter without a body target has none.</summary>
+    /// <param name="item">The adapter item.</param>
+    /// <returns>The signature; null for an adapter without a body target, or, recorded, where the instance does not make its Types.</returns>
+    internal FunctionAbi? Adapter(int item)
+    {
+        if (!this.set.IsGenerated(item))
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
+        }
+
+        if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
+        {
+            return current;
+        }
+
+        var targets = this.set.Targets(item);
+        if (targets.Length == 0 || this.set.Items[targets[0].Item] is not { Key.Kind: MonoKind.Body, BodyOrdinal: var ordinal } ||
+            this.Inputs(targets[0].Item, this.program.Bodies[ordinal], out var count) is not { } result)
+        {
+            return null;
+        }
+
+        return this.Define(item, AdapterPrefix, ErasedFlags, result, this.parameters.AsSpan(0, count));
+    }
+
+    /// <summary>Gets whether an adapter's entry is the erased signature of a Function Type, the one every erased call of that Type uses
+    /// (<see cref="Erased"/>): a Never-result source erased into another result is not (SPEC 10.7; until C5c, DECISIONS R5-M104).</summary>
+    /// <param name="entry">The adapter's entry (<see cref="Adapter"/>).</param>
+    /// <param name="function">The closed Function Type the source is erased into.</param>
+    /// <returns>Whether the signatures match.</returns>
+    internal bool Fits(FunctionAbi entry, BoundType function)
+    {
+        ReadOnlySpan<BoundType> inputs = (BoundType[])function.Components[0].Components;
+        return Abi.Matches(entry, this.Layout, Abi.Convention.Internal, ErasedFlags, function.Components[1], inputs);
+    }
+
+    /// <summary>Gets the release of an adapter item's heap environment, its table's drop entry (IMPL 21.1.3; DECISIONS R5-M104): a glue
+    /// function's signature (<see cref="DropGlue.Parameters"/>) named after its entry with <c>_drop</c>, kept across Writes.</summary>
+    /// <param name="item">The adapter item.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Release(int item)
+        => this.Helper(item) ??= new(AdapterPrefix + item.ToString(CultureInfo.InvariantCulture) + "_drop", "void", DropGlue.Parameters);
+
+    /// <summary>Gets the ensure function of a StaticInit item's slot (SPEC 22.4.3; DECISIONS R5-M106): void, taking the access's location
+    /// (SPEC 22.5.1), named after its slot with <c>_ensure</c>, kept across Writes.</summary>
+    /// <param name="item">The StaticInit item.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Ensure(int item)
+        => this.Helper(item) ??=
+            new(StaticPrefix + item.ToString(CultureInfo.InvariantCulture) + "_ensure", "void", [RuntimeAbi.Location, RuntimeAbi.LocationLength]);
+
+    // The C signature of an import from its declared Types (TyCtxt.Signature), named by its external symbol: the first import's of that
+    // symbol, so imports of one symbol share one declaration (the old generator's rule); computed once per Write and the previous one
+    // while it still matches.
+    private FunctionAbi ImportSignature(int index)
+    {
+        if (this.Stamped(ref this.importSignatures, ref this.importSigned, index) is { } current)
+        {
+            return current;
+        }
+
+        if (this.importSymbols.Length < this.importSignatures.Length)
+        {
+            Array.Resize(ref this.importSymbols, this.importSignatures.Length);
+        }
+
+        var symbol = this.imports[index].Symbol;
+        this.importSigned[index] = this.writes;
+        for (var first = 0; first < index; first++)
+        {
+            if (string.Equals(this.imports[first].Symbol, symbol, StringComparison.Ordinal))
+            {
+                this.importSymbols[index] = symbol;
+                return this.importSignatures[index] = this.ImportSignature(first);
+            }
+        }
+
+        var function = this.imports[index].Decl;
+        var result = TyCtxt.Signature(function, null, -1, out var count)!;
+        this.Reserve(count);
+        for (var slot = 0; slot < count; slot++)
+        {
+            this.parameters[slot] = TyCtxt.Signature(function, null, slot, out _)!;
+        }
+
+        var types = this.parameters.AsSpan(0, count);
+        if (this.importSignatures[index] is { } previous && string.Equals(this.importSymbols[index], symbol, StringComparison.Ordinal) &&
+            Abi.Matches(previous, this.Layout, Abi.Convention.C, Abi.Flags.None, result, types))
+        {
+            return previous;
+        }
+
+        this.importSymbols[index] = symbol;
+        return this.importSignatures[index] = Abi.Of(this.Layout, Abi.Convention.C, Abi.Flags.None, result, types).Named(LlvmModuleText.ExternalName(symbol));
+    }
+
+    // A body item's Callable inputs, its parameter Types in slot order into the scratch (its Arg locals' in its instance, by
+    // FunctionCodegen.ArgumentPosition; a Closure body's environment, its Arg local 1, is no parameter slot), and its result Type, local 0's;
+    // null, recorded at the item's site, where the instance does not make one (the collector laid out every local of an admitted item).
+    private BoundType? Inputs(int item, MirBody body, out int count)
+    {
+        var site = this.set.Items[item].Site;
+        count = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment ? -1 : 0;
+        foreach (var local in body.Locals)
+        {
+            count += local.Kind == MirLocalKind.Arg ? 1 : 0;
+        }
+
+        this.Reserve(count);
+        for (var slot = 0; slot < count; slot++)
+        {
+            if (this.collector.TypeOf(item, body.Locals[1 + FunctionCodegen.ArgumentPosition(body.Key, slot)].Type) is not { } parameter)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+                return null;
+            }
+
+            this.parameters[slot] = parameter;
+        }
+
+        var result = this.collector.TypeOf(item, body.Locals[0].Type);
+        if (result is null)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        }
+
+        return result;
+    }
+
+    // The head of the by-index signature cache of Signature, Adapter and ImportSignature: the arrays grown to hold the index, and the
+    // signature stamped in this Write (null: the caller computes it, then stamps it: Define for an item's).
+    private FunctionAbi? Stamped(ref FunctionAbi?[] kept, ref int[] stamps, int index)
+    {
+        if (index >= kept.Length)
+        {
+            Array.Resize(ref kept, Math.Max(index + 1, 2 * kept.Length));
+        }
+
+        if (index >= stamps.Length)
+        {
+            Array.Resize(ref stamps, kept.Length);
+        }
+
+        return stamps[index] == this.writes ? kept[index] : null;
+    }
+
+    // The tail of an item's signature (Signature, Adapter): the item stamped for this Write, the previous Write's signature while it still
+    // matches, else a new one named before the item's index (only then, so a warm module allocates nothing).
+    private FunctionAbi Define(int item, string prefix, Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> types)
+    {
+        this.signed[item] = this.writes;
+        if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, flags, result, types))
+        {
+            return previous;
+        }
+
+        var name = prefix + item.ToString(CultureInfo.InvariantCulture);
+        return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
+    }
+
+    // The kept helper function of an item (Release, Ensure: an item is an adapter or a StaticInit, never both), its array grown to hold it.
+    private ref FunctionAbi? Helper(int item)
+    {
+        if (item >= this.helpers.Length)
+        {
+            Array.Resize(ref this.helpers, Math.Max(item + 1, 2 * this.helpers.Length));
+        }
+
+        return ref this.helpers[item];
+    }
+
+    // The scratch for a signature's parameter Types, grown to at least the count given.
+    private void Reserve(int count)
+    {
+        if (this.parameters.Length < count)
+        {
+            this.parameters = new BoundType[Math.Max(count, 2 * this.parameters.Length)];
+        }
+    }
+}

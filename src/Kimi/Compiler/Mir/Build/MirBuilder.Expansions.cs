@@ -160,20 +160,17 @@ internal sealed partial class MirBuilder
 
         if (plan.First is { } getter)
         {
-            // A receiver both accessors take keeps the setter's acquisition as its Adjust; the getter takes it as its own operation does
-            // (shared, SPEC 11.3): in place by that adaptation, or by its bare acquisition (a stored reference Copied).
+            // A receiver both accessors take is taken by each as the HIR publishes: the setter by the column's Adjust, the getter by the
+            // receiver's plan-row Adjust where the two differ (SPEC 11.3: shared), else by the column's (DECISIONS R4-M109).
             var given = plan.Second is null ? null : receiver;
             var operand = default(MirOperand);
             foreach (ref readonly var argument in getter.ArgumentOperations)
             {
-                if (given is not null && ReferenceEquals(argument.Source, given) && HirAdjust.Of(argument) is var adaptation)
+                if (given is not null && ReferenceEquals(argument.Source, given))
                 {
-                    operand = this.Acquire(
-                        new(adaptation == HirAdaptation.None ? HirAcquire.ByCase : HirAcquire.None, adaptation),
-                        this.located[mark].Place,
-                        argument.AdaptedType ?? argument.ParameterType,
-                        input: true,
-                        given);
+                    var adjust = HirTables.PlanOf(given).Adjust;
+                    operand = this.Operand(
+                        given, adjust == default ? HirTables.AdjustOf(given) : adjust, argument.AdaptedType ?? argument.ParameterType, input: true);
                 }
             }
 

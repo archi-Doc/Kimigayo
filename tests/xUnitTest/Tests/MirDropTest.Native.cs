@@ -113,6 +113,23 @@ public sealed partial class MirDropTest
             "    Console.writeLine(\"end\")\nrun()\n",
             "second\nafter\nend\nfirst\nkept\n", 3
         },
+
+        // SPEC 16.3.2 (DECISIONS R5-M100): each layer's remaining parts by its own state: a derived struct whose nested Field's Field and
+        // base's Field are moved on one path and the whole on the other, so the own bits of the value, its Field and its base are flags;
+        // its own Fields last to first (z, then inner's remaining second), then its base's remaining d.
+        {
+            "OpenLayers", "f", @"\[open f0 \(\.0 open f1 \(\.0 elide\), \.base1 open f2 \(\.0 elide\)\)\]", 1,
+            "struct Pair\n    public var first: Counted\n    public var second: Counted\n    public init(first: Counted, second: Counted)\n" +
+            "        self.first = first@move\n        self.second = second@move\nopen struct Base\n    public var b: Counted\n" +
+            "    public var d: Counted\n    protected init(b: Counted, d: Counted)\n        self.b = b@move\n        self.d = d@move\n" +
+            "struct Outer : Base\n    public var inner: Pair\n    public var z: Counted\n" +
+            "    public init(inner: Pair, z: Counted, b: Counted, d: Counted) : base(b@move, d@move)\n        self.inner = inner@move\n" +
+            "        self.z = z@move\nfunc whole(o: Outer) => ()\nfunc f(c: bool)\n" +
+            "    var o = Outer.init(Pair.init(Counted.init(\"first\"), Counted.init(\"second\")), Counted.init(\"z\"), Counted.init(\"b\"), " +
+            "Counted.init(\"d\"))\n    if c\n        whole(o@move)\n    else\n        consume(o.inner.first@move)\n        consume(o.b@move)\n" +
+            "    Console.writeLine(\"end\")\nf(true)\nf(false)\n",
+            "z\nsecond\nfirst\nd\nb\nend\nfirst\nb\nend\nz\nsecond\nd\n", 10
+        },
     };
 
     [Theory]

@@ -44,6 +44,11 @@ public class RawStorageTest
 
     private const string Remainder = "struct R<E> {source}\n    internal let at: raw/E during source\n    internal let loan: Loan<uniq/E during source>\n";
 
+    // A `during self` raw Field beside a scalar, and SPEC 5.7's Lens with a writable raw Field stating its slot (the final review's B1).
+    private const string SelfField = "struct B\n    internal var data: raw/u8 during self\n    internal var n: i32\n    public init()\n        self.data = null\n        self.n = 0\n";
+    private const string SlotField = "struct Lens {source}\n    internal let loan: Loan<ref/i32 during source>\n    internal var at: raw/i32 during source\n" +
+        "    public init(t: ref/i32 during source)\n        self.at = t@follow@raw\n        self.loan = Loan.init(t)\n";
+
     // The remainder's initializer from one exclusive element, and a pair taken from it by two raw Place borrows, written through.
     private const string PairInit = "    public init(target: uniq/E during source)\n        self.at = target@follow@raw\n        self.loan = Loan.init(target)\n";
 
@@ -291,12 +296,12 @@ public class RawStorageTest
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), label), (record.Code, record.Label));
     }
 
-    // SPEC 5.7 (DECISIONS R4-M105, OQ-R2 (a)): a Field read through a borrow states the borrow's outer Origin, a meet included, formed
-    // with the borrow's mode: a shared one keeps the shared view, so authority stays shared; an exclusive one is the meet itself.
+    // SPEC 5.7 (DECISIONS R4-M105, OQ-R2 (a); BU-24): a Field read through a borrow states the borrow's outer Origin, a meet included,
+    // whatever the borrow's mode.
     [Theory]
-    [InlineData("ref", OriginKind.Shared)]
-    [InlineData("uniq", OriginKind.Intersection)]
-    public void AFieldReadThroughAMeetStatesTheMeet(string mode, OriginKind kind)
+    [InlineData("ref")]
+    [InlineData("uniq")]
+    public void AFieldReadThroughAMeetStatesTheMeet(string mode)
     {
         var source = Block.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", "()", StringComparison.Ordinal) +
             $"func choose(c: bool, a: {mode}/Block, b: {mode}/Block) -> {mode}/Block => if c => a else => b\n" +
@@ -304,8 +309,7 @@ public class RawStorageTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(static x => x.ToString() == "choose(c, x, y).data").TypeOf()!.RawOrigin!;
-        Assert.Equal(kind, read.Kind);
-        Assert.Equal(OriginKind.Intersection, Binding.RegionOf(read)!.Kind);
+        Assert.Equal(OriginKind.Intersection, read.Kind);
     }
 
     // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): the default pipeline generates and runs the programs Q-O3's
@@ -352,6 +356,23 @@ public class RawStorageTest
     [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    unsafe => return source.at[0]@uniq")]
     [InlineData(Remainder + "func take<E>(source: R<E> during a) -> uniq/E during a\n    let state = source@move\n    unsafe => return state.at[0]@uniq")]
     public void ARawSlotHasAStepWhereverItsHolderIsHeld(string declarations)
+        => Assert.Empty(RawPointerSyntaxTest.Records(declarations));
+
+    // SPEC 5.7 Writing a Field, Typed paths (the final review's B1): a raw Field stating `self` or a slot, read or written through a
+    // dereference of a raw pointer stating an Origin (a typed path, a parameter, `static`, an element), checks as through one stating
+    // none: the old analysis compares the stored part's Type without raw Origins (the D5 exception, the owner's 「D5 例外を広げる
+    // (推奨)」), so no InternalInvariant_Kd remains.
+    [Theory]
+    [InlineData(SelfField + "func f(x: ref/B) -> raw/u8 during x\n    let p = x@follow@raw\n    unsafe\n        let q = (*p).data\n        return q")]
+    [InlineData(SelfField + "func f(x: ref/B, p: raw/B during x) -> raw/u8 during x\n    unsafe => return (*p).data")]
+    [InlineData(SelfField + "func f(x: ref/B) -> raw/u8 during x\n    let p = x@follow@raw\n    unsafe => return p[0].data")]
+    [InlineData(SelfField + "func f(x: uniq/B, p: raw/B during x)\n    unsafe => (*p).data = null")]
+    [InlineData(SelfField + "func f(p: raw/B during static)\n    unsafe => (*p).data = null")]
+    [InlineData(SelfField + "func f(x: uniq/B, p: raw/B during x, fresh: raw/u8)\n    unsafe => (*p).data = fresh@(raw/u8 during x)")]
+    [InlineData(SlotField + "func f(x: ref/Lens) -> raw/i32 during x\n    let p = x@follow@raw\n    unsafe => return (*p).at")]
+    [InlineData(SlotField + "func f(x: uniq/Lens, p: raw/Lens during x)\n    unsafe => (*p).at = null")]
+    [InlineData(SlotField + "func f(x: ref/Lens, p: raw/Lens during x) -> i32\n    unsafe => return *(*p).at")]
+    public void AStatedRawFieldThroughAStatedRawPointerChecks(string declarations)
         => Assert.Empty(RawPointerSyntaxTest.Records(declarations));
 
     // SPEC 5.2.2, 15.6.5 (bu23 S3): a raw Place borrow's Origin is its anchor, an inferred region, met with the pointer's Origin; the

@@ -75,21 +75,16 @@ public sealed partial class OriginRowsTest
     }
 
     // Rows 6, 7 and 7': a mutable static's Borrow formed in B is Finite, an immutable one's Inferred, and the enclosing body's Borrow a
-    // Closure captures is Fixed there while the Closure's own Borrow is Finite (2a0-D's rv/st-both: two atoms, per Borrow site).
+    // Closure captures is Fixed there while the Closure's own Borrow is Finite (2a0-D's rv/st-both: two atoms, per Borrow site). R4-M90
+    // PQ-1 (DECISIONS BU-25): until P42 Binding reports these Borrows as the located Unsupported_Kd, the Closure capturing c resting on c's
+    // record, so the source forms no static atom; rows 7 and 7' keep their witnesses through an accessor's storage
+    // (AnAccessorsStorageIsClassedByItsProperty), and row 6's Closure case is restored there too
+    // (AnAccessorsStorageCapturedByAClosureIsFixedThere).
     [Fact]
-    public void AStaticsBorrowIsClassedByItsSiteAndMutability()
+    public void AStaticsBorrowFormsNoAtomUntilP42()
     {
         var c = MirBuildTest.Compile(Statics + Main);
-        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
-        var program = c.BuildMir();
-        var reads = BodyOf(program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "reads").Key);
-        var closure = BodyOf(program.Bodies.ToArray().Single(IsProgramClosure).Key);
-        var (count, limit, own) = (BorrowAt(c, "count@ref", 0), BorrowAt(c, "limit@ref", 0), BorrowAt(c, "count@ref", 1));
-        Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(reads, count.Origin, count.Site).Kind);
-        Assert.Equal(OriginAtomKind.Inferred, c.Types.OriginAtom(reads, limit.Origin, limit.Site).Kind);
-        Assert.Equal(OriginAtomKind.Fixed, c.Types.OriginAtom(closure, count.Origin, count.Site).Kind);
-        Assert.Equal(OriginAtomKind.Finite, c.Types.OriginAtom(closure, own.Origin, own.Site).Kind);
-        Assert.NotSame(count.Origin, own.Origin);
+        Assert.Equal(["Unsupported_Kd count@ref", "Unsupported_Kd limit@ref"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));
     }
 
     // Rows 3, 7 and 7' for an accessor's `storage` (DECISIONS R4-M101, BU's B1): a root of its Property's accessors, classed as a static
@@ -105,6 +100,29 @@ public sealed partial class OriginRowsTest
         var getter = Bodies(c).Select(x => c.Types.OriginRows(BodyOf(x.Key))).Single(static x => x.Rows.Any(static y => First(y.Site) == "storage@ref"));
         var storage = getter.Atoms[getter.Rows.First(static x => First(x.Site) == "storage@ref").Longer];
         Assert.Equal((kind, ProjectionRole.Storage), (storage.Kind.ToString(), storage.Role));
+        Assert.Empty(c.Types.OriginFindings);
+    }
+
+    // Row 6's Closure case through an accessor's storage (DECISIONS BU-25's exception): the getter's Borrow of its Property's storage is
+    // classed by mutability there (rows 7 and 7'), and a Closure the getter evaluates sees it, through its capture of that Borrow, as a root
+    // of its evaluating body, Fixed (row 6). A Closure cannot form its own Borrow of `storage`, an accessor binding (InvalidCaptureBinding_Kd),
+    // and an accessor's storage is one atom per Property, so rv/st-both's per-Borrow-site pair waits for P42's static Borrows.
+    [Theory]
+    [InlineData("var", "Finite")]
+    [InlineData("let", "Inferred")]
+    public void AnAccessorsStorageCapturedByAClosureIsFixedThere(string declaration, string kind)
+    {
+        var setter = declaration == "var" ? "        set(value: i32) -> () => storage = value\n" : string.Empty;
+        var c = MirBuildTest.Compile($"group Api\n    public {declaration} item: i32 = 0\n        get() -> i32\n            let c = storage@ref\n" +
+            "            let f = func [c] () -> i32 => c@follow\n            return f()\n" + setter + Main);
+        Assert.True(c.Binding.Result.IsComplete, string.Join(", ", c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}")));
+        var borrow = KotoTree.Walk(c.Kotonoha.RootKoto).Single(static x => x is ConversionKoto && First(x) == "storage@ref");
+        var storage = ((BoundType)HirTables.Meaning(borrow)!).Origin!;
+        var accessor = Bodies(c).Single(static x => x.Key is { Kind: MirBodyKind.Getter, Decl: { } decl } && InProgram(decl.Declaration));
+        var getter = c.Types.OriginAtom(BodyOf(accessor.Key), storage, borrow);
+        var closure = c.Types.OriginAtom(BodyOf(Bodies(c).Single(IsProgramClosure).Key), storage, borrow);
+        Assert.Equal((kind, ProjectionRole.Storage), (getter.Kind.ToString(), getter.Role));
+        Assert.Equal((OriginAtomKind.Fixed, ProjectionRole.Storage), (closure.Kind, closure.Role));
         Assert.Empty(c.Types.OriginFindings);
     }
 
@@ -167,11 +185,4 @@ public sealed partial class OriginRowsTest
     }
 
     private static bool Has(Compilation c, MirDefKey key, string site) => c.Types.OriginRows(BodyOf(key)).Rows.Any(x => First(x.Site) == site);
-
-    // The n-th Borrow at a site text and its Type's Origin, as the HIR publishes it.
-    private static (Koto Site, BoundOrigin Origin) BorrowAt(Compilation c, string site, int n)
-    {
-        var node = KotoTree.Walk(c.Kotonoha.RootKoto).Where(x => x is ConversionKoto && First(x) == site).ElementAt(n);
-        return (node, ((BoundType)HirTables.Meaning(node)!).Origin!);
-    }
 }

@@ -42,7 +42,7 @@ internal sealed partial class HoverBuilder
                 evidence = [];
                 text = new();
                 var available = query.AvailableEffectBounds(requirement, call.ConformingType, query.ConstraintScope(syntax), evidence, call.RequirementContract);
-                if (available.Confined && !evidence.Exists(static x => x.Bound.Bound == EffectBoundKind.Confined))
+                if (available && evidence.Count == 0)
                 {
                     return null; // Incomplete conformance evidence must not become a public guarantee.
                 }
@@ -128,7 +128,7 @@ internal sealed partial class HoverBuilder
             text.Append("Declared by: ").AppendLine(this.Qualified(declaring));
             if (item.Context is FunctionKoto { IsVirtual: true } evidenceSlot)
             {
-                text.Append("Public guarantee: ").Append(this.Qualified(evidenceSlot)).Append(" effect ").AppendLine(EffectBoundKoto.Spelling(item.Bound.Bound));
+                text.Append("Public guarantee: ").Append(this.Qualified(evidenceSlot)).Append(" effect ").AppendLine(Constants.ConfinedKeyword);
             }
             else
             {
@@ -146,11 +146,11 @@ internal sealed partial class HoverBuilder
                     text.Append(this.TypeName(item.Conforming!)).Append(" is ").Append(this.Qualified(item.Contract!.Declaration));
                 }
 
-                text.Append(" effect ").Append(EffectBoundKoto.Spelling(item.Bound.Bound)).Append(" (in ").Append(this.Qualified(item.Context)).AppendLine(")");
+                text.Append(" effect ").Append(Constants.ConfinedKeyword).Append(" (in ").Append(this.Qualified(item.Context)).AppendLine(")");
             }
 
             keys.Add(new(
-                "effect;" + item.Bound.Bound,
+                "effect",
                 [this.BinderIdentity(item.Bound), this.BinderIdentity(item.Context), this.BinderIdentity(item.Clause),
                 this.ConstraintIdentity(item.Premise), this.TypeIdentity(item.Conforming), this.SymbolIdentity(item.Contract)]));
         }
@@ -193,8 +193,8 @@ internal sealed partial class HoverBuilder
         return owner.Length == 0 ? name : owner + "." + name;
     }
 
-    private static void WriteBounds(StringBuilder text, (bool Confined, bool Preserves) available)
-        => text.AppendLine(available.Confined ? "Available bound: confined" : "Available bound: none");
+    private static void WriteBounds(StringBuilder text, bool confined)
+        => text.AppendLine(confined ? "Available bound: confined" : "Available bound: none");
 
     private HoverKey ConstraintIdentity(BoundConstraint? fact)
     {

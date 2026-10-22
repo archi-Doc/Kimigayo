@@ -27,7 +27,7 @@
 | Shared / Exclusive / Consuming | Shared / Exclusive / Consuming | 呼出しレシーバの要件名。取得モードとは区別する。[§7.7.3](spec/07-functions-and-callable-values.md#773-call-receiver) |
 | Proven / Refuted / Unknown / Error | 原語のまま | 4値の証明判定。Refutedは否定の証明、Unknownはどちらも未証明。[§8.3.1](spec/08-generics-constraints-and-contracts.md#831-propositions-and-outcomes) |
 | Proven / NotProven | Proven / NotProven | ObjectCallCompatibleの公開状態。NotProvenをRefutedやUnknownに読み替えない。[§12.7](spec/12-expressions.md#127-object-receiver-compatibility) |
-| `confined` / `preserves results` | 構文のまま | 効果の保証を表す正確な綴りを保つ |
+| `confined` | 構文のまま | 効果の保証を表す正確な綴りを保つ |
 
 ## 2. カタカナを推奨する用語
 

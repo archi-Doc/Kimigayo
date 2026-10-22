@@ -22,6 +22,7 @@ public class CompilerFunctionReferenceTest
     [InlineData("Item", "let f = Raw.allocate<u8>\nlet p = f(-1)", "Hello.kimi:2:9")]
     [InlineData("Erased", "let f: (isize) -> raw/u8 = Raw.allocate\nlet p = f(-1)", "Hello.kimi:2:9")]
     [InlineData("Helper", "func make(f: ref/((isize) -> raw/u8)) -> raw/u8 => f(-1)\nlet f: (isize) -> raw/u8 = Raw.allocate\nlet p = make(f)", "Hello.kimi:1:52")]
+    [InlineData("FromEnd", "let f: (FromEnd<i32>, isize) -> isize = FromEnd<i32>.resolve\nlet n = f(^5, 2)", "Hello.kimi:2:9")] // A caller-location body's erased entry.
     public void ReportsTheActualInvocation(string name, string source, string location)
         => ScalarEmissionTest.EmitFixture("CompilerReferenceAbort" + name, source, string.Empty, 1, location + ": abort KIMI_E_ARG_RANGE: Argument out of range\n");
 

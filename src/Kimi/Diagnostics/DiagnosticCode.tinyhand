@@ -659,7 +659,7 @@
 
   + Name="SharedPathAccess_Kd"
     Category="Language"
-    Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, a guard candidate, or a raw pointer whose Origin keeps only shared Loans), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"
+    Message="This Place is reached through a shared layer (a ref reference, a Slice element, an objref, rc or arc view, or a guard candidate), which grants Read only; a write, Move or exclusive borrow needs an owned or exclusive path"
     Evidence="target:Text"
     Label="{0} is reached through a shared path"
 

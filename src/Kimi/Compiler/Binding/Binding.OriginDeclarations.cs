@@ -645,7 +645,7 @@ public sealed partial class Binding
             var origin = type.Origin is { } outer ? this.ResolveOrigin(outer, declaration) : null;
             if (type.RawOrigin is { } raw)
             {
-                origin = this.Restep(raw, this.ResolveOrigin(RegionOf(raw)!, declaration));
+                origin = this.ResolveOrigin(raw, declaration);
             }
 
             return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
