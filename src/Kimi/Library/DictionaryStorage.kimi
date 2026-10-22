@@ -43,14 +43,25 @@ group DictionaryStorage
 
     internal func removeEntry<K, V>(value: uniq/Dictionary<K, V>, key: ref/K) -> Option<(K, V)>
         K is Equatable
+        // The search's shared Borrow ends before the exclusive handle is taken (SPEC 5.2.1).
+        let link = findEntry(value@follow@ref, key)
+        require link != 0 else => return .None
         unsafe
             let layout = Storage.dictionaryStorage(value)
-            var state = Storage.borrowStorage(value@follow@ref)
-            let link = Storage.findDictionaryLink(state@uniq, key)
-            require link != 0 else => return .None
-            let slot = state.storage + (link - 1) * state.stride
-            unlink(layout.0@raw/Handle, layout.1, link)
+            let handle = layout.0@raw/Handle
+            let slot = (*handle).buffer + (link - 1) * layout.1
+            unlink(handle, layout.1, link)
             return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
+
+    // Replaces the value of the live entry at `link` and returns the old one, which is secured before the new one is placed.
+    internal func replaceValue<K, V>(value: uniq/Dictionary<K, V>, link: isize, replacement: V) -> V
+        K is Equatable
+        unsafe
+            let layout = Storage.dictionaryStorage(value)
+            let slot = (*(layout.0@raw/Handle)).buffer + (link - 1) * layout.1
+            let previous = (*Storage.valueAt<K, V>(slot))@move
+            Raw.initialize(Storage.valueAt<K, V>(slot), replacement@move)
+            return previous@move
 
     // The capacity operations carry the standard operation's caller location to every failure they detect (SPEC 22.5.1).
     internal func reserveEntries<K, V>(value: uniq/Dictionary<K, V>, additional: isize)

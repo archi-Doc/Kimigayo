@@ -204,7 +204,9 @@ first. IntrinsicId returns to 30 at R8.
   verdicts (CleanupObservesBorrows' per-query depth-monotone memo, HasProjection's gate, AggregateCanComplete's memo,
   VerifyBorrows' per-Place AddType set; DECISIONS BU-19), and the owner's exception for Q-O3 of G160 (2026-10-22): the old
   paths read Types without raw Origins (`Binding.WithoutRawOrigins`) at `OwnershipAnalysis.Place` and `OwnershipBody.Resolve` until
-  R6-check and at Emission's `AdtDef.CaseTypes` reads until R6-gen (DECISIONS BU-24), and the owner's exception for Abstract
+  R6-check and at Emission's `AdtDef.CaseTypes` reads until R6-gen (DECISIONS BU-24), and the owner's exception for G160-3
+  (2026-10-22): the old Emission's Dictionary layout and placement checks take G160-3's `raw/Dictionary<K, V>` handle in place
+  of `raw/u8` until R6-gen (`BodyLowering.DictionaryStorage`, `BodyLowering.Dictionaries`), and the owner's exception for Abstract
   Calls Reach by Paths (2026-10-22): the old Analysis, Binding's `EffectSummary` and `PublishesIndependentResults` drop rule 1's Origin reach, rule 3
   and `preserves results` (units U1, U2), so the default pipeline accepts the forms that proposal makes valid and rejects G193's
   forms by containment; a form U1 or U2 newly accepts that SPEC does not make valid stops the unit for the owner (DECISIONS
