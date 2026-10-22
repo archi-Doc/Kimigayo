@@ -6072,3 +6072,11 @@ structure is recorded here by the unit that first implements it.
     beside `Parts`; a MIR environment role or operand (held MIR; the body kind publishes it); a MIR Drop of the moved receiver (the template
     cannot know the instance's receiver); a `ConsumingCall` shim item (a `MonoKind`, one more function per Type and call); deferring SPEC
     8.10 as a located `Unsupported_Kd`.
+- **R5-M103 The owner confirms C5a's departures** (owner, 2026-10-22, on the R5 planning session's explanation before C5a landed;
+  verbatim 「departures list の新しい2件（2つ目の破棄先、PD19 の移動）を承認します」; the consequences are the planning session's) The two
+  departures R5-M102 records are confirmed: at an `owner`-receiver Value call whose callee borrows its environment, the instance
+  collector gives the call site a second target, the operand Type's DropGlue item after the body, and code generation destroys the
+  value after the call returns (SPEC 8.10; against package C 3.2 I8's "at most one target per site"); and PD19's inline environment of
+  8 bytes or less, its requirement test and `ContextualClosureTest` "Object" move from C5a to C5b, since a concrete Closure environment
+  is the Closure value itself and never allocates (IMPL 21.1.2), and PD19 governs only a value erased into IMPL 21.1.3's common
+  function value (against plan row C5a). They leave the list; R5's group reviews check the code against those entries.
