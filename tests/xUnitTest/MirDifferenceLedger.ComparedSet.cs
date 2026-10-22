@@ -58,7 +58,8 @@ public sealed partial class MirDifferenceLedger
         (Ownership(OwnershipRequirement.ExpansionLimit), DiagnosticCode.DeferredExpansionLimit_Kd, "-", null, null),
     ];
 
-    /// <summary>Gets the analysis that owns an old record of the compared set (R4-M4), or null for a record that passes through.</summary>
+    /// <summary>Gets the analysis of an old record's pair in the compared set (R4-M4), or null outside it; a pair with a subset owns only the
+    /// records the subset names (<see cref="Sides"/>).</summary>
     /// <param name="requirement">The record's requirement.</param>
     /// <param name="code">The record's code.</param>
     /// <returns>The analysis.</returns>

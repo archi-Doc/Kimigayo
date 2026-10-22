@@ -12,7 +12,6 @@ public sealed partial class Binding
 
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
     private OriginRewriteVisitor? originRewriteVisitor;
-    private Dictionary<Koto, (BoundOrigin First, BoundOrigin Second, Koto Clause)>? principalOriginFailures;
 
     private static Koto? OriginOwner(Koto node)
     {

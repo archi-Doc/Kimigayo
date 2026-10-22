@@ -382,38 +382,24 @@ public class LocalOriginClauseTest
     }
 
     [Theory]
-    // Incomparable lower bounds have no principal solution; the local declaration needs an annotation.
-    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n", nameof(DiagnosticCode.MissingOriginBinding_Kd), "let h: C{x} = h0@move")]
-    public void IncomparableContravariantBoundsRequireAnAnnotation(string body, string code, string at)
-    {
-        var source = body + Main;
-        var output = DiagnosticCorpus.Check(source);
-        var error = Assert.Single(output.Diagnostics);
-        Assert.Equal((code, at), (error.Code, Text(source, error.Span)));
-        Assert.Contains(error.Reason!, x => x.Value.Contains("neither", StringComparison.Ordinal));
-        Assert.Contains(error.Reason!, x => x.Value.Contains("outlive", StringComparison.Ordinal));
-        Assert.Contains(error.Related!, x => x.Role == "relation");
-        var console = new DiagnosticContractTest.DiagnosticConsole();
-        new Kimigayo(console).Render(new DiagnosticResult(output.Diagnostics, output.Sources), string.Empty);
-        Assert.Contains("neither a nor b is proven to outlive the other lower bound", console.Text, StringComparison.Ordinal);
-        var identity = SourceIdentity.FromPath(output.Sources[error.Source].Path);
-        var lsp = Assert.Single(WorkspaceCheck.Place(output, [identity], identity, true)[identity]);
-        Assert.Equal((error.Code, error.Display!.Range), (lsp.Code, lsp.Range));
-        Assert.Contains("neither a nor b", lsp.Message, StringComparison.Ordinal);
-    }
+    // Incomparable lower bounds have no principal solution: the slot has no candidate, so it is a local region of the body (SPEC 15.3.6),
+    // whose bounds hold, since no value flows into it (DECISIONS R4-M112).
+    [InlineData(Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n")]
+    public void IncomparableContravariantBoundsMakeALocalRegion(string body)
+        => Assert.Empty(DiagnosticCorpus.Check(body + Main).Diagnostics);
 
     [Theory]
     [InlineData(true)]
     [InlineData(false)]
     [Trait("Purpose", "Allocation")]
-    public void ContravariantBoundSuccessAndFailureReuseStorage(bool proven)
+    public void ContravariantBoundPrincipalAndRegionReuseStorage(bool proven)
     {
         var source = Callback + "func f(a: ref/i32, b: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n" +
             (proven ? "    origin b outlives a\n" : string.Empty) +
             "    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return 0\n" + Main;
         var c = CompilationTestHelper.Parse(source);
         var valid = true;
-        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete == proven));
+        Assert.Equal(0, AllocationMeasurement.Measure(() => valid &= c.Bind().IsComplete));
         Assert.True(valid);
     }
 

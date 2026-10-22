@@ -436,13 +436,12 @@ public class PairFollowTest
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
-    // SPEC 15.4.4: an omitted Origin that nothing constrains is not invented; the local is rejected.
+    // SPEC 15.3.6: an omitted Origin that nothing constrains has no candidate; in a body it is a local region, never invented as static.
     [Fact]
-    public void UnconstrainedQualifierOriginIsRejected()
+    public void UnconstrainedQualifierOriginIsALocalRegion()
     {
         var c = MinimalEmissionTest.Analyze(Collection + "public func main()\n    let refs = Collection<ref/Node>.init([])\n    let n = refs.indices.length");
-        Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
-        Assert.Contains(DiagnosticCode.UnprovenConstraint_Kd, Codes(c));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
     [Theory]

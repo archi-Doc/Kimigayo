@@ -51,7 +51,8 @@ public sealed partial class OwnershipAnalysis
     // SPEC 15.6.1: every obligation receives one verdict once Binding is final (PLAN G74 U4), and every Origin obligation that
     // remains unchecked is its own record, reported without adding constraints, so an unchecked obligation leaves the analysis
     // unverified. A failed Origin relation leaves the Loan, destruction and result checks to proceed without it; any other unchecked
-    // obligation, such as an unsolved inference, stops the analysis.
+    // obligation, such as an unverified length obligation, stops the analysis (a local's inference variables are resolved by Binding,
+    // DECISIONS R4-M112).
     private bool ReportUnprovenOriginObligations()
     {
         var obligations = this.compilation.Binding.Obligations;

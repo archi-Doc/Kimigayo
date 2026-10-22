@@ -843,14 +843,6 @@ public sealed partial class Binding
         {
             // SPEC 8.1.2: a pair occurrence's Language cause, at the occurrence.
         }
-        else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.principalOriginFailures?.TryGetValue(issue.Node, out var principal) == true)
-        {
-            issue.Node.Report(
-                requirement,
-                issue.Code,
-                evidence: [$"neither {OriginDisplay(principal.First, issue.Node)} nor {OriginDisplay(principal.Second, issue.Node)} is proven to outlive the other lower bound"],
-                related: [("relation", principal.Clause, "lower bound of the inferred Origin")]);
-        }
         else if (issue.Code == DiagnosticCode.MissingOriginBinding_Kd && this.perCallSlots?.TryGetValue(issue.Node, out var perCall) == true)
         {
             ReportPerCallSlot(issue.Node, perCall, requirement, issue.Code);

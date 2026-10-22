@@ -245,10 +245,15 @@ public sealed partial class Binding
             return this.OpenOrigin(use, aggregateSlot, localInput: true);
         }
 
-        if (context.Position == TypePosition.Local && context.Owner is VariableKoto { InitializerKoto: not null })
+        if (context.Position == TypePosition.Local && context.Owner is VariableKoto { InitializerKoto: { } initializer } local)
         {
             var origin = this.OriginAtom(use, OriginKind.Inference, aggregateSlot);
             this.AddObligation(new(BindingObligationKind.OriginInference, use, BindingDeadline.BodyOrigins, Longer: origin));
+            if (IsWithin(use, initializer))
+            {
+                _ = this.InitializerDeclaration(local); // It resolves the Origin when the initializer is bound (ResolveInitializerOrigins).
+            }
+
             return origin;
         }
 

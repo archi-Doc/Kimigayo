@@ -3023,6 +3023,53 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
+- **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; unit 2a0-3b under R4-M94's package,
+  2a0-D §5.2 and D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under the R4 planning session's redo
+  rulings R1–R3; round 1 never landed, so this entry supersedes nothing on dev; one BU review, DEC Q6 form 1)
+  - Rule (SPEC 15.3.6, 15.4.4, 15.6.5): a variable whose row has no candidate is a local region of the body, whose later bounds are
+    recorded and judged. One representation: `LocalRegionSlot(local, slot)`, the one mutable locals use, so `RecordLocalRegionBound`
+    records later stores into it and the old reporter (A5 from 2a-1a) judges chains through its sources. Every `OriginInference`
+    obligation belongs to a local (`TypePosition.Local`), and each of its omitted Origins is resolved by one of its two declarations
+    before a later statement reads its Type: (a, R1) `ResolveInitializerOrigins` gives an initializer's omitted Origin whose bounds reach
+    nothing but its own variables (none, or a cycle among them) the region, in or outside the local's Type, in `let` and `var` locals; it
+    runs for every local whose initializer formed one (the initializer declaration is created with it: the reviewer's H holds, no new
+    field); (b, R2) `SolveLocalBounds` keeps the monotone principal search and, after all passes, gives a contravariant slot whose
+    candidate is not proven to outlive each lower bound the region (order-independent); (c, R3) a written slot that `InferLocalOrigins`
+    binds to itself gets the region. One count per local numbers the slots (`BindVariableCore`: initializer variables, then the Type's).
+    B1's hole cannot recur: no `Inference` atom of a local stays unresolved, and `IsVerifiedOriginObligation` is unchanged.
+  - Deleted: `JudgeLocalClause`'s principal branch (unreachable), `principalOriginFailures` and its report branch in `Binding.cs`. The old
+    reporter's stop is no longer reached by a local's variables; its code stays for other unchecked obligations (N3's comment corrected).
+  - Sites without a local (BU's N2): a call qualifier in an expression statement or a `return`, a default-argument template, a Field
+    initializer keep `MissingOriginBinding_Kd` (pre-existing; PLAN G10 records them as valid forms with a Language error).
+  - PLAN G225 (site (c)'s unsound acceptance on dev) is closed by R3.
+  - Census (BU's probes and the unit's on both pipelines, which agree on every probe; the Functional suite; the diagnostic snapshot,
+    0 differences; no library or milestone verdict change): newly rejected, each invalid by SPEC 15.6.5 (a call-local borrow stored
+    into a `var` capture's region outlives the call): c3 (G225, accepted on dev), and c2, c5, c6, c6b, c9, u3, h1 with
+    `ComparisonLoanConflict_Kd` instead of `UnprovenConstraint_Kd`; invalid programs keep their other records without
+    `UnprovenConstraint_Kd` (u1, u2, u4, u9, u12, m5, h4) or get their row records instead of `MissingOriginBinding_Kd` (i1–i4, k1,
+    s-noprincipal-c-err) or the located `Unsupported_Kd` (c4, m1, m2); newly accepted and valid: s-none, u8, u11, x1–x4, v1, v2, v6, w1,
+    w6, incomparable, s-noprincipal-c, u5 (and u6's `Unsupported_Kd` leaves; its `InvalidAssignment_Kd` stays). o4/o5 keep dev's one
+    record at `local@ref`; o6, g1, g2, s2, u10, the S3 demo and s-vars are unchanged.
+  - Found by the census, pre-existing and outside this cause: h2 (a `let` whose two qualifier slots are bound to each other, captured
+    `[var o@move]` by a Closure that assigns it a call-local borrow) becomes accepted, as dev already accepts the `var` forms h3 and h5:
+    SPEC 15.6.5's fixed capture Origins in a Closure body are not represented (PLAN G65's environment Origins); a later read is the
+    `ComparisonLoanConflict_Kd` it is for `var` (h2b, h5b). v3, w3 and w4 (a `let` initialized through `Option<…>.Some(…)` whose payload
+    a `match` `var` binding extends) stay rejected, now with `ComparisonLoanConflict_Kd` at the initializer, as dev rejects w5, their
+    bounded form: the old analysis's retention through a region's equality bounds.
+  - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
+    for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
+    (R4-M4) needs the row; it goes with the old reporter at R6-check.
+  - Ledger (mir Functional with `KIMI_MIR_DIFF`, base b26710690 and head): rows 2,953 -> 2,958, open blocking 180 -> 182: c8c1f3f534b0's
+    `UnprovenConstraint_Kd` row leaves; the new tests add three `both` `ComparisonLoanConflict_Kd` rows (the capture stores) and three
+    old-only A5 rows, open (b) until F4 lands (`a5-old-origins`): the o4/o5 pair's `UnsatisfiedOriginRelation_Kd` and the clause's
+    `UnprovenOriginRelation_Kd`.
+  - Structure: `Binding.OriginDeclarations.cs` (5,781 tokens, over the 5,000 limit) is split first, behavior-preserving: a local's omitted
+    Origins move to `Binding.LocalOrigins.cs`. PD21 as ruled in round 1: in-place re-expectations in `LocalOriginClauseTest.cs` and
+    `PairFollowTest.cs`; new tests in `LocalRegionInferenceTest.cs` (2 → 3).
+  - BU's review of 2a0-4: N2 and N6 are taken here.
+  - Rejected: verifying an unbound inference without the region (round 1, B1); choosing the region at the first incomparable pair
+    (round 1, B2); resolving the variables at the body's deadline (later uses already read the local's Type); one enumeration of the
+    local's Type only (misses an initializer's Origin outside it, x1).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

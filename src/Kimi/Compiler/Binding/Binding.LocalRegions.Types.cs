@@ -124,14 +124,14 @@ public sealed partial class Binding
         return false;
     }
 
-    private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value)
+    // `slot` is the local's next region slot (BindVariableCore).
+    private BoundType LocalBorrowType(BoundType type, VariableKoto owner, Koto value, int slot)
     {
         if (!IsMutableDeclaration(owner) || !type.CarriesOrigin)
         {
             return type;
         }
 
-        var slot = -1;
         var result = Open(type);
         _ = this.CheckTypeUse(type, result, value);
         return result;
