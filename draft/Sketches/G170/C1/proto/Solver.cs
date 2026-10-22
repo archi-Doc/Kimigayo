@@ -1033,7 +1033,7 @@ public sealed class Solver
         c = this.g.Find(c);
         if (!this.virtualHeadsOf.TryGetValue(c, out var result))
         {
-            this.virtualHeadsOf[c] = result = this.VirtualHeads(this.HeadsOf(c));
+            this.virtualHeadsOf[c] = result = this.RefHead(c) is null ? this.VirtualHeads(this.HeadsOf(c)) : new(); // D5: no row gives a reference class a node
         }
 
         return result;
@@ -1214,7 +1214,11 @@ public sealed class Solver
     private HashSet<HeadKey> KidShapes(int c)
     {
         var heads = this.HeadsOf(c);
-        heads.UnionWith(this.VirtualHeads(heads));
+        if (this.RefHead(c) is null)
+        {
+            heads.UnionWith(this.VirtualHeads(heads));
+        }
+
         return heads;
     }
 
@@ -1695,9 +1699,9 @@ public sealed class Solver
 
         ctx.Visit(c);
         ctx.Visit(other);
-        if (!this.MayGain(c) && !this.MayGain(other))
+        if (!Equals(this.RefHead(c), this.RefHead(other)) || (!this.MayGain(c) && !this.MayGain(other)))
         {
-            return; // neither class can gain a node: they never become one class
+            return; // a reference class and a Type class, or references of two declarations (D5), or neither can gain a node: never one
         }
 
         var key = (Math.Min(c, other), Math.Max(c, other));
@@ -1802,23 +1806,23 @@ public sealed class Solver
         {
             // b's promises first; a's lookup is filtered by the heads b's kid classes can have (rule 3: a class-derived filter; a
             // position where some promise of b is wild admits any), as 152dda62's per-node kid filters did.
-            var gb = this.GroupBy(this.Virtuals(b, h, ctx), h);
-            if (gb.List.Count == 0)
+            var ib = this.IndexBy(this.Virtuals(b, h, ctx), h);
+            if (ib.All.Count == 0)
             {
                 continue;
             }
 
-            var ga = this.GroupBy(this.Virtuals(a, h, ctx, this.Admits(gb, 0), this.Admits(gb, 1)), h);
-            if (ga.List.Count == 0)
+            var ia = this.IndexBy(this.Virtuals(a, h, ctx, this.Admits(ib, 0), this.Admits(ib, 1)), h);
+            if (ia.All.Count == 0)
             {
                 continue;
             }
 
             for (var i = 0; i < h.Arity; i++)
             {
-                foreach (var ca in ga.Classed[i].Keys)
+                foreach (var ca in ia.Classed[i].Keys)
                 {
-                    foreach (var cb in gb.Classed[i].Keys)
+                    foreach (var cb in ib.Classed[i].Keys)
                     {
                         this.work++;
                         if (ca != cb)
@@ -1829,13 +1833,13 @@ public sealed class Solver
                 }
             }
 
-            this.Partners(ga, gb, ctx);
-            this.Partners(gb, ga, ctx);
+            this.Partners(ia, ib, ctx);
+            this.Partners(ib, ia, ctx);
         }
     }
 
-    // The heads the other side's kids at position i can have: null (any) when i is beyond the arity or some group is wild there.
-    private HashSet<HeadKey>? Admits(Groups g, int i)
+    // The heads the other side's kids at position i can have: null (any) when i is beyond the arity or some promise is wild there.
+    private HashSet<HeadKey>? Admits(PromiseIndex g, int i)
     {
         if (i >= g.Wild.Length || g.Wild[i].Count != 0)
         {
@@ -1851,9 +1855,10 @@ public sealed class Solver
         return heads.Contains(HeadKey.Any) ? null : heads;
     }
 
-    private Groups GroupBy(List<Promise> promises, HeadKey h)
+    // The promises of one class at one head, indexed per kid position by class (a shape variable or node is wild there).
+    private PromiseIndex IndexBy(List<Promise> promises, HeadKey h)
     {
-        var groups = new Groups(h.Arity);
+        var index = new PromiseIndex(h.Arity);
         foreach (var p in promises)
         {
             if (p.Key.IsAny)
@@ -1862,105 +1867,67 @@ public sealed class Solver
             }
 
             this.work++;
-            var key = new int[h.Arity];
-            var vars = new int[h.Arity];
-            var nodes = new Head?[h.Arity];
+            var vector = new int[h.Arity];
             var kids = p.Shape >= 0 ? ReadOnlySpan<int>.Empty : this.shapes.KidsOf(p.Shape);
             for (var i = 0; i < h.Arity; i++)
             {
-                var k = i < kids.Length ? kids[i] : int.MinValue; // a class-shaped promise: wild everywhere, no variables
-                key[i] = k == int.MinValue ? -1 : k;
-                vars[i] = k != int.MinValue && k < 0 && this.shapes.IsVar(k) ? this.shapes.VarIndex(k) : -1;
-                nodes[i] = k != int.MinValue && k < 0 && !this.shapes.IsVar(k) ? this.shapes.HeadOf(k) : null;
-            }
-
-            var gk = new IntArrayKey(key);
-            if (!groups.ByKey.TryGetValue(gk, out var group))
-            {
-                groups.ByKey[gk] = group = new Group(key, vars, nodes, this.shapes.VarCount(p.Shape));
-                groups.List.Add(group);
-                for (var i = 0; i < h.Arity; i++)
+                vector[i] = i < kids.Length && kids[i] >= 0 ? kids[i] : -1; // a class-shaped promise: wild everywhere
+                if (vector[i] >= 0)
                 {
-                    if (key[i] >= 0)
+                    if (!index.Classed[i].TryGetValue(vector[i], out var list))
                     {
-                        if (!groups.Classed[i].TryGetValue(key[i], out var list))
-                        {
-                            groups.Classed[i][key[i]] = list = new();
-                        }
+                        index.Classed[i][vector[i]] = list = new();
+                    }
 
-                        list.Add(group);
-                    }
-                    else
-                    {
-                        groups.Wild[i].Add(group);
-                    }
+                    list.Add(p);
+                }
+                else
+                {
+                    index.Wild[i].Add(p);
                 }
             }
 
-            group.Members.Add(p);
+            index.All.Add((p, vector));
         }
 
-        return groups;
+        return index;
     }
 
-    // Each group of `from` against its fully agreeing partner groups of `to`: the binding tuple per partner, its needs, the meets a
-    // repeated variable issues; chains forward once per promise.
-    private void Partners(Groups from, Groups to, MatchCtx ctx)
+    // Each promise of `from` against its partners in `to`: the promises classed as it is or wild at each of its classed positions
+    // (the smallest list is iterated, ties by the lowest position), each pair agreed once (rule 2, at every depth): meets, or the
+    // bindings its shape variables take and the heads they met; chains forward once per promise with a partner.
+    private void Partners(PromiseIndex from, PromiseIndex to, MatchCtx ctx)
     {
-        foreach (var u in from.List)
+        foreach (var (u, vector) in from.All)
         {
             var best = -1;
-            foreach (var i in u.ClassedPositions())
+            var size = int.MaxValue;
+            for (var i = 0; i < vector.Length; i++)
             {
-                var size = (to.Classed[i].TryGetValue(u.Key[i], out var l) ? l.Count : 0) + to.Wild[i].Count;
-                if (best < 0 || size < (to.Classed[best].TryGetValue(u.Key[best], out var lb) ? lb.Count : 0) + to.Wild[best].Count)
+                if (vector[i] >= 0)
                 {
-                    best = i;
+                    var n = (to.Classed[i].TryGetValue(vector[i], out var l) ? l.Count : 0) + to.Wild[i].Count;
+                    if (n < size)
+                    {
+                        (best, size) = (i, n);
+                    }
                 }
             }
 
-            IEnumerable<Group> candidates = best < 0 ? to.List : (to.Classed[best].TryGetValue(u.Key[best], out var lc) ? lc : []).Concat(to.Wild[best]);
+            var candidates = best < 0 ? to.All.Select(x => x.Promise) : (to.Classed[best].TryGetValue(vector[best], out var lc) ? lc : []).Concat(to.Wild[best]);
             var any = false;
-            foreach (var g in candidates)
+            foreach (var w in candidates)
             {
                 this.work++;
-                if (!u.Agrees(g))
+                var bindU = new int?[this.shapes.VarCount(u.Shape)];
+                var bindW = new int?[this.shapes.VarCount(w.Shape)];
+                var needs = new Dictionary<int, Head>();
+                var meets = new List<(int, int)>();
+                if (!this.Agree(u.Shape, bindU, w.Shape, bindW, meets, needs))
                 {
                     continue;
                 }
 
-                var tuple = new int?[u.VarCount];
-                var needs = new Dictionary<int, Head>();
-                var meets = new List<(int, int)>();
-                for (var i = 0; i < u.Vars.Length; i++)
-                {
-                    var n = u.Vars[i];
-                    if (n < 0)
-                    {
-                        continue;
-                    }
-
-                    if (g.Key[i] >= 0)
-                    {
-                        if (tuple[n] is int bound)
-                        {
-                            if (bound != g.Key[i])
-                            {
-                                meets.Add((bound, g.Key[i])); // a variable at two positions: the star from its first class
-                            }
-                        }
-                        else
-                        {
-                            tuple[n] = g.Key[i];
-                        }
-                    }
-                    else if (g.Nodes[i] is { } head)
-                    {
-                        needs[n] = head;
-                    }
-                }
-
-                this.work++;
                 if (meets.Count != 0)
                 {
                     foreach (var (x, y) in meets)
@@ -1972,20 +1939,14 @@ public sealed class Solver
                 }
 
                 any = true;
-                foreach (var p in u.Members)
-                {
-                    this.RequestRows(p, tuple, needs, ctx);
-                }
+                this.RequestRows(u, bindU, needs, ctx);
             }
 
             if (any)
             {
-                foreach (var p in u.Members)
+                foreach (var m in u.Chains)
                 {
-                    foreach (var m in p.Chains)
-                    {
-                        this.Forward(m, ctx);
-                    }
+                    this.Forward(m, ctx);
                 }
             }
         }
@@ -2428,6 +2389,11 @@ public sealed class Solver
         }
 
         var heads = new HashSet<HeadKey> { HeadKey.Of(kid) };
+        if (kid.Head is SymHead { Kind: SymKind.Ref })
+        {
+            return heads; // D5: a reference's class holds that reference only
+        }
+
         var result = this.VirtualHeads(heads);
         result.UnionWith(heads);
         return result;
@@ -2515,61 +2481,129 @@ public sealed class Solver
 
     // Matching modulo classes over the kid encoding (rule 2): a and b are classes (>= 0) or shapes; bindA and bindB the shape-variable
     // bindings being built; meets the kid classes that differ; needsA the heads a's shape variables met (the static prune). Only the
-    // top is matched by head; every kid by class; a kid that is not a Type yet is decided once built. False only when the tops' heads
-    // differ. Classes compare and bind through Find (a stored chain's base shape is a snapshot).
+    // top is matched by head: two shape nodes agree when their heads are equal and their kids agree by the kid rule; a class or a
+    // shape variable at the top is a kid against the other (a class-shaped promise matches every need at its class; a bare variable
+    // takes the class it meets). False when the tops' heads differ or a reference disagrees (D5). Classes compare and bind through
+    // Find (a stored chain's base shape is a snapshot).
     private bool Agree(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needsA)
     {
-        if (a >= 0 || b >= 0)
+        if (a >= 0 || b >= 0 || this.shapes.IsVar(a) || this.shapes.IsVar(b))
         {
-            this.Kid(a, bindA, b, bindB, meets, needsA);
-            return true;
-        }
-
-        if (this.shapes.IsVar(a) || this.shapes.IsVar(b))
-        {
-            this.Kid(a, bindA, b, bindB, meets, needsA);
-            return true;
+            return this.Kid(a, bindA, b, bindB, meets, needsA);
         }
 
         var ka = this.shapes.KidsOf(a);
         var kb = this.shapes.KidsOf(b);
-        if (!this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) || ka.Length != kb.Length)
+        return this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) && ka.Length == kb.Length && this.Kids(ka, bindA, kb, bindB, meets, needsA);
+    }
+
+    // The kid rule: two classes agree when equal and meet otherwise; a shape variable takes a class it meets (a second class: a meet)
+    // and records the head of a shape node it meets; anything else that is not a Type yet (a shape node against a class or a node,
+    // two shape variables) is deferred: no constraint, decided once built — except a Contract reference (D5: a reference is not a
+    // Type; SPEC 8.2.3 relates Types), which agrees only with the same reference head (a class holding it or a node of it), its
+    // arguments then by this rule, and never with a Type or another reference.
+    private bool Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needsA)
+    {
+        if (a >= 0 && b >= 0)
         {
+            var (x, y) = (this.g.Find(a), this.g.Find(b));
+            if (x == y)
+            {
+                return true;
+            }
+
+            if (!Equals(this.RefHead(x), this.RefHead(y)))
+            {
+                return false; // D5: a reference class and a Type class, or references of two declarations, are never one
+            }
+
+            meets.Add((x, y));
+            return true;
+        }
+
+        if (a >= 0 || b >= 0)
+        {
+            var (cls, shape, bind) = a >= 0 ? (a, b, bindB) : (b, a, bindA);
+            if (this.shapes.IsVar(shape))
+            {
+                this.Bind(shape, bind, cls, meets);
+                return true;
+            }
+
+            var head = this.shapes.HeadOf(shape);
+            var refHead = this.RefHead(this.g.Find(cls));
+            if (head is not SymHead { Kind: SymKind.Ref })
+            {
+                return refHead is null; // a Type-headed node: never a reference class (D5); otherwise decided once built
+            }
+
+            if (!head.Equals(refHead))
+            {
+                return false;
+            }
+
+            var kids = this.shapes.KidsOf(shape);
+            foreach (var node in this.g.NodesOf(cls))
+            {
+                if (this.g.HeadOf(node).Equals(head) && this.g.KidCount(node) == kids.Length)
+                {
+                    var nodeKids = new int[kids.Length];
+                    for (var i = 0; i < kids.Length; i++)
+                    {
+                        nodeKids[i] = this.g.KidOf(node, i);
+                    }
+
+                    return a >= 0 ? this.Kids(nodeKids, bindA, kids, bindB, meets, needsA) : this.Kids(kids, bindA, nodeKids, bindB, meets, needsA);
+                }
+            }
+
             return false;
         }
 
+        if (this.shapes.IsVar(a) || this.shapes.IsVar(b))
+        {
+            if (this.shapes.IsVar(a) && !this.shapes.IsVar(b))
+            {
+                needsA[this.shapes.VarIndex(a)] = this.shapes.HeadOf(b);
+            }
+
+            return true;
+        }
+
+        var (ha, hb) = (this.shapes.HeadOf(a), this.shapes.HeadOf(b));
+        if (ha is not SymHead { Kind: SymKind.Ref } && hb is not SymHead { Kind: SymKind.Ref })
+        {
+            return true; // two Type-headed nodes: decided once built
+        }
+
+        var ra = this.shapes.KidsOf(a);
+        var rb = this.shapes.KidsOf(b);
+        return ha.Equals(hb) && ra.Length == rb.Length && this.Kids(ra, bindA, rb, bindB, meets, needsA);
+    }
+
+    private bool Kids(ReadOnlySpan<int> ka, int?[] bindA, ReadOnlySpan<int> kb, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needsA)
+    {
         for (var i = 0; i < ka.Length; i++)
         {
-            this.Kid(ka[i], bindA, kb[i], bindB, meets, needsA);
+            if (!this.Kid(ka[i], bindA, kb[i], bindB, meets, needsA))
+            {
+                return false;
+            }
         }
 
         return true;
     }
 
-    // The kid rule: two classes agree when equal and meet otherwise; a shape variable takes a class it meets (a second class: a meet)
-    // and records the head of a shape node it meets; anything else (a node against a node or a class) is deferred.
-    private void Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needsA)
+    // D5: the Contract reference a class holds (null for a class of Types). A reference is not a Type (SPEC 8.2.3 relates Types): no
+    // identity row has a reference as a side, so a reference class holds references of one declaration only, merged by congruence.
+    private Head? RefHead(int c)
     {
-        if (a >= 0 && b >= 0)
+        foreach (var node in this.g.NodesOf(c))
         {
-            var (x, y) = (this.g.Find(a), this.g.Find(b));
-            if (x != y)
-            {
-                meets.Add((x, y));
-            }
+            return this.g.HeadOf(node) is SymHead { Kind: SymKind.Ref } head ? head : null;
         }
-        else if (a >= 0)
-        {
-            this.Bind(b, bindB, a, meets);
-        }
-        else if (b >= 0)
-        {
-            this.Bind(a, bindA, b, meets);
-        }
-        else if (this.shapes.IsVar(a) && !this.shapes.IsVar(b))
-        {
-            needsA[this.shapes.VarIndex(a)] = this.shapes.HeadOf(b);
-        }
+
+        return null;
     }
 
     private void Bind(int shape, int?[] bind, int cls, List<(int, int)> meets)
@@ -3596,14 +3630,14 @@ public sealed class Solver
 
     private readonly record struct LookupKey(int Class, HeadKey Need, IntArrayKey K0, IntArrayKey K1);
 
-    /// <summary>The promises of one class at one head grouped by class vector, with an index per position (class → groups) and
-    /// the wild groups per position.</summary>
-    private sealed class Groups
+    /// <summary>The promises of one class at one head with their class vectors, indexed per kid position (class → promises) with the
+    /// wild promises per position.</summary>
+    private sealed class PromiseIndex
     {
-        public Groups(int arity)
+        public PromiseIndex(int arity)
         {
-            this.Classed = new Dictionary<int, List<Group>>[arity];
-            this.Wild = new List<Group>[arity];
+            this.Classed = new Dictionary<int, List<Promise>>[arity];
+            this.Wild = new List<Promise>[arity];
             for (var i = 0; i < arity; i++)
             {
                 this.Classed[i] = new();
@@ -3611,60 +3645,11 @@ public sealed class Solver
             }
         }
 
-        public List<Group> List { get; } = new();
+        public List<(Promise Promise, int[] Vector)> All { get; } = new();
 
-        public Dictionary<IntArrayKey, Group> ByKey { get; } = new();
+        public Dictionary<int, List<Promise>>[] Classed { get; }
 
-        public Dictionary<int, List<Group>>[] Classed { get; }
-
-        public List<Group>[] Wild { get; }
-    }
-
-    /// <summary>A group: per position the class (or -1), the shape variable index (or -1) and the shape node's head (or null).</summary>
-    private sealed class Group
-    {
-        public Group(int[] key, int[] vars, Head?[] nodes, int varCount)
-        {
-            this.Key = key;
-            this.Vars = vars;
-            this.Nodes = nodes;
-            this.VarCount = varCount;
-        }
-
-        public int[] Key { get; }
-
-        public int[] Vars { get; }
-
-        public Head?[] Nodes { get; }
-
-        public int VarCount { get; }
-
-        public List<Promise> Members { get; } = new();
-
-        public IEnumerable<int> ClassedPositions()
-        {
-            for (var i = 0; i < this.Key.Length; i++)
-            {
-                if (this.Key[i] >= 0)
-                {
-                    yield return i;
-                }
-            }
-        }
-
-        /// <summary>Whether the other group is classed as this one is, or wild, at each of this one's classed positions.</summary>
-        public bool Agrees(Group g)
-        {
-            for (var i = 0; i < this.Key.Length; i++)
-            {
-                if (this.Key[i] >= 0 && g.Key[i] >= 0 && g.Key[i] != this.Key[i])
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
+        public List<Promise>[] Wild { get; }
     }
 
     /// <summary>An array of ids compared by content (a canonical key); a null array (default) is a filter that admits any head.</summary>
