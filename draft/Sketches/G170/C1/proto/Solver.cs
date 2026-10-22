@@ -144,6 +144,7 @@ public sealed class Solver
     private Dictionary<ContractDecl, List<int>> positiveIs = new();
     private Dictionary<ContractDecl, List<int>> factsOf = new();
     private HashSet<(int T, int Class, int Bind, Row Owner, byte Sign)> expansions = new();
+    private readonly Dictionary<(Promise Promise, int Pattern, byte Sign), (List<(int, int)> Meets, List<(Template T, int?[] Bind)> Rows)> expanded = new();
     private Dictionary<int, Dictionary<int, Promise>> chains = new();
     private ShapeTable shapes = new();
     private Dictionary<(int Class, HeadKey Need), NeedRow> needs = new();
@@ -560,6 +561,7 @@ public sealed class Solver
         this.positiveIs = new();
         this.factsOf = new();
         this.expansions = new();
+        this.expanded.Clear();
         this.chains = new();
         this.shapes = new();
         this.needs = new();
@@ -904,7 +906,8 @@ public sealed class Solver
     private Effects Compute(byte active)
     {
         var fx = new Effects();
-        this.roundMemo.Clear(); // promises are a function of the round's starting state
+        this.roundMemo.Clear(); // promises and their expansions are a function of the round's starting state
+        this.expanded.Clear();
         this.virtualHeadsOf.Clear();
         this.shapes.Forget();
         this.mayGain.Clear();
@@ -1908,7 +1911,7 @@ public sealed class Solver
                 }
 
                 any = true;
-                this.RequestRows(u, bindU, needs, ctx);
+                this.RequestRows(u, this.BoundRows(u, bindU, needs), ctx);
             }
 
             if (any)
@@ -1974,7 +1977,7 @@ public sealed class Solver
             var kid1 = this.g.KidCount(node) > 1 ? this.KidShapes(this.g.KidOf(node, 1)) : null;
             foreach (var p in this.Virtuals(withVirtual, new(this.g.HeadOf(node), this.g.KidCount(node)), ctx, kid0, kid1))
             {
-                this.Expand(p, p.Shape < 0 && this.shapes.IsVar(p.Shape) ? this.g.Find(other) : this.shapes.OfNode(node, this.g), [], ctx);
+                this.Expand(p, p.Shape < 0 && this.shapes.IsVar(p.Shape) ? this.g.Find(other) : this.shapes.OfNode(node, this.g), ctx);
             }
         }
     }
@@ -2330,12 +2333,10 @@ public sealed class Solver
             return;
         }
 
-        var varOf = new List<int>();
-        var pattern = this.shapes.Of(p, beta, varOf, this.g);
-        var bind = new int?[varOf.Count];
+        var pattern = this.shapes.Of(p, beta, new List<int>(), this.g);
         foreach (var w in promises)
         {
-            this.Expand(w, pattern, bind, ctx);
+            this.Expand(w, pattern, ctx);
         }
     }
 
@@ -2371,40 +2372,49 @@ public sealed class Solver
     // meet first (their merge wakes the requester, which matches again); otherwise every direct member's row is requested on behalf
     // of the requester. Chain members forward to their base whatever the pattern (the base must fire before the chained side can
     // match), as 152dda62's chains did. An alias is requested without agreement.
-    private void Expand(Promise w, int pattern, int?[] bindP, MatchCtx ctx)
+    private void Expand(Promise w, int pattern, MatchCtx ctx)
     {
         foreach (var m in w.Chains)
         {
             this.Forward(m, ctx);
         }
 
-        this.ExpandRows(w, pattern, bindP, ctx);
+        this.ExpandRows(w, pattern, ctx);
     }
 
-    // The agreement and the direct members' requests (a promise's own rows).
-    private void ExpandRows(Promise w, int pattern, int?[] bindP, MatchCtx ctx)
+    // The agreement and the direct members' requests (a promise's own rows): a function of (promise, pattern, sign) and the round's
+    // state, answered once per round and replayed for later requesters (D2 under D1's owned rows): the kid meetings it issues and
+    // the rows it requests are the same for every requester, which joins the meeting rows and the subscriptions (once per requester
+    // across rounds: expansions). J counts the expansion and its rows once.
+    private void ExpandRows(Promise w, int pattern, MatchCtx ctx)
     {
-        this.work++;
-        var shape = this.shapes.Canon(w.Shape, this.g);
-        var bindW = new int?[this.shapes.VarCount(shape)];
-        var needs = new Dictionary<int, Head>();
-        var meets = new List<(int, int)>();
-        if (!this.IsAlias(w) && !this.Agree(shape, bindW, pattern, (int?[])bindP.Clone(), meets, needs))
+        var key = (w, pattern, ctx.Sign);
+        if (!this.expanded.TryGetValue(key, out var entry))
         {
-            return;
-        }
-
-        if (meets.Count != 0)
-        {
-            foreach (var (a, b) in meets)
+            this.work++;
+            var shape = this.shapes.Canon(w.Shape, this.g);
+            var bindW = new int?[this.shapes.VarCount(shape)];
+            var needs = new Dictionary<int, Head>();
+            var meets = new List<(int, int)>();
+            var rows = new List<(Template T, int?[] Bind)>();
+            if (!this.IsAlias(w) && !this.Agree(shape, bindW, pattern, new int?[this.shapes.VarCount(pattern)], meets, needs))
             {
-                this.Meet(a, b, ctx);
+                meets.Clear();
+            }
+            else if (meets.Count == 0)
+            {
+                rows.AddRange(this.BoundRows(w, bindW, needs));
             }
 
-            return;
+            this.expanded[key] = entry = (meets, rows);
         }
 
-        this.RequestRows(w, bindW, needs, ctx);
+        foreach (var (a, b) in entry.Meets)
+        {
+            this.Meet(a, b, ctx);
+        }
+
+        this.RequestRows(w, entry.Rows, ctx);
     }
 
     // A chain forwards to its base's rows: the round's promise at the base's (class, shape) (rule 1: chains forward to records; the
@@ -2419,9 +2429,7 @@ public sealed class Solver
         {
             if (via.Shape == shape)
             {
-                var varOf = new List<int>();
-                var pattern = this.shapes.Of(m.Pattern, m.ViaBeta, varOf, this.g);
-                this.ExpandRows(via, pattern, new int?[varOf.Count], ctx);
+                this.ExpandRows(via, this.shapes.Of(m.Pattern, m.ViaBeta, new List<int>(), this.g), ctx);
             }
         }
     }
@@ -2441,10 +2449,9 @@ public sealed class Solver
         return i < kids.Length && kids[i] >= 0 ? this.KidShapes(kids[i]) : null;
     }
 
-    // An agreed promise's direct members: each row is requested with its bindings and the shape variables agreement bound (unless no
-    // fact of its antecedent Contract can have the head a free variable met: the static prune on the position index), once per
-    // (row, class, bindings, requester, sign).
-    private void RequestRows(Promise w, int?[] bindW, Dictionary<int, Head> needs, MatchCtx ctx)
+    // An agreed promise's direct members with their bindings: the row's bindings plus the shape variables the agreement bound, unless
+    // no fact of its antecedent Contract can have the head a free variable met (the static prune on the position index).
+    private IEnumerable<(Template T, int?[] Bind)> BoundRows(Promise w, int?[] bindW, Dictionary<int, Head> needs)
     {
         foreach (var d in w.Rows)
         {
@@ -2463,10 +2470,19 @@ public sealed class Solver
                 continue;
             }
 
-            var key = (d.E.T.Id, this.g.Find(w.Class), this.shapes.Tuple(bind, this.g), ctx.Owner!, ctx.Sign);
+            yield return (d.E.T, bind);
+        }
+    }
+
+    // The rows are requested on behalf of the requester, once per (row, class, bindings, requester, sign).
+    private void RequestRows(Promise w, IEnumerable<(Template T, int?[] Bind)> rows, MatchCtx ctx)
+    {
+        foreach (var (t, bind) in rows)
+        {
+            var key = (t.Id, this.g.Find(w.Class), this.shapes.Tuple(bind, this.g), ctx.Owner!, ctx.Sign);
             if (this.expansions.Add(key))
             {
-                this.Request(d.E.T, bind, ctx.Tags, ctx.Sign, ctx.Owner!, ctx.Fx!);
+                this.Request(t, bind, ctx.Tags, ctx.Sign, ctx.Owner!, ctx.Fx!);
             }
         }
     }
