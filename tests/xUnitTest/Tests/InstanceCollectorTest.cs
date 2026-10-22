@@ -1042,8 +1042,8 @@ public sealed class InstanceCollectorTest
     }
 
     // SPEC 8.10 (DECISIONS R5-M102): an owner Callable call whose callee borrows its environment destroys the operand after the call, so the
-    // operand Type's glue is the call's second target, after the body; a Consuming body destroys it itself, and a call through a borrow
-    // transfers nothing, so neither has one.
+    // operand Type's glue is the call's second target, after the body; a common Function value, whose entries borrow, has the glue as its one
+    // target; a Consuming body destroys it itself, and a call through a borrow transfers nothing, so neither has one.
     [Fact]
     public void AnOwnerCallOfABorrowingCalleeTargetsItsOperandsGlue()
     {
@@ -1051,16 +1051,17 @@ public sealed class InstanceCollectorTest
             "func lend<F>(action: ref/F) -> i32\n    F is Callable<() -> i32>\n    return action()\nfunc take(s: string) -> i32 => 2\n" +
             "func host(a: string, b: string, c: string) -> i32\n    let shared = func [a@move] () -> i32 => 1\n" +
             "    let consuming = func [b@move] () -> i32 => take(b@move)\n    let lent = func [c@move] () -> i32 => 3\n" +
-            "    return invoke(shared@move) + invoke(consuming@move) + lend(lent@ref)\n");
+            "    return invoke(shared@move) + invoke(consuming@move) + lend(lent@ref)\nfunc erased(f: () -> i32) -> i32 => invoke(f@move)\n");
         var calls = Enumerable.Range(0, set.Items.Length).Where(x => Label(program, set.Items[x]).StartsWith("Fn invoke", StringComparison.Ordinal) ||
             Label(program, set.Items[x]).StartsWith("Fn lend", StringComparison.Ordinal)).Select(x => AtValueCall(x)).Order(StringComparer.Ordinal).ToArray();
-        Assert.Equal(["Closure host", "Closure host", "Closure host|DropGlue closure () -> i32"], calls);
+        Assert.Equal(["Closure host", "Closure host", "Closure host|DropGlue closure () -> i32", "DropGlue () -> i32"], calls);
 
         // The labels of an item's targets at its one Value call, joined.
         string AtValueCall(int item)
         {
             var body = program.Bodies[set.Items[item].BodyOrdinal];
-            var block = Enumerable.Range(0, body.Blocks.Length).Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
+            var block = Enumerable.Range(0, body.Blocks.Length)
+                .Single(x => body.Blocks[x].Terminator is { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value });
             return string.Join("|", set.Targets(item).ToArray().Where(x => x.At == new MirLocation(block, body.Blocks[block].Count))
                 .Select(x => Label(program, set.Items[x.Item])));
         }

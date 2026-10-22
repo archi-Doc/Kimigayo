@@ -6056,8 +6056,8 @@ structure is recorded here by the unit that first implements it.
     target per site" becomes "one target per site, plus the operand glue at a borrowing-callee owner Value call".
   - Departure (for the owner's departures list), confirmed by the owner (R5-M103): the plan row's PD19 clause (8 bytes or less inline), its
     inline-environment requirement test and `ContextualClosureTest` "Object" through E12 move to C5b ("Object" also needs C6a and C6b),
-    since a concrete environment never allocates; C5a's own requirement test is that a 32-byte and an 8-byte drop-needing environment
-    allocate nothing. E12's native half lands with C7b (within R5-M85).
+    since a concrete environment never allocates; C5a's own requirement test is that a 48-byte environment holding a string, a 4-byte
+    drop-needing one and an empty one allocate nothing. E12's native half lands with C7b (within R5-M85).
   - Rulings: `DropGlue.cs`'s due restructure is a keep (one responsibility in 156 lines; a split would be mechanical, as R5-M92's
     `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it. Restructured first, behavior unchanged:
     ModuleCodegen's item signatures in `ModuleCodegen.Signatures.cs`.

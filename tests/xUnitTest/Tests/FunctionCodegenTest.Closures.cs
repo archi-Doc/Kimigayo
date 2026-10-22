@@ -13,8 +13,8 @@ namespace XunitTest;
 public sealed partial class FunctionCodegenTest
 {
     // A Library's Closures (SPEC 7.7.2-7.7.4; DECISIONS R5-M102): captures by value and by reference in a wide environment, a drop-needing
-    // one of eight bytes and none; Shared, Exclusive and Consuming calls; a function item constant called; a common Function value called
-    // through a borrow with a string argument.
+    // one of four bytes and none, a bare capture of a uniq binding; Shared, Exclusive and Consuming calls; a function item constant called; a
+    // common Function value called through a borrow with a string argument.
     private const string Closures =
         "struct Guard\n    public let id: i32 = 1\n    drop => ()\nfunc take(s: string) -> i64 => 1\nfunc add(a: i32, b: i32) -> i32 => a + b\n" +
         "func wide(a: i8, b: i64, s: string) -> i64\n    let n: i64 = 3\n    let f = func [a, b, s@move, n@ref] () -> i64 => b + n@follow\n" +
@@ -22,7 +22,15 @@ public sealed partial class FunctionCodegenTest
         "func empty() -> i32\n    let f = func [] () -> i32 => 4\n    return f()\nfunc counter() -> i32\n    var n: i32 = 0\n" +
         "    var f = func [var n] () -> i32\n        n += 1\n        return n\n    return f@uniq()\nfunc consume(s: string) -> i64\n" +
         "    let f = func [s@move] () -> i64 => take(s@move)\n    return f@move()\nfunc item() -> i32\n    let g = add\n    return g(1, 2)\n" +
-        "func erased(f: ref/((ref/string) -> i32), s: ref/string) -> i32 => f(s)\n";
+        "func erased(f: ref/((ref/string) -> i32), s: ref/string) -> i32 => f(s)\n" +
+        "func reborrow(v: uniq/i32) -> i32\n    let f = func [v] () -> i32 => v@follow\n    return f()\n";
+
+    // SPEC 7.7.4 (DECISIONS R5-M102): a requirement Item of an Equatable Type parameter, called in the instance of a struct.
+    private const string Requirement =
+        "struct Box\n    Self is Equatable\n    public var v: i32\n    public init(v: i32) => self.v = v\n" +
+        "    public func equals(self: ref/Self, other: ref/Self) -> bool => self.v == other.v\n" +
+        "func same<T>(a: ref/T, b: ref/T) -> bool\n    T is Equatable\n    let f = T.equals\n    return f(a, b)\n" +
+        "func host(a: ref/Box, b: ref/Box) -> bool => same(a, b)\n";
 
     // SPEC 8.10 (DECISIONS R5-M102): an owner Callable call of a Shared Closure body borrows the transferred value and destroys it after the
     // call; of a Consuming one, the body destroys it.
@@ -58,20 +66,23 @@ public sealed partial class FunctionCodegenTest
         => ScalarEmissionTest.EmitFixture(name, source, stdout);
 
     // IMPL 21.1.2 (DECISIONS R5-M102: C5a's inline-environment requirement): a Closure's environment is the Closure value, each capture at its
-    // Field offset in the Place's own storage, at every size; forming it allocates nothing, a 48-byte, an 8-byte drop-needing and an empty
-    // environment alike: a scalar, a string's record and a borrow's pointer stored, a value in memory copied; an empty one has no storage.
+    // Field offset in the Place's own storage, at every size; forming it allocates nothing, a 48-byte one holding a string (so it needs a
+    // drop), a 4-byte drop-needing one and an empty one alike: a scalar, a string's record and a borrow's pointer stored, a value in memory
+    // copied; an empty one has no storage.
     [Fact]
     public void AClosureEnvironmentIsItsValueAtEverySize()
     {
         var c = Analyze(Closures, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
-        var (wide, guarded, empty) = (Assert.Single(FunctionsOf(ir, c, "wide")), Assert.Single(FunctionsOf(ir, c, "guarded")), Assert.Single(FunctionsOf(ir, c, "empty")));
+        var (wide, guarded, empty) = (Assert.Single(FunctionsOf(ir, c, "wide")), Assert.Single(FunctionsOf(ir, c, "guarded")),
+            Assert.Single(FunctionsOf(ir, c, "empty")));
         Assert.All(new[] { wide, guarded, empty }, x => Assert.DoesNotContain(ir.Function("__kimi_alloc"), CalleesOf(x)));
         var environment = Assert.Single(wide.Blocks[0].Instructions, static x => x.Shape == "alloca { [0 x i64], [48 x i8] }, align 8");
         Assert.Equal(
             ["store %kimi.string %, ptr %, align 8", "store i64 %, ptr %, align 8", "store i8 %, ptr %, align 1", "store ptr %, ptr %, align 8"],
             wide.Instructions.Where(x => x.Opcode == "store" && (x.Operands[^1] == environment ||
-                (x.Operands[^1].Opcode == "getelementptr" && x.Operands[^1].Operands[0] == environment))).Select(static x => x.Shape).Order(StringComparer.Ordinal));
+                (x.Operands[^1].Opcode == "getelementptr" && x.Operands[^1].Operands[0] == environment)))
+                .Select(static x => x.Shape).Order(StringComparer.Ordinal));
         var held = Assert.Single(guarded.Blocks[0].Instructions, static x => x.Shape == "alloca { [0 x i32], [4 x i8] }, align 4");
         Assert.Contains(CallsOf(guarded), x => x.Shape == "call void @(ptr align 4 %, ptr align 4 %, i64 4, i1 false)" && x.Operands[0] == held);
         Assert.DoesNotContain(empty.Blocks[0].Instructions, static x => x.Shape.StartsWith("alloca {", StringComparison.Ordinal));
@@ -113,12 +124,43 @@ public sealed partial class FunctionCodegenTest
         Assert.Null(call.Callee);
         Assert.Matches(@"^call i32 %\(i64 %, ptr noundef nonnull align 8 dereferenceable\(24\) %, ptr %, ptr @, i64 \d+\)$", call.Shape);
         var (entry, word, context) = (call.Operands[0], call.Operands[1], call.Operands[3]);
-        Assert.Equal(["load ptr, ptr %, align 8", "load i64, ptr %, align 8", "load ptr, ptr %, align 8"], new[] { entry, word, context }.Select(static x => x.Shape));
+        Assert.Equal(
+            ["load ptr, ptr %, align 8", "load i64, ptr %, align 8", "load ptr, ptr %, align 8"],
+            new[] { entry, word, context }.Select(static x => x.Shape));
         var table = entry.Operands[0];
         Assert.Equal("load ptr, ptr %, align 8", table.Shape);
-        Assert.Equal(["getelementptr i8, ptr %, i64 8", "getelementptr i8, ptr %, i64 8"], new[] { table.Operands[0], context.Operands[0] }.Select(static x => x.Shape));
+        Assert.Equal(
+            ["getelementptr i8, ptr %, i64 8", "getelementptr i8, ptr %, i64 8"],
+            new[] { table.Operands[0], context.Operands[0] }.Select(static x => x.Shape));
         Assert.Same(table, context.Operands[0].Operands[0]);
         Assert.Same(word.Operands[0], table.Operands[0].Operands[0]);
+    }
+
+    // SPEC 7.7.4 (DECISIONS R5-M70, R5-M102): a requirement Item called as a value keeps its selected implementation: in the instance of a
+    // struct, its call is a direct call of the conformance's body.
+    [Fact]
+    public void ARequirementItemCallReachesItsWitnessBody()
+    {
+        var c = Analyze(Requirement, OutputKind.Library);
+        var ir = GeneratedIr.Parse(Generate(c));
+        var same = Assert.Single(FunctionsOf(ir, c, "same"));
+        Assert.Equal([Assert.Single(FunctionsOf(ir, c, "equals"))], CalleesOf(same));
+        Assert.Equal("call i1 @(ptr %, ptr %)", Assert.Single(CallsOf(same)).Shape);
+    }
+
+    // SPEC 7.7.2 (DECISIONS R5-M102): a bare entry of a binding holding uniq/T Reborrows it, so the environment stores the borrow's own
+    // pointer, read from the Reborrow of the binding's slot, which the incoming pointer initialized; an @uniq entry would store the slot's
+    // address.
+    [Fact]
+    public void ABareUniqCaptureStoresTheBorrowsPointer()
+    {
+        var c = Analyze(Closures, OutputKind.Library);
+        var reborrow = Assert.Single(FunctionsOf(GeneratedIr.Parse(Generate(c)), c, "reborrow"));
+        var environment = Assert.Single(reborrow.Blocks[0].Instructions, static x => x.Shape == "alloca { [0 x i64], [8 x i8] }, align 8");
+        var captured = Assert.Single(reborrow.Instructions, x => x.Opcode == "store" && x.Operands[^1] == environment).Operands[0];
+        Assert.Equal("load ptr, ptr %, align 8", captured.Shape);
+        var reborrowed = Assert.Single(reborrow.Instructions, x => x.Opcode == "store" && x.Operands[^1] == captured.Operands[0]).Operands[0];
+        Assert.Contains(reborrow.Instructions, x => x.Opcode == "store" && x.Operands[0] == reborrow.Parameters[0] && x.Operands[^1] == reborrowed.Operands[0]);
     }
 
     // SPEC 8.10 (DECISIONS R5-M102): the instance's owner call of a Shared body passes the transferred value's address and then destroys it by
@@ -128,8 +170,9 @@ public sealed partial class FunctionCodegenTest
     {
         var c = Analyze(Owners, OutputKind.Library);
         var ir = GeneratedIr.Parse(Generate(c));
-        var invocations = FunctionsOf(ir, c, "invoke").Select(static x => CallsOf(x).Where(static y => y.Shape.StartsWith("call i32", StringComparison.Ordinal) ||
-            y.Callee?.Signature == "internal void (ptr, ptr, i64)").ToArray()).ToArray();
+        var invocations = FunctionsOf(ir, c, "invoke").Select(static x => CallsOf(x)
+            .Where(static y => y.Shape.StartsWith("call i32", StringComparison.Ordinal) || y.Callee?.Signature == "internal void (ptr, ptr, i64)")
+            .ToArray()).ToArray();
         Assert.Equal(2, invocations.Length);
         var borrowing = Assert.Single(invocations, static x => x.Length == 2);
         Assert.Equal("call i32 @(ptr %, ptr null)", borrowing[0].Shape);
@@ -151,6 +194,8 @@ public sealed partial class FunctionCodegenTest
         var calls = CallsOf(twice).Where(static x => x.Shape == "call i32 @(ptr %, ptr null)").ToArray();
         Assert.Equal(2, calls.Length);
         Assert.NotSame(calls[0].Operands[0], calls[1].Operands[0]);
-        Assert.All(calls, x => Assert.Contains(CallsOf(twice), y => y.Shape == "call void @(ptr align 4 %, ptr align 4 %, i64 4, i1 false)" && y.Operands[0] == x.Operands[0]));
+        Assert.All(calls, x => Assert.Contains(
+            CallsOf(twice),
+            y => y.Shape == "call void @(ptr align 4 %, ptr align 4 %, i64 4, i1 false)" && y.Operands[0] == x.Operands[0]));
     }
 }

@@ -98,7 +98,7 @@ internal sealed partial class FunctionCodegen
             return parameter.Kind;
         }
 
-        return SlotTypes.IsResult(this.types[1]) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
+        return Abi.Kind(Abi.Convention.Internal, this.types[1]);
     }
 
     // An aligned alloca of the entry block (I2).
