@@ -5,12 +5,13 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The destruction of a value one level per Type in FunctionCodegen (R5 package C 3.6, plans C4a and C4c; DECISIONS R5-M78, R5-M95,
-// R5-M100): a DropGlue item's function, void (ptr value, ptr location, i64 length), which ModuleCodegen names and signs (Glue), is one level
+// The destruction of a value one level per Type in FunctionCodegen (R5 package C 3.6, plans C4a, C4c and C5a; DECISIONS R5-M78, R5-M95,
+// R5-M100, R5-M102): a DropGlue item's function, void (ptr value, ptr location, i64 length), which ModuleCodegen names and signs (Glue), is one level
 // of its Type (Level) at its value parameter, reporting failures at its own location parameters; an Open row of a Drop is one level of the
 // dropped value or part under that row (FunctionCodegen.Drops), at its address, reporting the Drop's location. A level is written by its
-// glue item's Type's row (DropGlue.Row): a string's calls the runtime release (PD18's string row, C0c). A struct's, Tuple's, enum's or
-// fixed array's destroys its parts in destruction order (DropGlue.Parts, the enumeration the collector targets from, X27), each part by
+// glue item's Type's row (DropGlue.Row): a string's calls the runtime release (PD18's string row, C0c). A struct's, Tuple's, enum's,
+// fixed array's or Closure environment's destroys its parts in destruction order (DropGlue.Parts, the enumeration the collector targets
+// from, X27; a Closure's captures last to first, SPEC 16.4, each addressed as a Tuple's element), each part by
 // its row (FunctionCodegen.Drops' DestroyByRow): under an Open row its child row's verdict, or its parent's own bit without one; under no
 // row (-1, the representation of a glue function's level, as a flag's -1) every part, unconditionally. A struct that declares a drop calls
 // its destructor instance alone (PD18, R4-M6b), the value its receiver (never under an Open row: A2's MovedPlace_Kd); otherwise each part
@@ -19,9 +20,8 @@ namespace Kimi.Compiler.Backend;
 // under one switch on its tag over the Cases holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned
 // match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a
 // row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
-// The other rows are their units' (C5a, C5b, C6b, C8d, C8e), one located Unsupported_Kd, a glue function's at its item's site; an Open
-// row of such a Type, which only a Closure body holds (C5a's row), the same; a Type of a kind no glue has, or a target missing or left
-// over, is a broken contract, InternalInvariant_Kd there.
+// The other rows are their units' (C5b, C6b, C8d, C8e), one located Unsupported_Kd, a glue function's at its item's site; a Type of a kind
+// no glue has, or a target missing or left over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
     private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters a1 and a2.
@@ -55,8 +55,8 @@ internal sealed partial class FunctionCodegen
             case DropGlueRow.Parts:
                 this.DestroyParts(glue, type, row, address, site);
                 return;
-            case DropGlueRow.Closure or DropGlueRow.Function or DropGlueRow.Handle or DropGlueRow.Collection:
-                this.Report(DiagnosticCode.Unsupported_Kd, default); // C5a, C5b, C6b, C8d and C8e write these rows.
+            case DropGlueRow.Function or DropGlueRow.Handle or DropGlueRow.Collection:
+                this.Report(DiagnosticCode.Unsupported_Kd, default); // C5b, C6b, C8d and C8e write these rows.
                 return;
             default:
                 this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.
@@ -180,7 +180,12 @@ internal sealed partial class FunctionCodegen
         }
         else
         {
-            var kind = type.Kind == BoundTypeKind.Tuple ? MirAggregateKind.Tuple : MirAggregateKind.Adt;
+            var kind = type.Kind switch
+            {
+                BoundTypeKind.Tuple => MirAggregateKind.Tuple,
+                BoundTypeKind.Closure => MirAggregateKind.Closure,
+                _ => MirAggregateKind.Adt,
+            };
             var (offset, _) = this.Component(kind, type, record, part.Ordinal, part.Index);
             var (parent, child) = this.Governing(type, part, row);
             this.DestroyByRow(parent, child, target, address, offset, site);

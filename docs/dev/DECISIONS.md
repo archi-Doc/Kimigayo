@@ -2641,8 +2641,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Getter or Setter key (the execution function) to it, since that function is created lazily with state (a reading of E1).
   - E2 declaration rows: a row formed with no body lies in no slice; its ends must be `Parameter`, `Input`, `Static`, `Unbound` or meets
     of them, else `InternalInvariant_Kd` in a complete compilation. The old walk judges them until PLAN G210 (BU) gives them the
-    `Definition` deadline and a judge; then a body-origin row with no body is a broken contract. E3: signature rows are declaration rows
-    (SPEC 15.6.1, a definition's signature well-formedness is its premise), superseding the first round's ruling.
+    `Definition` deadline and a judge (superseded by BU-26: no deadline; Binding's judge consumes them); then a body-origin row with no
+    body is a broken contract. E3: signature rows are declaration rows (SPEC 15.6.1, a definition's signature well-formedness is its
+    premise; superseded by BU-26 in that such a row still needs a judge where the catalog publishes no premise), superseding the first
+    round's ruling.
   - E4 layer unit: rows and atoms of an instance Field's initializer belong to its struct; a constructor's slice is its own rows, then
     its layer's (`LayerStart`), the layer found by `AdtDef`'s constructor facts, never by listing Fields; the parts share Fixed atoms
     only (else `InternalInvariant_Kd`); layer rows are judged with the layer's oracle, the Type's public premises (Q1 (a): today's
@@ -2833,8 +2835,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     U3's STYLE.md:116 and SPECJ_TERMINOLOGY.md:30 edits; a SETTLED entry on rejecting an effect bound that relates two calls is
     the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
     no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
-    before their next adding change. Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
-    from Binding's operation instead of the HIR column (2x-E8 decides).
+    before their next adding change; AC-U4's one Note string in the due `Binding.EffectDeclarations.cs` adds no responsibility and
+    follows the same rule (its review). `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
+    R4-M109 (the getter takes the HIR's plan-row Adjust).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
     clause for some forms (no counterexample; a counterexample to the base rule is one for concrete calls too); C with P12 (Q1 (b),
@@ -3806,6 +3809,43 @@ resumed by R4-M86 (2026-10-20).
   Rejected: numbering parameters from 1 (moves every parameter atom and Input index); a receiver `OriginKind` (BU-17's reason: a copy
   of Projection's meaning in every reader, the frozen old path's among them). BU-17's rejected "own slot for the receiver symbol" was a
   way to separate the helper borrow, which keeps `HelperSlot`; it stands.
+- **BU-26** (2026-10-22; the BU planning session after the full process: designs A and B, the design review's merge M, R4
+  agreeing; the owner's answers Q1 and Q2; PLAN G210, unit bu24) Binding judges every Origin relation it forms with no executable
+  body, a declaration's row (R4-M101 E1, E2): a Field's, payload's or base's declared Type, a computed Property's header, a
+  signature's well-formedness (a requirement's, an override's, a specialization's, a nested Function Type part) and a clause's
+  unrepresentable end. `Binding.JudgeDeclarationRows`, at the end of `ValidateOriginRelations` in every pass, consumes each such row
+  whose resolved ends are declaration atoms (E2's test; `DeclarationAtom` moved from the view to the judge, its only user): a `CallBorrows`
+  row unjudged (each call's borrow formation; the old walk's skip); a row with an `Unbound` end that the judge does not prove is the
+  located `Unsupported_Kd` at its use, whose part prerequisite is that end's binder (the pending Type occurrence), so `IsDerived`'s
+  existing clause derives it when the binder failed; any other, fixed-fixed, by the position judge `JudgeCallPosition` and one
+  `PublishCallRelations` (a failing meet operand per record, first and further records per node), from the premises visible at the
+  use (`ExtractOriginPremises`; no new entailment, 2a0-D §4). A row failing E2's test stays, and the view reports any remaining row
+  with no body (`OriginFinding`, `InternalInvariant_Kd` in a complete compilation); so no row whose resolved ends are declaration
+  atoms reaches a slice, MIR or the old walk (a row failing E2's test still reaches the old walk on the default pipeline, beside the
+  view's finding), and R6-check deletes nothing for G210.
+  - Catalog row (owner, Q1: 「足す (推奨)」): a use in a computed or requirement Property's header has its getter's input premises
+    (R2), since the header is the getter's result (SPEC 11.4, 11.5, 15.6.1) and its body assumes them (`HeaderGetter`). A
+    receiver-covered header (`computed view: ref/Self`, ReceiverShorthandTest's program) is accepted. G214 keeps the result-only
+    form: accessor R3 needs a Property read's result-premise check with it (probe `two-leak-use`: R3 alone returns a borrow of a
+    local as `ref/i32 during x`).
+  - Superseded in R4-M101 (reasons no longer holding): E2's "until G210 gives them the `Definition` deadline and a judge": the judge
+    consumes the rows, so no deadline exists (a `Definition` deadline would state `Body` none twice, reach `FailTypeRole` without a
+    kind arm and judge only in Final). E3's reading that signature rows need no judge overreached: a signature row is a tautology
+    only where the catalog publishes its premise; a nested Function Type part's per-call Origin is none (SPEC 15.3.4, 15.6.1; R3
+    stops there), so leaving it unjudged would accept an escape once R6-check removes the old walk. The slice rule (declaration
+    rows in no slice) stays R4-M101's.
+  - Default pipeline: the record's requirement moves from `Ownership.UnprovenOrigin` to `Binding.OriginRelation` (code, span,
+    label, Reason and related unchanged), and Binding is incomplete, so the old analysis stops for that compilation (G56). The owner
+    (Q2: 「受け入れる (推奨)」) accepts that ResultPremiseTest's `annotated` loses its body record (2 records to 1) as G56's recorded
+    limit until 2a0-3a changes the stop or R6-check. Independent records beside another Binding failure become visible (SPEC
+    23.1.2): a Field beside `return local@ref`, `mk`'s result in `converted`, an associated specification's Type beside
+    `InvalidOriginBinding_Kd`. Census (library, milestones, goldens, accepting SPEC variants): 57 rows with no body, 43
+    `CallBorrows` and 14 Proven; no verdict changes.
+  - Rejected: A's own `JudgeDeclarationRow` (a second copy of the per-operand meet rule and the record pairing); B's selection
+    without E2's test (a non-declaration end would form a row inside the compaction); the `Definition` deadline (above); a
+    declaration-relation table (a side table and a branch in `AddObligation`); judging class 1 only (leaves nested Function Type
+    obligations unjudged); judging at formation (a Field's own Origins are still `Unbound`); "binder failed, no record" in the judge
+    (`IsDerived` owns derivation). Open: A's `IsDerived` widening for an associated specification's record (review N1).
 
 - **BU-24** (2026-10-22; the BU planning session after the full process: designs A′ and B′, design review 2, design-final §14 "B′+";
   unit bu20 C1a; CR-R2) A raw layer's Origin (SPEC 5.7) is a role of its own: `BoundType.RawOrigin` beside `Origin`, one slot whose
@@ -6169,3 +6209,60 @@ structure is recorded here by the unit that first implements it.
   glue item's targets per level, the collector's own resolution in `DropGlue.Parts` order (against package C 3.2's `Find(MonoKey)` and
   3.6's "the part's glue from `Find`", which would need the erased Type that code generation must not compose). They leave the list;
   R5's group reviews check the code against those entries.
+- **R5-M102 Closure environments and value calls in MIR code generation (C5a)** (2026-10-22, C lane; plan C5a, package C 3.2 I8,
+  3.6 and row 14, SPEC 7.7.1-7.7.4, 8.10, 16.4 and 22.5.1, IMPL 21.1.2, 21.1.3 and 21.3.1; the planning session's go and rulings on
+  C5a's design; under R5-M18 form 1, R5-M43, R5-M58, R5-M60, R5-M89 and R5-M100)
+  - Environment (IMPL 21.1.2): a Closure's environment is the Closure value, its captures placed as a Tuple's elements in the Place's own
+    storage at every size; `Aggregate(Closure)` puts each capture at its component (the Tuple arm), so forming a Closure never allocates.
+    IMPL 21.1.3's inline environment of 8 bytes or less (PD19) governs an erased value, C5b's.
+  - Body: a Closure body's Arg local 1 is its environment, Abi's `[environment]` (`Abi.Flags.ConcreteClosure`: the pointer first, the
+    context last), its parameters after it in slot order (`ArgumentOrder.Environment`, `ArgumentPosition` slot + 1). The prologue passes
+    local 1 as Abi passes an argument of its Type: an owned (Consuming) environment in place, a borrowed one stored, a zero-sized one none.
+    Every concrete call passes a null context.
+  - Value calls (`FunctionCodegen.Closures.cs`), by the callee value's Type below its reference layer, a closed vocabulary: a Closure's body
+    by the collector's target, the environment a borrow's pointer or an owned operand's storage (a Move's Place; a Copy's copy slot, numbered
+    after the body's operands by block, since a block's terminator is its one call); a function Item's body or a requirement Item's witness
+    directly; an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
+    C5b, C6a or C8*, a Builtin shim C8f or C9b, a property witness C3c); a common Function value through its table `{entry, context, drop}`
+    (offsets 0, 8, 16, the layout C5b's erasure writes) with its environment word, under `ModuleCodegen.Erased`, `Abi.Of(ErasedClosure |
+    CallerLocation)` of the call's Callable signature (SPEC 22.5.1: the call's location), reused by `Abi.Matches`. The old generator writes
+    the context after the location (IR information, PD9; the generators never call each other's entries). A Value call's operands are its
+    Callable signature's inputs in order, placed by the call's own key (`MirCallee.Position` without a function); a pair-layer callee is a
+    located `Unsupported_Kd`. A function item constant is zero-sized and writes nothing. Every call writes its parameters' attributes
+    (package C row 14; the old generator omits them on value calls).
+  - Glue: `DropGlue.Row` of a Closure is `Parts` (`DropGlueRow.Closure` deleted): its captures last to first (SPEC 16.4, X23), each
+    addressed as a Tuple element and governed by its Field step, so a glue function and an Open row of a Consuming body's environment share
+    the level writer.
+  - SPEC 8.10 (the planning session's ruling (a)): an owner Callable call whose callee borrows its environment (a Closure body whose
+    environment is a reference in its instance, or any common Function value) destroys the operand after the call. The collector adds the
+    operand Type's glue, when `MirTypes.MayNeedDrop` holds, as the call's second target, after the body (`InstanceCollector.Rest`); code
+    generation destroys the value at the address it passed, after the call returns and before its branch, at the call's location. The
+    cursor reads a site's targets in their order, each once (`Target` consumes the target it returns). A Function value's glue row stays
+    C5b's.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M103): package C 3.2 I8's and the collector's "at most one
+    target per site" becomes "one target per site, plus the operand glue at a borrowing-callee owner Value call".
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M103): the plan row's PD19 clause (8 bytes or less inline), its
+    inline-environment requirement test and `ContextualClosureTest` "Object" through E12 move to C5b ("Object" also needs C6a and C6b),
+    since a concrete environment never allocates; C5a's own requirement test is that a 48-byte environment holding a string, a 4-byte
+    drop-needing one and an empty one allocate nothing. E12's native half lands with C7b (within R5-M85).
+  - Rulings: `DropGlue.cs`'s due restructure is a keep (one responsibility in 156 lines; a split would be mechanical, as R5-M92's
+    `RuntimeAbi.cs`), the file's first such ruling, so its next changing unit restructures it. Restructured first, behavior unchanged:
+    ModuleCodegen's item signatures in `ModuleCodegen.Signatures.cs`.
+  - Verified: the sel ledger loses 368 rows (closure 89, C-frame 192, call 63, C-aggregate 19, object 5), all this unit's (at the merge
+    base none passes); the 61 fixture families the flipped tests write run natively under sel (447 fixtures, O0 and O2); `FunctionCodegenTest`
+    (environment layout, body ABI, the four call forms, the operand destroyed after an owner call, the callee operand's copy slot; the
+    `ClosureRows*` fixtures, also under the old generator) and `InstanceCollectorTest` (the second target).
+  - Rejected: heap environments over 8 bytes at creation (IMPL 21.1.2 places captures inline; the heap is erasure's); an environment
+    parameter kind per receiver (Abi gives the pointer, the frame's home rule decides by the local's Type); a slot-order body key for Value
+    calls (the call's own key is the builder's rule); calling Items through their adapters (one more call); a separate Closure glue writer
+    beside `Parts`; a MIR environment role or operand (held MIR; the body kind publishes it); a MIR Drop of the moved receiver (the template
+    cannot know the instance's receiver); a `ConsumingCall` shim item (a `MonoKind`, one more function per Type and call); deferring SPEC
+    8.10 as a located `Unsupported_Kd`.
+- **R5-M103 The owner confirms C5a's departures** (owner, 2026-10-22, on the R5 planning session's explanation before C5a landed;
+  verbatim 「departures list の新しい2件（2つ目の破棄先、PD19 の移動）を承認します」; the consequences are the planning session's) The two
+  departures R5-M102 records are confirmed: at an `owner`-receiver Value call whose callee borrows its environment, the instance
+  collector gives the call site a second target, the operand Type's DropGlue item after the body, and code generation destroys the
+  value after the call returns (SPEC 8.10; against package C 3.2 I8's "at most one target per site"); and PD19's inline environment of
+  8 bytes or less, its requirement test and `ContextualClosureTest` "Object" move from C5a to C5b, since a concrete Closure environment
+  is the Closure value itself and never allocates (IMPL 21.1.2), and PD19 governs only a value erased into IMPL 21.1.3's common
+  function value (against plan row C5a). They leave the list; R5's group reviews check the code against those entries.

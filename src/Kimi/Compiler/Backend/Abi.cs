@@ -169,6 +169,26 @@ internal static class Abi
     /// <returns>The LLVM result Type.</returns>
     internal static string ResultType(BoundType type, ValueLowering value) => SlotTypes.IsResult(type) ? "void" : value.ComputationType;
 
+    /// <summary>Gets how a parameter of a Type passes: a string by a shared reference, a slot Type (an owned result) by pointer to the
+    /// caller's storage, any other Type by value; every Type by value under the C convention.</summary>
+    /// <param name="convention">The convention.</param>
+    /// <param name="type">The closed parameter Type.</param>
+    /// <returns>The kind.</returns>
+    internal static AbiParameterKind Kind(Convention convention, BoundType type)
+    {
+        if (convention == Convention.C)
+        {
+            return AbiParameterKind.Value;
+        }
+
+        if (ReferenceTypes.IsString(type))
+        {
+            return AbiParameterKind.SharedReference;
+        }
+
+        return SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
+    }
+
     private static AbiParameter Environment(Flags flags)
         => new((flags & Flags.ConcreteClosure) != 0 ? "ptr" : "i64", "environment", AbiParameterKind.Environment);
 
@@ -199,21 +219,6 @@ internal static class Abi
 
         return value.ArgumentType ??
             throw new InvalidOperationException("A C signature (SPEC 22.6) reached the parameter Type " + type.Name + ", which has no argument value.");
-    }
-
-    private static AbiParameterKind Kind(Convention convention, BoundType type)
-    {
-        if (convention == Convention.C)
-        {
-            return AbiParameterKind.Value;
-        }
-
-        if (ReferenceTypes.IsString(type))
-        {
-            return AbiParameterKind.SharedReference;
-        }
-
-        return SlotTypes.IsResult(type) ? AbiParameterKind.OwnedSlot : AbiParameterKind.Value;
     }
 
     private static bool Next(AbiParameter[] physical, ref int n, AbiParameter expected) => n < physical.Length && physical[n++] == expected;

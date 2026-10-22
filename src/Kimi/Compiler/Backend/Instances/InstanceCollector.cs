@@ -10,7 +10,8 @@
 // Output: the CheckedSet of the program version: the roots, in MirProgram.Bodies order, then the items a FIFO worklist admits, each with one
 // target per resolved site of its body, in location order, with whether a runtime path reaches the site; and its records, which
 // Compilation.MirRecords publishes under MIR code generation (K4b); for code generation (R5 C0b1) also an item's Types (TypeOf) and the
-// location of a record at a site of its body (Subject).
+// location of a record at a site of its body (Subject); a borrowing callee's owner Value call also targets its operand's glue, after the
+// body (DECISIONS R5-M102).
 // Roots (K 4.4): each body of a root module whose definition does not instantiate, a module's top-level statements included.
 // Edges (K 4.5): one template per body and version (InstanceCollector.Templates.cs) lists its sites that may carry a target (Fn,
 // Requirement and Value calls and the intrinsics the Target column names, a Virtual call none, X5; a Closure environment, an erasure and a
@@ -40,9 +41,10 @@
 // A refused edge is dropped and collection continues.
 // Location (K 4.9): a record's subject is the cause's site, moved out of inlined library defaults to the outermost omitting call, else the
 // root-module site the admission chain first reached; code generation's records take the same rule.
-// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); at most one target per site of a
-// body; a type-driven item's targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its
-// environment's glue; a repeated run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
+// Invariants: deterministic; one item per key; every representative is closed and closes its body (K 4.3); one target per site of a body,
+// plus the operand's glue at a borrowing callee's owner Value call, after its body (SPEC 8.10; DECISIONS R5-M102); a type-driven item's
+// targets are at its default site, a DropGlue's in DropGlue.Parts' order, a ClosureErasure's body before its environment's glue; a repeated
+// run of a version is a no-op; a program with validator findings has an empty set; a warm run of a
 // program as large as an earlier one allocates nothing.
 // Must not: read syntax, HIR or plans; depend on the MIR analyses' results or edit their driver; decide acceptance or publish its records
 // (Compilation does); prove anything on an erased value; add an IntrinsicId, CompilerFunctionKind or BindingFailure (PD21).
@@ -151,6 +153,12 @@ internal sealed partial class InstanceCollector
             if (target >= 0)
             {
                 set.Target(item, new(target, at, runtime));
+            }
+
+            var rest = at.Index == block.Count ? this.Rest(program, item, body, block.Terminator, target) : -1;
+            if (rest >= 0)
+            {
+                set.Target(item, new(rest, at, runtime));
             }
         }
     }

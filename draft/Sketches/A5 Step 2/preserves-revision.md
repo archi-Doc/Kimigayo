@@ -2,7 +2,8 @@
 
 Date: 2026-10-19, revised the same day after its independent review. Base: `dev` `30fe97e1`; line references rechecked at
 `d55bce08` (`docs/spec` unchanged; DIAGNOSTICS's requirement-call row moved from :157 to :158). "SPEC 8.11.4:789" is line
-789 of `docs/spec/08-…md`. Status: working record for round 2x-P6, design 2f-D and the owner's OQ3 (DECISIONS R4-M74);
+789 of `docs/spec/08-…md`. Status: closed by Abstract Calls Reach by Paths (DECISIONS R4-M106); it was the working record for round 2x-P6, design 2f-D
+and the owner's OQ3 (DECISIONS R4-M74);
 SPEC and DECISIONS decide. It changes no SPEC, compiler, library or test. The proposal
 `draft/Obsolete/2026-10-16 Preserves Results by Receiver Place.md` ("S2", base `de80a4c0`) stays untouched until 2f-S2
 revises it from this sketch.

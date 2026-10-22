@@ -5,7 +5,7 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The function frame of FunctionCodegen (R5 package C 3.2 I2; DECISIONS R5-M65, R5-M89): each local's home and layout under the
+// The function frame of FunctionCodegen (R5 package C 3.2 I2; DECISIONS R5-M65, R5-M89, R5-M102): each local's home and layout under the
 // signature ModuleCodegen gives the item, the entry block (the prologue: the homes' and the copy slots' allocas, the Value arguments'
 // stores) and the return. The argument order and the copy slots are FunctionCodegen.Arguments'.
 internal sealed partial class FunctionCodegen
@@ -45,7 +45,8 @@ internal sealed partial class FunctionCodegen
 
     // The entry block (I2): a pointer-passed argument and the result slot are their locals' homes; one aligned alloca per other local of
     // nonzero size, per copy slot and per drop flag, cleared (FunctionCodegen.Flags); each Value argument stored into its local's slot; the
-    // entry's flag points (an argument's flag set). A parameter is its signature's (Prefix p, spelled by its name).
+    // entry's flag points (an argument's flag set). A parameter is its signature's (Prefix p, spelled by its name); a Closure body's
+    // environment passes its local as its Type would (Passing).
     private void Prologue()
     {
         var (output, parameters) = (this.output, this.abi.Parameters);
@@ -53,7 +54,7 @@ internal sealed partial class FunctionCodegen
         output.Write("entry:\n");
         for (var i = 0; i < parameters.Length; i++)
         {
-            if (parameters[i].Kind is AbiParameterKind.OwnedSlot or AbiParameterKind.ResultSlot)
+            if (this.Passing(parameters[i]) is AbiParameterKind.OwnedSlot or AbiParameterKind.ResultSlot)
             {
                 ref var slot = ref this.slots[parameters[i].Kind == AbiParameterKind.ResultSlot ? 0 : this.LocalOf(parameters[i])];
                 slot = slot with { Home = Home.Parameter, Index = i };
@@ -76,7 +77,7 @@ internal sealed partial class FunctionCodegen
         this.FlagSlots();
         for (var i = 0; i < parameters.Length; i++)
         {
-            if (parameters[i].Kind is AbiParameterKind.Value or AbiParameterKind.SharedReference)
+            if (this.Passing(parameters[i]) is AbiParameterKind.Value or AbiParameterKind.SharedReference)
             {
                 var local = this.LocalOf(parameters[i]);
                 this.StoreAt(new('h', local), this.slots[local].Value.Layout, this.Widen(this.slots[local].Value, new('p', i)));
@@ -85,6 +86,19 @@ internal sealed partial class FunctionCodegen
 
         this.Points(new(0, -1));
         output.Write("  br label %b0\n");
+    }
+
+    // How a parameter passes its local: by its kind; a Closure body's environment pointer (Abi's [environment], SPEC 7.7.3; DECISIONS
+    // R5-M102) as Abi.Of passes an argument of its local's Type: an owned environment, a slot Type, by pointer, used in place; a borrowed one
+    // by value, stored; a zero-sized one has no local storage (Environment: neither).
+    private AbiParameterKind Passing(in AbiParameter parameter)
+    {
+        if (parameter.Kind != AbiParameterKind.Environment || this.slots[1].Home == Home.None)
+        {
+            return parameter.Kind;
+        }
+
+        return Abi.Kind(Abi.Convention.Internal, this.types[1]);
     }
 
     // An aligned alloca of the entry block (I2).

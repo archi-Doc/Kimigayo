@@ -1,14 +1,16 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns a site's edge row in an item's instance (R5 package K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8): for a call, a Drop or a statement of
-// the item's body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value
-// callee's body, an intrinsic's target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's) and
-// its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries).
+// Owns a site's edge row in an item's instance (R5 package K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102): for a call, a Drop or
+// a statement of the item's body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a
+// Value callee's body, an intrinsic's target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's)
+// and its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after an owner
+// Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10).
 // Input: a site of a body from its template (InstanceCollector.Templates.cs) and the item; TyCtxt (Compose, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
-// Output: the admitted target item, or -1 for a site without one or a refused edge; on the way the site's by-value uses take their
-// layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
-// Invariants: at most one target per site; a substitution TyCtxt cannot compose is the storage-nesting gap at the site.
+// Output: the admitted target item, or -1 for a site without one or a refused edge, and an owner Value call's second target (Rest); on the
+// way the site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
+// Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
+// departure from package C 3.2 I8); a substitution TyCtxt cannot compose is the storage-nesting gap at the site.
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -88,6 +90,24 @@ internal sealed partial class InstanceCollector
         }
 
         return this.Implementation(program, item, subject, callee.Symbol!, subst);
+    }
+
+    // SPEC 8.10 (DECISIONS R5-M102): an owner Callable call, its operand by value, of a callee that borrows its environment (a Closure body
+    // whose environment, its Arg local 1, is a reference in its instance, or a common Function value, whose entries borrow) destroys the
+    // operand after the call: the operand Type's glue (GlueOf, when the Type may need a drop) is the call's next target, after its body.
+    // -1 for any other site.
+    private int Rest(MirProgram program, int item, MirBody body, in MirTerminator call, int target)
+    {
+        if (call is not { Kind: MirTerminatorKind.Call, Callee.Kind: MirCalleeKind.Value } ||
+            this.TypeOf(item, OperandType(body, call.Operand)) is not { } operand || TyCtxt.Layer(operand, out _, out _) != HirPlaceKind.Value)
+        {
+            return -1;
+        }
+
+        var borrows = operand.Kind == BoundTypeKind.Function || (operand.Kind == BoundTypeKind.Closure && target >= 0 &&
+            this.TypeOf(target, program.Bodies[this.Set.Items[target].BodyOrdinal].Locals[1].Type) is { } environment &&
+            TyCtxt.Layer(environment, out _, out _) != HirPlaceKind.Value);
+        return borrows ? this.GlueOf(item, this.Subject(item, body, call.Source), operand) : -1;
     }
 
     // K 4.5 rows 6, 8 and 9 (DECISIONS R5-M74): the target an intrinsic's row names, for its call or for an Item of its function, from the

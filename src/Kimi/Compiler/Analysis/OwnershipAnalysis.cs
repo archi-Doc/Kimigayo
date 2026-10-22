@@ -304,7 +304,7 @@ public sealed partial class OwnershipAnalysis
             issue.Source.Report(Requirement(issue), issue.Code, note: Note(note), related: Locations(null), condition: Condition(issue), evidence: [name]);
         }
 
-        // SPEC 15.6.2, 15.6.5, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
+        // SPEC 15.6.2, 15.6.6, 16.2.2: a borrowed Place destroyed while a live value keeps its Loan is reported at the destruction,
         // relating that value and the Borrow or capture entry that created the Loan. A transfer cleans up the scopes it leaves
         // before it delivers its result, so a secured result never carries a borrow of a destroyed local out of its scope.
         void ReportDestruction(in OwnershipIssue issue)

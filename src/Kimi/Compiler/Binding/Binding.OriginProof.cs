@@ -140,6 +140,44 @@ public sealed partial class Binding
         return false;
     }
 
+    // R4-M101 E2: an end of a declaration's row: a parameter, input, static or Unbound atom, or a meet of them.
+    private static bool DeclarationAtom(BoundOrigin origin)
+    {
+        if (origin.Kind != OriginKind.Intersection)
+        {
+            return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input or OriginKind.Unbound;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (!DeclarationAtom(origin.Operands[i]))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    // The first Unbound atom of an end, an Origin its declaration left pending at its binder, the Type occurrence that omits it.
+    private static BoundOrigin? UnboundAtom(BoundOrigin origin)
+    {
+        if (origin.Kind == OriginKind.Unbound)
+        {
+            return origin;
+        }
+
+        for (var i = 0; i < origin.Operands.Count; i++)
+        {
+            if (UnboundAtom(origin.Operands[i]) is { } atom)
+            {
+                return atom;
+            }
+        }
+
+        return null;
+    }
+
     private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
         if (UnstatedRelation(longer, shorter) is { } holds)
@@ -424,7 +462,7 @@ public sealed partial class Binding
     // SPEC 15.3.3: the clauses of each completed declaration that proof alone does not establish, in declaration order, judged by
     // their owner's part: a local's (a FieldKoto, the parser's local declaration) by the local part, JudgeLocalClause, and any other
     // owner's, a Field's, Case's, alias's or associated formation's, by the declaration part, JudgeDeclaredRelation: a declaration's
-    // own clause, which Binding alone judges.
+    // own clause, which Binding alone judges. Then the declaration's rows, JudgeDeclarationRows.
     private void ValidateOriginRelations()
     {
         foreach (var declaration in this.originDeclarations.Values)
@@ -445,6 +483,53 @@ public sealed partial class Binding
                 this.formingBody = saved;
             }
         }
+
+        this.JudgeDeclarationRows();
+    }
+
+    // SPEC 15.3.2, 15.3.4, 15.6.1, 15.6.5 (DECISIONS BU-26): the one judge of a declaration's rows, the Origin relations Binding formed with
+    // no executable body (a Field's, payload's or base's declared Type, a signature's well-formedness, a clause's unrepresentable end),
+    // which consumes each in every pass from the premises visible at its use. A row each call discharges (CallBorrows) is left to the
+    // calls; a row with an Unbound end that the judge does not prove is the located limit, derived when that end's binder failed; any
+    // other is fixed-fixed and judged by the position judge, each failing operand of a meet its own record. A row whose ends are not
+    // declaration atoms (R4-M101 E2) stays, a broken contract the view reports.
+    private void JudgeDeclarationRows()
+    {
+        this.callRelationScratch.Clear();
+        var remaining = 0;
+        for (var i = 0; i < this.obligations.Count; i++)
+        {
+            var obligation = this.obligations[i];
+            if (obligation is not { Kind: BindingObligationKind.OriginOutlives, Body.IsBody: false, Longer: { } longer, Shorter: { } shorter } ||
+                !DeclarationAtom(longer = this.OriginAtUse(longer, obligation.Use)) || !DeclarationAtom(shorter = this.OriginAtUse(shorter, obligation.Use)))
+            {
+                this.obligations[remaining++] = obligation;
+                continue;
+            }
+
+            this.obligationSet.Remove(obligation);
+            if (obligation.Discharge == OriginDischarge.CallBorrows)
+            {
+                continue;
+            }
+
+            if ((UnboundAtom(longer) ?? UnboundAtom(shorter)) is { Binder: { } binder })
+            {
+                if (this.JudgeOriginObligation(obligation, out _) != OriginJudgment.Proven)
+                {
+                    this.AddPrerequisite(obligation.Use, binder);
+                    this.Fail(obligation.Use, BindingFailure.Unsupported);
+                }
+
+                continue;
+            }
+
+            this.JudgeCallPosition(
+                obligation.Use, longer, shorter, obligation.Equality, null, null, wellFormed: obligation.Clause is null, condition: obligation.Condition);
+        }
+
+        this.obligations.RemoveRange(remaining, this.obligations.Count - remaining);
+        this.PublishCallRelations();
     }
 
     // The clauses of one completed declaration that proof alone does not establish, judged by their owner's part.

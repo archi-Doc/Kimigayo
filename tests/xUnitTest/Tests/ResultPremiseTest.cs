@@ -430,16 +430,21 @@ public class ResultPremiseTest
             [("ref/((ref/i32) -> ref/i32) during b", "requires the omitted Origin of ref/i32 outlives b, which is not proven"), ("ref/((ref/i32) -> ref/i32) during bx", "requires the omitted Origin of ref/i32 outlives bx, which is not proven")],
             DiagnosticCorpus.Check(forward).Diagnostics.Select(x => (Text(forward, x.Span), x.Label)));
 
-        // A caller's annotation of the call result is judged by its own Type occurrence; no meet with the per-call Origin reaches it.
+        // A caller's annotation of the call result is judged by its own Type occurrence; no meet with the per-call Origin reaches it. Binding
+        // records pick's signature (DECISIONS BU-26), so the old analysis stops before the annotation in use: one record until R6-check, from
+        // two (PLAN G56's recorded limit, accepted by the owner's answer Q2 to BU-26).
         var annotated = ActionBox + "func use(bx: ref/Box) -> i32\n    let f = pick(bx)\n    let g: ref/((ref/i32) -> ref/i32) during bx = f\n    return 0\n" + Main;
         Assert.Equal(
-            [("ref/((ref/i32) -> ref/i32) during b", "wellFormed"), ("ref/((ref/i32) -> ref/i32) during bx", "wellFormed")],
+            [("ref/((ref/i32) -> ref/i32) during b", "wellFormed")],
             DiagnosticCorpus.Check(annotated).Diagnostics.Select(x => (Text(annotated, x.Span), x.Reason![3].Value)));
 
         // A Function Item converted to a nested Function Type proves its premise from that Type's inputs alone: a per-call input
-        // cannot outlive `b`, and writing it over `b` converts.
+        // cannot outlive `b`, and writing it over `b` converts. mk's own result Type is an independent record (SPEC 23.1.2, BU-26).
         var converted = LeakItem + "func mk(b: ref/i32) -> (ref/i32 during b, ref/i32) -> (Option<ref/(ref/i32) during b>, ref/i32 during b)\n    return leak\n" + Main;
-        var conversion = Assert.Single(DiagnosticCorpus.Check(converted).Diagnostics);
+        var records = DiagnosticCorpus.Check(converted).Diagnostics;
+        Assert.Equal(2, records.Length);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32) during b"), (records[0].Code, Text(converted, records[0].Span)));
+        var conversion = records[1];
         Assert.Equal((nameof(DiagnosticCode.UnprovenOriginContract_Kd), "leak"), (conversion.Code, Text(converted, conversion.Span)));
         Assert.Equal("the result's well-formedness requires the omitted Origin of ref/i32 outlives b, which is not proven", conversion.Label);
         Assert.Equal(["conversion", "the result's well-formedness", "outlives", "ref/i32", "b"], conversion.Reason!.Select(static x => x.Value));

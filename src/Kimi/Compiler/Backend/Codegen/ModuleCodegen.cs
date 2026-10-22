@@ -26,7 +26,8 @@
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
-// Files: the items, their names and signatures and the records (this file); the module frame and the output form (ModuleCodegen.Frame.cs).
+// Files: the items and the records (this file); their names and signatures (ModuleCodegen.Signatures.cs); the module frame and the output
+// form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
@@ -42,12 +43,6 @@ internal sealed partial class ModuleCodegen
     private readonly FunctionCodegen bodies;
     private readonly IReadOnlyList<LibraryImport> imports; // Binding's validated #LibraryImport declarations (F2b).
     private readonly List<ExternalFunction> externals = []; // The imports the latest Write's definitions call, one per symbol (Import).
-    private FunctionAbi?[] signatures = []; // By item.
-    private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
-    private FunctionAbi?[] importSignatures = []; // By import.
-    private int[] importSigned = []; // By import, the Write whose signature importSignatures holds (0: none).
-    private string?[] importSymbols = []; // By import, the external symbol its signature is named by.
-    private BoundType[] parameters = []; // A signature's parameter Types in slot order.
     private int writes; // The number of Writes.
     private CheckedSet set = null!; // The checked set of the latest Write.
     private MirProgram program = null!; // The program of the latest Write.
@@ -109,125 +104,6 @@ internal sealed partial class ModuleCodegen
         return true;
     }
 
-    /// <summary>Gets the signature of a body item from its own body (IMPL 21.3.1; DECISIONS R5-M89), the one its definition and every call of
-    /// it write: under the internal convention, its result Type local 0's and its parameters its Arg locals' in slot order
-    /// (FunctionCodegen.ArgumentPosition), in the item's instance, a caller-location library function's flag included (SPEC 22.5.1); named
-    /// <c>__kimi_f</c> with its index, computed once per Write and the previous one while it still matches.</summary>
-    /// <param name="item">The item, a body item of a kind the frame writes.</param>
-    /// <returns>The signature; null, recorded at the item's site, where the instance does not make a Type of its signature.</returns>
-    internal FunctionAbi? Signature(int item)
-    {
-        var entry = this.set.Items[item];
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // Only a Generated item is requested (K11).
-        }
-
-        if (item >= this.signatures.Length)
-        {
-            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
-        }
-
-        if (item >= this.signed.Length)
-        {
-            Array.Resize(ref this.signed, this.signatures.Length);
-        }
-
-        if (this.signed[item] == this.writes && this.signatures[item] is { } current)
-        {
-            return current;
-        }
-
-        var body = this.program.Bodies[entry.BodyOrdinal];
-        var count = 0;
-        foreach (var local in body.Locals)
-        {
-            count += local.Kind == MirLocalKind.Arg ? 1 : 0;
-        }
-
-        this.Reserve(count);
-        for (var slot = 0; slot < count; slot++)
-        {
-            if (this.collector.TypeOf(item, body.Locals[1 + FunctionCodegen.ArgumentPosition(body.Key, slot)].Type) is not { } parameter)
-            {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // The collector laid out every local of an admitted item.
-                return null;
-            }
-
-            this.parameters[slot] = parameter;
-        }
-
-        if (this.collector.TypeOf(item, body.Locals[0].Type) is not { } result)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site);
-            return null;
-        }
-
-        // SPEC 22.5.1: a caller-location library function receives its caller's location; the old generator's constructor and destructor
-        // result slot is its own ABI choice, which local 0's Type replaces here (IMPL 21.3.1).
-        var flags = KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None;
-        var types = this.parameters.AsSpan(0, count);
-        this.signed[item] = this.writes;
-        if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, flags, result, types))
-        {
-            return previous;
-        }
-
-        var name = "__kimi_f" + item.ToString(CultureInfo.InvariantCulture);
-        return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
-    }
-
-    /// <summary>Gets the C signature of a validated <c>#LibraryImport</c> function a definition calls (SPEC 22.6; Abi.Of's C convention)
-    /// and requests its declaration, one per symbol (DECISIONS R5-M89).</summary>
-    /// <param name="function">The called function.</param>
-    /// <returns>The signature, or null for a function without an import.</returns>
-    internal FunctionAbi? Import(BindingSymbol function)
-    {
-        for (var index = 0; index < this.imports.Count; index++)
-        {
-            if (ReferenceEquals(this.imports[index].Decl, function))
-            {
-                var abi = this.ImportSignature(index);
-                foreach (var external in this.externals)
-                {
-                    if (ReferenceEquals(external.Abi, abi))
-                    {
-                        return abi;
-                    }
-                }
-
-                this.externals.Add(new(abi, this.imports[index].Kind == "import"));
-                return abi;
-            }
-        }
-
-        return null;
-    }
-
-    /// <summary>Gets the signature of a DropGlue item (package C 3.6), named <c>__kimi_drop</c> with its index: the previous one while it is
-    /// a glue signature (its parameters <see cref="DropGlue.Parameters"/>).</summary>
-    /// <param name="item">The item.</param>
-    /// <returns>The signature.</returns>
-    internal FunctionAbi Glue(int item)
-    {
-        if (!this.set.IsGenerated(item))
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
-        }
-
-        if (item >= this.signatures.Length)
-        {
-            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
-        }
-
-        if (this.signatures[item] is { } previous && ReferenceEquals(previous.Parameters, DropGlue.Parameters))
-        {
-            return previous;
-        }
-
-        return this.signatures[item] = new("__kimi_drop" + item.ToString(CultureInfo.InvariantCulture), "void", DropGlue.Parameters);
-    }
-
     /// <summary>Records a coverage row not written yet, gate step 2's refusal of a body or a broken input contract at its subject, once per
     /// code and subject.</summary>
     /// <param name="code">Unsupported_Kd, a refused body's A1 or A2 code (DECISIONS R5-M96) or InternalInvariant_Kd.</param>
@@ -237,62 +113,6 @@ internal sealed partial class ModuleCodegen
         if (this.reported.Add(new(code, subject)))
         {
             this.Records.Add(new(code, subject));
-        }
-    }
-
-    // The C signature of an import from its declared Types (TyCtxt.Signature), named by its external symbol: the first import's of that
-    // symbol, so imports of one symbol share one declaration (the old generator's rule); computed once per Write and the previous one
-    // while it still matches.
-    private FunctionAbi ImportSignature(int index)
-    {
-        if (index >= this.importSignatures.Length)
-        {
-            Array.Resize(ref this.importSignatures, Math.Max(index + 1, 2 * this.importSignatures.Length));
-            Array.Resize(ref this.importSymbols, this.importSignatures.Length);
-            Array.Resize(ref this.importSigned, this.importSignatures.Length);
-        }
-
-        if (this.importSigned[index] == this.writes && this.importSignatures[index] is { } current)
-        {
-            return current;
-        }
-
-        var symbol = this.imports[index].Symbol;
-        this.importSigned[index] = this.writes;
-        for (var first = 0; first < index; first++)
-        {
-            if (string.Equals(this.imports[first].Symbol, symbol, StringComparison.Ordinal))
-            {
-                this.importSymbols[index] = symbol;
-                return this.importSignatures[index] = this.ImportSignature(first);
-            }
-        }
-
-        var function = this.imports[index].Decl;
-        var result = TyCtxt.Signature(function, null, -1, out var count)!;
-        this.Reserve(count);
-        for (var slot = 0; slot < count; slot++)
-        {
-            this.parameters[slot] = TyCtxt.Signature(function, null, slot, out _)!;
-        }
-
-        var types = this.parameters.AsSpan(0, count);
-        if (this.importSignatures[index] is { } previous && string.Equals(this.importSymbols[index], symbol, StringComparison.Ordinal) &&
-            Abi.Matches(previous, this.Layout, Abi.Convention.C, Abi.Flags.None, result, types))
-        {
-            return previous;
-        }
-
-        this.importSymbols[index] = symbol;
-        return this.importSignatures[index] = Abi.Of(this.Layout, Abi.Convention.C, Abi.Flags.None, result, types).Named(LlvmModuleText.ExternalName(symbol));
-    }
-
-    // The scratch for a signature's parameter Types, grown to at least the count given.
-    private void Reserve(int count)
-    {
-        if (this.parameters.Length < count)
-        {
-            this.parameters = new BoundType[Math.Max(count, 2 * this.parameters.Length)];
         }
     }
 
