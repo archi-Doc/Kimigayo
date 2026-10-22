@@ -368,6 +368,57 @@ public sealed partial class Binding
         return true;
     }
 
+    // SPEC 7.3, 7.7.3: the callee of a value call is a Receiver Expression, acquired in the call's mode: through a handle or view as its
+    // payload (TryPayloadReceiver), exclusively only where its lending point is exclusively writable, and owned only by the value read
+    // of a Copy closure. False when the acquisition fails, its record made.
+    private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
+    {
+        var receiverType = call.Method.BoundType!;
+        receiverOperation = default;
+        var handle = receiverType.Kind == BoundTypeKind.Semantics && IsObjectSemantics(receiverType.Semantics) ? call.Method
+            : receiver != SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow ? follow.Left : null;
+        if (handle is not null)
+        {
+            return this.TryPayloadReceiver(call, handle, receiver, scope, out receiverOperation);
+        }
+
+        if (receiver == SemanticsKind.Uniq)
+        {
+            if (receiverType.Semantics == SemanticsKind.Ref)
+            {
+                this.FailWrite(call, call.Method);
+                return false;
+            }
+
+            // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
+            // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.BorrowablePlace(call.Method, scope, true))
+            {
+                this.FailWrite(call, call.Method);
+                return false;
+            }
+        }
+        else if (receiver == SemanticsKind.Owner)
+        {
+            // SPEC 7.3 (owning row), 3.5.3: a reference supplies an owning receiver only by the value read of a read Type, which a
+            // callable value never is; `r@follow()` Copies a Copy referent.
+            if (receiverType.Kind == BoundTypeKind.Semantics)
+            {
+                this.FailWrite(call, call.Method);
+                return false;
+            }
+
+            // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
+            {
+                this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
     {
         // A function value has no Type parameters of its own, so explicit Type arguments select nothing (SPEC 7.7, 12.5.2);
@@ -377,45 +428,9 @@ public sealed partial class Binding
             return this.Fail(call, BindingFailure.NoApplicableCandidate);
         }
 
-        var receiverType = call.Method.BoundType!;
-        var receiverOperation = default(BoundArgumentOperation);
-        var handle = receiverType.Kind == BoundTypeKind.Semantics && IsObjectSemantics(receiverType.Semantics) ? call.Method
-            : receiver != SemanticsKind.Owner && KotoHelper.UnwrapParentheses(call.Method) is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } follow ? follow.Left : null;
-        if (handle is not null)
+        if (!this.AcquireValueCallee(call, scope, receiver, out var receiverOperation))
         {
-            if (!this.TryPayloadReceiver(call, handle, receiver, scope, out receiverOperation))
-            {
-                return null;
-            }
-        }
-        else if (receiver == SemanticsKind.Uniq)
-        {
-            if (receiverType.Semantics == SemanticsKind.Ref)
-            {
-                return this.FailWrite(call, call.Method);
-            }
-
-            // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
-            // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.BorrowablePlace(call.Method, scope, true))
-            {
-                return this.FailWrite(call, call.Method);
-            }
-        }
-        else if (receiver == SemanticsKind.Owner)
-        {
-            // SPEC 7.3 (owning row), 3.5.3: a reference supplies an owning receiver only by the value read of a read Type, which a
-            // callable value never is; `r@follow()` Copies a Copy referent.
-            if (receiverType.Kind == BoundTypeKind.Semantics)
-            {
-                return this.FailWrite(call, call.Method);
-            }
-
-            // SPEC 7.7.3: a Consuming call Copies a Copy closure; a Non-Copy closure Place needs c@move().
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && this.ProveCopy(receiverType, call) != ConstraintProof.Proven)
-            {
-                return this.FailAcquisition(call, BindingFailure.TransferRequired, call.Method);
-            }
+            return null;
         }
 
         var parameters = signature.Components[0];
