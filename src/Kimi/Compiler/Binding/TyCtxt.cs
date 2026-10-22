@@ -199,8 +199,8 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // (a Tuple's component, a fixed array's element). It reads the declared Field Type or payload under the instance's substitution,
     // `self` the holding value's own step; A5 never reads an instance's FieldType or CaseTypes for a raw Origin (they state none) nor
     // substitutes one itself. Cost: one substitution of the declared part per call, interned, allocating nothing when warm. Total over
-    // what Binding accepts: an Origin without a step (an Unbound slot argument) gives Unstated, never a fault; a path that ends at no raw
-    // layer is a broken contract.
+    // what Binding accepts: an Origin without a step (an Unbound slot argument) gives Unstated, never a fault, and an erased instance
+    // answers with its erased arguments (`static`, as the user's `during static`); a path that ends at no raw layer is a broken contract.
     internal RawStep RawStep(BoundType instance, int part, ReadOnlySpan<int> positions) => binding.StoredStep(instance, part, positions);
 
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form

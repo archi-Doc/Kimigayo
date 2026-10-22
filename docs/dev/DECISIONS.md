@@ -3928,7 +3928,10 @@ resumed by R4-M86 (2026-10-20).
   the layer's raw Origin, total over published Types. `TyCtxt.RawStep(instance, part, positions)`: §15's one reader of a layer an
   instance stores (`StoredStep`, Raw Origins): the declared Field Type or Case payload under the instance's substitution
   (`StoredType`, `Holder` kept as Own), then inline positions; an Origin without a step gives Unstated; its contract states the
-  cost (one interned substitution, no allocation when warm, `TyCtxtTest`'s allocation row). `ArchitectureRulesTest`'s raw-role
+  cost (one interned substitution, no allocation when warm, `TyCtxtTest`'s allocation row). Totality (design-final §15 as R4
+  accepted it, 2026-10-22): an Origin without a step gives Unstated, an erased instance answers with its erased arguments (`static`
+  reads Static or Shared(static), as the user's `during static`, the same interned Type), and a path reaching no raw layer is
+  `InternalInvariant`. `ArchitectureRulesTest`'s raw-role
   sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit).
 
 ## R5 and R6 (adopted 2026-10-18)
