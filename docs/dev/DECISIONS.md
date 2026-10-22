@@ -5847,6 +5847,13 @@ structure is recorded here by the unit that first implements it.
   generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
   "stage 5 times layout", since the instance collector lays out every by-value use in stage 3 (K 4.8, R5-M37). The six stage names
   stay, so reports remain comparable with the 49cb2b5d baseline. It leaves the list; R5's group reviews check the code against R5-M94.
+- **R5-M98 Ask A-7 and H5 after R4-M106** (2026-10-22, R5 planning session; plan §3.4 A-7, §4 H5, §6.4 rank 13; under R4-M106) R4-M106
+  deletes A5-F6 and A5P-S2 (abstract calls reach by paths: `preserves results`, rule 3, delegation and P12 deleted), so ask A-7 ("A5-F6
+  (with A5P-S2) before R4's exit") and rank 13's "need A5-F6 and A5P-S2" have no object. H5's prerequisite A-7 becomes R4's units U0-U5,
+  which R4's exit counts in place of G:A5-F6 (R4-M106). H5's deletions shrink to match: U2 removes `EffectSummary`'s `preserves` half
+  (about -810 lines over Binding, the grammar and the library) and U1 retires `CallEffectConflict_Kd` with the old Analysis's rules 1 and 3 (its DIAGNOSTICS rows and the
+  difference ledger's `a5-old-effects` cells), so H5 deletes what remains of the old effect checks, `confined`'s, by the same row. The
+  plan's text is frozen; this entry supersedes those clauses. Nothing in R5's code depends on them.
 - **R5-M99 Drop flags in MIR code generation (C4b)** (2026-10-22, C lane; plan C4b, package C 3.2 I2 and I6, 3.9; the planning session's
   rulings on C4b's design (Q1-Q4); under R5-M18 form 1, R4-M6a and R5-M95)
   - Rule (SPEC 16.2.1, 15.1, 16.3.2; R4-M6a): a value initialized or moved on some paths only is destroyed exactly where it is Initialized
@@ -5879,9 +5886,8 @@ structure is recorded here by the unit that first implements it.
     or fixed array's parts in `DropGlue.Parts` order, each part that may need a drop through the next of that glue item's targets, by its
     row (`FunctionCodegen.Drops.cs`'s `DestroyByRow`): Keep and Flag its glue under the row's flag (Keep's none), Elide nothing (no
     address), Open its own level at its address; a part without a row its glue under the parent's own bit (`Test`/`Join`, R5-M99). Row -1
-    is "no rows", the
-    representation of a glue function's level (as a flag's -1), where every part follows a set own bit. The Drop is its group's first row
-    through the same writer, so Keep, Flag and Open are one arm.
+    is "no rows", the representation of a glue function's level (as a flag's -1), where every part follows a set own bit. The Drop is
+    its group's first row through the same writer, so Keep, Flag and Open are one arm.
   - Parts are matched to child rows by their move-path step (`Governing`, FunctionCodegen's bridge between `Component`'s numbering,
     which `DropPart` carries, and MIR's projections): a struct's own Field by its index (its position less one after a base), its base by
     one Base step, a Tuple's element by its index; an enum Case payload element through its Case's Downcast row, by that row's child at
@@ -5907,3 +5913,12 @@ structure is recorded here by the unit that first implements it.
     one); A2 publishing an Open row's children in destruction order or with `DropPart` positions (held `MirDrops.cs`; Mir would depend on
     Backend's order); the collector targeting a glue per child row (it reads no verdicts, K 4.5; one target per site, I8); a MIR-step
     column in `DropPart` (a second numbering in the shared part for one consumer).
+- **R5-M101 The owner confirms C4a-2's and C4c's departures** (owner, 2026-10-22, on the R5 planning session's explanation; verbatim
+  「R5-M96 の 2 件と R5-M100 の 1 件の逸脱を了承します。」; the consequences are the planning session's) The three departures from the
+  owner-approved package C recorded for the owner's list are confirmed: R5-M96's gate step 2 placed in `FunctionCodegen.Write`, which
+  skips only a refused body and writes every other item so their gaps are reported (against package C 3.8's place in
+  `Compilation.Generation.cs` before writing); R5-M96's arena-skipped body refused with a located `Unsupported_Kd` until A1's arena
+  problem carries its catalog arguments (PLAN G213; against package C 3.8's "that code"); and R5-M100's part glue taken from the Drop's
+  glue item's targets per level, the collector's own resolution in `DropGlue.Parts` order (against package C 3.2's `Find(MonoKey)` and
+  3.6's "the part's glue from `Find`", which would need the erased Type that code generation must not compose). They leave the list;
+  R5's group reviews check the code against those entries.
