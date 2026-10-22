@@ -29,8 +29,9 @@ public sealed partial class Binding
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records. A position the relation judge fails records every failed chain; a position that is only unproven is recorded when an
     // end is unresolved and is otherwise Unsupported. Either is a dependent of a failed Origin environment instead, the first only
-    // when no failed chain is Refuted. A record at a body chain (2a0-D D1, ends resolved at the use) also has every position of the fit
-    // as a row of its body (CheckTypeUse's obligations), which A5 judges; the record stays Binding's until H11 (DECISIONS R4-M108).
+    // when no failed chain is Refuted. A record at a body chain (2a0-D D1, ends resolved at the use) gives every position of the fit,
+    // fixed-fixed ones included, a row of its body for A5 (CheckTypeUse's obligations, up to its first differing Function Type
+    // component); the records stay Binding's until H11 (DECISIONS R4-M108).
     private bool RecordOriginFitFailure(Koto node, Koto at, BoundType actual, BoundType expected)
     {
         var all = this.relationScratch;

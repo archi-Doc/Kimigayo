@@ -506,7 +506,7 @@ public sealed partial class Binding
         var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
         this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);
 
-        // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, which A5 judges.
+        // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5.
         if (BodyChain(failed.Longer, failed.Shorter))
         {
             var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);
