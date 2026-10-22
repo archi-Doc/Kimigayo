@@ -220,7 +220,8 @@ first. IntrinsicId returns to 30 at R8.
   forwarding properties (R7, their Parsing and root-helper reads at R6-check; DECISIONS R5-M9); the HIR publisher walk, replaced by inline writes (R7, DECISIONS R2b-D2); the temporary
   intrinsics `Capacity`, `FormatBuffer`, `FormatHint` and `FormatFinish` that the owner admitted on 2026-10-11
   (`IntrinsicId` limit 34, back to 30 in R8; DECISIONS R3-9, R3-10); the `Compilation.Analyzed` event, the difference
-  ledger's observation point, and `Binding.IsEffectRecord`, the ledger's old-side effect subset (R6, DECISIONS R4-M17, R4-M23);
+  ledger's observation point, and `Binding.IsEffectRecord` and `Binding.IsTwinRecord`, the ledger's old-side effect and twin subsets (R6, the
+  twin set with the twins at H11; DECISIONS R4-M17, R4-M23, R4-M111);
   `LegacyRuntimeHelpers`, the Backend's Array, Dictionary, formatting and string-comparison runtime text and its requests
   (R8, DECISIONS R5-M16); `Layout`'s Slice, Array and Dictionary handle word counts (R8, DECISIONS R5-M19). R5's planned
   temporaries, recorded by their first units (DECISIONS R5-M18): the `KIMI_CODEGEN` selector, the pending ledger, the `CodegenDeviations` catalog and `.deviation` targets (G4); the codegen coverage rows (the R5

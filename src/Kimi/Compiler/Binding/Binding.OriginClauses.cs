@@ -13,7 +13,7 @@ namespace Kimi.Compiler;
 //   JudgeCallPosition).
 // - Outputs: Origin relation records (originRelations; a declaration row's through PublishCallRelations), the Unsupported failure of a
 //   row whose Unbound end is not proven, obligations for the clauses the judge leaves to region inference, and a local clause's row
-//   when its record is a body chain (DECISIONS R4-M108).
+//   and twin when its record is a body chain (DECISIONS R4-M108, R4-M111).
 // - Invariants: a clause is judged by its owner's part only, and FailedDeclaredRelation takes no steering flag; a clause's rows are its
 //   owner's body's (a local's, or none for a declaration's); a judged declaration row leaves the obligations, and a row whose ends are
 //   not declaration atoms stays for the view's validation (R4-M101 E2).
@@ -216,9 +216,11 @@ public sealed partial class Binding
         var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
         this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);
 
-        // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5.
+        // 2a0-D §5.1 (DECISIONS R4-M108): a record at a body chain (a finite end over a fixed one) is also the clause's row, for A5, and
+        // the clause is a twin (R4-M111).
         if (BodyChain(failed.Longer, failed.Shorter))
         {
+            (this.originTwins ??= new(ReferenceEqualityComparer.Instance)).Add(use);
             var row = new BindingObligation(BindingObligationKind.OriginOutlives, use, BindingDeadline.BodyOrigins, null, failed.Longer, failed.Shorter);
             this.AddObligation(row with { Equality = failed.Equality, Clause = use });
         }

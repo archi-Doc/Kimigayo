@@ -11,6 +11,17 @@ namespace XunitTest;
 // the matching of the two sides.
 public sealed partial class MirDifferenceTest
 {
+    // A fit's twin (SPEC 15.6.5's `bad`), a mixed fit whose first recorded chain is fixed-fixed (BU's `fncomp`) and an all-fixed-fixed fit.
+    private const string TwinFits = "func bad(x: ref/i32) -> ref/i32 during x\n    let local: i32 = 1\n    return local@ref\n" +
+        "func mixed(x: ref/i32, y: ref/i32, g: ref/((ref/i32 during y) -> i32)) -> (ref/((ref/i32 during x) -> i32), ref/i32 during x)\n" +
+        "    let local = 1\n    let t = (g, local@ref)\n    return t\n" +
+        "func fixed(x: ref/i32, y: ref/i32) -> ref/i32 during y => x\n";
+
+    // A local's clause whose record is a body chain (finite over fixed) and one whose record is fixed-fixed.
+    private const string TwinClauses = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n" +
+        "func twin(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n" +
+        "func fixed(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s outlives b\n    return 0\n";
+
     // R4-M17: the sides match as multisets on code and subject node: a node's second old record of one code stays old, and another code
     // at a matched node is new. R4-M67: a matched MIR problem that names another requirement writes the pair's as old>mir; a MIR record
     // that names none (-) agrees.
@@ -98,7 +109,7 @@ public sealed partial class MirDifferenceTest
         }
 
         images.Add((DiagnosticRequirement.ControlFlow, DiagnosticCode.RequireFallthrough_Kd));
-        foreach (var (_, code, analysis, mir) in MirDifferenceLedger.Compared)
+        foreach (var (_, code, analysis, mir, _) in MirDifferenceLedger.Compared)
         {
             if (mir is { } requirement)
             {
@@ -110,5 +121,25 @@ public sealed partial class MirDifferenceTest
         var (transfer, defect) = (OwnershipRequirement.TransferRequired, OwnershipRequirement.Internal);
         Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(transfer), DiagnosticCode.TransferRequired_Kd));
         Assert.Null(MirDifferenceLedger.MirAnalysisOf(DiagnosticRequirement.Ownership(defect), DiagnosticCode.InternalInvariant_Kd));
+    }
+
+    // R4-M111 (R4-M108): Binding's Origin relation records are compared with A5 only where they are twins, the records of a node whose
+    // relation is also a row A5 judges: at a fit every record of the node, the mixed fit's fixed-fixed first chain included, and at a
+    // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7, and so, until A5-F7's
+    // 2c-6, does a Closure result over call-local storage. Each row has a record that passes through, which the ledger compared before.
+    [Theory]
+    [InlineData(TwinFits, "UnprovenOriginRelation_Kd A5 return t|UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
+    [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
+    [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "", "UnsatisfiedOriginRelation_Kd - func (x: i32) => x@ref")]
+    public void OnlyTwinsOfBindingsOriginRecordsAreCompared(string source, string compared, string passed)
+    {
+        var c = MirBuildTest.Compile(source);
+        var (common, old, _, _) = MirDifferenceLedger.Sides(c, c.BuildMir());
+        Assert.Equal(compared.Split('|', StringSplitOptions.RemoveEmptyEntries), OriginRecords(old));
+        Assert.Equal(passed.Split('|'), OriginRecords(common));
+
+        // Binding's Origin relation records, each `code analysis subject` by the subject's source text, in ordinal order.
+        string[] OriginRecords(List<MirDifferenceLedger.Entry> entries) => [.. entries.Where(static x => x.Requirement == "Binding.OriginRelation")
+            .Select(x => $"{x.Code} {x.Analysis} {source.Substring(x.Node.Span.Start, x.Node.Span.Length)}").Order(StringComparer.Ordinal)];
     }
 }
