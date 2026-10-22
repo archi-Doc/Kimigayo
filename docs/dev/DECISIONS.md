@@ -2120,6 +2120,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     for effect (drops the Loan a typed destination receives: `let r: ref/i32 = if c => x@ref else => missing`); a new-Error test by
     node state (reaches unresolved calls, G121); building an untyped construct operand's parts for effect (G121's kept-construct design,
     owner-reserved).
+  - R4-M109 amends Rule 2 (an Error node a consumer takes is its derived value, `(Temporary, None)`, in the column and a plan row)
+    and Part 3 (an Error node's value at its consumer's Type; a located one evaluated once, each consumer its own derived value).
 - **R4-M89 A5-F5's design package (2b-D) approved** (owner, 2026-10-21, relayed by the R4 planning session, verbatim
   「推奨どおり承認 (推奨)」
   to the package with OQ-F5-1 to OQ-F5-6 at their recommendations; R4-M74 OQ2) The package is
@@ -2863,6 +2865,56 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `NextUse` no Use); a stand-in Type check by identity (it fails where Origins legitimately differ); re-expecting the source tests
     with vacuous guards (OQ-1 (a)).
   - PD21: `MirBorrowsTest.Defaults.cs`'s edit extracts `Validated` and adds no responsibility; no restructure.
+- **R4-M109 An Error node is each consumer's derived value** (2026-10-22; unit 2x-E8 under the full process: design B2 of two
+  independent designs, chosen by the planning session, R5's design review round 2 with its five non-blocking fixes; amends R4-M88's
+  Rule 2 and Part 3, consistent with R5-M63) SPEC 23.1.2, 13.7.2, 11.3.
+  - Cause: the publisher kept a consumer's Adjust on an input it published Error (an Error has no Place, PlaceShape Value, and no value
+    of its own), so the builder held the Error at its own Type and applied the adjustment to that temp: a Loan on the derived temp,
+    which A5 reported as `ComparisonLoanConflict_Kd` beside Binding's record where the result was kept. On dev: an input
+    `PublishCallRelations` fails after selection (`let r = keepStatic(c.n); peek(r)`, an Origin relation between fixed Origins); with
+    bu22, every implicit static Borrow. An update's getter took its located receiver by a builder copy of the publisher's mapping
+    (`HirAdjust.Of(argument)` with its own ByCase/None choice), and `Value` returned a located Error before any Type rule.
+  - Rule 2, added after "with its own kept operands;": "Wherever a consumer wrote an acquisition or adaptation for an Error node, in
+    the Adjust column or in the node's plan row (a consumer's earlier call, the getter of a compound update), the publisher replaces it
+    by `(Temporary, None)`: the node has no Place and no value of its own to acquire or adapt, so the consumer's acquisition and
+    adaptation fold into the derived value it receives. `(None, None)` under an Error parent stays the kept-operand mark, which only
+    Keeps writes there (R5-M63); the fold never writes it. An Error assignment or update target folds too, but the builder derives the
+    whole assignment and never reads it. Bare's `(Unset, None)`, the column's default, is not folded." (`HirPublisher.Visit`, `Derived`.)
+  - Part 3, amended: "A value Binding gave no Type, a construct it left unresolved or a derived value is held at the Type its consumer
+    expects; an Error node's value also where Binding gave it a Type, at its own Type only where the consumer expects none. A located
+    Error node is evaluated once where it is located (its kept operands); each consumer that takes it receives its own derived value,
+    whose Opaque site names the located root (R5-M84) and evaluates no kept operand again. One rule with
+    `Unsupported(node, derived, expected)`; temporary with Part 3, it goes with residual R1 when Binding publishes the Expression Type
+    (option C)." (`MirBuilder.Value`, `SiteRoots`.)
+  - `PlanRow.Adjust` (the planning session's decision: one owner, the publisher; an existing per-node row, 48 bytes measured): the
+    Adjust by which the earlier of two calls of one consumer takes the node where the two take it by different Adjusts, the column
+    keeping the later's; default otherwise, written at each call input of each pass (`HirPublisher.Write` under `callOrdinal`). Its one
+    reader is an update's receiver, which exactly its getter and setter take (`MirBuilder.Update`: the getter by the plan row's Adjust,
+    else the column's); a node three or more calls take (a `$tryWrite`'s storage) has no defined value there (PLAN G103 (ii)).
+  - Invariant, both ways: (a) no consumer forms a Copy, Move, Reborrow, Ref, reservation or Loan on an Error node's value through the
+    column, a plan-row Adjust or a located Place; each receives a derived value formed for it (an Opaque in a temp of its Type, moved
+    into it, or formed in its destination). Its one exception is L1. (b) The derived value is held at the consumer's expected Type.
+  - L1: an in-place step is not a consumer: an update whose accessor side is standard reads and writes its receiver's storage in place,
+    for an Error receiver a Field of the located derived temp (R5-M63: an Error evaluated as its Place is a value in a temp); a
+    getter-only update's Writeback reserves `&uniq two-phase` on that Field, which the update's own write activates (its window holds
+    only the getter's call, which takes its own derived value: no record can arise, unverified beyond the probes). L2: a consumer
+    passing no expected Type (an operator's inspected operand, a formatting writer operand, a value call's callee without
+    `AdaptedType`, an upcast's operand, a rejected jump's operand) holds a folded Error at its own Type; validator-clean (an Opaque
+    temp's Type reads as unknown), no Loan; no censused failure site produces such a consumer over an Error. Both in PLAN G103.
+  - Deleted: `MirBuilder.Expansions.cs`' copy of the getter's Adjust (`HirAdjust.Of(argument)` and its ByCase/None choice).
+  - Rejected: design A's `(Unset, …)` (the column's default, which `Blocks.Result` reads as not consumed); A5 ignoring Loans on Opaque
+    stand-ins (suppressing a derived report afterwards, and hiding a kept operand's Loans); failing the call (hides its independent
+    records); locating the receiver at the column's Type and borrowing through it (a Ref through a derived value; a getter-only update
+    would reserve through a shared derived reference); a `HirAcquire` member (a vocabulary entry `(Temporary, None)` already states);
+    folding in `Take`/`Write` (the Op is unknown there); the builder testing the Op in `Operand` (the consumer would decide); Binding
+    recording failed inputs unadapted (five failure sites); the getter's Adjust in the update's plan row (the fold would write a
+    parent's row) or in a second column (memory per node for one form); a located Error taken per consumer without a located entry
+    (its kept operands evaluated twice).
+  - PD21 (the planning session, 2026-10-22): `MirBuilder.Opaque.cs` was due (Q21, Q16, W1 F19 since 8701eaaa): ruling (b), a bp split
+    first, root collection into `MirBuilder.Opaque.Roots.cs` (a split by responsibility exists, unlike R4-M97's and R4-M102's
+    one-responsibility rulings; 2g-2a may restructure again, G103's staging does not block it); `HirFormsTest.cs` was due (Q21, Q16,
+    2x-E2): ruling (a), partial, its Error rows in `HirFormsTest.Errors.cs`; `Binding.Hir.Adjust.cs`: a comment-only citation sweep
+    (fc24641c) is not a changing unit, so 2, not due.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

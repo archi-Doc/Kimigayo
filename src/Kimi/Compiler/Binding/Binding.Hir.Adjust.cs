@@ -10,6 +10,9 @@ public sealed partial class Binding
 {
     private sealed partial class HirPublisher
     {
+        // The call of the node Consume takes inputs for, by its CallPlan.Of ordinal; -1 outside its calls (Write).
+        private int callOrdinal = -1;
+
         // SPEC 13.6.1: an object upcast to a view (objref, objuniq) of an operand of another Semantics borrows the operand in the view's mode.
         private static HirAdaptation ViewBorrow(Koto node) => node is ConversionKoto { ConversionBinding: ConversionBinding.ObjectUpcast, BoundType: { IsObjectBorrow: true } view } upcast &&
             upcast.Left.BoundType?.Semantics != view.Semantics ? view.Semantics == SemanticsKind.ObjUniq ? HirAdaptation.ExclusiveBorrow : HirAdaptation.SharedBorrow : HirAdaptation.None;
@@ -134,6 +137,7 @@ public sealed partial class Binding
 
             for (var i = 0; CallPlan.Of(node, i) is { } call; i++)
             {
+                this.callOrdinal = i;
                 if (ReferenceEquals(call, unselected))
                 {
                     continue;
@@ -155,6 +159,26 @@ public sealed partial class Binding
                 {
                     this.Take(argument.Source, argument);
                 }
+            }
+
+            this.callOrdinal = -1;
+        }
+
+        // SPEC 23.1.2 (DECISIONS R4-M109, R4-M88 Rule 2): an Error node has no Place and no value of its own to acquire or adapt, so wherever
+        // a consumer wrote an acquisition or adaptation for it, in the column or in its plan row (the earlier of two calls), it is that
+        // consumer's derived value, taken as it is. An Error assignment target folds too; the builder derives the whole assignment and never
+        // reads it.
+        private void Derived(Koto node)
+        {
+            var derived = new HirAdjust(HirAcquire.Temporary, HirAdaptation.None);
+            if (HirTables.AdjustOf(node) != default)
+            {
+                this.Write(node, derived);
+            }
+
+            if (this.Owns(node) && HirTables.PlanOf(node).Adjust != default)
+            {
+                HirTables.PlanFor(node, written: true).Adjust = derived;
             }
         }
 
@@ -266,11 +290,21 @@ public sealed partial class Binding
 
         // Only the nodes of the module being published; a call shared across modules names nodes of another. An exclusive borrow, and the
         // Reborrow or pair-case acquisition of a Place whose Type needs exclusive capability (SPEC 10.2, 4.7.2, 8.14), is an exclusive use.
+        // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): where a later call of the consumer takes an input by another Adjust than the earlier one did
+        // (a compound update's setter after its getter), the earlier one is the input's plan-row Adjust, the column keeping the later;
+        // at any other call input the row states none, which also clears a row of an earlier pass.
         private void Write(Koto? node, HirAdjust adjust, HirPlace place = default)
         {
             if (this.Owns(node))
             {
-                this.table!.Hir.Adjusts![node!.SyntaxId] = adjust;
+                ref var column = ref this.table!.Hir.Adjusts![node!.SyntaxId];
+                if (this.callOrdinal >= 0)
+                {
+                    var earlier = this.callOrdinal > 0 && column != adjust ? column : default;
+                    HirTables.PlanFor(node, earlier != default).Adjust = earlier;
+                }
+
+                column = adjust;
                 this.claims[node.SyntaxId] |= adjust.Adaptation == HirAdaptation.ExclusiveBorrow ||
                     (adjust.Acquire is HirAcquire.Reborrow or HirAcquire.ByCase && this.Exclusive(node.BoundType));
                 if (place.Kind != HirPlaceKind.Unset)
