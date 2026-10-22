@@ -559,7 +559,9 @@ public sealed partial class MirBorrowsTest
     // SPEC 23.1.2 (R4-M90 PQ-1, DECISIONS BU-25, R4-M109): an implicit Borrow of a static is Binding's located Unsupported_Kd at its operand,
     // which its consumer receives as a derived value with no Loan, so a result kept past the statement meets nothing: a receiver's with a
     // retained result (retained, beside an unknown call in effect, parenthesized, a base method's BaseBorrow, a handle's PayloadProjection),
-    // an exclusive one's retained (grabbed), a reserved receiver's, a value call's callee (called), an argument's adaptation, a kept
+    // an exclusive one's retained (grabbed), a reserved receiver's, a value call's callee (called; calls, handles, qualified and handled:
+    // parenthesized, a let, a struct Field, a handle's payload Field, an element, with an input, obj and rc handles, a followed one, an
+    // Exclusive Closure's element, each call bound on), an argument's adaptation, a kept
     // argument's and an expected Type's, as a written Borrow's does not (fail-before 2x-E8's merge: a conflict at each retained form's
     // operand; called's before the callee's U: a conflict at fn).
     [Fact]
@@ -579,12 +581,23 @@ public sealed partial class MirBorrowsTest
             struct Leaf : Base
                 public init() : base()
                     ()
+            struct Holder
+                public var fn: () -> i32 = func [] () => 1
+                public init() => ()
             group Held
                 public var counter: Counter = Counter.init()
                 public var count: i32 = 0
                 public var leaf: Leaf = Leaf.init()
                 public var handle: obj/Counter = Kimi.Intrinsics.makeObj<Counter>(Counter.init())
                 public var fn: () -> i32 = func [] () => 1
+                public let fixedFn: () -> i32 = func [] () => 2
+                public var f1: (i32) -> i32 = func [] (k: i32) => k
+                public var rec: Holder = Holder.init()
+                public var h: obj/Holder = Kimi.Intrinsics.makeObj<Holder>(Holder.init())
+                public var fns: Array<() -> i32> = [func [] () => 3]
+                public var oc: obj/((i32) -> i32) = Kimi.Intrinsics.makeObj<(i32) -> i32>(func [] (k: i32) => k)
+                public var rcf: rc/((i32) -> i32) = Kimi.Intrinsics.makeRc<(i32) -> i32>(func [] (k: i32) => k)
+                public var exs = [(func [] (k: i32) => func [var k] () -> i32 => ++k)(0)]
                 public func inspect<T>(value: ref/T) => ()
                 public func touch(value: uniq/i32) => ()
                 public func takes(value: ref/i32) => ()
@@ -602,6 +615,8 @@ public sealed partial class MirBorrowsTest
                     let p = handle.view()
                     inspect(p)
                 public func called() -> i32 => fn()
+                public func calls() -> i32 => (fn)() + fixedFn() + rec.fn() + h.fn() + fns[0]() + f1(count)
+                public func handles() -> i32 => oc(1) + oc@follow(2) + rcf(3) + exs[0]()
                 public func retained()
                     let c = counter.view()
                     inspect(c)
@@ -620,11 +635,15 @@ public sealed partial class MirBorrowsTest
                 public func written()
                     let r = counter@ref
                     inspect(r)
+            func qualified() -> i32 => Held.fn() + (Held.fn)() + Held.fixedFn() + Held.rec.fn() + Held.h.fn() + Held.fns[0]() + Held.f1(1)
+            func handled() -> i32 => Held.oc(1) + Held.rcf(2) + Held.exs[0]()
             public func main() => ()
 
             """);
-        Assert.Empty(Problems(
-            c, AnalyzeUnsupported(c, ["(counter)", "count", "counter", "counter@ref", "fn", "handle", "leaf"]), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        string[] borrows = ["(Held.fn)", "(counter)", "(fn)", "Held.exs[0]", "Held.f1", "Held.fixedFn", "Held.fn", "Held.fns[0]", "Held.h.fn", "Held.oc",
+            "Held.rcf", "Held.rec.fn", "count", "counter", "counter@ref", "exs[0]", "f1", "fixedFn", "fn", "fns[0]", "h.fn", "handle", "leaf", "oc",
+            "rcf", "rec.fn"];
+        Assert.Empty(Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // The Loan problems and located Unsupported_Kd records of a program: the prelude, the effect Types and group State with the given

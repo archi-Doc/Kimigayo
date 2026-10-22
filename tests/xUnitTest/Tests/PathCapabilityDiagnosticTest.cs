@@ -67,23 +67,30 @@ public class PathCapabilityDiagnosticTest
         "func bumpc(x: uniq/Color) -> i32\n    x@follow = Color.Blue\n    return 4\n";
 
     // Group storage: a var and a let Field, a var and a let struct, a Tuple, a fixed array, an Array, a Dictionary, object handles (var and
-    // let ones of a derived Type, an rc one), a derived struct whose base method borrows its base, a function value, a var whose setter is
-    // private, one whose setter is custom and computed Fields of a scalar and a struct; Point's computed Field cx and exclusive and
-    // retaining shared methods; the group's glook borrows its argument, and its function bump has its body appended.
+    // let ones of a derived Type, an rc one), a derived struct whose base method borrows its base, function values (var, let, one taking
+    // an i32, a struct Holder's, an object handle's, an Array's, obj and rc handles of one, var and let Arrays of an Exclusive Closure), a
+    // var whose setter is private, one whose setter is custom and computed Fields of a scalar and a struct; Point's computed Field cx and
+    // exclusive and retaining shared methods; the group's glook borrows its argument, and its function bump has its body appended.
     private const string Statics =
         "struct Point\n    public var x: i32 = 0\n    public computed cx: i32\n        get() -> i32 => self.x\n        set(value: i32) -> () => self.x = value\n" +
         "    public init() => ()\n    public func grow(self: uniq/Self) => self.x = self.x + 1\n" +
         "    public func view(self: ref/Self) -> ref/i32 during self => self.x@ref\nfunc take(x: uniq/i32) -> () => x@follow = 1\n" +
         "func look(x: ref/i32) -> i32 => x@follow\nfunc lookp(x: ref/Point) -> i32 => x.x\n" +
         "open struct Shape\n    public var size: i32 = 0\n    public init() => ()\n    public func peek(self: ref/Self) -> i32 => self.size\n" +
-        "struct Circle: Shape\n    public init() => ()\n" +
+        "struct Circle: Shape\n    public init() => ()\nstruct Holder\n    public var fn: () -> i32 = func [] () => 1\n    public init() => ()\n" +
         "group State\n    public var counter: i32 = 0\n    public let limit: i32 = 5\n    public var point: Point = Point.init()\n" +
         "    public let fixed: Point = Point.init()\n    public var pair: (i32, i32) = (1, 2)\n    public var fa: [2 of i32] = [1, 2]\n" +
         "    public var values: Array<i32> = [1, 2]\n    public var dict: Dictionary<i32, i32> = [1: 2]\n" +
         "    public var handle: obj/Point = Point.init()@obj\n" +
         "    public var circle: obj/Circle = Circle.init()@obj\n    public let ring: obj/Circle = Circle.init()@obj\n" +
         "    public var shared: rc/Point = Point.init()@rc\n    public var leaf: Circle = Circle.init()\n" +
-        "    public var fn: () -> i32 = func [] () => 1\n" +
+        "    public var fn: () -> i32 = func [] () => 1\n    public let fixedFn: () -> i32 = func [] () => 2\n" +
+        "    public var f1: (i32) -> i32 = func [] (k: i32) => k\n    public var rec: Holder = Holder.init()\n" +
+        "    public var h: obj/Holder = Holder.init()@obj\n    public var fns: Array<() -> i32> = [func [] () => 3]\n" +
+        "    public var oc: obj/((i32) -> i32) = Kimi.Intrinsics.makeObj<(i32) -> i32>(func [] (k: i32) => k)\n" +
+        "    public var rcf: rc/((i32) -> i32) = Kimi.Intrinsics.makeRc<(i32) -> i32>(func [] (k: i32) => k)\n" +
+        "    public var exs = [(func [] (k: i32) => func [var k] () -> i32 => ++k)(0)]\n" +
+        "    public let fixedExs = [(func [] (k: i32) => func [var k] () -> i32 => ++k)(0)]\n" +
         "    public var guarded: i32 = 0\n        private set\n    public var custom: i32 = 0\n" +
         "        set(value: i32) -> () => State.counter = value\n    public computed calc: i32\n        get() -> i32 => 1\n" +
         "    public computed cpt: Point\n        get() -> Point => Point.init()\n    public func glook(x: ref/i32) -> i32 => x@follow\n    public func bump()\n";
@@ -179,6 +186,22 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f() -> i32 => State.leaf.peek()", "State.leaf", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32 => State.fn()", "State.fn", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        _ = fn()", "fn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => (State.fn)()", "(State.fn)", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = (fn)()", "(fn)", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.fixedFn()", "State.fixedFn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = fixedFn()", "fixedFn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.rec.fn()", "State.rec.fn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = rec.fn()", "rec.fn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.h.fn()", "State.h.fn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = h.fn()", "h.fn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.fns[0]()", "State.fns[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = fns[0]()", "fns[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.exs[0]()", "State.exs[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = exs[0]()", "exs[0]", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = fixedExs[0]()", "fixedExs[0]", DiagnosticCode.InvalidAssignment_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.rcf(1)", "State.rcf", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = oc(1)", "oc", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = oc@follow(1)", "oc", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32 => State.point.cx", "State.point", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => State.point.cx = 3", "State.point", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => State.point.cx += 3", "State.point", DiagnosticCode.Unsupported_Kd)]
@@ -247,6 +270,29 @@ public class PathCapabilityDiagnosticTest
         var source = Statics + body + "\npublic func main() => ()\n";
         var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length));
         Assert.Equal([(code.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length)], observed);
+    }
+
+    // SPEC 23.1.2: a static callee's Unsupported_Kd (an owned callee's or a handle's) fails the callee alone, as every implicit static
+    // Borrow fails its operand alone, so the value call stays bound and its independent records (an argument's, its applicability's, its
+    // result's) are reported beside it (DECISIONS BU-25; fail-before: the callee's record alone).
+    [Theory]
+    [InlineData("        _ = f1(missing)", "f1", "missing", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("        _ = f1(1) + \"t\"", "f1", "\"t\"", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("        let w: string = f1(2)", "f1", "f1(2)", DiagnosticCode.TypeMismatch_Kd)]
+    [InlineData("        _ = f1(\"s\")", "f1", "f1(\"s\")", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("        _ = f1(1, 2)", "f1", "f1(1, 2)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("        _ = f1(counter@ref@follow)", "f1", "counter@ref", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.f1(missing)", "State.f1", "missing", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("        _ = oc(missing)", "oc", "missing", DiagnosticCode.UnresolvedBinding_Kd)]
+    [InlineData("        _ = oc@follow(1, 2)", "oc", "oc@follow(1, 2)", DiagnosticCode.NoApplicableOverload_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.rcf(missing)", "State.rcf", "missing", DiagnosticCode.UnresolvedBinding_Kd)]
+    public void AStaticCalleeKeepsTheCallsRecords(string body, string callee, string at, DiagnosticCode code)
+    {
+        var source = Statics + body + "\npublic func main() => ()\n";
+        var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length)).Order();
+        var unsupported = (DiagnosticCode.Unsupported_Kd.ToString(), source.IndexOf(callee, Statics.Length, StringComparison.Ordinal), callee.Length);
+        var record = (code.ToString(), source.IndexOf(at, Statics.Length, StringComparison.Ordinal), at.Length);
+        Assert.Equal(new[] { unsupported, record }.Order(), observed);
     }
 
     // Reads, writes and calls through the group borrow no static Field in Binding. A case adaptation borrows a function reference as a

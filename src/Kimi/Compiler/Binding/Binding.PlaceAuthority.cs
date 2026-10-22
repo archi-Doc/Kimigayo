@@ -10,8 +10,8 @@ namespace Kimi.Compiler;
 //   Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
 //   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a receiver
 //   can be exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers
-//   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace, BorrowableHandle, as
-//   SPEC lends it: LendsPlace, with the static Field at its root), with the one diagnostic for a written Borrow it may not
+//   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace; as SPEC lends it:
+//   LendsPlace and, for a handle, LendsHandle, with the static Field at its root), with the one diagnostic for a written Borrow it may not
 //   (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow); and
 //   the in-place read Binding records for a receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement,
 //   SharedElementView; ElementRead through the layers an element stores) or for a compared operand (CompareInPlace).
@@ -505,11 +505,6 @@ public sealed partial class Binding
     // authority (shared for rc/arc) is checked by the caller.
     private bool LendsHandle(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
         => this.LendsPlace(source, scope, exclusive, out staticRoot) || BorrowableTemporary(source, exclusive, true, false);
-
-    // SPEC 13.5.5, 13.5.6, PLAN P42: whether Binding lends an owning handle's object or payload: as SPEC does (LendsHandle), except
-    // from a static root, whose Loans no analysis models yet.
-    private bool BorrowableHandle(Koto source, BindingScope scope, bool exclusive)
-        => this.LendsHandle(source, scope, exclusive, out var staticRoot) && staticRoot is null;
 
     // SPEC 15.6.2, PLAN P42: whether Binding lends a Place to a written Borrow: as SPEC does (LendsPlace), except a Place rooted at a
     // static Field, whose Loans no analysis models yet (BorrowFailure names the Borrow unsupported). An implicit Borrow belongs to an

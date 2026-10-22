@@ -3818,11 +3818,12 @@ resumed by R4-M86 (2026-10-20).
   Borrow is denied by `BorrowablePlace` and reported by `BorrowFailure`, unchanged. An implicit one (a receiver's: a method's, a user
   index's, an accessor's, a base method's; a value call's callee, SPEC 7.3; an argument's adaptation; an expected Type's or a Case
   payload's adaptation; a value call's input) belongs to an operation selection may still discard, so `AdaptInput`, `AdaptObjectBorrow`
-  and `TryPayloadProjection` lend it as SPEC does, a handle's object or payload through `LendsHandle` (`BorrowableHandle` its rootless
-  case), so selection is SPEC's (no worse candidate is chosen, and `take(State.counter)` is `ExclusiveBorrowRequired_Kd`), and
-  `FailStaticBorrow` (`Binding.PlaceAuthority`) fails its operand where the operation is final, before that input's Origin fit:
+  and `TryPayloadProjection` lend it as SPEC does, a handle's object or payload through `LendsHandle`, so selection is SPEC's (no worse
+  candidate is chosen, and `take(State.counter)` is `ExclusiveBorrowRequired_Kd`), and `FailStaticBorrow` (`Binding.PlaceAuthority`)
+  fails its operand where the operation is final, before that input's Origin fit:
   `JudgeCallFit` (every selected call's inputs), `ExpectedAdaptation`'s selected destination, `CompletePayloads` and the value call
-  (`BindValueCall`'s inputs; `AcquireValueCallee`, split out first, for a Shared or Exclusive call's owned callee).
+  (`BindValueCall`'s inputs; `AcquireValueCallee`, split out first, for a Shared or Exclusive call's callee, owned or a handle's
+  payload (`TryPayloadReceiver`), final at its acquisition as a value call selects no other callee; the call is bound on).
   The consumer receives a derived value with no Loan (R4-M109). Out of scope (no lending judgment; A5 models their Loans, 2b-D §1.5):
   comparison inspections, `for`/`match` Subjects, writeback reservations, in-place element reads; `IsStaticField` stays out of
   `IsBarePlace` (BU-21's open item). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's

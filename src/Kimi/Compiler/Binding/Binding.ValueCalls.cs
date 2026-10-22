@@ -327,7 +327,8 @@ public sealed partial class Binding
     // Exclusive one, through the same checked projection as the explicit spelling; the payload offers no Take.
     // The checks follow SPEC 7.3's order: the operation's legality and authority (a payload offers no Take and rc/arc/objref only Read),
     // then the acquisition, whose unimplemented forms are located limits; a Shared call needs no Sealed proof, as an open View's
-    // shared receiver does not (SPEC 13.5.5).
+    // shared receiver does not (SPEC 13.5.5). A handle Place is lent as SPEC lends it (LendsHandle), its static root failing the handle
+    // alone (FailStaticBorrow), the call bound on (SPEC 23.1.2).
     private bool TryPayloadReceiver(InvocationKoto call, Koto handle, SemanticsKind receiver, BindingScope scope, out BoundArgumentOperation operation)
     {
         operation = default;
@@ -340,13 +341,13 @@ public sealed partial class Binding
             return false;
         }
 
-        if (receiver == SemanticsKind.Owner || (receiver == SemanticsKind.Uniq && !view && IsBarePlace(handle) && !this.BorrowablePlace(handle, scope, true)))
+        if (receiver == SemanticsKind.Owner || (receiver == SemanticsKind.Uniq && !view && IsBarePlace(handle) && !this.LendsPlace(handle, scope, true, out _)))
         {
             this.FailWrite(call, call.Method);
             return false;
         }
 
-        var unsupported = IndirectObjectCallee(handle) || (!view && !this.BorrowableHandle(handle, scope, receiver == SemanticsKind.Uniq));
+        var unsupported = IndirectObjectCallee(handle) || (!view && !this.LendsHandle(handle, scope, receiver == SemanticsKind.Uniq, out _));
         var payload = handleType.Components[0];
         var adapted = (BoundType?)null;
         if (!unsupported && receiver == SemanticsKind.Ref)
@@ -365,13 +366,15 @@ public sealed partial class Binding
         }
 
         operation = new(handle, handleType, adapted, ArgumentOperationKind.PayloadProjection, ArgumentAdaptation.CrossSemanticsBorrow, AdaptedType: adapted);
+        _ = !view && this.FailStaticBorrow(handle, ArgumentOperationKind.PayloadProjection, receiver);
         return true;
     }
 
     // SPEC 7.3, 7.7.3: the callee of a value call is a Receiver Expression, acquired in the call's mode: through a handle or view as its
     // payload (TryPayloadReceiver), exclusively only where its lending point is exclusively writable, and owned only by the value read
-    // of a Copy closure; a Shared or Exclusive call borrows an owned callee Place, whose static root is the located limit until P42
-    // (FailStaticBorrow). False when the acquisition fails, its record made.
+    // of a Copy closure; a Shared or Exclusive call borrows an owned callee Place as SPEC lends it (LendsPlace), whose static root is the
+    // located limit until P42, final here as a value call selects no other callee: it fails the callee alone, the call bound on (SPEC
+    // 23.1.2; FailStaticBorrow). False when the acquisition fails, its record made.
     private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
     {
         var receiverType = call.Method.BoundType!;
@@ -393,7 +396,7 @@ public sealed partial class Binding
 
             // SPEC 7.3, 7.7.3: the callee is a Receiver Expression, acquired exclusively without a spelling when
             // its lending point is exclusively writable; a let-bound closure Place is never Copied instead.
-            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.BorrowablePlace(call.Method, scope, true))
+            if (receiverType.Semantics == SemanticsKind.Owner && IsBarePlace(call.Method) && !this.LendsPlace(call.Method, scope, true, out _))
             {
                 this.FailWrite(call, call.Method);
                 return false;
@@ -417,8 +420,9 @@ public sealed partial class Binding
             }
         }
 
-        return receiver == SemanticsKind.Owner || receiverType.Semantics != SemanticsKind.Owner ||
-            !this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
+        _ = receiver != SemanticsKind.Owner && receiverType.Semantics == SemanticsKind.Owner &&
+            this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
+        return true;
     }
 
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
