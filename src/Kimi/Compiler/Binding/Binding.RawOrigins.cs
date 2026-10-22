@@ -33,12 +33,12 @@ internal enum RawStep : byte
 //   requirement fixed point (InvalidRawOrigin, from ValidateOriginRequirements: a Phantom slot, also through a written projection; an
 //   atom no borrow holds; a pair input admitting a non-borrow case); the step of a raw layer (StepOf, by its Origin's kind; StoredStep,
 //   a Field's or Case payload's layer; SignatureStep, a signature's layer) and the borrows its Origin belongs to (RawMembers), which
-//   retention and A5 read; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's OwnedOrigins member
-//   (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self` layer's Place
-//   reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15) and the limit on
-//   their cycles (RejectPolymorphicKeeperCycles); and a Type with every raw layer's Origin dropped (WithoutRawOrigins): an instance's
-//   stored Types (Instance, design-final §15) and, as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old analysis's view at
-//   its Type intake, removed with it at R6-check.
+//   retention and A5 read, each slot keeper walked once, a keeper cycle that changes its Type arguments an incomplete answer
+//   (CallRetention.Limit), never a silent stop; the Origin a `during self` layer is read with at a Place (ReadHolder); a layer's
+//   OwnedOrigins member (OwnedOrigin); the relations with an unstated end (UnstatedRelation, rulings S4); the allowlist of a `during self`
+//   layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)); the borrows keeping a declared slot (Keepers, D15);
+//   and a Type with every raw layer's Origin dropped (WithoutRawOrigins): an instance's stored Types (Instance, design-final §15) and,
+//   as the D5 exception (the owner's Q-O3, DECISIONS BU-24), the old analysis's view at its Type intake, removed with it at R6-check.
 // - Inputs: bound Types; a declaration's schema and keepers after the requirement fixed point; a signature's input Types; PathOrigin.
 // - Outputs: raw Origins, steps, member borrows, relation verdicts and the OriginRelation failure facts of the allowlist.
 // - Invariants: Holder only in declared Field and payload Types, which every read replaces, never in an instance's stored Types;
@@ -46,7 +46,7 @@ internal enum RawStep : byte
 //   (design-final §13 A2). A formed raw Origin is the Origin it is formed with; every step is total and never Shared by default, and
 //   only retention and the TyCtxt views read one, after Binding's last pass.
 // - Files: this one (steps, relations, the Types without raw Origins); .Written.cs (the written forms and their judgment); .Holder.cs
-//   (`during self` layers read and written at a Place); .Keepers.cs (member borrows, slot keepers, the keeper-cycle limit).
+//   (`during self` layers read and written at a Place); .Keepers.cs (member borrows and slot keepers).
 // - Prohibitions: no region, Loan or retention facts beyond the member borrows, no Place walk of its own (PathOrigin is PlaceAuthority's),
 //   no access verdict, no message text.
 public sealed partial class Binding
@@ -121,14 +121,13 @@ public sealed partial class Binding
     }
 
     // RawMembers of the raw layer an instance stores (StoredLayer): its Origin under the instance's substitution, within the instance, so
-    // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none.
-    internal void StoredMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
+    // its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none. False when the
+    // walk is incomplete (RawMembers).
+    internal bool StoredMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
     {
         _ = this.StoredLayer(instance, part, positions, out var layer);
-        if (layer.RawOrigin is { Kind: OriginKind.Input or OriginKind.Parameter or OriginKind.Inference or OriginKind.Intersection or OriginKind.Projection or OriginKind.Anchor } origin)
-        {
+        return layer.RawOrigin is not { Kind: OriginKind.Input or OriginKind.Parameter or OriginKind.Inference or OriginKind.Intersection or OriginKind.Projection or OriginKind.Anchor } origin ||
             this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members);
-        }
     }
 
     // SPEC 5.4, 5.7: whether a conversion stating `claimed` is a fit: the premises prove that its operand's Origin, none for an

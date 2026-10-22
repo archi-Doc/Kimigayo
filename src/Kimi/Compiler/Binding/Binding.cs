@@ -440,10 +440,8 @@ public sealed partial class Binding
         this.ValidateLayoutFragments();
         this.ValidateBaseDeclarations();
         this.PrepareStorage();
-        // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances; the keeper-cycle limit
-        // judges them once they do.
+        // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances.
         this.ComputeOriginRequirements();
-        this.RejectPolymorphicKeeperCycles();
         this.ValidateInlineLayouts();
         this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).

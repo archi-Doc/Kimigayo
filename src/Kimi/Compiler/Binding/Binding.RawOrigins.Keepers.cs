@@ -10,64 +10,38 @@ namespace Kimi.Compiler;
 internal readonly record struct RawMember(int Input, BoundType Referent, bool Exclusive);
 
 // Raw Origins, member borrows and slot keepers (SPEC 5.7 Origins, Calls, 15.3.5; D15; DECISIONS BU-24; contract in Binding.RawOrigins.cs):
-// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, the signature step and A5 read; the borrows keeping
-// a declared slot, collected by the requirement fixed point (Keep, Keepers); and the limit on keeper cycles that change Type arguments
-// (RejectPolymorphicKeeperCycles, KeeperCycles, ClosingField).
+// the borrows a raw Origin belongs to within a scope (RawMembers), which retention, InvalidRawOrigin and A5 read, and the borrows
+// keeping a declared slot, collected by the requirement fixed point (Keep, Keepers).
 public sealed partial class Binding
 {
-    // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers), and the slots whose keepers a
-    // walk is following, outermost first (KeptReferents, KeeperCycles), reused.
+    // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers); the (slot, owner Type, input,
+    // mode) keys one RawMembers call has walked, and the slots on the walk's current chain (KeptReferents), reused.
     private readonly Dictionary<OriginParameter, KeeperList> keepers = new(ReferenceEqualityComparer.Instance);
-    private readonly List<OriginParameter> keeperChain = new();
+    private readonly HashSet<(OriginParameter Slot, BoundType Owner, int Input, bool Exclusive)> keeperVisits = new();
+    private readonly HashSet<OriginParameter> keeperPath = new(ReferenceEqualityComparer.Instance);
 
     // SPEC 5.7 Origins, Calls (D15; DECISIONS BU-24): the borrows `origin` belongs to within `scope` (a contract's or signature's input
     // Types, an instance), appended to `members` in scope order: each Type there whose outer Origin it is, by its referent and mode
     // (BorrowReferent: a borrow, a pair layer admitting only borrows, a Slice), then each slot it binds in a nominal Type there, by its
-    // keepers' referents under that Type with the slot's Loan requirement as the mode (SlotMembers). Total; one walk of the scope's Types
-    // and the bound slots' keeper lists, allocating nothing beyond `members`.
-    internal void RawMembers(BoundOrigin origin, ReadOnlySpan<BoundType> scope, List<RawMember> members)
+    // keepers' referents under that Type with the slot's Loan requirement as the mode (SlotMembers). Each (slot, owner Type, input, mode)
+    // is walked once, so the cost is linear in the keepers reached and nothing is lost: equal keys add equal members. False when the walk
+    // is incomplete (KeptReferents: a keeper cycle that changes its Type arguments, or a keeper's Type that Binding's storage
+    // instantiation does not complete), which retention and A5 read as CallRetention.Limit. Allocates nothing beyond `members` when warm.
+    internal bool RawMembers(BoundOrigin origin, ReadOnlySpan<BoundType> scope, List<RawMember> members)
     {
-        for (var i = 0; i < scope.Length; i++)
+        this.keeperVisits.Clear();
+        var complete = true;
+        for (var i = 0; i < scope.Length && complete; i++)
         {
             if (ReferenceEquals(this.OuterOrigin(scope[i]), origin) && this.BorrowReferent(scope[i], out _, out var exclusive) is { } referent)
             {
                 members.Add(new(i, referent, exclusive));
             }
 
-            this.SlotMembers(i, scope[i], origin, members);
-        }
-    }
-
-    // The written Type of the Field of a slot's declaration that holds `kept`, a keeper's nested Type.
-    private static Koto? ClosingField(OriginParameter slot, BoundType kept)
-    {
-        foreach (var field in slot.Origin.Binder?.BoundSymbol?.Adt?.Fields ?? [])
-        {
-            if (Holds(field.BoundSymbol?.Type))
-            {
-                return field.TypeKoto ?? field;
-            }
+            complete = this.SlotMembers(i, scope[i], origin, members);
         }
 
-        return null;
-
-        bool Holds(BoundType? type)
-        {
-            if (ReferenceEquals(type, kept))
-            {
-                return true;
-            }
-
-            for (var i = 0; type is not null && i < type.Components.Count; i++)
-            {
-                if (Holds(type.Components[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
+        return complete;
     }
 
     // SPEC 5.7, 15.3.5 (D15; design-final §4): during the requirement fixed point's visit of a declaration's Types (AccumulateRequirements),
@@ -107,98 +81,67 @@ public sealed partial class Binding
         => this.keepers.TryGetValue(slot, out var list) && list.Pass == this.originRequirementPass ? list.Items : default;
 
     // The member borrows of each slot of a nominal Type within `type` (scope Type `input`) that `origin` binds: the slot's keepers'
-    // referents under that Type (KeptReferents), with its Loan requirement as their mode.
-    private void SlotMembers(int input, BoundType type, BoundOrigin origin, List<RawMember> members)
+    // referents under that Type (KeptReferents), with its Loan requirement as their mode. False when a walk is incomplete.
+    private bool SlotMembers(int input, BoundType type, BoundOrigin origin, List<RawMember> members)
     {
-        for (var i = 0; i < type.Components.Count; i++)
+        var complete = true;
+        for (var i = 0; i < type.Components.Count && complete; i++)
         {
-            this.SlotMembers(input, type.Components[i], origin, members);
+            complete = this.SlotMembers(input, type.Components[i], origin, members);
         }
 
-        for (var i = 0; type.Symbol?.Schema is { } schema && i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
+        for (var i = 0; complete && type.Symbol?.Schema is { } schema && i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
         {
             if (ReferenceEquals(type.OriginArguments[i], origin))
             {
-                var exclusive = schema.Origins[i].LoanRequirement == LoanRequirement.Uniq;
-                this.KeptReferents(schema.Origins[i], type, input, exclusive, members, this.keeperChain.Count);
+                complete = this.KeptReferents(schema.Origins[i], type, input, schema.Origins[i].LoanRequirement == LoanRequirement.Uniq, members);
             }
         }
+
+        return complete;
     }
 
-    // A slot's keepers in `owner`: each kept referent, or a nested Type's slot's keepers in that Type, substituted by `owner`. The chain
-    // (keeperChain from `chain` on) ends at a slot already on it: its cycle returns the owner it started from, since one that does not
-    // is rejected at its declaration (RejectPolymorphicKeeperCycles), so nothing is lost.
-    private void KeptReferents(OriginParameter slot, BoundType owner, int input, bool exclusive, List<RawMember> members, int chain)
+    // A slot's keepers in `owner`: each kept referent, or a nested Type's slot's keepers in that Type, substituted by `owner`. A key
+    // already walked adds nothing new (its walk is done or in progress on the current chain). A slot met again on the current chain with
+    // another owner Type is a keeper cycle that changes its Type arguments, whose walk need not end, and a keeper's Type that StoredType
+    // does not instantiate under `owner` reaches storage Binding cannot name: either makes the walk incomplete (false), never a silent stop.
+    private bool KeptReferents(OriginParameter slot, BoundType owner, int input, bool exclusive, List<RawMember> members)
     {
-        if (this.keeperChain.IndexOf(slot, chain) >= 0)
+        if (this.keeperVisits.Contains((slot, owner, input, exclusive)))
         {
-            return;
+            return true;
         }
 
-        this.keeperChain.Add(slot);
+        if (!this.keeperPath.Add(slot))
+        {
+            return false;
+        }
+
+        this.keeperVisits.Add((slot, owner, input, exclusive));
+        var complete = true;
         foreach (var keeper in this.Keepers(slot))
         {
             if (this.StoredType(keeper.Type, owner) is not { } kept)
             {
-                continue;
+                complete = false;
             }
-
-            if (keeper.Via is null)
+            else if (keeper.Via is null)
             {
                 members.Add(new(input, kept, exclusive));
             }
             else
             {
-                this.KeptReferents(keeper.Via, kept, input, exclusive, members, chain);
+                complete = this.KeptReferents(keeper.Via, kept, input, exclusive, members);
+            }
+
+            if (!complete)
+            {
+                break;
             }
         }
 
-        this.keeperChain.RemoveAt(this.keeperChain.Count - 1);
-    }
-
-    // SPEC 5.7 (D15; DECISIONS BU-24): retention follows a slot's keepers through nested Types' slots and ends a chain at a slot already
-    // on it (KeptReferents), which loses nothing only when the cycle returns the Type it started from. Each keeper cycle of a struct's or
-    // enum's slot is walked from that declaration's own Type (SelfType); one that returns another Type (slot recursion through a raw
-    // pointer that changes its Type arguments) is a located Unsupported_Kd at the written Type of the Field that closes it, a limit
-    // (STATUS).
-    private void RejectPolymorphicKeeperCycles()
-    {
-        foreach (var (slot, list) in this.keepers)
-        {
-            if (list.Pass == this.originRequirementPass && slot.Origin.Binder?.BoundSymbol is { Adt: not null } declaration)
-            {
-                var own = this.SelfType(declaration);
-                this.keeperChain.Add(slot);
-                this.KeeperCycles(slot, slot, own, own);
-                this.keeperChain.Clear();
-            }
-        }
-    }
-
-    // The keeper cycles from `slot`, whose keepers `owner` substitutes, back to `start`, whose declaration's own Type is `own`.
-    private void KeeperCycles(OriginParameter start, OriginParameter slot, BoundType owner, BoundType own)
-    {
-        foreach (var keeper in this.Keepers(slot))
-        {
-            if (keeper.Via is not { } via || this.StoredType(keeper.Type, owner) is not { } kept)
-            {
-                continue;
-            }
-
-            if (ReferenceEquals(via, start))
-            {
-                if (!ReferenceEquals(kept, own) && ClosingField(slot, keeper.Type) is { } field)
-                {
-                    this.Fail(field, BindingFailure.Unsupported);
-                }
-            }
-            else if (!this.keeperChain.Contains(via))
-            {
-                this.keeperChain.Add(via);
-                this.KeeperCycles(start, via, kept, own);
-                this.keeperChain.RemoveAt(this.keeperChain.Count - 1);
-            }
-        }
+        this.keeperPath.Remove(slot);
+        return complete;
     }
 
     // A slot's keeper: the referent of a borrow keeping it, or (Via) a nested Type whose slot Via keeps it.

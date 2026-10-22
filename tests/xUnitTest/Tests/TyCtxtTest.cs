@@ -369,14 +369,35 @@ public sealed class TyCtxtTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "probe").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
         var members = new List<RawMember>();
-        c.Types.RawMembers(p[1], 0, [], members);
+        Assert.True(c.Types.RawMembers(p[1], 0, [], members));
         Assert.Empty(members);
-        c.Types.RawMembers(p[2], 1, [], members);
-        c.Types.RawMembers(p[3], 1, [], members);
+        Assert.True(c.Types.RawMembers(p[2], 1, [], members) && c.Types.RawMembers(p[3], 1, [], members));
         Assert.Equal([new(0, BoundType.I32, false), new(0, BoundType.I32, true)], members);
         members.Clear();
-        c.Types.RawMembers(p[6].RawOrigin!, p.AsSpan(0, 6), members);
+        Assert.True(c.Types.RawMembers(p[6].RawOrigin!, p.AsSpan(0, 6), members));
         Assert.Equal([new(4, BoundType.I32, false), new(5, BoundType.I32, true)], members);
+    }
+
+    // SPEC 5.7 (the final review's R3; DECISIONS BU-24, U2): a keeper reached on many paths is walked once per slot, owner Type, input and
+    // mode, so a ladder of n diamonds (D_i keeps its slot through D_(i-1) and through E_(i-1), which keeps it through D_(i-1)) gives D0's
+    // one keeper once, not once per path (2^n), and the walk is linear in n.
+    [Theory]
+    [InlineData(8)]
+    [InlineData(16)]
+    public void AKeeperReachedOnManyPathsIsWalkedOnce(int n)
+    {
+        var source = "struct D0 {s}\n    internal let r: ref/i32 during s\n";
+        for (var i = 1; i <= n; i++)
+        {
+            source += $"struct E{i - 1} {{s}}\n    internal let x: D{i - 1} during s\nstruct D{i} {{s}}\n    internal let a: D{i - 1} during s\n    internal let b: E{i - 1} during s\n";
+        }
+
+        var c = MinimalEmissionTest.Analyze(source + $"func f(v: ref/D{n}, p: raw/u8 during v.s) => ()\npublic func main() => ()\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var p = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "f").Parameters.Select(static x => x.Type.TypeOf()!).ToArray();
+        var members = new List<RawMember>();
+        Assert.True(c.Types.RawMembers(p[1].RawOrigin!, p, members));
+        Assert.Equal([new(0, BoundType.I32, false)], members);
     }
 
     // The signature-layer reader allocates nothing when warm.

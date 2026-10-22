@@ -348,20 +348,50 @@ public sealed class RetentionTest
         Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind(source), "f"));
     }
 
-    // SPEC 5.7 Calls (DECISIONS BU-24): a keeper cycle through a raw pointer to its own Type ends where it started and keeps its rows; one
-    // whose Type arguments change around the cycle is a located Unsupported_Kd at the Field that closes it (a limit), and a raw layer whose
-    // referent states the Origin being walked again ends there.
+    // SPEC 5.7 Calls (DECISIONS BU-24, U2): each slot keeper is walked once per slot, owner Type, input and mode, so a keeper cycle through
+    // a raw pointer to its own Type keeps the rows of its one-level unrolling, and a raw layer whose referent states the Origin being walked
+    // again ends there.
     [Fact]
     public void AKeeperCycleEndsWhereItStarted()
     {
-        const string Node = "struct N<K, V> {s}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n    let next: raw/(N<K, V> during s)\n" +
-            "    public init(d: uniq/Dictionary<K, V> during s)\n        self.loan = Loan.init(d)\n        self.next = null\n";
-        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind(Node + "func f<K, V>(v: ref/N<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n"), "f"));
-        Assert.Equal(
-            ["Unsupported_Kd: raw/(P<K, (V, V)> during s)"],
-            RawPointerSyntaxTest.Records("struct P<K, V> {s}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n    let next: raw/(P<K, (V, V)> during s)\n"));
+        const string Loan = "    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n";
+        const string Init = "    public init(d: uniq/Dictionary<K, V> during s)\n        self.loan = Loan.init(d)\n        self.next = null\n";
+        const string Use = "func f<K, V>(v: ref/N<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n";
+        var rows = Declared(Bind("struct N<K, V> {s}\n" + Loan + "    let next: raw/(N<K, V> during s)\n" + Init + Use), "f");
+        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", rows);
+        var unrolled = "struct L<K, V> {s}\n" + Loan + "    public init(d: uniq/Dictionary<K, V> during s) => self.loan = Loan.init(d)\n" +
+            "struct N<K, V> {s}\n" + Loan + "    let next: raw/(L<K, V> during s)\n" + Init + Use;
+        Assert.Equal(rows, Declared(Bind(unrolled), "f"));
         Assert.Equal("0 Content store 1, 1 Value store 1", Declared(Bind("struct R {s}\n    let at: uniq/(raw/i32 during s) during s\nfunc f(v: ref/R, p: raw/u8 during v.s, key: raw/i32) => ()\n"), "f"));
     }
+
+    // SPEC 5.7 Calls (DECISIONS BU-24, U2; the design review's item 3): a keeper cycle that changes its Type arguments, raw or not, through
+    // a Field or a Case payload, is valid at its declaration; a contract whose raw layer's walk reaches one is CallRetention.Limit, never a
+    // silent stop (A5 records a located Unsupported_Kd at the call).
+    [Theory]
+    [InlineData("struct P<K, V> {s}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n    let next: raw/(P<K, (V, V)> during s)\n", "func f<K, V>(v: ref/P<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n")]
+    [InlineData("struct N<T> {s}\n    internal let at: uniq/T during s\n    internal let next: ref/(N<(T, T)> during s) during s\n", "func f(n: uniq/(N<i32> during a), p: raw/u8 during a) => ()\n")]
+    [InlineData("struct N<T> {s}\n    internal let at: uniq/T during s\n    internal let next: ref/(N<() -> T> during s) during s\n", "func f(n: uniq/(N<i32> during a), p: raw/u8 during a) => ()\n")]
+    [InlineData("enum P<T> {s}\n    Leaf(uniq/T during s)\n    Node(raw/(P<(T, T)> during s))\n", "func f(n: uniq/(P<i32> during a), p: raw/u8 during a) => ()\n")]
+    public void AKeeperCycleChangingItsTypeArgumentsIsALimit(string declaration, string use)
+    {
+        Assert.Empty(RawPointerSyntaxTest.Records(declaration));
+        Assert.Equal("limit", Declared(Bind(declaration + use), "f"));
+    }
+
+    // SPEC 5.7 Calls (the design review's item 3): two raw layers stating one Origin each walk its members as their own input's content
+    // (the keeper key holds the content atom), so neither loses its rows to the other: `p`'s store 1 and `q`'s store 2 alike.
+    [Fact]
+    public void TwoRawLayersOfOneOriginKeepTheirRows()
+        => Assert.Equal(
+            "0 Content store 0, 1 Value store 0, 2 Value store 0, 0 Content store 1, 1 Content store 1, 2 Content store 1, 0 Content store 2, 1 Content store 2, 2 Content store 2",
+            Declared(Bind("struct K<T> {s}\n    internal let at: uniq/T during s\nfunc f<T>(n: uniq/(K<T> during a), p: raw/u8 during a, q: raw/u8 during a) => ()\n"), "f"));
+
+    // SPEC 5.7 Calls, 15.6.4 (R4-M52): an erased callable's signature is its own scope for its raw layers, also when it has fewer inputs
+    // than the contract naming it (U1 read the contract's input count there, out of range).
+    [Fact]
+    public void AnErasedSignatureIsItsOwnRawScope()
+        => Assert.Equal(string.Empty, Declared(Bind("func f(a: i32, b: i32, g: (raw/i32) -> ()) => ()\n"), "f"));
 
     // SPEC 5.7, 8.11.4 rule 1 (D10): an erased callable's input reached past a shared layer stores nothing through a raw pointer there.
     [Fact]

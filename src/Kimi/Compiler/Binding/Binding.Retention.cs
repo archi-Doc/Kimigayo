@@ -17,12 +17,13 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
-    // (RawContent), reused, and how many of them are its inputs (SignatureStep reads those); the raw Origins whose content is being
-    // walked, outermost first, so a referent naming one of them again ends there; and whether its result has a raw layer without an
-    // Origin (SPEC 5.7 Calls, D6).
+    // (RawContent), reused, and how many of them are its inputs (SignatureStep reads those); the (Origin, input) pairs whose content that
+    // walk has added, so each is walked once; whether a member walk was incomplete (CallRetention.Limit); and whether its result has a raw
+    // layer without an Origin (SPEC 5.7 Calls, D6).
     private readonly List<BoundType> retentionScope = new();
-    private readonly List<BoundOrigin> retentionRawChain = new();
+    private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private int retentionInputs;
+    private bool retentionLimit;
     private bool retentionUnstatedResult;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
@@ -117,6 +118,8 @@ public sealed partial class Binding
             this.retentionScope.Add(declaring);
         }
 
+        this.retentionRawVisits.Clear();
+        this.retentionLimit = false;
         this.retentionUnstatedResult = false;
         for (var i = 0; i < inputs.Length; i++)
         {
@@ -134,6 +137,11 @@ public sealed partial class Binding
             }
 
             this.RetentionPremises(environment, callee, inputs, result, declaring, bounds);
+            if (this.retentionLimit)
+            {
+                return CallRetention.Limit;
+            }
+
             var nodes = this.RetentionNodes(environment);
             if (callee is null)
             {
@@ -237,27 +245,26 @@ public sealed partial class Binding
 
     // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what each borrow the
     // Origin belongs to admits (RawMembers: the referent of each input whose outer Origin it is, the keepers of each slot it binds in a
-    // nominal Type of the contract, substituted by that Type), walked as input `index`'s writable content.
+    // nominal Type of the contract, substituted by that Type), walked as input `index`'s writable content. Each (Origin, input) is walked
+    // once per contract or erased signature, which loses nothing: its members and its content atom are the same each time. An incomplete
+    // member walk makes the contract CallRetention.Limit.
     private void RawContent(BoundOrigin origin, int index)
     {
-        // An Origin whose content is being walked adds nothing new when its referent reaches it again.
-        if (this.retentionRawChain.Contains(origin))
+        if (!this.retentionRawVisits.Add((origin, index)))
         {
             return;
         }
 
-        this.retentionRawChain.Add(origin);
         var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin);
         var start = this.rawMembers.Count;
-        this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
+        this.retentionLimit |= !this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
         var end = this.rawMembers.Count;
-        for (var i = start; i < end; i++)
+        for (var i = start; i < end && !this.retentionLimit; i++)
         {
             this.RetentionWalk(this.rawMembers[i].Referent, content, OriginVariance.Invariant, callable: false);
         }
 
         this.rawMembers.RemoveRange(start, end - start);
-        this.retentionRawChain.RemoveAt(this.retentionRawChain.Count - 1);
     }
 
     // An Origin occurrence; a Function Type's per-call Origin, bound by its own syntax, belongs to no value of it (SPEC 15.3.4).
@@ -326,6 +333,9 @@ public sealed partial class Binding
         {
             this.retentionScope.AddRange(inputs.Components);
         }
+
+        this.retentionInputs = this.retentionScope.Count;
+        this.retentionRawVisits.Clear();
 
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)
         {

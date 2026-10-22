@@ -127,9 +127,9 @@ public sealed partial class Binding
                 }
             }
 
+            // An incomplete walk reached a slot the Origin binds, which a keeper cycle follows: it belongs to that slot's borrows.
             var start = this.rawMembers.Count;
-            this.RawMembers(origin, inputs.AsSpan(0, known), this.rawMembers);
-            var member = this.rawMembers.Count > start;
+            var member = !this.RawMembers(origin, inputs.AsSpan(0, known), this.rawMembers) || this.rawMembers.Count > start;
             this.rawMembers.RemoveRange(start, this.rawMembers.Count - start);
             return member;
         }

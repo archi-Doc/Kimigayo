@@ -213,13 +213,15 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
     // SPEC 5.7 Origins, Calls (G160-4's (3a); DECISIONS BU-24): the borrows `origin` belongs to within `scope`, appended to `members`:
     // for a signature's layer, its Origin with the call's instantiated input Types (Signature); for an instance's stored layer, use the
     // overload below. Each member is the scope Type it is found at, the referent its borrow admits (a slot keeper's under the Type binding
-    // the slot) and whether it may keep an exclusive Loan; a call may store through the layer what each referent admits. Total; one walk of
-    // the scope's Types and the bound slots' keepers, allocating nothing beyond `members`.
-    internal void RawMembers(BoundOrigin origin, ReadOnlySpan<BoundType> scope, List<RawMember> members) => binding.RawMembers(origin, scope, members);
+    // the slot) and whether it may keep an exclusive Loan; a call may store through the layer what each referent admits. Total: false when
+    // the members are incomplete (a keeper cycle that changes its Type arguments, or a keeper Binding's storage instantiation does not
+    // complete), which A5 takes as it takes CallRetention.Limit. One walk of the scope's Types and of each (slot, owner Type) the bound
+    // slots' keepers reach, allocating nothing beyond `members` when warm.
+    internal bool RawMembers(BoundOrigin origin, ReadOnlySpan<BoundType> scope, List<RawMember> members) => binding.RawMembers(origin, scope, members);
 
     // RawMembers of the raw layer an instance stores (positions as for RawStep): its Origin under the instance's substitution, within the
     // instance, so its members are the keepers of the slots the instance binds it to; `self`, `static` and an unstated layer have none.
-    internal void RawMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
+    internal bool RawMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
         => binding.StoredMembers(instance, part, positions, members);
 
     // The same Type with these components, Origin and Origin arguments, every other part kept, a raw layer's Origin included: the one form
