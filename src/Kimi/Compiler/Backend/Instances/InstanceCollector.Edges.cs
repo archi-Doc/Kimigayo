@@ -1,16 +1,20 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// Owns a site's edge row in an item's instance (R5 package K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102): for a call, a Drop or
-// a statement of the item's body, the row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a
-// Value callee's body, an intrinsic's target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's)
-// and its target under the item's representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after an owner
-// Value call's body, the operand's glue where its callee borrows its environment (Rest, SPEC 8.10).
-// Input: a site of a body from its template (InstanceCollector.Templates.cs) and the item; TyCtxt (Compose, Implementation, Witness,
+// Owns an item's targets (R5 package K 4.3, K 4.5 rows 1-3 and 5-13, K 4.7, K 4.8; DECISIONS R5-M102): a body item's template replayed
+// under its representative (Replay), each site's edge row in the item's instance: for a call, a Drop or a statement of the item's body, the
+// row its form selects (a Fn callee's implementation or bodyless row, a Requirement callee's witness, a Value callee's body, an intrinsic's
+// target column, a dropped value's glue; an aggregate's, a function item constant's or an erasure's) and its target under the item's
+// representative; a Virtual call has none (X5: its receiver's VTable holds the entries); after an owner Value call's body, the operand's
+// glue where its callee borrows its environment (Rest, SPEC 8.10); a type-driven item's targets from its representative Type by its kind's
+// row (Expand).
+// Input: an admitted item; a body item's template (InstanceCollector.Templates.cs); TyCtxt (Compose, Implementation, Witness,
 // OwnRequirement); the intrinsic rows.
-// Output: the admitted target item, or -1 for a site without one or a refused edge, and an owner Value call's second target (Rest); on the
-// way the site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
+// Output: the item's targets in the checked set, each with its site and runtime bit: a site's admitted target item (none for a site
+// without one or a refused edge) and an owner Value call's second target (Rest); a type-driven item's at the default site; on the way the
+// site's by-value uses take their layout verdict (K 4.8) and an operation whose Types depend on slots its capability check (K 4.7).
 // Invariants: one target per site, plus the operand's glue at a borrowing callee's owner Value call, after its body (DECISIONS R5-M102: a
-// departure from package C 3.2 I8); a substitution TyCtxt cannot compose is the storage-nesting gap at the site.
+// departure from package C 3.2 I8); a substitution TyCtxt cannot compose is the storage-nesting gap at the site; a kind without a row is a
+// fault.
 // Must not: resolve a callable value's body or a bodyless callee's row (InstanceCollector.Callees.cs) or a requirement's witness
 // (InstanceCollector.Witnesses.cs) itself.
 
@@ -30,6 +34,77 @@ internal sealed partial class InstanceCollector
 
     private static BoundType OperandType(MirBody body, in MirOperand operand)
         => operand.Kind == MirOperandKind.Const ? body.Consts[operand.Arg].Type : body.TypeOf(operand.Place)!;
+
+    // An item's targets: a body item's template replayed under its representative, the target of each site that resolves and is admitted;
+    // a type-driven item's from its representative Type.
+    private void Replay(MirProgram program, int item)
+    {
+        var set = this.Set;
+        if (set.Items[item].BodyOrdinal < 0)
+        {
+            this.Expand(program, item);
+            return;
+        }
+
+        var body = program.Bodies[set.Items[item].BodyOrdinal];
+        this.LayOutLocals(item, body);
+        for (var i = this.starts[body.Ordinal]; i < this.starts[body.Ordinal + 1]; i++)
+        {
+            this.Work++;
+            var (at, runtime) = this.sites[i];
+            var block = body.Blocks[at.Block];
+            var target = at.Index == block.Count
+                ? this.Edge(program, item, body, block.Terminator)
+                : this.Edge(program, item, body, body.Statements[block.Start + at.Index]);
+            if (target >= 0)
+            {
+                set.Target(item, new(target, at, runtime));
+            }
+
+            var rest = at.Index == block.Count ? this.Rest(program, item, body, block.Terminator, target) : -1;
+            if (rest >= 0)
+            {
+                set.Target(item, new(rest, at, runtime));
+            }
+        }
+    }
+
+    // K 4.3: a type-driven item's targets, from its representative Type, each at the default site, by its kind's row: a ClosureErasure's
+    // body and its environment's glue; an ItemAdapter's body; a shim's (InstanceCollector.Witnesses.cs); a DropGlue's direct parts
+    // (InstanceCollector.Glue.cs); an object item's (InstanceCollector.Objects.cs). A kind without a row is a fault.
+    private void Expand(MirProgram program, int item)
+    {
+        var key = this.Set.Items[item].Key;
+        var type = this.Set.Items[item].RepresentativeType!;
+        var site = this.Set.Items[item].Site;
+        switch (key.Kind)
+        {
+            case MonoKind.Builtin or MonoKind.PropertyWitness:
+                this.Shim(program, item, site, key, type);
+                return;
+            case MonoKind.ClosureErasure or MonoKind.ItemAdapter:
+                this.Target(item, this.Callee(program, item, site, type));
+                this.Target(item, key.Kind == MonoKind.ClosureErasure ? this.Glue(item, site, type) : -1);
+                return;
+            case MonoKind.DropGlue:
+                this.DestructionTargets(program, item, site, type);
+                return;
+            case MonoKind.ObjectDescriptor or MonoKind.VTable:
+                this.Object(program, item, site, key.Kind, type);
+                return;
+            default:
+                throw new InvalidOperationException($"The mono item kind {key.Kind} has no target row.");
+        }
+    }
+
+    // A type-driven item's target at the default site, which runs whenever the item does.
+    private void Target(int item, int target)
+    {
+        if (target >= 0)
+        {
+            this.Set.Target(item, new(target, default, Runtime: true));
+        }
+    }
 
     // K 4.5 rows 1-3, 5-10: a Fn callee's body under the site's substitution composed with the item's representative
     // (TyCtxt.Compose, whose declaring Type is the site's own, so a nested function's call carries its enclosing instance only as Admit
