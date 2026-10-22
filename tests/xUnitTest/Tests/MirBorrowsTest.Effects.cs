@@ -8,9 +8,11 @@ using Xunit;
 namespace XunitTest;
 
 /// <summary>A5's effect rule (SPEC 15.6.4, 15.6.7, 16.3.3, 16.4, 22.4.3; docs/dev/DECISIONS.md R4-M92; prototype round 18's e1–e17): a
-/// Call's or a Drop's effects, by A4's keys, against the live Loans on mutable static roots. Binding accepts the implicit static Loans of a
-/// group's own members only (a receiver reserved or shared with a retained result, an argument's adaptation, R4-M90's PQ-1), so the
-/// programs are members of group State.</summary>
+/// Call's or a Drop's effects, by A4's keys, against the live Loans on mutable static roots. Until P42 Binding reports every Borrow SPEC
+/// lends of a static Place, written or implicit (a receiver's, an argument's adaptation), as the located Unsupported_Kd (R4-M90 PQ-1,
+/// DECISIONS BU-25), so these programs, members of group State, reach A5 with no live static Loan: each test asserts those records and
+/// what A5 still finds (a static's destruction, which takes no Loan), and its twin in MirBorrowsTest.Rooted keeps the rule's witnesses
+/// (R4-M107).</summary>
 public sealed partial class MirBorrowsTest
 {
     // The effect rule's Types and group State: statics, an initializer that writes another static (x's), destructors that read, write or
@@ -111,23 +113,14 @@ public sealed partial class MirBorrowsTest
 
         """;
 
-    // SPEC 15.6.4, 15.6.7 (R1, W6, DECISIONS R4-M92, R4-M72 as clarified): a Call's effects meet the live Loans on mutable static roots in
-    // the set its last operand takes, every operand's value with no holder left out: a write key or an unknown effect any Loan (e3, e6,
-    // e11, the argument's adaptation, a `for` over a Slice of a static calling a writer, e15's abstract destruction), a read key a unique
-    // one only (e2, e7, the reader), and a reservation the call activates is unique at its effects (W6: e4), while its operands' accesses
-    // see it shared. A Loan found in a reservation holder the call does not activate is CallReservationConflict_Kd (DIAGNOSTICS' row 1:
-    // e1, e3, e15), every other ComparisonLoanConflict_Kd, an activation's own conflict on the same Loan a second problem (e4c). Loans on
-    // immutable statics are never met (e11b), nor dead ones (e14); a compound assignment secures its right operand before it reserves its
-    // target (SPEC 13.7.2), so its call meets nothing (e1's writeback). Fail-before: each error, none reported before 2b-3.
+    // SPEC 15.6.4, 15.6.7 (R1, W6; ACallsEffectsMeetTheLiveStaticLoansRooted): a Call's effects meet the live Loans on mutable static
+    // roots. R4-M90 PQ-1: every receiver here (reserved, or shared with a retained result), the argument's adaptation and the `for` Subject's
+    // receiver is Binding's Unsupported_Kd, so A5 meets nothing; a compound assignment reserves its target with no Borrow (e1's writeback).
     [Fact]
     public void ACallsEffectsMeetTheLiveStaticLoans()
-        => Assert.Equal(
-            [
-                "e1: g() CallReservationConflict_Kd", "e3: writes() CallReservationConflict_Kd", "e4: counter.bump()",
-                "e4c: counter.reset() CallActivationConflict_Kd", "e4c: counter.reset()", "e6: let g = counter.guard()", "e11: g()", "adapted: takes(count)",
-                "forWriter: clears()", "e15: sink(x@move) CallReservationConflict_Kd",
-            ],
-            Effects("""
+        => Assert.Empty(
+            Effects(
+                """
                     public func e1(g: () -> i32) => counter.add(g())
                     public func e1Writeback(g: () -> i32) => State.count += g()
                     public func e2() => counter.add(reads())
@@ -170,18 +163,20 @@ public sealed partial class MirBorrowsTest
                         T is Copy
                         counter.add(sink(x))
 
-                """));
+                """,
+                ["count", "counter", "limits", "list"]));
 
     // SPEC 16.4 with 16.3.1, 16.3.3 (R3) and 15.6.4: destroying a mutable static's old value holds an exclusive Loan on it until it
     // completes, so its own effects on that static conflict, a read (e8) or an erased destruction's unknown effects (e9), at the
-    // assignment's Drop, with no Loan issued; a quiet destructor does not (e8b), one past A4's Limit is the located Unsupported_Kd (e8c), and
-    // exchange is the way out (e9b). An erased destruction of a local meets every live mutable-static Loan (SPEC 16.3.3's example, e9s).
-    // Fail-before: e8, e8c, e9 and e9s.
+    // assignment's Drop, with no Loan issued; a quiet destructor does not (e8b), and one past A4's Limit is the located Unsupported_Kd (e8c).
+    // R4-M90 PQ-1: exchange's way out (e9b) borrows the static and e9s's Loan is a receiver's, each Binding's Unsupported_Kd until P42, so
+    // A5 checks neither (AnErasedDestructionMeetsTheLiveStaticLoansRooted). Fail-before: e8, e8c and e9.
     [Fact]
     public void ADestructionMeetsItsOwnStaticAndTheLiveStaticLoans()
         => Assert.Equal(
-            ["e8: watch = Watch.init()", "e8c: limited = Limited.init() Unsupported_Kd", "e9: action = func []() => ()", "e9s: local = func []() => ()"],
-            Effects("""
+            ["e8: watch = Watch.init()", "e8c: limited = Limited.init() Unsupported_Kd", "e9: action = func []() => ()"],
+            Effects(
+                """
                     public func e8() => watch = Watch.init()
                     public func e8b() => quiet = Quiet.init()
                     public func e8c() => limited = Limited.init()
@@ -193,12 +188,12 @@ public sealed partial class MirBorrowsTest
                         local = func [] () => ()
                         inspect(c)
 
-                """));
+                """,
+                ["action@uniq", "counter"]));
 
-    // SPEC 15.6.4, 22.4.3 (R4, PD12 (ii) as written, OQ-F5-6): a staticEnsure runs its static's initializer, whose effects meet the live
-    // Loans (e10b) unless a live Loan on the ensured static proves it initialized. Liveness is a may-property, so a Loan carried on one path
-    // proves nothing on another (e10f), and under P5 a key is its Field (e10d): wherever the proof would decide, each conflict is the located
-    // Unsupported_Kd at the ensure (e10a, e10d, e10e, e10f); with nothing to meet, nothing (e10c). Fail-before: each.
+    // SPEC 15.6.4, 22.4.3 (R4, PD12 (ii) as written, OQ-F5-6; AnEnsureWhoseProofWouldDecideIsUnsupportedRooted): a staticEnsure runs its
+    // static's initializer, whose effects meet the live Loans unless a live Loan on the ensured static proves it initialized. R4-M90 PQ-1:
+    // every Loan here is a receiver's on a static, Binding's Unsupported_Kd until P42, so no ensure meets one.
     [Fact]
     public void AnEnsureWhoseProofWouldDecideIsUnsupported()
     {
@@ -225,8 +220,7 @@ public sealed partial class MirBorrowsTest
                             inspect(ll)
 
                 """;
-        Assert.Equal(
-            ["e10a: x Unsupported_Kd", "e10b: x", "e10f: x Unsupported_Kd", "e10e: x Unsupported_Kd", "e10d: Cache<string>.S.x Unsupported_Kd"],
+        Assert.Empty(
             Effects(
                 """
                     public func e10a()
@@ -253,23 +247,19 @@ public sealed partial class MirBorrowsTest
                         inspect(ll)
 
                 """,
+                ["log", "x"],
                 Cache));
     }
 
-    // SPEC 15.6.4, 22.4.3 (DECISIONS R4-M92, R4-M89's PD12 (ii) as the planning session read it after the group review): every first
-    // access of a static is an ensure, which A4 composes into every site that may run it, so the proof applies wherever a conflict's
-    // deciding effect lies in the initializer of a static a live Loan is on and the site may first-access that static: a call that reads
-    // x (pA), the ensure of x2, whose initializer reads d (pB), a call that reads the immutable lim2 (pQ), a destructor that reads x (the
-    // early Drop): each the located Unsupported_Kd. Without the proof Loan each is the error (pA2, pB2), and so is a site that never
-    // reaches d although a Loan on d lives, its conflict a direct one (direct). Fail-before: pA, pB, pQ and the early Drop (errors).
+    // SPEC 15.6.4, 22.4.3 (DECISIONS R4-M92, R4-M89's PD12 (ii); AnInitializationProofDecidesWhereverAnInitializerComposesRooted): every
+    // first access of a static is an ensure, which A4 composes into every site that may run it, so the proof applies wherever a conflict's
+    // deciding effect lies in the initializer of a static a live Loan is on. R4-M90 PQ-1: every Loan here is a receiver's on a static,
+    // Binding's Unsupported_Kd until P42, so no site meets one.
     [Fact]
     public void AnInitializationProofDecidesWhereverAnInitializerComposes()
-        => Assert.Equal(
-            [
-                "pA: useX() Unsupported_Kd", "pA2: useX()", "pB: x2 Unsupported_Kd", "pB2: x2", "pQ: useLim() Unsupported_Kd",
-                "direct: writeLog()", "early: let r = XReader.init() Unsupported_Kd",
-            ],
-            Effects("""
+        => Assert.Empty(
+            Effects(
+                """
                     public func pA()
                         let lx = x.view()
                         let ll = log.view()
@@ -310,13 +300,13 @@ public sealed partial class MirBorrowsTest
                         inspect(lx)
                         inspect(ll)
 
-                """));
+                """,
+                ["d", "lim2", "log", "x"]));
 
-    // SPEC 15.6.4, PD12 (ii) (R4-M92, the group review's R2-B1): the proof makes a conflict U only where every effect that would decide
-    // it lies in a proved initializer; the first effect outside it decides the Language problem: multiImm's call runs the proved lim2's
-    // initializer, which writes log, and an unknown g, which meets ll on its own (EffectUnknown); r3Unproved's destructor runs the proved
-    // immutable y5's initializer, whose erased destruction is unknown, and reads w5 itself while w5 is destroyed (R3, EffectRead).
-    // Fail-before: each (U on 483ba38d).
+    // SPEC 15.6.4, PD12 (ii) (R4-M92, the group review's R2-B1; AnUnprovedEffectStillDecidesRooted): the proof makes a conflict U only where
+    // every effect that would decide it lies in a proved initializer; the first effect outside it decides the Language problem. R4-M90
+    // PQ-1: the Loans here are receivers' on statics, Binding's Unsupported_Kd until P42, so multiImm meets none and r3Unproved's destructor,
+    // which reads w5 while w5 is destroyed (R3, no Loan), has no proof to consult: the first effect, the unproved y5 initializer's.
     [Fact]
     public void AnUnprovedEffectStillDecides()
     {
@@ -333,9 +323,9 @@ public sealed partial class MirBorrowsTest
                     inspect(ly)
 
             """);
-        var program = Analyze(c);
+        var program = AnalyzeUnsupported(c, ["lim2", "log", "y5"]);
         Assert.Equal(
-            ["both3(g@move) ComparisonLoanConflict_Kd EffectUnknown", "w5 = W5.init() ComparisonLoanConflict_Kd EffectRead"],
+            ["w5 = W5.init() ComparisonLoanConflict_Kd EffectUnknown"],
             program.Problems.All.ToArray().Select((x, i) => (x, i))
                 .Where(static x => x.x.Subject.Module == 0 && (LoanCodes.Contains(x.x.Code) || x.x.Code == DiagnosticCode.Unsupported_Kd))
                 .Select(x => $"{Line(c, x.x.Subject)} {x.x.Code} {string.Join(",", program.Problems.Facts(x.i).ToArray().Select(static f => f.Kind)
@@ -363,15 +353,16 @@ public sealed partial class MirBorrowsTest
         Assert.Equal(["State.pair.0@ref Unsupported_Kd", "State.pair.0@ref Unsupported_Kd"], c.Binding.Issues.Select(static x => $"{x.Node} {x.Code}"));
     }
 
-    // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91): a call A4 does not classify (Limit) is the located Unsupported_Kd where a live
-    // mutable-static Loan would be met (e12a) and nothing where none is (e12b), Unknown beside it decides (e12c); a callee's dependent of an
-    // error (Derived) reports nothing by itself (e13a), and a key beside it stays checked (e13b). Fail-before: e12a, e12c and e13b.
+    // AGENTS Diagnostics, R4-M10 (A4's classes, R4-M91; ALimitIsUnsupportedAndADerivedEffectReportsNothingRooted): a call A4 does not
+    // classify (Limit) is the located Unsupported_Kd where a live mutable-static Loan would be met, and a callee's dependent of an error
+    // (Derived) reports nothing by itself. R4-M90 PQ-1: the Loans here are receivers' on a static, Binding's Unsupported_Kd until P42, so
+    // neither a Limit nor a key beside a Derived effect meets one.
     [Fact]
     public void ALimitIsUnsupportedAndADerivedEffectReportsNothing()
     {
-        Assert.Equal(
-            ["e12a: Lim.run() Unsupported_Kd", "e12c: both(g@move)"],
-            Effects("""
+        Assert.Empty(
+            Effects(
+                """
                     public func e12a()
                         let c = counter.view()
                         Lim.run()
@@ -388,7 +379,8 @@ public sealed partial class MirBorrowsTest
                         both(g@move)
                         inspect(c)
 
-                """));
+                """,
+                ["counter"]));
         const string Derived = """
                     public func opaque() => _ = missing
                     public func opaqueWrite()
@@ -404,18 +396,19 @@ public sealed partial class MirBorrowsTest
                         inspect(c)
 
                 """;
-        Assert.Equal(["e13b: opaqueWrite()"], RejectedProblems(EffectTypes + Derived));
+        Assert.Empty(RejectedProblems(EffectTypes + Derived));
     }
 
-    // SPEC 15.6, 15.1.3, 15.6.3 (G136, DECISIONS R4-M92, OQ-F5-1 (a)): a whole write of a static ends its Field's Loans, as destroying a Move
-    // Path does, so a write meeting a live Loan is one problem however often the static is written again (e16b; two before), and a dead Loan
-    // meets nothing (e16c). A direct Loan on a static names E, the storage the body does not own (SPEC 15.6), so a call's store through a
-    // static's reservation lands in E, as a parameter's does (stored; fail-before: the store went nowhere).
+    // SPEC 15.6, 15.1.3, 15.6.3 (G136, DECISIONS R4-M92, OQ-F5-1 (a); AStaticsLoanNamesEAndAWholeWriteEndsItRooted): a whole write of a
+    // static ends its Field's Loans, and a direct Loan on a static names E. R4-M90 PQ-1: the Loans on counter here are receivers', Binding's
+    // Unsupported_Kd until P42, so no write meets one; refs' reserved receiver is one too, but append's call still receives a value derived
+    // from refs, storage the body does not own (R4-M109), so y's Loan stored through it is met by y's write (stored).
     [Fact]
     public void AStaticsLoanNamesEAndAWholeWriteEndsIt()
         => Assert.Equal(
-            ["e16a: counter = Counter.init()", "e16b: counter = Counter.init()", "stored: y = 2"],
-            Effects("""
+            ["stored: y = 2"],
+            Effects(
+                """
                     public func e16a()
                         let c = counter.view()
                         counter = Counter.init()
@@ -434,17 +427,18 @@ public sealed partial class MirBorrowsTest
                         refs.append(y@ref)
                         y = 2
 
-                """));
+                """,
+                ["counter", "refs"]));
 
-    // R4-M73 (with R4-M92): an effect conflict is a Loan problem, so in a view a call's by-argument store holds it is the located
-    // Unsupported_Kd at its call (e17; the `var xs` record is the held view's own, with or without the static Loan). A static Loan a
-    // default's copy keeps meets the call's unknown effect: the Language problem at the call (copied, R-a; R4-M70's taint made it the
-    // located Unsupported_Kd at the omitting call).
+    // R4-M73 (with R4-M92; AHeldEffectIsUnsupportedRooted): an effect conflict is a Loan problem, so in a view a call's by-argument store
+    // holds it is the located Unsupported_Kd at its call; the `var xs` record is the held view's own, with or without the static Loan.
+    // R4-M90 PQ-1: the static Loans here are receivers', Binding's Unsupported_Kd until P42, so only the held view's own record remains.
     [Fact]
     public void AHeldEffectIsUnsupported()
         => Assert.Equal(
-            ["e17: g() Unsupported_Kd", "e17: var xs: Array<T> = [] Unsupported_Kd", "copied: g()"],
-            Effects("""
+            ["e17: var xs: Array<T> = [] Unsupported_Kd"],
+            Effects(
+                """
                     public func e17<T>(a: T, g: () -> ())
                         T is Copy
                         var xs: Array<T> = []
@@ -460,11 +454,13 @@ public sealed partial class MirBorrowsTest
                         g()
                         inspect(r)
 
-                """));
+                """,
+                ["counter"]));
 
-    // SPEC 15.6.4's widened effects (tests/diagnostics/spec-cases.json 15.6.4-widened-effects, its Borrow implicit; R4-M87): a summary
-    // that would keep an effect on a projection with a recursive base has unknown environment effects, which conflict with every live
-    // mutable-static Loan, even where the caller's premises would classify every effect it replaces. Fail-before.
+    // SPEC 15.6.4's widened effects (tests/diagnostics/spec-cases.json 15.6.4-widened-effects, its Borrow implicit; R4-M87;
+    // AWidenedEffectMeetsTheLiveStaticLoansRooted): a summary that would keep an effect on a projection with a recursive base has unknown
+    // environment effects, which conflict with every live mutable-static Loan. R4-M90 PQ-1: count's receiver Borrow is Binding's
+    // Unsupported_Kd until P42, so the walk meets no Loan.
     [Fact]
     public void AWidenedEffectMeetsTheLiveStaticLoans()
     {
@@ -496,12 +492,13 @@ public sealed partial class MirBorrowsTest
                     public init(value: T) => self.value = value
 
                 """);
-        Assert.Equal(["visitCopies: Trees.walk(node, 2)"], Problems(c, Analyze(c), LoanCodes));
+        Assert.Empty(Problems(c, AnalyzeUnsupported(c, ["count"]), LoanCodes));
     }
 
-    // PD31, AGENTS Diagnostics (R4-M92): an effect problem records typed facts where it fails: its Loan's anchor, its witness, and the
-    // static Field it met, by what decided it, a write key, else Unknown, else a read key, at the Field's declaration; R3's is anchored at
-    // its Drop and has no witness, since no value carries the destruction's hold. Fail-before: each problem.
+    // PD31, AGENTS Diagnostics (R4-M92; AnEffectProblemNamesTheFieldItMetRooted): an effect problem records typed facts where it fails: its
+    // Loan's anchor, its witness, and the static Field it met, by what decided it; R3's is anchored at its Drop and has no witness, since no
+    // value carries the destruction's hold. R4-M90 PQ-1: the other Loans here are receivers' on a static, Binding's Unsupported_Kd until P42,
+    // so only R3's problem remains.
     [Fact]
     public void AnEffectProblemNamesTheFieldItMet()
     {
@@ -518,21 +515,16 @@ public sealed partial class MirBorrowsTest
                 public func e8() => watch = Watch.init()
 
             """);
-        var program = Analyze(c);
+        var program = AnalyzeUnsupported(c, ["counter"]);
         Assert.Equal(
-            [
-                "writes(): Anchor counter, Use counter.add(writes()), EffectWrite public var counter: Counter = Counter.init()",
-                "g(): Anchor counter, Use inspect(c), EffectUnknown public var counter: Counter = Counter.init()",
-                "reads(): Anchor counter, Use u@follow = 1, EffectRead public var counter: Counter = Counter.init()",
-                "watch = Watch.init(): Anchor watch = Watch.init(), EffectRead public var watch: Watch = Watch.init()",
-            ],
+            ["watch = Watch.init(): Anchor watch = Watch.init(), EffectRead public var watch: Watch = Watch.init()"],
             program.Problems.All.ToArray().Select((x, i) => (x, i)).Where(static x => LoanCodes.Contains(x.x.Code) && x.x.Subject.Module == 0).Select(x =>
                 $"{Line(c, x.x.Subject)}: {string.Join(", ", program.Problems.Facts(x.i).ToArray().Select(f => $"{f.Kind} {Line(c, f.Site)}"))}"));
     }
 
-    // R4-M11 (R4-M91, R4-M92): a body no view decides is checked once for its views, but its calls' keys are each view's: forward's owner
-    // case destroys the Noisy it moves into hold, whose destructor writes G.x while c lives, and its reference case does not, so the
-    // conflict has view 0 only. Fail-before.
+    // R4-M11 (R4-M91, R4-M92; AnEffectConflictHasTheViewsWhoseKeysMeetItRooted): a body no view decides is checked once for its views, but
+    // its calls' keys are each view's. R4-M90 PQ-1: c's receiver Borrow of x is Binding's Unsupported_Kd until P42, so forward's two views
+    // meet no Loan.
     [Fact]
     public void AnEffectConflictHasTheViewsWhoseKeysMeetIt()
     {
@@ -558,18 +550,60 @@ public sealed partial class MirBorrowsTest
                 public init(value: T) => self.value = value
 
             """);
-        var program = Analyze(c);
+        var program = AnalyzeUnsupported(c, ["x"]);
         var forward = Body(program, "forward");
         Assert.Equal(2, MirCases.Count(forward));
-        Assert.Equal(["hold(value@move) 1"], program.Problems.All.ToArray().Where(x => x.Body == forward.Ordinal && LoanCodes.Contains(x.Code))
-            .Select(x => $"{Line(c, x.Subject)} {x.Views}"));
+        Assert.DoesNotContain(program.Problems.All.ToArray(), x => x.Body == forward.Ordinal && LoanCodes.Contains(x.Code));
+    }
+
+    // SPEC 23.1.2 (R4-M90 PQ-1, DECISIONS BU-25, R4-M109): an implicit Borrow of a static is Binding's located Unsupported_Kd at its operand,
+    // which its consumer receives as a derived value with no Loan, so a result kept past the statement meets nothing: a receiver's with a
+    // retained result (retained, beside an unknown call in effect), a reserved receiver's, an argument's adaptation, a kept argument's and an
+    // expected Type's, as a written Borrow's does not (fail-before 2x-E8's merge: a conflict at each retained form's operand).
+    [Fact]
+    public void AnUnsupportedStaticBorrowFormsNoLoan()
+    {
+        var c = MirBuildTest.Compile("""
+            struct Counter
+                public var n: i32 = 0
+                public init() => ()
+                public func add(self: uniq/Self, k: i32) => self.n = self.n + k
+                public func view(self: ref/Self) -> ref/i32 during self => self.n@ref
+            group Held
+                public var counter: Counter = Counter.init()
+                public var count: i32 = 0
+                public func inspect<T>(value: ref/T) => ()
+                public func takes(value: ref/i32) => ()
+                public func keep(value: ref/i32 during a) -> ref/i32 during a => value
+                public func retained()
+                    let c = counter.view()
+                    inspect(c)
+                public func effect(g: () -> ())
+                    let c = counter.view()
+                    g()
+                    inspect(c)
+                public func reserved() => counter.add(1)
+                public func adapted() => takes(count)
+                public func kept()
+                    let r = keep(count)
+                    inspect(r)
+                public func expected()
+                    let r: ref/Counter = counter
+                    inspect(r)
+                public func written()
+                    let r = counter@ref
+                    inspect(r)
+            public func main() => ()
+
+            """);
+        Assert.Empty(Problems(c, AnalyzeUnsupported(c, ["count", "counter", "counter@ref"]), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // The Loan problems and located Unsupported_Kd records of a program: the prelude, the effect Types and group State with the given
-    // members, then the given declarations.
-    private static string[] Effects(string members, string declarations = "")
+    // members, then the given declarations, whose static Borrows are Binding's Unsupported_Kd (AnalyzeUnsupported).
+    private static string[] Effects(string members, string[] borrows, string declarations = "")
     {
         var c = MirBuildTest.Compile(Prelude + EffectTypes + members + declarations);
-        return Problems(c, Analyze(c), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
+        return Problems(c, AnalyzeUnsupported(c, borrows), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]);
     }
 }
