@@ -138,13 +138,9 @@ public sealed partial class Binding
             {
                 var effect = clause.EffectBounds[e];
                 EffectRejection? rejection = null;
-                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable)
+                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable || effect.IsSpecification)
                 {
                     rejection = EffectRejection.CallableForm;
-                }
-                else if (effect.IsSpecification)
-                {
-                    rejection = EffectRejection.CallableSpecification;
                 }
                 else if (clause.IsAssociatedConstraint || clause.Parent is not (FunctionKoto or StructKoto or EnumKoto))
                 {
@@ -176,7 +172,8 @@ public sealed partial class Binding
         use.Report(
             diagnostic,
             DiagnosticCode.IncompatibleContractImplementation_Kd,
-            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {failure.Requirement.Name} do not declare it"],
+            evidence: [$"the implementation requires {Constants.ConfinedKeyword}, but the premises of requirement {failure.Requirement.Name} " +
+                "do not declare it"],
             note: "An implementation must be callable under its requirement's declared premises",
             related: [("bound", failure.Clause, "the implementation's bounded Callable Constraint"), ("requirement", failure.Requirement, "the requirement whose premises lack the bound")]);
         return true;

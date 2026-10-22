@@ -35,18 +35,24 @@ public class CallableEffectBoundTest
         Assert.Contains("mutable static", error.Label);
     }
 
+    // The Specification row pins code and location only: its Reason waits for PLAN G219's one rule for an effect specification.
     [Theory]
     [InlineData("Copy", "F is Copy", "effect confined", "single Callable")]
     [InlineData("Grouped", "F is (Callable<() -> i32>)", "effect confined", "single Callable")]
     [InlineData("Combined", "F is Callable<() -> i32> and Copy", "effect confined", "single Callable")]
-    [InlineData("Specification", "F is Callable<() -> i32>", "effect Runner.run confined", "an effect specification in a Callable effect list")]
+    [InlineData("Specification", "F is Callable<() -> i32>", "effect Runner.run confined", null)]
     [InlineData("Duplicate", "F is Callable<() -> i32>", "effect confined\n        effect confined", "already declares confined")]
-    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string cause)
+    public void InvalidDeclarationsExplainTheirCause(string name, string constraint, string bounds, string? cause)
     {
         var source = $"func check<F>(f: F) -> ()\n    {constraint}\n        {bounds}\n    return\npublic func main() => ()\n";
         var record = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal("InvalidEffectBound_Kd", record.Code);
-        Assert.Contains(cause, record.Label);
+        Assert.Equal(bounds[(bounds.LastIndexOf('\n') + 1)..].TrimStart(), source.Substring(record.Span!.Value.Start, record.Span.Value.Length));
+        if (cause is not null)
+        {
+            Assert.Contains(cause, record.Label);
+        }
+
         Assert.NotEmpty(record.Related!);
         Assert.False(string.IsNullOrEmpty(name));
     }
@@ -203,8 +209,9 @@ public class CallableEffectBoundTest
         Assert.Equal((invalid ? 1 : 0) + (independent ? 1 : 0), records.Length);
         if (invalid)
         {
+            // Code and location only: the Reason waits for PLAN G219's one rule for an effect specification.
             var bound = Assert.Single(records, static record => record.Code == "InvalidEffectBound_Kd");
-            Assert.Contains("an effect specification in a Callable effect list", bound.Label);
+            Assert.Equal("effect Runner.run confined", source.Substring(bound.Span!.Value.Start, bound.Span.Value.Length));
         }
 
         if (independent)
