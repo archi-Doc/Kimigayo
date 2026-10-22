@@ -1,7 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Text.RegularExpressions;
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -84,6 +86,96 @@ public class AbstractCallReachTest
     private const string GuardAggregate = "    let item = it.next()\n    var box = (item@move, 0)\n    values[0] = 5\n    inspect(box@ref)\n";
 
     private const string LendingTwice = "func twice<I>(source: uniq/I) -> ()\n    I is LendingIterator\n    let first = source.next()\n    let second = source.next()\n    _ = first@move\n    _ = second@move\n";
+
+    // The proposal's section 6 again: a first result through a Reborrow of the receiver, then a call on the receiver itself.
+    private const string Again = "func again<I>(it: uniq/I) -> (Option<I.Item>, Option<I.Item>)\n    I is Iterator\n    var r = it@follow@uniq\n    let first = r.next()\n    let second = it.next()\n    return (first@move, second@move)\n";
+
+    // PLAN G217's gx9 body: a shared read of the source while an exclusive item lives.
+    private const string SharedRead = "    let item = it.next()\n    inspect(values@ref)\n    inspect(item@ref)\n";
+
+    // Instances whose implementations use most of their contracts: a Source whose items keep a uniq Loan of its source, a LendingIterator
+    // whose item keeps the step Loan, and a View that lends its own Field.
+    private const string Cells = "struct Cells {src}\n    Self is Source\n    associate Source.Item is uniq/i32 during src\n    var rest: ArrayUniqIterator<i32> during src\n" +
+        "    public func take(self: uniq/Self) -> Option<uniq/i32 during src> => self.rest.next()\n";
+
+    private const string Cursor = "struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n" +
+        "    public func next(self: uniq/Self during step) -> Option<ref/i32 during step>\n        return .Some(self.value)\n";
+
+    private const string Cell = "struct Cell\n    Self is View\n    var value: i32 = 1\n    public func read(self: ref/Self) -> ref/i32 => self.value@ref\n";
+
+    // L1's generic cases: the section 7 generic programs and section 6's again, U1's guard rows with gx9, and the 2f-S1 and spec-readings
+    // ids that exist as tests (c11 takeFirst, c13/h5 takeTwo, c14 tupled, c15/h1 through, c17 and c18 the Callable rows, c19 zip and
+    // both, c20 pairs, c21 takeLate and sumTwo, c30 Merge, c31 and c32 the ordinary conformances, c33 Lending, c35 Swapped and Topped),
+    // each with the Type parameter its instances replace and their names: the concrete Types its tests use and one whose implementation
+    // uses most of the contract, whose items keep a Loan of their source, except under a Callable constraint, which cannot name the
+    // instance's Origin (InvalidConstraint_Kd).
+    private static readonly (string Name, string Parameter, string Text, string Instances)[] Generics =
+    [
+        ("takeTwo", "S", TakeTwo, "Merge Cells"),
+        ("tupled", "S", Tupled, "Merge Cells"),
+        ("through", "S", Through, "Merge Cells"),
+        ("takeLate", "S", TakeLate, "Merge Cells"),
+        ("both", "S", Both, "Merge Cells"),
+        ("takeFirst", "S", DiagnosticCorpus.SpecExample("15.6.3", "func takeFirst<S>").Replace("S is Take", "S is Source", StringComparison.Ordinal), "Merge Cells"),
+        ("nextPair", "I", NextPair, "Counter UniqItems"),
+        ("zip", "I", Zip, "Counter UniqItems"),
+        ("again", "I", Again, "Counter UniqItems"),
+        ("sumTwo", "V", SumTwo, "Cell"),
+        ("pairs", "C", Pairs, "Array"),
+        ("keep", "K", KeepTouch, "i32 Shared"),
+        ("fill", "V", Fill, "i32 Shared"),
+        ("lend", "I", LendingTwice, "Counter Cursor"),
+        ("callable", "S", CallableEffectBoundTest.TwiceByReference, "Merge"),
+        ("sameCallable", "S", CallableEffectBoundTest.Replacing(CallableEffectBoundTest.SameCallable), "Merge"),
+        ("replacedCallable", "S", CallableEffectBoundTest.Replacing(CallableEffectBoundTest.ReplacedCallable), "Merge"),
+        ("otherCallable", "S", CallableEffectBoundTest.Replacing(CallableEffectBoundTest.OtherCallable), "Merge"),
+        ("guardWrite", "S", Opened(true, GuardWrite), "Concrete"),
+        ("guardReborrow", "S", Opened(true, GuardReborrow), "Concrete"),
+        ("guardReassign", "S", Opened(true, GuardReassign), "Concrete"),
+        ("guardAggregate", "S", Opened(true, GuardAggregate), "Concrete"),
+        ("gx9", "S", Opened(true, SharedRead), "Concrete"),
+        ("Merge", "J", Merge, "Counter UniqItems"),
+        ("Swapped", "J", Swapped, "Counter UniqItems"),
+        ("Lending", "J", Lending, "Counter Cursor"),
+        ("Topped", "J", Topped, "Counter UniqItems"),
+        ("Pair", "I", CallablePair, "Counter"),
+        ("Wrap", "T", IteratorOriginEffectsTest.OrdinaryWrap, "i32 Shared"),
+        ("Hold", "I", IteratorOriginEffectsTest.OrdinaryHold, "Counter UniqItems"),
+        ("Outer", "I", IteratorOriginEffectsTest.OrdinaryOuter, "Counter UniqItems"),
+        ("Chain", "I", IteratorOriginEffectsTest.OrdinaryChain, "Counter UniqItems"),
+        ("Peek", "I", IteratorOriginEffectsTest.OrdinaryPeek, "Counter UniqItems"),
+    ];
+
+    // L1's concrete Types by name: the Type, its Item and its declarations, which follow the case's text in both compilations; a Type
+    // with Loans names its Origin q (Instantiate). Concrete is declared with Opener.
+    private static readonly Dictionary<string, (string Type, string Item, string Declarations)> Instances = new()
+    {
+        ["Counter"] = ("Counter", "i32", Counter),
+        ["UniqItems"] = ("(ArrayUniqIterator<i32> during q)", "uniq/i32 during q", string.Empty),
+        ["Merge"] = ("Merge<Counter>", "i32", Counter + Merge),
+        ["Cells"] = ("(Cells during q)", "uniq/i32 during q", Cells),
+        ["Cursor"] = ("(Cursor during q)", string.Empty, Cursor),
+        ["Concrete"] = ("Concrete", string.Empty, string.Empty),
+        ["Cell"] = ("Cell", string.Empty, Cell),
+        ["Array"] = ("Array<i32>", string.Empty, string.Empty),
+        ["i32"] = ("i32", string.Empty, string.Empty),
+        ["Shared"] = ("ref/i32 during q", string.Empty, string.Empty),
+    };
+
+    // The default pipeline's two listed L1 exceptions (PLAN G217), each pinned as the one record its generic does not cover, so the row
+    // fails when the old path changes; the MIR has none. gx9 (G217's N9 fact): the generic body is accepted while its concrete twin's
+    // shared read of the source meets the exclusive item (H: AddType gives a projection's Origin argument the schema's shared mode).
+    // again runs the opposite way: the old path rejects the concrete instance, which SPEC 15.6.3 and 15.6.4 and the MIR accept as they
+    // accept the generic (its over-strictness on concrete code, G217's p4), so no weaker abstract model and no counterexample that the
+    // proposal's 4.3 routes to a restriction of the base rule; its pin fails when p4 is fixed or the old path goes at R6-check.
+    private static readonly Dictionary<string, string> OldPathGaps = new()
+    {
+        ["gx9 Concrete"] = "ComparisonLoanConflict_Kd at inspect(values@ref)",
+        ["again UniqItems"] = "CallActivationConflict_Kd at let second = it.next()",
+    };
+
+    /// <summary>Gets L1's pairs: each generic case with each of its instances.</summary>
+    public static TheoryData<string, string> Instantiations => [.. Generics.SelectMany(static x => x.Instances.Split(' ').Select(i => (x.Name, i)))];
 
     // A later call that reaches no Place a kept result's Loans name is valid, whatever earlier call on the same value, another value of
     // the same Type or a user generic function produced the result (Take-only takeTwo, tupled, through, zip, both and the concrete
@@ -169,6 +261,23 @@ public class AbstractCallReachTest
         Assert.Equal(nameof(DiagnosticCode.CallActivationConflict_Kd), error.Code);
     }
 
+    // SPEC 8.15.1, 15.3.7 (L1 of the adopted proposal Abstract Calls Reach by Paths, its 4.1): a generic body is checked at least as
+    // strictly as each concrete instantiation, so every record an instance reports, its generic reports in the same declaration at the
+    // same or an earlier line (and an accepted generic has accepted instances): on the MIR for every pair, on the default pipeline but
+    // for its listed gaps.
+    [Theory]
+    [MemberData(nameof(Instantiations))]
+    public void AGenericBodyIsAtLeastAsStrictAsItsInstances(string name, string instance)
+    {
+        var (_, parameter, text, _) = Generics.Single(x => x.Name == name);
+        var (type, item, declarations) = Instances[instance];
+        var generic = Records(Source + Opener + text + "\n" + declarations + Main);
+        var concrete = Records(Source + Opener + Instantiate(text, parameter, type, item) + "\n" + declarations + Main);
+        Assert.Empty(Uncovered(generic.Mir, concrete.Mir));
+        string[] gaps = OldPathGaps.TryGetValue(name + " " + instance, out var gap) ? [gap] : [];
+        Assert.Equal(gaps, Uncovered(generic.Old, concrete.Old));
+    }
+
     // Warm ownership analysis of a body with requirement calls reuses its tables.
     [Trait("Purpose", "Allocation")]
     [Fact]
@@ -188,4 +297,61 @@ public class AbstractCallReachTest
         var head = generic ? "func f<S>() -> ()\n    S is Opener\n" : "func f() -> ()\n";
         return (head + "    var values: Array<i32> = [1, 2]\n    var it = S.start(values@uniq)\n" + body).Replace("S.start", generic ? "S.start" : "Concrete.start", StringComparison.Ordinal);
     }
+
+    // An instance of a generic program, every line kept: the parameter's constraint lines become blank, the declarations it parameterizes
+    // lose it, its projections P.Item and P.(C).Item become the Type's Item, and P becomes the Type. The Type's Origin q becomes the first
+    // own Origin of a struct that loses P, or such a struct declares q; a function's q is implicit.
+    private static string Instantiate(string text, string parameter, string type, string item)
+    {
+        var p = Regex.Escape(parameter);
+        if (Regex.Match(text, $@"(?m)^struct \w+<[^>\n]*\b{p}\b[^>\n]*> \{{(\w+)") is { Success: true } own)
+        {
+            (type, item) = (Regex.Replace(type, @"\bq\b", own.Groups[1].Value), Regex.Replace(item, @"\bq\b", own.Groups[1].Value));
+        }
+
+        var origin = type.Contains("during q", StringComparison.Ordinal) ? "q" : string.Empty;
+        text = Regex.Replace(text, $@"(?m)^ +{p} is .*$", string.Empty);
+        text = Regex.Replace(text, @"(?m)^( *(?:public )?(func|struct) \w+)<([^>\n]*)>(?: \{([^}\n]*)\})?", m =>
+        {
+            var parameters = m.Groups[3].Value.Split(',');
+            if (!parameters.Contains(parameter))
+            {
+                return m.Value;
+            }
+
+            var kept = string.Join(',', parameters.Where(x => x != parameter));
+            var origins = string.Join(", ", new[] { m.Groups[4].Value, m.Groups[2].Value == "struct" ? origin : string.Empty }.Where(static x => x.Length > 0));
+            return m.Groups[1].Value + (kept.Length > 0 ? $"<{kept}>" : string.Empty) + (origins.Length > 0 ? $" {{{origins}}}" : string.Empty);
+        });
+        text = Regex.Replace(text, $@"\b{p}\.(?:\(\w+\)\.)?Item\b", item);
+        return Regex.Replace(text, $@"\b{p}\b", type);
+    }
+
+    // A program's Error records in its source as their declaration's line, their line and their code at the line's text, independent of
+    // KIMI_PIPELINE: on the MIR, its construction records and every analysis's problems, with no validator finding; on the default
+    // pipeline, the old path's records.
+    private static ((int Owner, int Line, string Text)[] Mir, (int Owner, int Line, string Text)[] Old) Records(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var old = LegacyRecords.Of(c).Where(static x => x.Node.CodeContext?.SourceDocument?.Path == "Hello.kimi").Select(static x => (x.Code, x.Node));
+        var program = c.BuildMir();
+        Assert.Empty(program.Findings);
+        var mir = program.Records.Concat(program.Problems.All.ToArray().Select(static x => new Problem(x.Code, x.Subject)))
+            .Where(static x => x.Subject.Module == 0).Select(x => (x.Code, c.SyntaxOf(x.Subject)));
+        var lines = source.Split('\n');
+        return ([.. Sites(mir)], [.. Sites(old)]);
+
+        IEnumerable<(int, int, string)> Sites(IEnumerable<(DiagnosticCode Code, Koto Node)> records)
+            => records.Where(static x => DiagnosticEntries.TryGet(x.Code, out var entry) && entry.Severity == Kimi.Diagnostics.DiagnosticSeverity.Error)
+                .Select(x => (Line(Function(x.Node)), Line(x.Node), $"{x.Code} at {lines[Line(x.Node)].Trim()}"));
+
+        int Line(Koto? node) => node is null ? -1 : source.AsSpan(0, node.Span.Start).Count('\n');
+
+        static Koto? Function(Koto node) => node is FunctionKoto ? node : node.Parent is { } parent ? Function(parent) : null;
+    }
+
+    // An instance's records that no generic record of the same declaration reports at the same or an earlier line.
+    private static string[] Uncovered((int Owner, int Line, string Text)[] generic, (int Owner, int Line, string Text)[] instance)
+        => [.. instance.Where(x => !generic.Any(g => g.Owner == x.Owner && g.Line <= x.Line)).Select(static x => x.Text).Distinct()];
 }
