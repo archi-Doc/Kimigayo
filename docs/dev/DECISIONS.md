@@ -2648,8 +2648,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - E4 layer unit: rows and atoms of an instance Field's initializer belong to its struct; a constructor's slice is its own rows, then
     its layer's (`LayerStart`), the layer found by `AdtDef`'s constructor facts, never by listing Fields; the parts share Fixed atoms
     only (else `InternalInvariant_Kd`); layer rows are judged with the layer's oracle, the Type's public premises (Q1 (a): today's
-    verdict; which premises judge a Field initializer is reported to the owner as a SPEC gap). Recorded limit: a struct without a
-    constructor keeps its layer rows in no slice (PLAN, STATUS).
+    verdict; which premises judge a Field initializer is reported to the owner as a SPEC gap; answered (a), R4-M110). Recorded
+    limit: a struct without a constructor keeps its layer rows in no slice (PLAN, STATUS).
   - E5 classes: SPEC's three kinds and Unclassed (no edge) by 2a0-D §3's precedence, roots by the forming body for non-declaration
     binders and by slot role for declaration binders (parameters of f and of templates (f, i > j), `ReceiverSlot` and `HelperSlot`,
     environment, `ClosureValueSlot`, `CallResultSlot`, accessor self/value, a Property's storage); "enclosing" is the chain of Closures'
@@ -2759,8 +2759,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     `exchange`, `swap`, `replace`) and a non-null Case payload are Origin relation errors (Language), repaired through an exclusive
     borrow of the holding value and a claim; a write of a Tuple or fixed-array Place enclosing the layer is a write of the layer's
     Place. BU's B′+ U3 becomes this error at U3's sites, one `RawOrigins` check each, `null` read from a published fact; no new
-    representation. Left open (PLAN G212, B′+'s located `Unsupported_Kd` until decided): an exclusive borrow of such an enclosing
-    Place (`exchange(b.pair@uniq, …)`) and a Move of the layer's Place (`b.data@move`).
+    representation. Left open (PLAN G212; decided by R4-M110, B′+'s located `Unsupported_Kd` until BU implements it): an exclusive
+    borrow of such an enclosing Place (`exchange(b.pair@uniq, …)`) and a Move of the layer's Place (`b.data@move`).
   - OQ-R2 (a), SPEC 5.7 "Origins": a raw Origin formed by a Field read, a typed path or a substitution is the outer Origin of the
     borrow it is formed through, an intersection included; a written `o` stays one atom. Supersedes R4-M95's "no intersection" (G160
     D18) for formed Origins only: G160 records no reason for D18, and the reconstructed one (a written intersection may belong to no
@@ -2836,8 +2836,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     the owner's option. PD21: U1's and U2's edits only delete (the frozen old Analysis, catalog rows, Binding's preserves half), so
     no restructure; `Binding.EffectBounds.cs`, `Binding.ArgumentOperations.cs` (BU's queue) and `HoverBuilder.Effects.cs` stay due
     before their next adding change; AC-U4's one Note string in the due `Binding.EffectDeclarations.cs` adds no responsibility and
-    follows the same rule (its review). Open: `MirBuilder.Expansions.cs:172` builds a compound-assignment getter receiver's Adjust
-    from Binding's operation instead of the HIR column (2x-E8 decides).
+    follows the same rule (its review). `MirBuilder.Expansions.cs:172`'s getter Adjust, built from Binding's operation and open at the landing, is closed by
+    R4-M109 (the getter takes the HIR's plan-row Adjust).
   - Rejected (its §9): A, S2 as revised by 2f-S1 (a receiver-Place relation between calls; it keeps the cause and adds the most
     mechanism); B, a separation guarantee for `preserves results` (a second copy of the ownership rule); keeping rule 1's Origin
     clause for some forms (no counterexample; a counterexample to the base rule is one for concrete calls too); C with P12 (Q1 (b),
@@ -2966,6 +2966,28 @@ and migration obligations remain in force; no numeric cap changes are authorized
     one-responsibility rulings; 2g-2a may restructure again, G103's staging does not block it); `HirFormsTest.cs` was due (Q21, Q16,
     2x-E2): ruling (a), partial, its Error rows in `HirFormsTest.Errors.cs`; `Binding.Hir.Adjust.cs`: a comment-only citation sweep
     (fc24641c) is not a changing unit, so 2, not due.
+- **R4-M110 Owner answers at R4's resume: Field initializer premises, enclosing Places of a `during self` layer, G221's timing**
+  (owner, 2026-10-22, choosing the R4 planning session's recommended options, verbatim 「(a) 型の公開前提 (推奨)」, 「借用はエラー、Move は
+  読み (推奨)」, 「W の SPEC セッションで (推奨)」 and, for R4's concurrency, 「1+1 のまま (推奨)」)
+  - R4-M101 Q1 (a): a Field initializer's Origin relations are judged under the Type's public premises and well-formedness, never a
+    constructor's, since every constructor of the layer runs it; SPEC 6.3.3 states it (the option's clarifying sentence, written with
+    G212's 5.7 sentence rather than at the next SPEC session). Today's verdict and R4-M101 E4's layer oracle (`UniversalRelations(layer)`)
+    stand; `f2-init-ctor-premise` stays an error. Rejected: (b) each constructor's premises (a SPEC 6.3.3/15.6.5 clarification and an O3
+    acceptance change, `f2-init-ctor-premise` valid on the MIR after R6-check, for one oracle per body).
+  - PLAN G212 (R4-M105 OQ-R1 (a), the records review's N3 and N4): SPEC 5.7 "Writing a Field" admits a Move among the layer's reads
+    ("reads (a Move included)") and gains "A Tuple or fixed-array Place that holds a `during self` layer within the same holding value is
+    written and borrowed as the layer's Place is …". An exclusive borrow of such an enclosing Place (`exchange(b.pair@uniq, …)`) is
+    the Origin relation error of `b.data@uniq` (`uniq` is invariant in its target and no body Type states own storage); a write of it
+    is a write of the layer's Place; `b.data@move` is admitted as a read (a Partial Move of the pointer, restored by a write, which
+    there must be `null`).
+    Implementation: BU, at B′+ U3's sites (one `RawOrigins` check each, as R4-M105); until then the forms stay B′+'s located
+    `Unsupported_Kd` (STATUS: raw Origins are not implemented, G160). Rejected: the Move as an error too (the letter of "only"; it
+    rejects a harmless restore); keeping the question for a later SPEC session.
+  - PLAN G221 (SPEC 15.6.3's descent sentence restating 15.6.4): edited in the SPEC session R4-M104 orders before 2a-2's design review.
+    Rejected: a separate SPEC unit now; leaving it unscheduled.
+  - Process: R4 runs at most one implementer and one reviewer at a time; reviewers of R4's Binding-touching units stay BU's (the
+    2026-10-22 question; the handoff's 2 + 1 applies again only on the owner's word). Rejected: 2 + 1; 2 + 1 with non-BU reviewers for
+    Binding-touching units.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

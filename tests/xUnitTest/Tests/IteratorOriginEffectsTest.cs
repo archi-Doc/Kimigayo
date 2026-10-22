@@ -8,6 +8,19 @@ namespace XunitTest;
 
 public class IteratorOriginEffectsTest
 {
+    // The generic conformances of AnIteratorConformanceIsAnOrdinaryBody, which AbstractCallReachTest also instantiates (L1).
+    internal const string OrdinaryWrap = "struct Wrap<T> {a}\n    Self is Iterator\n    associate Iterator.Item is T\n    let counter: uniq/i32 during a\n    var pending: Option<T>\n    public func next(self: uniq/Self) -> Option<T>\n        self.counter@follow += 1\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: .None)";
+
+    internal const string OrdinaryHold = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        return self.inner.next()";
+
+    internal const string OrdinaryOuter = "struct Outer<I> {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    I is Iterator\n    let first: ref/i32 during a\n    var inner: I\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.first)";
+
+    internal const string OrdinaryChain = "struct Chain<I> {source}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var first: uniq/I during source\n    var second: uniq/I during source\n" +
+        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.first.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.second.next()";
+
+    internal const string OrdinaryPeek = "struct Peek<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var pending: Option<I.(Iterator).Item>\n" +
+        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let following = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: following@move)";
+
     // SPEC 8.11.2, 16.3.3: under confined, destroying a value of an abstract Type has unknown effects (G28). Iterator declares no bound
     // (22.2.1), so the analyses of these forms run over the same bodies conforming to Feed, an Iterator-shaped Contract bounded by
     // confined; the native fixtures run them as Iterators.
@@ -19,13 +32,11 @@ public class IteratorOriginEffectsTest
     // still applies (OriginRelationDiagnosticTest).
     [Theory]
     [InlineData("struct Cursor {a, b}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let first: ref/i32 during a\n    let counter: uniq/i32 during a\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        self.counter@follow = 5\n        return .Some(self.first)")]
-    [InlineData("struct Wrap<T> {a}\n    Self is Iterator\n    associate Iterator.Item is T\n    let counter: uniq/i32 during a\n    var pending: Option<T>\n    public func next(self: uniq/Self) -> Option<T>\n        self.counter@follow += 1\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: .None)")]
-    [InlineData("struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        return self.inner.next()")]
-    [InlineData("struct Outer<I> {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    I is Iterator\n    let first: ref/i32 during a\n    var inner: I\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.first)")]
-    [InlineData("struct Chain<I> {source}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var first: uniq/I during source\n    var second: uniq/I during source\n" +
-        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.first.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.second.next()")]
-    [InlineData("struct Peek<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var pending: Option<I.(Iterator).Item>\n" +
-        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let following = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: following@move)")]
+    [InlineData(OrdinaryWrap)]
+    [InlineData(OrdinaryHold)]
+    [InlineData(OrdinaryOuter)]
+    [InlineData(OrdinaryChain)]
+    [InlineData(OrdinaryPeek)]
     public void AnIteratorConformanceIsAnOrdinaryBody(string declarations)
     {
         var c = MinimalEmissionTest.Analyze(declarations);

@@ -1,5 +1,18 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Binding's effect declarations (SPEC 8.11.1, 8.11.4; DIAGNOSTICS, effect items).
+// - Responsibility: the verdict of every effect item and the bound tables its valid items fill: each Contract's bounds
+//   (EnsureEffectBounds), the bounded Callable clauses (PrepareCallableEffects) and each original virtual slot's bound
+//   (PrepareVirtualEffectBounds), with the reads of those tables (DeclaredEffectBound, AvailableEffectBounds).
+// - Inputs: the pass's Contract shapes, bound requirement headers, Constraint facts and validated virtual declarations;
+//   PrepareEffectBounds runs once per pass after them and before conformances are verified.
+// - Outputs: BoundContract.EffectBounds, boundedRequirements, callableEffectClauses, virtualEffectBounds, and one rejection
+//   fact per invalid item (EffectBoundRejection), published as InvalidEffectBound_Kd at the item (ReportEffectBound).
+// - Invariants: an item's position is decided by Misplaced alone, before its position's own checks; an item AppliesBound
+//   rejects supplies no bound (SPEC 8.11.3); every table is rebuilt per pass in reused storage; a rejection records facts,
+//   its text is formed at publication.
+// - Prohibitions: no bound is searched for in implementations; no other component decides an effect item.
+
 using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 using Kimi.Diagnostics;
@@ -14,65 +27,21 @@ public sealed partial class Binding
     // The confined bound each original virtual function declares, or null (virtual-dispatch 6).
     private readonly Dictionary<FunctionKoto, EffectBoundKoto?> virtualEffectBounds = new(ReferenceEqualityComparer.Instance);
 
+    // SPEC 8.11.4: the Constraint clauses of this pass that carry an effect list.
+    private readonly List<IsKoto> callableEffectClauses = new();
+
     // The Contracts of this pass, recorded when their shapes are built, so the bound tables need no second scan of the nodes.
     private readonly List<BoundContract> contractShapes = [];
-
-    // SPEC 8.11.1: the first violating effect of each conformance a bound rejects, keyed by its Self clause; recorded only
-    // when one is rejected and reused across passes.
-    private Dictionary<Koto, EffectViolationRecord>? effectViolations;
 
     // SPEC 8.11.1: the cause of each rejected effect item, recorded only when one fails. The store is reused across passes,
     // so a warm rebind allocates nothing.
     private Dictionary<EffectBoundKoto, EffectBoundRejection>? effectBoundRejections;
     private EffectSyntaxCompleter? effectSyntax;
 
-    /// <summary>SPEC 8.11.1: the kind of the first effect of an implementation that violates a bound.</summary>
-    internal enum EffectViolation : byte
-    {
-        /// <summary>No violation.</summary>
-        None,
-
-        /// <summary>An access to a mutable static Field, which confined excludes.</summary>
-        MutableStatic,
-
-        /// <summary>A standard operation on state outside the program, such as Console output, which confined excludes.</summary>
-        ExternalOperation,
-
-        /// <summary>A call of a foreign function, an environment effect that confined excludes (SPEC 22.6).</summary>
-        ForeignCall,
-
-        /// <summary>A read of a raw pointer from an immutable static, which obtains environment authority.</summary>
-        StaticPointer,
-
-        /// <summary>A conversion of an integer to a pointer, which obtains environment authority.</summary>
-        IntegerPointer,
-
-        /// <summary>A call whose effects cannot be classified, treated as a conflict.</summary>
-        UnclassifiedCall,
-
-        /// <summary>A requirement call that no available bound covers, treated as a conflict.</summary>
-        UnboundedRequirement,
-
-        /// <summary>A dynamic virtual call whose public slot does not guarantee the required bound.</summary>
-        UnboundedVirtual,
-
-        /// <summary>A destruction whose effects cannot be classified, treated as a conflict.</summary>
-        UnknownDestruction,
-
-        /// <summary>An abstract callable has no premise declaring the required bound.</summary>
-        MissingCallablePremise,
-
-        /// <summary>An erased Function Type keeps no effect bound.</summary>
-        ErasedCallable,
-
-        /// <summary>An effect this implementation cannot classify yet: the check fails as an implementation limit (Unsupported_Kd).</summary>
-        Limit,
-    }
-
     // SPEC 8.11.1: why an effect item declares no bound.
     private enum EffectRejection : byte
     {
-        SpecificationInRequirement,
+        SpecificationOutsideContract,
         ClauseOutsideRequirement,
         OutsideContract,
         NotContract,
@@ -233,65 +202,6 @@ public sealed partial class Binding
     internal bool AvailableEffectBounds(FunctionKoto requirement, BoundType? conforming, Koto at)
         => this.AvailableEffectBounds(requirement, conforming, this.ConstraintScope(at), reference: (at as InvocationKoto)?.BoundCall?.RequirementContract);
 
-    /// <summary>
-    /// SPEC 8.11.1: reports a conformance that a bound rejects at the first violating effect in the implementation's own body.
-    /// The Reason names the violation, the bound and its declaring Contract; the Note tells a definite violation from an
-    /// unknown effect counted as a conflict; the related locations give the effect, the conformance and the bound.
-    /// </summary>
-    /// <param name="use">The Self clause of the conformance.</param>
-    /// <param name="requirement">The failed requirement of the record.</param>
-    /// <param name="code">The code to report.</param>
-    /// <param name="instanceContext">The concrete generic context, when reporting an instance.</param>
-    /// <param name="instanceSite">The source call that requested the instance.</param>
-    /// <returns><see langword="true"/> when a violation was recorded for the conformance and reported.</returns>
-    internal bool ReportEffectViolation(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, string? instanceContext = null, Koto? instanceSite = null)
-    {
-        if (this.effectViolations?.TryGetValue(use, out var violation) != true)
-        {
-            return false;
-        }
-
-        var name = violation.Requirement.Name;
-        var item = this.DeclaredEffectBound(violation.Contract, violation.Identity);
-        var contract = item is null ? violation.Contract.Symbol.Name : DeclaringContract(item)?.BoundSymbol?.Name ?? violation.Contract.Symbol.Name;
-        var spelling = Constants.ConfinedKeyword;
-
-        // SPEC 8.11.1: an environment effect is named by the operation that obtained the authority (SPEC 8.11.2).
-        var effect = EffectCause(violation.Kind);
-        var definite = violation.Kind is EffectViolation.MutableStatic or EffectViolation.ExternalOperation or EffectViolation.ForeignCall or
-            EffectViolation.StaticPointer or EffectViolation.IntegerPointer;
-
-        var note = definite
-            ? $"{name} must satisfy {spelling}, declared by {contract}, and this effect violates it"
-            : $"{name} must satisfy {spelling}, declared by {contract}; this effect cannot be classified, so verification treats it as a conflict (SPEC 8.6)";
-        if (instanceContext is not null)
-        {
-            note += "; " + instanceContext;
-        }
-
-        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + 1 + (item is null ? 0 : 1) + (instanceSite is null ? 0 : 1);
-        var related = new (string Role, Koto At, string? Label)[count];
-        var next = 0;
-        if (violation.Node is { } effectNode && !ReferenceEquals(effectNode, violation.Site))
-        {
-            related[next++] = ("effect", effectNode, "the violating effect");
-        }
-
-        related[next++] = ("conformance", use, "the conformance checked against the bound");
-        if (item is not null)
-        {
-            related[next++] = ("bound", item, "the bound");
-        }
-
-        if (instanceSite is not null)
-        {
-            related[next] = ("instantiation", instanceSite, "the call requesting this instance");
-        }
-
-        use.Report(requirement, code, note: note, at: violation.Site, evidence: [$"{effect}, which {spelling} excludes"], related: related);
-        return true;
-    }
-
     private static EffectBoundKoto? OwnEffectBound(BoundContract shape, BoundRequirement requirement)
     {
         var bounds = shape.EffectBoundStorage;
@@ -306,6 +216,17 @@ public sealed partial class Binding
         return null;
     }
 
+    // SPEC 8.11.1, F.6: the one rule for where an effect item stands. A specification is a Contract item; a clause stands in a
+    // requirement's Constraint region, a Callable Constraint's effect list or an original virtual function's leading region,
+    // whose own checks follow; any other item declares no bound.
+    private static EffectRejection? Misplaced(EffectBoundKoto effect) => effect.Parent switch
+    {
+        ContractKoto => effect.IsSpecification ? null : EffectRejection.ClauseOutsideRequirement,
+        FunctionKoto { IsRequirement: true, Parent: ContractKoto } or IsKoto or FunctionKoto { IsVirtual: true } =>
+            effect.IsSpecification ? EffectRejection.SpecificationOutsideContract : null,
+        _ => EffectRejection.OutsideContract,
+    };
+
     // SPEC 8.11.1: the bounds of every Contract, checked once per pass after the requirement headers are bound and before
     // conformances are verified against them.
     private void PrepareEffectBounds()
@@ -317,6 +238,7 @@ public sealed partial class Binding
             this.EnsureEffectBounds(this.contractShapes[i]);
         }
 
+        this.callablePremiseFailures.Clear();
         this.PrepareCallableEffects();
         this.PrepareVirtualEffectBounds();
     }
@@ -373,36 +295,91 @@ public sealed partial class Binding
             {
                 for (var e = 0; e < function.EffectBounds.Count; e++)
                 {
-                    var clause = function.EffectBounds[e];
-                    if (clause.CodeContext.RecoveryCause(clause) is not null)
+                    if (this.AppliesBound(function.EffectBounds[e]))
                     {
-                        continue;
-                    }
-
-                    if (clause.IsSpecification)
-                    {
-                        this.RejectEffectBound(clause, new(EffectRejection.SpecificationInRequirement, Requirement: function));
-                    }
-                    else
-                    {
-                        this.DeclareEffectBound(shape, clause, new(requirement, shape.Symbol));
+                        this.DeclareEffectBound(shape, function.EffectBounds[e], new(requirement, shape.Symbol));
                     }
                 }
             }
-            else if (contract.Members[m] is EffectBoundKoto effect && effect.CodeContext.RecoveryCause(effect) is null)
+            else if (contract.Members[m] is EffectBoundKoto effect && this.AppliesBound(effect) && this.EffectTarget(shape, effect, scope) is { } target)
             {
-                if (!effect.IsSpecification)
-                {
-                    this.RejectEffectBound(effect, new(EffectRejection.ClauseOutsideRequirement));
-                }
-                else if (this.EffectTarget(shape, effect, scope) is { } target)
-                {
-                    this.DeclareEffectBound(shape, effect, target);
-                }
+                this.DeclareEffectBound(shape, effect, target);
             }
         }
 
         shape.EffectState = 2;
+    }
+
+    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.11.4).
+    private void PrepareCallableEffects()
+    {
+        this.callableEffectClauses.Clear();
+        for (var n = 0; n < this.nodes.Count; n++)
+        {
+            if (this.nodes[n] is not IsKoto { EffectBounds.Count: > 0 } clause)
+            {
+                continue;
+            }
+
+            this.callableEffectClauses.Add(clause);
+            var declared = false;
+            for (var e = 0; e < clause.EffectBounds.Count; e++)
+            {
+                var effect = clause.EffectBounds[e];
+                if (!this.AppliesBound(effect))
+                {
+                    // A misplaced item or a recovery has its own cause and supplies no bound, so it is no earlier one (SPEC 8.11.3).
+                    this.BindEffectBound(effect);
+                    continue;
+                }
+
+                EffectRejection? rejection = null;
+                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable)
+                {
+                    rejection = EffectRejection.CallableForm;
+                }
+                else if (clause.IsAssociatedConstraint || clause.Parent is not (FunctionKoto or StructKoto or EnumKoto))
+                {
+                    rejection = EffectRejection.CallablePosition;
+                }
+                else if (declared)
+                {
+                    rejection = EffectRejection.CallableDuplicate;
+                }
+
+                declared = true;
+                if (rejection is { } invalid)
+                {
+                    this.RejectEffectBound(effect, new(invalid, Requirement: clause));
+                }
+
+                this.BindEffectBound(effect);
+            }
+        }
+    }
+
+    // SPEC 8.11.1: the confined bound of each valid original virtual function, its slot's public guarantee.
+    private void PrepareVirtualEffectBounds()
+    {
+        foreach (var function in this.virtualDeclarations)
+        {
+            if (!function.IsVirtual || function.BindingFailure != BindingFailure.None)
+            {
+                continue;
+            }
+
+            EffectBoundKoto? confined = null;
+            for (var i = 0; i < function.EffectBounds.Count; i++)
+            {
+                var effect = function.EffectBounds[i];
+                if (this.AppliesBound(effect) && this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
+                {
+                    confined = effect;
+                }
+            }
+
+            this.virtualEffectBounds[function] = confined;
+        }
     }
 
     private void DeclareEffectBound(BoundContract shape, EffectBoundKoto effect, BoundRequirement requirement)
@@ -510,10 +487,10 @@ public sealed partial class Binding
     private void RejectEffectBound(EffectBoundKoto effect, EffectBoundRejection rejection)
         => (this.effectBoundRejections ??= new(ReferenceEqualityComparer.Instance))[effect] = rejection;
 
-    // SPEC 8.11.1: an effect item declares a bound of its Contract. A rejected bound word leaves a recovery whose checks
-    // rest on the syntax Error; an item outside a Contract declares nothing.
-    // Whether an effect bound applies: one the declaration checks rejected, or a recovery, declares nothing.
-    private bool AppliesBound(EffectBoundKoto bound) => this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
+    // SPEC 8.11.3: whether an effect item supplies its bound. A misplaced item, one a declaration check rejected and a recovery,
+    // whose checks rest on its syntax Error, supply none; every reader of an item asks this first.
+    private bool AppliesBound(EffectBoundKoto bound)
+        => Misplaced(bound) is null && this.effectBoundRejections?.ContainsKey(bound) != true && !IsRecovery(bound, out _);
 
     private BoundType? BindEffectBound(EffectBoundKoto effect)
     {
@@ -530,9 +507,9 @@ public sealed partial class Binding
             return Complete(effect, null);
         }
 
-        if (DeclaringContract(effect) is null && effect.Parent is not IsKoto and not FunctionKoto { IsVirtual: true })
+        if (Misplaced(effect) is { } position)
         {
-            this.RejectEffectBound(effect, new(EffectRejection.OutsideContract));
+            this.RejectEffectBound(effect, new(position));
         }
 
         return this.effectBoundRejections?.ContainsKey(effect) == true ? this.Fail(effect, BindingFailure.InvalidEffectBound) : Complete(effect, BoundType.Unit);
@@ -554,7 +531,8 @@ public sealed partial class Binding
         var earlierOwner = rejection.Earlier is { } previous ? DeclaringContract(previous)?.BoundSymbol?.Name ?? (previous.Parent as FunctionKoto)?.Name : null;
         var (cause, note) = rejection.Kind switch
         {
-            EffectRejection.SpecificationInRequirement => ("an effect specification in a requirement", "An effect specification names an inherited requirement and is a Contract item; a requirement's own bound is an effect clause"),
+            EffectRejection.SpecificationOutsideContract => ("an effect specification outside a Contract's items",
+                "An effect specification is a Contract item and bounds a requirement the Contract inherits"),
             EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
             EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),
@@ -606,25 +584,6 @@ public sealed partial class Binding
             node.VisitChildren(this);
         }
     }
-
-    // Share cause text across Contract, Callable and virtual implementation diagnostics.
-    private static string EffectCause(EffectViolation kind, bool callable = false) => kind switch
-    {
-        EffectViolation.MutableStatic => "a mutable static access",
-        EffectViolation.ExternalOperation => "an external operation",
-        EffectViolation.ForeignCall => "a foreign function call",
-        EffectViolation.StaticPointer => "a raw pointer read from an immutable static",
-        EffectViolation.IntegerPointer => "a pointer made from an integer",
-        EffectViolation.UnboundedRequirement => callable ? "a requirement call without the required guarantee" : "a requirement call with unknown effects",
-        EffectViolation.UnboundedVirtual => "a virtual call without the required public effect guarantee",
-        EffectViolation.UnknownDestruction => callable ? "destruction with unknown effects" : "a destruction with unknown effects",
-        EffectViolation.MissingCallablePremise => "the enclosing premise does not declare the bound",
-        EffectViolation.ErasedCallable => "a common Function Type whose erasure keeps no bounds",
-        _ => "a call with unknown effects",
-    };
-
-    // The violating effect and the public bound it must satisfy; text is formed only during publication.
-    private readonly record struct EffectViolationRecord(EffectViolation Kind, Koto? Site, Koto? Node, FunctionKoto Requirement, BoundContract Contract, BoundRequirement Identity);
 
     private readonly record struct EffectBoundRejection(EffectRejection Kind, Koto? Requirement = null, EffectBoundKoto? Earlier = null, BindingSymbol? Symbol = null, int Count = 0);
 }
