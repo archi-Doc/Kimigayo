@@ -169,7 +169,8 @@ internal sealed partial class MirBuilder
                 if (given is not null && ReferenceEquals(argument.Source, given))
                 {
                     var adjust = HirTables.PlanOf(given).Adjust;
-                    operand = this.Operand(given, adjust == default ? HirTables.AdjustOf(given) : adjust, argument.AdaptedType ?? argument.ParameterType, input: true);
+                    operand = this.Operand(
+                        given, adjust == default ? HirTables.AdjustOf(given) : adjust, argument.AdaptedType ?? argument.ParameterType, input: true);
                 }
             }
 
