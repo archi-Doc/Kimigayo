@@ -3845,7 +3845,10 @@ resumed by R4-M86 (2026-10-20).
   fails its operand where the operation is final, before that input's Origin fit:
   `JudgeCallFit` (every selected call's inputs), `ExpectedAdaptation`'s selected destination, `CompletePayloads` and the value call
   (`BindValueCall`'s inputs; `AcquireValueCallee`, split out first, for a Shared or Exclusive call's callee, owned or a handle's
-  payload (`TryPayloadReceiver`), final at its acquisition as a value call selects no other callee; the call is bound on).
+  payload (`TryPayloadReceiver`), final at its acquisition as a value call selects no other callee; the call is bound on; their
+  Exclusive denial reads `LendsPlace`). A handle's payload callee (`oc@follow()`) fails at the projection's source `oc`, the node
+  that becomes the Error, so the projection is its consumer's derived value with no Loan; at the written `oc@follow` the MIR would
+  form a static Loan on `oc` (bu22's re-read 2, C5: the alternative chosen by the planning session).
   The consumer receives a derived value with no Loan (R4-M109). Out of scope (no lending judgment; A5 models their Loans, 2b-D §1.5):
   comparison inspections, `for`/`match` Subjects, writeback reservations, in-place element reads; `IsStaticField` stays out of
   `IsBarePlace` (BU-21's open item). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's
