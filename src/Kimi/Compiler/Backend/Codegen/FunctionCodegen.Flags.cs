@@ -56,8 +56,8 @@ internal sealed partial class FunctionCodegen
         }
     }
 
-    // The test of a destruction under a flag (-1: none, which writes nothing): the flag read as a bool, its set path the block drop<id>;
-    // the guard Join closes, or -1.
+    // The test of a destruction under a flag (-1: none, which writes nothing): the flag read as a bool, then its guard (Guard); the guard
+    // Join closes, or -1.
     private int Test(int flag)
     {
         if (flag < 0)
@@ -65,8 +65,15 @@ internal sealed partial class FunctionCodegen
             return -1;
         }
 
-        var (output, id) = (this.output, this.next++);
-        var set = this.Narrow(Flag, this.LoadAt(new('f', flag), Flag.Layout));
+        var id = this.next++;
+        this.Guard(id, this.Narrow(Flag, this.LoadAt(new('f', flag), Flag.Layout)));
+        return id;
+    }
+
+    // A destruction's guard numbered id: its set path, where an i1 value holds, the block drop<id>; Join(id) closes it.
+    private void Guard(int id, Value set)
+    {
+        var output = this.output;
         output.Write("  br i1 ");
         this.WriteValue(set);
         Name(output, ", label %drop", id);
@@ -74,7 +81,6 @@ internal sealed partial class FunctionCodegen
         output.Write('\n');
         Name(output, "drop", id);
         output.Write(":\n");
-        return id;
     }
 
     // The end of a destruction under a flag: its set path joins the other at dropped<id>; nothing without a guard.

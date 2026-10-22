@@ -12,9 +12,8 @@ namespace Kimi.Compiler.Backend;
 // caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
-    private void Intrinsic(in MirTerminator call)
+    private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
     {
-        var row = IntrinsicRows.Of((IntrinsicId)call.Callee.Arg);
         switch (row.Writer)
         {
             case IntrinsicWriter.Routine:

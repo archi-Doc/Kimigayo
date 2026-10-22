@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Backend;
 
 // The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a, C2b and C5a; DECISIONS R5-M83, R5-M87, R4-M81, R5-M102): a Tuple, struct,
 // enum Case, Closure environment or fixed array put by its components, and a Fill's one value at each element by one counted loop, the
-// loop writer (Loop) the glue shares.
+// loop writer (Loop) the glue shares. Rows not written yet: an Array or Dictionary from none (C8d, C8e).
 internal sealed partial class FunctionCodegen
 {
     // One pass of a counted loop (Loop): its labels' stem and its work from the pass's element offset.

@@ -7,7 +7,7 @@ namespace Kimi.Compiler.Backend;
 
 // The rvalues of FunctionCodegen (R5 package C 3.2, plan C2b; DECISIONS R5-M78, R5-M83, R5-M87), each computed from its operands, then put
 // into its Place through the place writer (SPEC 13.7.1): a Use, a Ref, a Discriminant, a Len and an Adapt; the aggregates are in
-// FunctionCodegen.Aggregates.cs.
+// FunctionCodegen.Aggregates.cs. Rows not written yet: a Dictionary's (C8e) and a string's (C8c) Len, an Adapt's object creation (C6a).
 internal sealed partial class FunctionCodegen
 {
     // A Use: its operand put into the Place in its representation (a value in memory copied; nothing for a zero-sized Place); a string
