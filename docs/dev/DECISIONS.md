@@ -6273,3 +6273,66 @@ structure is recorded here by the unit that first implements it.
   kernel O2 A/B" moves to the later of C8d and C9c, since the corpus kernel needs `Array` of a Function Type (C8d) and string
   interpolation (C9c) under MIR code generation; C5b measures a fixed-array variant of the kernel as information, and a B/A beyond the
   A=B variance on it stops C5b (R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8. It leaves the list.
+- **R5-M106 Statics in MIR code generation and the native half of the deviation form (C7a, C7b, E12)** (2026-10-22, C lane; plan C7, E12
+  and K7's static edge, package C 3.3 and 3.7, PD19, OQ7; SPEC 22.4.3, 22.4.4, 22.5.1, 22.5.2; the planning session's go and rulings Q1-Q7
+  on C7's design; under R5-M13 (b), R5-M18 form 1, R5-M60, R5-M82, R5-M85, R5-M93 and R4-M103)
+  - Slot (SPEC 22.4.3, 22.4.4): one per StaticInit item, the static's storage key as the collector's item identity (R4-M103 makes it P42's
+    static slot key): `@__kimi_static<item>` in the Layout of the StaticInit's result Type, zero until initialized, and its state
+    `@__kimi_static<item>_state`, an i8 of SPEC 22.4.3's four states (Not started 0, Initializing 1, Initialized 2, Finished 3, the last
+    never stored in R5, R5-M13 (b)), written after the StaticInit's function with the slot's ensure function `@__kimi_static<item>_ensure
+    (ptr location, i64 length)` (`ModuleCodegen.Ensure`, kept across Writes). The ensure function Aborts with `KIMI_E_STATIC_CYCLE` at the
+    location it received when the state is not Not started (ruling Q7: Initializing in R5; a Finished slot would Abort rather than
+    initialize again, fail-closed until P42 gives Finished `KIMI_E_STATIC_SHUTDOWN`), else stores Initializing, calls the StaticInit into
+    the slot (its result slot, or its value stored) and stores Initialized (`FunctionCodegen.Statics`).
+  - Access: the StaticEnsure row's writer (`IntrinsicWriter.Ensure`) reads its target, the StaticInit item (R5-M60 row 7); after the
+    call's flag points it loads the state and branches to the access when it is Initialized, otherwise through a block that calls the
+    ensure function with the access's location (SPEC 22.5.1: the start of the Place expression, its qualifier included; a caller-location
+    body's received location, R5-M93). A static Place's root is the slot of its body's staticEnsures of that static, read from the item's
+    targets (`StaticSlots`); a staticEnsure without a StaticInit target, a static Place its body ensures nowhere (the builder's contract,
+    `MirBuilder.Places`, which the validator does not check) and two slots for one static are `InternalInvariant_Kd`.
+  - Fold (package C 3.7, ruling Q6): a StaticInit whose block 0 holds only storage markers and one `_0 = Use(Const)`, then Return, is
+    that constant: its slot an `internal unnamed_addr constant` spelled as an operand's constant (`Constant`, a float's exact double bits),
+    with no state, ensure function or function, and its accesses test nothing. No kind list: a static's Type is a scalar (R5-M82), whose
+    constants all have a value; the old generator's folded set (bool and signed integer literals, parenthesized) is among them.
+  - D2 rows: none in code generation. R5-M82's `StaticStorage` capability row refuses at check a static that can be set, whose Type is not
+    a scalar or that belongs to a generic container's group (X33 (a)), so the writer tests no Type; package C 3.7's D2 rows are that row.
+  - P42 (R4-M103) replaces: the per-body static-to-slot map's source (one root per Field; P42's MIR publishes each access's key), the fold
+    (narrowed, or kept with its state, for shutdown), the ensure function's started branch (Finished's `KIMI_E_STATIC_SHUTDOWN`) and its
+    shutdown registration, and R5-M82's row. The slot's name, its key and its four states stay.
+  - C7a, plan 5.3 item 7's declared legacy `.ll` change: `AbortReasons.StaticCycle`, the 18th row (`KIMI_E_STATIC_CYCLE: Static
+    initialization cycle`); every module of both generators changes only in the reason table, and the old generator passes no reason 17.
+  - E12's native half (R5-M85's format): `LegacyNative(deviation, stdout, exit, stderr)` is taken by `ScalarEmissionTest.EmitFixture` and
+    `WriteFixture`; the fixture's sidecars carry the running generator's side, and both runs write the same `<stem>.deviation`
+    (`Codegen.Sidecar`: UTF-8 without a byte order mark, LF, keys id, class, item, clause, reason, legacy and target {stdout, exit, stderr});
+    `compare-fixtures.ps1` counts a fixture whose runs carry byte-equal sidecars, each run's outcome its side's (`summary.json`'s
+    `codegen`), as deviating, not as a difference. Removal with R5-M85's form: G3 reduces a row to its target, G4 deletes `LegacyNative`,
+    the sidecar and the deviating count. First entry: `static-cycle` (class (a), SPEC 22.4.3 22.5.1 22.5.2), the old generator's
+    `KIMI_E_ABORT` at the Field's declaration against `KIMI_E_STATIC_CYCLE` at the access (`StaticInitializationTest.DetectsIndirectCycle`).
+    C5b's `inline-env` rows deviate only in allocation bounds, managed values `Codegen.Expect` states, and need no native half.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M107): plan row E12 names `NativeAllocationAudit.WriteFixture`
+    among the writers taking `LegacyNative`; it takes it with its first consumer, not now (ruling Q3 (a); no audit deviates in its
+    standard output, exit or error, and AGENTS admits no speculative mechanism).
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M107): plan row C7's verification runs `tests/mir/statics.kimi`'s
+    programs natively; its `var` statics are R5-M82's row, refused at check until P42, so the `StaticRows` program and
+    `StaticInitializationTest`'s fixtures run natively in its place (ruling Q5).
+  - Restructured first, behavior unchanged (ruling Q1): the text's spelling in `FunctionCodegen.Spelling` (`FunctionCodegen.Values`' and
+    `.Arithmetic`'s, both due).
+  - Verified: the sel ledger loses 25 rows (C7b 10, C-frame 12, call 3), all this unit's, the same 25 a census over every ledger class
+    found (none passed at its base); the flipped tests' fixture families, `StaticInitialization*`, `TimeLibrary*`, `GenericForwarding*`,
+    `ModuleStatic*`, `NoInit*`, `ReferenceStatic*`, `OriginQualifier*` and `StaticRows*` (73 fixtures), pass natively under sel at O0
+    and O2, `StaticInitialization*` and `StaticRows*` also under the old generator, and a legacy-against-sel comparison counts
+    `StaticInitializationCycle` as the one deviating fixture, no other expected outcome differing; `FunctionCodegenTest` (the slot, state
+    and ensure function of i32, bool and i128 statics, an access's test and its location, one slot for two generic instances, the fold
+    of legacy's set and of f32 and f64 literals, M9's 0 B and I1 over the statics source), `CodegenDeviationTest` (the native use; the
+    sidecar's bytes) and `FixtureComparisonTest.ps1` (a deviating pair; a mismatched side; a one-run sidecar). O2 (a temp kernel: 4e8
+    reads of a first-access and a folded static), old generator A against sel B, 15 interleaved samples: the old loop calls the getter
+    each iteration, sel's has no access left (the ensure function inlined, one iteration peeled, the slot read hoisted); B/A median 0.79
+    (max 0.88), A over its neighbours 0.73-1.67.
+  - Rejected: the old generator's getter per static called at each access (a call per access at O2); its three-way switch at the access;
+    a slot table keyed by symbol (a second identity beside the collector's item, which P42's key would replace); finding a slot through
+    `MirProgram.StaticInit` and `CheckedSet.Find` (re-deriving the collector's key) or by the last staticEnsure written (block order);
+    reading a folded constant at each access (a second read writer); a codegen Type gate for statics R5-M82 refuses (a second copy of its
+    row); `Guard`/`Join` for the ensure call (a join block, destruction-named labels); a `Statics` class beside FunctionCodegen (copies of
+    the call, store and failure writers, PD3); the old generator's text Abort (`__kimi_abort_message`, not SPEC 22.5.2's row); a MIR form
+    for the state machine (held MIR); a `MonoKind` per slot (the StaticInit item is one); `MirStatic` carrying the key now (P42's full
+    process); one `{value, state}` global per slot.

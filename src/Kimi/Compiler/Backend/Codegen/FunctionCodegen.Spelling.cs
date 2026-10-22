@@ -43,6 +43,17 @@ internal sealed partial class FunctionCodegen
         return text[..(start + digits)];
     }
 
+    // The global of an item a Value prefix names, the prefix and suffix of its name around the item's index: an adapter item's table
+    // @__kimi_erase<item>_table (ModuleCodegen.AdapterPrefix), a StaticInit item's slot @__kimi_static<item> and its state
+    // @__kimi_static<item>_state (ModuleCodegen.StaticPrefix); none for another prefix.
+    private static (string Prefix, string Suffix)? ItemGlobal(char prefix) => prefix switch
+    {
+        'g' => (ModuleCodegen.AdapterPrefix, ModuleCodegen.TableSuffix),
+        'v' => (ModuleCodegen.StaticPrefix, string.Empty),
+        'w' => (ModuleCodegen.StaticPrefix, ModuleCodegen.StateSuffix),
+        _ => null,
+    };
+
     // The failure of a check named by the number id (abort<id>, the success label c<id>), which Aborts at its site's location (SPEC 22.5.1,
     // Location), spelled into text (3 * SpellingLength characters).
     private ScalarCheck Failure(int id, Site site, Span<char> text) => new(
@@ -70,17 +81,17 @@ internal sealed partial class FunctionCodegen
     }
 
     // A value's spelling into text (SpellingLength characters): a pooled constant's @<name>, a parameter's %<name>, its signature's, an
-    // adapter item's table's @__kimi_erase<item>_table (ModuleCodegen.AdapterPrefix), or Spell's.
+    // item's global (ItemGlobal), or Spell's.
     private ReadOnlySpan<char> Spelled(Value value, Span<char> text)
     {
-        if (value.Prefix == 'g')
+        if (ItemGlobal(value.Prefix) is var (prefix, suffix))
         {
             text[0] = '@';
-            ModuleCodegen.AdapterPrefix.CopyTo(text[1..]);
-            var at = 1 + ModuleCodegen.AdapterPrefix.Length;
+            prefix.CopyTo(text[1..]);
+            var at = 1 + prefix.Length;
             value.Number.TryFormat(text[at..], out var digits, default, CultureInfo.InvariantCulture);
-            ModuleCodegen.TableSuffix.CopyTo(text[(at + digits)..]);
-            return text[..(at + digits + ModuleCodegen.TableSuffix.Length)];
+            suffix.CopyTo(text[(at + digits)..]);
+            return text[..(at + digits + suffix.Length)];
         }
 
         if (value.Prefix is not ('@' or 'p'))
@@ -96,8 +107,8 @@ internal sealed partial class FunctionCodegen
 
     // A value of the text: %t<n> (Prefix t), the parameter Number of the function's signature, %<its name> (Prefix p; Abi.Of names them),
     // the copy slot %s<n> (Prefix s; never c, a check's success label), the drop flag's slot %f<n> (Prefix f, FunctionCodegen.Flags), the
-    // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the home of local Number, its address
-    // (Prefix h), the floating constant whose double bits are Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or
-    // the literal integer Number (Prefix NUL).
+    // pooled constant @<name> of index Number (Prefix @), the table of adapter item Number (Prefix g), the slot of StaticInit item Number
+    // (Prefix v) and its state (Prefix w), the home of local Number, its address (Prefix h), the floating constant whose double bits are
+    // Number (Prefix x, LLVM's hexadecimal spelling), the null pointer (Prefix n) or the literal integer Number (Prefix NUL).
     private readonly record struct Value(char Prefix, Int128 Number);
 }

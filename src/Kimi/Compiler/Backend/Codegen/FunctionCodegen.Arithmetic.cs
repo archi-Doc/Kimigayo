@@ -134,7 +134,7 @@ internal sealed partial class FunctionCodegen
         var right = default(Computed);
         if (!this.Compute(operands[0], out var left) || (operands.Length == 2 && !this.Compute(operands[1], out right)))
         {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A Place of a later row (a static, C7b; a payload, C6a) or a constant of one.
+            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // A Place of a later row (a payload, C6a) or a constant of one.
             return;
         }
 

@@ -3,8 +3,9 @@
 # and the native steps' native*-fixtures/results.json. Output: fixture-comparison.json and fixture-comparison.txt in
 # -Output (default: the candidate run). It compares the set and bytes of every file in fixtures-<Configuration> (the
 # .ll files, their expectation sidecars and any other fixture output) and the per-fixture native outcomes (result and
-# completed levels; a passing level matched its sidecars). Fixture IR records no checkout path, so runs from any
-# worktree compare byte for byte; nothing is normalized. Exit code 1 when anything differs; a failed run or missing
+# completed levels; a passing level matched its sidecars), and counts apart a fixture deviating by a decided item (both
+# runs carry the same .deviation sidecar and each run's outcome is its side's; DECISIONS R5-M85, R5-M106). Fixture IR
+# records no checkout path, so runs from any worktree compare byte for byte; nothing is normalized. Exit code 1 when anything differs; a failed run or missing
 # evidence throws.
 # -O2Metrics also writes o2-metrics.json (R5's MIR/legacy measurement, information only: the exit code stays the
 # comparison's): instructions and blocks per define of each natively run fixture's optimized IR, the first native step's
@@ -86,13 +87,32 @@ foreach ($fixture in $nativeFixtures) {
         baselineLogs = @($baseRun.logs[$fixture] | Where-Object { $_ }); candidateLogs = @($candidateRun.logs[$fixture] | Where-Object { $_ })
     })
 }
+# DECISIONS R5-M85, R5-M106 (removed at G4): a fixture whose runs carry the same .deviation sidecar, each run's outcome sidecars equal to
+# its side's (summary codegen mir: the target; otherwise the legacy outcome), deviates by a decided item: its differing files and native
+# outcomes are counted as deviating, not as differences.
+$deviating = @(foreach ($name in @($common -clike '*.deviation')) {
+    if ($differing -ccontains $name) { continue }
+    $stem = $name.Substring(0, $name.Length - '.deviation'.Length)
+    $entry = [IO.File]::ReadAllText([IO.Path]::Combine($baseRun.fixtures, $name)) | ConvertFrom-Json
+    $sides = foreach ($run in @($baseRun, $candidateRun)) {
+        $side = if ($run.codegen -ceq 'mir') { $entry.target } else { $entry.legacy }
+        $outcome = foreach ($kind in @('stdout', 'exit', 'stderr')) { [IO.File]::ReadAllText([IO.Path]::Combine($run.fixtures, "$stem.$kind")) -ceq [string]$side.$kind }
+        -not ($outcome -contains $false)
+    }
+    if (-not ($sides -contains $false)) { $stem }
+})
+$differing = @($differing | Where-Object { $deviating -cnotcontains $_.Substring(0, $_.LastIndexOf('.')) })
+$differingNative = @($differingNative | Where-Object { $deviating -cnotcontains $_.fixture.Substring(0, $_.fixture.LastIndexOf('.')) })
 $identical = $missing.Count + $added.Count + $differing.Count + $differingNative.Count -eq 0
 $runs = foreach ($run in @($baseRun, $candidateRun)) {
     [ordered]@{ directory = $run.directory; head = $run.head; configuration = $run.configuration; pipeline = $run.pipeline; codegen = $run.codegen }
 }
 $report = [ordered]@{
     identical = $identical; baseline = $runs[0]; candidate = $runs[1]
-    files = [ordered]@{ identical = $common.Count - $differing.Count; ir = $irCount; irIdentical = $irIdentical; differing = $differing; missing = $missing; added = $added }
+    files = [ordered]@{
+        identical = $common.Count - $differing.Count; ir = $irCount; irIdentical = $irIdentical; differing = $differing; missing = $missing; added = $added
+        deviating = $deviating
+    }
     native = [ordered]@{ equal = $equalNative; differing = @($differingNative) }
 }
 $Output = if ($Output) { [IO.Path]::GetFullPath($Output) } else { $candidateRun.directory }
@@ -103,10 +123,11 @@ foreach ($run in @(@('Baseline: ', $baseRun), @('Candidate:', $candidateRun))) {
     $text.Add("$($run[0]) $($run[1].directory) ($($run[1].head), $($run[1].configuration), $($run[1].pipeline))")
 }
 $text.Add("Files: $($report.files.identical) identical, $($differing.Count) differing, $($missing.Count) missing, $($added.Count) added")
+$text.Add("Deviating: $($deviating.Count) fixtures (decided deviations)")
 $text.Add("IR: $irIdentical of $irCount common .ll identical")
 $text.Add("Native: $equalNative equal, $($differingNative.Count) differing")
 $text.Add("Result: $(if ($identical) { 'IDENTICAL' } else { 'DIFFERENT' })")
-foreach ($section in @(@('Differing', $differing), @('Missing', $missing), @('Added', $added))) {
+foreach ($section in @(@('Differing', $differing), @('Missing', $missing), @('Added', $added), @('Deviating', $deviating))) {
     if ($section[1].Count -gt 0) { $text.Add("$($section[0]):"); foreach ($name in $section[1]) { $text.Add("  $name") } }
 }
 if ($differingNative.Count -gt 0) {

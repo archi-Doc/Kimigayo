@@ -14,12 +14,9 @@ internal sealed partial class FunctionCodegen
     private int[] copyOf = []; // By operand of the body, its copy slot or -1.
     private int copyCount;
 
-    /// <summary>The order in which a body kind's Arg locals hold its parameters, or that the frame does not write the kind yet.</summary>
+    /// <summary>The order in which a body kind's Arg locals hold its parameters.</summary>
     internal enum ArgumentOrder : byte
     {
-        /// <summary>Not written yet: a static's initializer is C7b's row.</summary>
-        Unwritten,
-
         /// <summary>The receiver first, then the other parameters in slot order (SPEC 7.3, MirCallee.Position).</summary>
         Positions,
 
@@ -34,13 +31,12 @@ internal sealed partial class FunctionCodegen
     /// <summary>Gets the order in which a body kind's Arg locals hold its parameters: the one switch over the closed MirBodyKind vocabulary
     /// (package C 3.2 Dispatch), which the definition, its signature (ModuleCodegen.Signature) and every call of it read.</summary>
     /// <param name="kind">The body kind.</param>
-    /// <returns>The order, or Unwritten.</returns>
+    /// <returns>The order.</returns>
     internal static ArgumentOrder OrderOf(MirBodyKind kind) => kind switch
     {
-        MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test => ArgumentOrder.Positions,
+        MirBodyKind.Fn or MirBodyKind.Getter or MirBodyKind.Setter or MirBodyKind.Test or MirBodyKind.StaticInit => ArgumentOrder.Positions,
         MirBodyKind.DefaultTemplate => ArgumentOrder.Slots,
         MirBodyKind.Closure => ArgumentOrder.Environment,
-        MirBodyKind.StaticInit => ArgumentOrder.Unwritten,
         _ => throw new InvalidOperationException($"The MIR body kind {kind} has no code generation row."),
     };
 
