@@ -3,6 +3,7 @@
 using System.Text.Json;
 using Kimi;
 using Kimi.Checking;
+using Kimi.Compiler;
 using Kimi.Diagnostics;
 using Kimi.Lsp;
 using Xunit;
@@ -130,6 +131,46 @@ public class OriginRelationDiagnosticTest
         Assert.Equal(["relation", "longer", "shorter", "source"], errors[0].Reason!.Select(static x => x.Name));
         Assert.Equal(["relation", "longer", "shorter", "source", "destination"], errors[1].Reason!.Select(static x => x.Name));
         Assert.All(errors, static x => Assert.Equal("requires b outlives a, which is not proven", x.Label));
+    }
+
+    // SPEC 15.3.2, 15.3.4, 15.6.1 (DECISIONS BU-26): a declaration's Type occurrence (a Field's, payload's or base's declared Type, a nested
+    // Function Type part of a signature, which no premise covers) is judged by Binding from the premises visible at it: an unproven
+    // relation is Binding's wellFormed record there, one per failing operand of a meet. The valid twin writes the premise (a clause or a
+    // Semantics bound of the declaration) or, in a nested Function Type part, the Origin.
+    [Theory]
+    [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    public let", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
+    [InlineData("struct Pair {a, b, c}\n    public let x: ref/(ref/i32 during (b and c)) during a\n    public init(x: ref/(ref/i32 during (b and c)) during a) => self.x = x\n", "    public let", "    origin b outlives a\n    origin c outlives a\n    public let", "ref/(ref/i32 during (b and c)) during a", "self.b outlives self.a", "self.c outlives self.a")]
+    [InlineData("enum E {a, b}\n    One(ref/(ref/i32 during b) during a)\n    Two\n", "    One", "    origin b outlives a\n    One", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
+    [InlineData("open struct B<T>\n    public init() => ()\nstruct D {a, b} : B<ref/(ref/i32 during b) during a>\n    public init() : base() => ()\n", "    public init() :", "    origin b outlives a\n    public init() :", "ref/(ref/i32 during b) during a", "self.b outlives self.a")]
+    [InlineData("open struct Base<T>\n    public init() => ()\nstruct Holder {a, b}\n    public let item: objref/Base<ref/i32 during a> during b\n", "    public let", "    origin a outlives b\n    public let", "objref/Base<ref/i32 during a> during b", "self.a outlives self.b")]
+    [InlineData("public struct Box<E>\n    public let item: E\n    public init(item: E) => self.item = item@move\nstruct View<s/T> {a}\n    s is ref\n    public let b: ref/Box<s/T> during a\n", "s is ref", "s is owner", "ref/Box<s/T> during a", "the omitted Origin of s/T outlives self.a")]
+    [InlineData("contract C\n    func f() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n", "(ref/i32) during", "(ref/i32 during static) during", "ref/(ref/i32) during static", "the omitted Origin of ref/i32 outlives static")]
+    [InlineData("func g0(q: ref/i32) -> Option<ref/(ref/i32 during static) during static>\n    return .None\nfunc get() -> (ref/i32) -> Option<ref/(ref/i32) during static>\n    return g0\n", "(ref/i32) during", "(ref/i32 during static) during", "ref/(ref/i32) during static", "the omitted Origin of ref/i32 outlives static")]
+    public void ADeclarationsRelationIsBindingsRecordAtItsTypeOccurrence(string body, string written, string premise, string text, params string[] relations)
+    {
+        var source = body + Main;
+        var record = Assert.Single(LegacyRecords.Of(MinimalEmissionTest.Analyze(source))); // A meet's further operands are published with it.
+        Assert.Equal(DiagnosticRequirement.Binding(BindingFailure.OriginRelation), record.Requirement);
+        var errors = DiagnosticCorpus.Check(source).Diagnostics;
+        Assert.Equal(relations.Select(static x => $"requires {x}, which is not proven"), errors.Select(static x => x.Label));
+        Assert.All(errors, x => Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), text, "wellFormed"), (x.Code, Text(source, x.Span), x.Reason![3].Value)));
+        var twin = source.Replace(written, premise, StringComparison.Ordinal);
+        Assert.True(DiagnosticCorpus.Check(twin).Accepted, twin);
+    }
+
+    // SPEC 23.1.2 (DECISIONS BU-26): a declaration's failed relation is an independent record beside a body's failed fit, and a declared
+    // relation whose end its declaration left unbound rests on that end's MissingOriginBinding_Kd alone.
+    [Fact]
+    public void ADeclarationsRelationStaysIndependentOfOtherRecords()
+    {
+        var source = "struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n" + Bad + Main;
+        Assert.Equal(
+            [(nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "ref/(ref/i32 during b) during a"), (nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), "r")],
+            DiagnosticCorpus.Check(source).Diagnostics.Select(x => (x.Code, Text(source, x.Span))));
+
+        var unbound = "struct V<T> {source}\n    public let item: ref/T during source\nstruct S {a}\n    public let item: V<i32>{v}\n        origin v.source outlives a\n" + Main;
+        var error = Assert.Single(DiagnosticCorpus.Check(unbound).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.MissingOriginBinding_Kd), "V<i32>{v}"), (error.Code, Text(unbound, error.Span)));
     }
 
     // Finite region bounds keep the actual Loan through annotations, scope exits and shared views of exclusive inputs.

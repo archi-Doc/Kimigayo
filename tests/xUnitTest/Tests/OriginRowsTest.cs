@@ -38,23 +38,18 @@ public sealed partial class OriginRowsTest
         "    public computed first: i32\n        get() -> i32\n            var sum = 0\n            for v in self.values\n                sum = sum + v@follow\n            return sum\n";
 
     // SPEC 15.6.1: in the library, the milestones, the goldens and the accepting SPEC variants, each Origin row lies once in the slice of the
-    // body Binding formed it in; a declaration's rows lie in no slice; no broken contract is found; no row names another declaration's
-    // universal atom (+cen: I-1's shape, PLAN G195, is the only one, and it occurs in none of them).
+    // body Binding formed it in; Binding's declaration judge consumes a declaration's rows (DECISIONS BU-26), so none remains; no broken
+    // contract is found; no row names another declaration's universal atom (+cen: I-1's shape, PLAN G195, is the only one, and it occurs in
+    // none of them).
     [Fact]
     public void EachCensusRowLiesOnceInTheSliceOfItsBody()
     {
         foreach (var (name, c, library) in Census())
         {
             var program = c.BuildMir();
-            var sites = new HashSet<Koto>(ReferenceEqualityComparer.Instance);
             foreach (var body in program.Bodies)
             {
                 var slice = c.Types.OriginRows(BodyOf(body.Key));
-                foreach (var row in slice.Rows)
-                {
-                    sites.Add(row.Site);
-                }
-
                 foreach (var atom in slice.Atoms)
                 {
                     var foreign = atom is { Kind: OriginAtomKind.Unclassed, Atom.Kind: OriginKind.Parameter or OriginKind.Input };
@@ -64,12 +59,7 @@ public sealed partial class OriginRowsTest
 
             foreach (var o in Rows(c, library))
             {
-                if (!o.Body.IsBody)
-                {
-                    Assert.False(sites.Contains(o.Use), $"{name}: the declaration row at {o.Use} is in a slice");
-                    continue;
-                }
-
+                Assert.True(o.Body.IsBody, $"{name}: the declaration row at {o.Use} remains");
                 var slice = c.Types.OriginRows(o.Body);
                 var longer = c.Types.OriginAtom(o.Body, o.Longer!, o.Use);
                 var shorter = c.Types.OriginAtom(o.Body, o.Shorter!, o.Use);
@@ -115,34 +105,31 @@ public sealed partial class OriginRowsTest
         }
     }
 
-    // DECISIONS R4-M101 E2, E3: rows formed while Binding binds a declaration (an instance Field's or computed Property's declared Type, a
-    // requirement's or an override's signature) lie in no slice, and name only the declaration's own atoms.
+    // DECISIONS R4-M101 E2, E3 and BU-26: rows formed while Binding binds a declaration (an instance Field's or computed Property's declared
+    // Type, a requirement's or an override's signature) are formed with no body and consumed by Binding's declaration judge, so no row whose
+    // Use lies in a declaration part remains, and none is in a slice. The second form is PLAN G214's: its header and getter result records.
     [Theory]
-    [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n")]
-    [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n" +
-        "    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n")]
-    [InlineData("contract C\n    func f(x: ref/(ref/i32 during b) during a) -> i32\n")]
-    [InlineData("open struct Base\n    public init() => ()\n    public virtual func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 0\n" +
-        "struct Derived : Base\n    public init() : base() => ()\n    override func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 1\n")]
-    public void ADeclarationsRowsLieInNoSlice(string source)
+    [InlineData("struct Pair {a, b}\n    public let x: ref/(ref/i32 during b) during a\n    public init(x: ref/(ref/i32 during b) during a) => self.x = x\n", false)]
+    [InlineData("struct Pair {a, b}\n    public let p: ref/i32 during a\n    public init(p: ref/i32 during a) => self.p = p\n    public computed y: Option<ref/(ref/i32 during b) during a>\n        get() -> Option<ref/(ref/i32 during b) during a> => Option.None\n", false)]
+    [InlineData("contract C\n    func f(x: ref/(ref/i32 during b) during a) -> i32\n", true)]
+    [InlineData("open struct Base\n    public init() => ()\n    public virtual func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 0\nstruct Derived : Base\n    public init() : base() => ()\n    override func f(self: objref/Self, x: ref/(ref/i32 during b) during a) -> i32 => 1\n", true)]
+    public void ADeclarationsRowsAreConsumedByBinding(string source, bool complete)
     {
         var c = MirBuildTest.Compile(source + Main);
-        var declarations = Rows(c, false).Where(static x => !x.Body.IsBody).ToList();
-        Assert.NotEmpty(declarations);
-        var sites = Bodies(c).SelectMany(x => c.Types.OriginRows(BodyOf(x.Key)).Rows).Select(static x => x.Site).ToHashSet(ReferenceEqualityComparer.Instance);
-        Assert.All(declarations, x => Assert.False(sites.Contains(x.Use), $"{x.Use}"));
+        Assert.Equal(complete, c.Binding.Result.IsComplete);
+        Assert.DoesNotContain(Rows(c, false), static x => Contains(default, x.Use));
         Assert.Empty(c.Types.OriginFindings);
     }
 
-    // DECISIONS R4-M101 E3 for a specialization: its signature's well-formedness rows are a declaration's, formed with no body.
+    // DECISIONS R4-M101 E3 for a specialization: its signature's well-formedness rows are a declaration's, formed with no body, so Binding's
+    // declaration judge proves and consumes them (BU-26).
     [Fact]
     public void ASpecializationsSignatureRowsAreADeclarations()
     {
         var c = MirBuildTest.Compile("func f<T>(x: ref/(ref/T during b) during a) -> i32 => 0\n" +
             "specialize func f<i32>(x: ref/(ref/i32 during b) during a) -> i32 => 1\n" + Main);
-        var rows = Rows(c, false).Where(static x => Within(x.Use, static y => y is FunctionKoto { IsSpecialization: true })).ToList();
-        Assert.NotEmpty(rows);
-        Assert.All(rows, static x => Assert.False(x.Body.IsBody, $"{x.Use}"));
+        Assert.True(c.Binding.Result.IsComplete);
+        Assert.DoesNotContain(Rows(c, false), static x => Within(x.Use, static y => y is FunctionKoto { IsSpecialization: true }));
         Assert.Empty(c.Types.OriginFindings);
     }
 
