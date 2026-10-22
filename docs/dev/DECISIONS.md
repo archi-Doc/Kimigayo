@@ -2890,7 +2890,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     node by a published fact.
   - N-3 (a failed relation adds no constraint, SPEC 15.6.1): the rows change no default-pipeline record (diagnostic snapshot, 0
     differences; the ledger keeps every raw row of the base run and adds only the records of the unit's new tests, in existing (b)
-    signatures).
+    signatures). It holds by measurement, not by construction: failed rows reach Binding's region graph and admit Intersection
+    targets, but no consumer changes a record (BU's review, N2).
   - The Closure result (M2-(i)): an inferred Closure result over call-local storage (`Binding.Closures.cs`, `CallLocalOrigin`) keeps
     Binding's record without a row until A5-F7's 2c-6 judges closure results on the MIR (R5-M63's finding A); it is on 2c-D's list
     and goes with `CallLocalOrigin` at H11.
