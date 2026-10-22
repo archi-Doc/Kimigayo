@@ -32,6 +32,7 @@ internal enum IntrinsicWriter : byte
     Initialize, // Raw.initialize: the value put at the storage.
     Slice, // Raw.slice: the Slice record of the storage and the length.
     Copy, // transferBytes: llvm.memcpy of the byte count.
+    Ensure, // staticEnsure: its slot's state tested inline, the slot's ensure function off the Initialized path (FunctionCodegen.Statics).
 }
 
 /// <summary>A row of the intrinsic table.</summary>
@@ -77,7 +78,7 @@ internal static class IntrinsicRows
         new(IntrinsicId.TestPhaseEnter, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
         new(IntrinsicId.TestPhaseLeave, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10b.
         new(IntrinsicId.TestTempDirectory, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C10a.
-        new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C7.
+        new(IntrinsicId.StaticEnsure, IntrinsicTarget.StaticInit, LaysOutType: false, IntrinsicWriter.Ensure, null),
         new(IntrinsicId.Capacity, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C8d.
         new(IntrinsicId.FormatBuffer, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.
         new(IntrinsicId.FormatHint, IntrinsicTarget.None, LaysOutType: false, IntrinsicWriter.Unwritten, null), // C9c.

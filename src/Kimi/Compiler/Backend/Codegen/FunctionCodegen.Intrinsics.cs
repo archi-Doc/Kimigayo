@@ -7,9 +7,9 @@ namespace Kimi.Compiler.Backend;
 // The intrinsic rows of FunctionCodegen (R5 plan C8a, package C 3.2; DECISIONS R5-M92): a call of an intrinsic by its row's writer
 // (IntrinsicRows' writer column), one switch over the closed IntrinsicWriter vocabulary: a runtime routine through the one call writer
 // (Invoke; Raw.release, $abort, tryAllocateBytes), Raw.allocate's routine with its element stride, a Fail's Abort reason, Raw.initialize's
-// copy, Raw.slice's record and transferBytes' memcpy. Each takes its operands at its declaration's slots (ArgumentPosition) and ends
-// through Finish; a row not written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a
-// caller-location body a location is C3b's row (Location).
+// copy, Raw.slice's record, transferBytes' memcpy and a staticEnsure's state test (FunctionCodegen.Statics). Each takes its operands at
+// its declaration's slots (ArgumentPosition) and ends through Finish; a row not written yet is one located Unsupported_Kd at the call, its
+// owning unit named in IntrinsicRows. In a caller-location body a location is C3b's row (Location).
 internal sealed partial class FunctionCodegen
 {
     private void Intrinsic(in MirTerminator call, in IntrinsicRow row)
@@ -37,6 +37,9 @@ internal sealed partial class FunctionCodegen
                 return;
             case IntrinsicWriter.Copy:
                 this.CopyBytes(call);
+                return;
+            case IntrinsicWriter.Ensure:
+                this.Ensure(call);
                 return;
             case IntrinsicWriter.Unwritten:
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Its row's unit (IntrinsicRows).

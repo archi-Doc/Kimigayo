@@ -5,11 +5,11 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1, SPEC 22.6; DECISIONS R5-M65, R5-M89, R5-M102, R5-M104): a body
-// item's from its own body, the one its definition and every call write; a DropGlue item's; a called #LibraryImport function's C signature
-// and its declaration request; a common Function value's entry under a Callable signature, an adapter item's entry under its source's and
-// the release of its heap environment; each computed once per Write, or kept, and the previous one reused while it still matches, so a
-// warm module allocates nothing.
+// The item signatures of ModuleCodegen (R5 package C 3.3, IMPL 21.3.1, SPEC 22.6; DECISIONS R5-M65, R5-M89, R5-M102, R5-M104, R5-M106): a
+// body item's from its own body, the one its definition and every call write; a DropGlue item's; a called #LibraryImport function's C
+// signature and its declaration request; a common Function value's entry under a Callable signature, an adapter item's entry under its
+// source's and the release of its heap environment; a StaticInit item's slot's ensure function; each computed once per Write, or kept, and
+// the previous one reused while it still matches, so a warm module allocates nothing.
 internal sealed partial class ModuleCodegen
 {
     /// <summary>The name of an adapter item's entry before its index; its table adds <see cref="TableSuffix"/>, its release <c>_drop</c>.</summary>
@@ -18,10 +18,17 @@ internal sealed partial class ModuleCodegen
     /// <summary>The name of an adapter item's table after its entry's.</summary>
     internal const string TableSuffix = "_table";
 
+    /// <summary>The name of a StaticInit item's slot before its index (SPEC 22.4.3); its state adds <see cref="StateSuffix"/>, its ensure
+    /// function <c>_ensure</c>.</summary>
+    internal const string StaticPrefix = "__kimi_static";
+
+    /// <summary>The name of a static slot's state after its slot's.</summary>
+    internal const string StateSuffix = "_state";
+
     private const Abi.Flags ErasedFlags = Abi.Flags.ErasedClosure | Abi.Flags.CallerLocation; // A common Function value's entry (Erased).
 
     private readonly List<FunctionAbi> erased = []; // The erased entries' signatures (Erased), kept across Writes.
-    private FunctionAbi?[] releases = []; // By adapter item, its heap environment's release (Release), kept across Writes.
+    private FunctionAbi?[] helpers = []; // By adapter or StaticInit item, its helper function (Release, Ensure), kept across Writes.
     private FunctionAbi?[] signatures = []; // By item.
     private int[] signed = []; // By item, the Write whose signature signatures holds (0: none).
     private FunctionAbi?[] importSignatures = []; // By import.
@@ -181,14 +188,15 @@ internal sealed partial class ModuleCodegen
     /// <param name="item">The adapter item.</param>
     /// <returns>The signature.</returns>
     internal FunctionAbi Release(int item)
-    {
-        if (item >= this.releases.Length)
-        {
-            Array.Resize(ref this.releases, Math.Max(item + 1, 2 * this.releases.Length));
-        }
+        => this.Helper(item) ??= new(AdapterPrefix + item.ToString(CultureInfo.InvariantCulture) + "_drop", "void", DropGlue.Parameters);
 
-        return this.releases[item] ??= new(AdapterPrefix + item.ToString(CultureInfo.InvariantCulture) + "_drop", "void", DropGlue.Parameters);
-    }
+    /// <summary>Gets the ensure function of a StaticInit item's slot (SPEC 22.4.3; DECISIONS R5-M106): void, taking the access's location
+    /// (SPEC 22.5.1), named after its slot with <c>_ensure</c>, kept across Writes.</summary>
+    /// <param name="item">The StaticInit item.</param>
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Ensure(int item)
+        => this.Helper(item) ??=
+            new(StaticPrefix + item.ToString(CultureInfo.InvariantCulture) + "_ensure", "void", [RuntimeAbi.Location, RuntimeAbi.LocationLength]);
 
     // The C signature of an import from its declared Types (TyCtxt.Signature), named by its external symbol: the first import's of that
     // symbol, so imports of one symbol share one declaration (the old generator's rule); computed once per Write and the previous one
@@ -297,6 +305,17 @@ internal sealed partial class ModuleCodegen
 
         var name = prefix + item.ToString(CultureInfo.InvariantCulture);
         return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
+    }
+
+    // The kept helper function of an item (Release, Ensure: an item is an adapter or a StaticInit, never both), its array grown to hold it.
+    private ref FunctionAbi? Helper(int item)
+    {
+        if (item >= this.helpers.Length)
+        {
+            Array.Resize(ref this.helpers, Math.Max(item + 1, 2 * this.helpers.Length));
+        }
+
+        return ref this.helpers[item];
     }
 
     // The scratch for a signature's parameter Types, grown to at least the count given.
