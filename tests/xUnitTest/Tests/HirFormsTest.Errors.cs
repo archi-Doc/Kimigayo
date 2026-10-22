@@ -11,6 +11,31 @@ namespace XunitTest;
 /// node, the operands it keeps and the children it replaces.</summary>
 public sealed partial class HirFormsTest
 {
+    // Declarations whose callers Binding rejects at an input after selection: an Origin relation between fixed Origins it cannot prove
+    // (UnprovenOriginRelation_Kd at the input), whatever the input's acquisition or adaptation.
+    private const string DerivedInputs = """
+        struct Tally
+            public var n: i32 = 0
+            public var item: i32 = 0
+                get(self: ref/Self during static) -> i32 => storage
+                set(self: uniq/Self, value: i32) -> () => storage = value
+            public var count: i32 = 0
+                get() -> i32 => storage
+                set(value: i32) -> () => storage = value
+            public init() => ()
+            public func viewStatic(self: ref/Self during static) -> ref/i32 during static => self.n@ref
+        open struct Base
+            public var m: i32 = 0
+            protected init() => ()
+            public func look(self: ref/Self during static) -> ref/i32 during static => self.m@ref
+        struct Leaf : Base
+            public init() : base()
+                ()
+        func keepStatic(x: ref/i32 during static) -> ref/i32 during static => x
+        func peek(value: ref/i32) => ()
+
+        """;
+
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved (a built-in operator, `and`, a runtime Type test, a built-in
     // selection) is an Error node that keeps every operand its form evaluates, one Binding did not resolve or an Error too, but a construct
     // without a Type (a selection's `if` index), which stays replaced; a construct, an assignment and a labeled do Binding left unresolved
@@ -73,5 +98,47 @@ public sealed partial class HirFormsTest
         Assert.Equal(
             (HirOp.Error, HirOp.Call, new HirAdjust(HirAcquire.None, HirAdaptation.None)),
             (HirTables.Op(group), HirTables.Op(group.Operand), HirTables.AdjustOf(group.Operand)));
+    }
+
+    // SPEC 23.1.2 (DECISIONS R4-M109, amending R4-M88 Rule 2): an Error node a consumer takes, here an input Binding rejected after
+    // selection, is published (Temporary, None), its derived value taken as it is, whatever acquisition or adaptation its consumer wrote: a
+    // shared borrow of an argument or a receiver, a reference read, a Copy, a base borrow or a payload projection; a resolved input keeps
+    // its own (fail-before: each kept its consumer's Adjust).
+    [Theory]
+    [InlineData("func f(c: ref/Tally)\n    _ = keepStatic(c.n)\n    peek(c.n)\n", "c.n")]
+    [InlineData("func f(c: ref/Tally)\n    _ = c@follow.viewStatic()\n", "c@follow")]
+    [InlineData("func f(p: uniq/i32)\n    _ = keepStatic(p)\n", "p")]
+    [InlineData("func f(p: ref/i32)\n    _ = keepStatic(p)\n", "p")]
+    [InlineData("func f(d: ref/Leaf)\n    _ = d.look()\n", "d")]
+    [InlineData("func f(h: objref/Tally)\n    _ = h.viewStatic()\n", "h")]
+    public void AnErrorInputIsItsConsumersDerivedValue(string body, string text)
+    {
+        var c = MinimalEmissionTest.Analyze(DerivedInputs + body);
+        HirTables.Publish(c);
+        var nodes = Reachable(c.Kotonoha).Where(x => x.ToString() == text && HirTables.Op(x) is not HirOp.Syntax).ToArray();
+        var error = Assert.Single(nodes, static x => HirTables.Op(x) == HirOp.Error);
+        Assert.Equal(BindingFailure.OriginRelation, error.FailureOf());
+        Assert.Equal(new HirAdjust(HirAcquire.Temporary, HirAdaptation.None), HirTables.AdjustOf(error));
+        Assert.All(nodes.Where(x => !ReferenceEquals(x, error)), static x => Assert.Equal(new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow), HirTables.AdjustOf(x)));
+    }
+
+    // SPEC 13.7.2, 11.3 (DECISIONS R4-M109): a compound update's getter and setter take its receiver; where they take it by different
+    // Adjusts, the column keeps the setter's and the receiver's plan row the getter's, and an input one call takes has none; an Error
+    // receiver's both are its derived value (fail-before: no plan-row Adjust, and the Error receiver kept the setter's Reborrow).
+    [Fact]
+    public void AnUpdateReceiverPublishesEachAccessorsAdjust()
+    {
+        var c = MinimalEmissionTest.Analyze(DerivedInputs + "func bump(step: i32)\n    var box = Tally.init()\n    box.count += step\n    peek(box.n)\n" +
+            "func fail(t: uniq/Tally) => t.item += 1\n");
+        HirTables.Publish(c);
+        var nodes = Reachable(c.Kotonoha);
+        var box = nodes.Single(static x => x.ToString() == "box" && x.Parent?.ToString() == "box.count");
+        Assert.Equal(
+            (new HirAdjust(HirAcquire.None, HirAdaptation.ExclusiveBorrow), new HirAdjust(HirAcquire.None, HirAdaptation.SharedBorrow)),
+            (HirTables.AdjustOf(box), HirTables.PlanOf(box).Adjust));
+        Assert.Equal(default, HirTables.PlanOf(nodes.Single(static x => x.ToString() == "box.n")).Adjust);
+        var receiver = nodes.Single(static x => x.ToString() == "t" && x.Parent?.ToString() == "t.item");
+        var derived = new HirAdjust(HirAcquire.Temporary, HirAdaptation.None);
+        Assert.Equal((HirOp.Error, derived, derived), (HirTables.Op(receiver), HirTables.AdjustOf(receiver), HirTables.PlanOf(receiver).Adjust));
     }
 }

@@ -11,7 +11,8 @@ namespace Kimi.Compiler.Mir;
 //   named by its Place's root.
 // - Inputs: the node; the published Op, Res, Adjust and symbols; the Places the builder has bound or located.
 // - Outputs: roots, the root list Site reads (other producers of a derived site fill it themselves); the kept operands' MIR.
-// - Invariants: each root once; a kept operand is evaluated once, before the site, and its syntax's roots are not named again.
+// - Invariants: each root once; a kept operand is evaluated once, before the site, and its syntax's roots are not named again, also
+//   where several consumers take an Error node an expansion located (DECISIONS R4-M109).
 // - Prohibitions: no record, no acquisition of a kept operand, no site formed here.
 internal sealed partial class MirBuilder
 {
@@ -26,11 +27,12 @@ internal sealed partial class MirBuilder
     // The roots of the Opaque site formed for a node (Opaque). SPEC 23.1.2 (DECISIONS R5-M63): an Error node's kept operands are evaluated
     // first, in syntax order, each as its Place (a value in a temp) and never acquired, and the site names their roots instead of their
     // syntax's, so a moved operand is not used again there; so does a part built already where it is located (Located: an expansion's
-    // operand, or a position's value, R5-M84).
+    // operand, or a position's value, R5-M84). An Error node located already had its kept operands evaluated there, once, so a consumer's
+    // own derived value of it names only the located root (DECISIONS R4-M109).
     private void SiteRoots(Koto node)
     {
         var start = this.kept.Count;
-        if (HirTables.Op(node) == HirOp.Error)
+        if (HirTables.Op(node) == HirOp.Error && this.Located(node) is null)
         {
             node.VisitChildren(this.keptOperands ??= new(this));
         }
