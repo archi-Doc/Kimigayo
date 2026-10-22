@@ -1028,6 +1028,11 @@ public sealed class Solver
     private HashSet<HeadKey> VirtualHeads(HashSet<HeadKey> heads)
     {
         var result = new HashSet<HeadKey>();
+        if (heads.Any(h => h.Head is SymHead { Kind: SymKind.Ref }))
+        {
+            return result; // D5: a reference class holds references of one declaration and gains no Type
+        }
+
         foreach (var h in heads.Append(HeadKey.Any))
         {
             if (this.reach.TryGetValue(h, out var others))
@@ -1668,6 +1673,11 @@ public sealed class Solver
 
         ctx.Visit(c);
         ctx.Visit(other);
+        if ((this.Reference(c), this.Reference(other)) is var (rc, ro) && (rc is not null || ro is not null) && !(rc is not null && ro is not null && rc.Value.Head.Equals(ro.Value.Head)))
+        {
+            return; // D5: a reference meets only the same reference (their arguments meet through Agree)
+        }
+
         if (!this.MayGain(c) && !this.MayGain(other))
         {
             return; // neither class can gain a node: they never become one class
@@ -2216,7 +2226,8 @@ public sealed class Solver
         var bind = new int?[this.shapes.VarCount(w.Shape)];
         var meets = new List<(int, int)>();
         var needs = new Dictionary<int, Head>();
-        if (w.Shape < 0 && !this.Agree(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], meets, needs))
+        // A promise whose shape is a class is requested as an alias (no agreement) unless D5 forbids it (a reference against a Type).
+        if (w.Shape < 0 ? !this.Agree(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], meets, needs) : !this.Kid(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], new()))
         {
             return;
         }
@@ -2304,43 +2315,87 @@ public sealed class Solver
 
         if (a < 0 && b < 0 && !this.shapes.IsVar(a) && !this.shapes.IsVar(b))
         {
-            var (ka, kb) = (this.shapes.KidsOf(a), this.shapes.KidsOf(b));
-            if (!this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) || ka.Length != kb.Length)
-            {
-                return false;
-            }
+            return this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) && this.Kids(this.shapes.KidsOf(a), bindA, this.shapes.KidsOf(b), bindB, meets);
+        }
 
-            for (var i = 0; i < ka.Length; i++)
+        return this.Kid(a, bindA, b, bindB, meets);
+    }
+
+    // The kid rule: two classes agree when equal and meet otherwise; a shape variable against a class binds; anything else (a shape
+    // node against anything, two shape variables) is not a Type yet: no constraint, decided once built — except a Contract
+    // reference (D5: SPEC 8.2.3 relates Types; a reference class holds references of one declaration), which agrees only with the
+    // same reference head, its arguments then agreeing by this rule, and never with a Type or another reference.
+    private bool Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets)
+    {
+        if (a >= 0 && b >= 0 && this.g.Find(a) == this.g.Find(b))
+        {
+            return true;
+        }
+
+        if (a >= 0 && this.IsVar(b))
+        {
+            Bind(bindB, ((VarHead)this.shapes.HeadOf(b)).Index, a, meets);
+            return true;
+        }
+
+        if (b >= 0 && this.IsVar(a))
+        {
+            Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, b, meets);
+            return true;
+        }
+
+        var (ra, rb) = (this.Reference(a), this.Reference(b));
+        if (ra is null && rb is null)
+        {
+            if (a >= 0 && b >= 0)
             {
-                this.Kid(ka[i], bindA, kb[i], bindB, meets);
+                meets.Add((a, b));
             }
 
             return true;
         }
 
-        this.Kid(a, bindA, b, bindB, meets);
+        return ra is not null && rb is not null && ra.Value.Head.Equals(rb.Value.Head) && this.Kids(ra.Value.Kids, bindA, rb.Value.Kids, bindB, meets);
+    }
+
+    private bool Kids(int[] ka, int?[] bindA, int[] kb, int?[] bindB, List<(int, int)> meets)
+    {
+        if (ka.Length != kb.Length)
+        {
+            return false;
+        }
+
+        for (var i = 0; i < ka.Length; i++)
+        {
+            if (!this.Kid(ka[i], bindA, kb[i], bindB, meets))
+            {
+                return false;
+            }
+        }
+
         return true;
     }
 
-    // The kid rule: two classes agree when equal and meet otherwise; a shape variable against a class binds; anything else (a shape
-    // node against anything, two shape variables) is not a Type yet: no constraint, decided once built.
-    private void Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets)
+    private bool IsVar(int s) => s < 0 && this.shapes.IsVar(s);
+
+    // The Contract reference a class or shape node is, if any: a class's reference node (one declaration per class) or a shape
+    // node with a reference head, as (head, kids in the shape encoding); null for a Type, a shape variable or a reference-free class.
+    private (Head Head, int[] Kids)? Reference(int s)
     {
-        if (a >= 0 && b >= 0)
+        if (s < 0)
         {
-            if (this.g.Find(a) != this.g.Find(b))
+            return !this.shapes.IsVar(s) && this.shapes.HeadOf(s) is SymHead { Kind: SymKind.Ref } ? (this.shapes.HeadOf(s), this.shapes.KidsOf(s)) : null;
+        }
+
+        foreach (var node in this.g.NodesOf(s))
+        {
+            if (this.g.HeadOf(node) is SymHead { Kind: SymKind.Ref } head)
             {
-                meets.Add((a, b));
+                return (head, Enumerable.Range(0, this.g.KidCount(node)).Select(i => this.g.KidOf(node, i)).ToArray());
             }
         }
-        else if (a >= 0 && this.shapes.IsVar(b))
-        {
-            Bind(bindB, ((VarHead)this.shapes.HeadOf(b)).Index, a, meets);
-        }
-        else if (b >= 0 && this.shapes.IsVar(a))
-        {
-            Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, b, meets);
-        }
+
+        return null;
     }
 
     private void Bind(int?[] bind, int n, int c, List<(int, int)> meets)
