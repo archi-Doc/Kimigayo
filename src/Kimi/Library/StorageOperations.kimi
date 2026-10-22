@@ -2,7 +2,8 @@
 // contracts (SPEC 5.2).
 // Borrowed results depend on the remainder's source, never on the state borrow or slot. The exclusive variant of each
 // borrowing operation has its own Name, borrowStorageUniq (SPEC 7.4). A remainder's `storage` lies where its Field's Origin
-// states (SPEC 5.7): within what `a` covers for a borrowing remainder, in storage the remainder owns for an owning one.
+// states (SPEC 5.7): within what `a` covers for a borrowing remainder, in storage the remainder owns for an owning one. A
+// pointer read from a shared remainder's `storage` has no write authority (SPEC 5.2.1).
 // Array element storage is raw storage (SPEC 3.4). Its pointer is null while the capacity is zero, and otherwise a
 // zero-byte `Raw.allocate` result or the start of an unreleased allocation of `capacity` elements, which `Raw.release`
 // accepts as an `allocate` result. A pointer to it has that storage as provenance, a zero-byte result its own
