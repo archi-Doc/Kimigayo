@@ -37,8 +37,9 @@ internal enum RawStep : byte
 // - Invariants: Shared(L) is interned per L and occurs only as a raw layer's Origin; Holder only in stored shapes, which every read
 //   replaces; Unstated only in relations and their records, never in a Type; RegionOf maps Shared(L) to L before any relation is
 //   formed, so no premise, obligation or row names Shared, Holder or Unstated (design-final §13 A2). A published raw Origin always
-//   has a step (formation reports an Origin StepOf cannot classify, InvalidRawOrigin, and a mixed pair follow states its shared view,
-//   FollowStep): PublishedStep's throw is unreachable, and Reached records InternalInvariant_Kd at the dereference.
+//   has a step: a declaration's Origin StepOf cannot classify is rejected once the slots' requirements exist and its layer published
+//   unstated (RejectRawOrigins), and a mixed pair follow states its shared view (FollowStep). PublishedStep's throw is unreachable,
+//   and Reached records InternalInvariant_Kd at the dereference.
 // - Prohibitions: no region, Loan or retention facts, no Place walk of its own (PathOrigin is PlaceAuthority's), no message text.
 public sealed partial class Binding
 {
@@ -450,6 +451,74 @@ public sealed partial class Binding
 
             var field = node.Parent is VariableKoto variable && ReferenceEquals(variable.TypeKoto, node);
             return node.Parent is SyntaxFormKoto { Akind: KotoKind.EnumCase } || field;
+        }
+    }
+
+    // SPEC 5.7 (design-final §7.3): right after the slots' requirements exist, a declaration's written raw Origin that StepOf cannot
+    // classify (a Phantom slot, U1's case-dependent pair input, an atom no borrow holds) is rejected at its annotation (InvalidRawOrigin)
+    // and never published: its layer is unstated in every Type written around it, up to the declared Type its symbol holds (Unpublish),
+    // so no substitution or dereference re-steps it. A body's annotations are judged with the declarations' (ValidateOriginRequirements).
+    private void RejectRawOrigins()
+    {
+        for (var i = 0; i < this.nodes.Count; i++)
+        {
+            if (this.nodes[i] is TypeSemanticsKoto { BoundType: { RawOrigin: { } raw } layer } annotation && this.InvalidRawOrigin(annotation, raw))
+            {
+                this.Unpublish(annotation, layer, this.types.Pointer(layer.Components[0]));
+            }
+        }
+    }
+
+    // Replaces `from`, the Type of `node`, with `to` there and in each Type written around it (TyCtxt.Rebuild), up to the declaration
+    // (a Field, parameter, function result or Case payload) whose symbol holds the declared Type.
+    private void Unpublish(Koto node, BoundType from, BoundType to)
+    {
+        for (Koto? at = node; at is not null; at = at.Parent)
+        {
+            if (at.BoundSymbol is { } symbol && ReferenceEquals(symbol.Declaration, at) && ReferenceEquals(symbol.Type, from))
+            {
+                symbol.Type = to;
+            }
+
+            if (ReferenceEquals(at.BoundType, from))
+            {
+                at.BoundType = to;
+            }
+            else if (at.BoundType is { } enclosing && this.Replaced(enclosing, from, to) is { } rebuilt)
+            {
+                at.BoundType = rebuilt;
+                (from, to) = (enclosing, rebuilt);
+            }
+
+            if (at is not (TypeKoto or GenericsKoto))
+            {
+                return;
+            }
+        }
+    }
+
+    // `type` with each component that is `from` replaced by `to` (TyCtxt.Rebuild); null when none is.
+    private BoundType? Replaced(BoundType type, BoundType from, BoundType to)
+    {
+        var count = type.Components.Count;
+        if (!type.Components.Contains(from))
+        {
+            return null;
+        }
+
+        var components = this.RentTypes(count);
+        try
+        {
+            for (var i = 0; i < count; i++)
+            {
+                components[i] = ReferenceEquals(type.Components[i], from) ? to : type.Components[i];
+            }
+
+            return this.types.Rebuild(type, components.AsSpan(0, count), type.Origin, (BoundOrigin[])type.OriginArguments);
+        }
+        finally
+        {
+            this.typeScratch.Return(components, clearArray: true);
         }
     }
 

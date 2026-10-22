@@ -3793,6 +3793,11 @@ resumed by R4-M86 (2026-10-20).
   15.6.5; as `OriginOutlives` and `VerifiedRegionOutlives` read a meet): a raw Place borrow kept in a local is the meet of its
   anchor, an inferred region (SPEC 5.2.2), and the pointer's Origin, which was refuted whole when that Origin was a `var` local's
   region, since the anchor counted as body-local; now it has the direct return's verdict.
+  Never published (design-final §7.3, the planning session's ruling): right after the first requirement fixed point,
+  `RejectRawOrigins` judges each declaration's written raw Origin (`InvalidRawOrigin`: a Phantom slot, U1, an atom no borrow holds)
+  and publishes a rejected layer unstated in every Type written around it up to the declared Type its symbol holds (`Unpublish`,
+  through `TyCtxt.Rebuild`), so no substitution, inline layout or dereference re-steps it (they faulted before); a body's annotations
+  are judged in `ValidateOriginRequirements` as before.
 
 ## R5 and R6 (adopted 2026-10-18)
 
