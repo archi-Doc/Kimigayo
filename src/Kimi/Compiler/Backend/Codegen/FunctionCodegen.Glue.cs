@@ -5,18 +5,23 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The destruction of a value one level per Type in FunctionCodegen (R5 package C 3.6, plan C4a; DECISIONS R5-M78, R5-M95): a DropGlue
-// item's function, void (ptr value, ptr location, i64 length), which ModuleCodegen names and signs (Glue), is one level of its Type
-// (Level) at its value parameter, reporting failures at its own location parameters. A level is written by its glue item's Type's row
-// (DropGlue.Row): a string's calls the runtime release (PD18's string row, C0c). A struct's, Tuple's, enum's or fixed array's destroys its
-// parts in destruction order (DropGlue.Parts, the enumeration the collector targets from, X27): a struct that declares a drop calls its
-// destructor instance alone (PD18, R4-M6b), the value its receiver; otherwise each part whose instance Type may need a drop
-// (MirTypes.MayNeedDrop, the rule the collector targets by) calls the glue item's next target, the part's glue, at the part's address
-// (Component, the aggregate writer's rule; a base at the value's own address, X1), passing the level's location on; an enum's parts under
-// one switch on its tag over the Cases holding such a part, a fixed array's element in one counted loop from the last element (Loop,
-// Fill's loop). Each level reads its own glue item's targets. The other rows are their units' (C5a, C5b, C6b, C8d, C8e), one located
-// Unsupported_Kd, a glue function's at its item's site; a Type of a kind no glue has, or a target missing or left over, is a broken
-// contract, InternalInvariant_Kd there.
+// The destruction of a value one level per Type in FunctionCodegen (R5 package C 3.6, plans C4a and C4c; DECISIONS R5-M78, R5-M95,
+// R5-M100): a DropGlue item's function, void (ptr value, ptr location, i64 length), which ModuleCodegen names and signs (Glue), is one level
+// of its Type (Level) at its value parameter, reporting failures at its own location parameters; an Open row of a Drop is one level of the
+// dropped value or part under that row (FunctionCodegen.Drops), at its address, reporting the Drop's location. A level is written by its
+// glue item's Type's row (DropGlue.Row): a string's calls the runtime release (PD18's string row, C0c). A struct's, Tuple's, enum's or
+// fixed array's destroys its parts in destruction order (DropGlue.Parts, the enumeration the collector targets from, X27), each part by
+// its row (FunctionCodegen.Drops' DestroyByRow): under an Open row its child row's verdict, or its parent's own bit without one; under no
+// row (-1, the representation of a glue function's level, as a flag's -1) every part, unconditionally. A struct that declares a drop calls
+// its destructor instance alone (PD18, R4-M6b), the value its receiver (never under an Open row: A2's MovedPlace_Kd); otherwise each part
+// whose instance Type may need a drop (MirTypes.MayNeedDrop, the rule the collector targets by) takes the glue item's next target, the
+// part's glue, at the part's address (Component, the aggregate writer's rule; a base at the value's own address, X1); an enum's parts
+// under one switch on its tag over the Cases holding such a part (an Open enum's tag is defined: Case payload paths exist only in an owned
+// match Subject, initialized before arm selection, SPEC 15.1.6); a fixed array's elements from the last, each run of elements without a
+// row in one counted loop (Loop, Fill's loop), so the text does not grow with the length. Each level reads its own glue item's targets.
+// The other rows are their units' (C5a, C5b, C6b, C8d, C8e), one located Unsupported_Kd, a glue function's at its item's site; an Open
+// row of such a Type, which only a Closure body holds (C5a's row), the same; a Type of a kind no glue has, or a target missing or left
+// over, is a broken contract, InternalInvariant_Kd there.
 internal sealed partial class FunctionCodegen
 {
     private static readonly Site Received = new(new('p', 1), new('p', 2)); // A glue function's location, its own parameters a1 and a2.
@@ -34,12 +39,12 @@ internal sealed partial class FunctionCodegen
         this.abi = this.module.Glue(item);
         output.Write(this.abi.GetDefinition(exported: false));
         output.Write("entry:\n");
-        this.Level(item, new('p', 0), Received);
+        this.Level(item, -1, new('p', 0), Received);
         output.Write("  ret void\n}\n");
     }
 
-    // One level of a value at its address by its glue item's Type's row, its releases reporting the site.
-    private void Level(int glue, Value address, Site site)
+    // One level of a value at its address by its glue item's Type's row, under an Open row (-1: none), its releases reporting the site.
+    private void Level(int glue, int row, Value address, Site site)
     {
         var type = this.collector.Set.Items[glue].RepresentativeType!;
         switch (DropGlue.Row(type))
@@ -48,19 +53,19 @@ internal sealed partial class FunctionCodegen
                 this.Destroy(DropGlue.Release, address, site);
                 return;
             case DropGlueRow.Parts:
-                this.DestroyParts(glue, type, address, site);
+                this.DestroyParts(glue, type, row, address, site);
                 return;
-            case null:
-                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.
+            case DropGlueRow.Closure or DropGlueRow.Function or DropGlueRow.Handle or DropGlueRow.Collection:
+                this.Report(DiagnosticCode.Unsupported_Kd, default); // C5a, C5b, C6b, C8d and C8e write these rows.
                 return;
             default:
-                this.Report(DiagnosticCode.Unsupported_Kd, default); // C5a, C5b, C6b, C8d and C8e write these rows.
+                this.Report(DiagnosticCode.InternalInvariant_Kd, default); // A glue item's Type is of a kind MirTypes.MayNeedDrop admits.
                 return;
         }
     }
 
-    // A struct's, Tuple's, enum's or fixed array's parts in destruction order, each of the glue item's targets read once.
-    private void DestroyParts(int glue, BoundType type, Value address, Site site)
+    // A struct's, Tuple's, enum's or fixed array's parts in destruction order under a row, each of the glue item's targets read once.
+    private void DestroyParts(int glue, BoundType type, int row, Value address, Site site)
     {
         var (parts, start, outer, read) = (this.parts, this.parts.Count, this.glue, this.glued);
         (this.glue, this.glued) = (glue, 0);
@@ -69,13 +74,13 @@ internal sealed partial class FunctionCodegen
         {
             if (AdtDef.IsEnum(type))
             {
-                this.Cases(type, record, start, address, site);
+                this.Cases(type, record, start, row, address, site);
             }
             else
             {
                 for (var i = start; i < parts.Count; i++)
                 {
-                    this.Part(type, record, parts[i], address, site);
+                    this.Part(type, record, parts[i], row, address, site);
                 }
             }
 
@@ -91,7 +96,7 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 16.3.2: an enum's active Case payload, under one switch on its tag (Layout.Tag, at the record's offset 0) over the Cases holding
     // a part that may need a drop; any other tag destroys nothing.
-    private void Cases(BoundType type, ValueLowering record, int start, Value address, Site site)
+    private void Cases(BoundType type, ValueLowering record, int start, int row, Value address, Site site)
     {
         var (parts, output, id) = (this.parts, this.output, this.next++);
         var tag = this.LoadAt(address, Layout.Tag.Layout);
@@ -122,7 +127,7 @@ internal sealed partial class FunctionCodegen
                 output.Write(":\n");
             }
 
-            this.Part(type, record, parts[i], address, site);
+            this.Part(type, record, parts[i], row, address, site);
         }
 
         this.Leave(open, id);
@@ -148,8 +153,9 @@ internal sealed partial class FunctionCodegen
         WriteNumber(this.output, ordinal);
     }
 
-    // A direct part: the destructor instance, or the part's glue at its address or each element's; nothing for a part needing no drop.
-    private void Part(BoundType type, ValueLowering record, in DropPart part, Value address, Site site)
+    // A direct part under a row: the destructor instance, or the part's glue at its address or each element's by its row (DestroyByRow);
+    // nothing for a part needing no drop.
+    private void Part(BoundType type, ValueLowering record, in DropPart part, int row, Value address, Site site)
     {
         if (part.Kind != DropPartKind.Destructor && !MirTypes.MayNeedDrop(part.Type, this.seen))
         {
@@ -170,23 +176,43 @@ internal sealed partial class FunctionCodegen
         }
         else if (type.Kind == BoundTypeKind.FixedArray)
         {
-            this.Elements(type, target, address, site);
+            this.Elements(type, target, row, address, site);
         }
         else
         {
             var kind = type.Kind == BoundTypeKind.Tuple ? MirAggregateKind.Tuple : MirAggregateKind.Adt;
             var (offset, _) = this.Component(kind, type, record, part.Ordinal, part.Index);
-            this.Destroy(this.module.Glue(target), this.Offset(address, offset), site);
+            var (parent, child) = this.Governing(type, part, row);
+            this.DestroyByRow(parent, child, target, address, offset, site);
         }
     }
 
-    // SPEC 16.3.2: a fixed array's elements by decreasing index, the element's glue in the one counted loop (Loop): the k-th pass destroys
-    // element n - 1 - k, at the last element's offset less the pass's; nothing for no element.
-    private void Elements(BoundType type, int target, Value address, Site site)
+    // SPEC 16.3.2: a fixed array's elements by decreasing index under a row: an element with a row (its ConstIndex child) by it
+    // (DestroyByRow), each run of elements without one under the row's own bit in the one counted loop (Loop), whose k-th pass destroys the
+    // run's element at its last element's offset less the pass's; under no row, one run of every element. Nothing for no element.
+    private void Elements(BoundType type, int target, int row, Value address, Site site)
     {
-        if (type.Length > 0 && this.Laid(type.Components[0]) is { } element)
+        if (type.Length == 0 || this.Laid(type.Components[0]) is not { } element)
         {
-            this.Loop(type.Length, element, new Destroyed(target, address, (type.Length - 1) * element.Layout.Stride, site));
+            return;
+        }
+
+        var stride = element.Layout.Stride;
+        for (long last = type.Length - 1, end; last >= 0; last = end - 1)
+        {
+            var child = this.Highest(row, last);
+            end = child < 0 ? -1 : this.DropRow(child).Arg;
+            if (end < last)
+            {
+                var guard = this.Test(this.Own(row));
+                this.Loop(last - end, element, new Destroyed(target, address, last * stride, site));
+                this.Join(guard);
+            }
+
+            if (child >= 0)
+            {
+                this.DestroyByRow(row, child, target, address, end * stride, site);
+            }
         }
     }
 

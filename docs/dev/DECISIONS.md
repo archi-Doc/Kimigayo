@@ -5870,3 +5870,40 @@ structure is recorded here by the unit that first implements it.
     separate Flag writer beside Keep; `icmp ne i8` beside bool's narrowing; A2 publishing points per edge or grouped per view (a change of
     held `MirDrops.cs` and of R4-M6a's order contract for no consumer need); flags as MIR locals with set and clear statements (R4-M6a:
     MIR is not rewritten).
+- **R5-M100 Open verdict rows in MIR code generation (C4c)** (2026-10-22, C lane; plan C4c, package C 3.2 I6 and 3.6, §4's C4c row; the
+  planning session's rulings on C4c's design (1-6); under R5-M18 form 1, R4-M6a, R5-M95 and R5-M99)
+  - Rule (SPEC 16.2.1, 16.3.2, 15.1.3; R4-M6a): after a Partial Move the remaining parts are destroyed in destruction order, each child
+    path by its row's verdict and each component without a path where its parent's own bit is set (no Place names it, so every event
+    that changes it changes an ancestor-or-self, `MirMoveData`). One writer destroys a value one level per Type for glue functions and
+    Open rows alike (`FunctionCodegen.Glue.cs`'s `Level`): by its glue item's Type's row (`DropGlue.Row`), a struct's, Tuple's, enum's
+    or fixed array's parts in `DropGlue.Parts` order, each part that may need a drop through the next of that glue item's targets, by its
+    row (`FunctionCodegen.Drops.cs`'s `DestroyByRow`): Keep and Flag its glue under the row's flag (Keep's none), Elide nothing (no
+    address), Open its own level at its address; a part without a row its glue under the parent's own bit (`Test`/`Join`, R5-M99). Row -1
+    is "no rows", the
+    representation of a glue function's level (as a flag's -1), where every part follows a set own bit. The Drop is its group's first row
+    through the same writer, so Keep, Flag and Open are one arm.
+  - Parts are matched to child rows by their move-path step (`Governing`, FunctionCodegen's bridge between `Component`'s numbering,
+    which `DropPart` carries, and MIR's projections): a struct's own Field by its index (its position less one after a base), its base by
+    one Base step, a Tuple's element by its index; an enum Case payload element through its Case's Downcast row, by that row's child at
+    the payload's Field when the Case's row is Open, else by the Case's row; a fixed array's elements by ConstIndex at their positions.
+    A row's children are in path order, not destruction order, so each part looks up its own.
+  - An enum's level switches on its tag as its glue does (the Case is not static: a Case row holds its payload's state if that Case is
+    active, and several coexist); the tag is defined, since Case payload paths exist only in an owned match Subject, initialized before arm
+    selection (SPEC 15.1.6), and a Move leaves the bytes in place. A fixed array's elements without a row are destroyed in one counted loop
+    per run between rows (`Loop` takes the run's count), so the text does not grow with the length (R4-M81). Per-part guards (ruling 3);
+    the whole value's glue function is still generated where every Drop of its Type is Open (O0 text only; ruling 4).
+  - A level of another row (a Closure environment, an erased function, a handle, a collection) is that row's located `Unsupported_Kd`, as
+    a glue item of that Type is; an Open row of a Closure environment lies only in a Closure body (`MirBuilder.Bound`), C5a's row, which
+    extends `Level` (ruling 2).
+  - Departure (for the owner's departures list): package C 3.2's input `Find(MonoKey)` and 3.6's "the part's glue from `Find`" yield to
+    the glue items' targets per level, which are the collector's own resolution in `DropGlue.Parts` order; `Find` would need the part's
+    erased Type (`TyCtxt.Erase`, the collector's key), which package C 3.2 forbids code generation to compose (ruling 1).
+  - Restructured first, behavior unchanged: the level writer at a glue item, an address and a site, by its Type's row (`WriteGlue` is
+    its function's frame around one level; each level reads its own glue item's targets), and the counted loop over a count.
+  - Deleted: the Drop terminator's Open `Unsupported_Kd` arm (its last) and its separate Keep and Flag arm.
+  - Rejected: a separate Open writer beside the glue's level (a second copy of the per-level rules); inlining every leaf at the Drop
+    (text grows with nesting; no function per Type, X3); unrolling a fixed array's elements; matching rows by projected Type (two Fields
+    of one Type); one guard per run of own-bit parts (a second grouping rule O2 folds); freezing the tag (no form reaches an undefined
+    one); A2 publishing an Open row's children in destruction order or with `DropPart` positions (held `MirDrops.cs`; Mir would depend on
+    Backend's order); the collector targeting a glue per child row (it reads no verdicts, K 4.5; one target per site, I8); a MIR-step
+    column in `DropPart` (a second numbering in the shared part for one consumer).
