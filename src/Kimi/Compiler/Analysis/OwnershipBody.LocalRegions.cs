@@ -114,8 +114,7 @@ public sealed partial class OwnershipBody
             }
 
             var holder = part.Place;
-            if (this.Places[holder].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result) ||
-                this.HasExplicitDependency(holder))
+            if (this.Places[holder].Kind is not (OwnershipPlaceKind.Local or OwnershipPlaceKind.Temporary or OwnershipPlaceKind.Result))
             {
                 return -2;
             }

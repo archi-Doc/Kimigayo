@@ -118,7 +118,7 @@ func cyclic<T, U>(value: T) -> i32
 
 ### 8.3.1. Propositions and outcomes
 
-Generic checking proves Constraints only by the rules of this section, never by SAT solving, theorem proving, enumeration of Types or optimizer facts. Fully determined concrete conditions use Boolean evaluation. Callable effect bounds are not propositions ([§8.11.6](#8116-callable-effect-bounds)).
+Generic checking proves Constraints only by the rules of this section, never by SAT solving, theorem proving, enumeration of Types or optimizer facts. Fully determined concrete conditions use Boolean evaluation. Callable effect bounds are not propositions ([§8.11.4](#8114-callable-effect-bounds)).
 
 Requirement precedence applies first: `T is (A and B)` supplies `(T is A) and (T is B)`. Propositions are identified by bound Symbols and normalized complete Types, not spelling. Parentheses are transparent and `not not P` is `P`; there is no other logical normalization.
 
@@ -141,7 +141,7 @@ Evidence comes from the declaration's input Constraints, built-in capability rul
 | Negation | `not P` exchanges Proven and Refuted. |
 | Concrete judgment | Concrete Type-identity, Semantics, category and built-in capability tests, and the closed-world rule below. |
 | Admitted set | A requirement on a pair binder is decided by [§8.3.4](#834-semantics-admitted-set). |
-| Verified conformance | A verified explicit, conditional ([§8.8](#88-conditional-conformance)) or inherited ([§8.6.2](#862-inherited-conformance)) conformance supplies evidence once its implementations are identified and compatible ([§8.6.3](#863-implementation-matching)); effect bounds are checked separately ([§8.11.4](#8114-checking-and-use)). |
+| Verified conformance | A verified explicit, conditional ([§8.8](#88-conditional-conformance)) or inherited ([§8.6.2](#862-inherited-conformance)) conformance supplies evidence once its implementations are identified and compatible ([§8.6.3](#863-implementation-matching)); effect bounds are checked separately ([§8.11.3](#8113-checking-and-use)). |
 | Contract refinement | `T is C` supplies each ancestor conformance and `C`'s own and inherited Constraints, with `T` for `Self`; an associated-Type declaration's requirement is one of them (`associate X is R` in `C` supplies `T.(C).X is R`). |
 | Type and associated-Type identity | Proven when both sides are in one identity class ([§8.2.3](#823-type-identity-and-identity-premises)), after substituting completed associated-Type bindings; Refuted when both are fully bound and differ. Proof never searches members or chooses a Type. |
 | Closed implication | `T is PrimitiveInteger` supplies `T is Position` ([§8.7.4](#874-primitiveinteger)). |
@@ -412,7 +412,7 @@ One implementation may satisfy several requirements, including requirements of d
 | Access | Usable throughout the conformance's domain ([§9.4.6](09-names-signatures-and-access.md#946-conformance-accessibility)). |
 | Context and Effects | No stronger calling context; a safe requirement never needs unsafe. No effect outside the applicable bounds ([§8.11](#811-effect-bounds)). |
 
-Bounds are checked against each implementation's effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), with destruction as in [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release); an effect the summary cannot classify is a conflict, never an empty effect. Bounds are checked when [§8.11.4](#8114-checking-and-use) states. Origin contracts use [§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison). Compatibility inserts no conversion, Copy, Borrow or erasure, and a failure is a conformance error, never a reason to try another implementation. Properties and accessor witnesses follow [§11.9](11-properties.md#119-contract-property-requirements) and [§12.7](12-expressions.md#127-object-receiver-compatibility).
+Bounds are checked against each implementation's effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)), with destruction as in [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release); an effect the summary cannot classify is a conflict, never an empty effect. Bounds are checked when [§8.11.3](#8113-checking-and-use) states. Origin contracts use [§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison). Compatibility inserts no conversion, Copy, Borrow or erasure, and a failure is a conformance error, never a reason to try another implementation. Properties and accessor witnesses follow [§11.9](11-properties.md#119-contract-property-requirements) and [§12.7](12-expressions.md#127-object-receiver-compatibility).
 
 ```kimi
 contract Maker<T>
@@ -646,7 +646,7 @@ Other combinations of direct, refined and inherited conformances add each path's
 
 **Calls.** `ref` calls through shared access. `uniq` keeps exclusive access (the callee is a Receiver Expression, [§7.3](07-functions-and-callable-values.md#73-receivers)). `owner` acquires by Copy or `@move`, borrows the value for a Shared or Exclusive body or transfers it to a Consuming one (the acquired temporary is exclusively accessible even when copied from a `let` binding), and destroys the rest after the call; instantiation never turns it into a borrow.
 
-**Several Constraints.** The distinct normalized signatures of the Callable Constraints on `F` are the call's candidates, each with the weakest receiver declared with it. The call is an error unless they share one receiver, task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)) and parameter acquisition shape ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)); they are then compared under [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) and [§10.4](10-overload-resolution-and-inference.md#104-best-candidate). Different signatures are not contradictory evidence ([§8.3.2](#832-proof-rules)); a Type bound to `F` must satisfy each of them. Callable effect bounds are defined in [§8.11.6](#8116-callable-effect-bounds).
+**Several Constraints.** The distinct normalized signatures of the Callable Constraints on `F` are the call's candidates, each with the weakest receiver declared with it. The call is an error unless they share one receiver, task-slot shape ([§24.2.3](24-suspension-and-asynchronous-tasks.md#2423-not-a-parameter-one-shape-per-function-group)) and parameter acquisition shape ([§7.4](07-functions-and-callable-values.md#74-parameter-acquisition-shape)); they are then compared under [§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability) and [§10.4](10-overload-resolution-and-inference.md#104-best-candidate). Different signatures are not contradictory evidence ([§8.3.2](#832-proof-rules)); a Type bound to `F` must satisfy each of them. Callable effect bounds are defined in [§8.11.4](#8114-callable-effect-bounds).
 
 ```kimi
 func applyTwice<F>(value: i32, transform: uniq/F) -> i32
@@ -663,7 +663,7 @@ let result = applyTwice(10, bump@uniq)   // 13
 
 ## 8.11. Effect bounds
 
-An **effect bound** is a guarantee about what a call may access, which every conforming implementation satisfies and generic callers rely on. The vocabulary is closed: `confined` and `preserves results`. The classification is the same in safe and unsafe code ([§5](05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory)).
+An **effect bound** is a guarantee about what a call may access, which every conforming implementation satisfies and generic callers rely on. The vocabulary is closed: `confined`. The classification is the same in safe and unsafe code ([§5](05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory)).
 
 ### 8.11.1. Declarations
 
@@ -671,7 +671,7 @@ Bounds are declared in four positions (grammar: `EffectClause`, `EffectSpecifica
 
 - an `effect` clause in a function requirement's Constraint region bounds that requirement;
 - a Contract item `effect A.r bound` bounds the requirement `r` inherited from the ancestor `A`, which must identify exactly one function requirement;
-- an `effect` clause under a Callable Constraint bounds calls through it ([§8.11.6](#8116-callable-effect-bounds));
+- an `effect` clause under a Callable Constraint bounds calls through it ([§8.11.4](#8114-callable-effect-bounds));
 - an `effect` clause in the leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)) of an original virtual function bounds the slot; overrides inherit it.
 
 An effect item in any other body, including an override, a non-virtual function or after the leading region, is an error. Implementations cannot add or remove a requirement's bound. The same bound twice for one requirement in one Contract is an error; restating an ancestor's bound forms one guarantee. `T is C` guarantees exactly the bounds of `C` and its ancestors.
@@ -681,14 +681,8 @@ contract Take
     associate Item
     func take(self: uniq/Self) -> Option<Self.Item>
 
-contract StableTake: Take
-    effect Take.take preserves results
-
-func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
-    S is StableTake
-    let first = source.take()
-    let second = source.take() // Valid: the bound excludes the Loans of first.
-    return (first@move, second@move)
+contract QuietTake: Take
+    effect Take.take confined
 
 open struct Base
     public virtual func score(self: objref/Self) -> i32
@@ -700,8 +694,6 @@ struct Derived : Base
         // effect confined       // Error: an override cannot declare a bound.
         return 2
 ```
-
-With only `S is Take`, the second `take` is rejected while `first` is live.
 
 ### 8.11.2. `confined`
 
@@ -718,10 +710,10 @@ The effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)
 | Any access to a mutable static Field, including first-access initialization | Environment effect. |
 | A Kimi operation that accesses state outside the program, such as Console output | Environment effect. |
 | Calling a foreign function ([§22.6](22-core-execution-and-foreign-functions.md#226-foreign-function-imports)); converting an integer to a pointer ([§5.5](05-raw-pointers-and-unsafe-memory.md#55-integer-addresses)) | Environment effect. |
-| Destroying or replacing a value whose destruction depends on a Type the definition leaves abstract, such as a Type parameter or associated-Type projection not proven Copy | An effect that cannot be classified: a conflict under either bound. |
-| A call or a destruction whose environment effects are unknown, including erased destruction ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)) | An effect that cannot be classified: a conflict under either bound. |
+| Destroying or replacing a value whose destruction depends on a Type the definition leaves abstract, such as a Type parameter or associated-Type projection not proven Copy | An effect that cannot be classified: a conflict under `confined`. |
+| A call or a destruction whose environment effects are unknown, including erased destruction ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)) | An effect that cannot be classified: a conflict under `confined`. |
 
-The test is on the static's Type, so a base-object view, runtime-Contract view or common Function Type in that Type counts as hidden `rc` or raw-pointer content, and an abstract Type needs a Transferable premise. Allocation and Abort are permitted. A pointer obtained from the environment is an effect even if unused. A foreign call also makes the accesses its signature permits through its arguments; a `preserves results` implementation may call a foreign function when those accesses do not conflict with the Loans of earlier results. Task operations are classified in [§22.3.3](22-core-execution-and-foreign-functions.md#2233-cancellation-and-waits). A static borrow passed in as an argument is authority from the input.
+The test is on the static's Type, so a base-object view, runtime-Contract view or common Function Type in that Type counts as hidden `rc` or raw-pointer content, and an abstract Type needs a Transferable premise. Allocation and Abort are permitted. A pointer obtained from the environment is an effect even if unused. A foreign call also makes the accesses its signature permits through its arguments. Task operations are classified in [§22.3.3](22-core-execution-and-foreign-functions.md#2233-cancellation-and-waits). A static borrow passed in as an argument is authority from the input.
 
 ```kimi
 contract Sink
@@ -767,30 +759,16 @@ struct CopySlot<T>
         self.item = .None   // Valid: a Copy value has no destruction effects.
 ```
 
-### 8.11.3. `preserves results`
-
-**Eligibility.** The receiver is a borrow (`ref`, `uniq`, `objref` or `objuniq` of `Self`), and in every admitted binding no result of the canonical contract ([§15.3.7](15-ownership-and-lifetime-analysis.md#1537-contract-comparison)) depends on the receiver Loan of its call or on the receiver's Storage ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)), judged after normalizing premises, result Origin defaults ([§15.4.3](15-ownership-and-lifetime-analysis.md#1543-result-defaults)) and aliases. Otherwise the bound is an error.
-
-**Guarantee.** Under `T is C` with `preserves results` on `r`, a call of `r` on a value `v` conflicts with no Loan kept by a result of an earlier call of `r` on `v`, including Loans kept after transfer or Reborrow of that result. The excluded effects include reads, writes, borrows, the Loans of the new result, access to statics and captures, and cleanup inside the call; dependencies added to a result after it was returned are outside the guarantee. Destroying or replacing `v`, other requirements and unrelated Loans are outside it; it promises no purity. Conformance compares the implementation's summary with the Loans its results may keep, using region splitting ([§15.6.3](15-ownership-and-lifetime-analysis.md#1563-reborrowing-and-region-splitting)).
-
-```kimi
-contract Peek
-    associate Item
-    func peek(self: ref/Self) -> Option<ref/Self.Item>
-        effect preserves results // Error: the elided result Origin is self.
-```
-
-### 8.11.4. Checking and use
+### 8.11.3. Checking and use
 
 A conformance supplies evidence ([§8.3.2](#832-proof-rules)) once its implementations are identified and their signatures, associated Types and premises are compatible ([§8.6.3](#863-implementation-matching)). Its effect bounds are a separate obligation of the conformance, checked against the completed transitive summaries, including the recursive fixed point of [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls). A bound violation makes the conformance declaration an error; it never changes a selection that used the conformance as evidence. Ancestor bounds are checked through the ancestor conformances, conditional ones under their conditions.
 
 A requirement call without a known concrete callee uses the bounds that the Contracts proven by its premises declare for the requirement, never bounds of implementations. Its effects, in implementation checks and at callers, are:
 
-1. *Through inputs:* every Place reachable from the receiver and arguments in each parameter's access mode, only shared past a shared layer ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)), raw layers included, also inside an abstract part ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)); an abstract input may reach every Loan its Origins may denote; destroying an owned handle argument adds [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release).
+1. *Through inputs:* every Place reachable from the receiver and arguments in each parameter's access mode, only shared past a shared layer ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)), raw layers included, also inside an abstract part ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)); destroying an owned handle argument adds [§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release). As for any call, an input reaches a Loan only through these Places ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)), never because one of its Origins may denote it.
 2. *Environment:* none with `confined`; otherwise unknown, affecting static Loans as [§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls) states. A task call is also compared with static Loans ([§24.3](24-suspension-and-asynchronous-tasks.md#243-task-calls)).
-3. *Earlier results:* with `preserves results`, the Loans kept by earlier results of the same requirement on the same value are excluded.
 
-A possible conflict with a live Loan ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)) is an error at the later call. An invalid effect item supplies no bound.
+A possible conflict with a live Loan ([§15.6.2](15-ownership-and-lifetime-analysis.md#1562-place-overlap-and-conflicts)) is an error at the call. An invalid effect item supplies no bound.
 
 ```kimi
 contract Feed
@@ -811,49 +789,35 @@ struct Countdown
         return Feeds.pull(self)   // Valid: Countdown is Feed is evidence; the bound is checked on the completed summary.
 ```
 
-### 8.11.5. Delegation
-
-When an implementation of `r` with `preserves results` is verified, a Loan that its result keeps from the result of a requirement `d` called on a value `w`, reached from `self` through a Field path (borrowed Fields included), counts as a Loan of an earlier result of `d` on `w`; rule 3 of [§8.11.4](#8114-checking-and-use) excludes it when `d` has `preserves results` for `w`. If the body replaces, swaps or moves a value on the path to `w`, nothing is excluded. Loans from arguments, other requirements or other values are compared normally.
-
 ```kimi
-struct Drain<J>
-    J is Iterator
-    Self is StableTake
-    associate Take.Item is J.Item
-    var inner: J
-    public func take(self: uniq/Self) -> Option<J.Item>
-        return self.inner.next()                // Valid.
-
-struct Merge<J>
-    J is Iterator
-    Self is StableTake
-    associate Take.Item is J.Item
-    var left: J
-    var right: J
-    public func take(self: uniq/Self) -> Option<J.Item>
-        match self.left.next()                  // Error: may conflict with an earlier result from right.
-            .Some(let item) => return .Some(item@move)
-            .None => return self.right.next()
+// Take is the contract of §8.11.1.
+func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)
+    S is Take
+    let first = source.take()
+    let second = source.take()   // Valid: first keeps no receiver Loan, and the call reaches only source's Places.
+    return (first@move, second@move)
 ```
 
-### 8.11.6. Callable effect bounds
+A result whose Type depends on its call's receiver Loan, such as a LendingIterator item `ref/E during step` ([§22.2.1](22-core-execution-and-foreign-functions.md#2221-iterator-contracts)), keeps that Loan, so a later call that conflicts with it, such as an exclusive call on the receiver, is an error while the result is live.
 
-A Callable Constraint may carry an indented list of `effect` clauses (grammar: `CallableEffects`, [§F.6](appendices/F-syntax-summary.md#f6-declarations)) when its whole requirement is one `Callable<...>`. The list is allowed in function, struct, enum and function-requirement Constraint regions (conditional-member premises included), not in Contract-wide clauses, associated-Type declarations or conformance conditions, and it does not end a leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). Each kind appears at most once in one Constraint; `preserves results` needs receiver `ref` or `uniq`.
+### 8.11.4. Callable effect bounds
 
-A Type bound to `F is Callable<r, S>` must satisfy each bound for a call acquired under `r`, including acquisition and, for `owner`, destroying the rest. Captures are reached through the receiver, an input. A bound covers only the call; destroying a value elsewhere contributes its destruction effects to the enclosing summary ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)). `preserves results` excludes conflict with Loans of earlier results of the same callable value.
+A Callable Constraint may carry an indented list of `effect` clauses (grammar: `CallableEffects`, [§F.6](appendices/F-syntax-summary.md#f6-declarations)) when its whole requirement is one `Callable<...>`. The list is allowed in function, struct, enum and function-requirement Constraint regions (conditional-member premises included), not in Contract-wide clauses, associated-Type declarations or conformance conditions, and it does not end a leading region ([§7.5](07-functions-and-callable-values.md#75-function-constraints)). `confined` appears at most once in one Constraint.
+
+A Type bound to `F is Callable<r, S>` must satisfy the Constraint's bound for a call acquired under `r`, including acquisition and, for `owner`, destroying the rest. Captures are reached through the receiver, an input. A bound covers only the call; destroying a value elsewhere contributes its destruction effects to the enclosing summary ([§16.3.3](16-scope-exit-and-destruction.md#1633-handles-and-object-release)).
 
 Applicability ([§10.1](10-overload-resolution-and-inference.md#101-candidate-applicability)) and proofs ([§8.3](#83-constraint-proof)) ignore bounds. A bound is an obligation of the selected call, function reference ([§10.5](10-overload-resolution-and-inference.md#105-inference-boundaries)) or Type formation, checked on completed summaries. A selected callable argument that violates an effect bound of its Callable Constraint is an error at that argument or Type argument.
 
 | Bound Type | Evidence |
 | --- | --- |
 | Function Item, nonvirtual | Its effect summary ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). |
-| Function Item of a virtual slot | Slot bound, for `confined` only ([§6.4.6](06-declarations-and-containers.md#646-effects-and-contract-witnesses)). |
-| Function Item of a requirement | Available bounds, for `confined` only. |
+| Function Item of a virtual slot | Slot bound ([§6.4.6](06-declarations-and-containers.md#646-effects-and-contract-witnesses)). |
+| Function Item of a requirement | Available bounds. |
 | Concrete Closure | Its body summary with acquisition and environment destruction. |
 | Type parameter or projection | A premise on it with the same signature, an equal or stronger receiver (`ref` < `uniq` < `owner`) and the bound. |
 | Common Function Type | None. |
 
-A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 to 3 of [§8.11.4](#8114-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
+A call through `F` uses the bounds of premises with its signature and an equal or stronger receiver, under rules 1 and 2 of [§8.11.3](#8113-checking-and-use). Callers compose a declaration's calls through Callable inputs with the actual argument ([§15.6.4](15-ownership-and-lifetime-analysis.md#1564-calls)). An implementation cannot add an unrequired Callable bound.
 
 ```kimi
 func apply<F>(transform: ref/F, value: i32) -> i32

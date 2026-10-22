@@ -8,27 +8,35 @@ namespace XunitTest;
 
 public class IteratorOriginEffectsTest
 {
+    // SPEC 8.11.2, 16.3.3: under confined, destroying a value of an abstract Type has unknown effects (G28). Iterator declares no bound
+    // (22.2.1), so the analyses of these forms run over the same bodies conforming to Feed, an Iterator-shaped Contract bounded by
+    // confined; the native fixtures run them as Iterators.
+    private const string Feed = "contract Feed\n    associate Item\n    func next(self: uniq/Self) -> Option<Self.Item>\n        effect confined\n";
+
+    // SPEC 22.2.1, 22.2.3 (the adopted proposal Abstract Calls Reach by Paths): Iterator declares no effect bound, so an Iterator
+    // conformance is an ordinary body: it may write a Place its items' Origin names, drop an item, call an unbounded requirement
+    // or step another iterator (each a violation of the removed preserves results bound before the adoption); 15.6.3's containment
+    // still applies (OriginRelationDiagnosticTest).
+    [Theory]
+    [InlineData("struct Cursor {a, b}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let first: ref/i32 during a\n    let counter: uniq/i32 during a\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        self.counter@follow = 5\n        return .Some(self.first)")]
+    [InlineData("struct Wrap<T> {a}\n    Self is Iterator\n    associate Iterator.Item is T\n    let counter: uniq/i32 during a\n    var pending: Option<T>\n    public func next(self: uniq/Self) -> Option<T>\n        self.counter@follow += 1\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: .None)")]
+    [InlineData("struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let first = self.inner.next()\n        return self.inner.next()")]
+    [InlineData("struct Outer<I> {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    I is Iterator\n    let first: ref/i32 during a\n    var inner: I\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.first)")]
+    [InlineData("struct Chain<I> {source}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var first: uniq/I during source\n    var second: uniq/I during source\n" +
+        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.first.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.second.next()")]
+    [InlineData("struct Peek<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var pending: Option<I.(Iterator).Item>\n" +
+        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let following = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: following@move)")]
+    public void AnIteratorConformanceIsAnOrdinaryBody(string declarations)
+    {
+        var c = MinimalEmissionTest.Analyze(declarations);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
+    }
+
     [Fact]
     public void ExactExpectedExclusiveReferencesAreReborrowed()
     {
         const string source = "struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public init(value: uniq/i32 during source) => self.value = value@move\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step>\n        do\n            let alias: uniq/i32 = self.value\n            alias@follow += 1\n        return .Some(self.value)\nvar value = 40\nvar cursor = Cursor.init(value@uniq)\nlet first = cursor.next()\nmatch first\n    .Some(let n) => require n == 41 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nlet second = cursor.next()\nmatch second\n    .Some(let n) => require n == 42 else => $abort(\"second\")\n    .None => $abort(\"empty\")\nConsole.writeLine(\"exact reborrow\")";
         ScalarEmissionTest.EmitFixture("AssociatedLendingExactReborrow", source, "exact reborrow\n");
-    }
-
-    [Theory]
-    [InlineData("ref", "a", true)]
-    [InlineData("uniq", "a", false)]
-    [InlineData("ref", "b", true)]
-    [InlineData("uniq", "b", false)]
-    public void ImplicitLocalReborrowsKeepTheirOriginalAccessEffect(string semantics, string origin, bool valid)
-    {
-        var source = "struct Cursor {a, b}\n    origin a outlives b\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let value: uniq/i32 during a\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        do\n            let alias: " + semantics + "/i32 during " + origin + " = self.value\n            _ = alias@move\n        return .Some(self.value)";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
     }
 
     [Fact]
@@ -38,91 +46,7 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorIntersection", source, "intersection\n");
     }
 
-    [Fact]
-    public void SharedImplicitReborrowsAllowRetainedItems()
-    {
-        const string source = "struct Cursor {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let value: uniq/i32 during a\n    public init(value: uniq/i32 during a) => self.value = value@move\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        let alias: ref/i32 during a = self.value\n        require alias == 42 else => $abort(\"alias\")\n        return .Some(alias)\nvar value = 42\nvar cursor = Cursor.init(value@uniq)\nlet first = cursor.next()\nlet second = cursor.next()\nmatch first\n    .Some(let n) => require n == 42 else => $abort(\"first\")\n    .None => $abort(\"empty\")\nmatch second\n    .Some(let n) => require n == 42 else => $abort(\"second\")\n    .None => $abort(\"empty\")\nConsole.writeLine(\"implicit shared\")";
-        ScalarEmissionTest.EmitFixture("AssociatedIteratorImplicitShared", source, "implicit shared\n");
-    }
-
-    [Theory]
-    [InlineData("self.first@follow += 1", false)]
-    [InlineData("self.second@follow += 1", false)]
-    [InlineData("self.other@follow += 1", true)]
-    [InlineData("self.count += 1", true)]
-    public void IntersectionResultsKeepEveryPossibleSource(string operation, bool valid)
-    {
-        var source = "struct Cursor {a, b, c}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during (a and b)\n    let first: uniq/i32 during a\n    let second: uniq/i32 during b\n    let other: uniq/i32 during c\n    var count: i32 = 0\n    public func next(self: uniq/Self) -> Option<ref/i32 during (a and b)>\n        " + operation + "\n        if self.count == 0 => return .Some(self.first)\n        return .Some(self.second)";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
-    }
-
-    private const string Point = "struct Point\n    public var x: i32 = 0\n";
-    private const string Box = "struct Box\n    Self is UniqIndexable<isize>\n    associate Element is i32\n    var value: i32 = 0\n" +
-        "    public func index(self, key: ref/isize) -> ref/i32 during self => self.value@ref\n" +
-        "    public func indexUniq(self: uniq/Self, key: ref/isize) -> uniq/i32 during self => self.value@uniq\n";
-
-    private const string Bump = "group Helpers\n    public func bump(value: uniq/i32) => value@follow += 1\n";
-
-    // SPEC 22.2.3: every write that reaches a Loan of an earlier item conflicts, however the Place is written; the same
-    // write through an unrelated Origin does not.
-    [Theory]
-    [InlineData(Point, "let point: uniq/Point during {0}", "self.point.x += 1")]
-    [InlineData("", "let values: uniq/Array<i32> during {0}", "self.values.append(1)")]
-    [InlineData(Box, "let box: uniq/Box during {0}", "self.box[0] += 1")]
-    [InlineData(Box, "let box: uniq/Box during {0}", "_ = self.box[0]@uniq/i32")]
-    [InlineData(Bump, "let counter: uniq/i32 during {0}", "Helpers.bump(self.counter)")]
-    [InlineData("", "let counter: uniq/i32 during {0}", "self.counter@follow = 5")]
-    public void WritesReachingItemLoansAreRejected(string prefix, string field, string operation)
-    {
-        for (var i = 0; i < 2; i++)
-        {
-            var origin = i == 0 ? "a" : "b";
-            var source = prefix + "struct Cursor {a, b}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let first: ref/i32 during a\n    " +
-                string.Format(System.Globalization.CultureInfo.InvariantCulture, field, origin) + "\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        " + operation + "\n        return .Some(self.first)";
-            var c = MinimalEmissionTest.Analyze(source);
-            Assert.True((origin == "b") == c.Binding.Result.IsComplete, origin + "\n" + MinimalEmissionTest.Describe(c, null));
-            if (origin == "a")
-            {
-                Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-            }
-        }
-    }
-
-    // Shared reads through the items' Origin keep shared items valid; the use selects index, not indexUniq.
-    [Theory]
-    [InlineData(Point, "let point: uniq/Point during a", "_ = self.point.x")]
-    [InlineData(Box, "let box: uniq/Box during a", "_ = self.box[0]")]
-    [InlineData("", "let values: uniq/Array<i32> during a", "_ = self.values.length")]
-    public void SharedReadsOfItemSourcesAreAllowed(string prefix, string field, string operation)
-    {
-        var source = prefix + "struct Cursor {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    let first: ref/i32 during a\n    " + field +
-            "\n    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        " + operation + "\n        return .Some(self.first)";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-    }
-
-    // SPEC 8.5, 22.2.3: an abstract item may be instantiated with any Loan of the conforming Type's Origins.
-    [Theory]
-    [InlineData("self.counter@follow += 1", false)]
-    [InlineData("self.count += 1", true)]
-    public void AbstractItemsKeepEveryOriginOfTheirType(string operation, bool valid)
-    {
-        var source = "struct Wrap<T> {a}\n    Self is Iterator\n    associate Iterator.Item is T\n    let counter: uniq/i32 during a\n    var count: i32 = 0\n    var pending: Option<T>\n" +
-            "    public func next(self: uniq/Self) -> Option<T>\n        " + operation + "\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: .None)";
-        var c = MinimalEmissionTest.Analyze(source);
-        Assert.True(valid == c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
-        if (!valid)
-        {
-            Assert.Contains(c.Binding.Issues, issue => issue.Code == DiagnosticCode.IncompatibleContractImplementation_Kd);
-        }
-    }
-
-    // Warm rebinding reruns both effect bounds, through intersection items, generic callees and formatting, without allocating.
+    // Warm rebinding reruns the effect bound of a formatting witness and the Origins of intersection items without allocating.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEffectBoundChecksDoNotAllocate()
@@ -165,21 +89,13 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorAlternate", source, "alternated\n");
     }
 
-    // The inner bound covers only the stored iterator's own items: a wrapper whose items are not that iterator's, that
-    // steps a second iterator, or that stores another value naming it (an item slot), cannot certify its own bound; an
-    // item discarded inside next runs an unknown destructor.
+    // SPEC 8.11.2, 16.3.3: an item discarded inside next, from the stored iterator or another one, runs an unknown destructor.
     [Theory]
     [InlineData("struct Wrapper<I> {a}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is uniq/i32 during a\n    var inner: I\n    var slot: Option<uniq/i32 during a>\n    public func next(self: uniq/Self) -> Option<uniq/i32 during a>\n        _ = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.slot@uniq, with: .None)")]
     [InlineData("struct Wrapper<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var other: I\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        _ = self.other.next()\n        return self.inner.next()")]
-    [InlineData("struct Chain<I> {source}\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var first: uniq/I during source\n    var second: uniq/I during source\n" +
-        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.first.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.second.next()")]
-    [InlineData("struct Peek<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    var pending: Option<I.(Iterator).Item>\n" +
-        "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        let following = self.inner.next()\n        return Kimi.Intrinsics.exchange(self.pending@uniq, with: following@move)")]
-    [InlineData("struct Wrapper<I> {source}\n    I is LendingIterator\n    Self is LendingIterator\n    associate LendingIterator.LentItem(step) is I.(LendingIterator).LentItem(step)\n    var inner: uniq/I during source\n\n" +
-        "    Self is Iterator when I is Iterator\n        associate Iterator.Item is I.(Iterator).Item\n    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)>\n        _ = self.inner.next()\n        return self.inner.next()")]
-    public void AWrapperWithUnboundedInnerEffectsIsRejected(string wrapper)
+    public void ADiscardedItemRunsAnUnknownDestructor(string wrapper)
     {
-        var c = MinimalEmissionTest.Analyze(wrapper);
+        var c = Bounded(wrapper);
         Assert.False(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
@@ -219,7 +135,7 @@ public class IteratorOriginEffectsTest
             "    public init(inner: I) => self.inner = inner@move\n    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
         var source = Counter + wrapper + "var hold = Hold<Counter>.init(Counter.init())\nvar sum: i32 = 0\nloop\n    match hold.next()\n        .Some(let n) => sum += n\n        .None => exit\n" +
             "require sum == 6 else => $abort(\"hold\")\nConsole.writeLine(\"held\")";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = Bounded(source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -267,7 +183,7 @@ public class IteratorOriginEffectsTest
     {
         var source = NumberedOnce + ".Some(let value) if self.index > 0 or (return .None) => return .Some((1, value@move))\n            .Some(let value) => return .Some((2, value@move))\n" +
             "            .None => return .None\n";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = Bounded(source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
         Assert.All(c.Binding.Issues.Select(x => x.Code).Concat(c.Problems.Select(x => x.Code)), code => Assert.Equal(DiagnosticCode.IncompatibleContractImplementation_Kd, code));
     }
@@ -294,7 +210,7 @@ public class IteratorOriginEffectsTest
     [InlineData(".Some((let position, let value))\n                let kept = value@move\n                return .None")]
     public void ANestedPatternThatDropsAPartIsRejected(string arm)
     {
-        var c = MinimalEmissionTest.Analyze(StoredPair + arm + "\n            .None => return .None\n");
+        var c = Bounded(StoredPair + arm + "\n            .None => return .None\n");
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -304,7 +220,7 @@ public class IteratorOriginEffectsTest
     [InlineData(".Some(let value)\n                let pair: Option<(isize, T)> = .Some((self.index, value@move))\n                return .None")]
     public void AnItemStoredInADroppedAggregateIsRejected(string arm)
     {
-        var c = MinimalEmissionTest.Analyze(NumberedOnce + arm + "\n            .None => return .None\n");
+        var c = Bounded(NumberedOnce + arm + "\n            .None => return .None\n");
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -342,7 +258,7 @@ public class IteratorOriginEffectsTest
     [Fact]
     public void ALoopMayContinueWithItsReinitializedItem()
     {
-        var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
+        var c = Bounded(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 1 => continue\n            self.retries += 0\n");
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -353,7 +269,7 @@ public class IteratorOriginEffectsTest
         const string Source = "struct Skip<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var skipped: i32 = 0\n" +
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        loop\n            match self.inner.next()\n                .Some(let item)\n" +
             "                    self.skipped += 1\n                    if self.skipped < 2 => continue\n                    return .Some(item@move)\n                .None => return .None\n";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = Bounded(Source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -361,7 +277,7 @@ public class IteratorOriginEffectsTest
     [Fact]
     public void ALoopThatMayLeaveWithItsItemIsRejected()
     {
-        var c = MinimalEmissionTest.Analyze(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 2 => exit\n        return .None\n");
+        var c = Bounded(LoopRetry + "            attempt = self.inner.next()\n            if self.retries > 2 => exit\n        return .None\n");
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -371,7 +287,7 @@ public class IteratorOriginEffectsTest
         const string Source = "struct WhileRetry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var retries: i32 = 0\n" +
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        var attempt = self.inner.next()\n        while self.retries < 3\n" +
             "            match attempt@move\n                .Some(let item) => return .Some(item@move)\n                .None => self.retries += 1\n            attempt = self.inner.next()\n        return .None\n";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = Bounded(Source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -392,7 +308,7 @@ public class IteratorOriginEffectsTest
     [Fact]
     public void BothBranchesMayTransferTheItem()
     {
-        var c = MinimalEmissionTest.Analyze(Branch + "            return first@move\n        else\n            self.skipped += 1\n            return first@move\n");
+        var c = Bounded(Branch + "            return first@move\n        else\n            self.skipped += 1\n            return first@move\n");
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -403,7 +319,7 @@ public class IteratorOriginEffectsTest
     [InlineData("            return first@move\n        else\n            return .None\n")]
     public void ABranchThatMayDestroyTheItemIsRejected(string tail)
     {
-        var c = MinimalEmissionTest.Analyze(Branch + tail);
+        var c = Bounded(Branch + tail);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -424,7 +340,7 @@ public class IteratorOriginEffectsTest
     [Fact]
     public void AnArmValueStoringThePayloadIsAccepted()
     {
-        var c = MinimalEmissionTest.Analyze(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
+        var c = Bounded(Pick + "            .Some(let item) => .Some(item@move)\n            .None => .None\n        return result@move\n");
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -434,7 +350,7 @@ public class IteratorOriginEffectsTest
     [InlineData("            .Some(let item) => .Some(item@move)\n            .None => .None\n        return .None\n")]
     public void AnArmThatDropsThePayloadIsRejected(string tail)
     {
-        var c = MinimalEmissionTest.Analyze(Pick + tail);
+        var c = Bounded(Pick + tail);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -457,7 +373,7 @@ public class IteratorOriginEffectsTest
     [InlineData("match first@move\n            .Some(let item) => .Some(item@move)\n            .None => .None\n        return chosen@move\n")]
     public void AMatchDeliveringTheItemIsAccepted(string tail)
     {
-        var c = MinimalEmissionTest.Analyze(Choose + tail);
+        var c = Bounded(Choose + tail);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified, MinimalEmissionTest.Describe(c, null));
     }
 
@@ -467,7 +383,7 @@ public class IteratorOriginEffectsTest
     [InlineData("match self.steps\n            0 => first@move\n            _ => .None\n        return chosen@move\n")]
     public void ASelectionThatMayDropTheItemIsRejected(string tail)
     {
-        var c = MinimalEmissionTest.Analyze(Choose + tail);
+        var c = Bounded(Choose + tail);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -490,7 +406,7 @@ public class IteratorOriginEffectsTest
     [InlineData("            0 => return first@move\n            _ => ()\n        return .None\n")]
     public void AMatchArmThatMayDestroyTheItemIsRejected(string tail)
     {
-        var c = MinimalEmissionTest.Analyze(Select + tail);
+        var c = Bounded(Select + tail);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -514,7 +430,7 @@ public class IteratorOriginEffectsTest
     public void AConstructorReplacingADefaultFieldIsRejected()
     {
         const string Entry = "struct Entry<T>\n    public let position: isize\n    public var value: Option<T> = .None\n    public init(position: isize, value: T)\n        self.position = position\n        self.value = .Some(value@move)\n";
-        var c = MinimalEmissionTest.Analyze(Entry + Entries);
+        var c = Bounded(Entry + Entries);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -539,7 +455,7 @@ public class IteratorOriginEffectsTest
     [InlineData("    func help(self, value: I.(Iterator).Item) -> Option<I.(Iterator).Item>\n        let kept = value@move\n        return .None\n")]
     public void AnItemPassedToAHelperThatDropsItIsRejected(string help)
     {
-        var c = MinimalEmissionTest.Analyze(Helper + help);
+        var c = Bounded(Helper + help);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -549,7 +465,7 @@ public class IteratorOriginEffectsTest
     [InlineData("        attempt = self.inner.next()\n        attempt = self.inner.next()\n        return attempt@move\n")]
     public void AReinitializedLocalThatMayBeDestroyedIsRejected(string tail)
     {
-        var c = MinimalEmissionTest.Analyze(Reuse + tail);
+        var c = Bounded(Reuse + tail);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -567,7 +483,7 @@ public class IteratorOriginEffectsTest
     {
         var source = "struct Hold<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n    public var steps: i32 = 0\n" +
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        " + body + "\n";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = Bounded(source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
@@ -580,17 +496,11 @@ public class IteratorOriginEffectsTest
     {
         var source = "struct Retry<I>\n    I is Iterator\n    Self is Iterator\n    associate Iterator.Item is I.(Iterator).Item\n    var inner: I\n" +
             "    public func next(self: uniq/Self) -> Option<I.(Iterator).Item>\n        match self.inner.next()\n            " + arm + "\n            .None => return .None\n";
-        var c = MinimalEmissionTest.Analyze(source);
+        var c = Bounded(source);
         MinimalEmissionTest.AssertEffectBoundRejected(c);
     }
 
-    // A call without a published effect bound, such as a requirement of a Type parameter, cannot certify next.
-    [Fact]
-    public void UnboundedRequirementCallsAreRejected()
-    {
-        const string Source = "struct Outer<I> {a}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during a\n    I is Iterator\n    let first: ref/i32 during a\n    var inner: I\n" +
-            "    public func next(self: uniq/Self) -> Option<ref/i32 during a>\n        _ = self.inner.next()\n        return .Some(self.first)";
-        var c = MinimalEmissionTest.Analyze(Source);
-        MinimalEmissionTest.AssertEffectBoundRejected(c);
-    }
+    private static Compilation Bounded(string source)
+        => MinimalEmissionTest.Analyze(Feed + source.Replace("is Iterator", "is Feed", StringComparison.Ordinal)
+            .Replace("Iterator.Item", "Feed.Item", StringComparison.Ordinal).Replace("(Iterator)", "(Feed)", StringComparison.Ordinal));
 }

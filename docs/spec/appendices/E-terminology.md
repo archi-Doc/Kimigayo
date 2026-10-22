@@ -45,7 +45,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Diagnostic | A report with a severity and one category: Language, Proof, Unsupported, Input, Resource or Internal. | [§23.1.1](../23-compiler-services.md#2311-categories) |
 | Direct base call | `base.f(...)`, selecting the implementation held by the direct base. | [§6.4.4](../06-declarations-and-containers.md#644-direct-base-calls) |
 | Dynamic Type | The Core an object was actually constructed with. | [§3.3.1](../03-types-and-values.md#331-object-views-and-identity) |
-| Effect bound | A guarantee about what a call may access, declared on a requirement, a Callable Constraint or a virtual slot: `confined` or `preserves results`. | [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds) |
+| Effect bound | A guarantee about what a call may access, declared on a requirement, a Callable Constraint or a virtual slot: `confined`. | [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds) |
 | Effective Type | The Type with the most derived Core guaranteed at a point after a refinement. | [§14.10.1](../14-control-flow.md#14101-refinable-bindings-and-effective-types) |
 | Excluded syntax | Syntax a directive does not select; it gets source checks only. | [§19.4](../19-compile-time-directives.md#194-excluded-syntax) |
 | Field | The storage of a `let` or `var` Property. | [§11.1](../11-properties.md#111-property-kinds) |
@@ -88,7 +88,6 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Parameter-dependent effect | An effect a summary keeps in terms of a Type parameter or associated-Type projection, composed by callers with the actual Type unless [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) widens it. | [§15.6.4](../15-ownership-and-lifetime-analysis.md#1564-calls) |
 | Place / Storage | Selected storage with its Type and capabilities / a region that holds values. | [§3.4](../03-types-and-values.md#34-places-and-storage) |
 | Position / Range | A boundary resolving into `[0, L]` / an interval of positions. | [§4.6.1](../04-arrays-indexing-and-slices.md#461-positions), [§4.6.2](../04-arrays-indexing-and-slices.md#462-ranges) |
-| `preserves results` | Effect bound: a call conflicts with no Loan of an earlier result of the same requirement. | [§8.11.3](../08-generics-constraints-and-contracts.md#8113-preserves-results) |
 | PrimitiveInteger | The compiler-intrinsic Contract of exactly the twelve integer Types. | [§8.7.4](../08-generics-constraints-and-contracts.md#874-primitiveinteger) |
 | Project root | The top of a Kotonoha's declaration hierarchy. | [§18](../18-modules-and-dependencies.md#18-modules-and-dependencies) |
 | Property | A stored `let`/`var` member or a computed member. | [§11.1](../11-properties.md#111-property-kinds) |

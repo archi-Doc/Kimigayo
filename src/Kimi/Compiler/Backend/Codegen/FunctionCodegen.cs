@@ -1,9 +1,10 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, C4a, C4b, package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS
-// R5-M65, R5-M73, R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93, R5-M95, R5-M99), MIR code generation: the LLVM definition of one body item
-// of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue item by its Type's row, and the
-// coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code.
+// FunctionCodegen (R5 plan C0b1-C0c, C1a, C1b, C2a, C2b, C3a, C3b, C8a, C4a-C4c, package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS
+// R5-M65, R5-M73, R5-M76, R5-M78, R5-M80, R5-M83, R5-M87, R5-M89, R5-M92, R5-M93, R5-M95, R5-M99, R5-M100), MIR code generation: the
+// LLVM definition of one body item of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue
+// item by its Type's row, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located
+// Unsupported_Kd, never wrong code.
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
 // exactness (A2, R4-M6a, R4-M102: gate step 2 writes no inexact body); the compilation's Layout and runtime location texts;
@@ -33,20 +34,22 @@
 // by its parameter, a Copy of a value in memory and a string constant through a copy slot, the result slot the destination, unreachable
 // after a call without a target (FunctionCodegen.Calls; R5-M89, R5-M93), of an intrinsic by its row's writer (FunctionCodegen.Intrinsics:
 // Raw's storage operations, the byte copy, the nullable Alloc, $abort and Fail; R5-M92); a DefaultTemplate body, its prepared inputs in
-// slot order (OrderOf); a Drop's Keep, Elide and Flag verdicts and A2's flag points, written where their locations complete
-// (FunctionCodegen.Drops.cs and .Flags.cs; R5-M78, R5-M99). Rows not written yet: Closure (C5a) and StaticInit (C7b) bodies; statics (C7b);
+// slot order (OrderOf); a Drop's Keep, Elide, Flag and Open verdicts, an Open row's remaining parts one level per Type by their rows
+// (FunctionCodegen.Glue's Level), and A2's flag points, written where their locations complete (FunctionCodegen.Drops.cs, .Glue.cs and
+// .Flags.cs; R5-M78, R5-M99, R5-M100). Rows not written yet: Closure (C5a) and StaticInit (C7b) bodies; statics (C7b);
 // a handle's or object borrow's Deref (C6a); Closure aggregates (C5a), an Array or Dictionary from none (C8d, C8e), a Dictionary's (C8e)
 // and a string's (C8c) Len, an Adapt's object creation (C6a); upcasts (C6a) and erasures (C5b); string operations (C8c), checked 128-bit
 // arithmetic (ModuleCodegen's wide overflow declarations); FnItem (C5a) and other string constants (C8c), Location and TypeToken constants
 // being intrinsic operands (C10a's TestObserve; C6a's TypeTest, C9a); calls of a requirement whose witness has no body, of a value (C5a), a
 // virtual slot (C6c), an intrinsic of a later row (its IntrinsicRows row names the unit), a Builtin shim (C8f, C9b), a property witness
-// (C3c) or another legacy row (C8b-C8e, C9a); a Drop's Open verdict (C4c). A warm write allocates nothing. Files: the dispatch, the
-// unconditional branch and the records (this file); the operands' and constants' values, the representations, a site's location and the
-// text's spelling (FunctionCodegen.Values.cs); the function's frame: homes, prologue and return (.Frame.cs); parameter passing: its kind's
-// argument order, each argument by its parameter and the copy slots (.Arguments.cs); the place writer (.Places.cs) and the loads, stores
-// and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs), operators (.Arithmetic.cs), conversions
-// (.Casts.cs), calls (.Calls.cs), intrinsics (.Intrinsics.cs), drops (.Drops.cs) and drop flags (.Flags.cs); the DropGlue items' functions
-// (.Glue.cs).
+// (C3c) or another legacy row (C8b-C8e, C9a); a level of a glue row other than a string's or parts' (C5a-C8e). A warm write allocates
+// nothing. Files: the dispatch, the unconditional branch and the records (this file); the operands' and constants' values, the
+// representations, a site's location and the text's spelling (FunctionCodegen.Values.cs); the function's frame: homes, prologue and
+// return (.Frame.cs); parameter passing: its kind's argument order, each argument by its parameter and the copy slots (.Arguments.cs); the
+// place writer (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates
+// (.Aggregates.cs), operators (.Arithmetic.cs), conversions (.Casts.cs), calls (.Calls.cs), intrinsics (.Intrinsics.cs), the Drop
+// terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a value's destruction one level per Type, a DropGlue item's
+// function or an Open row's (.Glue.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than

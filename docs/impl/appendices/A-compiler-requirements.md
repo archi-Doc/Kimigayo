@@ -9,7 +9,7 @@ Every conforming implementation meets these requirements in addition to the lang
 For the same inputs (sources, project settings, target, mode and compiler), an implementation produces the same acceptance, the same diagnostic categories and locations, and the same program behavior, including Abort locations.
 
 - The order in which sources are read, declarations are checked, generated sources are produced or work runs in parallel never changes a result. Acceptance follows Finality ([§8.3](../../spec/08-generics-constraints-and-contracts.md#83-constraint-proof)); checking order and scheduling are otherwise the implementation's choice.
-- A declaration header is never treated as complete before it is. When evidence becomes available is defined by [§8.5.5](../../spec/08-generics-constraints-and-contracts.md#855-inference) and [§8.11.4](../../spec/08-generics-constraints-and-contracts.md#8114-checking-and-use).
+- A declaration header is never treated as complete before it is. When evidence becomes available is defined by [§8.5.5](../../spec/08-generics-constraints-and-contracts.md#855-inference) and [§8.11.3](../../spec/08-generics-constraints-and-contracts.md#8113-checking-and-use).
 
 ```kimi
 // a.kimi
