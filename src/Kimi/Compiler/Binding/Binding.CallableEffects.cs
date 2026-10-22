@@ -6,7 +6,6 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    private readonly List<IsKoto> callableEffectClauses = new();
     private readonly List<CallableEffectUse> callableEffectUses = new(); // Each selected use of a bounded Callable clause, once per pass.
     private readonly Dictionary<Koto, CallableEffectViolation> callableEffectViolations = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, (IsKoto Clause, FunctionKoto Requirement)> callablePremiseFailures = new(ReferenceEqualityComparer.Instance);
@@ -119,48 +118,6 @@ public sealed partial class Binding
 
     private static bool ReceiverCovers(SemanticsMask premise, SemanticsKind receiver)
         => premise == SemanticsMask.Owner || receiver == SemanticsKind.Ref || (premise == SemanticsMask.Uniq && receiver == SemanticsKind.Uniq);
-
-    // Bounds are attached to clauses, never to interned propositions or applicability facts (SPEC 8.11.4).
-    private void PrepareCallableEffects()
-    {
-        this.callableEffectClauses.Clear();
-        this.callablePremiseFailures.Clear();
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is not IsKoto { EffectBounds.Count: > 0 } clause)
-            {
-                continue;
-            }
-
-            this.callableEffectClauses.Add(clause);
-            var declared = false;
-            for (var e = 0; e < clause.EffectBounds.Count; e++)
-            {
-                var effect = clause.EffectBounds[e];
-                EffectRejection? rejection = null;
-                if (clause.Right is not GenericsKoto || clause.BoundConstraint?.Kind != ConstraintKind.Callable || effect.IsSpecification)
-                {
-                    rejection = EffectRejection.CallableForm;
-                }
-                else if (clause.IsAssociatedConstraint || clause.Parent is not (FunctionKoto or StructKoto or EnumKoto))
-                {
-                    rejection = EffectRejection.CallablePosition;
-                }
-                else if (declared)
-                {
-                    rejection = EffectRejection.CallableDuplicate;
-                }
-
-                declared = true;
-                if (rejection is { } invalid)
-                {
-                    this.RejectEffectBound(effect, new(invalid, Requirement: clause));
-                }
-
-                this.BindEffectBound(effect);
-            }
-        }
-    }
 
     private bool ReportCallablePremiseFailure(Koto use, Kimi.Diagnostics.DiagnosticRequirement diagnostic)
     {

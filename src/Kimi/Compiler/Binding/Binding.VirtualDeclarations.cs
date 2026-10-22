@@ -123,27 +123,4 @@ public sealed partial class Binding
             }
         }
     }
-
-    private void PrepareVirtualEffectBounds()
-    {
-        foreach (var function in this.virtualDeclarations)
-        {
-            if (!function.IsVirtual || function.BindingFailure != BindingFailure.None)
-            {
-                continue;
-            }
-
-            EffectBoundKoto? confined = null;
-            for (var i = 0; i < function.EffectBounds.Count; i++)
-            {
-                var effect = function.EffectBounds[i];
-                if (this.ValidateDeclaredEffectBound(effect, function.BoundSymbol!, confined))
-                {
-                    confined = effect;
-                }
-            }
-
-            this.virtualEffectBounds[function] = confined;
-        }
-    }
 }
