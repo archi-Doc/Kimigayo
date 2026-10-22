@@ -39,32 +39,6 @@ public sealed partial class Binding
         return head;
     }
 
-    private bool ParameterVisible(BindingSymbol candidate, Koto use)
-    {
-        if (this.defaultBindingDepth == 0 || candidate.Kind != BindingSymbolKind.Parameter || candidate.Scope.Owner is not FunctionKoto function)
-        {
-            return true;
-        }
-
-        var root = use;
-        while (root.Parent is { } parent && !ReferenceEquals(parent, function))
-        {
-            root = parent;
-        }
-
-        // SPEC 7.2.3: in a default, only the parameters before its own; a constructor's or destructor's receiver, whose slot is no
-        // parameter index (ReceiverSlot), is none. A use in the body is below no default.
-        for (var i = 0; i < function.Parameters.Count; i++)
-        {
-            if (ReferenceEquals(root, function.Parameters[i].DefaultValue))
-            {
-                return (uint)candidate.Slot < (uint)i;
-            }
-        }
-
-        return true;
-    }
-
     private BindingSymbol? Lookup(string name, BindingScope scope, Koto use, bool type, bool core = false, int arity = 0, TypeLookupRole role = TypeLookupRole.Any)
     {
         this.importCandidates?.GetValueOrDefault(use)?.Clear();
@@ -106,7 +80,7 @@ public sealed partial class Binding
                         continue;
                     }
 
-                    if (!this.ParameterVisible(candidate, use))
+                    if (!this.ParameterVisible(candidate))
                     {
                         continue;
                     }

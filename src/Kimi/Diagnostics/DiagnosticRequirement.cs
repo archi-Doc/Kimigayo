@@ -42,9 +42,6 @@ public enum OwnershipRequirement : byte
     // owned fixed array.
     StaticMovePathRequired,
 
-    // SPEC 8.11.4, 8.11.1: a generic requirement call's derived effects may conflict with a Loan an earlier result keeps.
-    CallEffectConflict,
-
     StorageLimit,
 }
 

@@ -292,6 +292,7 @@ public sealed partial class Binding
         plan.ExclusiveUse = null;
         plan.ExclusiveReborrow = false;
         var symbol = this.symbols[function];
+        plan.EvaluatingBody = this.formingBody; // SPEC 15.3.4: the header and captures are the evaluating body's (DECISIONS R4-M101 E1).
         // The declaration identity distinguishes environments with identical storage.
         plan.EnvironmentType = this.types.Intern(BoundTypeKind.Closure, symbol, SemanticsKind.Owner, []);
         symbol.HeaderBound = true;
@@ -359,18 +360,26 @@ public sealed partial class Binding
 
         if ((function.Body ?? function.ExpressionBody) is { } body)
         {
-            if (symbol.Type is null)
+            var saved = this.EnterBody(new(symbol)); // The body and its result are the Closure's own.
+            try
             {
-                // SPEC 14.9: the function owns its result context; nested functions and defer bodies keep their own boundaries.
-                // Survey independent evidence before binding, then join the return operands with the single-item body's value,
-                // which takes the surveyed Type as an if branch does, or with the indented body's structural end Unit.
-                var context = this.BeginResult(function, scope, null);
-                this.BindNode(body, scope, function.Body is null ? context.Expected : null);
-                symbol.Type = this.FinishResult(function, context);
+                if (symbol.Type is null)
+                {
+                    // SPEC 14.9: the function owns its result context; nested functions and defer bodies keep their own boundaries.
+                    // Survey independent evidence before binding, then join the return operands with the single-item body's value,
+                    // which takes the surveyed Type as an if branch does, or with the indented body's structural end Unit.
+                    var context = this.BeginResult(function, scope, null);
+                    this.BindNode(body, scope, function.Body is null ? context.Expected : null);
+                    symbol.Type = this.FinishResult(function, context);
+                }
+                else
+                {
+                    this.RequireType(body, scope, function.Body is null ? symbol.Type : null); // A single-item body has the written result.
+                }
             }
-            else
+            finally
             {
-                this.RequireType(body, scope, function.Body is null ? symbol.Type : null); // A single-item body has the written result.
+                this.formingBody = saved;
             }
         }
 

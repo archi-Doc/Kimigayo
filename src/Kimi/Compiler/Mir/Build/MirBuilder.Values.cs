@@ -164,16 +164,19 @@ internal sealed partial class MirBuilder
         }
     }
 
-    // A node's value as its consumer takes it (plan: Adjust to operand): a literal as its constant, another value through a temp, a Place,
-    // or a value held in a temp, as Acquire takes it for the expected Type, a call's input as the call's (input), a value the acquisition
-    // forms in the place given (into) where it has that Type. SPEC 15.6.7: only an input the call takes as an exclusive reference (its
-    // expected Type, or without one, a value call's callee, the reference it is or its acquisition forms) starts a reservation, so only its
-    // path is a preparation path (Place); on another input's path a written exclusive borrow is live, as SPEC 7.3.3's is. An input the call
-    // takes as a pair layer, exclusive only by case, reserves where it is acquired (reserves, MirCases.Reserves) and has no preparation
-    // path (A3 E13 (4)).
+    // A node's value as its consumer takes it, by the node's Adjust.
     private MirOperand Operand(Koto node, BoundType? expected, bool input = false, MirPlace? into = null)
+        => this.Operand(node, HirTables.AdjustOf(node), expected, input, into);
+
+    // A node's value as an Adjust takes it (plan: Adjust to operand; the column's, or an update getter's plan row, DECISIONS R4-M109): a
+    // literal as its constant, another value through a temp, a Place, or a value held in a temp, as Acquire takes it for the expected Type,
+    // a call's input as the call's (input), a value the acquisition forms in the place given (into) where it has that Type. SPEC 15.6.7:
+    // only an input the call takes as an exclusive reference (its expected Type, or without one, a value call's callee, the reference it is
+    // or its acquisition forms) starts a reservation, so only its path is a preparation path (Place); on another input's path a written
+    // exclusive borrow is live, as SPEC 7.3.3's is. An input the call takes as a pair layer, exclusive only by case, reserves where it is
+    // acquired (reserves, MirCases.Reserves) and has no preparation path (A3 E13 (4)).
+    private MirOperand Operand(Koto node, HirAdjust adjust, BoundType? expected, bool input = false, MirPlace? into = null)
     {
-        var adjust = HirTables.AdjustOf(node);
         var reserves = input && MirCases.Reserves(this.body, expected ?? TypeOf(node));
         input &= MirTypes.IsExclusive(expected) ||
             (expected is null && (adjust.Adaptation == HirAdaptation.ExclusiveBorrow || MirTypes.IsExclusive(TypeOf(node))));

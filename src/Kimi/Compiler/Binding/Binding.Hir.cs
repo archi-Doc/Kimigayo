@@ -89,6 +89,10 @@ public sealed partial class Binding
             {
                 this.Write(node, new(HirAcquire.None, HirAdaptation.None)); // A kept operand of an Error (Keeps), used in place.
             }
+            else if (op == HirOp.Error)
+            {
+                this.Derived(node); // Any other consumer takes it as its derived value (DECISIONS R4-M109).
+            }
 
             if (op == HirOp.Body)
             {

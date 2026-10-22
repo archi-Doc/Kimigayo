@@ -91,7 +91,7 @@ struct Outer<T>
 
 Input conditions supplied by the user of a declaration are assumptions while its definition is checked. Declaration obligations, such as an outer struct's conformance of Self and closed conditions, need their own proof. An inner declaration may use outer input conditions and proven evidence, but cannot turn an obligation into an assumption or read the outer Self as its own; its own input conditions do not propagate outward.
 
-In a Contract, a condition only on inherited arguments is a reference input condition, one on the conforming Self is an implementation requirement, and a closed one is a declaration obligation. In a Type declaration, `Self is not ObjectPayload` ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is an opt-out, neither condition nor obligation. Function Constraint subjects follow [§7.5](07-functions-and-callable-values.md#75-function-constraints). A struct may implement a Contract nested in it. A conformance is never evidence for its own identification and compatibility ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof), [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use)). Obligations must hold for every admitted binding (Finality, [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
+In a Contract, a condition only on inherited arguments is a reference input condition, one on the conforming Self is an implementation requirement, and a closed one is a declaration obligation. In a Type declaration, `Self is not ObjectPayload` ([§8.7.3](08-generics-constraints-and-contracts.md#873-objectpayload)) is an opt-out, neither condition nor obligation. Function Constraint subjects follow [§7.5](07-functions-and-callable-values.md#75-function-constraints). A struct may implement a Contract nested in it. A conformance is never evidence for its own identification and compatibility ([§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof), [§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use)). Obligations must hold for every admitted binding (Finality, [§8.3](08-generics-constraints-and-contracts.md#83-constraint-proof)).
 
 ### 6.1.5. Self
 
@@ -344,9 +344,7 @@ struct Derived<U> : Base
 
 ### 6.4.6. Effects and Contract witnesses
 
-Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 to 3 of [§8.11.4](08-generics-constraints-and-contracts.md#8114-checking-and-use), and results use only the public Origin and Loan contract.
-
-On a slot, `preserves results` ([§8.11.3](08-generics-constraints-and-contracts.md#8113-preserves-results)) relates calls on the same object (by dependency tracking, not Origin equality) through the same slot, or for direct base calls the same implementation; replacing or Moving the payload contents ends the relation. Handle Moves, Reborrows and lawful View changes preserve the relation; a guaranteed call's conservative input effects alone do not end it.
+Slot effect bounds follow [§8.11.1](08-generics-constraints-and-contracts.md#8111-declarations). A dynamic call uses only the slot's public contract and bounds, even for a sealed target: its effects follow rules 1 and 2 of [§8.11.3](08-generics-constraints-and-contracts.md#8113-checking-and-use), and results use only the public Origin and Loan contract.
 
 A virtual implementation of a Contract requirement maps to the slot: the slot's public contract and bounds must satisfy the requirement, never a body's stronger behavior.
 

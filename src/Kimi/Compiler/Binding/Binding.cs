@@ -1214,68 +1214,35 @@ public sealed partial class Binding
             return;
         }
 
-        symbol.Resolving = true;
-        if (symbol.Declaration is FunctionKoto function)
+        // A header is its declaration's, never the body that binds it lazily (SPEC 15.6.1; DECISIONS R4-M101 E3).
+        var saved = this.EnterBody(default);
+        try
         {
-            var scope = this.scopes[function];
-            this.PrepareVirtualHeaderPremises(function, scope);
-            var originDeclaration = this.BeginOriginDeclaration(function, scope);
-            for (var i = 0; i < function.Parameters.Count; i++)
+            symbol.Resolving = true;
+            if (symbol.Declaration is FunctionKoto function)
             {
-                var parameter = function.Parameters[i];
-                this.symbols[parameter].Type = this.BindType(parameter.Type, scope);
-            }
-
-            // Named signatures never infer a result from their body or callers (SPEC 10.5).
-            symbol.Type = function.ReturnType is { } result ? this.BindType(result, scope) : BoundType.Unit;
-            var pendingInputs = false;
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                // BindType retains a partial value on the parameter symbol without publishing it on
-                // syntax. A failed Type (null) is already an error, not an inference dependency.
-                pendingInputs |= this.symbols[function.Parameters[i]].Type is { } parameterType && this.PendingAssociatedType(parameterType);
-            }
-
-            var pendingHeader = pendingInputs || (symbol.Type is { } resultType && this.PendingAssociatedType(resultType));
-            if (this.associatedInferenceReady && pendingHeader)
-            {
-                // Result portions that do not depend on missing Type values use the ordinary Origin
-                // completion. Unrelated result holes do not hide a determined input/elision contract.
-                if (!pendingInputs && this.PartialOriginContractReady(function))
+                if (!this.BindFunctionHeader(symbol, function))
                 {
-                    this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
-                }
-
-                symbol.Resolving = false;
-                return;
-            }
-
-            this.CompleteOriginDeclaration(originDeclaration ?? this.originDeclarations.GetValueOrDefault(function));
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                this.symbols[function.Parameters[i]].Type = function.Parameters[i].Type.BoundType;
-            }
-
-            if (symbol.ReceiverIndex >= 0)
-            {
-                var receiver = function.Parameters[symbol.ReceiverIndex];
-                if (!this.IsReceiverType(receiver.Type.BoundType, symbol.Scope.Owner.BoundSymbol!) || receiver.ExternalName != "self" || receiver.DefaultValue is not null)
-                {
-                    this.Fail(function, BindingFailure.InvalidTypeFormation);
+                    symbol.Resolving = false;
+                    return;
                 }
             }
-        }
-        else if (symbol.Property is { } property)
-        {
-            this.BindPropertyHeader(property);
-        }
-        else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
-        {
-            symbol.Type = this.BindType(type, symbol.Scope);
-        }
+            else if (symbol.Property is { } property)
+            {
+                this.BindPropertyHeader(property);
+            }
+            else if (symbol.Declaration is VariableKoto variable && variable.TypeKoto is { } type)
+            {
+                symbol.Type = this.BindType(type, symbol.Scope);
+            }
 
-        symbol.HeaderBound = true;
-        symbol.Resolving = false;
+            symbol.HeaderBound = true;
+            symbol.Resolving = false;
+        }
+        finally
+        {
+            this.formingBody = saved;
+        }
     }
 
     private void ValidateSignatures()

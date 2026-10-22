@@ -61,33 +61,44 @@ public sealed partial class Binding
             declared = variable.TypeKoto?.BoundType ?? declared;
         }
 
-        var inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
-        symbol.Resolving = false;
-        if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
-            initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
+        // A Property's initializer and its fit are its initializer's body (SPEC 11.8, 6.3.3; DECISIONS R4-M101 E1, E4); a local's are
+        // the body that binds the local.
+        var saved = this.EnterBody(symbol.Property is null ? this.formingBody : InitializerBody(symbol));
+        BoundType? inferred;
+        try
         {
-            // SPEC 15.4.4: finish all initializer acquisition bounds before checking the local's fixed Type.
-            inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
-        }
-
-        if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
-        {
-            // Select the Copy-read shape before inferring omitted Origins. Comparing the
-            // unresolved Origin with the stored reference's Origin would reject ref/ref/T
-            // initializers before the ordinary lifetime constraints can be inferred.
-            if (variable.InitializerKoto is { } value && !ReferenceTypes.StorageMatches(inferred, declared) &&
-                this.ReadTypeReferent(inferred, scope) is { } referent && ReferenceTypes.StorageMatches(referent, declared))
+            inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
+            symbol.Resolving = false;
+            if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
+                initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
             {
-                this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
-                inferred = referent;
+                // SPEC 15.4.4: finish all initializer acquisition bounds before checking the local's fixed Type.
+                inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
             }
 
-            declared = this.InferLocalOrigins(declared, inferred, variable, scope);
-        }
+            if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
+            {
+                // Select the Copy-read shape before inferring omitted Origins. Comparing the
+                // unresolved Origin with the stored reference's Origin would reject ref/ref/T
+                // initializers before the ordinary lifetime constraints can be inferred.
+                if (variable.InitializerKoto is { } value && !ReferenceTypes.StorageMatches(inferred, declared) &&
+                    this.ReadTypeReferent(inferred, scope) is { } referent && ReferenceTypes.StorageMatches(referent, declared))
+                {
+                    this.adaptations[value] = new(ExpectedAdaptationKind.ReferentRead, referent);
+                    inferred = referent;
+                }
 
-        if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
+                declared = this.InferLocalOrigins(declared, inferred, variable, scope);
+            }
+
+            if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
+            {
+                this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared);
+            }
+        }
+        finally
         {
-            this.FailMismatch(variable, variable.InitializerKoto ?? variable, inferred, declared);
+            this.formingBody = saved;
         }
 
         if (symbol.Kind == BindingSymbolKind.Local && declared is not null && variable.TypeKoto is { } occurrence)

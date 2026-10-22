@@ -17,14 +17,12 @@ public sealed partial class Binding
     /// <summary>SPEC 4.9.6: summarizes the body of a Kimi operation that publishes its summary, under its own premises with abstract
     /// Type parameters, as its published row permits: the parameter-dependent requirement the row names is covered.</summary>
     /// <param name="operation">The operation.</param>
-    /// <param name="confined">Whether the summary is judged under confined.</param>
-    /// <param name="preserves">Whether the summary is judged under preserves results.</param>
     /// <param name="published">The requirement whose effects the row publishes, such as `K` equality, or null.</param>
-    /// <returns>Whether the body stays within the bounds, and the first effect that does not.</returns>
-    internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, bool confined, bool preserves, BindingSymbol? published)
+    /// <returns>Whether the body stays within confined, and the first effect that does not.</returns>
+    internal (bool Valid, EffectViolation Violation, Koto? Node) SummarizePublishedOperation(BindingSymbol operation, BindingSymbol? published)
     {
         var summary = this.effectSummary ??= new(this);
-        var valid = summary.Check(confined, preserves, operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
+        var valid = summary.Check(operation, this.ConstraintScope(operation.Declaration), false, implementationBody: true, published: published);
         return (valid, summary.Violation, summary.ViolationNode);
     }
 
@@ -66,7 +64,7 @@ public sealed partial class Binding
 
     // SPEC 8.11.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
     // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.6).
-    // Binding checks the Loans the implementation accesses and the calls it makes. Which values it destroys is known only
+    // Binding checks the environment the implementation reaches and the calls it makes. Which values it destroys is known only
     // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects),
     // as are the selected uses of bounded Callable clauses, which this pass enumerates (SPEC 8.11.6).
     private void ValidateEffectBounds()
@@ -86,8 +84,7 @@ public sealed partial class Binding
         this.CollectCallableEffectUses();
     }
 
-    // The path, marked invalid, when one of its bounded implementations exceeds a bound; null otherwise. One traversal of a
-    // witness's summary serves both bounds.
+    // The path, marked invalid, when one of its bounded implementations exceeds its bound; null otherwise.
     private BoundConformancePath? EffectBoundViolation(BoundConformancePath path, bool destructions)
     {
         if (!path.IsVerified || path.Contract.Contract is not { } shape)
@@ -109,19 +106,17 @@ public sealed partial class Binding
                 continue;
             }
 
-            var confined = this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.Confined) is not null;
-            var preserves = this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.PreservesResults) is not null;
-            if ((!confined && !preserves) ||
+            if (this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.Confined) is null ||
                 (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null))
             {
                 continue;
             }
 
             var summary = destructions ? this.destructionSummary ??= new(this) : this.effectSummary ??= new(this);
-            if (!summary.Check(confined, preserves, witness.Implementation, path.Scope, destructions))
+            if (!summary.Check(witness.Implementation, path.Scope, destructions))
             {
                 (this.effectViolations ??= new(ReferenceEqualityComparer.Instance))[path.Use] =
-                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, summary.Delegation, summary.DelegationNode, requirement, shape, confined, preserves, witness.Identity);
+                    new(summary.Violation, summary.ViolationSite, summary.ViolationNode, requirement, shape, witness.Identity);
                 path.Invalid = true;
                 path.IsVerified = false;
                 path.Identity.Invalid = true;
@@ -145,26 +140,10 @@ public sealed partial class Binding
         private readonly List<CallPlan?> contexts = new();
         private readonly Dictionary<CallPlan, int> contextIndex = new(CallInstanceComparer.Instance);
         private readonly List<CallPlan> calls = new();
-        private readonly List<(BoundType Value, BoundOrigin Storage)> storedValues = new();
         private readonly List<int> selectedArms = new();
-
-        // SPEC 8.11.5: the abstract parts of the result, the requirement calls producing values of them, the own-body calls
-        // tentatively compared with no earlier result, and the replacements of values on self paths in the own body.
-        private readonly List<BoundType> itemParts = new();
-        private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto? Receiver)> producers = new();
-        private readonly List<(object Requirement, BindingSymbol? Contract, Koto Call, Koto Receiver, bool Confined)> candidates = new();
-        private readonly List<(Koto Path, Koto Node)> replacements = new();
-        private BodyScan? scan;
-        private bool delegable;
-        private IReadOnlyList<BoundOrigin> selfOrigins = [];
         private BindingScope? scope;
-        private BoundType item = BoundType.Unit;
-        private bool confined;
-        private bool preserves;
         private int context;
         private int callCount;
-        private FunctionKoto? implementation;
-        private BoundType? receiverType;
         private Koto? stepUse;
         private Koto? site;
         private Koto? last;
@@ -185,12 +164,6 @@ public sealed partial class Binding
 
         /// <summary>Gets the syntax of the implementation's own body through which that effect is reached.</summary>
         internal Koto? ViolationSite { get; private set; }
-
-        /// <summary>Gets why the Loans of earlier results were not excluded for a requirement call, when exclusion was tried.</summary>
-        internal DelegationFailure Delegation { get; private set; }
-
-        /// <summary>Gets the source or replacement that prevented the exclusion.</summary>
-        internal Koto? DelegationNode { get; private set; }
 
         public override void Visit(Koto node)
         {
@@ -230,7 +203,7 @@ public sealed partial class Binding
                 // Ownership analysis plans no cleanups for an initializer other than a constant scalar, so its destructions
                 // are unknown.
                 this.Queue(property.InitializerKoto);
-                if (property.VariableKind == VariableKind.Var && this.confined)
+                if (property.VariableKind == VariableKind.Var)
                 {
                     this.Violate(EffectViolation.MutableStatic, node);
                     return;
@@ -238,7 +211,7 @@ public sealed partial class Binding
 
                 // SPEC 8.11.2: immutability does not protect a pointee, so a raw pointer read from an immutable static
                 // obtains authority from the environment.
-                if (this.confined && node.BoundSymbol.Type is { } stored && this.ContainsRawPointer(this.Type(stored), 0))
+                if (node.BoundSymbol.Type is { } stored && this.ContainsRawPointer(this.Type(stored), 0))
                 {
                     this.Violate(EffectViolation.StaticPointer, node);
                     return;
@@ -252,7 +225,7 @@ public sealed partial class Binding
             }
 
             // SPEC 8.11.2: a pointer made from an integer has no provenance; it obtains authority from the environment.
-            if (this.confined && node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Left.BoundType.Kind: BoundTypeKind.Primitive })
+            if (node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Left.BoundType.Kind: BoundTypeKind.Primitive })
             {
                 this.Violate(EffectViolation.IntegerPointer, node);
                 return;
@@ -317,13 +290,10 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.3.3: the bounds are judged in the conformance scope (D and the conditions P); the implementation's result
-        // is normalized there, so a forwarded `I.(LendingIterator).LentItem(step)` is the step-independent `I.Item` under
-        // `I is Iterator`. With `destructions`, the values each reached body destroys are summarized too.
-        internal bool Check(bool confined, bool preserves, BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
+        // SPEC 8.3.3: confined is judged in the conformance scope (D and the conditions P). With `destructions`, the values each
+        // reached body destroys are summarized too.
+        internal bool Check(BindingSymbol implementation, BindingScope scope, bool destructions, BoundType? callable = null, SemanticsKind receiver = SemanticsKind.Ref, bool implementationBody = false, BindingSymbol? published = null)
         {
-            this.confined = confined;
-            this.preserves = preserves;
             this.published = published;
             this.scope = scope;
             this.valid = true;
@@ -340,45 +310,8 @@ public sealed partial class Binding
             this.Violation = EffectViolation.None;
             this.ViolationNode = null;
             this.ViolationSite = null;
-            this.Delegation = DelegationFailure.None;
-            this.DelegationNode = null;
-            this.implementation = implementation.Declaration as FunctionKoto;
-            this.receiverType = null;
             this.stepUse = null;
-            this.delegable = false;
-            this.itemParts.Clear();
-            this.producers.Clear();
-            this.candidates.Clear();
-            if (preserves)
-            {
-                var declared = callable is { Kind: BoundTypeKind.Closure } ? binding.ClosureSignature(callable)?.Components[1]
-                    : callable is { Kind: BoundTypeKind.FunctionItem } ? binding.FunctionItemSignature(callable)?.Components[1] : implementation.Type;
-                if (declared is null)
-                {
-                    return false;
-                }
-
-                var item = binding.ContractType(declared, scope);
-                if (!item.CarriesOrigin && !item.HasAbstractPart)
-                {
-                    // A result that keeps no Loan conflicts with no effect.
-                    this.preserves = false;
-                    if (!confined)
-                    {
-                        return true;
-                    }
-                }
-                else
-                {
-                    this.item = item;
-                    this.selfOrigins = SelfOrigins(implementation, out var inputReceiver);
-                    this.receiverType = inputReceiver;
-                    this.StoredValues(inputReceiver);
-                    this.delegable = this.CollectItemParts(item);
-                }
-            }
-
-            if (implementationBody && this.implementation is { } body)
+            if (implementationBody && implementation.Declaration is FunctionKoto body)
             {
                 // The obligation checks this body; all calls inside it still use their own dispatch kind.
                 this.Body(body, null);
@@ -401,25 +334,7 @@ public sealed partial class Binding
                 this.Visit(this.pending[i].Node);
             }
 
-            if (this.valid && this.candidates.Count != 0)
-            {
-                this.ValidateDelegations();
-            }
-
             return this.valid;
-        }
-
-        // The Origins of the conforming Type as its receiver names them; an abstract item part may keep a Loan of any.
-        private static IReadOnlyList<BoundOrigin> SelfOrigins(BindingSymbol implementation, out BoundType? receiver)
-        {
-            receiver = implementation.Declaration is FunctionKoto function && implementation.ReceiverIndex >= 0 && implementation.ReceiverIndex < function.Parameters.Count
-                ? function.Parameters[implementation.ReceiverIndex].Type.BoundType : null;
-            while (receiver is { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
-            {
-                receiver = receiver.Components[0];
-            }
-
-            return receiver?.OriginArguments ?? [];
         }
 
         private static BoundType? Dictionary(BoundType? type)
@@ -441,24 +356,6 @@ public sealed partial class Binding
 
         private static LoanRequirement Mode(BoundType? type)
             => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq ? LoanRequirement.Uniq : LoanRequirement.Ref;
-
-        // The receiver parameter of a bound or unbound call, in its declared slot.
-        private static BoundType? Receiver(CallPlan call)
-        {
-            var receiver = call.ReceiverOperation.ParameterType;
-            for (var i = 0; receiver is null && i < call.ArgumentOperations.Length; i++)
-            {
-                if (call.ArgumentOperations[i].ParameterIndex == call.Target.ReceiverIndex)
-                {
-                    receiver = call.ArgumentOperations[i].ParameterType;
-                }
-            }
-
-            return receiver;
-        }
-
-        // An associated projection, whose root Type is not a part of its values.
-        private static bool IsProjection(BoundType type) => type is { Kind: BoundTypeKind.AssociatedProjection, Components.Count: 2 };
 
         private SemanticsMask AdaptationSemantics(BoundType type, Koto use)
         {
@@ -526,7 +423,7 @@ public sealed partial class Binding
             {
                 if (acquisition.BoundCall is { ArgumentOperations.Length: > 0 } acquired)
                 {
-                    this.Argument(acquired.ArgumentOperations[0], node);
+                    this.Argument(acquired.ArgumentOperations[0]);
                 }
 
                 this.Queue(acquisition.ArgumentNodes[0]);
@@ -585,7 +482,7 @@ public sealed partial class Binding
                         }
                         else
                         {
-                            this.PlaceAccess(arithmeticSource.Left, LoanRequirement.Uniq, node);
+                            this.PlaceAccess(arithmeticSource.Left, LoanRequirement.Uniq);
                         }
                     }
 
@@ -602,24 +499,15 @@ public sealed partial class Binding
             }
         }
 
-        // The reads, writes and borrows of one node, each through the Place path it uses (SPEC 22.2.3). A Place is
-        // accessed once, by its outermost use: an operand of a projection, a borrow, a Move or a write is accessed there.
+        // The reads, writes and borrows of one node, each through the Place path it uses, which selects the accessor and
+        // indexer calls it makes. A Place is accessed once, by its outermost use: an operand of a projection, a borrow, a Move
+        // or a write is accessed there.
         private void Accesses(Koto node)
         {
             var adapted = binding.TryGetAdaptation(node, out var adaptation);
-            if (adapted)
+            if (adapted && adaptation.Kind is ExpectedAdaptationKind.Reborrow or ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.ReferentRead or ExpectedAdaptationKind.SharedBorrow)
             {
-                switch (adaptation.Kind)
-                {
-                    case ExpectedAdaptationKind.Reborrow or ExpectedAdaptationKind.ReferenceRead or ExpectedAdaptationKind.ReferentRead:
-                        // SPEC 10.2, 15.6.4: shortening a Reborrow's lifetime does not remove its original access effect.
-                        this.Access(node.BoundType, Mode(adaptation.Type), node);
-                        this.PlaceAccess(node, LoanRequirement.Ref, node);
-                        break;
-                    case ExpectedAdaptationKind.SharedBorrow:
-                        this.PlaceAccess(node, LoanRequirement.Ref, node);
-                        break;
-                }
+                this.PlaceAccess(node, LoanRequirement.Ref);
             }
 
             switch (node)
@@ -630,55 +518,41 @@ public sealed partial class Binding
                         this.Queue(binding.PropertyCall(assignment.Left, PropertyAccessorKind.Get)); // A compound assignment reads first.
                     }
 
-                    this.PlaceAccess(assignment.Left, LoanRequirement.Uniq, node);
+                    this.PlaceAccess(assignment.Left, LoanRequirement.Uniq);
                     break;
                 case UnaryKoto update when ElementAccess.UpdateOperator(update.Akind) != KotoKind.Invalid:
                     this.Queue(binding.PropertyCall(update.Operand, PropertyAccessorKind.Get));
-                    this.PlaceAccess(update.Operand, LoanRequirement.Uniq, node);
+                    this.PlaceAccess(update.Operand, LoanRequirement.Uniq);
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Borrow or ConversionBinding.Address } borrow when ElementAccess.IsRawPlace(borrow.Left):
                     break; // SPEC 5.2.2, 5.4: a fresh anchor, compared with no Place it does not derive from.
                 case ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow:
-                    this.Access(borrow.BoundType, Mode(borrow.BoundType), node);
-                    this.PlaceAccess(borrow.Left, Mode(borrow.BoundType), node);
+                    this.PlaceAccess(borrow.Left, Mode(borrow.BoundType));
                     break;
                 case ConversionKoto { Adaptation: { } explicitPlan } explicitAdaptation:
                     var admitted = this.AdaptationSemantics(explicitPlan.Target, explicitAdaptation);
-                    if ((explicitPlan.Operations & ((1U << (int)ConversionBinding.Borrow) | (1U << (int)ConversionBinding.ObjectUpcast))) != 0 &&
-                        (admitted & SemanticsMask.Borrow) != 0)
-                    {
-                        var borrowing = (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 ? LoanRequirement.Uniq : LoanRequirement.Ref;
-                        this.Access(explicitPlan.Target, borrowing, node);
-                        this.PlaceAccess(explicitAdaptation.Left, borrowing, node);
-                    }
-                    else
-                    {
-                        this.Argument(new(explicitAdaptation.Left, explicitPlan.Source, explicitPlan.Source, ArgumentOperationKind.Value, ArgumentAdaptation.Exact), node);
-                    }
-
+                    var borrows = (explicitPlan.Operations & ((1U << (int)ConversionBinding.Borrow) | (1U << (int)ConversionBinding.ObjectUpcast))) != 0 &&
+                        (admitted & SemanticsMask.Borrow) != 0;
+                    this.PlaceAccess(explicitAdaptation.Left, borrows && (admitted & (SemanticsMask.Uniq | SemanticsMask.ObjUniq)) != 0 ? LoanRequirement.Uniq : LoanRequirement.Ref);
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Address } address:
-                    this.PlaceAccess(address.Left, LoanRequirement.Ref, node); // SPEC 5.4: an immediately ending borrow.
+                    this.PlaceAccess(address.Left, LoanRequirement.Ref); // SPEC 5.4: an immediately ending borrow.
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
-                    this.PlaceAccess(transfer.Left, LoanRequirement.Uniq, node); // A Move invalidates its Place.
+                    this.PlaceAccess(transfer.Left, LoanRequirement.Uniq); // A Move invalidates its Place.
                     break;
                 case ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } follow when !adapted && !this.IsOperand(node):
-                    this.PlaceAccess(follow, LoanRequirement.Ref, node);
+                    this.PlaceAccess(follow, LoanRequirement.Ref);
                     break;
                 case MatchKoto match when binding.TryGetMatch(match, out var plan) && plan is not null:
                     // SPEC 15.1.6: the Subject Place is accessed in the mode it grants.
-                    var mode = plan.Mode == SubjectMode.Exclusive ? LoanRequirement.Uniq : LoanRequirement.Ref;
-                    this.Access(plan.SubjectBorrow, mode, node);
-                    this.PlaceAccess(match.Expression, mode, node);
+                    this.PlaceAccess(match.Expression, plan.Mode == SubjectMode.Exclusive ? LoanRequirement.Uniq : LoanRequirement.Ref);
                     break;
                 case ForKoto loop when loop.Iteration is not { Decomposition.IsCurrent: true }:
-                    var access = loop.Mode == SubjectMode.Exclusive ? LoanRequirement.Uniq : LoanRequirement.Ref;
-                    this.Access(loop.Iterable.BoundType, access, node);
-                    this.PlaceAccess(loop.Iterable, access, node);
+                    this.PlaceAccess(loop.Iterable, loop.Mode == SubjectMode.Exclusive ? LoanRequirement.Uniq : LoanRequirement.Ref);
                     break;
                 case IdentifierNameKoto or MemberAccessKoto or IndexKoto when !adapted && !this.IsOperand(node):
-                    this.PlaceAccess(node, LoanRequirement.Ref, node);
+                    this.PlaceAccess(node, LoanRequirement.Ref);
                     break;
             }
         }
@@ -722,10 +596,10 @@ public sealed partial class Binding
         }
 
         // The access of a Place path in a mode: through each reference, pair layer or Slice that reaches it (the outermost
-        // one in the mode, the inner ones read), or to the static storage
-        // of a group variable. An accessor or user indexer Place is its synthesized call, selected by the mode; an owned
-        // local or parameter root needs no Loan, and a raw pointer path is unsafe and outside the checked summary.
-        private void PlaceAccess(Koto? node, LoanRequirement mode, Koto use)
+        // one in the mode, the inner ones read). An accessor or user indexer Place is its synthesized call, selected by the
+        // mode; the static storage of a group variable is reached at its read (Visit), and a local, parameter or raw pointer
+        // root makes no call.
+        private void PlaceAccess(Koto? node, LoanRequirement mode)
         {
             for (var depth = 0; node is not null && this.valid && depth < 256; depth++)
             {
@@ -734,7 +608,6 @@ public sealed partial class Binding
                 {
                     if (node.BoundSymbol is { Declaration: PropertyKoto { VariableKind: VariableKind.Var }, Scope.Owner: GroupKoto })
                     {
-                        this.AccessOrigin(BoundOrigin.Static, mode, use);
                         return;
                     }
 
@@ -748,7 +621,6 @@ public sealed partial class Binding
                 switch (node)
                 {
                     case ConversionKoto { ConversionBinding: ConversionBinding.Follow or ConversionBinding.PayloadFollow or ConversionBinding.PairFollow } follow:
-                        this.Access(follow.Left.BoundType, mode, use);
                         mode = LoanRequirement.Ref;
                         node = follow.Left;
                         break;
@@ -763,10 +635,8 @@ public sealed partial class Binding
                     case MemberAccessKoto { Right: NumberLiteralKoto }:
                     case MemberAccessKoto { BoundSymbol.Property.IsStored: true }:
                         var part = (BinaryKoto)node;
-                        var receiver = ElementAccess.AccessType(part.Left);
-                        if (IsReached(receiver))
+                        if (IsReached(ElementAccess.AccessType(part.Left)))
                         {
-                            this.Access(receiver, mode, use);
                             mode = LoanRequirement.Ref; // Reaching the reference reads its container.
                         }
 
@@ -778,119 +648,19 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.11.3: only preserves results classifies Loans; confined concerns the environment the summary reaches.
-        private void Access(BoundType? type, LoanRequirement mode, Koto use)
+        // An argument accesses its source Place as its operation does; the Place path selects synthesized calls.
+        private void Argument(in BoundArgumentOperation argument)
         {
-            if (type is null || !this.preserves)
-            {
-                return;
-            }
-
-            if (this.Type(type) is not { } layer)
-            {
-                this.Violate(EffectViolation.Limit, use); // An access whose Type cannot be instantiated has no classified Loan.
-                return;
-            }
-
-            // Reading through ref/uniq/T also reads through each inner reference.
-            while (this.valid)
-            {
-                if (TryPairLayer(layer, out var whole, out var target))
-                {
-                    // SPEC 8.1.1, 8.11: in the admitted borrow cases a pair layer is a borrow within its outer-Origin slot; an
-                    // application without a slot may be a borrow of any Loan.
-                    if ((binding.AdmittedSemantics(whole, binding.ConstraintScope(use)) & SemanticsMask.Borrow) != 0)
-                    {
-                        if (binding.OuterOrigin(layer) is { } slot)
-                        {
-                            this.AccessOrigin(slot, mode, use);
-                        }
-                        else
-                        {
-                            this.Violate(EffectViolation.UnclassifiedAccess, use);
-                        }
-                    }
-
-                    layer = target;
-                    continue;
-                }
-
-                if (layer.Origin is { } origin)
-                {
-                    this.AccessOrigin(origin, mode, use);
-                }
-
-                if (layer is not { Kind: BoundTypeKind.Semantics, Components.Count: 1 })
-                {
-                    return;
-                }
-
-                layer = layer.Components[0];
-            }
-        }
-
-        private void AccessOrigin(BoundOrigin origin, LoanRequirement mode, Koto use)
-        {
-            if (this.preserves && this.Conflicts(this.item, origin, mode, false, use))
-            {
-                this.Violate(EffectViolation.ResultLoan, use);
-            }
-        }
-
-        // Every Loan reachable from a Type: its Origin, its Origin arguments and those of its parts. An abstract part may
-        // reach any Loan, which conflicts with any item Loan.
-        private void Reachable(BoundType? type, LoanRequirement mode, Koto use)
-        {
-            if (type is null || type.IsAbstract)
-            {
-                this.Violate(EffectViolation.UnclassifiedAccess, use);
-                return;
-            }
-
-            if (type.Origin is { } origin)
-            {
-                this.AccessOrigin(origin, mode, use);
-            }
-
-            for (var i = 0; this.valid && i < type.OriginArguments.Count; i++)
-            {
-                this.AccessOrigin(type.OriginArguments[i], mode, use);
-            }
-
-            for (var i = 0; this.valid && i < type.Components.Count; i++)
-            {
-                this.Reachable(type.Components[i], mode, use);
-            }
-        }
-
-        // An argument accesses its source Place as its operation does; the Place path also selects synthesized calls.
-        private void Argument(in BoundArgumentOperation argument, Koto use)
-        {
-            var mode = Mode(argument.ParameterType);
-            switch (argument.Kind)
-            {
-                case ArgumentOperationKind.Borrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.StorageProjection or ArgumentOperationKind.PayloadProjection:
-                    this.Access(argument.ParameterType, mode, use);
-                    this.PlaceAccess(argument.Source, mode, use);
-                    break;
-                case ArgumentOperationKind.Reborrow or ArgumentOperationKind.ReferenceRead:
-                    this.Access(argument.ParameterType, mode, use);
-                    this.Access(argument.SourceType, mode, use);
-                    this.PlaceAccess(argument.Source, LoanRequirement.Ref, use);
-                    break;
-                default:
-                    this.Access(argument.Kind == ArgumentOperationKind.CopyRead ? argument.SourceType : null, LoanRequirement.Ref, use);
-                    this.PlaceAccess(argument.Source, LoanRequirement.Ref, use);
-                    break;
-            }
+            var borrows = argument.Kind is ArgumentOperationKind.Borrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.StorageProjection or ArgumentOperationKind.PayloadProjection;
+            this.PlaceAccess(argument.Source, borrows ? Mode(argument.ParameterType) : LoanRequirement.Ref);
         }
 
         private void Call(CallPlan call, Koto use)
         {
-            this.Argument(call.ReceiverOperation, use);
+            this.Argument(call.ReceiverOperation);
             for (var i = 0; i < call.ArgumentOperations.Length; i++)
             {
-                this.Argument(call.ArgumentOperations[i], use);
+                this.Argument(call.ArgumentOperations[i]);
             }
 
             if (this.contexts[this.context] is { } outer)
@@ -919,7 +689,7 @@ public sealed partial class Binding
         {
             for (var i = 0; i < call.ArgumentOperations.Length; i++)
             {
-                this.Argument(call.ArgumentOperations[i], use);
+                this.Argument(call.ArgumentOperations[i]);
             }
 
             var type = CallableCore(this.Type(call.CalleeType));
@@ -943,45 +713,13 @@ public sealed partial class Binding
                 return;
             }
 
+            // A forwarded abstract argument belongs to the caller's premises; an unsubstituted parameter belongs to the visited
+            // declaration. Neither substitutes a favorable concrete body for its universal proof.
             var signature = this.Type(call.DeclaredSignature);
-            var available = signature is null ? default : binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use);
-            if (signature is not null)
-            {
-                // A forwarded abstract argument belongs to the caller's premises; an unsubstituted parameter belongs
-                // to the visited declaration. Neither substitutes a favorable concrete body for its universal proof.
-                var outer = binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!);
-                available.Confined |= outer.Confined;
-                available.Preserves |= outer.Preserves;
-            }
-
-            if (this.preserves)
-            {
-                this.stepUse = use;
-                var own = this.OwnFieldPathReceiver();
-                this.stepUse = null;
-                if (this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!)))
-                {
-                    this.producers.Add((type, null, use, own));
-                }
-
-                // The bound excludes earlier results of this value only. Apply the same producer/path proof used
-                // for requirement delegation, so two callbacks of one Type cannot borrow each other's guarantee.
-                if (available.Preserves && this.delegable && own is not null && (!this.confined || available.Confined))
-                {
-                    this.candidates.Add((type, null, use, own, available.Confined));
-                    return;
-                }
-            }
-
-            if (!available.Confined)
+            if (signature is null || (!binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use).Confined &&
+                !binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!).Confined))
             {
                 this.Violate(EffectViolation.UnclassifiedCall, use);
-            }
-            else if (this.preserves)
-            {
-                // The receiver may carry arbitrary input authority. A bound on it excludes no Loan whose producer
-                // cannot be identified as an earlier call of that same value.
-                this.Reachable(type, call.ReceiverKind == SemanticsKind.Ref ? LoanRequirement.Ref : LoanRequirement.Uniq, use);
             }
         }
 
@@ -1061,7 +799,7 @@ public sealed partial class Binding
             if (symbol.CompilerFunction != CompilerFunctionKind.None)
             {
                 var effect = IntrinsicDisposition.Effect(symbol.CompilerFunction);
-                if (effect != CompilerFunctionEffect.Inputs && (effect != CompilerFunctionEffect.Environment || this.confined))
+                if (effect != CompilerFunctionEffect.Inputs)
                 {
                     this.Violate(effect == CompilerFunctionEffect.Environment ? EffectViolation.ExternalOperation : EffectViolation.Limit, null);
                 }
@@ -1106,9 +844,8 @@ public sealed partial class Binding
                 }
                 else
                 {
-                    // A Contract witness must satisfy its bounds from the slot contract, not an accidental body effect.
-                    var bounds = binding.AvailableEffectBounds(function, null, this.scope!);
-                    if ((this.confined && !bounds.Confined) || (this.preserves && !bounds.Preserves))
+                    // A Contract witness must satisfy its bound from the slot contract, not an accidental body effect.
+                    if (!binding.AvailableEffectBounds(function, null, this.scope!).Confined)
                     {
                         this.Violate(EffectViolation.UnboundedVirtual, function);
                     }
@@ -1121,15 +858,7 @@ public sealed partial class Binding
             {
                 // SPEC 22.6, 8.11.2: a foreign function accesses only what its arguments permit, which the arguments
                 // already accessed, and the environment, which confined excludes. Any other bodyless call is unknown.
-                if (!IsLibraryImport(function))
-                {
-                    this.Violate(EffectViolation.Limit, null);
-                }
-                else if (this.confined)
-                {
-                    this.Violate(EffectViolation.ForeignCall, null);
-                }
-
+                this.Violate(IsLibraryImport(function) ? EffectViolation.ForeignCall : EffectViolation.Limit, null);
                 return;
             }
 
@@ -1157,10 +886,9 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.11.4: a requirement call has the effects that the bounds available under its premises leave. With preserves
-        // results, a call of the one delegated requirement on the one stored value is covered (SPEC 8.11.5). Without
-        // confined, its environment effects are unknown, which a bound check counts as a conflict. Its inputs are affected
-        // in their parameters' modes, which only preserves results classifies.
+        // SPEC 8.11.4: a requirement call has the effects that the bounds available under its premises leave. Without confined,
+        // its environment effects are unknown, which a bound check counts as a conflict; its inputs are reached by path, which
+        // the arguments already accessed.
         private void Requirement(BindingSymbol symbol, CallPlan? call)
         {
             if (call is null || symbol.Declaration is not FunctionKoto requirement)
@@ -1174,290 +902,21 @@ public sealed partial class Binding
             var conforming = call.ConformingType is { } type ? this.Type(type) : null;
             var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
                 ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
-            var (confined, preserves) = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
+            var confined = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference).Confined;
             if (ReferenceEquals(requirement.BoundSymbol, this.published))
             {
                 return; // SPEC 4.9.6: the parameter-dependent effect the operation's row publishes.
             }
 
-            if (this.stepUse is { } use && (!confined || !preserves))
+            if (this.stepUse is { } use && !confined)
             {
-                var (local, held) = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract);
-                confined |= local;
-                preserves |= held;
-            }
-
-            var untried = false;
-            if (this.preserves)
-            {
-                // SPEC 8.11.5: every requirement call producing a value of an abstract part of the result is recorded.
-                var own = this.OwnFieldPathReceiver();
-                var producer = this.Type(call.ReturnType) is { } produced && this.MentionsItemPart(binding.ContractType(produced, this.scope!));
-                if (producer)
-                {
-                    this.producers.Add((requirement, reference, this.stepUse ?? symbol.Declaration, own));
-                }
-
-                // Virtual exclusions additionally need actual-object and bound-slot identity, which are not implemented: such a
-                // call retains its producer, and a conflict its exclusion might remove is a limit (plan rule 5).
-                if (preserves && this.delegable && own is not null)
-                {
-                    if (!requirement.IsVirtual)
-                    {
-                        this.candidates.Add((requirement, reference, this.stepUse!, own, confined));
-                        return;
-                    }
-
-                    untried = producer;
-                }
-
-                if (preserves && !requirement.IsVirtual)
-                {
-                    this.Delegation = this.delegable ? DelegationFailure.CallSite : DelegationFailure.Untraced;
-                }
+                confined = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract).Confined;
             }
 
             if (!confined)
             {
-                this.Violate(untried && !this.confined ? EffectViolation.Limit : requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, requirement.IsVirtual && this.stepUse is null ? requirement : null);
-                return;
+                this.Violate(requirement.IsVirtual ? EffectViolation.UnboundedVirtual : EffectViolation.UnboundedRequirement, requirement.IsVirtual && this.stepUse is null ? requirement : null);
             }
-
-            if (this.preserves)
-            {
-                var valid = this.valid;
-                var receiver = Receiver(call) is { } input ? this.Type(input) : null;
-                this.Reachable(receiver, Mode(receiver), symbol.Declaration);
-                for (var i = 0; this.valid && i < call.ArgumentOperations.Length; i++)
-                {
-                    if (call.ArgumentOperations[i] is { ParameterType: { } parameter } argument && argument.ParameterIndex != symbol.ReceiverIndex && (ReferenceTypes.IsBorrow(parameter) || parameter.IsObjectBorrow))
-                    {
-                        this.Reachable(this.Type(parameter), Mode(parameter), symbol.Declaration);
-                    }
-                }
-
-                if (untried && valid && !this.valid)
-                {
-                    this.Violation = EffectViolation.Limit;
-                }
-            }
-        }
-
-        // SPEC 8.11.5: a result keeps Loans only through its abstract parts when its other parts carry no Origin. A value of
-        // such a part is produced only by a requirement call, an argument, or a Field that keeps one across calls, so a call of
-        // d on a value w reached from self through a Field path in the implementation's own body is compared with no Loan of
-        // an earlier result when every producer is d on w and the body replaces no value on the path to w. Candidates are
-        // judged after the whole summary is visited, when every producer is known.
-        private void ValidateDelegations()
-        {
-            this.scan ??= new(this);
-            this.replacements.Clear();
-            if (this.implementation!.Body is { } body)
-            {
-                this.scan.Visit(body);
-            }
-
-            if (this.implementation.ExpressionBody is { } expression)
-            {
-                this.scan.Visit(expression);
-            }
-
-            for (var c = 0; this.valid && c < this.candidates.Count; c++)
-            {
-                var candidate = this.candidates[c];
-                var failure = this.DelegationFailureOf(candidate.Requirement, candidate.Contract, candidate.Receiver, out var blocking);
-                if (failure != DelegationFailure.None)
-                {
-                    // The call's effects are then those of SPEC 8.11.4, which reach every Loan of the abstract value.
-                    this.Delegation = failure;
-                    this.DelegationNode = blocking;
-                    this.site = null;
-                    this.stepUse = candidate.Call;
-                    this.Violate(candidate.Confined ? EffectViolation.UnclassifiedAccess : EffectViolation.UnboundedRequirement, candidate.Call);
-                }
-            }
-        }
-
-        private DelegationFailure DelegationFailureOf(object requirement, BindingSymbol? contract, Koto receiver, out Koto? blocking)
-        {
-            for (var i = 0; i < this.replacements.Count; i++)
-            {
-                if (this.IsPathPrefix(this.replacements[i].Path, receiver))
-                {
-                    blocking = this.replacements[i].Node;
-                    return DelegationFailure.Replaced;
-                }
-            }
-
-            var function = this.implementation!;
-            var receiverIndex = function.BoundSymbol?.ReceiverIndex ?? -1;
-            for (var i = 0; i < function.Parameters.Count; i++)
-            {
-                if (i != receiverIndex && function.Parameters[i].Type.BoundType is { } parameter && this.MentionsItemPart(binding.ContractType(parameter, this.scope!)))
-                {
-                    blocking = function.Parameters[i].Type;
-                    return DelegationFailure.Argument;
-                }
-            }
-
-            for (var i = 0; AdtDef.IsStruct(this.receiverType) && i < AdtDef.Count(this.receiverType!); i++)
-            {
-                if (AdtDef.FieldType(this.receiverType!, i) is not { } stored || this.MentionsItemPart(binding.ContractType(stored, this.scope!)))
-                {
-                    blocking = AdtDef.Field(this.receiverType!, i);
-                    return DelegationFailure.Untraced;
-                }
-            }
-
-            for (var i = 0; i < this.producers.Count; i++)
-            {
-                var producer = this.producers[i];
-                var failure = !ReferenceEquals(producer.Requirement, requirement) || !ReferenceEquals(producer.Contract, contract) ? DelegationFailure.OtherRequirement
-                    : producer.Receiver is not { } path || this.SelfPathDepth(path) != this.SelfPathDepth(receiver) || !this.IsPathPrefix(path, receiver) ? DelegationFailure.OtherValue
-                    : DelegationFailure.None;
-                if (failure != DelegationFailure.None)
-                {
-                    blocking = producer.Call;
-                    return failure;
-                }
-            }
-
-            blocking = null;
-            return DelegationFailure.None;
-        }
-
-        // The receiver path of a requirement call made on a value reached from self through a Field path, in the implementation's
-        // own body; null otherwise.
-        private Koto? OwnFieldPathReceiver()
-        {
-            if (this.context != 0 || this.stepUse is not InvocationKoto call || !this.IsOwnBody(call))
-            {
-                return null;
-            }
-
-            var receiver = call.BoundValueCall?.CalleeValue ?? (call.Method as MemberAccessKoto)?.Left;
-            while (receiver is ConversionKoto { ConversionBinding: ConversionBinding.Borrow } borrow)
-            {
-                receiver = KotoHelper.UnwrapParentheses(borrow.Left);
-            }
-
-            return this.SelfPathDepth(receiver) >= 1 ? receiver : null;
-        }
-
-        // Whether a node is in the implementation's own body rather than in a function literal inside it.
-        private bool IsOwnBody(Koto node)
-        {
-            for (var parent = node.Parent; parent is not null; parent = parent.Parent)
-            {
-                if (parent is FunctionKoto function)
-                {
-                    return ReferenceEquals(function, this.implementation);
-                }
-            }
-
-            return false;
-        }
-
-        // The number of Fields on a path from the implementation's receiver `self`, as in `self.inner`; -1 when the node is not
-        // such a path. Parentheses are transparent.
-        private int SelfPathDepth(Koto? node)
-        {
-            var depth = 0;
-            node = node is null ? null : KotoHelper.UnwrapParentheses(node);
-            while (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } access)
-            {
-                depth++;
-                node = KotoHelper.UnwrapParentheses(access.Left);
-            }
-
-            return node is IdentifierNameKoto { BoundSymbol: { Kind: BindingSymbolKind.Parameter, Slot: var slot, Declaration: var owner } } &&
-                ReferenceEquals(owner, this.implementation) && this.implementation?.BoundSymbol is { ReceiverIndex: >= 0 and var index } && slot == index ? depth : -1;
-        }
-
-        // Whether the self path `prefix` is `path` or one of the paths it passes through.
-        private bool IsPathPrefix(Koto prefix, Koto path)
-        {
-            var shorter = this.SelfPathDepth(prefix);
-            var longer = this.SelfPathDepth(path);
-            if (shorter < 0 || longer < shorter)
-            {
-                return false;
-            }
-
-            path = KotoHelper.UnwrapParentheses(path);
-            for (; longer > shorter; longer--)
-            {
-                path = KotoHelper.UnwrapParentheses(((MemberAccessKoto)path).Left);
-            }
-
-            prefix = KotoHelper.UnwrapParentheses(prefix);
-            for (; shorter > 0; shorter--)
-            {
-                if (!ReferenceEquals(prefix.BoundSymbol, path.BoundSymbol))
-                {
-                    return false;
-                }
-
-                prefix = KotoHelper.UnwrapParentheses(((MemberAccessKoto)prefix).Left);
-                path = KotoHelper.UnwrapParentheses(((MemberAccessKoto)path).Left);
-            }
-
-            return true;
-        }
-
-        // Collects the abstract parts of the result Type; false when another part carries an Origin, whose Loans may come from
-        // anywhere.
-        private bool CollectItemParts(BoundType type)
-        {
-            if (type.IsAbstract)
-            {
-                if (!this.itemParts.Contains(type))
-                {
-                    this.itemParts.Add(type);
-                }
-
-                return true;
-            }
-
-            if (type.Origin is not null || type.OriginArguments.Count != 0)
-            {
-                return false;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (!this.CollectItemParts(type.Components[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        // Whether a value of `type` may hold a value of an abstract part of the result. The root of a projection is not a part
-        // of its values.
-        private bool MentionsItemPart(BoundType type)
-        {
-            if (this.itemParts.Contains(type))
-            {
-                return true;
-            }
-
-            if (IsProjection(type))
-            {
-                return false;
-            }
-
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (this.MentionsItemPart(type.Components[i]))
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
 
         private void Specialization(FunctionKoto function, CallPlan call)
@@ -1843,136 +1302,6 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.11.5: a Field `s/J during o` borrows the Storage of J, and an associated Type of J without Origin parameters
-        // cannot name that Storage, so it keeps no Loan of o even though o is an Origin of the conforming Type.
-        private void StoredValues(BoundType? receiver)
-        {
-            this.storedValues.Clear();
-            if (!AdtDef.IsStruct(receiver))
-            {
-                return;
-            }
-
-            for (var i = 0; i < AdtDef.Count(receiver!); i++)
-            {
-                if (AdtDef.FieldType(receiver!, i) is { Kind: BoundTypeKind.Semantics, Semantics: not SemanticsKind.Owner, Components: [var value], Origin: { } storage })
-                {
-                    this.storedValues.Add((value, storage));
-                }
-            }
-        }
-
-        // Whether `origin` is the Loan of the Storage of the stored value whose associated Type `type` is.
-        private bool IsStoredValueStorage(BoundType type, BoundOrigin origin)
-        {
-            if (!IsProjection(type) || type.OriginArguments.Count != 0)
-            {
-                return false;
-            }
-
-            var root = type.Components[0];
-            for (var i = 0; i < this.storedValues.Count; i++)
-            {
-                if (ReferenceEquals(this.storedValues[i].Value, root) && ReferenceEquals(this.storedValues[i].Storage, origin))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        // Whether an access conflicts with a Loan the item may keep. Below a shared layer an item keeps shared Loans only,
-        // so only an exclusive access conflicts there; an abstract part may keep any Loan of the conforming Type's Origins.
-        private bool Conflicts(BoundType type, BoundOrigin accessed, LoanRequirement mode, bool shared, Koto use)
-        {
-            var exclusive = mode == LoanRequirement.Uniq;
-            if (type.Origin is { } retained && (exclusive || (!shared && type.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq)) &&
-                this.SharesDependency(accessed, retained, use))
-            {
-                return true;
-            }
-
-            for (var i = 0; i < type.OriginArguments.Count; i++)
-            {
-                if ((exclusive || (!shared && type.Symbol?.Schema?.Origins[i].LoanRequirement == LoanRequirement.Uniq)) &&
-                    this.SharesDependency(accessed, type.OriginArguments[i], use))
-                {
-                    return true;
-                }
-            }
-
-            if (type.IsAbstract && (exclusive || !shared))
-            {
-                if (type.Origin is { } outer && this.SharesDependency(accessed, outer, use))
-                {
-                    return true;
-                }
-
-                for (var i = 0; i < this.selfOrigins.Count; i++)
-                {
-                    if (!this.IsStoredValueStorage(type, this.selfOrigins[i]) && this.SharesDependency(accessed, this.selfOrigins[i], use))
-                    {
-                        return true;
-                    }
-                }
-
-                if (accessed.Kind == OriginKind.Static)
-                {
-                    return true;
-                }
-            }
-
-            if (IsProjection(type))
-            {
-                return false; // The root of a projection is not a part of its values; the checks above cover it.
-            }
-
-            shared |= type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef;
-            for (var i = 0; i < type.Components.Count; i++)
-            {
-                if (this.Conflicts(type.Components[i], accessed, mode, shared, use))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool SharesDependency(BoundOrigin accessed, BoundOrigin retained, Koto use)
-        {
-            if (binding.ProvesOriginOutlives(accessed, retained, use) && binding.ProvesOriginOutlives(retained, accessed, use))
-            {
-                return true;
-            }
-
-            // SPEC 15.6.4: an intersection retains every possible source, not only the common lifetime.
-            if (accessed.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < accessed.Operands.Count; i++)
-                {
-                    if (this.SharesDependency(accessed.Operands[i], retained, use))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            if (retained.Kind == OriginKind.Intersection)
-            {
-                for (var i = 0; i < retained.Operands.Count; i++)
-                {
-                    if (this.SharesDependency(accessed, retained.Operands[i], use))
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
-        }
-
         private CallPlan NextCall()
         {
             if (this.callCount == this.calls.Count)
@@ -2049,76 +1378,6 @@ public sealed partial class Binding
             this.contexts.Add(call);
             this.contextIndex.Add(call, this.contexts.Count - 1);
             return this.contexts.Count - 1;
-        }
-
-        // Collects the replacements of values on self paths in the own body: a write, a Move, an exclusive borrow, or an
-        // exclusive acquisition by a call other than a requirement call's receiver, any of which may replace, swap or move the
-        // value (SPEC 8.11.5). Nested function literals are separate bodies.
-        private sealed class BodyScan(EffectSummary summary) : KotoVisitor
-        {
-            public override void Visit(Koto node)
-            {
-                if (node is FunctionKoto or DeclarationContainerKoto)
-                {
-                    return;
-                }
-
-                switch (node)
-                {
-                    case BinaryKoto assignment when IsAssignment(assignment.Akind):
-                        this.Replace(assignment.Left, node);
-                        break;
-                    case ConversionKoto { ConversionBinding: ConversionBinding.Transfer } transfer:
-                        this.Replace(transfer.Left, node);
-                        break;
-                    case ConversionKoto { ConversionBinding: ConversionBinding.Borrow, BoundType.Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq } borrow:
-                        if (borrow.Parent is not InvocationKoto { BoundValueCall: { } own } || !ReferenceEquals(own.CalleeValue, borrow))
-                        {
-                            this.Replace(borrow.Left, node);
-                        }
-
-                        break;
-                    case InvocationKoto { BoundCall: { } call }:
-                        // A requirement call's receiver is the called value itself, whose own bound covers its effects.
-                        var requirement = call.Target.Declaration is FunctionKoto { IsRequirement: true };
-                        if (!requirement && IsExclusive(call.ReceiverOperation.ParameterType))
-                        {
-                            this.Replace(call.Receiver, node);
-                        }
-
-                        for (var i = 0; i < call.ArgumentOperations.Length; i++)
-                        {
-                            if (IsExclusive(call.ArgumentOperations[i].ParameterType) && !(requirement && call.ArgumentOperations[i].ParameterIndex == call.Target.ReceiverIndex))
-                            {
-                                this.Replace(call.ArgumentOperations[i].Source, node);
-                            }
-                        }
-
-                        break;
-                    case InvocationKoto { BoundValueCall: { } callable }:
-                        for (var i = 0; i < callable.ArgumentOperations.Length; i++)
-                        {
-                            if (IsExclusive(callable.ArgumentOperations[i].ParameterType))
-                            {
-                                this.Replace(callable.ArgumentOperations[i].Source, node);
-                            }
-                        }
-
-                        break;
-                }
-
-                node.VisitChildren(this);
-            }
-
-            private static bool IsExclusive(BoundType? type) => type?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
-
-            private void Replace(Koto? path, Koto node)
-            {
-                if (path is not null && summary.SelfPathDepth(path) >= 0)
-                {
-                    summary.replacements.Add((path, node));
-                }
-            }
         }
     }
 

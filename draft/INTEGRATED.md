@@ -520,7 +520,8 @@ adopted S1 the same day (「S1採用します」, DECISIONS R4-M39) and confirme
     the children of §15.6.3. "Storage the body does not own" is decided as A3's `Φ_E` is: a reference from a parameter
     or capture, static or raw storage, or a call result its contract ties to no argument. Paths include base subobject
     steps, and examples write a dereference as `.*`.
-  - Not integrated: S2, S3, S5, the root-most kill and relaxation (c) (not adopted).
+  - Not integrated: S2 (closed as 完了 on 2026-10-22, superseded by Abstract Calls Reach by Paths; DECISIONS R4-M106), S3, S5,
+    the root-most kill and relaxation (c) (not adopted).
 - Principles. One Concept, One Canonical Form: one Loan identity (the Borrow site), one Place name (the access path), one
   carrying unit (the holder) and one retention unit (the argument). Local Reasoning: a verdict depends on one body's
   paths, published contracts and finite facts; no clause needs value identity or unbounded Places. Explicit Semantics:
@@ -680,7 +681,8 @@ ending) and **P12**.
   its questions OQ1–OQ13 at once (its status line and §2.2 record the outcomes; DECISIONS R4-M74). It is a working plan: no
   section is integrated into SPEC or IMPL, and no text is frozen.
 - Its specification work goes separately, each as an explicit revision recorded here when it lands: S3's SPEC 15.3.6
-  clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3); S5's
+  clarification before 2a0-3b (OQ12); S2's revision and integration (2f-S2, if round 2x-P6 shows it sound, OQ3; superseded:
+  S2 closed on 2026-10-22, DECISIONS R4-M106); S5's
   proposal (2x-S5) and, after its review, its SPEC integration (OQ13); each family's approved losses as SPEC clauses (OQ8).
   Adoption implies no implementation support.
 
@@ -1032,13 +1034,77 @@ The owner asked on 2026-10-22 for a scrutiny of design C (unify concrete and abs
 rules, including the removal of `preserves results`), then: 「推奨の通り修整し、bの移行方法で進めます。正式な変更案を書き、独立レビューにかけて下さい」,
 and after the review: 「Q1 (a) P12も削除、Q2 (a) CallEffectConflict_Kdを廃止、で採択します。提案をdevにコミット・pushしてください。」
 Two independent reviewers (soundness and design; SPEC text, completeness and plan) reviewed it in three rounds; every finding is
-applied (its §13).
+applied (its §13). The owner then instructed the R4 planning session: 「この計画書を採用し、処理してください。3回の独立レビューに通っています。処理の流れは、推奨の通りでOKです。」
 
-- [Abstract Calls Reach by Paths](Proposals/2026-10-22%20Abstract%20Calls%20Reach%20by%20Paths.md): 一部取り込み (open, adopted,
-  intake only). Deletes SPEC 8.11.4 rule 1's "an abstract input may reach every Loan its Origins may denote" and everything that
-  excused or completed it: `preserves results` (8.11.3), rule 3, 8.11.5 delegation, the Callable and slot variants, Iterator's
-  bound and P12 (15.6.3:571, 15.6.4:595); `confined` stays the only effect bound. Planned mapping: its §5 (8.11 renumbered,
-  6.4.6, 12.7.1, 15.6, 15.6.3, 15.6.4, 16.3.3, 22.2, Appendices D, E, F, LIBRARY), integrated by its unit U0, which also moves it
-  to `Changes` and records its DECISIONS entries (its §10). Migration (b): a freeze exception for the old Analysis.
-- On U0, `Proposals/2026-10-16 Preserves Results by Receiver Place.md` (S2) moves to `Obsolete` as 完了 (nothing integrated).
-- Nothing is integrated yet; no support is claimed. SPECJ (being retranslated on `codex/specj-from-source`) predates this change.
+- [Abstract Calls Reach by Paths](Changes/2026-10-22%20Abstract%20Calls%20Reach%20by%20Paths.md): 取り込み済み (2026-10-22,
+  unit U0). Adopted with Q1 (a), Q2 (a) and migration (b) (DECISIONS R4-M106). An abstract call reaches what a concrete call
+  reaches; SPEC 8.11.4 rule 1's "an abstract input may reach every Loan its Origins may denote" and everything that excused or
+  completed it are deleted, and `confined` is the only effect bound. Mapping by its §5 site:
+  - §5.1 → §8.11 (the vocabulary is `confined`). §5.2 → §8.11.1's example (`QuietTake` with `confined`; `takeTwo` moved) and its
+    deleted Take-only sentence. §5.3 → §8.11.2's two unclassifiable rows ("a conflict under `confined`") and its foreign-call
+    sentence.
+  - §5.4 → §8.11.3 (`preserves results`) deleted; §8.11.4 renumbered §8.11.3 "Checking and use": rule 1 without the Origin reach
+    and with "As for any call, an input reaches a Loan only through these Places", rule 3 deleted, "an error at the call", and
+    the Take-only `takeTwo` example after `Feed` with its sentence on a result whose Type depends on the receiver Loan.
+  - §5.5 → §8.11.5 (delegation, `Drain`, `Merge`) deleted; §8.11.6 renumbered §8.11.4: `confined` at most once, "the
+    Constraint's bound", the table's slot and requirement rows, "rules 1 and 2 of §8.11.3".
+  - §5.6 → §15.6's Loans link; §15.6.3: P12's sentence deleted, the region-splitting obligation citing §5.2.2's promise, the
+    `takeFirst` example with `h.1 = 5` valid, the kept-result sentence for concrete and abstract callees; §15.6.4: P12's second
+    sentence deleted.
+  - §5.7 → §6.4.6 (rules 1 and 2 of §8.11.3; the slot `preserves results` paragraph deleted). §5.8 → §12.7.1's anchor, its text
+    unchanged; §16.3.3's generic destruction sentence (a destruction that may observe a Loan, with unknown environment effects).
+  - §5.9 → §22.2.1 (Iterator's `effect` line deleted; the LendingIterator bullet), §22.2.2's adapter sentence, §22.2.3's second
+    paragraph and `nextPair`'s comment. §5.10 → Appendix D.4's vocabulary item, Appendix E's Effect bound row (the `preserves
+    results` row deleted), Appendix F.3.2's `effect` row and F.6.2's `EffectBound := "confined"`. §5.11 → LIBRARY's Iterator
+    contract, its paragraph (citing §22.2.3) and the library-file sentence; IMPL Appendix A's anchor.
+  - Anchors, with their link text, in `docs/spec`, `docs/impl` and `docs/LIBRARY.md`: `#8114-checking-and-use` → `#8113-checking-and-use`
+    (15 links before, 13 after the deletions of §8.11.5 and P12's sentence, plus 2 new in §15.6.3 and §22.2.3) and
+    `#8116-callable-effect-bounds` → `#8114-callable-effect-bounds` (10 before, 9 after); the 6 links to `#8113-preserves-results`
+    went with their text or were replaced (§15.6.3, §22.2.3, LIBRARY). Only frozen draft files still name the old anchors.
+    Numeric citations outside SPEC follow in U3.
+  - §0–§4 and §6–§9 → the rationale, soundness argument, examples, verdicts, Principles and rejected options (DECISIONS R4-M106);
+    §10 → DECISIONS R4-M106 and its superseded entries, COMPILER_ARCHITECTURE's freeze exception, PLAN (§3's position, §6 item 5,
+    G78, G106) and this record; §11 → units U1–U5 (PLAN, DECISIONS R4-M106); §12–§13 → its record. Appendix A stays as the record
+    of Q1 (b), not adopted. Every §5 item is integrated; nothing is rejected. The file moved to `Changes` with only its status
+    paragraph replaced.
+  - Test data the intake invalidates (U0): `tests/diagnostics/spec-cases.json` loses `8.11.3-preserves-results` (its block is
+    gone), renames `8.11.6-callable-effect-bounds` to `8.11.4-callable-effect-bounds`, and drops `15.6.3-abstract-descent`'s
+    `h.1 = 5` variant with its Old (d) note, the case taking family F3 (Calls: rule 9's descent; landed) for the retired F6;
+    `classification.tsv`'s clause cells of `a4-x2` (8.11.3), `a4-callable-preserves` (8.11.4) and `a4-binding-limit` (8.11 F.6.2).
+    The case `8.11.3-checking-and-use` for `takeTwo` comes with U1, since the old Analysis rejects it until then.
+  - Principles (its §8): one call rule for concrete and abstract callees; a call is judged by its arguments, its published
+    contract and its environment effects, with no relation between calls; a result's dependence on its receiver is stated by its
+    Type, retention by the contract and the unsafe obligation by §5.2.1 and §5.2.2; a rejection is an ordinary located Loan conflict.
+- Safety of E8, restated without P12 (its §4.3; the 2026-10-17 entry above stays as written). That note assumes, "as §15.6.3 and
+  P12 make true", that every value carrying a Loan `L` also carries `L`'s parent Loans. Without P12 the assumption rests on
+  §15.6.3's Borrow rule (the values of a child Loan carry the Loans of every reference dereferenced to reach it) and §15.6.4's
+  per-argument retention (a result that may retain an Origin inside a borrowed argument's referent Type carries every Loan a read
+  through the argument carries). A descending result carries no child Loan of its receiver's route, since the call's receiver
+  Loan is excluded, so it carries no `L` without `L`'s parents (H). The note's other steps are unchanged.
+- Unsafe audit (its §4.4; the test, milestone and kind-B halves; the library half is the proposal's own reading). Searched for code
+  that acts, through the authority a raw lend was taken from, on a Place it lent (a raw borrow of a raw Place whose result leaves
+  the body by return, store or capture, then a raw or safe access, Take, Move, reset, clear, the Type's `drop` or a re-lend in
+  another method while the lent Origin may be used), in code that only abstract calls reach.
+  - Kind-B programs: the 197 ledger sources of the affected rows (effect-bound, `IncompatibleImplementation`, `CallEffectConflict`
+    and Binding `Unsupported` requirements in the mir ledger `artifacts/verify/mir-diff/bu18-head`) and the 16 test classes its §7
+    names, grepped for raw constructs, every hit read. Hits: four ledger sources and the classes' `confined` cases (a raw write
+    through `self`, integer-made pointers, a pointer to a mutable static, a foreign call) and `Counted`'s body-local raw borrow;
+    none lends a raw Place out of its body.
+  - Tests and milestones generally: all 52,225 C# string-literal fragments of `tests/xUnitTest` (adjacent literals joined) and the
+    44 milestones, filtered mechanically for an unsafe context with a borrow of a dereferenced, indexed or followed Place: 22
+    C# fragments, Milestones 7 and 27, and one interpolated borrow, each read. Raw lends that leave their body: `FunctionDefaultTest`'s `leak` (two
+    programs), `LoanFieldTest`'s `Window.get`, `RawPlaceAccessTest`'s `get` (three forms), `view` and `generic<T>`, and
+    `MirBorrowsTest.Defaults`' `rawRef` (into a default). Each is called concretely or only bound; none is a conformance witness,
+    override, Closure or runtime-Contract implementation, and none is followed by code acting on the lent Place through the lend's
+    authority (`Window.get` re-lends shared only).
+  - Native fixtures and milestones that run a kind-B program: none (a fixture needs default-pipeline acceptance, which no kind-B
+    program has; the 39 fixture emission sites of those classes run accepted programs, two with unsafe code that reads; the
+    milestones change no verdict, and Milestones 7 and 27's `unsafe` blocks fill `noinit` arrays through safe borrows).
+  - Result: no code found that only abstract calls reach and that acts on a Place it lent; nothing in the tests, milestones or
+    kind-B programs relied on rule 1's reach.
+- `Obsolete/2026-10-16 Preserves Results by Receiver Place.md` (S2): 完了 (closed 2026-10-22). Nothing was integrated; it existed to
+  excuse the reach the proposal above deletes (DECISIONS R4-M106), which also answers the open questions of its revision sketch
+  `Sketches/A5 Step 2/preserves-revision.md` (G3 moot, G4 by §16.3.3). The file moved with only its status sentence replaced.
+- Integrated: the proposal's §5 (SPEC §6.4.6, §8.11, §12.7.1, §15.6, §15.6.3, §15.6.4, §16.3.3, §22.2, Appendices D, E and F,
+  LIBRARY, IMPL Appendix A). No support is claimed: the default pipeline changes with U1 and U2, STATUS with U2. Not refreshed:
+  SPECJ (being retranslated on `codex/specj-from-source`, whose source revision predates this change) and GUIDE.

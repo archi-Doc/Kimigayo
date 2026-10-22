@@ -86,11 +86,6 @@ public static partial class Parser
         {
             reader.Advance();
         }
-        else if (reader.IsCurrentIdentifier(Constants.PreservesKeyword) && reader.IsIdentifierToken(reader.PeekToken(1), Constants.ResultsKeyword))
-        {
-            reader.Advance(2);
-            bound = EffectBoundKind.PreservesResults;
-        }
         else
         {
             // The vocabulary is closed; the rest of the line belongs to the rejected bound.

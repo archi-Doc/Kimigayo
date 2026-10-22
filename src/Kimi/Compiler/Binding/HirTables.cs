@@ -200,6 +200,12 @@ internal struct PlanRow
     internal byte Mode;
     internal bool Flag;
 
+    /// <summary>The Adjust by which the earlier of two calls of one consumer takes the node where the two take it by different Adjusts, whose
+    /// later one the Adjust column keeps: a compound update's getter, beside its setter (SPEC 13.7.2, 11.3; DECISIONS R4-M109). Default
+    /// otherwise: the publisher writes it at each call input of each pass. A node three or more calls take (a <c>$tryWrite</c>'s storage) has
+    /// no defined value here (PLAN G103).</summary>
+    internal HirAdjust Adjust;
+
     // An Int128 would align the row to 16 bytes; two halves keep it at 48.
     private bool folded;
     private ulong foldedHigh;

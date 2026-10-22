@@ -164,6 +164,17 @@ internal sealed class OriginPremiseClosure
         return node;
     }
 
+    /// <summary>Gets an expression's node without interning it.</summary>
+    /// <param name="origin">The expression.</param>
+    /// <param name="node">The node, when the graph names the expression.</param>
+    /// <returns>Whether the graph names it.</returns>
+    internal bool TryNode(BoundOrigin origin, out int node) => this.index.TryGetValue(origin, out node);
+
+    /// <summary>Whether the last closure reached a node: it is entailed to outlive that closure's target (a body's oracle, 2a0-D §4).</summary>
+    /// <param name="node">The node.</param>
+    /// <returns>Whether it was reached.</returns>
+    internal bool Reached(int node) => this.reachedStamp[node] == this.stamp;
+
     /// <summary>Adds an unnamed node, neither top-like nor a meet: Origins no expression names, which only its edges relate.</summary>
     /// <returns>The node.</returns>
     internal int Node()
