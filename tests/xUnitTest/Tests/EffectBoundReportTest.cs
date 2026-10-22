@@ -52,8 +52,7 @@ public class EffectBoundReportTest
     {
         var c = MinimalEmissionTest.Analyze(Source + "contract StableSource: Source\n    func size(self: ref/Self) -> isize\n        effect confined\n" + Main);
         var contracts = c.Kotonoha.RootKoto.NestedContainers.OfType<ContractKoto>().ToDictionary(static x => x.SymbolOf()!.Name, static x => x.SymbolOf()!.Contract!);
-        Assert.Equal(EffectBoundKind.Confined, Assert.Single(contracts["Source"].EffectBounds).Bound);
-        var own = Assert.Single(contracts["StableSource"].EffectBounds);
-        Assert.Equal(("size", EffectBoundKind.Confined), (own.Requirement.Name, own.Bound));
+        Assert.Single(contracts["Source"].EffectBounds);
+        Assert.Equal("size", Assert.Single(contracts["StableSource"].EffectBounds).Requirement.Name);
     }
 }

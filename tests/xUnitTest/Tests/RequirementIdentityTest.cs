@@ -114,13 +114,13 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a later call of either bound requirement of one Contract reaches
+    // SPEC 8.11.3 (the adopted proposal Abstract Calls Reach by Paths): a later call of either requirement of one Contract reaches
     // its receiver's Places by path and no Loan the earlier result keeps; the call of the other requirement (`i64`) was a
     // CallEffectConflict_Kd before the adoption, which nothing excluded.
     [Theory]
     [InlineData("i32")]
     [InlineData("i64")]
-    public void LaterCallsOfEitherBoundRequirementAreValid(string second)
+    public void LaterCallsOfEitherRequirementAreValid(string second)
     {
         var source = "contract P<K, R>\n    func take(self: uniq/Self, key: K) -> R\n" +
             "contract Q<R>: P<i32, R>, P<i64, R>\n" +

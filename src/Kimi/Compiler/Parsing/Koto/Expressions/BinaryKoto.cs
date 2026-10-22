@@ -282,7 +282,7 @@ public sealed class IsKoto : BinaryKoto, IOriginClauseOwner
     {
     }
 
-    /// <summary>Gets the effect clauses attached to this Callable Constraint (SPEC 8.11.6).</summary>
+    /// <summary>Gets the effect clauses attached to this Callable Constraint (SPEC 8.11.4).</summary>
     public IReadOnlyList<EffectBoundKoto> EffectBounds => (IReadOnlyList<EffectBoundKoto>?)this.effectBounds ?? [];
 
     /// <summary>Gets a value indicating whether this is an associated-type constraint.</summary>

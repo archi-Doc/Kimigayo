@@ -20,7 +20,6 @@ public sealed partial class Binding
     internal void ReportVirtualEffectViolation(FunctionKoto function, DiagnosticRequirement requirement)
     {
         var violation = this.virtualEffectViolations![function];
-        var spelling = EffectBoundKoto.Spelling(violation.Bound.Bound);
         var related = violation.Node is { } effect && !ReferenceEquals(effect, violation.Site)
             ? new (string Role, Koto At, string? Label)[] { ("declaration", violation.Original, "the original virtual slot"), ("bound", violation.Bound, "the inherited public bound"), ("effect", effect, "the violating effect") }
             : [("declaration", (Koto)violation.Original, (string?)"the original virtual slot"), ("bound", violation.Bound, "the inherited public bound")];
@@ -28,7 +27,7 @@ public sealed partial class Binding
             requirement,
             DiagnosticCode.UnsatisfiedEffectBound_Kd,
             at: violation.Site,
-            evidence: [$"{spelling}: {EffectCause(violation.Kind)}"],
+            evidence: [$"{Constants.ConfinedKeyword}: {EffectCause(violation.Kind)}"],
             note: "Every original and override must satisfy the slot's public bounds, including unused declarations; effects that cannot be classified cannot prove the guarantee",
             related: related);
     }
@@ -45,7 +44,7 @@ public sealed partial class Binding
             }
 
             var original = function.IsVirtual ? function : this.virtualOverrides.TryGetValue(function, out var entry) ? entry.Slot.Original : null;
-            if (original is null || !this.virtualEffectBounds.TryGetValue(original, out var bounds) || bounds.Confined is not { } bound)
+            if (original is null || this.virtualEffectBounds.GetValueOrDefault(original) is not { } bound)
             {
                 continue;
             }

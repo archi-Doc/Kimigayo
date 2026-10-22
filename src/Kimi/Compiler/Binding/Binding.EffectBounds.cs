@@ -62,11 +62,11 @@ public sealed partial class Binding
             (this.callableEffectViolations.TryGetValue(use, out var callable) && callable.Kind == EffectViolation.Limit) ||
             (use is FunctionKoto function && this.virtualEffectViolations?.TryGetValue(function, out var slot) == true && slot.Kind == EffectViolation.Limit);
 
-    // SPEC 8.11.4: a conformance checks the complete transitive effect summary of every witness against the bounds that
+    // SPEC 8.11.3: a conformance checks the complete transitive effect summary of every witness against the bounds that
     // its Contract and the ancestors declare for the requirement; an effect it cannot classify is a conflict (SPEC 8.6).
     // Binding checks the environment the implementation reaches and the calls it makes. Which values it destroys is known only
     // from the cleanups ownership analysis plans, so destruction effects are checked afterwards (ValidateDestructionEffects),
-    // as are the selected uses of bounded Callable clauses, which this pass enumerates (SPEC 8.11.6).
+    // as are the selected uses of bounded Callable clauses, which this pass enumerates (SPEC 8.11.4).
     private void ValidateEffectBounds()
     {
         this.effectViolations?.Clear();
@@ -106,7 +106,7 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (this.DeclaredEffectBound(shape, witness.Identity, EffectBoundKind.Confined) is null ||
+            if (this.DeclaredEffectBound(shape, witness.Identity) is null ||
                 (destructions && witness.Implementation.Declaration is FunctionKoto implementation && this.compilation.Ownership.TemplateBody(implementation, false) is null))
             {
                 continue;
@@ -716,8 +716,8 @@ public sealed partial class Binding
             // A forwarded abstract argument belongs to the caller's premises; an unsubstituted parameter belongs to the visited
             // declaration. Neither substitutes a favorable concrete body for its universal proof.
             var signature = this.Type(call.DeclaredSignature);
-            if (signature is null || (!binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use).Confined &&
-                !binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!).Confined))
+            if (signature is null || (!binding.AvailableCallableEffects(type, signature, call.ReceiverKind, use) &&
+                !binding.AvailableCallableEffects(type, signature, call.ReceiverKind, this.scope!)))
             {
                 this.Violate(EffectViolation.UnclassifiedCall, use);
             }
@@ -845,7 +845,7 @@ public sealed partial class Binding
                 else
                 {
                     // A Contract witness must satisfy its bound from the slot contract, not an accidental body effect.
-                    if (!binding.AvailableEffectBounds(function, null, this.scope!).Confined)
+                    if (!binding.AvailableEffectBounds(function, null, this.scope!))
                     {
                         this.Violate(EffectViolation.UnboundedVirtual, function);
                     }
@@ -886,7 +886,7 @@ public sealed partial class Binding
             }
         }
 
-        // SPEC 8.11.4: a requirement call has the effects that the bounds available under its premises leave. Without confined,
+        // SPEC 8.11.3: a requirement call has the effects that the bounds available under its premises leave. Without confined,
         // its environment effects are unknown, which a bound check counts as a conflict; its inputs are reached by path, which
         // the arguments already accessed.
         private void Requirement(BindingSymbol symbol, CallPlan? call)
@@ -902,7 +902,7 @@ public sealed partial class Binding
             var conforming = call.ConformingType is { } type ? this.Type(type) : null;
             var reference = call.RequirementContract is { } declared && this.Type(declared.Type!) is { } applied
                 ? ReferenceEquals(applied, declared.Type) ? declared : binding.BoundContractReference(applied) : null;
-            var confined = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference).Confined;
+            var confined = binding.AvailableEffectBounds(requirement, conforming, this.scope!, reference: reference);
             if (ReferenceEquals(requirement.BoundSymbol, this.published))
             {
                 return; // SPEC 4.9.6: the parameter-dependent effect the operation's row publishes.
@@ -910,7 +910,7 @@ public sealed partial class Binding
 
             if (this.stepUse is { } use && !confined)
             {
-                confined = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract).Confined;
+                confined = binding.AvailableEffectBounds(requirement, conforming, binding.ConstraintScope(use), reference: call.RequirementContract);
             }
 
             if (!confined)
