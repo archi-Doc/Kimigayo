@@ -29,7 +29,8 @@ def run(job):
         except subprocess.TimeoutExpired:
             return i, q, 'TIMEOUT', 'C alone over the budget too'
 
-agree = disagree = timeout = resource = unstable = overflow = 0
+agree = disagree = timeout = resource = unstable = overflow = declerr = 0
+declerr_models = set()
 c_ms = []
 lines = []
 with cf.ThreadPoolExecutor(max_workers=8) as ex:
@@ -46,6 +47,12 @@ with cf.ThreadPoolExecutor(max_workers=8) as ex:
         c_ms.append(int(ms))
         if 'overflow' in (r5, r7):
             overflow += 1
+        elif r5.endswith('!') or r7.endswith('!'):
+            # proposal B 3.10: the reference found a structural conflict or cycle: a declaration error, counted and not compared
+            declerr += 1
+            if i not in declerr_models:
+                declerr_models.add(i)
+                lines.append(f'DECLARATION-ERROR model {i}: {line}')
         elif r5 != r7:
             unstable += 1
         elif verdict == 'Resource':
@@ -59,4 +66,4 @@ with cf.ThreadPoolExecutor(max_workers=8) as ex:
 for l in lines:
     print(l)
 c_ms.sort()
-print(f'== NESTED seed {seed}: {count} models, {len(jobs)} queries (budget {budget} s each, C and both reference bounds): agree {agree}, disagree {disagree}, C Resource {resource}, reference unstable {unstable}, overflow {overflow}, over budget {timeout}; C time on finished queries median {c_ms[len(c_ms) // 2]} ms, p95 {c_ms[len(c_ms) * 95 // 100]} ms, max {c_ms[-1]} ms')
+print(f'== NESTED seed {seed}: {count} models, {len(jobs)} queries (budget {budget} s each, C and both reference bounds): agree {agree}, disagree {disagree}, C Resource {resource}, reference unstable {unstable}, overflow {overflow}, over budget {timeout}, declaration errors {declerr} queries of {len(declerr_models)} models; C time on finished queries median {c_ms[len(c_ms) // 2]} ms, p95 {c_ms[len(c_ms) * 95 // 100]} ms, max {c_ms[-1]} ms')

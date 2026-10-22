@@ -117,7 +117,7 @@ public sealed class Solver
     private readonly HashSet<(int Class, HeadKey Need)> chainGuard = new();
     private readonly Dictionary<(HeadKey Head, int Position), HashSet<HeadKey>> otherKidHeads = new();
     private readonly Dictionary<HeadKey, List<(EqSide E, Term Kid)>> kidSides = new();
-    private readonly HashSet<int> decompGuard = new();
+    private readonly HashSet<LookupKey> inProgress = new();
     private readonly HashSet<int> shapesGuard = new();
     private readonly Dictionary<LookupKey, (List<Promise> Result, List<int> Visits, List<(int, HeadKey)> Needs, bool Resource, bool Chains)> roundMemo = new();
     private List<int>? visitLog;
@@ -1282,50 +1282,42 @@ public sealed class Solver
         // Rule 8 down (B 3.3): a promise F<s̄> of a class p whose constructor is F<…c at i…> adds no node to p when it fires —
         // decomposition makes s_i ≡ c — so it is a promise s_i of c (a shape node, a bare variable or an alias), produced by the
         // parent's promise at position i; expanding it expands the producer against the pattern lifted through the path (ExpandRows).
-        // Constructor uses only (never a projection or a reference, B 3.5); the parents' lookups are the round's; a guard against cycles.
-        if (this.decompGuard.Add(c))
+        // Constructor uses only (never a projection or a reference, B 3.5). A parent's promises are the round's top-level lookup at
+        // (p, F) whatever this lookup's nesting, so the decomposition is a function of the state; a cyclic structure asks a lookup in
+        // progress, which answers nothing.
+        var seen = new HashSet<(int, int)>();
+        foreach (var node in this.g.UsesOf(c).ToArray())
         {
-            try
+            var p = this.g.ClassOfNode(node);
+            if (this.g.HeadOf(node) is not SymHead { Kind: SymKind.Con } || p == c || this.g.Conflict(p))
             {
-                var seen = new HashSet<(int, int)>();
-                foreach (var node in this.g.UsesOf(c).ToArray())
+                continue;
+            }
+
+            var f = new HeadKey(this.g.HeadOf(node), this.g.KidCount(node));
+            for (var i = 0; i < this.g.KidCount(node); i++)
+            {
+                if (this.g.KidOf(node, i) != c || !seen.Add((p, i)))
                 {
-                    var p = this.g.ClassOfNode(node);
-                    if (this.g.HeadOf(node) is not SymHead { Kind: SymKind.Con } || p == c || this.g.Conflict(p))
+                    continue;
+                }
+
+                foreach (var parent in this.ParentPromises(p, f, requester))
+                {
+                    if (parent.Shape >= 0 || this.shapes.IsVar(parent.Shape))
+                    {
+                        continue; // an alias or a bare variable decomposes to nothing by itself (its firing merges p)
+                    }
+
+                    var kids = this.shapes.KidsOf(parent.Shape);
+                    if (kids.Length <= i || (!need.IsAny && !this.HeadOfShape(kids[i]).IsAny && this.HeadOfShape(kids[i]) != need))
                     {
                         continue;
                     }
 
-                    var f = new HeadKey(this.g.HeadOf(node), this.g.KidCount(node));
-                    for (var i = 0; i < this.g.KidCount(node); i++)
-                    {
-                        if (this.g.KidOf(node, i) != c || !seen.Add((p, i)))
-                        {
-                            continue;
-                        }
-
-                        foreach (var parent in this.Virtuals(p, f, requester))
-                        {
-                            if (parent.Shape >= 0 || this.shapes.IsVar(parent.Shape))
-                            {
-                                continue; // an alias or a bare variable decomposes to nothing by itself (its firing merges p)
-                            }
-
-                            var kids = this.shapes.KidsOf(parent.Shape);
-                            if (kids.Length <= i || (!need.IsAny && !this.HeadOfShape(kids[i]).IsAny && this.HeadOfShape(kids[i]) != need))
-                            {
-                                continue;
-                            }
-
-                            this.work++;
-                            this.At(result, c, kids[i], parent.Other, parent.Beta).Producers.Add((parent, i));
-                        }
-                    }
+                    this.work++;
+                    this.At(result, c, kids[i], parent.Other, parent.Beta).Producers.Add((parent, i));
                 }
-            }
-            finally
-            {
-                this.decompGuard.Remove(c);
             }
         }
 
@@ -1341,6 +1333,21 @@ public sealed class Solver
         }
 
         return list;
+    }
+
+    // The round's top-level lookup at (p, F), outside the nesting of the lookup that decomposes it (rule 8 down).
+    private List<Promise> ParentPromises(int p, HeadKey f, MatchCtx requester)
+    {
+        var nesting = this.chainGuard.ToArray();
+        this.chainGuard.Clear();
+        try
+        {
+            return this.Virtuals(p, f, requester);
+        }
+        finally
+        {
+            this.chainGuard.UnionWith(nesting);
+        }
     }
 
     private bool Passes(Promise p, int i, HashSet<HeadKey>? filter)
@@ -1390,6 +1397,11 @@ public sealed class Solver
         var key = new LookupKey(this.g.Find(c), need, this.SetKey(o0), this.SetKey(o1));
         if (!this.roundMemo.TryGetValue(key, out var entry))
         {
+            if (!this.inProgress.Add(key))
+            {
+                return []; // the lookup asks itself through a cyclic structure (rule 8's parents): nothing more than it is computing
+            }
+
             // An enclosing lookup (rule 8: a parent's promises) did this one on its requester's behalf: its record inherits this one's.
             var (outerVisits, outerNeeds, outerResource, outerChains) = (this.visitLog, this.needLog, this.resourceSeen, this.chainSeen);
             this.visitLog = new();
@@ -1399,6 +1411,7 @@ public sealed class Solver
             var result = this.VirtualsAt(c, need, requester, o0, o1);
             entry = (result, this.visitLog, this.needLog, this.resourceSeen, this.chainSeen);
             this.roundMemo[key] = entry;
+            this.inProgress.Remove(key);
             outerVisits?.AddRange(entry.Visits);
             outerNeeds?.AddRange(entry.Needs);
             (this.visitLog, this.needLog, this.resourceSeen, this.chainSeen) = (outerVisits, outerNeeds, outerResource | entry.Resource, outerChains | entry.Chains);
