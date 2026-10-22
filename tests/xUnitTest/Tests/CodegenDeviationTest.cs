@@ -30,7 +30,40 @@ public class CodegenDeviationTest
             Assert.Matches($@"(?m)^- \*\*{Regex.Escape(entry.Item)}[* ]", decisions);
             Assert.All(entry.Clause.Split(' '), x => Assert.Contains(x, DiagnosticCorpus.SpecSections));
             Assert.NotEqual(string.Empty, entry.Reason.Trim());
-            Assert.Contains(sources, x => Regex.IsMatch(x, $@"\bCodegen\.Expect(<[^>]*>)?\([^;]*\bCodegenDeviations\.{field.Name}\)"));
+            Assert.Contains(sources, x => Regex.IsMatch(
+                x, $@"\bCodegen\.Expect(<[^>]*>)?\([^;]*\bCodegenDeviations\.{field.Name}\)|\bnew LegacyNative\(CodegenDeviations\.{field.Name},"));
         }
+    }
+
+    // DECISIONS R5-M85, R5-M106: a deviating fixture's .deviation sidecar is the same bytes in both runs: UTF-8 without a byte order mark,
+    // LF line ends, the entry's fields and both outcomes in a fixed key order.
+    [Fact]
+    public void ADeviationSidecarIsTheSameBytesInEveryRun()
+    {
+        var entry = CodegenDeviations.StaticCycle;
+        var sidecar = Codegen.Sidecar(new LegacyNative(entry, "old\n", 1, "legacy\n"), "new\n", 2, "target\n");
+        var expected = $$"""
+            {
+              "id": "static-cycle",
+              "class": "a",
+              "item": "R5-M106",
+              "clause": "22.4.3 22.5.1 22.5.2",
+              "reason": {{System.Text.Json.JsonSerializer.Serialize(entry.Reason)}},
+              "legacy": {
+                "stdout": "old\n",
+                "exit": 1,
+                "stderr": "legacy\n"
+              },
+              "target": {
+                "stdout": "new\n",
+                "exit": 2,
+                "stderr": "target\n"
+              }
+            }
+
+            """;
+        Assert.Equal(expected.ReplaceLineEndings("\n"), System.Text.Encoding.UTF8.GetString(sidecar));
+        Assert.NotEqual(0xEF, sidecar[0]);
+        Assert.Equal(sidecar, Codegen.Sidecar(new LegacyNative(entry, "old\n", 1, "legacy\n"), "new\n", 2, "target\n"));
     }
 }
