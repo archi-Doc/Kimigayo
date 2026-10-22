@@ -1,0 +1,58 @@
+{
+  "baseline": "152dda62",
+  "kind": "behavior-preserving concern split",
+  "sdk": "11.0.100-rc.2.26504.105",
+  "checks": [
+    "fixed: 94/94; exact output byte-lines equal to baseline",
+    "order40 seed9631:188 requests/680 boundary runs; exact output byte-lines equal to baseline",
+    "diff whitespace check passed"
+  ],
+  "limits": "Harness default Items10000/Rounds300; identical baseline/split",
+  "files": [
+    {
+      "path": "Checker.cs",
+      "sha256": "1812997DFC24447F30C808C52ADC4CA7B8CE6CE100379B13A592A6DC4D3276EC",
+      "gitBlob": "db5180afcf43067d4d87925c9d151b11b3a4a225"
+    },
+    {
+      "path": "EGraph.cs",
+      "sha256": "227DCCFC64A69E05A86735091891AF6159BF121F910B35F54C41C9E67266BA73",
+      "gitBlob": "7363bb52a0660b8f08e1248064ff8c700f52e11e"
+    },
+    {
+      "path": "Model.cs",
+      "sha256": "DFA91B43267AEF8CFF7F28DBC3CC9CC1761D94961C2EBBFE9928115D902F432D",
+      "gitBlob": "53f5db7ef2e434ae93a3885256a92b4627c79f33"
+    },
+    {
+      "path": "Reference.cs",
+      "sha256": "F9A5F71EC9A57CD55334D86E1A9D4A4EB8E3CA71CEFBBD6321FB966C160BF106",
+      "gitBlob": "3abad0e68b0d24ce0131a7f307f5683444e868a5"
+    },
+    {
+      "path": "Runner.cs",
+      "sha256": "76CC94A6235D6B9CE9CFCCE122C389A205EB39C88624E4B20B3D26C88D7D3837",
+      "gitBlob": "dd471e69aa6c23a4d2093c306ec7bf5db0e5874c"
+    },
+    {
+      "path": "Solver.Candidates.cs",
+      "sha256": "FA444D46C3CA849F625D37E41EC9974F8336C3104DE83C431AF560EEE9E9FB2C",
+      "gitBlob": "527760511770f8227107841fa78b6b750a18bd8e"
+    },
+    {
+      "path": "Solver.cs",
+      "sha256": "0F6DF27A64265B961DCBFEFA2A7716746BB953241ABA70EA320D32AEBBBB7B79",
+      "gitBlob": "2127200e18f6d8bc415fcbeb33d73c85efa83089"
+    },
+    {
+      "path": "Solver.Matching.cs",
+      "sha256": "B2216C02D94B25D762F333A983B2BC71239738593D4FE8C32FD612CD21C69C0D",
+      "gitBlob": "a3f3efbd7e8873555ee8df3dd25c79a308ad9ed1"
+    },
+    {
+      "path": "Solver.Meetings.cs",
+      "sha256": "D8BE02F95DA44EEF1F98C3A0C617DC787F42735B2135F8F47FF79C9F87C8BB6D",
+      "gitBlob": "4f920442ae23d4174d5d332e7872544cc1346b1d"
+    }
+  ]
+}
