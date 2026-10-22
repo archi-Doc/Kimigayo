@@ -28,9 +28,10 @@ internal enum RawStep : byte
 // - Responsibility: the raw Origin formed through a borrow (Formed: the label, or its shared view Shared(L) when the borrow is shared and
 //   the label's own step is not), the step of a raw Origin (StepOf), the region one names (RegionOf), a substituted one (Restep, G1:
 //   it keeps the step of the Origin it replaces), the Origin a `during self` layer is read with at a Place (ReadHolder), a layer's
-//   OwnedOrigins member (OwnedOrigin), the relations with an unstated end (UnstatedRelation, rulings S4), and the allowlist of a
-//   `during self` layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)), and a Type with every raw layer's
-//   Origin dropped (WithoutRawOrigins): an instance's stored Types (Instance, design-final §15) and, as the D5 exception (the owner's
+//   OwnedOrigins member (OwnedOrigin), the relations with an unstated end (UnstatedRelation, rulings S4), the allowlist of a
+//   `during self` layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)), the borrows keeping a declared slot
+//   (Keepers, D15), the step published to retention and A5 (PublishedStep, TyCtxt.RawStep), and a Type with every raw layer's Origin
+//   dropped (WithoutRawOrigins): an instance's stored Types (Instance, design-final §15) and, as the D5 exception (the owner's
 //   Q-O3, DECISIONS BU-24), the old analysis's view at its Type intake, removed with it at R6-check.
 // - Inputs: bound Types; a signature's input Types and a declaration's schema after the requirement fixed point (StepOf); PathOrigin.
 // - Outputs: raw Origins, steps, relation verdicts and the OriginRelation failure facts of the allowlist.
@@ -45,6 +46,9 @@ internal enum RawStep : byte
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, BoundOrigin> sharedOrigins = new(ReferenceEqualityComparer.Instance);
+
+    // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers).
+    private readonly Dictionary<OriginParameter, KeeperList> keepers = new(ReferenceEqualityComparer.Instance);
 
     // SPEC 5.7: the Phantom slot a raw layer states, recorded only when the check fails.
     private Dictionary<Koto, OriginParameter>? phantomRawOrigins;
@@ -136,6 +140,31 @@ public sealed partial class Binding
         {
             this.typeScratch.Return(components, clearArray: true);
         }
+    }
+
+    // The step of a published raw Origin (design-final §7.3): what a rewriter's image keeps, what the retention walk follows and what
+    // A5 reads (TyCtxt.RawStep). Total by the contract above; a raw Origin without one is a broken contract that ends the analysis,
+    // since neither a rewriter nor a view has a node to locate it at.
+    internal RawStep PublishedStep(BoundOrigin? raw)
+        => this.StepOf(raw) ?? throw new InvalidOperationException($"The published raw Origin `{raw}` has no step (InternalInvariant).");
+
+    // SPEC 5.7 (design-final §15): the step of a raw layer an instance stores, read from its declaration, since an instance's stored Types
+    // state none: a struct's Field `part` or an enum's Case `part` (whose first position selects the payload's component) under the
+    // instance's substitution (StoredType, which re-steps a slot and keeps `self`, the holder's own step), then the inline positions (a
+    // Tuple's component, a fixed array's element) down to the layer. An Origin without a step (an Unbound slot argument) gives Unstated;
+    // a path that ends at no raw layer is a broken contract.
+    internal RawStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
+    {
+        var adt = instance.Symbol?.Adt;
+        var stored = AdtDef.IsStruct(instance) ? this.StoredType(adt!.Fields[part], instance)
+            : adt?.Cases[part] is { } selected && positions.Length > 0 ? this.StoredType(selected.Payload[positions[0]], instance) : null;
+        for (var i = AdtDef.IsStruct(instance) ? 0 : 1; i < positions.Length && stored is not null; i++)
+        {
+            stored = stored.Kind == BoundTypeKind.Tuple ? stored.Components[positions[i]] : stored.Kind == BoundTypeKind.FixedArray ? stored.Components[0] : null;
+        }
+
+        return stored is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } layer ? this.StepOf(layer.RawOrigin) ?? RawStep.Unstated
+            : throw new InvalidOperationException($"No raw layer is stored at part {part} of `{instance}` (InternalInvariant).");
     }
 
     // SPEC 15.2.3, 5.7: a layer's member of OwnedOrigins: its Origin, or its raw Origin's region other than `self`.
@@ -293,11 +322,6 @@ public sealed partial class Binding
         return shared;
     }
 
-    // The step of a published raw Origin, which a rewriter's image keeps (design-final §7.3): total by the contract above; a raw Origin
-    // without one is a broken contract that ends the analysis, since a rewriter has no node to locate it at.
-    private RawStep PublishedStep(BoundOrigin? raw)
-        => this.StepOf(raw) ?? throw new InvalidOperationException($"The published raw Origin `{raw}` has no step (InternalInvariant).");
-
     // G1 (design-final §4): a rewriter's image of a raw Origin, `image` being its own map of RegionOf(raw), keeps the step of the Origin
     // it replaces; `self` and `static` are unchanged.
     private BoundOrigin Restep(BoundOrigin raw, BoundOrigin image)
@@ -401,6 +425,42 @@ public sealed partial class Binding
 
         return null;
     }
+
+    // SPEC 5.7, 15.3.5 (D15; design-final §4): during the requirement fixed point's visit of a declaration's Types (AccumulateRequirements),
+    // a borrow layer `type` whose Origin is a slot of `schema` keeps that slot with its referent, and an Origin argument bound to such a
+    // slot keeps it with the nested Type's slot `via`, whose keepers count as the slot's, substituted by `type` (Keepers). Kept per pass.
+    private void Keep(DeclarationSchema schema, BoundOrigin origin, BoundType type, OriginParameter? via)
+    {
+        for (var i = 0; i < origin.Operands.Count && origin.Kind == OriginKind.Intersection; i++)
+        {
+            this.Keep(schema, origin.Operands[i], type, via);
+        }
+
+        var kept = via is null ? this.BorrowReferent(type, out _, out _) : type;
+        for (var i = 0; i < schema.Origins.Count && kept is not null; i++)
+        {
+            if (!ReferenceEquals(schema.Origins[i].Origin, origin))
+            {
+                continue;
+            }
+
+            if (!this.keepers.TryGetValue(schema.Origins[i], out var list))
+            {
+                this.keepers.Add(schema.Origins[i], list = new());
+            }
+
+            if (list.Pass != this.originRequirementPass)
+            {
+                (list.Pass, list.Count) = (this.originRequirementPass, 0);
+            }
+
+            list.Add(new(kept, via));
+        }
+    }
+
+    // The keepers of a declared slot in this pass (Keep): a borrow's referent, or a nested Type with the nested slot keeping it.
+    private ReadOnlySpan<Keeper> Keepers(OriginParameter slot)
+        => this.keepers.TryGetValue(slot, out var list) && list.Pass == this.originRequirementPass ? list.Items : default;
 
     // SPEC 5.7 (D17, D18; design-final §5): the Origin a raw layer's `during` writes, one atom: never a meet or Origin arguments.
     // `self` names the holding value (Holder) on a layer in inline storage, a Field's or Case payload's Type or a Tuple or fixed-array
@@ -556,6 +616,9 @@ public sealed partial class Binding
         return true;
     }
 
+    // A slot's keeper: the referent of a borrow keeping it, or (Via) a nested Type whose slot Via keeps it.
+    private readonly record struct Keeper(BoundType Type, OriginParameter? Via);
+
     // The accesses of a `during self` layer's Place the allowlist decides (HolderPlaceFailure).
     private enum HolderAccess : byte
     {
@@ -563,5 +626,32 @@ public sealed partial class Binding
         Update,
         ExclusiveBorrow,
         Move,
+    }
+
+    // A slot's keepers in one pass, without duplicates; reused across passes (a warm pass allocates nothing).
+    private sealed class KeeperList
+    {
+        private Keeper[] items = new Keeper[2];
+
+        internal uint Pass { get; set; }
+
+        internal int Count { get; set; }
+
+        internal ReadOnlySpan<Keeper> Items => this.items.AsSpan(0, this.Count);
+
+        internal void Add(Keeper keeper)
+        {
+            if (this.Items.Contains(keeper))
+            {
+                return;
+            }
+
+            if (this.Count == this.items.Length)
+            {
+                Array.Resize(ref this.items, this.Count * 2);
+            }
+
+            this.items[this.Count++] = keeper;
+        }
     }
 }
