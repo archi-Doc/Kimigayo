@@ -3,7 +3,9 @@
 // Resource boundary and its transport through judgments, and cost workloads including program-size scaling.
 // Run: dotnet run -c Release -- <fixed|random|order|resource|cost|all> [count] [seed]; probes: trace|time|enum|scale <model file>
 // <queries…>, pending [count] [seed], limit <items…> (time to the item limit); G170_REVIEW_PROFILE=params: two-parameter models;
-// G170_REVIEW_PROFILE=nested: nested projections of two subjects made one Type by depth-1 identities, with bound patterns.
+// G170_REVIEW_PROFILE=nested: nested projections of two subjects made one Type by depth-1 identities, with bound patterns;
+// G170_REVIEW_PROFILE=structural: constructed Types on the T-projection's other side (proposal B's decomposition, Refuted, conflicts;
+// a generated model whose reference has a structural conflict or cycle is a declaration error, counted and not compared).
 #pragma warning disable
 #nullable enable
 using System.Diagnostics;
@@ -216,6 +218,36 @@ public static class Runner
 
     public static string Chain(int depth, string qualifier = "Tree") => "T" + string.Concat(Enumerable.Repeat(".(" + qualifier + ").Child", depth));
 
+    /// <summary>Seed 20261022 model 312 (default profile): `i32 is Cp` establishes its positive polarity and then exhausts the harness's
+    /// item limit (3,000); the established polarity stands (proposal B 3.10).</summary>
+    private const string LimitKeepsProven = """
+        contract Cp
+        contract K0
+          associate X is not K0
+          associate Y is K4
+          clause Self is K2
+        contract K1
+          associate X is not Cp
+          clause Self is Cp
+          clause Self.(K1).X.(K1).X is i32
+        contract K2 : K1
+          associate X is i32
+          associate Y is K3 and K4
+          clause Self.(K2).X.(K2).Y is K1
+          clause Self.(K2).X is Cp
+        contract K3 : K0, Cp
+          associate X
+        contract K4
+          associate X is K3
+          clause Self.(K4).X is K4
+        input T is K2
+        input U is T.(K2).Y
+        input T is Cp or K3
+        input List<U> is K0
+        conformance S1 is K4 pending
+          binding X = i64
+        """;
+
     /// <summary>The review's scaling program: n concrete conformances binding X = i32, unrelated to Holder.</summary>
     public static string Many(int n)
     {
@@ -292,6 +324,12 @@ public static class Runner
         => "contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ncontract It\n  associate Item\n" + SharedRows(n) + "input V is Copy\ninput T is Holder\n" + string.Concat(Enumerable.Range(1, n).Select(i => $"conformance S{i} is K{i}<i32>\n"));
 
     private static string SharedRows(int n) => string.Concat(Enumerable.Range(1, n).Select(i => $"contract K{i}<A>\n  clause Self is It\n  clause Self.(It).Item is A\n"));
+
+    /// <summary>Proposal B's open-live witness (rule 8 up): n live Contracts whose identity side is a constructed Type with a variable
+    /// kid (`Wi: associate X is List&lt;Self&gt;`, each with a conformance), with a Copy fact on another subject: a class demand requests
+    /// every such row once, so V and J are expected linear in n.</summary>
+    public static string OpenLive(int n)
+        => "contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput V is Copy\n" + string.Concat(Enumerable.Range(1, n).Select(i => $"contract W{i}\n  associate X is List<Self>\nconformance S{i} is W{i}\n"));
 
     /// <summary>The round-4 review's mix program: n pairs of a variable identity side (`Wi: associate X is Self`) and a parameter
     /// identity side (`Ki&lt;A&gt;: associate X is A`), T conforming to W3, with a Copy fact on another subject.</summary>
@@ -609,7 +647,9 @@ public static class Runner
         // Earlier gaps of this revision: a Contract concluded only by an input reaches the goal through identity (random model
         // 130); an identity goal's classes meet (model 97); a chain through another instance of the same row (model 12).
         failures += Expect("an input's Contract is concludable", "contract Kk\ncontract Kj\n  associate Y\n  clause Self.(Kj).Y is Self\ninput T is Kk\ninput T is Kj", "T.(Kj).Y is Kk", "+ C");
-        failures += Expect("an identity goal's classes meet", "contract K2\n  associate Y is List<i32>\n  clause Self.(K2).Y is i32\ninput T is K2", "i32 is List<i32>", "+ C");
+        // Proposal B (2026-10-22) changes this case's meaning: i32 and List<i32> in one class have different heads, a structural
+        // conflict (B 3.3, 3.10: a premise error of K2, Error on the identity the request touches); before B it was `+ C`.
+        failures += Expect("an identity goal's classes meet", "contract K2\n  associate Y is List<i32>\n  clause Self.(K2).Y is i32\ninput T is K2", "i32 is List<i32>", "+- C");
         failures += Expect("a chain through another instance of the same row", "contract Kc<A>\n  clause A.(Kd).Y is List<i32>\ncontract Kd\n  associate Y is Kc<Self>\ninput T is Kd\ninput U is Kd", "T.(Kd).Y is Kc<U>", "+ C");
 
         // Seed 7 model 225: T.(K1).X = List<i32> = S1.(K1).X = i32 (binding X's open side meets the class through K1's virtual node
@@ -751,6 +791,36 @@ public static class Runner
         failures += Expect("kid meeting deferred: identity by an input on the compound", "contract Cp<A>\ncontract K1\n  associate X is F<Self>\ncontract Q<A>\n  clause F<A> is Cp<A>\ninput T is K1\ninput F<T> is F<i32>\ninput S is Q<i32>", "T.(K1).X is Cp<i32>", "+ C");
         failures += Expect("kid meeting deferred: identity through a parameter side", KidMeet.Replace("clause Self is F<A>", "clause Self is A").Replace("is K2<i32>", "is K2<F<i32>>"), "T.(K1).X is Cp<i32>", "+ C");
         failures += Expect("kid meeting deferred: identity goal through a parameter side", "contract K1\n  associate X is F<Self>\ncontract K2<A>\n  clause Self is A\ncontract K3\n  associate Y is F<i32>\nconformance F<V> is K2<F<i32>>\ninput T is K1\ninput U is K3", "T.(K1).X is F<i32>", "+ C");
+
+        // proposal B (2026-10-22): structural decomposition
+        // The identity structure decomposes constructed Types (B 3.3): same-head constructors in one class make their kids one class;
+        // different heads are a structural conflict and a Type identical to its own proper part a cycle (B 3.6, 3.10: premise errors,
+        // the reference's `!`, `+-` where a request reaches them); a negated identity holds when the structure refutes it, unbound
+        // arguments allowed; projections and Contract arguments are never decomposed (B 3.5); a polarity established before a limit
+        // stands (B 3.10). 152dda62: none on same, same-nested, refuted-open, number, decomp-down, conflict and cyclic.
+        failures += Expect("B same: two inputs decomposed", "input T is Option<U>\ninput T is Option<i32>", "U is i32", "+ C");
+        failures += Expect("B same-nested: decomposed two levels down", "input T is Option<List<U>>\ninput T is Option<List<i32>>", "U is i32", "+ C");
+        failures += Expect("B conflict: different heads in one class, reached by the request", "input T is Option<U>\ninput T is Array<U>", "T is Option<U>", "+- C");
+        failures += Expect("B refuted-open: different heads with an unbound argument", "input T is Array<V>", "T is Option<i32>", "- C");
+        failures += Expect("B refuted-kid: a Refuted kid pair", "input T is Option<U>\ninput U is bool", "T is Option<i32>", "- C");
+        const string Fill = """
+            contract Flag
+            conformance Slot<V> is Flag when V is Option<i32>
+            input T is Slot<Array<W>>
+            """;
+        failures += Expect("B fill: a conditional conformance's condition Refuted by heads", Fill, "Array<W> is Option<i32>", "- C");
+        failures += Expect("B fill: the conformance does not apply", Fill, "T is Flag", "none C");
+        failures += Expect("B independent: projections are not decomposed", "contract Source\n  associate Element\ninput T is Source\ninput U is Source\ninput T.(Source).Element is U.(Source).Element", "T is U", "none C");
+        failures += Expect("B cyclic: a Type identical to its own proper part", "input T is Option<U>\ninput U is Option<T>", "T is Option<U>", "+- C");
+        failures += Expect("B reconstructed: a projection of the Type itself is no cycle", "contract Linked\n  associate Next\nconformance Cell<V> is Linked\n  binding Next = V\ninput T is Linked\ninput T is Cell<T.(Linked).Next>", "T is Cell<T.(Linked).Next>", "+ C");
+        failures += Expect("B number: an associated-Type specification decomposed against a binding", "contract Wrapped\n  associate Inner\n  associate Outer is Option<Self.(Wrapped).Inner>\nconformance Number is Wrapped\n  binding Outer = Option<i32>", "Number.(Wrapped).Inner is i32", "+ C");
+        failures += Expect("B args-not-decomposed: Contract arguments are two conformances", "contract K<A>\ninput T is K<U>\ninput T is K<i32>", "U is i32", "none C");
+        failures += Expect("B decomp-down: the demand on a kid class is answered by the parent's promise (rule 8 down)", "contract Copy\ncontract K<A>\n  clause Self is Option<Pair<A, i32>>\ncontract Holder\n  associate Item\nconformance Pair<V, W> is Copy when V is Copy\ninput T is K<U>\ninput T is Option<T.(Holder).Item>\ninput U is Copy", "T.(Holder).Item is Copy", "+ C");
+        failures += Expect("B two-variable-kids: neither node exists before the rows fire (rule 8 up)", "contract K0\n  associate Y\ncontract K1<A>\n  clause Self.(K0).Y is Option<A>\ncontract K2<A>\n  clause Self.(K0).Y is Option<A>\ninput T is K0\ninput T is K1<U>\ninput T is K2<W>", "U is W", "+ C");
+        failures += Expect("B ground-kid: a ground side and a variable kid (rule 8 up)", "contract K0\n  associate X\ncontract K1\n  clause Self.(K0).X is List<i32>\ncontract K2<A>\n  clause Self.(K0).X is List<A>\ninput T is K0\ninput T is K1\ninput T is K2<U>", "U is i32", "+ C");
+        failures += Expect("B limit-keeps-proven: the polarity established before the item limit stands (seed 20261022 model 312)", LimitKeepsProven, "i32 is Cp", "+ R", limits: new Limits { Rounds = 300, Items = 3000 });
+        failures += Expect("B conflict-reached-by-row: the row fires on need and the conflict is the request's", "contract K<A>\n  clause Self is Array<A>\ninput T is K<U>\ninput T is Option<U>", "T is Array<U>", "+- C");
+        failures += ExpectLinear("B open-live: unrelated request, live constructor sides with a variable kid (rule 8 up)", OpenLive, "T is Copy", "none C");
         return failures;
     }
 
@@ -764,8 +834,7 @@ public static class Runner
             return new Solver(m).Supply(ModelText.ParseFormula(m, query), View.Ordinary);
         }).ToArray();
         var (a, b) = (answers[0], answers[1]);
-        var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
-        var ok = verdict == expected && (a.Verdict, a.Rounds, a.V, a.N) == (b.Verdict, b.Rounds, b.V, b.N) && (!sameJ || a.J == b.J);
+        var ok = Verdict(a) == expected && (a.Verdict, a.Rounds, a.V, a.N) == (b.Verdict, b.Rounds, b.V, b.N) && (!sameJ || a.J == b.J);
         Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | n=4: C {a} | n=64: C {b} | expected {expected}, equal {(sameJ ? "work" : "rows")}");
         return ok ? 0 : 1;
     }
@@ -780,8 +849,7 @@ public static class Runner
             return new Solver(m).Supply(ModelText.ParseFormula(m, query), View.Ordinary);
         }).ToArray();
         var (a, b) = (answers[0], answers[1]);
-        var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
-        var ok = verdict == expected && a.Verdict == b.Verdict && b.V <= 8 * a.V && b.J <= 8 * a.J;
+        var ok = Verdict(a) == expected && a.Verdict == b.Verdict && b.V <= 8 * a.V && b.J <= 8 * a.J;
         Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | n=8: C {a} | n=64: C {b} | expected {expected}, V and J at most linear");
         return ok ? 0 : 1;
     }
@@ -793,11 +861,14 @@ public static class Runner
         var a = new Solver(m).Supply(f, view ?? View.Ordinary, limits);
         var r6 = Ref(m, view ?? View.Ordinary, f, 6);
         var r8 = Ref(m, view ?? View.Ordinary, f, 8);
-        var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
-        var ok = verdict == expected;
+        var ok = Verdict(a) == expected;
         Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | C {a} | ref6 {Show(r6)} ref8 {Show(r8)} | expected {expected}");
         return ok ? 0 : 1;
     }
+
+    // The verdict as the fixed cases write it: the polarities, then C (Complete) or P (Provisional); at a limit R, after the
+    // polarities established at the stop when there are any (B 3.10).
+    private static string Verdict(Answer a) => a.Outcome == Outcome.Resource ? (a.Positive || a.Negative ? a.Verdict + " R" : "R") : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
 
     private static int ExpectEnumerate(string name, string text, string subject, string expected, bool discovery = false, string? expectFact = null, Limits? limits = null, int? facts = null)
     {
@@ -810,23 +881,25 @@ public static class Runner
         return ok ? 0 : 1;
     }
 
-    private static (bool Pos, bool Neg, bool Overflow) Ref(ProgramModel m, View view, Formula f, int bound, bool pending = false, HashSet<int>? bindings = null)
+    // The reference's answer; Error when its structure has a conflict or a cycle (B 3.10: a premise error of the model's declarations).
+    private static (bool Pos, bool Neg, bool Overflow, bool Error) Ref(ProgramModel m, View view, Formula f, int bound, bool pending = false, HashSet<int>? bindings = null)
     {
         var r = new Reference(m, view, pending, bound, bindings);
         var seeds = new List<Term>();
         f.Terms(seeds);
         r.Run(seeds);
         var (p, n) = r.Answer(f);
-        return (p, n, r.Overflow);
+        return (p, n, r.Overflow, r.Conflict || r.Cyclic);
     }
 
-    private static string Show((bool Pos, bool Neg, bool Overflow) r) => r.Overflow ? "overflow" : (r.Pos ? "+" : "") + (r.Neg ? "-" : "") + (!r.Pos && !r.Neg ? "none" : "");
+    private static string Show((bool Pos, bool Neg, bool Overflow, bool Error) r) => r.Overflow ? "overflow" : (r.Pos ? "+" : "") + (r.Neg ? "-" : "") + (!r.Pos && !r.Neg ? "none" : "") + (r.Error ? "!" : "");
 
     // ---------------------------------------------------------------- generated models
     private sealed class Stats
     {
         public int Models;
         public int Overflow;
+        public int DeclarationErrors;
         public int Queries;
         public int Stable;
         public int Agree;
@@ -857,6 +930,7 @@ public static class Runner
         {
             this.Models += o.Models;
             this.Overflow += o.Overflow;
+            this.DeclarationErrors += o.DeclarationErrors;
             this.Queries += o.Queries;
             this.Derived += o.Derived;
             this.ResourceNone += o.ResourceNone;
@@ -948,7 +1022,7 @@ public static class Runner
             }
         }
 
-        Console.WriteLine($"== RANDOM seed {seed}: {clock.Elapsed.TotalSeconds:F0} s; models {st.Models} (reference overflow {st.Overflow}); Supply queries {st.Queries} ({st.Derived} of them reference-derived facts, {st.Frozen} in a frozen view): stable {st.Stable} " +
+        Console.WriteLine($"== RANDOM seed {seed}: {clock.Elapsed.TotalSeconds:F0} s; models {st.Models} (reference overflow {st.Overflow}, declaration errors {st.DeclarationErrors}); Supply queries {st.Queries} ({st.Derived} of them reference-derived facts, {st.Frozen} in a frozen view): stable {st.Stable} " +
             $"(agree {st.Agree}, disagree {st.Disagree}, C Resource {st.ResourceStable}), unstable {st.Unstable} (C Resource {st.ResourceUnstable}), provisional {st.Provisional}");
         Console.WriteLine($"   C Resource on stable queries: {st.ResourceStable}, of which the reference has evidence for neither polarity {st.ResourceNone}");
         Console.WriteLine($"   answer kinds on stable agreement: {string.Join(", ", st.PositiveBy.OrderBy(x => x.Key).Select(x => x.Key + "=" + x.Value))}");
@@ -991,6 +1065,19 @@ public static class Runner
             if (r1.Overflow || r2.Overflow)
             {
                 st.Overflow++;
+                continue;
+            }
+
+            if (r1.Conflict || r1.Cyclic || r2.Conflict || r2.Cyclic)
+            {
+                // B 3.10: a structural conflict or cycle is a premise error reported at the declaration, never a request's answer:
+                // the model's requests are not compared (counted once per model).
+                if (st.DeclarationErrors == 0)
+                {
+                    st.DeclarationErrors = 1;
+                    log.Add($"DECLARATION-ERROR model {i} view {view.Name}: {(r1.Conflict || r2.Conflict ? "conflict" : "cyclic")}{nl}{text}");
+                }
+
                 continue;
             }
 
@@ -1141,6 +1228,7 @@ public static class Runner
         var names = Enumerable.Range(0, n).Select(i => "K" + i).ToArray();
         var two = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "params";
         var nested = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "nested";
+        var structural = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "structural";
         var arity = names.Select(_ => two ? r.Next(3) : (r.Next(4) == 0 ? 1 : 0)).ToArray();
         var assocs = names.Select(_ => new[] { "X", "Y" }.Where(_ => r.Next(3) != 0).ToArray()).ToArray();
         var usedOr = false;
@@ -1346,6 +1434,17 @@ public static class Runner
             inputs.Add("U is List<" + tProjection + ">");
         }
 
+        // The structural profile (proposal B): the T-projection's other side may be a constructed Type, one or two such inputs, so
+        // decomposition, structural Refuted and conflicts occur. The other profiles draw nothing here (their seeds stay comparable).
+        if (structural && tProjection is not null)
+        {
+            inputs.Add(tProjection + " is " + Pick("List<i32>", "List<U>", "Option<U>"));
+            if (r.Next(2) == 0)
+            {
+                inputs.Add(tProjection + " is " + Pick("List<i32>", "List<U>", "Option<U>"));
+            }
+        }
+
         // The nested profile: a second subject V of T's Contract whose projection is the same Type as T's (both i32), so nested
         // projections of T and V are one Type; V carries a fact.
         string? vProjection = null;
@@ -1445,6 +1544,16 @@ public static class Runner
             if (a != b && !names.Contains(b))
             {
                 queries.Add(a + " is " + b);
+            }
+        }
+
+        if (structural)
+        {
+            queries.Add("U is i32");
+            queries.Add("U is List<i32>");
+            if (tProjection is not null)
+            {
+                queries.Add(tProjection + " is List<U>");
             }
         }
 
@@ -1582,6 +1691,14 @@ public static class Runner
             Console.WriteLine($"{(a.Outcome == Outcome.Resource ? "PASS" : "FAIL")} unbounded enumeration, item limit {items}: {a} ({sw.Elapsed.TotalSeconds:F1} s)");
             failures += a.Outcome == Outcome.Resource ? 0 : 1;
         }
+
+        // B 3.10: a polarity established before the limit stands: the judgment is Proven, with the limit's record and no Unproven.
+        var kept = ModelText.Parse(LimitKeepsProven);
+        var checker = new Checker(kept, new Limits { Rounds = 300, Items = 3000 });
+        var proof = checker.Require("limit-keeps-proven", ModelText.ParseFormula(kept, "i32 is Cp"));
+        var keptOk = proof == Proof.Proven && checker.Records.Count == 1 && checker.Records[0].StartsWith("Resource(limit-keeps-proven", StringComparison.Ordinal);
+        failures += keptOk ? 0 : 1;
+        Console.WriteLine($"{(keptOk ? "PASS" : "FAIL")} limit keeps proven (seed 20261022 model 312, i32 is Cp at 3,000 items): {proof}; records [{string.Join(" ", checker.Records)}]");
 
         failures += Transport();
         return failures;
@@ -1787,6 +1904,12 @@ public static class Runner
         foreach (var n in new[] { 10, 400, 1600 })
         {
             Measure($"scaling n={n}: mix T is Copy", ModelText.Parse(Mix(n)), "T is Copy");
+        }
+
+        // Proposal B's open-live witness (rule 8 up): n live rows with a variable constructor kid, requested once per needing class.
+        foreach (var n in new[] { 10, 40, 100, 400 })
+        {
+            Measure($"scaling n={n}: open-live T is Copy", ModelText.Parse(OpenLive(n)), "T is Copy");
         }
 
         // Repeated top-level requests: nothing is reused across requests (request-local), so the cost repeats.
