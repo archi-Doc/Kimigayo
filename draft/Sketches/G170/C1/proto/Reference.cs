@@ -80,11 +80,7 @@ public sealed class Reference
             case FK.Not when p.L!.Kind == FK.Is:
                 return this.atoms.Any(x => x.Kind == 1 && this.Find(x.A) == this.FindTerm(p.L.A!) && this.Find(x.B) == this.FindTerm(p.L.B!));
             case FK.Not when p.L!.Kind == FK.Eq:
-                {
-                    var a = this.FindTerm(p.L.A!);
-                    var b = this.FindTerm(p.L.B!);
-                    return this.atoms.Any(x => x.Kind == 3 && ((this.Find(x.A) == a && this.Find(x.B) == b) || (this.Find(x.A) == b && this.Find(x.B) == a))) || this.Refuted(a, b, new());
-                }
+                return this.Refuted(this.FindTerm(p.L.A!), this.FindTerm(p.L.B!), new());
 
             default:
                 var key = this.Canon(p);
@@ -242,13 +238,14 @@ public sealed class Reference
         this.Cyclic = this.HasCycle();
     }
 
-    // B 3.3's Refuted over the reference's own classes: a conflicting class against any class, itself included; constructors of
-    // different heads; equal heads and a Refuted kid pair; one class a proper part of the other (B 3.6). Coinductive over pairs.
+    // B 3.3's Refuted over the reference's own classes and atoms: a negated identity fact between the classes; a conflicting class
+    // against any class, itself included; constructors of different heads; equal heads and a Refuted kid pair; one class a proper
+    // part of the other (B 3.6). Coinductive over pairs.
     private bool Refuted(int a, int b, HashSet<(int, int)> visited)
     {
         var (n, conflictA) = this.ConstructorOf(a);
         var (o, conflictB) = this.ConstructorOf(b);
-        if (conflictA || conflictB)
+        if (conflictA || conflictB || this.atoms.Any(x => x.Kind == 3 && ((this.Find(x.A) == a && this.Find(x.B) == b) || (this.Find(x.A) == b && this.Find(x.B) == a))))
         {
             return true;
         }

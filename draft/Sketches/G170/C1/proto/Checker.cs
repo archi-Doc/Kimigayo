@@ -111,8 +111,9 @@ public sealed class Checker
             this.Records.Add($"Resource({scope}: {a.Reason})"); // the limit was hit here: one record for the scope
         }
 
-        // B 3.10 (D9): the polarities established when the limit was reached stand; only an unestablished answer is Resource.
-        var proof = a.Positive && a.Negative ? Proof.Error : a.Positive ? Proof.Proven : a.Negative ? Proof.Refuted : a.Outcome == Outcome.Resource ? Proof.Resource : Proof.Unknown;
+        // B 3.10 (D9), read literally: at a limit the Proven (and Error) the identities obtained give stand; a Refuted or Unknown that
+        // depends on the limited analysis is Resource (more analysis could turn an established Refuted into Error).
+        var proof = a.Positive && a.Negative ? Proof.Error : a.Positive ? Proof.Proven : a.Outcome == Outcome.Resource ? Proof.Resource : a.Negative ? Proof.Refuted : Proof.Unknown;
         return (proof, a.Outcome != Outcome.Provisional);
     }
 

@@ -890,10 +890,48 @@ public sealed class Solver
             var a = this.g.Find(this.g.LookupTerm(atom.A!));
             var b = this.g.Find(this.g.LookupTerm(atom.B!));
             yes = a == b;
-            no = this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null)) || this.g.Refuted(a, b); // a negated fact, or B 3.3's structural Refuted
+            no = this.Refuted(a, b, new());
         }
 
         return p.Kind == FK.Not ? (no, yes) : (yes, no);
+    }
+
+    // B 3.3's Refuted over the request's structure (rule 6; D7): a negated identity fact between the two classes; a conflicting class
+    // against any class, itself included; constructors of different heads; equal heads and a Refuted kid pair; one class a proper
+    // part of the other (B 3.6). Coinductive over class pairs (cyclic structures terminate); reads materialized constructors and
+    // facts only, so an identity goal's negative polarity needs its classes' structure (the structure need, rule 9).
+    private bool Refuted(int a, int b, HashSet<(int, int)> visited)
+    {
+        a = this.g.Find(a);
+        b = this.g.Find(b);
+        if (this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null)) || this.g.Conflict(a) || this.g.Conflict(b))
+        {
+            return true;
+        }
+
+        if (!visited.Add((Math.Min(a, b), Math.Max(a, b))))
+        {
+            return false;
+        }
+
+        var (n, o) = (this.g.Constructor(a), this.g.Constructor(b));
+        if (n >= 0 && o >= 0)
+        {
+            if (!this.g.HeadOf(n).Equals(this.g.HeadOf(o)) || this.g.KidCount(n) != this.g.KidCount(o))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < this.g.KidCount(n); i++)
+            {
+                if (this.Refuted(this.g.KidOf(n, i), this.g.KidOf(o, i), visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return this.g.ProperPart(a, b, new()) || this.g.ProperPart(b, a, new());
     }
 
     // ---- Rounds ----
@@ -1670,9 +1708,9 @@ public sealed class Solver
 
         ctx.Visit(c);
         ctx.Visit(other);
-        if ((this.Reference(c), this.Reference(other)) is var (rc, ro) && (rc is not null || ro is not null) && !(rc is not null && ro is not null && rc.Value.Head.Equals(ro.Value.Head)))
+        if (this.Refused(c, other))
         {
-            return; // D5: a reference meets only the same reference (their arguments meet through Agree)
+            return; // D5: a reference meets only the same reference; rule 7: Refuted classes never meet
         }
 
         if (!this.MayGain(c) && !this.MayGain(other))
@@ -1705,14 +1743,29 @@ public sealed class Solver
         }
     }
 
+    // Two classes that can never be one (rule 7, by the top-level head test over materialized constructors; D5: a reference against
+    // a Type or another reference) form no meeting.
+    private bool Refused(int c, int other)
+    {
+        var (rc, _) = this.Constructor(c);
+        var (ro, _) = this.Constructor(other);
+        if (rc is SymHead { Kind: SymKind.Ref } || ro is SymHead { Kind: SymKind.Ref })
+        {
+            return rc is null || ro is null || !rc.Equals(ro);
+        }
+
+        return this.g.Clash(c, other);
+    }
+
     // A meeting row's answer: the nodes of the two classes, real or virtual, meet as nodes (§1): each node of one class probes the
     // other's virtual nodes through the index by its head and kid heads and agrees with each found (Agree: one Type, or its kids
-    // meet); same-head real nodes meet at their kids (upward congruence), as kid meetings.
+    // meet); same-head real nodes meet at their kids (upward congruence), as kid meetings. A pair that became Refuted since the
+    // row was made (a constructor materialized) answers nothing.
     private void MeetClasses(MeetRow row, MatchCtx ctx)
     {
         var c = this.g.Find(row.A);
         var other = this.g.Find(row.B);
-        if (c == other)
+        if (c == other || this.Refused(c, other))
         {
             return;
         }
@@ -2223,8 +2276,9 @@ public sealed class Solver
         var bind = new int?[this.shapes.VarCount(w.Shape)];
         var meets = new List<(int, int)>();
         var needs = new Dictionary<int, Head>();
-        // A promise whose shape is a class is requested as an alias (no agreement) unless D5 forbids it (a reference against a Type).
-        if (w.Shape < 0 ? !this.Agree(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], meets, needs) : !this.Kid(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], new()))
+        // A promise whose shape is a class is requested as an alias (no meeting) unless the kid rule refuses it (D5: a reference
+        // against a Type; rule 7: constructors of different heads).
+        if (w.Shape < 0 ? !this.Agree(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], meets, needs) : !this.Kid(w.Shape, bind, pattern, new int?[this.shapes.VarCount(pattern)], new(), needs))
         {
             return;
         }
@@ -2291,18 +2345,69 @@ public sealed class Solver
         return this.Virtuals(via.Class, this.HeadOfShape(shape), ctx, this.KidHeads(this.ShapeKid(shape, 0)), this.KidHeads(this.ShapeKid(shape, 1))).FirstOrDefault(p => p.Shape == shape);
     }
 
-    // Matching modulo classes (rule 2) over shapes: a (bound in bindA) and b (bound in bindB) can be one Type. Heads must be equal
-    // at the top only; every kid is matched by class (Kid). A shape variable takes a class it meets (an existing Type's node is its
-    // class); against a shape node it records the head needed there. False only when the top heads differ.
+    // Matching modulo classes (rules 2 and 7) over shapes: a (bound in bindA) and b (bound in bindB) can be one Type. Heads must be
+    // equal at the top (the need is for a head); every kid is decided by the kid rule. False when the top heads differ or a kid pair
+    // can never be one Type.
     private bool Agree(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needs)
     {
-        if (a < 0 && this.shapes.IsVar(a) && b < 0 && !this.shapes.IsVar(b))
+        if (a < 0 && b < 0 && !this.shapes.IsVar(a) && !this.shapes.IsVar(b))
         {
-            if (this.shapes.ClassOf(b) is var cb && cb >= 0)
+            return this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) && this.Kids(this.shapes.KidsOf(a), bindA, this.shapes.KidsOf(b), bindB, meets, needs);
+        }
+
+        return this.Kid(a, bindA, b, bindB, meets, needs);
+    }
+
+    // The kid rule (rule 7: unification against constructors, B 3.3). Two classes agree when equal, never when their materialized
+    // constructors have different heads (the top-level head test), and meet otherwise. A shape variable takes a class it meets (D3)
+    // and, against a shape node, records the head it needs there (the static prune). A shape node against a class recurses into the
+    // class's constructor of its head, is refused by a constructor of another head, and is deferred when the class has none
+    // (decided once built; the request still happens); two shape nodes recurse when their constructor heads are equal. A Contract
+    // reference (D5) agrees only with the same reference head, its arguments then by this rule, never with a Type. A projection or
+    // an abstract Type has no constructor head (B 3.2) and decides nothing.
+    private bool Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needs)
+    {
+        a = this.Interned(a);
+        b = this.Interned(b);
+        if ((a >= 0 && this.g.Conflict(a)) || (b >= 0 && this.g.Conflict(b)))
+        {
+            return false; // a conflicting class agrees with nothing (B 3.10: a premise error)
+        }
+
+        if (a >= 0 && b >= 0)
+        {
+            if (this.g.Find(a) == this.g.Find(b))
             {
-                Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, cb, meets);
+                return true;
             }
-            else
+
+            var (ra, kra) = this.Constructor(a);
+            var (rb, krb) = this.Constructor(b);
+            if (ra is SymHead { Kind: SymKind.Ref } || rb is SymHead { Kind: SymKind.Ref })
+            {
+                return ra is not null && rb is not null && ra.Equals(rb) && this.Kids(kra!, bindA, krb!, bindB, meets, needs);
+            }
+
+            if (this.g.Clash(a, b))
+            {
+                return false;
+            }
+
+            meets.Add((a, b));
+            return true;
+        }
+
+        if (this.IsVar(a) || this.IsVar(b))
+        {
+            if (b >= 0)
+            {
+                Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, b, meets);
+            }
+            else if (a >= 0)
+            {
+                Bind(bindB, ((VarHead)this.shapes.HeadOf(b)).Index, a, meets);
+            }
+            else if (this.IsVar(a) && !this.IsVar(b))
             {
                 needs[((VarHead)this.shapes.HeadOf(a)).Index] = this.shapes.HeadOf(b);
             }
@@ -2310,52 +2415,22 @@ public sealed class Solver
             return true;
         }
 
-        if (a < 0 && b < 0 && !this.shapes.IsVar(a) && !this.shapes.IsVar(b))
+        var (ha, ka) = this.Constructor(a);
+        var (hb, kb) = this.Constructor(b);
+        if (ha is SymHead { Kind: SymKind.Ref } || hb is SymHead { Kind: SymKind.Ref })
         {
-            return this.shapes.HeadOf(a).Equals(this.shapes.HeadOf(b)) && this.Kids(this.shapes.KidsOf(a), bindA, this.shapes.KidsOf(b), bindB, meets);
+            return ha is not null && hb is not null && ha.Equals(hb) && this.Kids(ka!, bindA, kb!, bindB, meets, needs);
         }
 
-        return this.Kid(a, bindA, b, bindB, meets);
+        if (ha is null || hb is null)
+        {
+            return true;
+        }
+
+        return ha.Equals(hb) && this.Kids(ka!, bindA, kb!, bindB, meets, needs);
     }
 
-    // The kid rule: two classes agree when equal and meet otherwise; a shape variable against a class binds; anything else (a shape
-    // node against anything, two shape variables) is not a Type yet: no constraint, decided once built — except a Contract
-    // reference (D5: SPEC 8.2.3 relates Types; a reference class holds references of one declaration), which agrees only with the
-    // same reference head, its arguments then agreeing by this rule, and never with a Type or another reference.
-    private bool Kid(int a, int?[] bindA, int b, int?[] bindB, List<(int, int)> meets)
-    {
-        if (a >= 0 && b >= 0 && this.g.Find(a) == this.g.Find(b))
-        {
-            return true;
-        }
-
-        if (a >= 0 && this.IsVar(b))
-        {
-            Bind(bindB, ((VarHead)this.shapes.HeadOf(b)).Index, a, meets);
-            return true;
-        }
-
-        if (b >= 0 && this.IsVar(a))
-        {
-            Bind(bindA, ((VarHead)this.shapes.HeadOf(a)).Index, b, meets);
-            return true;
-        }
-
-        var (ra, rb) = (this.Reference(a), this.Reference(b));
-        if (ra is null && rb is null)
-        {
-            if (a >= 0 && b >= 0)
-            {
-                meets.Add((a, b));
-            }
-
-            return true;
-        }
-
-        return ra is not null && rb is not null && ra.Value.Head.Equals(rb.Value.Head) && this.Kids(ra.Value.Kids, bindA, rb.Value.Kids, bindB, meets);
-    }
-
-    private bool Kids(int[] ka, int?[] bindA, int[] kb, int?[] bindB, List<(int, int)> meets)
+    private bool Kids(int[] ka, int?[] bindA, int[] kb, int?[] bindB, List<(int, int)> meets, Dictionary<int, Head> needs)
     {
         if (ka.Length != kb.Length)
         {
@@ -2364,7 +2439,7 @@ public sealed class Solver
 
         for (var i = 0; i < ka.Length; i++)
         {
-            if (!this.Kid(ka[i], bindA, kb[i], bindB, meets))
+            if (!this.Kid(ka[i], bindA, kb[i], bindB, meets, needs))
             {
                 return false;
             }
@@ -2375,25 +2450,33 @@ public sealed class Solver
 
     private bool IsVar(int s) => s < 0 && this.shapes.IsVar(s);
 
-    // The Contract reference a class or shape node is, if any: a class's reference node (one declaration per class) or a shape
-    // node with a reference head, as (head, kids in the shape encoding); null for a Type, a shape variable or a reference-free class.
-    private (Head Head, int[] Kids)? Reference(int s)
+    // A shape node that denotes an existing Type (every kid a class, the node interned since the shape was made) is that class.
+    private int Interned(int s) => s < 0 && !this.shapes.IsVar(s) && this.shapes.ClassOf(s) is var c && c >= 0 ? c : s;
+
+    // The constructor a class or shape node has, as (head, kids in the shape encoding): a class's Contract reference node (D5: one
+    // declaration per class) or its Prim/Con constructor; a shape node with a Prim, Con or Ref head. Null for a projection, an
+    // abstract Type or a class with neither (B 3.2: no head).
+    private (Head? Head, int[]? Kids) Constructor(int s)
     {
         if (s < 0)
         {
-            return !this.shapes.IsVar(s) && this.shapes.HeadOf(s) is SymHead { Kind: SymKind.Ref } ? (this.shapes.HeadOf(s), this.shapes.KidsOf(s)) : null;
+            var h = this.shapes.HeadOf(s);
+            return h is SymHead { Kind: SymKind.Prim or SymKind.Con or SymKind.Ref } ? (h, this.shapes.KidsOf(s)) : (null, null);
         }
 
         foreach (var node in this.g.NodesOf(s))
         {
             if (this.g.HeadOf(node) is SymHead { Kind: SymKind.Ref } head)
             {
-                return (head, Enumerable.Range(0, this.g.KidCount(node)).Select(i => this.g.KidOf(node, i)).ToArray());
+                return (head, this.KidClasses(node));
             }
         }
 
-        return null;
+        var n = this.g.Constructor(s);
+        return n < 0 ? (null, null) : (this.g.HeadOf(n), this.KidClasses(n));
     }
+
+    private int[] KidClasses(int node) => Enumerable.Range(0, this.g.KidCount(node)).Select(i => this.g.KidOf(node, i)).ToArray();
 
     private void Bind(int?[] bind, int n, int c, List<(int, int)> meets)
     {

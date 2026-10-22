@@ -669,7 +669,10 @@ public static class Runner
         failures += Expect("a need under a ground Type's kid", Kid, "List<T.(K1).X> is Cp", "+ C");
 
         // Seed 7 model 395: A is Kz<A> binds A = i64 from the argument; the subject i32 must then be i64's class: the classes meet.
-        failures += Expect("a bound variable meets the subject class", "contract Kz<A>\n  associate Y is i32\n  clause A is Kz<A>\nconformance S1 is Kz<i64>\n  binding Y = i64", "i32 is Kz<i64>", "+ C");
+        // Proposal B (2026-10-22) changes this case's meaning: the binding Y = i64 fails its Contract's associated requirement
+        // `Y is i32` (B 3.7, an obligation; the reference's `!`: i32 and i64 in one class), and i32 and i64 never meet (rule 7),
+        // so the request supplies nothing; before B it was `+ C` through that identity.
+        failures += Expect("a bound variable meets the subject class", "contract Kz<A>\n  associate Y is i32\n  clause A is Kz<A>\nconformance S1 is Kz<i64>\n  binding Y = i64", "i32 is Kz<i64>", "none C");
         failures += Expect("closed parameter side, identity goal", "contract Kk<A>\n  clause A is List<i32>\ninput T is Kk<U>", "U is List<i32>", "+ C");
         failures += Expect("many bindings: through the projection", Many(50), "S7.(Pp).X is Copy", "+ C");
         failures += Expect("many bindings: an unrelated compound", Many(50), "List<i32> is Copy", "none C");
@@ -732,8 +735,30 @@ public static class Runner
             input Opt<B0> is List<i32>
             input S is Q<i32>
             """;
-        failures += Expect("a kid that is not a Type yet is decided once built", Shape5, "T.(Gz).Z is Copy", "+ C");
-        failures += Expect("a kid that is not a Type yet, one level deeper", Shape5.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X").Replace("List<A>.(W).X", "Ev<List<A>>.(W).X"), "T.(Gz).Z is Copy", "+ C");
+        // Proposal B (2026-10-22) changes these two cases' meaning: the premise `Opt<B0> is List<i32>` is a structural conflict
+        // (B 3.3, 3.10: a premise error of the declaration; the reference's `!`), and a conflicting class agrees with nothing
+        // (rule 7), so the request supplies nothing; before B they were `+ C` through that identity. The R4-B2 witness keeps a
+        // valid form below (`B0 is i32`, both clauses over `Opt`): the kid `Opt<B0>` of the promise is still not a Type when the
+        // promise is matched and is decided once built.
+        failures += Expect("a kid that is not a Type yet is decided once built", Shape5, "T.(Gz).Z is Copy", "none C");
+        failures += Expect("a kid that is not a Type yet, one level deeper", Shape5.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X").Replace("List<A>.(W).X", "Ev<List<A>>.(W).X"), "T.(Gz).Z is Copy", "none C");
+        const string Shape5B = """
+            contract Copy
+            contract W
+              associate X
+            contract Gz
+              associate Z
+            contract G<A>
+              clause Self.(Gz).Z is Opt<A>.(W).X
+            contract Q<A>
+              clause Opt<A>.(W).X is Copy
+            input T is G<B0>
+            input T is Gz
+            input B0 is i32
+            input S is Q<i32>
+            """;
+        failures += Expect("a kid that is not a Type yet is decided once built (valid under B)", Shape5B, "T.(Gz).Z is Copy", "+ C");
+        failures += Expect("a kid that is not a Type yet, one level deeper (valid under B)", Shape5B.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X"), "T.(Gz).Z is Copy", "+ C");
 
         // The round-4 review's variants of R3-B1's witnesses (period 3, Contract arguments, kid classes, a depth-3 need, a nested
         // side met at a meeting, and the control whose Contract is recursive, so its conformance supplies nothing).
@@ -821,6 +846,28 @@ public static class Runner
         failures += Expect("B limit-keeps-proven: the polarity established before the item limit stands (seed 20261022 model 312)", LimitKeepsProven, "i32 is Cp", "+ R", limits: new Limits { Rounds = 300, Items = 3000 });
         failures += Expect("B conflict-reached-by-row: the row fires on need and the conflict is the request's", "contract K<A>\n  clause Self is Array<A>\ninput T is K<U>\ninput T is Option<U>", "T is Array<U>", "+- C");
         failures += ExpectLinear("B open-live: unrelated request, live constructor sides with a variable kid (rule 8 up)", OpenLive, "T is Copy", "none C");
+
+        // Rule 7 (design review of the addendum, round 1): only constructors have a head; a projection-headed node or pattern decides
+        // nothing against a projection, a constructor or a class (B 3.2: abstract), and a negated identity fact refutes a kid pair.
+        const string ProjKids = """
+            contract Cp
+            contract K
+              associate X
+              associate Y
+            contract Q<A>
+              clause Self is Pair<A.(K).X, i32>
+            contract R<A>
+              clause Self is Pair<A.(K).Y, i32>
+            input T is K
+            input U is K
+            input T.(K).Y is U.(K).X
+            input V is Q<U>
+            input W is R<T>
+            input W is Cp
+            """;
+        failures += Expect("B proj-kids: projection kids of two promises stay deferred (the V~W meeting)", ProjKids, "V is Cp", "+ C");
+        failures += Expect("B proj-vs-con: a projection kid against a constructor stays deferred", ProjKids.Replace("contract R<A>\n  clause Self is Pair<A.(K).Y, i32>", "contract R\n  clause Self is Pair<List<i64>, i32>").Replace("input T.(K).Y is U.(K).X\n", "input T.(K).Y is U.(K).X\ninput T.(K).Y is List<i64>\n").Replace("input W is R<T>", "input W is R"), "V is Cp", "+ C");
+        failures += Expect("B negated-component: a negated identity fact refutes a kid pair", "input T is Option<U>\ninput U is not i32", "T is Option<i32>", "- C");
         return failures;
     }
 
