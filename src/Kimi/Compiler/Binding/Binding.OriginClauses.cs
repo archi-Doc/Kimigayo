@@ -193,9 +193,10 @@ public sealed partial class Binding
         }
     }
 
-    // The local part (SPEC 15.3.6): a local's clause is judged as declared, then by its omitted Origins: a failed bound of one solved to
-    // its lower candidate is no principal candidate, and a relation is located at the initializer when the initializer supplies one of
-    // its ends, an Origin the local's Type omits, as the value that does not fit.
+    // The local part (SPEC 15.3.6): a local's clause is judged as declared, and a relation is located at the initializer when the
+    // initializer supplies one of its ends, an Origin the local's Type omits, as the value that does not fit. An omitted contravariant
+    // slot with no principal lower bound is a local region (SolveLocalBounds), so its clause is a row, judged through the region's
+    // sources, never a record here (DECISIONS R4-M112).
     private void JudgeLocalClause(OriginDeclaration local, OriginRelation relation)
     {
         if (this.FailedDeclaredRelation(relation) is not { } failed)
@@ -203,15 +204,7 @@ public sealed partial class Binding
             return;
         }
 
-        // The solved lower candidate still fails a bound: no principal candidate is proven. The local needs an
-        // annotation, not a feature-limit diagnostic; all clauses depending on the same unsolved local share this cause.
         var use = relation.Syntax;
-        if (!relation.Equality && InferredEnd(relation.Longer) == OriginVariance.Contravariant)
-        {
-            this.FailExplained(ref this.principalOriginFailures, local.Owner, BindingFailure.MissingOrigin, (failed.Longer, failed.Shorter, use));
-            return;
-        }
-
         var supplied = InferredEnd(relation.Longer) is not null || InferredEnd(relation.Shorter) is not null;
         var record = supplied && local.Owner is VariableKoto { InitializerKoto: { } initializer } ? failed with { At = initializer } : failed;
         this.FailExplained(ref this.originRelations, use, BindingFailure.OriginRelation, record);

@@ -3023,6 +3023,47 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
+- **R4-M112 A body variable with no candidate is a local region** (2026-10-22; unit 2a0-3b under R4-M94's package, 2a0-D §5.2 and D10,
+  OQ12 (a), OQ7 (a); the R4 planning session's rulings on its design: Q1 (A), Q2 (a), PD21; one BU review, DEC Q6 form 1)
+  - Rule (SPEC 15.3.6): a variable of an executable body whose row has no candidate is a local region there. An unbound body inference
+    (an `OriginInference` obligation formed in a body whose atom no declaration resolves) verifies as the body's open local region,
+    which holds no Loan (`IsVerifiedOriginObligation`). A `let` local's contravariant slot with two lower bounds proven in neither
+    direction becomes a local region of the local (`SolveLocalBounds`, `LocalRegionSlot`, the representation mutable locals use), so its
+    initializer bound (`CheckTypeUse`) and its clauses (`FailedDeclaredRelation`'s region path) are rows judged through the region's
+    sources: the old reporter now, A5 from 2a-1a. Outside a body an unresolved slot stays `MissingOriginBinding_Kd`. Deleted:
+    `JudgeLocalClause`'s principal branch (unreachable: a proven principal outlives each lower bound), `principalOriginFailures` and its
+    report branch in `Binding.cs`; the old reporter's unresolved-inference stop for body variables (a behavior deletion; its code stays
+    for other kinds, see Q2).
+  - The brief's ruling 2 (twins): a clause record Binding still forms goes through the one record path with R4-M111's twin add. The
+    no-principal clause is a row without a Binding record, so it is not a twin and no twin case is added.
+  - Default pipeline (OQ7 (a); every vanished rejection a SPEC 15.3.6 reading): valid now are c8c1f3f534b0's form
+    (`PairFollowTest.UnconstrainedQualifierOriginIsRejected`, renamed `…IsALocalRegion`), the incomparable contravariant local
+    (`LocalOriginClauseTest.IncomparableContravariantBoundsRequireAnAnnotation`, renamed `…MakeALocalRegion`; its allocation companion
+    `ContravariantBoundSuccessAndFailureReuseStorage`, renamed `…PrincipalAndRegionReuseStorage`, binds both variants complete, warm 0 B)
+    and s-noprincipal; s-noprincipal-err gives the old reporter's `UnprovenOriginRelation_Kd` at the clause. Unchanged: s-vars (valid),
+    a Field's `MissingOriginBinding_Kd`, and the S3 demo (Binding's located `Unsupported_Kd` at `let pair`). OQ-1 (c) stands: `let`
+    candidates (2x-P4 D4) and the contravariant-clause `Unsupported_Kd` stay; only the no-principal case changes. Census: no library or
+    milestone verdict change and no program from accepted to rejected (`MirCensusTest`, the milestone tests, the whole Functional suite
+    on the prototype); the diagnostic snapshot is unchanged.
+  - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays. The old reporter still gives
+    that code for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so
+    `TheComparedSetCoversEachOwnershipCode` (R4-M4) needs the row; it goes with the old reporter at R6-check. Rejected: turning that
+    record into a contract break now (an edit of the frozen old Analysis beyond the package, D5, on an unshown premise).
+  - Ledger (mir Functional with `KIMI_MIR_DIFF`, base a046bffd and head): c8c1f3f534b0's `UnprovenConstraint_Kd` rows (missing,
+    blocking, and its acceptance row) leave; `ARegionsSourceMustOutliveItsClauseBound`'s program adds an old `UnprovenOriginRelation_Kd`
+    at its clause (missing, blocking until 2a-1a, and its acceptance row; a5-old-origins, b). Raw rows (2,955), blocking rows (180 of
+    577) and unclassified signatures (3) are as at the base.
+  - A5 (H, 2a-1a's question): the new region atoms, a let local's `LocalRegionSlot` and an unbound inference atom, class as Inferred in
+    the C1-F4 view (row 8: a root of the body without a Projection role).
+  - PD21: `Binding.OriginDeclarations.cs` (over its limit) is net −3 tokens. Ruling: an in-place re-expectation in a due test file (an
+    expected value or a test's name changed in place, net ≤ 0 lines, no test or member added, no responsibility added) is not an adding
+    change, so `LocalOriginClauseTest.cs` and `PairFollowTest.cs` take theirs without a restructure; each still counts this unit. New
+    tests go in `LocalRegionInferenceTest.cs` (2 → 3).
+  - BU's review of 2a0-4: N2 (`AnalysisOf`'s contract names the subset) and N6 (a call argument's fixed-fixed record beside a
+    body-chain row at the same node passes through) are taken here.
+  - Rejected: Option B, keeping the initializer's value as the candidate (a fixed-fixed record that rejects SPEC-valid programs
+    for good, against 15.3.6's no-candidate rule); a replacement atom for an unbound inference (no declaration holds it; the same
+    verdict at the cost of more state in an over-limit file).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

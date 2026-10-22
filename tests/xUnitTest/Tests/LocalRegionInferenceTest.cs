@@ -12,6 +12,20 @@ namespace XunitTest;
 
 public class LocalRegionInferenceTest(ITestOutputHelper output)
 {
+    // A stored function's input makes `s` contravariant.
+    private const string Callback = "struct C {s}\n    public let call: (ref/i32 during s) -> i32\n    public init(call: (ref/i32 during s) -> i32) => self.call = call@move\n\n";
+
+    // A local's contravariant slot with two lower bounds proven in neither direction, the initializer's `a` and the clause's `b`, which the
+    // call's argument `c` outlives.
+    private const string NoPrincipal = Callback + "func f(a: ref/i32, b: ref/i32, c: ref/i32, g: (ref/i32 during a) -> i32) -> i32\n    origin c outlives a\n" +
+        "    origin c outlives b\n    let h0 = C.init(g@move)\n    let h: C{x} = h0@move\n        origin x.s outlives b\n    return h.call(c)\npublic func main() => ()\n";
+
+    // The S3 demo (audit-origins 5): a local Function input bounded through a clause by another inferred slot.
+    private const string S3Demo = "struct View<T> {source}\n    public let data: ref/T during source\n" +
+        "func demo<T>(x: View<T>, anchor: ref/i32 during s, sink: (View<T> during s) -> ()) -> View<T> during x.source\n    origin x.source outlives s\n" +
+        "    let pair: (View<T>{w}, (View<T>{k}) -> ()) = (x@move, sink@move)\n        origin k.source outlives w.source\n    return pair.0@move\n" +
+        "public func main() => ()";
+
     [Theory]
     [InlineData("Reassign", "let first = 0\nvar view = first@ref\nlet second = 5\nview = second@ref\nrequire view@follow == 5 else => $abort(\"view\")")]
     [InlineData("BothUses", "let first = 0\nvar view = first@ref\nrequire view@follow == 0 else => $abort(\"before\")\nlet second = 5\nview = second@ref\nrequire view@follow == 5 else => $abort(\"after\")")]
@@ -101,6 +115,47 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
 
         var json = JsonSerializer.Serialize(result, DiagnosticJsonContext.Default.DiagnosticResult);
         Assert.Equal(result, JsonSerializer.Deserialize(json, DiagnosticJsonContext.Default.DiagnosticResult));
+    }
+
+    // SPEC 15.3.6: a body variable whose row has no candidate is a local region of the body, never invented as static, so each program is
+    // valid on both pipelines (DECISIONS R4-M112): an initializer qualifier's slot that nothing bounds (c8c1f3f534b0's form; it was
+    // UnprovenConstraint_Kd), a variable bounded only by variables, and a contravariant slot with no principal lower bound (it was
+    // MissingOriginBinding_Kd), whose clause and initializer bounds hold through the region's one source, the call's argument.
+    [Theory]
+    [InlineData("struct Bag<E>\n    var items: Array<E>\n    public init(items: Array<E>) => self.items = items@move\npublic func main()\n    let refs = Bag<ref/i32>.init([])")]
+    [InlineData("func inspect<T>(value: T) -> i32 => 0\npublic func main()\n    let a: Option<ref/i32> = .None\n    let b: Option<ref/i32> = a\n    let n = inspect(b@move)")]
+    [InlineData(NoPrincipal)]
+    public void AVariableWithNoCandidateIsALocalRegion(string source)
+    {
+        var c = MinimalEmissionTest.Analyze(source);
+        foreach (var pipeline in new[] { CompilerPipeline.Legacy, CompilerPipeline.Mir })
+        {
+            c.Pipeline = pipeline;
+            var verified = c.Bind().IsComplete && c.Binding.CheckStartup(OutputKind.Application).IsComplete && c.Analyze() is { IsVerified: true, ErrorCount: 0 };
+            Assert.True(verified, $"{pipeline}: {MinimalEmissionTest.Describe(c, null)}");
+        }
+    }
+
+    // SPEC 15.3.6, 15.6.5: the region's source must outlive each of its bounds; without the premise for the clause's bound, the clause's
+    // row is the relation record at the clause (the old analysis's until A5-F4), never MissingOriginBinding_Kd at the local.
+    [Fact]
+    public void ARegionsSourceMustOutliveItsClauseBound()
+    {
+        var source = NoPrincipal.Replace("    origin c outlives b\n", string.Empty, StringComparison.Ordinal);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal((nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "origin x.s outlives b"), (error.Code, source.Substring(error.Span!.Value.Start, error.Span.Value.Length)));
+    }
+
+    // Pinned: outside a body an omitted Origin needs an annotation (SPEC 15.3.6), and the S3 demo, a local Function input bounded through a
+    // clause by another inferred slot, stays the located Unsupported_Kd at its local (OQ-1 (c); DECISIONS R4-M112).
+    [Theory]
+    [InlineData("struct S\n    public let r: ref/i32\npublic func main() => ()", nameof(DiagnosticCode.MissingOriginBinding_Kd), "ref/i32")]
+    [InlineData(S3Demo, nameof(DiagnosticCode.Unsupported_Kd), "let pair")]
+    public void AnOriginOutsideTheRegionRulesKeepsItsRecord(string source, string code, string at)
+    {
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(code, error.Code);
+        Assert.StartsWith(at, source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     [Fact]

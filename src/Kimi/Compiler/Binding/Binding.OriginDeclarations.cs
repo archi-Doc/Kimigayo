@@ -15,7 +15,6 @@ public sealed partial class Binding
     private readonly Dictionary<Koto, OriginDeclaration> initializerOrigins = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<Koto, List<string>> discoveredOrigins = new(ReferenceEqualityComparer.Instance);
     private OriginRewriteVisitor? originRewriteVisitor;
-    private Dictionary<Koto, (BoundOrigin First, BoundOrigin Second, Koto Clause)>? principalOriginFailures;
 
     private static Koto? OriginOwner(Koto node)
     {
@@ -771,7 +770,7 @@ public sealed partial class Binding
 
         if (declaration.Inferred is { Count: > 0 } inferred)
         {
-            this.SolveLocalBounds(declaration, inferred);
+            this.SolveLocalBounds(declaration, inferred, ref localSlot);
         }
 
         declaration.Scope = scope;
@@ -849,9 +848,11 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing
-    // lower bound proven to outlive the others. Repeated passes propagate dependent slots without inventing unions.
-    private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred)
+    // SPEC 15.3.6, 15.4.4: covariant positions meet upper bounds; contravariant positions select an existing lower bound proven to
+    // outlive the others, and with two bounds proven in neither direction the row has no candidate, so the variable is a local region
+    // of the local (`localSlot`, as a mutable local's slots), whose bounds are then rows (DECISIONS R4-M112). Repeated passes propagate
+    // dependent slots without inventing unions.
+    private void SolveLocalBounds(OriginDeclaration declaration, Dictionary<BoundOrigin, OriginVariance> inferred, ref int localSlot)
     {
         for (var pass = 0; pass <= declaration.Relations.Count; pass++)
         {
@@ -863,13 +864,14 @@ public sealed partial class Binding
                     continue;
                 }
 
-                if (inferred.TryGetValue(relation.Longer, out var lowerVariance) && lowerVariance == OriginVariance.Contravariant &&
+                if (inferred.GetValueOrDefault(relation.Longer) == OriginVariance.Contravariant &&
                     declaration.Replacements.TryGetValue(relation.Longer, out var lowerCandidate) && !IsLocalRegion(lowerCandidate))
                 {
                     var lower = this.ResolveOrigin(relation.Shorter, declaration);
-                    if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax) && this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax))
+                    if (!this.ProvesOriginOutlives(lowerCandidate, lower, relation.Syntax))
                     {
-                        declaration.Replacements[relation.Longer] = lower;
+                        declaration.Replacements[relation.Longer] = this.ProvesOriginOutlives(lower, lowerCandidate, relation.Syntax) ? lower
+                            : this.LocalRegionSlot((VariableKoto)declaration.Owner, localSlot--);
                         this.originStateVersion++;
                         changed = true;
                     }

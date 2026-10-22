@@ -52,9 +52,11 @@ public sealed partial class Binding
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
         {
-            // SPEC 15.3.6: an Origin resolved to an open region is that local region; it needs no annotation.
+            // SPEC 15.3.6: an Origin resolved to an open region is that local region; it needs no annotation. A variable of an executable
+            // body that no bound resolves has no candidate: it is the body's open local region, which holds no Loan (DECISIONS R4-M112).
             var resolved = this.OriginAtUse(pending, obligation.Use);
-            return resolved.Kind is not (OriginKind.Inference or OriginKind.Unbound) || IsLocalRegion(resolved);
+            return resolved.Kind is not (OriginKind.Inference or OriginKind.Unbound) || IsLocalRegion(resolved) ||
+                (resolved.Kind == OriginKind.Inference && obligation.Body.IsBody);
         }
 
         if (obligation.Kind == BindingObligationKind.OriginOutlives && obligation.Longer is { } longer && obligation.Shorter is { } shorter)
