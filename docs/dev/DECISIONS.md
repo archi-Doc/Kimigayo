@@ -6273,3 +6273,10 @@ structure is recorded here by the unit that first implements it.
   kernel O2 A/B" moves to the later of C8d and C9c, since the corpus kernel needs `Array` of a Function Type (C8d) and string
   interpolation (C9c) under MIR code generation; C5b measures a fixed-array variant of the kernel as information, and a B/A beyond the
   A=B variance on it stops C5b (R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8. It leaves the list.
+- **R5-M107 The owner confirms C7's departures** (owner, 2026-10-22, on the R5 planning session's explanation before C7 landed; verbatim
+  「C7 の逸脱 2 件（NativeAllocationAudit の LegacyNative を最初の利用者が出るまで見送ること、tests/mir/statics.kimi の代わりに StaticRows を
+  ネイティブ実行すること）を承認します。」; the consequences are the planning session's) The two departures R5-M106 records are confirmed:
+  plan row E12's `LegacyNative` in `NativeAllocationAudit.WriteFixture` lands with that writer's first deviating consumer, not with C7
+  (AGENTS: no speculative mechanism; no audit deviates in its output before then); and plan row C7's native run of `tests/mir/statics.kimi`
+  is replaced by the `StaticRows` program and `StaticInitializationTest`'s fixtures, since that program declares `var` statics, which
+  R5-M82's `StaticStorage` row rejects at check until P42. They leave the list.
