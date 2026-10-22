@@ -4140,6 +4140,29 @@ resumed by R4-M86 (2026-10-20).
   896 fewer cold bytes per Bind; the library's and milestones' retention (567 contracts, 1,388 calls) is identical. Rejected: design
   B's profile key with every stop deleted (cnest_use walks `N<() -> i32>`, `N<() -> () -> i32>`, ... without end); R4's Limit on a
   repeated profile key (coarser than exact, a Limit where rows exist); a depth bound (a silent stop).
+  Final review fixes (unit bu20 U3, 2026-10-23; the final review of `ca97a155`, `noauth-final-review.md`). B1: a raw Field stating
+  `self` or a slot, read or written through a dereference of a raw pointer stating an Origin (`(*p).data`, `p[0].data`, SPEC 5.7's
+  Lens `(*p).at`, through a typed path, a parameter or `static`), ended in `InternalInvariant_Kd` in the old analysis (also at `b4eb12ac`):
+  `ProjectPointer` compared the instance's stored part (no raw Origin) with the node's Type by reference. Third D5 exception (the
+  owner, in a dialog with the planning session, 2026-10-22: 「D5 例外を広げる (推奨)」; its option: as Q-O3, the old path's intake
+  that takes this Field's Type also receives it without raw Origins; the old path never knew raw Origins, so its verdicts stay and
+  only the internal fault goes): `ProjectPointer` compares both Types through `WithoutRawOrigins`, removed with the old analysis at
+  R6-check; legacy emission of the nine rows needed nothing. B2: an erased signature (a Function Type's, a Callable bound's) reads
+  its raw layers' kind (`StepOf`), not the signature cap, which is a function's, closure's or accessor's own (R4's constraint 2;
+  M kept Function Types Exclusive); U1 had read the cap over the erased inputs. B3: SPEC 5.7 Authority says no access through a raw
+  pointer is an error for want of authority, keeping the unsafe context and the Origin relations (fits, claims, Writing a Field).
+  5.2.1's cap reads "has no write authority when" (not "read authority only when"), counts Slices as shared borrows and each
+  admitted Semantics case of a pair layer, and names closures and accessors, not Function Types. The Principles (AGENTS) hold for
+  this SPEC revision: one rule decides authority through a raw pointer (condition 3), the caps are one sentence of it (One Concept);
+  a cap reads only its declaration, a Field's slot requirement or the signature's own inputs, never a body or a caller (Local
+  Reasoning); a raw Origin states reach and call storage, undefined behavior is named as such, and claims stay explicit (Explicit
+  Semantics); every removed record is the raw clause of `SharedPathAccess_Kd`, every kept one keeps its typed facts (Compiler
+  Server Protocol). Structure: `SharedStatements`' two `ref bool` parameters became `Statements` returning a joined `RawStep`;
+  `StoredMembers` reads `StepOf` instead of a six-kind pattern; no line over 160. Measured (Debug only, not a regression):
+  `TyCtxtTest.AWarmStoredRawLayerReadAllocatesNothing` allocates 864 B in Debug at `b4eb12ac` as at head, 0 in Release (the row came
+  with C4, `b7123abf`; it is not on dev). Open: `TyCtxt.RawStep(function, …)` reads the declared signature, retention the call's
+  instantiated inputs, which may read Exclusive where the view reads Shared (conservative); `keeperPath` makes a finite cycle that
+  changes Type arguments once a Limit (accepted by the design); A5's record for a Limit call under sel is R4's.
 
 ## R5 and R6 (adopted 2026-10-18)
 

@@ -17,9 +17,10 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
-    // (RawContent), reused, and how many of them are its inputs (SignatureStep reads those); the (Origin, input) pairs whose content that
-    // walk has added, so each is walked once; whether a member walk was incomplete (CallRetention.Limit); and whether its result has a raw
-    // layer without an Origin (SPEC 5.7 Calls, D6).
+    // (RawContent), reused, and how many of them are a callee's own signature inputs, which the signature cap reads (SignatureStep; none
+    // for an erased signature, a Function Type's or a Callable bound's, whose raw layers read their kind: SPEC 5.2.1 caps a layer written
+    // in a function's own signature); the (Origin, input) pairs whose content that walk has added, so each is walked once; whether a member
+    // walk was incomplete (CallRetention.Limit); and whether its result has a raw layer without an Origin (SPEC 5.7 Calls, D6).
     private readonly List<BoundType> retentionScope = new();
     private readonly HashSet<(BoundOrigin Origin, int Input)> retentionRawVisits = new();
     private int retentionInputs;
@@ -112,7 +113,7 @@ public sealed partial class Binding
         this.retentionCarriers.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
-        this.retentionInputs = inputs.Length;
+        this.retentionInputs = callee is null ? 0 : inputs.Length;
         if (declaring is not null)
         {
             this.retentionScope.Add(declaring);
@@ -187,7 +188,7 @@ public sealed partial class Binding
     // of a raw layer without an Origin or with `static`, or a value the call may write, whose nominal Type may hide an exclusive layer)
     // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer
     // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
-    // the contract's signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
+    // the callee's own signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
     // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
     // pair layer whose binder admits no exclusive Semantics. A raw layer with another Origin addresses what each borrow its Origin
     // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; a raw result layer without one reaches every input (D6).
@@ -334,7 +335,7 @@ public sealed partial class Binding
             this.retentionScope.AddRange(inputs.Components);
         }
 
-        this.retentionInputs = this.retentionScope.Count;
+        this.retentionInputs = 0;
         this.retentionRawVisits.Clear();
 
         for (var i = 0; !ReferenceEquals(inputs, BoundType.Unit) && i < inputs.Components.Count; i++)

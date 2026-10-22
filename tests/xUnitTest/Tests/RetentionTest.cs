@@ -393,6 +393,19 @@ public sealed class RetentionTest
     public void AnErasedSignatureIsItsOwnRawScope()
         => Assert.Equal(string.Empty, Declared(Bind("func f(a: i32, b: i32, g: (raw/i32) -> ()) => ()\n"), "f"));
 
+    // SPEC 5.2.1 condition 3, 5.7 Calls (the final review's B2; R4's constraint 2): the signature cap is a function's own. A Function
+    // Type's raw layer reads its Origin's kind, so a call of a Function Type value whose `ref` input alone states that Origin (the
+    // reviewer's x_ft_erased with a Loan-carrying referent) may write through the layer what the borrow admits, where the same layer in
+    // a function's own signature stores nothing (RawLayersRetainByTheirOrigins).
+    [Fact]
+    public void AnErasedSignatureReadsNoSignatureCap()
+    {
+        const string Inputs = "ref/(ref/i32 during q) during o, raw/(ref/i32 during q) during o, ref/i32 during q";
+        var c = Bind($"func apply(g: ({Inputs}) -> (), b: ref/(ref/i32 during q) during o, p: raw/(ref/i32 during q) during o, v: ref/i32 during q)\n    g(b, p, v)\n");
+        Assert.Equal(["0 Value store 1, 1 Value store 1, 2 Value store 1"], ValueCalls(c));
+        Assert.Equal(string.Empty, Declared(c, "apply"));
+    }
+
     // SPEC 5.7, 8.11.4 rule 1 (D10): an erased callable's input reached past a shared layer stores nothing through a raw pointer there.
     [Fact]
     public void AnErasedSharedRawInputStoresNothing()

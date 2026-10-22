@@ -206,8 +206,10 @@ internal sealed partial class TyCtxt(Binding binding, KimiLibrary library)
 
     // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer a function's or accessor's signature
     // states at `input` (Retention.Result for its result) and the component `positions` below it: Shared when its Origin belongs to some
-    // borrow among the signature's inputs and every such borrow keeps only shared Loans, else its kind. A call's substitution changes
-    // neither answer, so a call reads the callee's. Cost: one walk of the input Types and the bound slots' keepers, no allocation when warm.
+    // borrow among the signature's inputs and every such borrow keeps only shared Loans, else its kind; a Function Type's layer is not a
+    // function's signature and reads RawStep(raw). It reads the declared signature, retention a call's instantiated inputs, where a
+    // substitution binding a shared and an exclusive statement to one Origin turns Shared into Exclusive, the conservative side (an open
+    // difference, DECISIONS BU-24). Cost: one walk of the declared input Types, no allocation when warm.
     internal RawStep RawStep(BindingSymbol function, int input, ReadOnlySpan<int> positions) => binding.SignatureLayerStep(function, input, positions);
 
     // SPEC 5.7 Origins, Calls (G160-4's (3a); DECISIONS BU-24): the borrows `origin` belongs to within `scope`, appended to `members`:

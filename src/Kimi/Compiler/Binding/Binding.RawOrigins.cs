@@ -66,19 +66,20 @@ public sealed partial class Binding
     };
 
     // SPEC 5.2.1 condition 3 (the owner's 「シグネチャ版も入れる (推奨)」): the step of a raw layer written in a signature whose input
-    // Types are `inputs` (a parameter's or the result's, under a call's substitution or not): Shared when some input states its Origin and
-    // every statement of it in the inputs keeps only shared Loans (SharedStatements: the outer Origin of a `ref`, `objref` or Slice layer
-    // or of a pair layer admitting only those, an argument of a slot whose Loan requirement is `ref`), since a pointer read from the layer
-    // then has read authority only; raw layers state no borrow, and borrows formed in a body never count. Any other is its kind (StepOf).
+    // Types are `inputs` (a parameter's or the result's, under a call's substitution or not; none for a Function Type's): Shared when some
+    // input states its Origin and every statement of it in the inputs keeps only shared Loans (Statements: the outer Origin of a `ref`,
+    // `objref` or Slice layer or of a pair layer admitting only those, an argument of a slot whose Loan requirement is `ref`), since a
+    // pointer read from the layer then has no write authority; raw layers state no borrow, and borrows formed in a body never count. Any
+    // other is its kind (StepOf).
     internal RawStep SignatureStep(BoundOrigin? raw, ReadOnlySpan<BoundType> inputs)
     {
-        var (stated, shared) = (false, true);
-        for (var i = 0; i < inputs.Length && shared && raw is { Kind: OriginKind.Input or OriginKind.Parameter }; i++)
+        var kept = RawStep.Unstated;
+        for (var i = 0; i < inputs.Length && kept != RawStep.Exclusive && raw is { Kind: OriginKind.Input or OriginKind.Parameter }; i++)
         {
-            this.SharedStatements(inputs[i], raw, ref stated, ref shared);
+            kept = this.Statements(inputs[i], raw, kept);
         }
 
-        return stated && shared ? RawStep.Shared : StepOf(raw);
+        return kept == RawStep.Shared ? RawStep.Shared : StepOf(raw);
     }
 
     // SignatureStep of the raw layer a function's or accessor's signature states at `input` (Retention.Result for its result) and the
@@ -126,7 +127,7 @@ public sealed partial class Binding
     internal bool StoredMembers(BoundType instance, int part, ReadOnlySpan<int> positions, List<RawMember> members)
     {
         _ = this.StoredLayer(instance, part, positions, out var layer);
-        return layer.RawOrigin is not { Kind: OriginKind.Input or OriginKind.Parameter or OriginKind.Inference or OriginKind.Intersection or OriginKind.Projection or OriginKind.Anchor } origin ||
+        return layer.RawOrigin is not { } origin || StepOf(origin) != RawStep.Exclusive ||
             this.RawMembers(origin, new ReadOnlySpan<BoundType>(in instance), members);
     }
 
@@ -221,36 +222,41 @@ public sealed partial class Binding
     private static bool Names(BoundOrigin? stated, BoundOrigin origin)
         => ReferenceEquals(stated, origin) || (stated?.Kind == OriginKind.Intersection && stated.Operands.Contains(origin));
 
-    // SignatureStep's reading of an input Type: whether it states `origin` as a layer's outer Origin or as a slot argument (a raw layer's
-    // Origin states no borrow), and whether each such statement keeps only shared Loans.
-    private void SharedStatements(BoundType type, BoundOrigin origin, ref bool stated, ref bool shared)
+    // SignatureStep's reading of an input Type: the authority the statements of `origin` in it can keep, joined with `kept` (RawStep's order:
+    // Unstated while none states it, Shared while each keeps only shared Loans, else Exclusive). A statement is a layer's outer Origin or a
+    // slot argument; a raw layer's Origin states no borrow.
+    private RawStep Statements(BoundType type, BoundOrigin origin, RawStep kept)
     {
-        if (!type.CarriesOriginOrSlot)
+        if (!type.CarriesOriginOrSlot || kept == RawStep.Exclusive)
         {
-            return;
+            return kept;
         }
 
         var pair = TryPairLayer(type, out _, out _);
         if (Names(pair ? this.OuterOrigin(type) : type.Origin, origin))
         {
-            stated = true;
-            shared &= type.Kind == BoundTypeKind.Slice || (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef) ||
+            var shared = type.Kind == BoundTypeKind.Slice || type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Ref or SemanticsKind.ObjRef } ||
                 (pair && this.LayerAdmitted(type) is not SemanticsMask.None and var admitted && (admitted & ~(SemanticsMask.Ref | SemanticsMask.ObjRef)) == 0);
+            kept = Max(kept, shared ? RawStep.Shared : RawStep.Exclusive);
         }
 
         for (var i = 0; i < type.OriginArguments.Count; i++)
         {
             if (Names(type.OriginArguments[i], origin))
             {
-                stated = true;
-                shared &= type.Symbol?.Schema is { } schema && i < schema.Origins.Count && schema.Origins[i].LoanRequirement == LoanRequirement.Ref;
+                var shared = type.Symbol?.Schema is { } schema && i < schema.Origins.Count && schema.Origins[i].LoanRequirement == LoanRequirement.Ref;
+                kept = Max(kept, shared ? RawStep.Shared : RawStep.Exclusive);
             }
         }
 
         for (var i = 0; i < type.Components.Count; i++)
         {
-            this.SharedStatements(type.Components[i], origin, ref stated, ref shared);
+            kept = this.Statements(type.Components[i], origin, kept);
         }
+
+        return kept;
+
+        static RawStep Max(RawStep a, RawStep b) => a < b ? b : a;
     }
 
     // The raw layer an instance stores at a struct's Field `part`, or an enum's Case `part` whose first position selects the payload's
@@ -271,8 +277,8 @@ public sealed partial class Binding
         }
 
         layer = stored!;
-        return declared is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } && stored is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw }
-            ? declared : throw new InvalidOperationException($"No raw layer is stored at part {part} of `{instance}` (InternalInvariant).");
+        return ReferenceTypes.IsPointer(declared) && ReferenceTypes.IsPointer(stored)
+            ? declared! : throw new InvalidOperationException($"No raw layer is stored at part {part} of `{instance}` (InternalInvariant).");
     }
 
     // SPEC 5.6, 5.7 (D14): the raw Origin the argument of a callee's Within parameter (KimiLibraryCatalog.Within) states before its fit to

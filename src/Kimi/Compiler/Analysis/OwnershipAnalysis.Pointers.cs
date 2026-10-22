@@ -47,8 +47,12 @@ public sealed partial class OwnershipAnalysis
     private int ProjectPointer(BinaryKoto element)
     {
         // The containing Place's address, displaced to one inline stored part. Nothing is read,
-        // so the rest of the pointee need not be initialized and no Loan is created.
-        if (!ElementAccess.TryType(element, out var type, out var position) || !ReferenceEquals(type, element.BoundType))
+        // so the rest of the pointee need not be initialized and no Loan is created. D5 exception (the owner's 「D5 例外を広げる (推奨)」;
+        // DECISIONS BU-24): the stored part's Type and the node's are compared without raw Origins, as a Place's Type is read. Removed with
+        // the old analysis (R6-check).
+        var binding = this.compilation.Binding;
+        if (!ElementAccess.TryType(element, out var type, out var position) ||
+            !ReferenceEquals(binding.WithoutRawOrigins(type), binding.WithoutRawOrigins(element.BoundType)))
         {
             this.Internal(element);
             return -1;
