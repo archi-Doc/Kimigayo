@@ -44,17 +44,7 @@ internal sealed partial class ModuleCodegen
             this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // Only a Generated item is requested (K11).
         }
 
-        if (item >= this.signatures.Length)
-        {
-            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
-        }
-
-        if (item >= this.signed.Length)
-        {
-            Array.Resize(ref this.signed, this.signatures.Length);
-        }
-
-        if (this.signed[item] == this.writes && this.signatures[item] is { } current)
+        if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
         {
             return current;
         }
@@ -70,15 +60,7 @@ internal sealed partial class ModuleCodegen
         var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
         var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
             (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
-        var types = this.parameters.AsSpan(0, count);
-        this.signed[item] = this.writes;
-        if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, flags, result, types))
-        {
-            return previous;
-        }
-
-        var name = "__kimi_f" + item.ToString(CultureInfo.InvariantCulture);
-        return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
+        return this.Define(item, "__kimi_f", flags, result, this.parameters.AsSpan(0, count));
     }
 
     /// <summary>Gets the C signature of a validated <c>#LibraryImport</c> function a definition calls (SPEC 22.6; Abi.Of's C convention)
@@ -168,17 +150,7 @@ internal sealed partial class ModuleCodegen
             this.Report(DiagnosticCode.InternalInvariant_Kd, this.set.Items[item].Site); // Only a Generated item is requested (K11).
         }
 
-        if (item >= this.signatures.Length)
-        {
-            Array.Resize(ref this.signatures, Math.Max(item + 1, 2 * this.signatures.Length));
-        }
-
-        if (item >= this.signed.Length)
-        {
-            Array.Resize(ref this.signed, this.signatures.Length);
-        }
-
-        if (this.signed[item] == this.writes && this.signatures[item] is { } current)
+        if (this.Stamped(ref this.signatures, ref this.signed, item) is { } current)
         {
             return current;
         }
@@ -190,15 +162,7 @@ internal sealed partial class ModuleCodegen
             return null;
         }
 
-        var types = this.parameters.AsSpan(0, count);
-        this.signed[item] = this.writes;
-        if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, ErasedFlags, result, types))
-        {
-            return previous;
-        }
-
-        var name = AdapterPrefix + item.ToString(CultureInfo.InvariantCulture);
-        return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, ErasedFlags, result, types).Named(name);
+        return this.Define(item, AdapterPrefix, ErasedFlags, result, this.parameters.AsSpan(0, count));
     }
 
     /// <summary>Gets whether an adapter's entry is the erased signature of a Function Type, the one every erased call of that Type uses
@@ -231,16 +195,14 @@ internal sealed partial class ModuleCodegen
     // while it still matches.
     private FunctionAbi ImportSignature(int index)
     {
-        if (index >= this.importSignatures.Length)
-        {
-            Array.Resize(ref this.importSignatures, Math.Max(index + 1, 2 * this.importSignatures.Length));
-            Array.Resize(ref this.importSymbols, this.importSignatures.Length);
-            Array.Resize(ref this.importSigned, this.importSignatures.Length);
-        }
-
-        if (this.importSigned[index] == this.writes && this.importSignatures[index] is { } current)
+        if (this.Stamped(ref this.importSignatures, ref this.importSigned, index) is { } current)
         {
             return current;
+        }
+
+        if (this.importSymbols.Length < this.importSignatures.Length)
+        {
+            Array.Resize(ref this.importSymbols, this.importSignatures.Length);
         }
 
         var symbol = this.imports[index].Symbol;
@@ -304,6 +266,37 @@ internal sealed partial class ModuleCodegen
         }
 
         return result;
+    }
+
+    // The head of the by-index signature cache of Signature, Adapter and ImportSignature: the arrays grown to hold the index, and the
+    // signature stamped in this Write (null: the caller computes it, then stamps it: Define for an item's).
+    private FunctionAbi? Stamped(ref FunctionAbi?[] kept, ref int[] stamps, int index)
+    {
+        if (index >= kept.Length)
+        {
+            Array.Resize(ref kept, Math.Max(index + 1, 2 * kept.Length));
+        }
+
+        if (index >= stamps.Length)
+        {
+            Array.Resize(ref stamps, kept.Length);
+        }
+
+        return stamps[index] == this.writes ? kept[index] : null;
+    }
+
+    // The tail of an item's signature (Signature, Adapter): the item stamped for this Write, the previous Write's signature while it still
+    // matches, else a new one named before the item's index (only then, so a warm module allocates nothing).
+    private FunctionAbi Define(int item, string prefix, Abi.Flags flags, BoundType result, ReadOnlySpan<BoundType> types)
+    {
+        this.signed[item] = this.writes;
+        if (this.signatures[item] is { } previous && Abi.Matches(previous, this.Layout, Abi.Convention.Internal, flags, result, types))
+        {
+            return previous;
+        }
+
+        var name = prefix + item.ToString(CultureInfo.InvariantCulture);
+        return this.signatures[item] = Abi.Of(this.Layout, Abi.Convention.Internal, flags, result, types).Named(name);
     }
 
     // The scratch for a signature's parameter Types, grown to at least the count given.

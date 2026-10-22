@@ -96,9 +96,10 @@ internal sealed partial class FunctionCodegen
 
     // SPEC 7.7.4: a function Item's call is its target's, a body under its signature; the zero-sized callee value writes nothing. Without a
     // body target, a compiler function's Item is its disposition's row (the file's contract): an intrinsic's by its row's writer, a Body
-    // disposition's by its legacy row, each placing the operands by the Value call's own key as a direct call does by its function's; a Fail
-    // row reads the code operand only its builder-made direct call has, and a library-internal failure function is named by no value. Any
-    // other is a later unit's row.
+    // disposition's by its legacy row, each placing the operands by the Value call's own key as a direct call does by its function's. A
+    // Value call carries only its Callable signature's inputs, so an intrinsic whose MIR row takes an operand beyond a written call's
+    // arguments (Fail's code, Raw.slice's backing; DECISIONS R4-M40) is not its Value call's: the descriptor's arity (MirDescriptors, the
+    // validator's row arity) is not the call's operand count. Any other is a later unit's row.
     private void FunctionItem(in MirTerminator call, BoundType item)
     {
         var target = this.Target(new(this.at, this.body.Blocks[this.at].Count));
@@ -116,14 +117,14 @@ internal sealed partial class FunctionCodegen
         var disposition = IntrinsicDisposition.Of(kind);
         switch (disposition.Kind)
         {
-            case DispositionKind.Intrinsic when disposition.Id != IntrinsicId.Fail:
+            case DispositionKind.Intrinsic when MirDescriptors.Of(disposition.Id) is { Arity: var arity } && (arity < 0 || arity == call.Count):
                 this.Intrinsic(call, IntrinsicRows.Of(disposition.Id));
                 return;
             case DispositionKind.Body when kind != CompilerFunctionKind.None:
                 this.Legacy(call, kind);
                 return;
             default:
-                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // Not a compiler function's (above), a Builtin shim's or a Fail's.
+                this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // A Builtin shim's, or an intrinsic of a builder-made operand (above).
                 return;
         }
     }
@@ -146,10 +147,10 @@ internal sealed partial class FunctionCodegen
         }
 
         var handle = Layout.Row(declared).Layout.FieldOffsets.Span; // A Function Type's row: its environment word, then its table.
-        var environment = this.LoadAt(this.Offset(value, handle[0]), Layout.Row(BoundType.ISize).Layout);
-        var table = this.LoadAt(this.Offset(value, handle[1]), RuntimeAbi.StringReference.Layout);
-        var entry = this.LoadAt(this.Offset(table, TableEntry), RuntimeAbi.StringReference.Layout);
-        var context = this.LoadAt(this.Offset(table, TableContext), RuntimeAbi.StringReference.Layout);
+        var environment = this.LoadAt(this.Offset(value, handle[0]), WordLayout);
+        var table = this.LoadAt(this.Offset(value, handle[1]), PointerLayout);
+        var entry = this.LoadAt(this.Offset(table, TableEntry), PointerLayout);
+        var context = this.LoadAt(this.Offset(table, TableContext), PointerLayout);
         var signature = this.module.Erased(declared);
         if (this.Pass(call, signature, new(call.Callee.Symbol, MirBodyKind.Fn), [environment, context]))
         {

@@ -6141,9 +6141,10 @@ structure is recorded here by the unit that first implements it.
   - Function glue: `DropGlue.Row`'s Function row calls the value's table's drop entry, when not null, at the value's address through the one
     destruction-call writer, so every Drop of a Function value and R5-M102's owner call of an erased value are written.
   - Value calls (ruling Q3): a compiler function's Item without a body target calls what its direct call calls (SPEC 7.7.4), its
-    disposition's row, the intrinsic writer or the legacy row, over the Value call's operands placed by the call's own key; the rows that
-    exist are written (Raw.allocate), every other stays its unit's located `Unsupported_Kd`, and so does a failure function's Item, whose
-    Fail row reads the code operand only its builder-made direct call has (the functions are library-internal; no value names one).
+    disposition's row, the intrinsic writer or the legacy row, over the Value call's operands placed by the call's own key; whatever rows
+    exist are written (today Raw.allocate's intrinsic row and the WriteLine legacy row), every other stays its unit's located
+    `Unsupported_Kd`, and so does an intrinsic whose descriptor arity (`MirDescriptors`, the validator's row arity) is not the Value
+    call's operand count, a row taking an operand only a builder-made call has (Fail's code, Raw.slice's backing; R4-M40).
   - Temporary structure, removed by C5c (ruling Q1 (b)): an erasure whose target Function Type's erased signature is not its adapter's entry
     (`ModuleCodegen.Fits`; a Never-result source erased into another result, SPEC 10.7) and an adapter without a body target (an erased
     compiler function's Item, a Builtin or descriptor target) are one located `Unsupported_Kd` each, at the conversion and at the adapter's
@@ -6163,10 +6164,12 @@ structure is recorded here by the unit that first implements it.
     its function, a destruction's guard and a body item's Callable inputs.
   - Verified: the sel ledger loses 352 rows (349 pass: call 143, C-frame 85, closure 84, C-aggregate 31, object 4, K-edges 1, library-2 1;
     3 renamed), all this unit's (at its base none passes); the 54 fixture families the flipped tests write run natively under sel (711
-    fixtures, O0 and O2), the two `inline-env` audits at their target bounds; `FunctionCodegenTest` (PD19's requirement: environments of
-    4 bytes, a drop-needing 4 bytes and a drop-needing zero size allocate nothing, one of 24 bytes once at the conversion's location and is
-    released once; the adapter entries; the Function glue and an owner call of an erased value; a Never Item erased only into its own
-    signature; a compiler Item's Value call; `ErasureRows` natively under both generators; M9's 0 B and I1 over the erasure source). The
+    fixtures, O0 and O2), the two `inline-env` audits at their target bounds (allocations and bytes each stated by `Codegen.Expect`);
+    `FunctionCodegenTest` (PD19's requirement: environments of 4 bytes, a drop-needing 4 bytes and a drop-needing zero size allocate
+    nothing, one of 24 bytes once at the conversion's location and is released once; the adapter entries, a caller-location body's
+    (`FromEnd<i32>.resolve`) given the location its entry received, natively the erased call's under both generators; the Function glue and
+    an owner call of an erased value; a Never Item erased only into its own signature; a compiler Item's Value call, by Raw.allocate's
+    intrinsic row and WriteLine's legacy row; `ErasureRows` natively under both generators; M9's 0 B and I1 over the erasure source). The
     ErasedCalls kernel's fixed-array variant at O2, 15 interleaved samples, old generator A against sel B: B/A CPU mean 0.93, wall median
     0.96, within the runs' variance (information).
   - Rejected: keying an adapter by its target Function Type in C5b (the general rule, C5c's: it changes an owner-approved key); the old

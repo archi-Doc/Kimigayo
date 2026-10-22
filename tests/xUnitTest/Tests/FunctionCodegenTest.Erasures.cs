@@ -112,6 +112,20 @@ public sealed partial class FunctionCodegenTest
         Assert.Equal([item.Parameters[1], item.Parameters[2]], add.Operands);
     }
 
+    // SPEC 22.5.1 (DECISIONS R5-M104): an erased Item whose function is a caller-location body (FromEnd.resolve) gives it the location its
+    // own entry received, the erased call's, after its other parameters: the entry's, but for its environment word and its context.
+    [Fact]
+    public void AnAdapterEntryForwardsItsLocationToACallerLocationBody()
+    {
+        var c = Analyze("func resolver() -> (FromEnd<i32>, isize) -> isize => FromEnd<i32>.resolve\n", OutputKind.Library);
+        var text = Generate(c);
+        var entry = GeneratedIr.Parse(text).Function(TableOf(text, Assert.Single(ItemTexts(c, "resolver"))).Entry);
+        var own = entry.Parameters;
+        var body = Assert.Single(CallsOf(entry));
+        Assert.EndsWith(", ptr, i64)", body.Callee!.Signature, StringComparison.Ordinal);
+        Assert.Equal([.. own.Skip(1).Take(own.Count - 4), own[^2], own[^1]], body.Operands);
+    }
+
     // SPEC 16.4, 8.10 (DECISIONS R5-M102, R5-M104): a Function value's glue calls its table's drop entry, when present, with its own
     // parameters; a parameter's Drop destroys it so, and an owner call of the erased value destroys the value after the call.
     [Fact]
@@ -169,6 +183,20 @@ public sealed partial class FunctionCodegenTest
         c = Analyze("func e() -> (isize) -> raw/u8 => Raw.allocate\n", OutputKind.Library);
         Assert.False(c.Generate(TextWriter.Null));
         Assert.Equal([("Unsupported_Kd", (string?)"Raw.allocate")], Records(c));
+    }
+
+    // SPEC 7.7.4 (DECISIONS R5-M104): a compiler function's Item whose direct call is a legacy runtime row (the console writeLine) calls that
+    // row, over the call's operands and its location.
+    [Fact]
+    public void AConsoleItemCallsItsLegacyRow()
+    {
+        var c = Analyze(
+            "func call<F>(f: ref/F)\n    F is Callable<(ref/string) -> ()>\n    f(\"x\")\nfunc show() => call(Console.writeLine)\n", OutputKind.Library);
+        var text = Generate(c);
+        var ir = GeneratedIr.Parse(text);
+        var call = Assert.Single(CallsOf(Assert.Single(FunctionsOf(ir, c, "call"))), x => x.Callee == ir.Function("__kimi_write_line"));
+        Assert.Matches(@"^call void @\(ptr noundef nonnull align 8 dereferenceable\(24\) %, ptr @, i64 \d+\)$", call.Shape);
+        Assert.Contains(Constant("Hello.kimi:3:5"), text);
     }
 
     // The table an item's text stores into its Function value, read from the module's text: its entry's and its drop entry's names (null:

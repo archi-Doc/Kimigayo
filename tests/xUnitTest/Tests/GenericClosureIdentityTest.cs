@@ -71,7 +71,8 @@ public class GenericClosureIdentityTest
         // The zero-sized environment that needs destruction is stored in the Function value's word under MIR code generation (PD19, IMPL
         // 21.1.3); the old generator allocates it (DECISIONS R5-M104's inline-env deviation).
         var count = destructor ? Codegen.Expect(0, 1, CodegenDeviations.InlineEnvironment) : 0;
-        NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, count, count, count, output);
+        var bytes = destructor ? Codegen.Expect(0L, 1L, CodegenDeviations.InlineEnvironment) : 0L;
+        NativeAllocationAudit.WriteFixture("GenericClosureIdentityZero" + destructor, source, count, count, bytes, output);
     }
 
     [Trait("Purpose", "Allocation")]
