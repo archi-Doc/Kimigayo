@@ -1,0 +1,8 @@
+RESOURCE model 2: T is V: C + Resource (items 4513>3000) rounds=12 V=3872 E=856 J=1445594 N=209 established-at-stop 1 5976 ms; ref5 + 186 ms; ref7 + 487 ms
+RESOURCE model 2: S1 is Cp: C none Resource (items 4571>3000) rounds=13 V=3929 E=856 J=1472556 N=210 established-at-stop 2 6393 ms; ref5 none 160 ms; ref7 none 474 ms
+RESOURCE model 2: U is K0: C + Resource (items 5665>3000) rounds=12 V=4911 E=1028 J=1938315 N=236 established-at-stop 1 8039 ms; ref5 + 135 ms; ref7 + 436 ms
+RESOURCE model 2: S1 is K2: C none Resource (items 4569>3000) rounds=12 V=3927 E=856 J=1472967 N=210 established-at-stop 2 6177 ms; ref5 none 190 ms; ref7 none 378 ms
+RESOURCE model 2: T.(K0).X.(K0).X is U: C none Resource (items 5644>3000) rounds=10 V=4895 E=1018 J=1888980 N=236 established-at-stop 0 7222 ms; ref5 none 162 ms; ref7 none 419 ms
+RESOURCE model 2: T.(K0).X.(K1).Y is List<i32>: C none Resource (items 5645>3000) rounds=10 V=4895 E=1020 J=1922882 N=236 established-at-stop 0 8168 ms; ref5 none 165 ms; ref7 none 556 ms
+RESOURCE model 2: T.(K0).X is U: C - Resource (items 4971>3000) rounds=9 V=4270 E=950 J=1625536 N=222 established-at-stop 2 6765 ms; ref5 - 142 ms; ref7 - 469 ms
+== NESTED seed 78: 20 models, 324 queries (budget 60 s each, C and both reference bounds): agree 300, disagree 0, C Resource 7, reference unstable 0, overflow 17, declaration errors 0, over budget 0; C time on finished queries median 99 ms, p95 3846 ms, max 8168 ms
