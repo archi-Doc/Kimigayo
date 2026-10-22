@@ -27,6 +27,14 @@ public enum OriginKind : byte
     // SPEC 5.2.2: the fresh anchor of a raw Place borrow; Binder is the borrow. It has no upper bound, so it fits every
     // destination like static, while ownership analysis checks the borrow's Loan and those derived from it under the anchor.
     Anchor,
+
+    // SPEC 5.7 (DECISIONS BU-24): `self` on a raw layer in inline storage, the holding value; only in declared Field and payload
+    // Types, never in an instance's stored Types; every read replaces it (Binding.ReadHolder).
+    Holder,
+
+    // SPEC 5.7 (DECISIONS BU-24): the Origin a raw layer without `during` counts as stating, which every Origin outlives; only in
+    // relations and their records, never in a Type (Binding.UnstatedRelation).
+    Unstated,
 }
 
 public enum OriginVariance : byte
@@ -136,6 +144,11 @@ public sealed class BoundOrigin
 
     /// <summary>Gets the value input carrying this Origin; distinct from its inference slot.</summary>
     public int InputIndex { get; internal init; }
+
+    internal static BoundOrigin Holder { get; } = new(OriginKind.Holder, name: "self");
+
+    // Displayed as an omitted Origin (SPEC 23.1).
+    internal static BoundOrigin Unstated { get; } = new(OriginKind.Unstated, name: "a raw pointer without `during`");
 
     internal Koto? Occurrence { get; init; }
 

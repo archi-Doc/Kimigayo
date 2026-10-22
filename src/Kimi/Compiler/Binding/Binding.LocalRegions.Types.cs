@@ -11,12 +11,12 @@ public sealed partial class Binding
 {
     internal static bool HasLocalRegion(BoundType type)
     {
-        if (!type.CarriesOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
+        if (!type.CarriesAnyOrigin || type.Kind is BoundTypeKind.Function or BoundTypeKind.FunctionItem)
         {
             return false;
         }
 
-        if (type.Origin is { } origin && HasLocalRegion(origin))
+        if ((type.Origin ?? type.RawOrigin) is { } origin && HasLocalRegion(origin))
         {
             return true;
         }
@@ -159,7 +159,7 @@ public sealed partial class Binding
                     components[i] = Open(current.Components[i]);
                 }
 
-                return this.types.Intern(current.Kind, current.Symbol, current.Semantics, components.AsSpan(0, current.Components.Count), current.Length, origin, arguments.AsSpan(0, current.OriginArguments.Count), current.LengthExpression, current.ClosureContext, current.LengthArguments);
+                return this.types.Rebuild(current, components.AsSpan(0, current.Components.Count), origin, arguments.AsSpan(0, current.OriginArguments.Count));
             }
             finally
             {
@@ -190,7 +190,13 @@ public sealed partial class Binding
                 arguments[i] = Resolve(type.OriginArguments[i]);
             }
 
-            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, type.Origin is { } origin ? Resolve(origin) : null, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
+            var origin = type.Origin is { } outer ? Resolve(outer) : null;
+            if (type.RawOrigin is { } raw)
+            {
+                origin = Resolve(raw);
+            }
+
+            return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);
         }
         finally
         {

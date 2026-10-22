@@ -81,14 +81,6 @@ public sealed partial class Binding
         var backward = this.JudgeOriginRelation(obligation.Shorter!, obligation.Longer!, obligation.Use, obligation.Condition);
         reversed = Severity(backward) > Severity(forward);
         return reversed ? backward : forward;
-
-        static int Severity(OriginJudgment judgment) => judgment switch
-        {
-            OriginJudgment.Refuted => 3,
-            OriginJudgment.Unknown => 2,
-            OriginJudgment.Unrepresentable => 1,
-            _ => 0,
-        };
     }
 
     // SPEC 15.6.5: an unproven relation fails only when it is Refuted, a finite Origin outliving a fixed one, or Unknown between two
@@ -103,8 +95,37 @@ public sealed partial class Binding
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        return this.HasRegionBounds(longer) ? this.JudgeLocalRegion(longer, shorter, use, condition) : this.JudgeOriginAtoms(longer, shorter, use, condition);
+        if (this.HasRegionBounds(longer))
+        {
+            return this.JudgeLocalRegion(longer, shorter, use, condition);
+        }
+
+        if (longer.Kind != OriginKind.Intersection || this.ProvesOriginOutlives(longer, shorter, use, condition))
+        {
+            return this.JudgeOriginAtoms(longer, shorter, use, condition);
+        }
+
+        // SPEC 15.6.5: a meet outlives an Origin when each of its operands does, each the end of its own chain (as OriginOutlives
+        // and VerifiedRegionOutlives read it): a raw Place borrow's anchor is an inferred region (SPEC 5.2.2), a local region is judged
+        // through its sources; the worst operand decides.
+        var worst = OriginJudgment.Proven;
+        for (var i = 0; i < longer.Operands.Count; i++)
+        {
+            var judgment = this.JudgeOriginRelation(longer.Operands[i], shorter, use, condition);
+            worst = Severity(judgment) > Severity(worst) ? judgment : worst;
+        }
+
+        return worst;
     }
+
+    // The order in which a judgment fails a relation: Refuted before Unknown before Unrepresentable.
+    private static int Severity(OriginJudgment judgment) => judgment switch
+    {
+        OriginJudgment.Refuted => 3,
+        OriginJudgment.Unknown => 2,
+        OriginJudgment.Unrepresentable => 1,
+        _ => 0,
+    };
 
     private static bool IsWithin(Koto use, Koto declaration)
     {
@@ -121,6 +142,11 @@ public sealed partial class Binding
 
     private OriginJudgment JudgeOriginAtoms(BoundOrigin longer, BoundOrigin shorter, Koto use, ulong condition = 0)
     {
+        if (UnstatedRelation(longer, shorter) is { } holds)
+        {
+            return holds ? OriginJudgment.Proven : OriginJudgment.Refuted; // Rulings S4.
+        }
+
         if (IsLocalRegion(shorter))
         {
             return OriginJudgment.Proven;

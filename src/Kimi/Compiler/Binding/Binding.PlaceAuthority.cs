@@ -7,16 +7,16 @@ namespace Kimi.Compiler;
 // Place authority (SPEC 3.4, 3.4.3, 3.5, 3.6, 13.5.5, 15.1.5, 15.6.2): what an expression is as a Place and what its path grants.
 // - Responsibility: whether an expression is a bare Place (IsBarePlace), a static Field (IsStaticField) or a Temporary Value a borrow
 //   may materialize (BorrowableTemporary); the steps of a Place's path (NextPathStep, the one enumeration of their forms); the access a
-//   Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a
-//   capability it denies (AccessFailure), and continued through the Place's own layers (ReferentAuthority); whether a receiver
-//   can be exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers
-//   Take (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace; as SPEC lends it:
-//   LendsPlace and, for a handle, LendsHandle, with the static Field at its root), with the one diagnostic for a written Borrow it may not
-//   (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow); and
-//   the in-place read Binding records for a receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement,
-//   SharedElementView; ElementRead through the layers an element stores) or for a compared operand (CompareInPlace).
+//   Place's path grants (PathAuthority: Owner, Uniq or Ref) and the one diagnostic for a capability it denies (AccessFailure), and
+//   continued through the Place's own layers (ReferentAuthority); whether a Place offers Write (Writable); whether a receiver can be
+//   exclusively acquired for indexUniq or an exclusive view (ExclusivelyAcquirable, SPEC 15.1.5); whether a Place offers Take
+//   (OffersTake, and TakeJudgment for a repair candidate) and may be borrowed in a mode (BorrowablePlace; as SPEC lends it: LendsPlace
+//   and, for a handle, LendsHandle, with the static Field at its root), with the one diagnostic for a written Borrow it may not
+//   (BorrowFailure) and for a final implicit Borrow of a static root (FailStaticBorrow); and the in-place read Binding records for a
+//   receiver selected below a Place (ReceiverThroughLayers, ReceiverElement, SharedElement, SharedElementView; ElementRead through the
+//   layers an element stores) or for a compared operand (CompareInPlace).
 // - Inputs: the bound syntax (Types, symbols, conversions), the selected index and getter calls, the pair-layer facts (PairAdmitted,
-//   PairCapability), a named root's mutability (Writable) and a special receiver's authority (Receiver).
+//   PairCapability), a named root's reassignability (Reassignable) and a special receiver's authority (Receiver).
 // - Outputs: the predicates above, and the recorded reads in `adaptations` (SharedBorrow or ReferenceRead), which
 //   ElementAccess.AccessType and IsSynthesizedAccess publish to Binding, the HIR publisher and the old paths.
 // - Invariants: one path computation decides writes, Moves and borrows; a shared layer anywhere on a path bounds it to Read; a node
@@ -174,6 +174,7 @@ public sealed partial class Binding
                     bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
                     return Receiver(source)?.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
                 default:
+                    // A root, or a raw dereference: no raw Origin denies an access (SPEC 5.7 Authority; condition 3 of SPEC 5.2.1).
                     bindingDenies = denied;
                     return authority;
             }
@@ -194,9 +195,10 @@ public sealed partial class Binding
         return authority;
     }
 
-    // SPEC 3.4.3, 4.7.1, 4.8.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's forms
-    // that PathAuthority walks: what `source` selects, and next, the node it selects from (`source` itself at a root, a guard
-    // candidate or a special receiver).
+    // SPEC 3.4.3, 4.7.1, 4.8.2, 5.2, 13.5.5: one step of a Place's path from the leaf toward its root, the one enumeration of a path's
+    // forms that PathAuthority and PathOrigin walk: what `source` selects, and next, the node it selects from (`source` itself at a
+    // root, a guard candidate or a special receiver). Exception until R6-gen: PlaceOriginSource keeps its own walk, which the old
+    // Emission reads and which also passes forms this treats as roots (an Array range selection).
     private static PathStep NextPathStep(Koto source, out Koto next)
     {
         next = source;
@@ -210,6 +212,12 @@ public sealed partial class Binding
             case ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair:
                 next = pair.Left;
                 return PathStep.PairFollow;
+            case DereferenceKoto dereference:
+                next = dereference.Operand;
+                return PathStep.RawFollow;
+            case IndexKoto raw when ReferenceTypes.IsPointer(raw.Left.BoundType):
+                next = raw.Left;
+                return PathStep.RawFollow;
             case IndexKoto userIndex when ElementAccess.IsUserIndex(userIndex):
                 next = userIndex.Left;
                 return PathStep.UserIndex;
@@ -234,6 +242,102 @@ public sealed partial class Binding
             default:
                 return PathStep.Root;
         }
+    }
+
+    // SPEC 3.4, 5.2, 13.5.5, 15.6.2: whether a Place offers Write: a writable root or an inline part of one, an exclusive path, a raw
+    // Place, a setter or an indexUniq selection; a shared layer anywhere on the path grants Read only.
+    private static bool Writable(Koto node)
+    {
+        node = KotoHelper.UnwrapParentheses(node);
+        if (node.BoundSymbol?.Property is { IsStored: false, Setter.IsPresent: true })
+        {
+            return true; // The accessor's Receiver Expression checks its own capability.
+        }
+
+        // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission, nor does any raw Origin (condition 3 of SPEC 5.2.1
+        // bounds the access at run time); a safe shared layer inside the pointee does.
+        if (node is DereferenceKoto dereference)
+        {
+            return ReferenceTypes.IsPointer(dereference.Operand.BoundType) && !ReachedThroughShared(node);
+        }
+
+        if ((node is IndexKoto index && ReferenceTypes.IsPointer(index.Left.BoundType)) || ElementAccess.IsPointerPath(node))
+        {
+            return !ReachedThroughShared(node);
+        }
+
+        if (node.BoundSymbol?.Kind == BindingSymbolKind.PatternCandidate || ReachedThroughShared(node))
+        {
+            return false; // SPEC 3.4, 15.6.2: a shared layer anywhere on the path grants Read only.
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.Follow } selected)
+        {
+            // SPEC 13.5.5: the referent of uniq/T offers Write; a shared layer on the path bounds it.
+            return selected.Left.BoundType?.Semantics == SemanticsKind.Uniq && !ReachedThroughShared(selected.Left);
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PairFollow } pair)
+        {
+            return pair.CodeContext.Compilation.Binding.PairCapability(pair, null, true); // SPEC 13.5.5 pair layers
+        }
+
+        if (node is ConversionKoto { ConversionBinding: ConversionBinding.PayloadFollow } payload)
+        {
+            return payload.Left.BoundType?.Semantics switch
+            {
+                SemanticsKind.ObjUniq => !ReachedThroughShared(payload.Left),
+                SemanticsKind.Obj => Writable(payload.Left),
+                _ => false,
+            };
+        }
+
+        if (node is IndexKoto userIndex && ElementAccess.IsUserIndex(userIndex))
+        {
+            return ElementAccess.IndexerCall(userIndex, true) is not null; // SPEC 4.7.1: an update selects indexUniq.
+        }
+
+        if (ElementAccess.IsExclusiveArrayElement(node))
+        {
+            return true;
+        }
+
+        if (node is MemberAccessKoto { Right: NumberLiteralKoto } nested && !ReferenceTypes.IsTuple(ElementAccess.AccessType(nested.Left)) &&
+            ElementAccess.BorrowedPathRoot(nested) is { } root)
+        {
+            return ElementAccess.AccessType(root, true)!.Semantics == SemanticsKind.Uniq; // An inline Tuple level below a borrowed base.
+        }
+
+        if (node is MemberAccessKoto tupleElement && ReferenceTypes.IsTuple(ElementAccess.AccessType(tupleElement.Left)))
+        {
+            return ElementAccess.AccessType(tupleElement.Left, true)!.Semantics == SemanticsKind.Uniq && ElementAccess.TryBorrowedTupleElement(tupleElement, out _, out _);
+        }
+
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } throughLayers &&
+            node.CodeContext.Compilation.Binding.TryGetAdaptation(throughLayers.Left, out var receiver) && receiver.Kind == ExpectedAdaptationKind.ReferenceRead)
+        {
+            return receiver.Type.Semantics == SemanticsKind.Uniq; // SPEC 3.4.3: a shared layer bounds the path to shared access.
+        }
+
+        // SPEC 13.5.5: the receiver's own Type adds no exclusive or shared layer, so the Field lies inline in its storage, past an
+        // owning handle or in the owner case of a pair layer too (no member is selected through a raw pointer).
+        if (node is MemberAccessKoto { BoundSymbol.Property.IsStored: true } field &&
+            LayerAuthority(field.Left) is null && AdtDef.IsStruct(DeclaringType(field.Left.BoundType)) &&
+            Receiver(field.Left) is null && !Writable(field.Left) && ElementAccess.WritableRoot(field.Left) is null)
+        {
+            return false; // A mutable field still requires a mutable owning root.
+        }
+
+        if (node.BoundSymbol is { Kind: BindingSymbolKind.Storage, Scope.Owner: PropertyAccessorKoto syntax })
+        {
+            var accessor = Accessor(syntax);
+            if (accessor.Receiver is { Semantics: not SemanticsKind.Uniq })
+            {
+                return false;
+            }
+        }
+
+        return node.BoundSymbol is { } symbol && Reassignable(symbol);
     }
 
     // SPEC 15.1.5: whether a receiver's own binding permits exclusive acquisition, which storage rooted in a let binding or an owned
@@ -313,6 +417,11 @@ public sealed partial class Binding
     private static bool OffersTake(Koto source)
     {
         var place = KotoHelper.UnwrapParentheses(source);
+        if (ElementAccess.IsRawPlace(place))
+        {
+            return !ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless a safe shared layer inside it denies.
+        }
+
         return !IsBarePlace(place) || (PathAuthority(place, out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);
     }
 
@@ -363,8 +472,10 @@ public sealed partial class Binding
             root = KotoHelper.UnwrapParentheses(part.Left);
         }
 
+        // SPEC 15.6.2, 5.7: as for a Place, a shared layer on the path, a raw pointer's included, denies an exclusive borrow.
+        var inline = unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored);
         return !IsBarePlace(root) && !IsStaticField(root) &&
-            (!exclusive || (spelled && !IsGetterResult(root) && !(unwrapped is BinaryKoto stored && ElementAccess.IsSyntax(stored)))) &&
+            (!exclusive || (spelled && !IsGetterResult(root) && !inline && !ReachedThroughShared(unwrapped))) &&
             (fixedExpectation || (source.BoundType is { } temporary && !ReferenceEquals(temporary, BoundType.Never)));
     }
 
@@ -667,6 +778,9 @@ public sealed partial class Binding
 
         // The referent of a ref/uniq reference or the payload of an object handle or view (@follow).
         Follow,
+
+        // The pointee of a raw pointer, `*p` or `p[n]` (SPEC 5.2), which PathAuthority treats as a root.
+        RawFollow,
 
         // The target of a pair layer (@follow, SPEC 13.5.5).
         PairFollow,

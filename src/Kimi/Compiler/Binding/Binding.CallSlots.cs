@@ -39,7 +39,7 @@ public sealed partial class Binding
             }
         }
 
-        return this.types.Intern(template.Kind, template.Symbol, template.Semantics, ((BoundType[])(object)slots).AsSpan(0, count), template.Length, template.Origin, (BoundOrigin[])template.OriginArguments, template.LengthExpression, template.ClosureContext, template.LengthArguments);
+        return this.types.Rebuild(template, ((BoundType[])(object)slots).AsSpan(0, count), template.Origin, (BoundOrigin[])template.OriginArguments);
     }
 
     private void InitializeCallSlots(InvocationKoto call, FunctionKoto function, BoundType? declaringType, BoundType?[] slots, bool fixedConstruction = false)

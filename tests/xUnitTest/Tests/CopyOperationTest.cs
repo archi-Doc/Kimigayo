@@ -124,4 +124,14 @@ public class CopyOperationTest
         Assert.Contains(TestDiagnostics.Of(tree), x => x.Code == nameof(DiagnosticCode.MisplacedSyntax_Kd));
         Assert.Equal("after", Assert.IsType<FieldKoto>(tree.GeneratedFunction!.Body!.Items.Last()).NameKoto.IdentifierName);
     }
+
+    // SPEC 5.7: a `during self` layer makes its Type non-Copy, while the pointer it holds is Copy; the same Field without `during self`
+    // keeps the Type Copy.
+    [Theory]
+    [InlineData(" during self", "UnsatisfiedConstraint_Kd: Self is Copy|NonCopyOperand_Kd: c@copy")]
+    [InlineData("", null)]
+    public void ASelfLayerMakesItsTypeNonCopy(string annotation, string? records)
+        => Assert.Equal(
+            records is null ? [] : records.Split('|'),
+            RawPointerSyntaxTest.Records("struct C\n    Self is Copy\n    let p: raw/i32" + annotation + "\n    public init() => self.p = null\nfunc f(c: C) -> C => c@copy"));
 }

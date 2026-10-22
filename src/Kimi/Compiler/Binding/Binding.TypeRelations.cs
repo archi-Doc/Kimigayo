@@ -231,17 +231,7 @@ public sealed partial class Binding
         }
 
         return ReferenceEquals(CompatibleResult(implementation.Components[1], required.Components[1]), required.Components[1]) ? required
-            : this.types.Intern(
-                required.Kind,
-                required.Symbol,
-                required.Semantics,
-                [required.Components[0], BoundType.Never],
-                required.Length,
-                required.Origin,
-                (BoundOrigin[])required.OriginArguments,
-                required.LengthExpression,
-                required.ClosureContext,
-                required.LengthArguments);
+            : this.types.Rebuild(required, [required.Components[0], BoundType.Never], required.Origin, (BoundOrigin[])required.OriginArguments);
     }
 
     // SPEC 10.7, 15.6.1, 23.1: the first member of a conversion whose Origin part fails under the call-time instantiation: the n-th
@@ -283,7 +273,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (longer.Origin is { } a && shorter.Origin is { } b && !ReferenceEquals(a, b) &&
+        if (FitOuterOrigins(longer, shorter, this, use, out var a, out var b) == OuterOriginFit.Relation &&
             (!InstanceOutlives(a, b, instance, this, use, 0) || (invariant && !InstanceOutlives(b, a, instance, this, use, 0))))
         {
             return (instance.Instantiate(a), instance.Instantiate(b), invariant);
@@ -351,7 +341,7 @@ public sealed partial class Binding
     // arm that changes a part substitutes a slot of an abstract kind, a length or an Origin.
     private BoundType? SubstitutePart(BoundType type, Koto binder, ReadOnlySpan<BoundType?> arguments, ReadOnlySpan<BoundLength?> lengths, uint query)
     {
-        if (lengths.IsEmpty && !type.HasAbstractPart && !type.CarriesOrigin)
+        if (lengths.IsEmpty && !type.HasAbstractPart && !type.CarriesAnyOrigin)
         {
             return type;
         }
@@ -487,7 +477,12 @@ public sealed partial class Binding
             // SPEC 8.1.1, 8.1.2: every `o` of the binder's pairs, as an outer Origin, a meet operand or an Origin argument, is bound
             // through its Type argument.
             var origin = type.Origin is { } outer ? this.SubstitutePairOrigins(outer, binder, arguments) : null;
-            changed |= !ReferenceEquals(origin, type.Origin);
+            if (type.RawOrigin is { } raw)
+            {
+                origin = this.SubstitutePairOrigins(raw, binder, arguments);
+            }
+
+            changed |= !ReferenceEquals(origin, type.Origin ?? type.RawOrigin);
             for (var i = 0; i < type.OriginArguments.Count; i++)
             {
                 var argument = this.SubstitutePairOrigins(type.OriginArguments[i], binder, arguments);

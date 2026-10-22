@@ -649,7 +649,8 @@ public sealed partial class OwnershipAnalysis
     private int Place(Koto source, BoundType? type, OwnershipPlaceKind kind, bool mutable, AcquisitionKind? plannedAcquisition = null)
     {
         var id = this.body.PlaceStorage.Count;
-        type = this.Resolve(type, this.Active) ?? BoundType.Unit;
+        // D5 exception (the owner's Q-O3; DECISIONS BU-24): a Place's Type states no raw Origin. Removed with the old analysis (R6-check).
+        type = this.compilation.Binding.WithoutRawOrigins(this.Resolve(type, this.Active)) ?? BoundType.Unit;
         // Never has no value storage. Its result marker is only used on unreachable
         // delivery nodes; control-flow checking rejects any normal completion.
         var neverResult = kind == OwnershipPlaceKind.Result && ReferenceEquals(type, BoundType.Never);

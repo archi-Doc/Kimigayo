@@ -98,7 +98,7 @@ public sealed partial class Binding
             return null;
         }
 
-        if (type.Origin is { } origin && !this.ProvesOriginOutlives(origin, BoundOrigin.Static, use))
+        if (OwnedOrigin(type) is { } origin && !this.ProvesOriginOutlives(origin, BoundOrigin.Static, use))
         {
             return origin;
         }
