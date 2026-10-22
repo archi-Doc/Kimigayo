@@ -1,5 +1,7 @@
 // G170 C1 prototype: the exhaustive bounded reference evaluator. No selection: every SPEC 8.3.2 supply row is applied to every
-// fact, forward, until nothing changes; identity is a union-find over the materialized Types closed under congruence. The rows
+// fact, forward, until nothing changes; identity is a union-find over the materialized Types closed under congruence and under
+// decomposition (proposal B 3.3, 2026-10-22: same-head constructors in one class union their kids; different heads conflict; a
+// class its own proper part is cyclic, B 3.6; a negated identity holds when the structural relation refutes it). The rows
 // are built here from the declarations themselves (direct parents with Self and arguments substituted, conjunct-split clauses,
 // verified conformances and their bindings at materialized Types, inputs), not from the templates C reads, and recursive Contracts
 // are classified here by their SPEC 8.3.3 definition (a bounded closure from `T0 is C<P̄>`), so agreement tests the rows too. The
@@ -46,6 +48,12 @@ public sealed class Reference
 
     public bool Overflow { get; private set; }
 
+    /// <summary>Gets whether some class holds constructors of different heads (B 3.10: a premise error of the model).</summary>
+    public bool Conflict { get; private set; }
+
+    /// <summary>Gets whether some class is its own proper part through constructor kids (B 3.6: a premise error of the model).</summary>
+    public bool Cyclic { get; private set; }
+
     public int Iterations { get; private set; }
 
     public int TermCount => this.universe.Count;
@@ -75,7 +83,7 @@ public sealed class Reference
                 {
                     var a = this.FindTerm(p.L.A!);
                     var b = this.FindTerm(p.L.B!);
-                    return this.atoms.Any(x => x.Kind == 3 && ((this.Find(x.A) == a && this.Find(x.B) == b) || (this.Find(x.A) == b && this.Find(x.B) == a)));
+                    return this.atoms.Any(x => x.Kind == 3 && ((this.Find(x.A) == a && this.Find(x.B) == b) || (this.Find(x.A) == b && this.Find(x.B) == a))) || this.Refuted(a, b, new());
                 }
 
             default:
@@ -230,6 +238,143 @@ public sealed class Reference
                 }
             }
         }
+
+        this.Cyclic = this.HasCycle();
+    }
+
+    // B 3.3's Refuted over the reference's own classes: a conflicting class against any class, itself included; constructors of
+    // different heads; equal heads and a Refuted kid pair; one class a proper part of the other (B 3.6). Coinductive over pairs.
+    private bool Refuted(int a, int b, HashSet<(int, int)> visited)
+    {
+        var (n, conflictA) = this.ConstructorOf(a);
+        var (o, conflictB) = this.ConstructorOf(b);
+        if (conflictA || conflictB)
+        {
+            return true;
+        }
+
+        if (!visited.Add((Math.Min(a, b), Math.Max(a, b))))
+        {
+            return false;
+        }
+
+        if (n is not null && o is not null)
+        {
+            if (!n.Head.Equals(o.Head) || n.Kids.Length != o.Kids.Length)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < n.Kids.Length; i++)
+            {
+                if (this.Refuted(this.Find(n.Kids[i].Id), this.Find(o.Kids[i].Id), visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return this.Part(a, b, new()) || this.Part(b, a, new());
+    }
+
+    // The class's first constructor (Prim or Con member) and whether another member has a different head: one constructor per class.
+    private (Term? Constructor, bool Conflict) ConstructorOf(int c)
+    {
+        Term? first = null;
+        var conflict = false;
+        foreach (var t in this.Members(c))
+        {
+            if (t.Head is SymHead { Kind: SymKind.Prim or SymKind.Con })
+            {
+                conflict |= first is not null && (!first.Head.Equals(t.Head) || first.Kids.Length != t.Kids.Length);
+                first ??= t;
+            }
+        }
+
+        return (first, conflict);
+    }
+
+    // Whether b is a proper part of a: reachable from a's constructors' kids through constructor kids only (B 3.6).
+    private bool Part(int a, int b, HashSet<int> visited)
+    {
+        foreach (var t in this.Members(a))
+        {
+            if (t.Head is not SymHead { Kind: SymKind.Con })
+            {
+                continue;
+            }
+
+            foreach (var k in t.Kids)
+            {
+                var kc = this.Find(k.Id);
+                if (kc == b || (visited.Add(kc) && this.Part(kc, b, visited)))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // Whether some class is its own proper part: a cycle in the graph class → kid classes of its Con members.
+    private bool HasCycle()
+    {
+        var edges = new Dictionary<int, List<int>>();
+        foreach (var t in this.universe)
+        {
+            if (t.Head is SymHead { Kind: SymKind.Con })
+            {
+                var root = this.Find(t.Id);
+                if (!edges.TryGetValue(root, out var list))
+                {
+                    edges[root] = list = new();
+                }
+
+                list.AddRange(t.Kids.Select(k => this.Find(k.Id)));
+            }
+        }
+
+        var color = new Dictionary<int, byte>(); // 1 on the stack, 2 done
+        foreach (var start in edges.Keys)
+        {
+            if (color.ContainsKey(start))
+            {
+                continue;
+            }
+
+            var stack = new Stack<(int Class, int Next)>();
+            stack.Push((start, 0));
+            color[start] = 1;
+            while (stack.Count != 0)
+            {
+                var (c, next) = stack.Pop();
+                var kids = edges.GetValueOrDefault(c) ?? [];
+                if (next < kids.Count)
+                {
+                    stack.Push((c, next + 1));
+                    var k = kids[next];
+                    if (color.TryGetValue(k, out var state))
+                    {
+                        if (state == 1)
+                        {
+                            return true;
+                        }
+                    }
+                    else
+                    {
+                        color[k] = 1;
+                        stack.Push((k, 0));
+                    }
+                }
+                else
+                {
+                    color[c] = 2;
+                }
+            }
+        }
+
+        return false;
     }
 
     // SPEC 8.3.3, read literally: C is recursive when `T0 is C<P̄>` (fresh T0, P̄) supplies, through refinement and clause rows
@@ -431,6 +576,38 @@ public sealed class Reference
                 else
                 {
                     seen[key] = t.Id;
+                }
+            }
+
+            // Decomposition (B 3.3): the constructors of one class have one head, their kids pairwise one class; different heads
+            // are a structural conflict (B 3.10). Nothing is materialized: the kids are already in the universe.
+            var constructor = new Dictionary<int, Term>();
+            foreach (var t in this.universe)
+            {
+                if (t.Head is not SymHead { Kind: SymKind.Prim or SymKind.Con })
+                {
+                    continue;
+                }
+
+                var root = this.Find(t.Id);
+                if (!constructor.TryGetValue(root, out var first))
+                {
+                    constructor[root] = t;
+                }
+                else if (!first.Head.Equals(t.Head) || first.Kids.Length != t.Kids.Length)
+                {
+                    this.Conflict = true;
+                }
+                else
+                {
+                    for (var i = 0; i < t.Kids.Length; i++)
+                    {
+                        if (this.Find(first.Kids[i].Id) != this.Find(t.Kids[i].Id))
+                        {
+                            this.Union(first.Kids[i].Id, t.Kids[i].Id);
+                            changed = any = true;
+                        }
+                    }
                 }
             }
         }

@@ -1,7 +1,8 @@
 // G170 C1 prototype: judgments over C's answers, for the Resource transport test (SPEC 8.3.1–8.3.3, 23.1.1; IMPL 21.3.2).
 // A judgment combines atom answers by SPEC 8.3.2's table (Error absorbs any result; otherwise a Refuted operand refutes a
 // conjunction and a Proven one proves a disjunction). Resource is the fifth outcome (ConstraintProof.Resource): it absorbs as
-// Error does, never becomes Unknown or Refuted, and never marks a source Invalid. A required judgment that is Unknown or Refuted
+// Error does, never becomes Unknown or Refuted, and never marks a source Invalid; a polarity established before the limit stands
+// (proposal B 3.10: Proven, Refuted or Error with the limit's record). A required judgment that is Unknown or Refuted
 // reports Unproven (a Language diagnostic); Error and Resource report nothing more (their own record stands, one per limit and
 // scope). A conformance check publishes Valid, Invalid or Resource; a judgment that read a Pending source is not final and is
 // judged again after publication (the scheduler's restart), so records never depend on checking order.
@@ -105,18 +106,14 @@ public sealed class Checker
         }
 
         var a = new Solver(this.m).Supply(f, view, limits ?? this.limits);
-        if (a.Outcome == Outcome.Resource)
+        if (a.Outcome == Outcome.Resource && !a.Reason.StartsWith("source state", StringComparison.Ordinal))
         {
-            if (!a.Reason.StartsWith("source state", StringComparison.Ordinal))
-            {
-                this.Records.Add($"Resource({scope}: {a.Reason})"); // the limit was hit here: one record for the scope
-            }
-
-            return (Proof.Resource, true);
+            this.Records.Add($"Resource({scope}: {a.Reason})"); // the limit was hit here: one record for the scope
         }
 
-        var proof = a.Positive && a.Negative ? Proof.Error : a.Positive ? Proof.Proven : a.Negative ? Proof.Refuted : Proof.Unknown;
-        return (proof, a.Outcome == Outcome.Complete);
+        // B 3.10 (D9): the polarities established when the limit was reached stand; only an unestablished answer is Resource.
+        var proof = a.Positive && a.Negative ? Proof.Error : a.Positive ? Proof.Proven : a.Negative ? Proof.Refuted : a.Outcome == Outcome.Resource ? Proof.Resource : Proof.Unknown;
+        return (proof, a.Outcome != Outcome.Provisional);
     }
 
     private static Proof Combine(FK kind, Proof l, Proof r)

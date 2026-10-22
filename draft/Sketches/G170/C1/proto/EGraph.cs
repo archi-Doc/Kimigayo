@@ -1,5 +1,8 @@
-// G170 C1 prototype: the request-local identity structure (SPEC 8.2.3): classes of Types closed under replacing a Type by an
-// identical one inside any Type (upward congruence only: Option<U> = Option<i32> never yields U = i32).
+// G170 C1 prototype: the request-local identity structure (SPEC 8.2.3 as revised by the 2026-10-22 proposal "Type Identity by
+// Structural Decomposition B", §3.3): classes of Types closed under replacing a Type by an identical one inside any Type (upward
+// congruence) and under decomposition of constructed Types (Option<U> = Option<i32> yields U = i32): one constructor (Prim or Con
+// node) per class; a class holding constructors of different heads is conflicting (B 3.10, a premise error) and a class that is its
+// own proper part through constructor kids is cyclic (B 3.6). Projections and Contract arguments are never decomposed (B 3.5).
 #pragma warning disable
 #nullable enable
 
@@ -16,6 +19,8 @@ public sealed class EGraph
     private readonly List<NodeKey> keyOf = new();
     private readonly Dictionary<NodeKey, int> memo = new();
     private readonly List<(int A, int B)> pending = new();
+    private readonly List<int> constructorOf = new();
+    private readonly List<bool> conflicting = new();
 
     public int Nodes => this.memo.Count;
 
@@ -51,6 +56,20 @@ public sealed class EGraph
 
     public IEnumerable<int> UsesOf(int c) => this.usesOf[this.Find(c)];
 
+    /// <summary>The class's constructor (its Prim or Con node; -1 when abstract). A conflicting class answers one of its constructors.</summary>
+    public int Constructor(int c) => this.constructorOf[this.Find(c)];
+
+    /// <summary>Whether the class holds constructors of different heads (B 3.10: a structural conflict).</summary>
+    public bool Conflict(int c) => this.conflicting[this.Find(c)];
+
+    /// <summary>Whether the class is its own proper part through constructor kids (B 3.6).</summary>
+    public bool Cyclic(int c) => this.Part(this.Find(c), this.Find(c), new());
+
+    /// <summary>Whether two classes can never be one (B 3.3): a conflicting class against any class, itself included; constructors of
+    /// different heads; equal heads and a Refuted kid pair; one class a proper part of the other (B 3.6). Coinductive over class
+    /// pairs, so cyclic structures terminate.</summary>
+    public bool Refuted(int a, int b) => this.Refuted(this.Find(a), this.Find(b), new());
+
     public int Add(Head head, int[] kidClasses)
     {
         var canonical = new int[kidClasses.Length];
@@ -75,6 +94,8 @@ public sealed class EGraph
         this.classOf.Add(c);
         this.keyOf.Add(key);
         this.memo.Add(key, node);
+        this.constructorOf.Add(head is SymHead { Kind: SymKind.Prim or SymKind.Con } ? node : -1);
+        this.conflicting.Add(false);
         this.Classes++;
         foreach (var k in canonical)
         {
@@ -153,6 +174,30 @@ public sealed class EGraph
             this.Classes--;
             this.nodesOf[a].AddRange(this.nodesOf[b]);
             this.nodesOf[b].Clear();
+
+            // Decomposition (B 3.3): two constructors of one head union their kids pairwise (queued like congruence; the nodes then
+            // become one by congruence); of different heads, the class is conflicting (both nodes stay).
+            this.conflicting[a] |= this.conflicting[b];
+            var (n, o) = (this.constructorOf[a], this.constructorOf[b]);
+            if (n < 0)
+            {
+                this.constructorOf[a] = o;
+            }
+            else if (o >= 0)
+            {
+                if (this.heads[n].Equals(this.heads[o]) && this.kids[n].Length == this.kids[o].Length)
+                {
+                    for (var i = 0; i < this.kids[n].Length; i++)
+                    {
+                        this.pending.Add((this.kids[n][i], this.kids[o][i]));
+                    }
+                }
+                else
+                {
+                    this.conflicting[a] = true;
+                }
+            }
+
             var uses = this.usesOf[b];
             this.usesOf[b] = new();
             this.usesOf[a].AddRange(uses);
@@ -221,6 +266,60 @@ public sealed class EGraph
         }
 
         return result;
+    }
+
+    private bool Refuted(int a, int b, HashSet<(int, int)> visited)
+    {
+        if (this.conflicting[a] || this.conflicting[b])
+        {
+            return true;
+        }
+
+        if (!visited.Add((Math.Min(a, b), Math.Max(a, b))))
+        {
+            return false;
+        }
+
+        var (n, o) = (this.constructorOf[a], this.constructorOf[b]);
+        if (n >= 0 && o >= 0)
+        {
+            if (!this.heads[n].Equals(this.heads[o]) || this.kids[n].Length != this.kids[o].Length)
+            {
+                return true;
+            }
+
+            for (var i = 0; i < this.kids[n].Length; i++)
+            {
+                if (this.Refuted(this.Find(this.kids[n][i]), this.Find(this.kids[o][i]), visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return this.Part(a, b, new()) || this.Part(b, a, new());
+    }
+
+    // Whether b is a proper part of a: reachable from a's constructor's kids through constructor kids only (B 3.6; projections and
+    // Contract arguments are not followed).
+    private bool Part(int a, int b, HashSet<int> visited)
+    {
+        var n = this.constructorOf[a];
+        if (n < 0)
+        {
+            return false;
+        }
+
+        foreach (var k in this.kids[n])
+        {
+            var kc = this.Find(k);
+            if (kc == b || (visited.Add(kc) && this.Part(kc, b, visited)))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>A smallest member of a class, for display.</summary>

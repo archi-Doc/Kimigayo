@@ -80,7 +80,8 @@ public sealed class Answer
     /// <summary>Gets or sets the goal polarities established (or impossible) when the request stopped (bit 1 positive, bit 2 negated).</summary>
     public byte EstablishedAtStop { get; set; }
 
-    public string Verdict => this.Outcome == Outcome.Resource ? "Resource" : (this.Positive ? "+" : "") + (this.Negative ? "-" : "") + (!this.Positive && !this.Negative ? "none" : string.Empty);
+    /// <summary>Gets the polarities established: at a limit, those established at the stop (B 3.10).</summary>
+    public string Verdict => (this.Positive ? "+" : "") + (this.Negative ? "-" : "") + (!this.Positive && !this.Negative ? "none" : string.Empty);
 
     public override string ToString() => $"{this.Verdict} {this.Outcome}{(this.Reason.Length != 0 ? " (" + this.Reason + ")" : string.Empty)} rounds={this.Rounds} V={this.V} E={this.E} J={this.J} N={this.N}";
 }
@@ -479,11 +480,7 @@ public sealed class Solver
         this.goal = new Goal(proposition);
         this.SeedGoal();
         var answer = this.Run();
-        if (answer.Outcome != Outcome.Resource)
-        {
-            (answer.Positive, answer.Negative) = this.Holds(proposition);
-        }
-
+        (answer.Positive, answer.Negative) = this.Holds(proposition); // at a limit the polarities established at the stop stand (B 3.10, D9)
         return answer;
     }
 
@@ -896,7 +893,7 @@ public sealed class Solver
             var a = this.g.Find(this.g.LookupTerm(atom.A!));
             var b = this.g.Find(this.g.LookupTerm(atom.B!));
             yes = a == b;
-            no = this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null));
+            no = this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null)) || this.g.Refuted(a, b); // a negated fact, or B 3.3's structural Refuted
         }
 
         return p.Kind == FK.Not ? (no, yes) : (yes, no);
