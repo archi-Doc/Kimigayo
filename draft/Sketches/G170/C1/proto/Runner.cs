@@ -280,6 +280,24 @@ public static class Runner
         return sb.ToString();
     }
 
+    /// <summary>The round-4 review's shared program: n Contracts `Ki&lt;A&gt;: Self is It; Self.(It).Item is A` (several Contracts fixing
+    /// one associated type, as collections fix an iterator's Item), with a Copy fact on another subject; no Ki has a fact (dead rows).</summary>
+    public static string Shared(int n) => "contract Copy\ncontract It\n  associate Item\n" + SharedRows(n) + "input V is Copy\n";
+
+    /// <summary>Shared with positive inputs on two of the Contracts (the review's shared-pos).</summary>
+    public static string SharedPos(int n) => Shared(n) + "input S is K1<T>\ninput S is K2<U>\ninput U is Copy\n";
+
+    /// <summary>The round-5 live witness: Shared where every Ki has a conformance, so every row is live (R4-B1 proper).</summary>
+    public static string SharedLive(int n)
+        => "contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ncontract It\n  associate Item\n" + SharedRows(n) + "input V is Copy\ninput T is Holder\n" + string.Concat(Enumerable.Range(1, n).Select(i => $"conformance S{i} is K{i}<i32>\n"));
+
+    private static string SharedRows(int n) => string.Concat(Enumerable.Range(1, n).Select(i => $"contract K{i}<A>\n  clause Self is It\n  clause Self.(It).Item is A\n"));
+
+    /// <summary>The round-4 review's mix program: n pairs of a variable identity side (`Wi: associate X is Self`) and a parameter
+    /// identity side (`Ki&lt;A&gt;: associate X is A`), T conforming to W3, with a Copy fact on another subject.</summary>
+    public static string Mix(int n)
+        => "contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput T is W3\ninput V is Copy\n" + string.Concat(Enumerable.Range(1, n).Select(i => $"contract W{i}\n  associate X is Self\ncontract K{i}<A>\n  associate X is A\n"));
+
     private static int Fixed()
     {
         var failures = 0;
@@ -647,6 +665,92 @@ public static class Runner
         // (two-parameter seed 4242 model 6, minimized; one and two parameters).
         failures += ExpectEnumerate("same-declaration facts meet (one parameter)", "contract Cp\ncontract K3<A>\n  associate X\n  clause Self is K3<i32>\ncontract K4<A>\n  associate Y is i32\n  clause Self is K3<Self.(K4<A>).Y>\nconformance S1 is K4<i64>\n  binding Y = i32", "S1", "C", facts: 2);
         failures += ExpectEnumerate("same-declaration facts meet (two parameters)", "contract Cp\ncontract K3<A>\n  associate X\n  clause Self is K3<i32>\ncontract K4<A, B>\n  associate Y is i32\n  clause Self is K3<Self.(K4<A, B>).Y>\ninput T is K4<i32, List<i32>>\nconformance S1 is K4<i64, List<i32>>\n  binding Y = i32", "S1", "C", facts: 2);
+
+        // Round 5 (R4-B1): a promise is a node of its class identified by (class, shape); rows and chains producing one shape are
+        // its members; a join agrees each pair of promises once; a row whose antecedent can have no fact is not a row. The review's
+        // shared program (n Contracts fixing one associated type) is flat when its rows are dead and linear when every row is live
+        // (152dda62: V 256 / 906 / 3,406 at n = 10 / 20 / 40, Resource at 100; live: V 456 / 6,606 at 10 / 40).
+        failures += ExpectFlat("unrelated request, shared identity sides (dead rows)", Shared, "T is Copy", "none C");
+        failures += ExpectLinear("unrelated request, shared identity sides with positive inputs", SharedPos, "W is Copy", "none C");
+        failures += ExpectLinear("unrelated request, shared identity sides, every row live (the R4-B1 witness)", SharedLive, "T is Copy", "none C");
+        failures += ExpectFlat("unrelated request, mixed variable and parameter identity sides", Mix, "T is Copy", "none C");
+
+        // Round 5 (R4-B2): only the top of a promise is matched by head; every kid by class; a kid that is not a Type yet (a free
+        // variable inside it) has neither and is decided once built (152dda62: none).
+        const string Shape5 = """
+            contract Copy
+            contract W
+              associate X
+            contract Gz
+              associate Z
+            contract G<A>
+              clause Self.(Gz).Z is Opt<A>.(W).X
+            contract Q<A>
+              clause List<A>.(W).X is Copy
+            input T is G<B0>
+            input T is Gz
+            input Opt<B0> is List<i32>
+            input S is Q<i32>
+            """;
+        failures += Expect("a kid that is not a Type yet is decided once built", Shape5, "T.(Gz).Z is Copy", "+ C");
+        failures += Expect("a kid that is not a Type yet, one level deeper", Shape5.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X").Replace("List<A>.(W).X", "Ev<List<A>>.(W).X"), "T.(Gz).Z is Copy", "+ C");
+
+        // The round-4 review's variants of R3-B1's witnesses (period 3, Contract arguments, kid classes, a depth-3 need, a nested
+        // side met at a meeting, and the control whose Contract is recursive, so its conformance supplies nothing).
+        failures += Expect("an involution law of period 3", "contract Copy\ncontract R\n  associate N\n  clause Self.(R).N.(R).N.(R).N is Self\ninput T is R\ninput V is R\ninput V is Copy\ninput T.(R).N is i32\ninput V.(R).N is i32", "T is Copy", "+ C");
+        failures += Expect("an involution law with Contract arguments", "contract Copy\ncontract Inv<A>\n  associate I\n  clause Self.(Inv<A>).I.(Inv<A>).I is Self\ninput T is Inv<U>\ninput V is Inv<W>\ninput U is W\ninput V is Copy\ninput T.(Inv<U>).I is i32\ninput V.(Inv<W>).I is i32", "T is Copy", "+ C");
+        failures += Expect("an involution law with kid classes", "contract Copy\ncontract Inv\n  associate I\n  clause Self.(Inv).I.(Inv).I is Self\ninput T is Inv\ninput V is Inv\ninput V is Copy\ninput T.(Inv).I is List<i32>\ninput V.(Inv).I is List<X>\ninput X is i32", "T is V", "+ C");
+        failures += Expect("a bound pattern needs a promise at depth 3", "contract Copy\ncontract W\n  associate X\ncontract D<A>\ncontract K\n  clause Self.(W).X.(W).X.(W).X is D<Self>\ncontract M\n  associate P\n  clause Self.(M).P is Self.(W).X.(W).X.(W).X\ninput T is K\ninput V is M\ninput T.(W).X is i32\ninput V.(W).X is i32", "V.(M).P is D<T>", "+ C");
+        failures += Expect("a nested-projection identity side met at a meeting", "contract Copy\ncontract W1\n  associate X\n  clause Self is Self.(W1).X.(W1).X\ninput T is W1\ninput V is W1\ninput V is Copy\ninput T.(W1).X is i32\ninput V.(W1).X is i32", "T is V", "+ C");
+        failures += Expect("a recursive Contract's conformance supplies nothing (control)", "contract Copy\ncontract Inv\n  associate I\n  clause Self.(Inv).I.(Inv).I is Self\nconformance S1 is Inv\n  binding I = i32\nconformance S2 is Inv\n  binding I = i32\nconformance S2 is Copy", "S1 is Copy", "none C");
+
+        // Round 5 (rule 5): need rows are tagged effects of the round, so a round whose only effects are need rows settles no
+        // polarity (152dda62: none; seed 20261022 model 41 of the default profile, and its minimal form).
+        const string M41 = """
+            contract Cp
+            contract K0
+              associate X
+              associate Y is Self.(K0).Y
+            contract K1
+              associate Y is Cp and K1
+              clause Self is K2 and K4
+            contract K2
+              associate X is i32
+              clause Self.(K2).X is Self
+            contract K3
+              associate X is List<i32>
+              associate Y is K1 or K2
+              clause Self is K3
+            contract K4 : Cp pending
+              associate Y
+              clause Self is K0 and K1
+            input T is K1
+            input U is K0
+            input U is T.(K1).Y
+            """;
+        failures += Expect("need rows are effects of the round (seed 20261022 model 41)", M41, "T is Cp", "+ P");
+        failures += Expect("need rows are effects of the round (minimal)", "contract Cp\ncontract K1\n  associate Y is Cp\n  clause Self is K2\n  clause Self.(K1).Y is K1\ncontract K2\n  associate X is i32\n  clause Self.(K2).X is Self\ninput T is K1", "T is Cp", "+ C");
+
+        // Round 5 (the pending-meeting deferral loses nothing): every identity fact about a promised Type arrives through a
+        // pattern with free kids (a conformance subject F<V>, a chain's own pattern), which agrees without meets (SPEC 8.2.3 gives
+        // F<a> ≡ F<b> without a ≡ b).
+        const string KidMeet = """
+            contract Cp<A>
+            contract K1
+              associate X is F<Self>
+            contract K2<A>
+              clause Self is F<A>
+            contract Q<A>
+              clause F<A> is Cp<A>
+            conformance F<V> is K2<i32>
+            input T is K1
+            input S is Q<i32>
+            """;
+        failures += Expect("kid meeting deferred: identity through a conformance subject", KidMeet, "T.(K1).X is Cp<i32>", "+ C");
+        failures += Expect("kid meeting deferred: identity goal through a conformance subject", "contract K1\n  associate X is F<Self>\ncontract K2<A>\n  clause Self is F<A>\ncontract K3\n  associate Y is F<i32>\nconformance F<V> is K2<i32>\ninput T is K1\ninput U is K3", "T.(K1).X is F<i32>", "+ C");
+        failures += Expect("kid meeting deferred: identity by an input on the compound", "contract Cp<A>\ncontract K1\n  associate X is F<Self>\ncontract Q<A>\n  clause F<A> is Cp<A>\ninput T is K1\ninput F<T> is F<i32>\ninput S is Q<i32>", "T.(K1).X is Cp<i32>", "+ C");
+        failures += Expect("kid meeting deferred: identity through a parameter side", KidMeet.Replace("clause Self is F<A>", "clause Self is A").Replace("is K2<i32>", "is K2<F<i32>>"), "T.(K1).X is Cp<i32>", "+ C");
+        failures += Expect("kid meeting deferred: identity goal through a parameter side", "contract K1\n  associate X is F<Self>\ncontract K2<A>\n  clause Self is A\ncontract K3\n  associate Y is F<i32>\nconformance F<V> is K2<F<i32>>\ninput T is K1\ninput U is K3", "T.(K1).X is F<i32>", "+ C");
         return failures;
     }
 
@@ -663,6 +767,22 @@ public static class Runner
         var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
         var ok = verdict == expected && (a.Verdict, a.Rounds, a.V, a.N) == (b.Verdict, b.Rounds, b.V, b.N) && (!sameJ || a.J == b.J);
         Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | n=4: C {a} | n=64: C {b} | expected {expected}, equal {(sameJ ? "work" : "rows")}");
+        return ok ? 0 : 1;
+    }
+
+    // The same request on the program at n = 8 and 64: the expected answer, and V and J growing at most linearly in n (their ratio
+    // at most the size ratio; a quadratic term gives 64).
+    private static int ExpectLinear(string name, Func<int, string> program, string query, string expected)
+    {
+        var answers = new[] { 8, 64 }.Select(n =>
+        {
+            var m = ModelText.Parse(program(n));
+            return new Solver(m).Supply(ModelText.ParseFormula(m, query), View.Ordinary);
+        }).ToArray();
+        var (a, b) = (answers[0], answers[1]);
+        var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
+        var ok = verdict == expected && a.Verdict == b.Verdict && b.V <= 8 * a.V && b.J <= 8 * a.J;
+        Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | n=8: C {a} | n=64: C {b} | expected {expected}, V and J at most linear");
         return ok ? 0 : 1;
     }
 
@@ -1645,6 +1765,28 @@ public static class Runner
             {
                 Measure($"scaling n={n}: {name} {q}", m, q);
             }
+        }
+
+        // The round-4 review's workloads (R4-B1) and the round-5 live witness: n Contracts sharing one identity side, dead
+        // (shared), with positive inputs (shared-pos) or every row live (shared-live); mixed variable and parameter sides (mix).
+        foreach (var n in new[] { 10, 20, 40, 100, 400, 1600 })
+        {
+            Measure($"scaling n={n}: shared T is Copy", ModelText.Parse(Shared(n)), "T is Copy");
+        }
+
+        foreach (var n in new[] { 10, 40, 400 })
+        {
+            Measure($"scaling n={n}: shared-pos W is Copy", ModelText.Parse(SharedPos(n)), "W is Copy");
+        }
+
+        foreach (var n in new[] { 10, 40, 100, 400 })
+        {
+            Measure($"scaling n={n}: shared-live T is Copy", ModelText.Parse(SharedLive(n)), "T is Copy");
+        }
+
+        foreach (var n in new[] { 10, 400, 1600 })
+        {
+            Measure($"scaling n={n}: mix T is Copy", ModelText.Parse(Mix(n)), "T is Copy");
         }
 
         // Repeated top-level requests: nothing is reused across requests (request-local), so the cost repeats.
