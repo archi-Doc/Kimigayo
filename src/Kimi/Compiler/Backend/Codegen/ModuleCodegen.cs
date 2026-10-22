@@ -27,8 +27,9 @@
 // item) is a broken contract, InternalInvariant_Kd at the item's site.
 // Must not decide acceptance (the gate) or what is generated (the generation entry's mark), read syntax, HIR or the old Emission, write a
 // partial module, use LINQ, Supports* or catch-alls.
-// Files: the items and the records (this file); their names and signatures (ModuleCodegen.Signatures.cs); the module frame and the output
-// form (ModuleCodegen.Frame.cs).
+// Files: the items and the records (this file); the body, glue and ensure signatures and the signature cache (ModuleCodegen.Signatures.cs),
+// the called imports' C signatures and declarations (ModuleCodegen.Imports.cs) and the common Function values' entries
+// (ModuleCodegen.Erasures.cs); the module frame and the output form (ModuleCodegen.Frame.cs).
 
 using System.Globalization;
 using Kimi.Compiler.Mir;
