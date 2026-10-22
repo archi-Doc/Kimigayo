@@ -3014,6 +3014,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     and the matching into `.ComparedSet.cs`, the ledger's aggregation into `MirDifferenceLedger.Aggregation.cs`; `Binding.Diagnostics.cs`
     only loses the moved clears. Ruling: `classification.tsv`, a data table whose rows are its structure, has no responsibility split,
     so PD21 does not apply to it.
+  - Review (BU, ACCEPT; N5, an input to H11): the clause site adds its node even where `FailExplained` stores no record because the
+    node had already failed, which the reviewer's reading finds unreachable (an `OriginRelationKoto` is failed only by this judgment,
+    once per pass) and which the ledger ignores (it asks only about `Binding.OriginRelation` records). If H11 takes the set as its census,
+    it reads it as "a clause with a body-chain row" or gates the add on the stored record.
   - Rejected: the twin set in the C1-F4 view (verdict data for Mir, which no MIR reader uses); `OriginRelationFact.Twin` (R4-M108's
     "no Twin field"; a per-node fact stored per record in a PD21-due shared model); `BodyChain` over published records (it marks the
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
