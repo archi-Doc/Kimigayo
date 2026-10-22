@@ -10,7 +10,7 @@ using Xunit;
 
 namespace XunitTest;
 
-// SPEC 15.6.2, 15.6.5, 16.2.2: a borrow of a block-local root that escapes through the block's result, a closure capture or a
+// SPEC 15.6.2, 15.6.6, 16.2.2: a borrow of a block-local root that escapes through the block's result, a closure capture or a
 // longer-lived value is a Loan conflict at the destruction that ends the root while that value keeps its Loan. It is one record
 // per destroyed root and holder, at the transfer or statement whose cleanup destroys the root, relating the value keeping the
 // Loan (`loan`) and the Borrow or capture entry that created it (`borrow`). The join that the block's value reaches only after
@@ -196,7 +196,7 @@ public class BlockEscapeLoanTest(ITestOutputHelper output)
         Assert.Equal(conflict, program.Problems.All.ToArray().Any(static x => x.Code == DiagnosticCode.ComparisonLoanConflict_Kd));
     }
 
-    // SPEC 15.6.5: the plain escape is one record, at the destruction.
+    // SPEC 15.6.6: the plain escape is one record, at the destruction.
     [Fact]
     public void ThePlainEscapeIsOneRecord()
     {

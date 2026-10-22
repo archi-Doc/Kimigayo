@@ -32,7 +32,7 @@ public class AbstractCallReachTest
 
     // A later call that reaches no Place a kept result's Loans name is valid, whatever earlier call on the same value, another value of
     // the same Type or a user generic function produced the result (Take-only takeTwo, tupled, through, zip, both and the concrete
-    // callees of user generic functions were errors under 8.11.4's Origin reach, reversed by the adoption).
+    // callees of user generic functions were errors under rule 1's former Origin reach, which the adoption deleted).
     [Theory]
     [InlineData("func takeTwo<S>(source: uniq/S) -> (Option<S.Item>, Option<S.Item>)\n    S is Source\n    let first = source.take()\n    let second = source.take()\n    return (first@move, second@move)\n")]
     [InlineData("func tupled<S>(source: uniq/S) -> i32\n    S is Source\n    let pair = (source.take(), 1)\n    let second = source.take()\n    _ = pair@move\n    _ = second@move\n    return 0\n")]
@@ -53,8 +53,8 @@ public class AbstractCallReachTest
     }
 
     // An implementation body is an ordinary body: its abstract calls on stored values, of one requirement or of a Callable, reach their
-    // Places by path, whichever value, earlier result or argument produced what it returns (8.11.5's Merge, a swap of the stepped
-    // value, a lending inner iterator, an argument returned as the result and two Callable values were preserves results violations
+    // Places by path, whichever value, earlier result or argument produced what it returns (the adopted proposal's Merge, a swap of the
+    // stepped value, a lending inner iterator, an argument returned as the result and two Callable values were preserves results violations
     // before the adoption; their programs now declare no bound).
     [Theory]
     [InlineData("struct Merge<J>\n    J is Iterator\n    Self is Source\n    associate Source.Item is J.Item\n    var left: J\n    var right: J\n    public func take(self: uniq/Self) -> Option<J.Item>\n        match self.left.next()\n            .Some(let item) => return .Some(item@move)\n            .None => return self.right.next()\n")]

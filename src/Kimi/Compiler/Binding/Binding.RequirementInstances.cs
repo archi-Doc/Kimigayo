@@ -6,7 +6,7 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // SPEC 8.11.4: what a requirement runs on a Self that is not abstract, as the witness core resolves it under a definition's
+    // SPEC 8.11.3: what a requirement runs on a Self that is not abstract, as the witness core resolves it under a definition's
     // premises, each target with its declaring instance: a built-in comparison's plan leaves, another built-in target itself (no
     // instance), else the conformance's witness, an inherited one included; false where none resolves. The requirement takes `ref/Self`
     // (SPEC 4.9.6's rows and the comparisons), which no virtual function implements (virtual-dispatch 1, 6.3).

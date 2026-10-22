@@ -106,15 +106,16 @@ internal sealed partial class FunctionCodegen
     {
         if (this.Laid(type.Components[0]) is { } element)
         {
-            this.Loop(type, element, new Filled(address, type.Components[0], element, value));
+            this.Loop(type.Length, element, new Filled(address, type.Components[0], element, value));
         }
     }
 
-    // The counted i64 loop over a fixed array's closed length, not 0 (DECISIONS R4-M81): it owns its counter, and the body writes each
-    // pass's work from the pass's element offset, the counter times the element's stride. The loop is entered through a label of its own,
+    // The counted i64 loop of a number of passes, not 0, over a fixed array's elements (a Fill's closed length, a glue's run; DECISIONS
+    // R4-M81): it owns its counter, and the body writes each pass's work from the pass's element offset, the counter times the element's
+    // stride. The loop is entered through a label of its own,
     // which the counter's phi names; the pass names the labels, its stem followed by s (the entry), nothing (the loop) and ed (the exit),
     // so a Fill's are fills, fill and filled and a glue's destroys, destroy and destroyed; a struct body, so a warm write allocates nothing.
-    private void Loop<TBody>(BoundType type, ValueLowering element, in TBody body)
+    private void Loop<TBody>(long count, ValueLowering element, in TBody body)
         where TBody : struct, IElementPass
     {
         var id = this.next;
@@ -154,7 +155,7 @@ internal sealed partial class FunctionCodegen
         output.Write(" = icmp eq i64 ");
         this.WriteValue(next);
         output.Write(", ");
-        WriteNumber(output, type.Length);
+        WriteNumber(output, count);
         output.Write("\n  br i1 ");
         this.WriteValue(done);
         output.Write(", label %");
