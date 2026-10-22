@@ -7,8 +7,8 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 namespace Kimi.Compiler.Backend;
 
 // The place writer of FunctionCodegen (R5 plan C2a, C2b, package C 3.2 I4, I5, I7 and I9; DECISIONS R5-M83, R5-M87), the one owner of a
-// Place's address. A Place is its root's home, a local's (a static's slot is C7b's row; a
-// zero-sized local's home is the module's zero-sized symbol, which ModuleCodegen defines on request, IMPL 21.1.3), then each step of its
+// Place's address. A Place is its root's home, a local's (a zero-sized local's home is the module's zero-sized symbol, which ModuleCodegen
+// defines on request, IMPL 21.1.3) or a static's slot (FunctionCodegen.Statics' StaticAddress), then each step of its
 // interned projection chain, root first, by one row per MirProjectionKind, in the Layout of the prefix's Type in the item's instance (IMPL
 // 21.1): a Field at its Field offset; a Base at the derived struct's own address, its complete base being a prefix (X1); a ConstIndex at
 // its position times the element's stride, which the validator proved below the length; a Downcast at the enum's payload offset; a Deref of
@@ -28,7 +28,8 @@ internal sealed partial class FunctionCodegen
         address = default;
         if (place.Root < 0)
         {
-            return false; // A static's slot (C7b).
+            address = this.StaticAddress(~place.Root);
+            return true;
         }
 
         if (place.Projection == 0)

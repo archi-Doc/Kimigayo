@@ -1263,8 +1263,8 @@ public sealed partial class FunctionCodegenTest
     // call; a Fn call whose target is a Builtin shim (Text.toString of an i32, BuiltinFormat, R5-M70) is
     // its compiler function's legacy row (C9a), at the call, as the Utf8Slice overload of writeLine is; the records of a for loop's
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
-    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
-    // the static. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
+    // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is written since
+    // C7b (DECISIONS R5-M106), a constant one folded into its slot. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
     // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), but for a
     // Never-result source erased into another result, C5c's, at its Cast; an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
     // leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
@@ -1306,7 +1306,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func show(text: Text.Utf8Slice) => Console.writeLine(text)\n", OutputKind.Library, new[] { "Console.writeLine(text)" })]
     [InlineData("func show(x: i32) -> string => Text.toString(x)\n", OutputKind.Library, new[] { "Text.toString(x)" })]
     [InlineData(ForLoop, OutputKind.Library, new[] { "for value in values\n        total = 1" })]
-    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new[] { "let limit: i32 = 4" })]
+    [InlineData("group Registry\n    public let limit: i32 = 4\n", OutputKind.Library, new string[0])]
     [InlineData("func twice(a: i32) -> i32 => a\n", OutputKind.Library, new string[0])]
     [InlineData(Signatures, OutputKind.Library, new string[0])]
     public void AnUncoveredFormIsOneLocatedUnsupportedRecord(string source, OutputKind output, string[] sites)
@@ -1345,6 +1345,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Closures, OutputKind.Library)]
     [InlineData(Owners, OutputKind.Library)]
     [InlineData(Erasures, OutputKind.Library)]
+    [InlineData(Statics, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1439,6 +1440,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Closures, OutputKind.Library)]
     [InlineData(Owners, OutputKind.Library)]
     [InlineData(Erasures, OutputKind.Library)]
+    [InlineData(Statics, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);
