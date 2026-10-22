@@ -1108,3 +1108,8 @@ applied (its §13). The owner then instructed the R4 planning session: 「この
 - Integrated: the proposal's §5 (SPEC §6.4.6, §8.11, §12.7.1, §15.6, §15.6.3, §15.6.4, §16.3.3, §22.2, Appendices D, E and F,
   LIBRARY, IMPL Appendix A). No support is claimed: the default pipeline changes with U1 and U2, STATUS with U2. Not refreshed:
   SPECJ (being retranslated on `codex/specj-from-source`, whose source revision predates this change) and GUIDE.
+
+## 2026-10-22 — 型の構造に基づく同一性
+
+- [Type Identity by Structural Decomposition](Proposals/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition.md): 一部取り込み（提案受付のみ）。所有者の依頼により、G170-C1 の検討を基に、現行仕様・変更点・新仕様の詳細・例示コードを日本語で作成。実装計画と SPEC 差分は対象外。
+- 対応領域（未取り込み）: §3.1–3.6 → SPEC §3、§8.2.3、§8.3.2、§8.5.2。固定属性の境界 → §4.4.2、§15.3.7。§3.7 → §8.3.3、§8.5.5、§10.8 の既存境界。§3.8 → §23.1.1。§1–2・§4–5 は背景、例、原則。全項目が提案段階であり、採用・実装・性能改善は未確認。
