@@ -2,7 +2,8 @@
 // exhaustive bounded reference on generated finite models, order invariance (answers, counts, work and limit outcomes), the
 // Resource boundary and its transport through judgments, and cost workloads including program-size scaling.
 // Run: dotnet run -c Release -- <fixed|random|order|resource|cost|all> [count] [seed]; probes: trace|time|enum|scale <model file>
-// <queries…>, pending [count] [seed], limit <items…> (time to the item limit); G170_REVIEW_PROFILE=params: two-parameter models;
+// <queries…>, pending [count] [seed], limit <items…> (time to the item limit), profile <model file> <queries…> | profile limit
+// <items…> (time per phase); G170_REVIEW_PROFILE=params: two-parameter models;
 // G170_REVIEW_PROFILE=nested: nested projections of two subjects made one Type by depth-1 identities, with bound patterns.
 #pragma warning disable
 #nullable enable
@@ -80,6 +81,44 @@ public static class Runner
             foreach (var q in args.Skip(3))
             {
                 Console.WriteLine($"  supply {q}: {new Solver(m).Supply(ModelText.ParseFormula(m, q), View.Ordinary, Harness)}; ref5 {Show(Ref(m, View.Ordinary, ModelText.ParseFormula(m, q), 5))}");
+            }
+
+            return 0;
+        }
+
+        if (mode == "profile")
+        {
+            // Phase attribution (C1-design §7): `profile limit <items>` (the unbounded enumeration) or `profile <model> <query…>`
+            // (`enumerate <subject>` enumerates); the second run of each request is reported (warm).
+            if (args[1] == "limit")
+            {
+                foreach (var items in args.Skip(2).Select(long.Parse))
+                {
+                    var m = UnboundedModel();
+                    var solver = new Solver(m);
+                    Answer a = null!;
+                    for (var i = 0; i < 2; i++)
+                    {
+                        a = solver.Enumerate(ModelText.ParseType(m, "i32"), View.Ordinary, new Limits { Items = items });
+                    }
+
+                    Console.WriteLine($"item limit {items}: {a} total {solver.Phases.TotalMs:F1} ms: {solver.Phases}");
+                }
+            }
+            else
+            {
+                var m = ModelText.Parse(File.ReadAllText(args[1]));
+                var solver = new Solver(m);
+                foreach (var q in args.Skip(2))
+                {
+                    Answer a = null!;
+                    for (var i = 0; i < 2; i++)
+                    {
+                        a = q.StartsWith("enumerate ", StringComparison.Ordinal) ? solver.Enumerate(ModelText.ParseType(m, q[10..]), View.Ordinary, Harness) : solver.Supply(ModelText.ParseFormula(m, q), View.Ordinary, Harness);
+                    }
+
+                    Console.WriteLine($"{q}: {a} total {solver.Phases.TotalMs:F1} ms: {solver.Phases}");
+                }
             }
 
             return 0;
@@ -275,6 +314,49 @@ public static class Runner
         for (var i = 1; i <= n; i++)
         {
             sb.Append($"contract W{i}\n  associate X\n  clause Self is Self.(W{i}).X.(W{i}).X\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>The round-4 review's shared program (R4-B1): n Contracts `Ki&lt;A&gt;: Self is It; Self.(It).Item is A` fixing one
+    /// associated Type, with a Copy fact on another subject; no Ki has a fact (dead rows).</summary>
+    public static string Shared(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract It\n  associate Item\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"contract K{i}<A>\n  clause Self is It\n  clause Self.(It).Item is A\n");
+        }
+
+        sb.Append("input V is Copy\n");
+        return sb.ToString();
+    }
+
+    /// <summary>Shared with every Ki live (a conformance `Si is Ki&lt;i32&gt;` each): the live witness of R4-B1.</summary>
+    public static string SharedLive(int n)
+    {
+        var sb = new StringBuilder(Shared(n));
+        sb.Append("contract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"conformance S{i} is K{i}<i32>\n");
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>Shared with two Ki live through one subject (`S is K1&lt;T&gt;`, `S is K2&lt;U&gt;`, `U is Copy`).</summary>
+    public static string SharedPos(int n)
+        => Shared(n) + "contract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput S is K1<T>\ninput S is K2<U>\ninput U is Copy\n";
+
+    /// <summary>The round-4 review's mix program: selfid and palias Contracts interleaved, T conforming to W3.</summary>
+    public static string Mix(int n)
+    {
+        var sb = new StringBuilder("contract Copy\ncontract Holder\n  associate Item\n  clause Self.(Holder).Item is Copy\ninput T is Holder\ninput T is W3\ninput V is Copy\n");
+        for (var i = 1; i <= n; i++)
+        {
+            sb.Append($"contract W{i}\n  associate X is Self\ncontract K{i}<A>\n  associate X is A\n");
         }
 
         return sb.ToString();
@@ -647,7 +729,68 @@ public static class Runner
         // (two-parameter seed 4242 model 6, minimized; one and two parameters).
         failures += ExpectEnumerate("same-declaration facts meet (one parameter)", "contract Cp\ncontract K3<A>\n  associate X\n  clause Self is K3<i32>\ncontract K4<A>\n  associate Y is i32\n  clause Self is K3<Self.(K4<A>).Y>\nconformance S1 is K4<i64>\n  binding Y = i32", "S1", "C", facts: 2);
         failures += ExpectEnumerate("same-declaration facts meet (two parameters)", "contract Cp\ncontract K3<A>\n  associate X\n  clause Self is K3<i32>\ncontract K4<A, B>\n  associate Y is i32\n  clause Self is K3<Self.(K4<A, B>).Y>\ninput T is K4<i32, List<i32>>\nconformance S1 is K4<i64, List<i32>>\n  binding Y = i32", "S1", "C", facts: 2);
+
+        // Round 4 (R4-B1): a promise is identified by (class, shape), never by the row or base producing it; dead rows are not rows.
+        // n Contracts fixing one associated Type cost one promise per class (152dda62: V 36 / 256 at n = 3 / 10, 2n² chains).
+        failures += Expect("shared identity sides, n = 3: unrelated request", Shared(3), "T is Copy", "none C");
+        failures += Expect("shared identity sides, n = 10: unrelated request", Shared(10), "T is Copy", "none C");
+        failures += ExpectFlat("unrelated request, shared identity sides", Shared, "T is Copy", "none C");
+        failures += ExpectFlat("unrelated request, shared identity sides, two live", SharedPos, "W is Copy", "none C", sameJ: false);
+        failures += Expect("shared identity sides, every row live, n = 3: unrelated request", SharedLive(3), "T is Copy", "none C");
+        failures += Expect("shared identity sides, every row live, n = 10: unrelated request", SharedLive(10), "T is Copy", "none C");
+        failures += ExpectLinear("unrelated request, shared identity sides, every row live", SharedLive, "T is Copy", "none C");
+
+        // Round 4 (R4-B2): only the top is matched by head; a kid that is not a Type yet is decided once built (152dda62: none).
+        const string Shape5 = "contract Copy\ncontract W\n  associate X\ncontract Gz\n  associate Z\ncontract G<A>\n  clause Self.(Gz).Z is Opt<A>.(W).X\ncontract Q<A>\n  clause List<A>.(W).X is Copy\ninput T is G<B0>\ninput T is Gz\ninput Opt<B0> is List<i32>\ninput S is Q<i32>";
+        failures += Expect("a kid that is not a Type yet (shape5): a free Contract argument under the pattern's kid", Shape5, "T.(Gz).Z is Copy", "+ C");
+        failures += Expect("a kid that is not a Type yet, one level deeper (shape7)", Shape5.Replace("Opt<A>.(W).X", "Ev<Opt<A>>.(W).X").Replace("List<A>.(W).X", "Ev<List<A>>.(W).X"), "T.(Gz).Z is Copy", "+ C");
+
+        // The round-4 review's seven variants of R3-B1 (each none on f550b474, + here and in the reference).
+        const string Inv3 = "contract Copy\ncontract R\n  associate N\n  clause Self.(R).N.(R).N.(R).N is Self\ninput T is R\ninput V is R\ninput V is Copy\ninput T.(R).N is i32\ninput V.(R).N is i32";
+        failures += Expect("an involution law of period 3: Copy", Inv3, "T is Copy", "+ C");
+        failures += Expect("an involution law of period 3: the identity", Inv3, "T is V", "+ C");
+        const string InvArg = "contract Copy\ncontract Inv<A>\n  associate I\n  clause Self.(Inv<A>).I.(Inv<A>).I is Self\ninput T is Inv<U>\ninput V is Inv<W>\ninput U is W\ninput V is Copy\ninput T.(Inv<U>).I is i32\ninput V.(Inv<W>).I is i32";
+        failures += Expect("Contract arguments identical by identity: Copy", InvArg, "T is Copy", "+ C");
+        failures += Expect("Contract arguments identical by identity: the identity", InvArg, "T is V", "+ C");
+        const string InvKid = "contract Copy\ncontract Inv\n  associate I\n  clause Self.(Inv).I.(Inv).I is Self\ninput T is Inv\ninput V is Inv\ninput V is Copy\ninput T.(Inv).I is List<i32>\ninput V.(Inv).I is List<X>\ninput X is i32";
+        failures += Expect("kid classes identical by congruence: Copy", InvKid, "T is Copy", "+ C");
+        failures += Expect("kid classes identical by congruence: the identity", InvKid, "T is V", "+ C");
+        failures += Expect("a depth-3 need through a bound pattern", "contract Copy\ncontract W\n  associate X\ncontract D<A>\ncontract K\n  clause Self.(W).X.(W).X.(W).X is D<Self>\ncontract M\n  associate P\n  clause Self.(M).P is Self.(W).X.(W).X.(W).X\ninput T is K\ninput V is M\ninput T.(W).X is i32\ninput V.(W).X is i32", "V.(M).P is D<T>", "+ C");
+        failures += Expect("an involution law through conformances: the subjects are not one Type", "contract Copy\ncontract Inv\n  associate I\n  clause Self.(Inv).I.(Inv).I is Self\nconformance S1 is Inv\n  binding I = i32\nconformance S2 is Inv\n  binding I = i32\nconformance S2 is Copy", "S1 is Copy", "none C");
+
+        // Round 5: the join with wildcards (a promise kid that is a ground Type not interned yet against a class), a variable at two
+        // positions (one meet, no request), and an inherited defect (need rows are tagged effects: 152dda62 answers none).
+        const string JoinWild = "contract Copy\ncontract W\n  associate X\ncontract G\n  associate Z\n  clause Self.(G).Z is List<i32>.(W).X\ncontract Q<A>\n  clause List<A>.(W).X is Self\ninput T is G\ninput V is Q<i32>\ninput V is Copy\ninput List<i32> is Copy";
+        failures += Expect("the join with a wildcard kid: Copy", JoinWild, "T.(G).Z is Copy", "+ C");
+        failures += Expect("the join with a wildcard kid: the identity", JoinWild, "T.(G).Z is V", "+ C");
+        failures += Expect("the join with a wildcard kid: an unrelated request", JoinWild, "T is Copy", "none C");
+        failures += Expect("a shape variable at two positions", "contract Copy\ncontract W\n  associate X\ncontract Q\n  associate Z\ncontract K<A>\n  clause Self.(W).X is Pair<A, A>\ncontract J<A>\n  associate Y is A\ncontract R\n  clause Self.(Q).Z is Pair<Self.(J<i32>).Y, i32>\ninput T is K<i32>\ninput T is W\ninput U is R\ninput U is Q\ninput U is J<i32>\ninput U.(J<i32>).Y is Copy\ninput i32 is Copy", "T.(W).X is U.(Q).Z", "+ C");
+        failures += Expect("a round whose only effects are need rows does not settle (m41)", "contract Cp\ncontract K1\n  associate Y is Cp\n  clause Self is K2\n  clause Self.(K1).Y is K1\ncontract K2\n  associate X is i32\n  clause Self.(K2).X is Self\ninput T is K1", "T is Cp", "+ C");
         return failures;
+    }
+
+    // The same request at n = 4, 8 and 64: the expected answer at each size, and V and J at most linear in n (the slope from 8 to
+    // 64 no more than the slope from 4 to 8, plus one per n).
+    private static int ExpectLinear(string name, Func<int, string> program, string query, string expected)
+    {
+        var sizes = new[] { 4, 8, 64 };
+        var answers = sizes.Select(n =>
+        {
+            var m = ModelText.Parse(program(n));
+            return new Solver(m).Supply(ModelText.ParseFormula(m, query), View.Ordinary);
+        }).ToArray();
+        var ok = true;
+        foreach (var a in answers)
+        {
+            var verdict = a.Outcome == Outcome.Resource ? "R" : a.Verdict + " " + (a.Outcome == Outcome.Complete ? "C" : "P");
+            ok &= verdict == expected;
+        }
+
+        ok &= Linear(answers.Select(a => a.V).ToArray()) && Linear(answers.Select(a => a.J).ToArray());
+        Console.WriteLine($"{(ok ? "PASS" : "FAIL")} {name} | {query} | n=4: C {answers[0]} | n=8: C {answers[1]} | n=64: C {answers[2]} | expected {expected}, V and J linear");
+        return ok ? 0 : 1;
+
+        bool Linear(long[] x) => (x[2] - x[1]) * 4 <= (x[1] - x[0] + 4) * 56;
     }
 
     // The same request on the program at two sizes: the expected answer, and the same rounds, V, J and N (nothing unrelated is read);
@@ -1418,7 +1561,41 @@ public static class Runner
         }
 
         Console.WriteLine($"== ORDER: {requests} requests on {count} models (templates and Contracts shuffled; ordinary and frozen views) and {boundaries} limit-boundary runs: {differences} differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; {unexpected} boundary outcomes other than Complete/Provisional at the need and Resource below it");
-        return differences + unexpected;
+
+        // Models where a merge happens in every round and a chain is stored before a merge (the join's J and the stored promises'
+        // re-keying must be order-free): the unbounded enumeration at a small item limit, G170 depth 8, nested 39 at 3,000 items.
+        var fixedDifferences = 0;
+        var fixedRuns = 0;
+        foreach (var (name, text, request, subject, limits) in new (string, string, string?, string?, Limits)[]
+        {
+            ("unbounded enumeration, 300 items", UnboundedText, null, "i32", new Limits { Items = 300 }),
+            ("G170 depth 8", Trees + "\ninput T is CopyTree", Chain(8) + " is Copy", null, Harness),
+            ("nested 39 at 3,000 items", Nested39, "T is V", null, new Limits { Rounds = 300, Items = 3000 }),
+            ("nested 39 at 300 items", Nested39, "T is V", null, new Limits { Rounds = 300, Items = 300 }),
+        })
+        {
+            var m = ModelText.Parse(text);
+            var x = request is null ? new Solver(m).Enumerate(ModelText.ParseType(m, subject!), View.Ordinary, limits) : new Solver(m).Supply(ModelText.ParseFormula(m, request), View.Ordinary, limits);
+            for (var k = 0; k < 6; k++)
+            {
+                var shuffled = ModelText.Parse(text);
+                var order = new Random(seed + 100 + k);
+                var templates = shuffled.Templates.OrderBy(_ => order.Next()).ToList();
+                shuffled.Templates.Clear();
+                shuffled.Templates.AddRange(templates);
+                var decls = shuffled.Decls.OrderBy(_ => order.Next()).ToList();
+                shuffled.Decls.Clear();
+                shuffled.Decls.AddRange(decls);
+                var y = request is null ? new Solver(shuffled).Enumerate(ModelText.ParseType(shuffled, subject!), View.Ordinary, limits) : new Solver(shuffled).Supply(ModelText.ParseFormula(shuffled, request), View.Ordinary, limits);
+                fixedRuns++;
+                fixedDifferences += Compare(-1, name, View.Ordinary, $"shuffle {k}", x, y);
+            }
+
+            Console.WriteLine($"   {name}: {x} peak {x.PeakItems} [{x.Detail}]");
+        }
+
+        Console.WriteLine($"== ORDER (merges every round): {fixedRuns} shuffled runs of 4 fixed requests: {fixedDifferences} differ");
+        return differences + unexpected + fixedDifferences;
 
         int Compare(int model, string q, View view, string setting, Answer x, Answer y)
         {
@@ -1467,7 +1644,7 @@ public static class Runner
         return failures;
     }
 
-    private static ProgramModel UnboundedModel() => ModelText.Parse("""
+    private const string UnboundedText = """
         contract Dd<A>
         contract It
           associate Child is It
@@ -1475,7 +1652,39 @@ public static class Runner
           clause Self.(It).Value is i32
           clause Self.(It).Value is Dd<Self>
         input T is It
-        """);
+        """;
+
+    /// <summary>The nested profile's model 39 (seed 77; review-assets/round4/models/n39.txt): chain promises multiply with
+    /// nested-projection identity rows.</summary>
+    private const string Nested39 = """
+        contract Cp
+        contract K0 : Cp
+          associate X is K3
+          associate Y
+          clause Self.(K0).X.(K0).Y is K2 or Cp
+          clause Self.(K0).X.(K0).X is Self
+        contract K1
+          associate X
+          associate Y
+          clause Self.(K1).X is List<i32>
+          clause Self.(K1).X.(K1).X is Self.(K0).X
+        contract K2
+          associate X
+          clause Self.(K2).X is K0 or Cp
+          clause Self.(K2).X.(K2).X is Self.(K1).X
+        contract K3 : K0, Cp
+          associate Y
+          clause Self is Cp
+          clause Self.(K3).Y.(K3).Y is Self.(K0).X
+        input T is K3
+        input U is K3
+        input V is K3
+        input T.(K3).Y is i32
+        input V.(K3).Y is i32
+        input V is K1
+        """;
+
+    private static ProgramModel UnboundedModel() => ModelText.Parse(UnboundedText);
 
     // Transport: a conformance whose own check hits the limit publishes Resource; judgments that read it (alone, under and/or,
     // through a condition, through its binding) are Resource and report nothing; independent judgments report as usual. Judged
@@ -1645,6 +1854,26 @@ public static class Runner
             {
                 Measure($"scaling n={n}: {name} {q}", m, q);
             }
+        }
+
+        // The round-4 review's workloads (R4-B1): n Contracts fixing one associated Type (shared: dead rows; shared-pos: two live
+        // through one subject; shared-live: every row live), and the mix of selfid and palias Contracts.
+        foreach (var n in new[] { 10, 20, 40, 100, 400, 1600 })
+        {
+            Measure($"scaling n={n}: shared T is Copy", ModelText.Parse(Shared(n)), "T is Copy");
+        }
+
+        foreach (var n in new[] { 10, 400, 1600 })
+        {
+            Measure($"scaling n={n}: shared-pos W is Copy", ModelText.Parse(SharedPos(n)), "W is Copy");
+            var mix = ModelText.Parse(Mix(n));
+            Measure($"scaling n={n}: mix T is Copy", mix, "T is Copy");
+            Measure($"scaling n={n}: mix T.(W3).X is T", mix, "T.(W3).X is T");
+        }
+
+        foreach (var n in new[] { 10, 40, 100, 400 })
+        {
+            Measure($"scaling n={n}: shared-live T is Copy", ModelText.Parse(SharedLive(n)), "T is Copy", timed: n <= 100);
         }
 
         // Repeated top-level requests: nothing is reused across requests (request-local), so the cost repeats.
