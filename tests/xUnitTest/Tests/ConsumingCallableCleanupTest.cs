@@ -14,11 +14,23 @@ public class ConsumingCallableCleanupTest
     [InlineData("Shared", "let action = func [item@move] () -> i32 => item.value", 7, 0, 0)]
     [InlineData("Exclusive", "let action = func [var item@move] () -> i32 => item.next()", 8, 0, 0)]
     [InlineData("Consuming", "let action = func [item@move] () -> i32 => consume(item@move)", 7, 0, 0)]
-    [InlineData("Common", "let action: () -> i32 = func [item@move] () -> i32 => item.value", 7, 1, 4)]
     public void OwningCallDestroysTheTransferredEnvironmentExactlyOnce(string name, string creation, int result, int allocations, long bytes)
     {
         var source = Prefix + creation + $"\nrequire invoke(action@move) == {result} else => $abort(\"value\")\nConsole.writeLine(\"done\")";
         NativeAllocationAudit.WriteFixture("ConsumingCallable" + name, source, allocations, allocations, bytes, "drop\ndone\n");
+    }
+
+    // An erased environment of 4 bytes that needs destruction (PD19, IMPL 21.1.3): MIR code generation stores it in the Function value's word,
+    // the old generator allocates it (DECISIONS R5-M104's inline-env deviation).
+    [Trait("Purpose", "Allocation")]
+    [Fact]
+    public void OwningCallDestroysTheTransferredErasedEnvironmentExactlyOnce()
+    {
+        var source = Prefix + "let action: () -> i32 = func [item@move] () -> i32 => item.value\nrequire invoke(action@move) == 7 else => $abort(\"value\")\n" +
+            "Console.writeLine(\"done\")";
+        var allocations = Codegen.Expect(0, 1, CodegenDeviations.InlineEnvironment);
+        NativeAllocationAudit.WriteFixture(
+            "ConsumingCallableCommon", source, allocations, allocations, Codegen.Expect(0L, 4L, CodegenDeviations.InlineEnvironment), "drop\ndone\n");
     }
 
     [Trait("Purpose", "Allocation")]

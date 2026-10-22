@@ -1265,8 +1265,8 @@ public sealed partial class FunctionCodegenTest
     // statement and of the siblings its expansion synthesizes with its span ($for.iterator, $for.some, $for.none) are one at that location
     // (DECISIONS R5-M65), which the diagnostics could not order when each was keyed by its node. A static's initializer is C7b's row, at
     // the static. The operator rows (DECISIONS R5-M76) leave checked 128-bit arithmetic to ModuleCodegen's wide overflow declarations and
-    // have a raw pointer column since C8a (R5-M92), which writes null too; the conversion rows (DECISIONS R5-M80) leave an erasure to C5b,
-    // at its Cast; an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
+    // have a raw pointer column since C8a (R5-M92), which writes null too; an erasure is written since C5b (DECISIONS R5-M104), but for a
+    // Never-result source erased into another result, C5c's, at its Cast; an intrinsic of a later unit is its row's (an Array's capacity, C8d), at its call; the place writer (DECISIONS R5-M83)
     // leaves an object borrow's payload to C6a, at the Place read through it; the rvalue rows (DECISIONS R5-M87) write a Tuple aggregate
     // and a zero-sized local's address and leave a Dictionary's length to C8e, at the member, and an Array from none to C8d, at the
     // literal. K11: an Application's function nothing calls is not generated, so its form records nothing; a Library generates it.
@@ -1274,7 +1274,8 @@ public sealed partial class FunctionCodegenTest
     [InlineData("func twice(a: i128) -> i128 => a + a\n", OutputKind.Library, new[] { "a + a" })]
     [InlineData("func twice(a: i128) -> i128 => a + a\n()", OutputKind.Application, new string[0])]
     [InlineData("func twice(a: f64) -> f64 => a + a\n", OutputKind.Library, new string[0])]
-    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new[] { "id" })]
+    [InlineData("func id(x: i32) -> i32 => x\nfunc get() -> (i32) -> i32 => id\n", OutputKind.Library, new string[0])]
+    [InlineData("func fail() -> Never => $abort(\"x\")\nfunc get() -> () -> i32 => fail\n", OutputKind.Library, new[] { "fail" })]
     [InlineData("func none() -> usize => null@raw/i32@usize\n", OutputKind.Library, new string[0])]
     [InlineData("func same(p: raw/i32, q: raw/i32) -> bool => p == q\n", OutputKind.Library, new string[0])]
     [InlineData("func room(a: ref/Array<i32>) -> isize => a.capacity\n", OutputKind.Library, new[] { "a.capacity" })]
@@ -1343,6 +1344,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Opens, OutputKind.Library)]
     [InlineData(Closures, OutputKind.Library)]
     [InlineData(Owners, OutputKind.Library)]
+    [InlineData(Erasures, OutputKind.Library)]
     public void GenerationIsDeterministic(string source, OutputKind output)
     {
         var first = Generate(Analyze(source, output));
@@ -1436,6 +1438,7 @@ public sealed partial class FunctionCodegenTest
     [InlineData(Opens, OutputKind.Library)]
     [InlineData(Closures, OutputKind.Library)]
     [InlineData(Owners, OutputKind.Library)]
+    [InlineData(Erasures, OutputKind.Library)]
     public void WarmGenerationAllocatesNothing(string source, OutputKind output)
     {
         var c = Analyze(source, output);

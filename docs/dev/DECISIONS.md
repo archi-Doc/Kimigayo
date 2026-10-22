@@ -6119,3 +6119,59 @@ structure is recorded here by the unit that first implements it.
   8 bytes or less, its requirement test and `ContextualClosureTest` "Object" move from C5a to C5b, since a concrete Closure environment
   is the Closure value itself and never allocates (IMPL 21.1.2), and PD19 governs only a value erased into IMPL 21.1.3's common
   function value (against plan row C5a). They leave the list; R5's group reviews check the code against those entries.
+- **R5-M104 Erasure, adapter items and the Function glue in MIR code generation (C5b)** (2026-10-22, C lane; plan C5b, package C 3.2,
+  3.6 and row 14, PD3, PD19 as R5-M103 moved it, SPEC 7.7.4, 10.7, 16.4 and 22.5.1, IMPL 21.1.3, 21.3.1 and 21.4.3; the planning session's
+  go and rulings Q1-Q5 on C5b's design; under R5-M18 form 1, R5-M58, R5-M85, R5-M92 and R5-M102)
+  - Representation (IMPL 21.1.3): a common Function value holds its environment word at 0 and its table's address at 8 (Layout's
+    FunctionHandle); an adapter item's table is a private constant `{entry, context, drop}` at offsets 0, 8 and 16, its context null. The
+    drop entry has a glue function's signature (`DropGlue.Parameters`) and receives the Function value's address, the environment word's:
+    an inline environment that may need a drop has its own glue as drop entry, a heap one the adapter's release (its glue on the address the
+    word holds, then the heap release), any other none (null).
+  - Erasure (`FunctionCodegen.Erasures`, the Cast's Erasure kind): an environment of 8 bytes or less and alignment 8 or less is put in the
+    zero-filled word, also one that needs destruction (PD19); a larger one is allocated when the value is formed (`__kimi_alloc`, at the
+    conversion's location: SPEC 7.7.4, 22.5.1), the heap's 16-byte alignment (IMPL 21.4.3) covering every environment, since no Layout
+    alignment exceeds 16 (R5-M92's invariant, `LayoutTest.NoLayoutAlignmentExceedsTheHeapAlignment`), and its address put in the word; a
+    function Item has no environment. Then the table of the collector's adapter item at the site, read by the cursor at the statement's
+    location (the frame keeps the statement's index beside its block).
+  - Adapters (`FunctionCodegen.WriteAdapter`, PD3): an entry under the erased signature (`Abi.Of(ErasedClosure | CallerLocation)`) of its
+    source's own Callable signature, its body target's inputs and result (`ModuleCodegen.Adapter`, cached per item and reused by
+    `Abi.Matches`), which calls the body with its own parameters by kind and logical index and the location it received (SPEC 22.5.1): a
+    ClosureErasure's Shared Closure body with the word spilled to a slot of its own (inline) or the address it holds (heap) and a null
+    context; an ItemAdapter's function or requirement witness; `unreachable` after a callee that never returns.
+  - Function glue: `DropGlue.Row`'s Function row calls the value's table's drop entry, when not null, at the value's address through the one
+    destruction-call writer, so every Drop of a Function value and R5-M102's owner call of an erased value are written.
+  - Value calls (ruling Q3): a compiler function's Item without a body target calls what its direct call calls (SPEC 7.7.4), its
+    disposition's row, the intrinsic writer or the legacy row, over the Value call's operands placed by the call's own key; the rows that
+    exist are written (Raw.allocate), every other stays its unit's located `Unsupported_Kd`, and so does a failure function's Item, whose
+    Fail row reads the code operand only its builder-made direct call has (the functions are library-internal; no value names one).
+  - Temporary structure, removed by C5c (ruling Q1 (b)): an erasure whose target Function Type's erased signature is not its adapter's entry
+    (`ModuleCodegen.Fits`; a Never-result source erased into another result, SPEC 10.7) and an adapter without a body target (an erased
+    compiler function's Item, a Builtin or descriptor target) are one located `Unsupported_Kd` each, at the conversion and at the adapter's
+    site. C5c keys a ClosureErasure or ItemAdapter item also by its erased target Function Type, so an entry is defined under the signature
+    every erased call of that Type uses; it changes K 4.3's and R5-M43's owner-approved key and takes the full process (C5b's design §0,
+    §3.3 and §10 Q1 (a) are its first design).
+  - Deviation `inline-env` (class (a), `CodegenDeviations.InlineEnvironment`; OQ7, PD19; ruling Q2): the old generator heap-allocates every
+    erased environment that needs destruction; `ConsumingCallableCleanupTest`'s erased environment of 4 bytes and `GenericClosureIdentityTest`'s
+    zero-sized one state both bounds through `Codegen.Expect` (R5-M85's form; no native outcome differs, so its native half is not needed).
+    The rows that C6a and C6b block (`ContextualClosureTest` "Object", the `HeapClosureErasureTest` and `FunctionCaptureTest` handle rows)
+    keep their pending rows and take the entry with the unit that makes them run.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M105): plan row C5b's verification "the ErasedCalls kernel O2
+    A/B" moves to the later of C8d and C9c, since the kernel needs `Array<F>` and interpolation under MIR code generation; C5b measures a
+    fixed-array variant as information, a B/A beyond the A=B variance stopping it.
+  - Restructured first, behavior unchanged: the Cast's kinds in `FunctionCodegen.Casts` and the scalar conversions in `.Conversions`;
+    `FunctionCodegen.cs`'s contract without its per-row list, each concern file owning its rows (ruling Q4); a compiler function's row by
+    its function, a destruction's guard and a body item's Callable inputs.
+  - Verified: the sel ledger loses 352 rows (349 pass: call 143, C-frame 85, closure 84, C-aggregate 31, object 4, K-edges 1, library-2 1;
+    3 renamed), all this unit's (at its base none passes); the 54 fixture families the flipped tests write run natively under sel (711
+    fixtures, O0 and O2), the two `inline-env` audits at their target bounds; `FunctionCodegenTest` (PD19's requirement: environments of
+    4 bytes, a drop-needing 4 bytes and a drop-needing zero size allocate nothing, one of 24 bytes once at the conversion's location and is
+    released once; the adapter entries; the Function glue and an owner call of an erased value; a Never Item erased only into its own
+    signature; a compiler Item's Value call; `ErasureRows` natively under both generators; M9's 0 B and I1 over the erasure source). The
+    ErasedCalls kernel's fixed-array variant at O2, 15 interleaved samples, old generator A against sel B: B/A CPU mean 0.93, wall median
+    0.96, within the runs' variance (information).
+  - Rejected: keying an adapter by its target Function Type in C5b (the general rule, C5c's: it changes an owner-approved key); the old
+    generator's drop entry `(i64 word, context, location)` (a second destruction signature; an inline environment destroyed in a spill); a
+    drop-entry function for an inline environment (its glue is one); a no-op drop entry (an indirect call per destruction); heap
+    environments whenever they need destruction (the old generator's; IMPL 21.1.3); an adapter per erasure site (the old generator's; one
+    item per Type); value-based copies of the intrinsic writers for erased compiler Items (a second copy of each row); `MirBodyKind.Shim`
+    bodies (PD3); a MIR box for large environments (held MIR; IMPL leaves layout to the backend); a `MonoKind` per runtime routine.

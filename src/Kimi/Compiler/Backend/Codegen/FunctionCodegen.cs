@@ -1,11 +1,12 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // FunctionCodegen (R5 package C 3.2, 3.6 and 3.9, design 2 2.2; DECISIONS R5-M65), MIR code generation: the LLVM definition of one body
-// item of the checked set from its validated, analyzed MIR body in the item's instance, or of one DropGlue item by its Type's row, and the
-// coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located Unsupported_Kd, never wrong code. Each concern
-// file (Files) owns its rows, in its header or at its writer: the forms it writes, those it leaves to a later unit, named, and the
-// DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its row, writes the unconditional branch
-// and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate nothing (package C 3.9).
+// item of the checked set from its validated, analyzed MIR body in the item's instance, of one DropGlue item by its Type's row or of one
+// ClosureErasure or ItemAdapter item, and the coverage rows (PD11) of the MIR forms: a form the frame does not cover yet is one located
+// Unsupported_Kd, never wrong code. Each concern file (Files) owns its rows, in its header or at its writer: the forms it writes, those it
+// leaves to a later unit, named, and the DECISIONS entries behind them. This file dispatches each statement, rvalue and terminator to its
+// row, writes the unconditional branch and the SwitchInt, and makes the records; StorageLive, StorageDead, FakeRead and EndBorrow generate
+// nothing (package C 3.9).
 // Inputs: the item and its body; its Types (InstanceCollector.TypeOf), its view (CheckedSet's View, selected once with its own MirCases,
 // X13), its records' location rule (InstanceCollector.Subject, K package 4.9) and targets; the program's drop table and each body's
 // exactness (A2, R4-M6a, R4-M102: gate step 2 writes no inexact body); the compilation's Layout and runtime location texts;
@@ -26,7 +27,8 @@
 // (.Places.cs) and the loads, stores and copies through it (.Stores.cs); the rvalues (.Rvalues.cs) and aggregates (.Aggregates.cs),
 // operators (.Arithmetic.cs), casts by their kind (.Casts.cs) and the scalar conversions (.Conversions.cs), calls (.Calls.cs) and value
 // calls (.Closures.cs), intrinsics (.Intrinsics.cs), the Drop terminator and A2's verdict rows (.Drops.cs) and drop flags (.Flags.cs); a
-// value's destruction one level per Type, a DropGlue item's function or an Open row's (.Glue.cs).
+// value's destruction one level per Type, a DropGlue item's function or an Open row's (.Glue.cs); the common Function values: erasure, the
+// adapter items' functions and a Function value's glue row (.Erasures.cs).
 // Must not read syntax, HIR, plans, Binding internals or the old Analysis/Emission, re-derive an acceptance fact or a case selection
 // (MirCases decides a PairLayer under the item's view), compose a Subst or a Type (TypeOf does), resolve a callee, or use LINQ, Supports*,
 // out-string failures or catch-alls. An Opaque value (the gate admits none), a Type TypeOf cannot make and a Layout outcome other than
@@ -54,6 +56,7 @@ internal sealed partial class FunctionCodegen
     private TextWriter output = TextWriter.Null;
     private int item;
     private int at; // The block being written.
+    private int position; // The statement being written, its index in its block (a statement site's, I8).
     private int next; // The number of the next value %t<n>.
 
     /// <summary>Initializes a new instance of the <see cref="FunctionCodegen"/> class.</summary>
@@ -121,6 +124,7 @@ internal sealed partial class FunctionCodegen
         var statements = this.body.Statements.Slice(block.Start, block.Count);
         for (var i = 0; i < statements.Length; i++)
         {
+            this.position = i;
             this.Statement(statements[i]);
             this.Points(new(index, i));
         }
