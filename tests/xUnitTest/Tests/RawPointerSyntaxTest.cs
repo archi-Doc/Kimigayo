@@ -12,6 +12,11 @@ namespace XunitTest;
 // state an Origin (SPEC 5.7).
 public class RawPointerSyntaxTest
 {
+    // A view whose slot a shared Loan keeps (requirement `ref`), and a struct whose slot keeps no Loan (Phantom).
+    internal const string KeptView = "struct View {source}\n    internal let r: ref/i32 during source\n    public init(r: ref/i32 during source) => self.r = r\n";
+
+    private const string PhantomW = "struct W {s}\n    public let n: i32\n    public init() => self.n = 0\n";
+
     [Fact]
     public void UnsafeIsNoSemanticsName()
     {
@@ -78,6 +83,22 @@ public class RawPointerSyntaxTest
         "InvalidOriginBinding_Kd: raw/i32 during a | InvalidOriginBinding_Kd: raw/i32 during a | InvalidOriginBinding_Kd: raw/i32 during b")]
     public void ARejectedRawOriginIsNeverPublished(string declarations, string records)
         => Assert.Equal(records, string.Join(" | ", Records(declarations)));
+
+    // SPEC 5.7 Origins, Authority (DECISIONS BU-24, the delta review's D1 and D2): every written raw Origin is formed with the step its
+    // written form gives and judged where it is formed, a body's at formation: a slot projection steps by the projected slot's requirement
+    // whatever atom binds it, so a closure parameter's or result's projection of a `ref`-kept slot is Shared, as in a named function; a
+    // Phantom projection, in a body annotation, a body Type argument or a closure parameter, is one record, published unstated.
+    [Theory]
+    [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => *q = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
+    [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    unsafe => q[0] = 2", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
+    [InlineData(PhantomW + "func f(v: ref/W)\n    let q: raw/i32 during v.s = null\n    let r = (q, 1)\n    unsafe => *r.0 = 1", "InvalidOriginBinding_Kd: raw/i32 during v.s")]
+    [InlineData(PhantomW + "struct Box<T>\n    public var v: T\n    public init(v: T) => self.v = v\nfunc f(w: ref/W)\n    var b = Box<raw/i32 during w.s>.init(null)\n    unsafe => *b.v = 1", "InvalidOriginBinding_Kd: raw/i32 during w.s")]
+    [InlineData(PhantomW + "func f(w: ref/W)\n    let g = func (l: ref/W, p: raw/i32 during l.s)\n        unsafe => *p = 1", "InvalidOriginBinding_Kd: raw/i32 during l.s")]
+    [InlineData(KeptView + "func h(l: ref/View, p: raw/i32 during l.source)\n    unsafe => *p = 1", "SharedPathAccess_Kd: *p")]
+    [InlineData(KeptView + "func f()\n    let n = 1\n    let v = View.init(n@ref)\n    let g = func (l: ref/View, p: raw/i32 during l.source)\n        unsafe => *p = 1\n    g(v@ref, v.r@follow@raw)", "SharedPathAccess_Kd: *p")]
+    [InlineData(KeptView + "func f()\n    let n = 1\n    let v = View.init(n@ref)\n    let g = func (l: ref/View) -> raw/i32 during l.source => l.r@follow@raw\n    unsafe => *g(v@ref) = 1", "SharedPathAccess_Kd: *g(v@ref)")]
+    public void AWrittenRawOriginIsJudgedWhereItIsFormed(string declarations, string record)
+        => Assert.Equal([record], Records(declarations));
 
     // SPEC 5.7, 8.3.4 (design-final §4; U1): a raw layer stating the Origin of a pair input whose admitted cases mix modes or admit a
     // non-borrow case has no one step: a located Unsupported_Kd at the annotation; one mode is the step of every case.

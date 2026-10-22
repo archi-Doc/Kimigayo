@@ -19,7 +19,7 @@ public class ArchitectureRulesTest
     private const string RawOriginRoleSites = "Binding/Binding.ClosureInstances.cs=1;Binding/Binding.ContractCalls.cs=1;Binding/Binding.Conversions.Raw.cs=7;" +
         "Binding/Binding.DiagnosticTypes.cs=1;Binding/Binding.Lints.cs=1;Binding/Binding.LocalRegions.Types.cs=2;" +
         "Binding/Binding.OriginDeclarations.cs=1;Binding/Binding.OriginInheritance.cs=4;Binding/Binding.PlaceAuthority.Raw.cs=1;" +
-        "Binding/Binding.PlaceAuthority.cs=1;Binding/Binding.RawOrigins.cs=10;Binding/Binding.Retention.cs=1;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=3;" +
+        "Binding/Binding.PlaceAuthority.cs=1;Binding/Binding.RawOrigins.cs=10;Binding/Binding.Retention.cs=1;Binding/Binding.Storage.cs=2;Binding/Binding.TypeOrigins.cs=2;" +
         "Binding/Binding.TypeRelations.Origins.cs=7;Binding/Binding.TypeRelations.cs=2;" +
         "Binding/BindingModel.cs=2;Binding/TyCtxt.cs=5";
 

@@ -25,12 +25,15 @@ internal enum RawStep : byte
 }
 
 // Raw Origins (SPEC 5.7; design-final §4, §14; DECISIONS BU-24, R4-M105): the Origin a raw layer states, BoundType.RawOrigin.
-// - Responsibility: the raw Origin formed through a borrow (Formed: the label, or its shared view Shared(L) when the borrow is shared and
+// - Responsibility: the written raw Origin in every position, formed with the step its written form gives and judged where the slots'
+//   requirements exist (WrittenRawOrigin, InvalidRawOrigin; a declaration's by RejectRawOrigins), the raw Origin formed through a
+//   borrow (Formed: the label, or its shared view Shared(L) when the borrow is shared and
 //   the label's own step is not), the step of a raw Origin (StepOf), the region one names (RegionOf), a substituted one (Restep, G1:
 //   it keeps the step of the Origin it replaces), the Origin a `during self` layer is read with at a Place (ReadHolder), a layer's
 //   OwnedOrigins member (OwnedOrigin), the relations with an unstated end (UnstatedRelation, rulings S4), the allowlist of a
 //   `during self` layer's Place reached through no dereference (HolderPlaceFailure, OQ-R1 (a)), the borrows keeping a declared slot
-//   (Keepers, D15), the step published to retention and A5 (PublishedStep, TyCtxt.RawStep), and a Type with every raw layer's Origin
+//   (Keepers, D15) and the limit on their cycles (RejectPolymorphicKeeperCycles), the step published to retention and A5
+//   (PublishedStep, TyCtxt.RawStep; StoredStep for a stored layer), and a Type with every raw layer's Origin
 //   dropped (WithoutRawOrigins): an instance's stored Types (Instance, design-final §15) and, as the D5 exception (the owner's
 //   Q-O3, DECISIONS BU-24), the old analysis's view at its Type intake, removed with it at R6-check.
 // - Inputs: bound Types; a signature's input Types and a declaration's schema after the requirement fixed point (StepOf); PathOrigin.
@@ -38,20 +41,25 @@ internal enum RawStep : byte
 // - Invariants: Shared(L) is interned per L and occurs only as a raw layer's Origin; Holder only in declared Field and payload Types,
 //   which every read replaces, never in an instance's stored Types; Unstated only in relations and their records, never in a Type;
 //   RegionOf maps Shared(L) to L before any relation is formed, so no premise, obligation or row names Shared, Holder or Unstated
-//   (design-final §13 A2). A published raw Origin always
-//   has a step: a declaration's Origin StepOf cannot classify is rejected once the slots' requirements exist and its layer published
-//   unstated (RejectRawOrigins), and a mixed pair follow states its shared view (FollowStep). PublishedStep's throw is unreachable,
-//   and Reached records InternalInvariant_Kd at the dereference.
+//   (design-final §13 A2). A published raw Origin always has a step: a written Origin StepOf cannot classify is rejected and its layer
+//   published unstated, a declaration's once the slots' requirements exist (RejectRawOrigins), a body's at formation, after which no
+//   requirement changes (AccumulateOrigin's check); a mixed pair follow states its shared view (FollowStep). PublishedStep's throw
+//   is unreachable, and Reached records InternalInvariant_Kd at the dereference.
 // - Prohibitions: no region, Loan or retention facts, no Place walk of its own (PathOrigin is PlaceAuthority's), no message text.
 public sealed partial class Binding
 {
     private readonly Dictionary<BoundOrigin, BoundOrigin> sharedOrigins = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers).
+    // SPEC 5.7 (D15): the borrows keeping each declared Origin slot, per declaration and pass (Keepers), and the slots whose keepers a
+    // walk is following, outermost first (KeeperContent, KeeperCycles), reused.
     private readonly Dictionary<OriginParameter, KeeperList> keepers = new(ReferenceEqualityComparer.Instance);
+    private readonly List<OriginParameter> keeperChain = new();
 
     // SPEC 5.7: the Phantom slot a raw layer states, recorded only when the check fails.
     private Dictionary<Koto, OriginParameter>? phantomRawOrigins;
+
+    // The pass (storageVersion) whose declarations' written raw Origins RejectRawOrigins judged; later formations are judged at once.
+    private ulong rawJudgmentVersion;
 
     // The region a raw Origin names: L for Shared(L), the Origin itself otherwise.
     internal static BoundOrigin? RegionOf(BoundOrigin? origin) => origin?.Kind == OriginKind.Shared ? origin.Operands[0] : origin;
@@ -59,9 +67,10 @@ public sealed partial class Binding
     // SPEC 5.7, design-final §4 (DECISIONS BU-24, R4-M105): the step of a raw Origin, read by the atom's binder. An input atom of a
     // signature or a universal name joins the outer layers of the inputs it is the Origin of and the requirements of the aggregate
     // slots it binds in them (SlotsStep; Shared iff all are shared), and a projected slot gives its requirement; a declared slot gives
-    // its requirement (ref Shared, uniq Exclusive) and a pair's `o` its
-    // admitted cases; any other label, a meet included, is Exclusive, since every formation through a shared borrow wraps it in
-    // Shared. Null for an atom no input borrow or slot holds, or one whose cases mix modes (U1), which formation rejects.
+    // its requirement (ref Shared, uniq Exclusive) and a pair's `o` its admitted cases. An inferred, meet, anchor or projection label
+    // is Exclusive by Formed's invariant: every formation with a Shared step wraps its label in Shared (WrittenRawOrigin checks it for
+    // written ones). Unbound, left by a reported error, is Unstated. Null for an atom no input borrow or slot holds, or one whose cases
+    // mix modes (U1), which formation rejects; any other kind is a broken contract.
     internal RawStep? StepOf(BoundOrigin? origin)
     {
         switch (origin?.Kind)
@@ -104,8 +113,14 @@ public sealed partial class Binding
                 }
 
                 return joined;
-            default:
+            case OriginKind.Inference or OriginKind.Intersection or OriginKind.Anchor or OriginKind.Projection:
                 return RawStep.Exclusive;
+            case OriginKind.Unbound:
+                return RawStep.Unstated;
+            case OriginKind.Input or OriginKind.Parameter:
+                return null;
+            default:
+                throw new InvalidOperationException($"A raw layer states `{origin}`, an Origin of kind {origin.Kind} (InternalInvariant).");
         }
     }
 
@@ -156,11 +171,14 @@ public sealed partial class Binding
     internal RawStep StoredStep(BoundType instance, int part, ReadOnlySpan<int> positions)
     {
         var adt = instance.Symbol?.Adt;
-        var stored = AdtDef.IsStruct(instance) ? this.StoredType(adt!.Fields[part], instance)
-            : adt?.Cases[part] is { } selected && positions.Length > 0 ? this.StoredType(selected.Payload[positions[0]], instance) : null;
-        for (var i = AdtDef.IsStruct(instance) ? 0 : 1; i < positions.Length && stored is not null; i++)
+        var structure = AdtDef.IsStruct(instance);
+        var stored = structure ? (uint)part < (uint)adt!.Fields.Length ? this.StoredType(adt.Fields[part], instance) : null
+            : adt is not null && (uint)part < (uint)adt.Cases.Length && adt.Cases[part] is { } selected && positions.Length > 0 &&
+                (uint)positions[0] < (uint)selected.Payload.Length ? this.StoredType(selected.Payload[positions[0]], instance) : null;
+        for (var i = structure ? 0 : 1; i < positions.Length && stored is not null; i++)
         {
-            stored = stored.Kind == BoundTypeKind.Tuple ? stored.Components[positions[i]] : stored.Kind == BoundTypeKind.FixedArray ? stored.Components[0] : null;
+            stored = stored.Kind == BoundTypeKind.Tuple && (uint)positions[i] < (uint)stored.Components.Count ? stored.Components[positions[i]]
+                : stored.Kind == BoundTypeKind.FixedArray ? stored.Components[0] : null;
         }
 
         return stored is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw } layer ? this.StepOf(layer.RawOrigin) ?? RawStep.Unstated
@@ -224,9 +242,51 @@ public sealed partial class Binding
         return false;
     }
 
+    // The written Type of the Field of a slot's declaration that holds `kept`, a keeper's nested Type.
+    private static Koto? ClosingField(OriginParameter slot, BoundType kept)
+    {
+        foreach (var field in slot.Origin.Binder?.BoundSymbol?.Adt?.Fields ?? [])
+        {
+            if (Holds(field.BoundSymbol?.Type))
+            {
+                return field.TypeKoto ?? field;
+            }
+        }
+
+        return null;
+
+        bool Holds(BoundType? type)
+        {
+            if (ReferenceEquals(type, kept))
+            {
+                return true;
+            }
+
+            for (var i = 0; type is not null && i < type.Components.Count; i++)
+            {
+                if (Holds(type.Components[i]))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+    }
+
     // A slot's Loan requirement as a step: ref Shared, uniq Exclusive; none for a Phantom slot.
     private static RawStep? RequirementStep(LoanRequirement requirement)
         => requirement switch { LoanRequirement.Ref => RawStep.Shared, LoanRequirement.Uniq => RawStep.Exclusive, _ => null };
+
+    // The declared slot whose requirement steps an atom (StepOf's rows): an Input atom's target slot, a declaration's own slot.
+    private static OriginParameter? SteppingSlot(BoundOrigin? atom) => atom switch
+    {
+        { Kind: OriginKind.Input, Occurrence.BoundType.Symbol.Schema: { } schema } when (uint)atom.TargetSlot < (uint)schema.Origins.Count
+            => schema.Origins[atom.TargetSlot],
+        { Kind: OriginKind.Parameter, Slot: >= 0, Binder: DeclarationContainerKoto { BoundSymbol.Schema: { } schema } } when atom.Slot < schema.Origins.Count
+            => schema.Origins[atom.Slot],
+        _ => null,
+    };
 
     // `joined` with the requirement of each slot that `origin` binds as an Origin argument of a nominal Type within `type` (design-final
     // §4: an aggregate slot an input atom binds contributes its requirement; a Phantom slot contributes none).
@@ -462,11 +522,14 @@ public sealed partial class Binding
     private ReadOnlySpan<Keeper> Keepers(OriginParameter slot)
         => this.keepers.TryGetValue(slot, out var list) && list.Pass == this.originRequirementPass ? list.Items : default;
 
-    // SPEC 5.7 (D17, D18; design-final §5): the Origin a raw layer's `during` writes, one atom: never a meet or Origin arguments.
-    // `self` names the holding value (Holder) on a layer in inline storage, a Field's or Case payload's Type or a Tuple or fixed-array
-    // element of one, and nothing elsewhere in storage; any other name binds as on any layer (BindOriginName, the special receiver
-    // included), and a borrow's name is formed through that borrow. Whether it belongs to a borrow is judged once the signature's
-    // requirements are complete (InvalidRawOrigin).
+    // SPEC 5.7 Origins, Authority (D17, D18; design-final §5; DECISIONS BU-24): the Origin a raw layer's `during` writes, one atom (never
+    // a meet or Origin arguments), formed with the step its written form gives, whatever kind of atom the name binds: `self` names the
+    // holding value (Holder) on a layer in inline storage (a Field's or Case payload's Type or a Tuple or fixed-array element of one)
+    // and nothing elsewhere in storage; a borrow's name steps by that borrow's mode (BindOriginName accepts no other carrier); a slot
+    // projection `x.s` by the projected slot's requirement (WrittenProjection); a declared slot, a universal name or `static` by its own
+    // (StepOf). It is judged by InvalidRawOrigin where the slots' requirements exist: a declaration's by RejectRawOrigins after the
+    // first fixed point (its projection binds an Input atom naming the slot, which StepOf reads), a body's here, a rejected one
+    // published unstated (Unstated, which the caller forms as none). Null when the annotation failed.
     private BoundOrigin? WrittenRawOrigin(TypeSemanticsKoto annotation, Koto use, BindingScope scope, TypePosition position)
     {
         var name = annotation.OriginExpression is null ? annotation.OriginName : (annotation.OriginExpression as IdentifierNameKoto)?.IdentifierName;
@@ -497,10 +560,23 @@ public sealed partial class Binding
             return origin is null ? null : this.FailOrigin(use);
         }
 
-        // D11: a borrow's name is formed with that borrow's mode (BindOriginName accepts no other carrier); a slot, a universal name
-        // and static are their own steps.
-        return name is not null && this.OriginCandidate(name, use, scope, out _, out var carrier, out _) && this.LayerStep(carrier) is { } mode
-            ? this.Formed(origin, mode) : origin;
+        var mode = name is not null && this.OriginCandidate(name, use, scope, out _, out var carrier, out _) ? this.LayerStep(carrier) : null;
+        if (this.rawJudgmentVersion != this.storageVersion)
+        {
+            return mode is { } borrowed ? this.Formed(origin, borrowed) : origin;
+        }
+
+        var projected = mode is null ? this.WrittenProjection(annotation, use, scope) : null;
+        var step = mode ?? (projected is null ? this.StepOf(origin) : RequirementStep(projected.LoanRequirement));
+        var raw = step is { } formed ? this.Formed(origin, formed) : origin;
+        if (this.InvalidRawOrigin(annotation, raw, projected))
+        {
+            return BoundOrigin.Unstated;
+        }
+
+        // Formed's invariant, on which StepOf's Exclusive labels rest: the published Origin reads as the step its form gives.
+        return this.StepOf(raw) == step ? raw
+            : throw new InvalidOperationException($"The written raw Origin `{raw}` does not read as {step} (InternalInvariant).");
 
         static bool InlineStorage(Koto node)
         {
@@ -515,17 +591,80 @@ public sealed partial class Binding
         }
     }
 
+    // The slot a written projection `x.s` names (SPEC 5.7 Origins: it belongs to that slot's keepers), the one whose requirement steps
+    // it; null for any other written form.
+    private OriginParameter? WrittenProjection(TypeSemanticsKoto annotation, Koto use, BindingScope scope)
+    {
+        if (annotation.OriginExpression is not MemberAccessKoto { Left: IdentifierNameKoto input, Right: IdentifierNameKoto target } ||
+            !this.OriginCandidate(input.IdentifierName, use, scope, out _, out var type, out _))
+        {
+            return null;
+        }
+
+        var slot = ProjectedSlot(ref type, target.IdentifierName);
+        return slot < 0 ? null : type!.Symbol!.Schema!.Origins[slot];
+    }
+
     // SPEC 5.7 (design-final §7.3): right after the slots' requirements exist, a declaration's written raw Origin that StepOf cannot
     // classify (a Phantom slot, U1's case-dependent pair input, an atom no borrow holds) is rejected at its annotation (InvalidRawOrigin)
     // and never published: its layer is unstated in every Type written around it, up to the declared Type its symbol holds (Unpublish),
-    // so no substitution or dereference re-steps it. A body's annotations are judged with the declarations' (ValidateOriginRequirements).
+    // so no substitution or dereference re-steps it. From then on in the pass a written raw Origin is judged where it is formed
+    // (WrittenRawOrigin), and no requirement may change (AccumulateOrigin).
     private void RejectRawOrigins()
     {
         for (var i = 0; i < this.nodes.Count; i++)
         {
-            if (this.nodes[i] is TypeSemanticsKoto { BoundType: { RawOrigin: { } raw } layer } annotation && this.InvalidRawOrigin(annotation, raw))
+            if (this.nodes[i] is TypeSemanticsKoto { BoundType: { RawOrigin: { } raw } layer } annotation && this.InvalidRawOrigin(annotation, raw, null))
             {
                 this.Unpublish(annotation, layer, this.types.Pointer(layer.Components[0]));
+            }
+        }
+
+        this.rawJudgmentVersion = this.storageVersion;
+        this.RejectPolymorphicKeeperCycles();
+    }
+
+    // SPEC 5.7 (D15; DECISIONS BU-24): retention follows a slot's keepers through nested Types' slots and ends a chain at a slot already
+    // on it (KeeperContent), which loses nothing only when the cycle returns the Type it started from. Each keeper cycle of a struct's or
+    // enum's slot is walked from that declaration's own Type (SelfType); one that returns another Type (slot recursion through a raw
+    // pointer that changes its Type arguments) is a located Unsupported_Kd at the written Type of the Field that closes it, a limit
+    // (STATUS).
+    private void RejectPolymorphicKeeperCycles()
+    {
+        foreach (var (slot, list) in this.keepers)
+        {
+            if (list.Pass == this.originRequirementPass && slot.Origin.Binder?.BoundSymbol is { Adt: not null } declaration)
+            {
+                var own = this.SelfType(declaration);
+                this.keeperChain.Add(slot);
+                this.KeeperCycles(slot, slot, own, own);
+                this.keeperChain.Clear();
+            }
+        }
+    }
+
+    // The keeper cycles from `slot`, whose keepers `owner` substitutes, back to `start`, whose declaration's own Type is `own`.
+    private void KeeperCycles(OriginParameter start, OriginParameter slot, BoundType owner, BoundType own)
+    {
+        foreach (var keeper in this.Keepers(slot))
+        {
+            if (keeper.Via is not { } via || this.StoredType(keeper.Type, owner) is not { } kept)
+            {
+                continue;
+            }
+
+            if (ReferenceEquals(via, start))
+            {
+                if (!ReferenceEquals(kept, own) && ClosingField(slot, keeper.Type) is { } field)
+                {
+                    this.Fail(field, BindingFailure.Unsupported);
+                }
+            }
+            else if (!this.keeperChain.Contains(via))
+            {
+                this.keeperChain.Add(via);
+                this.KeeperCycles(start, via, kept, own);
+                this.keeperChain.RemoveAt(this.keeperChain.Count - 1);
             }
         }
     }
@@ -589,15 +728,15 @@ public sealed partial class Binding
         return null;
     }
 
-    // SPEC 5.7 (design-final §5, U1): once the requirement fixed point is complete, a written raw Origin belongs to a borrow. A slot of a
-    // Type it states must not be Phantom (InvalidOrigin with the slot); an Origin without a step, one that no input borrow or slot
-    // holds, is invalid, and one whose admitted pair cases mix modes is a located Unsupported_Kd. Whether `node` failed.
-    private bool InvalidRawOrigin(Koto node, BoundOrigin raw)
+    // SPEC 5.7 (design-final §5, U1): once the requirement fixed point is complete, a written raw Origin belongs to a borrow. The slot
+    // whose requirement steps it (a projection's, `projected` when its atom does not name it; an Input atom's target; a declared slot)
+    // must not be Phantom (InvalidOrigin with the slot); an Origin without a step, one that no input borrow or slot holds, is invalid,
+    // and one whose admitted pair cases mix modes is a located Unsupported_Kd. Whether `node` failed.
+    private bool InvalidRawOrigin(Koto node, BoundOrigin raw, OriginParameter? projected)
     {
-        if (RegionOf(raw) is { Kind: OriginKind.Parameter, Slot: >= 0, Binder: DeclarationContainerKoto { BoundSymbol.Schema: { } schema } } slot &&
-            slot.Slot < schema.Origins.Count && schema.Origins[slot.Slot].LoanRequirement == LoanRequirement.None)
+        if ((projected ?? SteppingSlot(RegionOf(raw))) is { LoanRequirement: LoanRequirement.None } phantom)
         {
-            this.FailExplained(ref this.phantomRawOrigins, node, BindingFailure.InvalidOrigin, schema.Origins[slot.Slot]);
+            this.FailExplained(ref this.phantomRawOrigins, node, BindingFailure.InvalidOrigin, phantom);
             return true;
         }
 

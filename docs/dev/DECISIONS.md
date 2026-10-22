@@ -3933,6 +3933,26 @@ resumed by R4-M86 (2026-10-20).
   reads Static or Shared(static), as the user's `during static`, the same interned Type), and a path reaching no raw layer is
   `InternalInvariant`. `ArchitectureRulesTest`'s raw-role
   sites keep Mir/ without a read of a raw Origin. `TyCtxt.Retains`' row shape is unchanged (A5's reader needs no edit).
+  Written raw Origins, one rule (the delta review's D1 and D2; design note `d1d2-design.md`, approved by the planning session
+  2026-10-22 with four conditions; one level above `ab598420`, which covered declarations only): `WrittenRawOrigin`, the one
+  formation site of every written raw Origin (declaration, body annotation, body Type argument, claim, closure parameter and
+  result; its one caller is CompleteOrigins' raw arm), steps it by its written form whatever atom the name binds: a borrow's name by
+  that borrow's mode, a slot projection `x.s` by the projected slot's requirement, a declared slot, universal name or `static` by
+  its own, `self` Own; the Origin is `Formed(atom, step)`. One judgment (`InvalidRawOrigin`: Phantom slot with the slot as fact, no
+  step, U1) runs where the slots' requirements exist: `RejectRawOrigins` for declarations right after the first fixed point, then
+  each body form at formation, a rejected one published unstated. `ValidateOriginRequirements`' raw clause is deleted. Conditions:
+  (1) a requirement that rises after `RejectRawOrigins` in a pass is `InternalInvariant` (`AccumulateOrigin`); a census of the whole
+  suite (library, corpus, 21,519 tests) found no requirement changed or added by the second fixed point; (2) the keeper-cycle limit
+  below; (3) `WrittenRawOrigin` checks that the formed Origin reads as its step, and `TyCtxtTest.ASharedFormationOfAnyAtomIsWrapped`
+  checks the written, address and substitution paths, since StepOf's rows now list every kind: Inference, meet, anchor and
+  projection labels Exclusive by Formed's invariant, Unbound (after a reported error) Unstated, an Input or Parameter atom no row
+  classifies null, any other kind `InternalInvariant` (the `default: Exclusive` row is gone); (4) no record of the suite shows "the
+  omitted Origin of Inference" (an instrumented run: the default display gives only the Unstated text). Retention's silent bounds
+  (`retentionRawDepth > 8`, `KeeperContent`'s `depth < 8`) are gone: a raw content walk ends at an Origin already on its chain, a
+  keeper walk at a slot already on its chain, which loses nothing because a keeper cycle that changes Type arguments (slot recursion
+  through a raw pointer) is a new limit, a located `Unsupported_Kd` at the written Type of the Field that closes it
+  (`RejectPolymorphicKeeperCycles`, after the first fixed point; no library or corpus program reaches it; the monomorphic twin keeps
+  its rows). `StoredStep` range-checks its positions (a broken contract otherwise).
 
 ## R5 and R6 (adopted 2026-10-18)
 

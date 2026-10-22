@@ -202,7 +202,7 @@ public sealed partial class Binding
                     return null;
                 }
 
-                type = this.types.Pointer(type.Components[0], raw);
+                type = this.types.Pointer(type.Components[0], raw.Kind == OriginKind.Unstated ? null : raw);
             }
         }
         else
@@ -428,6 +428,13 @@ public sealed partial class Binding
 
             if (loan > parameter.LoanRequirement)
             {
+                // Written raw Origins were judged on the first fixed point's requirements (RejectRawOrigins, then each body's at its
+                // formation), so a later raise is a broken contract (DECISIONS BU-24: bodies add no Loan requirement to a slot).
+                if (this.rawJudgmentVersion == this.storageVersion)
+                {
+                    throw new InvalidOperationException($"The Loan requirement of `{parameter.Name}` rose after raw Origins were judged (InternalInvariant).");
+                }
+
                 parameter.LoanRequirement = loan;
                 changed = true;
             }
@@ -465,7 +472,7 @@ public sealed partial class Binding
                 }
             }
 
-            if (invalid || (node is TypeSemanticsKoto && type.RawOrigin is { } raw && this.InvalidRawOrigin(node, raw)))
+            if (invalid)
             {
                 continue;
             }

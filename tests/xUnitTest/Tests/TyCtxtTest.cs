@@ -311,6 +311,30 @@ public sealed class TyCtxtTest
         Assert.Equal(OriginKind.Intersection, meet.RawOrigin!.Kind);
     }
 
+    // SPEC 5.7 (DECISIONS BU-24): StepOf reads an Inference, meet, anchor or projection atom as Exclusive because every formation with a
+    // Shared step wraps its atom in Shared (Formed); each formation path that meets such an atom with a Shared step publishes it wrapped:
+    // a closure parameter's projection of a `ref`-kept slot (the delta review's D2), an address through a local's shared borrow, and a
+    // call's result whose Origin is that local's region, re-stepped; A5 reads each as Shared.
+    [Fact]
+    public void ASharedFormationOfAnyAtomIsWrapped()
+    {
+        var c = MinimalEmissionTest.Analyze(RawPointerSyntaxTest.KeptView +
+            "func id(x: ref/i32, p: raw/i32 during x) -> raw/i32 during x => p\n" +
+            "func f()\n    let g = func (l: ref/View, p: raw/i32 during l.source) => ()\n    let n = 1\n    let r = n@ref\n    let a = r@follow@raw\n" +
+            "    let b = id(r, a)\n");
+        Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
+        var nodes = KotoTree.Walk(c.Kotonoha.RootKoto).ToArray();
+        var closure = Assert.Single(nodes.OfType<FunctionKoto>(), static x => x.IsAnonymous);
+        BoundType[] layers =
+        [
+            closure.Parameters[1].Type.TypeOf()!,
+            nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "a").SymbolOf()!.Type!,
+            nodes.OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "b").SymbolOf()!.Type!,
+        ];
+        Assert.All(layers, x => Assert.Equal((OriginKind.Shared, RawStep.Shared), (x.RawOrigin!.Kind, c.Types.RawStep(x))));
+        Assert.All(layers, static x => Assert.Contains(x.RawOrigin!.Operands[0].Kind, new[] { OriginKind.Inference, OriginKind.Intersection, OriginKind.Anchor, OriginKind.Projection }));
+    }
+
     // SPEC 5.7 (design-final §15; DECISIONS BU-24): a raw layer an instance stores has the step of its declared Field Type or Case
     // payload under the instance's substitution, the one reader A5 has for it: `self` the holder's own, a `ref` slot Shared (also under
     // `static`), a `uniq` slot Exclusive, an inline Tuple's or fixed array's layer by its positions; the instance's stored Types state

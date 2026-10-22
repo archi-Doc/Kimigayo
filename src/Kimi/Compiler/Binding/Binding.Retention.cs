@@ -16,11 +16,11 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
-    // (RawContent), reused; whether its result has a raw layer without an Origin (SPEC 5.7 Calls, D6); and the depth of raw content
-    // walks, which bounds a referent naming its own Origin again.
+    // (RawContent), reused; the raw Origins whose content is being walked, outermost first, so a referent naming one of them again
+    // ends there; and whether its result has a raw layer without an Origin (SPEC 5.7 Calls, D6).
     private readonly List<BoundType> retentionScope = new();
+    private readonly List<BoundOrigin> retentionRawChain = new();
     private bool retentionUnstatedResult;
-    private int retentionRawDepth;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
     // Value call names), under the premises its body is checked under: its own part, its clauses substituted under the declaring Type,
@@ -235,12 +235,13 @@ public sealed partial class Binding
     // keepers of each slot it binds in a nominal Type of the contract, substituted by that Type.
     private void RawContent(BoundOrigin origin, int index)
     {
-        if (this.retentionRawDepth > 8)
+        // An Origin whose content is being walked adds nothing new when its referent reaches it again.
+        if (this.retentionRawChain.Contains(origin))
         {
             return;
         }
 
-        this.retentionRawDepth++;
+        this.retentionRawChain.Add(origin);
         var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin);
         for (var i = 0; i < this.retentionScope.Count; i++)
         {
@@ -253,7 +254,7 @@ public sealed partial class Binding
             this.SlotContent(input, origin, content);
         }
 
-        this.retentionRawDepth--;
+        this.retentionRawChain.RemoveAt(this.retentionRawChain.Count - 1);
     }
 
     // The keepers of each slot of a nominal Type within `type` that `origin` binds, substituted by that Type, walked as `content`.
@@ -268,14 +269,22 @@ public sealed partial class Binding
         {
             if (ReferenceEquals(type.OriginArguments[i], origin))
             {
-                this.KeeperContent(schema.Origins[i], type, content, 0);
+                this.KeeperContent(schema.Origins[i], type, content, this.keeperChain.Count);
             }
         }
     }
 
-    // A slot's keepers in `owner`: each kept referent, or a nested Type's slot's keepers in that Type, substituted by `owner`.
-    private void KeeperContent(OriginParameter slot, BoundType owner, RetentionAtom content, int depth)
+    // A slot's keepers in `owner`: each kept referent, or a nested Type's slot's keepers in that Type, substituted by `owner`. The walk's
+    // chain (keeperChain from `chain` on) ends at a slot already on it: its cycle returns the owner it started from, since one that does
+    // not is rejected at its declaration (RejectPolymorphicKeeperCycles), so nothing is lost.
+    private void KeeperContent(OriginParameter slot, BoundType owner, RetentionAtom content, int chain)
     {
+        if (this.keeperChain.IndexOf(slot, chain) >= 0)
+        {
+            return;
+        }
+
+        this.keeperChain.Add(slot);
         foreach (var keeper in this.Keepers(slot))
         {
             if (this.StoredType(keeper.Type, owner) is not { } kept)
@@ -287,11 +296,13 @@ public sealed partial class Binding
             {
                 this.RetentionWalk(kept, content, OriginVariance.Invariant, callable: false);
             }
-            else if (depth < 8)
+            else
             {
-                this.KeeperContent(keeper.Via, kept, content, depth + 1);
+                this.KeeperContent(keeper.Via, kept, content, chain);
             }
         }
+
+        this.keeperChain.RemoveAt(this.keeperChain.Count - 1);
     }
 
     // An Origin occurrence; a Function Type's per-call Origin, bound by its own syntax, belongs to no value of it (SPEC 15.3.4).
@@ -437,5 +448,6 @@ public sealed partial class Binding
     // An Origin atom or a carrier of an input or of the result (Retention.Result): the kind it gives the input, whether it is writable
     // storage of the input (RetentionWalk), the Origin of the nearest borrow, Slice or pair layer above it, which a carrier's hidden
     // Origins outlive (SPEC 15.6.1), and whether a shared layer or a raw layer whose step is Shared lies above it.
-    private readonly record struct RetentionAtom(int Input, RetentionKind Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, bool Shared = false);
+    private readonly record struct RetentionAtom(
+        int Input, RetentionKind Kind, bool Writable, BoundOrigin? Origin, BoundType? Carrier, BoundOrigin? Layer, bool Shared = false);
 }

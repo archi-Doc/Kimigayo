@@ -325,6 +325,40 @@ public sealed class RetentionTest
     public void RawLayersRetainByTheirOrigins(string function, string expected)
         => Assert.Equal(expected, Declared(Bind(function + "\n"), "f"));
 
+    // SPEC 5.7 Calls (D15; DECISIONS BU-24, the delta review's C4 item): a raw layer's Origin reaches its slot's keepers however deep the
+    // slot is forwarded through nested Types, so ten forwarding levels keep the innermost Loan's referent writable through `p`, as one
+    // does (a walk bounded at eight lost it), and a slot kept again through a raw pointer to its own Type keeps its rows.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(10)]
+    public void AKeeperChainIsWalkedToItsEnd(int levels)
+    {
+        var source = "struct A0<K, V> {s}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n" +
+            "    public init(d: uniq/Dictionary<K, V> during s) => self.loan = Loan.init(d)\n";
+        for (var i = 1; i <= levels; i++)
+        {
+            source += $"struct A{i}<K, V> {{s}}\n    K is Equatable\n    let inner: A{i - 1}<K, V> during s\n    public init(inner: A{i - 1}<K, V> during s) => self.inner = inner@move\n";
+        }
+
+        source += $"func f<K, V>(v: ref/A{levels}<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n";
+        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind(source), "f"));
+    }
+
+    // SPEC 5.7 Calls (DECISIONS BU-24): a keeper cycle through a raw pointer to its own Type ends where it started and keeps its rows; one
+    // whose Type arguments change around the cycle is a located Unsupported_Kd at the Field that closes it (a limit), and a raw layer whose
+    // referent states the Origin being walked again ends there.
+    [Fact]
+    public void AKeeperCycleEndsWhereItStarted()
+    {
+        const string Node = "struct N<K, V> {s}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n    let next: raw/(N<K, V> during s)\n" +
+            "    public init(d: uniq/Dictionary<K, V> during s)\n        self.loan = Loan.init(d)\n        self.next = null\n";
+        Assert.Equal("0 Content store 1, 1 Content store 1, 2 Value store 1", Declared(Bind(Node + "func f<K, V>(v: ref/N<K, V>, p: raw/u8 during v.s, key: K)\n    K is Equatable\n    return\n"), "f"));
+        Assert.Equal(
+            ["Unsupported_Kd: raw/(P<K, (V, V)> during s)"],
+            RawPointerSyntaxTest.Records("struct P<K, V> {s}\n    K is Equatable\n    let loan: Loan<uniq/Dictionary<K, V> during s>\n    let next: raw/(P<K, (V, V)> during s)\n"));
+        Assert.Equal("0 Content store 1, 1 Value store 1", Declared(Bind("struct R {s}\n    let at: uniq/(raw/i32 during s) during s\nfunc f(v: ref/R, p: raw/u8 during v.s, key: raw/i32) => ()\n"), "f"));
+    }
+
     // SPEC 5.7, 8.11.4 rule 1 (D10): an erased callable's input reached past a shared layer stores nothing through a raw pointer there.
     [Fact]
     public void AnErasedSharedRawInputStoresNothing()
