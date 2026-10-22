@@ -53,8 +53,11 @@ group DictionaryStorage
             unlink(handle, layout.1, link)
             return .Some(((*Storage.keyAt<K, V>(slot))@move, (*Storage.valueAt<K, V>(slot))@move))
 
-    // Replaces the value of the live entry at `link` and returns the old one, which is secured before the new one is placed.
-    internal func replaceValue<K, V>(value: uniq/Dictionary<K, V>, link: isize, replacement: V) -> V
+    /// Replaces the value of the live entry at `link` and returns the old one, which is secured before the new one
+    /// is placed.
+    ///
+    /// - safety: `link` is the link of a live entry of `value`.
+    internal unsafe func replaceValue<K, V>(value: uniq/Dictionary<K, V>, link: isize, replacement: V) -> V
         K is Equatable
         unsafe
             let layout = Storage.dictionaryStorage(value)

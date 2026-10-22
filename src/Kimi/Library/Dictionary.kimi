@@ -48,7 +48,8 @@ public struct Dictionary<K, V>
         // The search's shared Borrow ends before the exclusive handle is taken (SPEC 5.2.1); the unused input key is
         // destroyed before delivery.
         let link = DictionaryStorage.findEntry(self@follow@ref, key)
-        if link != 0 => return .Some(DictionaryStorage.replaceValue(self, link, value@move))
+        if link != 0
+            unsafe => return .Some(DictionaryStorage.replaceValue(self, link, value@move))
         unsafe => Storage.placeEntry<K, V>(Storage.dictionaryStorage(self).0, key@move, value@move)
         return .None
 

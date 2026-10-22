@@ -1,5 +1,6 @@
-// UTF-8 formatting declarations; physical operations are compiler implementations. The compiler constructs these records
-// (Text.fixed, Text.heap, reserve, limit, Text.writer) with each raw Field's storage where its Origin states (SPEC 5.7).
+// UTF-8 formatting declarations; physical operations are compiler implementations. The compiler constructs these
+// records (Text.fixed, Text.heap, reserve, limit, Text.writer) with each raw Field's storage where its Origin states
+// (SPEC 5.7).
 public struct BufferFull
     Self is Copy
     public init() => ()
