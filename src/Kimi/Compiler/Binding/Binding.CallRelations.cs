@@ -199,10 +199,16 @@ public sealed partial class Binding
         }
     }
 
-    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type.
+    // The receiver (index == argumentCount) or argument whose adapted Type is fitted to its completed parameter Type; a selected input that
+    // borrows a static root is first the located limit (FailStaticBorrow), its relations (SPEC 11.8, a fit to static) waiting for P42.
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
+        if (operation is { Source: { } source, ParameterType: { } mode } && this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
+        {
+            return;
+        }
+
         if (operation is not { Source: { } at, AdaptedType: { } adapted, ParameterType: { } parameter } || ReferenceEquals(adapted, parameter) ||
             !adapted.StoresOrigin || !parameter.StoresOrigin)
         {
