@@ -2976,9 +2976,10 @@ and migration obligations remain in force; no numeric cap changes are authorized
     acceptance change, `f2-init-ctor-premise` valid on the MIR after R6-check, for one oracle per body).
   - PLAN G212 (R4-M105 OQ-R1 (a), the records review's N3 and N4): SPEC 5.7 "Writing a Field" admits a Move among the layer's reads
     ("reads (a Move included)") and gains "A Tuple or fixed-array Place that holds a `during self` layer within the same holding value is
-    written and borrowed as the layer's Place is …". An exclusive borrow of such an enclosing Place (`exchange(b.pair@uniq, …)`) is the Origin relation error of
-    `b.data@uniq` (`uniq` is invariant in its target and no body Type states own storage); a write of it is a write of the layer's
-    Place; `b.data@move` is admitted as a read (a Partial Move of the pointer, restored by a write, which there must be `null`).
+    written and borrowed as the layer's Place is …". An exclusive borrow of such an enclosing Place (`exchange(b.pair@uniq, …)`) is
+    the Origin relation error of `b.data@uniq` (`uniq` is invariant in its target and no body Type states own storage); a write of it
+    is a write of the layer's Place; `b.data@move` is admitted as a read (a Partial Move of the pointer, restored by a write, which
+    there must be `null`).
     Implementation: BU, at B′+ U3's sites (one `RawOrigins` check each, as R4-M105); until then the forms stay B′+'s located
     `Unsupported_Kd` (STATUS: raw Origins are not implemented, G160). Rejected: the Move as an error too (the letter of "only"; it
     rejects a harmless restore); keeping the question for a later SPEC session.
