@@ -8,8 +8,9 @@ namespace Kimi.Compiler;
 // - Responsibility: the first, or with `all` every, Origin position of a fit, in the order of the outer borrow layer, the Semantics
 //   target, then slots and Type arguments, by the variance FitsTypeCore and CheckTypeUse compose, whose relation is not proven or,
 //   with `judged`, that the relation judge fails (FailedOriginRelation, FailedOriginPart); for a meet at the longer end, the chain of
-//   a failing operand, Refuted before Unknown (FailedChain, AddFailingChains, FailingOperand, OriginPartFails); and RecordMismatch's
-//   Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure).
+//   a failing operand, Refuted before Unknown (FailedChain, AddFailingChains, FailingOperand, OriginPartFails); RecordMismatch's
+//   Origin part, a fit that fails only at Origin positions (RecordOriginFitFailure); and the reset of the pass's Origin relation
+//   records, a failed node's first chain and its others (ResetOriginRecords).
 // - Inputs: the fit's actual and expected Types and its use; the proof (ProvesOriginOutlives, VerifiedRegionOutlives), the judge
 //   (OriginRelationFails), a local region's sources (LocalRegionSources) and the outer-Origin decision (FitOuterOrigins).
 // - Outputs: OriginRelationFact values; RecordOriginFitFailure fails the node with its first chain in `originRelations` and the
@@ -25,6 +26,13 @@ public sealed partial class Binding
 {
     // The failed chains of one fit (FailedOriginRelation with `all`), which RecordOriginFitFailure publishes.
     private readonly List<OriginRelationFact> relationScratch = new();
+
+    // Resets the pass's Origin relation records at its start (ResetPrerequisites): each failed node's first chain and its others.
+    private void ResetOriginRecords()
+    {
+        this.originRelations?.Clear();
+        this.callRelations?.Clear();
+    }
 
     // RecordMismatch's Origin part (SPEC 15.6.1, 15.6.5): whether a fit whose storage matches fails at an Origin position, which it
     // records. A position the relation judge fails records every failed chain; a position that is only unproven is recorded when an
