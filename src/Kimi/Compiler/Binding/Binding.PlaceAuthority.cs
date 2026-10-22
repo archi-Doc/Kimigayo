@@ -500,10 +500,16 @@ public sealed partial class Binding
             (terminal.Kind == BoundTypeKind.Tuple || AdtDef.IsStruct(terminal))
             ? this.SharedReferenceThroughLayers(this.types.Reference(SemanticsKind.Ref, element, selection), terminal, out _) : null;
 
-    // SPEC 13.5.5, 13.5.6: an owning handle lends its object or payload from a borrowable Place or from a Temporary Value
-    // materialized for the operation; the handle's own authority (shared for rc/arc) is checked by the caller.
+    // SPEC 13.5.5, 13.5.6, 15.6.2: whether SPEC lends an owning handle's object or payload, from a Place it lends (LendsPlace, with the
+    // static Field at the root of the handle Place's path) or from a Temporary Value materialized for the operation; the handle's own
+    // authority (shared for rc/arc) is checked by the caller.
+    private bool LendsHandle(Koto source, BindingScope scope, bool exclusive, out Koto? staticRoot)
+        => this.LendsPlace(source, scope, exclusive, out staticRoot) || BorrowableTemporary(source, exclusive, true, false);
+
+    // SPEC 13.5.5, 13.5.6, PLAN P42: whether Binding lends an owning handle's object or payload: as SPEC does (LendsHandle), except
+    // from a static root, whose Loans no analysis models yet.
     private bool BorrowableHandle(Koto source, BindingScope scope, bool exclusive)
-        => this.BorrowablePlace(source, scope, exclusive) || BorrowableTemporary(source, exclusive, true, false);
+        => this.LendsHandle(source, scope, exclusive, out var staticRoot) && staticRoot is null;
 
     // SPEC 15.6.2, PLAN P42: whether Binding lends a Place to a written Borrow: as SPEC does (LendsPlace), except a Place rooted at a
     // static Field, whose Loans no analysis models yet (BorrowFailure names the Borrow unsupported). An implicit Borrow belongs to an
@@ -522,15 +528,15 @@ public sealed partial class Binding
             _ => BindingFailure.InvalidAssignment,
         };
 
-    // SPEC 15.6, 15.6.2, PLAN P42: the one diagnostic for an implicit Borrow of a static root (a receiver's, an argument's, an expected
-    // Type's or a Case payload's adaptation), recorded where its operation is final and before that input's Origin fit, whose relations
-    // then record nothing at the node, as a written Borrow's are never judged (BorrowFailure): a Borrow, base borrow or payload
-    // projection of a Place whose path SPEC roots at a static Field fails its source as the located Unsupported_Kd. True when it fails.
-    private bool FailStaticBorrow(Koto source, ArgumentOperationKind kind, BoundType? parameter)
+    // SPEC 15.6, 15.6.2, PLAN P42: the one diagnostic for an implicit Borrow of a static root (a receiver's, a value call's callee, an
+    // argument's, an expected Type's or a Case payload's adaptation), recorded where its operation is final and before that input's
+    // Origin fit, whose relations then record nothing at the node, as a written Borrow's are never judged (BorrowFailure): a Borrow,
+    // base borrow or payload projection in a mode of a Place whose path SPEC roots at a static Field fails its source as the located
+    // Unsupported_Kd. True when it fails.
+    private bool FailStaticBorrow(Koto source, ArgumentOperationKind kind, SemanticsKind mode)
     {
         if (kind is not (ArgumentOperationKind.Borrow or ArgumentOperationKind.BaseBorrow or ArgumentOperationKind.PayloadProjection) ||
-            !this.LendsPlace(source, this.ConstraintScope(source), parameter?.Semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq, out var staticRoot) ||
-            staticRoot is null)
+            !this.LendsPlace(source, this.ConstraintScope(source), IsExclusive(mode), out var staticRoot) || staticRoot is null)
         {
             return false;
         }
@@ -573,9 +579,8 @@ public sealed partial class Binding
             {
                 SemanticsKind.ObjRef => !exclusive,
                 SemanticsKind.ObjUniq => !exclusive || !ReachedThroughShared(payload.Left),
-                SemanticsKind.Obj => this.LendsPlace(payload.Left, scope, exclusive, out staticRoot) ||
-                    BorrowableTemporary(payload.Left, exclusive, true, false),
-                _ => !exclusive && (this.LendsPlace(payload.Left, scope, false, out staticRoot) || BorrowableTemporary(payload.Left, false, true, false)),
+                SemanticsKind.Obj => this.LendsHandle(payload.Left, scope, exclusive, out staticRoot),
+                _ => !exclusive && this.LendsHandle(payload.Left, scope, false, out staticRoot),
             };
         }
 
@@ -631,8 +636,7 @@ public sealed partial class Binding
                 // SPEC 13.5.5, 15.6.2: a payload Field extends the handle Place's path, exclusively only through an exclusive payload.
                 if (access.Left.BoundType?.HandleMode is { } handle)
                 {
-                    return (!exclusive || handle.PayloadAuthority == LoanRequirement.Uniq) &&
-                        (this.LendsPlace(access.Left, scope, exclusive, out staticRoot) || BorrowableTemporary(access.Left, exclusive, true, false));
+                    return (!exclusive || handle.PayloadAuthority == LoanRequirement.Uniq) && this.LendsHandle(access.Left, scope, exclusive, out staticRoot);
                 }
 
                 // SPEC 3.4.3, 13.5.5: past an exclusive layer of the receiver's own Type, a pair layer admitting only uniq included,

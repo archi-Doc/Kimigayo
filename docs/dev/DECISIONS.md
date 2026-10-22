@@ -3810,18 +3810,23 @@ resumed by R4-M86 (2026-10-20).
   unit bu22; DEC Q6 form 1, one design and one review; R4's answers: OQ-1 (c) with its 2b-6w (R4-M107), and R4-M109 before the merge)
   Every Borrow SPEC lends of a Place whose path SPEC 15.6.2 roots at a static Field (through inline parts, elements and the own step
   into an `obj`/`rc`/`arc` payload; a dereference ends it) is Binding's located `Unsupported_Kd` until P42; one SPEC denies keeps its
-  Language error, and its Origin relations are not judged. `LendsPlace` names the root for the unqualified name in its group and below
-  an owning handle, besides the qualified name (BU-18; its "part (b)" sentence and the handle exception are superseded). A written
+  Language error, and the operand's own Origin fit is not judged. `LendsPlace` names the root for the unqualified name in its group
+  and below an owning handle, besides the qualified name (BU-18; its "part (b)" sentence and the handle exception are superseded). A written
   Borrow is denied by `BorrowablePlace` and reported by `BorrowFailure`, unchanged. An implicit one (a receiver's: a method's, a user
-  index's, an accessor's; an argument's adaptation; an expected Type's or a Case payload's adaptation; a value call's input) belongs to
-  an operation selection may still discard, so `AdaptInput`, `AdaptObjectBorrow` and `TryPayloadProjection` lend it as SPEC does
-  (selection is SPEC's: no worse candidate is chosen, and `take(State.counter)` is `ExclusiveBorrowRequired_Kd`), and
+  index's, an accessor's, a base method's; a value call's callee, SPEC 7.3; an argument's adaptation; an expected Type's or a Case
+  payload's adaptation; a value call's input) belongs to an operation selection may still discard, so `AdaptInput`, `AdaptObjectBorrow`
+  and `TryPayloadProjection` lend it as SPEC does, a handle's object or payload through `LendsHandle` (`BorrowableHandle` its rootless
+  case), so selection is SPEC's (no worse candidate is chosen, and `take(State.counter)` is `ExclusiveBorrowRequired_Kd`), and
   `FailStaticBorrow` (`Binding.PlaceAuthority`) fails its operand where the operation is final, before that input's Origin fit:
-  `JudgeCallFit` (every selected call's inputs), `ExpectedAdaptation`'s selected destination, `CompletePayloads` and `BindValueCall`.
+  `JudgeCallFit` (every selected call's inputs), `ExpectedAdaptation`'s selected destination, `CompletePayloads` and the value call
+  (`BindValueCall`'s inputs; `AcquireValueCallee`, split out first, for a Shared or Exclusive call's owned callee).
   The consumer receives a derived value with no Loan (R4-M109). Out of scope (no lending judgment; A5 models their Loans, 2b-D §1.5):
   comparison inspections, `for`/`match` Subjects, writeback reservations, in-place element reads; `IsStaticField` stays out of
   `IsBarePlace` (BU-21's open item). Exception (R4's answer, the planning session): an accessor's `storage` Borrow of a group Property's
-  static storage stays bound (a Storage symbol; its atom is R4-M101's row 7) until P42 or until a probe shows Binding misjudges it.
+  static storage stays bound (a Storage symbol; its atom is R4-M101's row 7) until P42's static-Borrow unit. Residual (G197, not
+  covered): a call result derived from a static receiver keeps its Origin relation judged, so `fixed.view()` of a `let` static returned
+  `during static` (or kept by a default) is the U at `fixed` plus `UnsatisfiedOriginRelation_Kd` at the call, a Language error on a
+  form SPEC 11.8 makes valid; Binding's static `PlaceOrigin` has no 11.8 Origins until P42.
   Rejected: excluding the candidate at applicability (a worse applicable candidate is then accepted:
   `show(ref/Point)` beside `show<T>(T)`, which G100's transfer makes applicable); each consumer mapping its own failure to U (masks
   Type errors); a U in the HIR publisher or the MIR builder; lending written Borrows too (a clause per arm, BU-18); failing the call

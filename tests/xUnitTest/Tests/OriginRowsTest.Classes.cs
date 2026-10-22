@@ -80,7 +80,7 @@ public sealed partial class OriginRowsTest
     // record, so the source forms no static atom; rows 7 and 7' keep their witnesses through an accessor's storage
     // (AnAccessorsStorageIsClassedByItsProperty), and row 6's Closure case is R4's to restore.
     [Fact]
-    public void AStaticsBorrowIsClassedByItsSiteAndMutability()
+    public void AStaticsBorrowFormsNoAtomUntilP42()
     {
         var c = MirBuildTest.Compile(Statics + Main);
         Assert.Equal(["Unsupported_Kd count@ref", "Unsupported_Kd limit@ref"], c.Binding.Issues.Select(static x => $"{x.Code} {x.Node}"));

@@ -558,8 +558,10 @@ public sealed partial class MirBorrowsTest
 
     // SPEC 23.1.2 (R4-M90 PQ-1, DECISIONS BU-25, R4-M109): an implicit Borrow of a static is Binding's located Unsupported_Kd at its operand,
     // which its consumer receives as a derived value with no Loan, so a result kept past the statement meets nothing: a receiver's with a
-    // retained result (retained, beside an unknown call in effect), a reserved receiver's, an argument's adaptation, a kept argument's and an
-    // expected Type's, as a written Borrow's does not (fail-before 2x-E8's merge: a conflict at each retained form's operand).
+    // retained result (retained, beside an unknown call in effect, parenthesized, a base method's BaseBorrow, a handle's PayloadProjection),
+    // an exclusive one's retained (grabbed), a reserved receiver's, a value call's callee (called), an argument's adaptation, a kept
+    // argument's and an expected Type's, as a written Borrow's does not (fail-before 2x-E8's merge: a conflict at each retained form's
+    // operand; called's before the callee's U: a conflict at fn).
     [Fact]
     public void AnUnsupportedStaticBorrowFormsNoLoan()
     {
@@ -569,12 +571,37 @@ public sealed partial class MirBorrowsTest
                 public init() => ()
                 public func add(self: uniq/Self, k: i32) => self.n = self.n + k
                 public func view(self: ref/Self) -> ref/i32 during self => self.n@ref
+                public func grab(self: uniq/Self) -> uniq/i32 during self => self.n@uniq
+            open struct Base
+                public var m: i32 = 0
+                protected init() => ()
+                public func look(self: ref/Self) -> ref/i32 during self => self.m@ref
+            struct Leaf : Base
+                public init() : base()
+                    ()
             group Held
                 public var counter: Counter = Counter.init()
                 public var count: i32 = 0
+                public var leaf: Leaf = Leaf.init()
+                public var handle: obj/Counter = Kimi.Intrinsics.makeObj<Counter>(Counter.init())
+                public var fn: () -> i32 = func [] () => 1
                 public func inspect<T>(value: ref/T) => ()
+                public func touch(value: uniq/i32) => ()
                 public func takes(value: ref/i32) => ()
                 public func keep(value: ref/i32 during a) -> ref/i32 during a => value
+                public func parenthesized()
+                    let c = (counter).view()
+                    inspect(c)
+                public func grabbed()
+                    let g = counter.grab()
+                    touch(g)
+                public func based()
+                    let b = leaf.look()
+                    inspect(b)
+                public func payload()
+                    let p = handle.view()
+                    inspect(p)
+                public func called() -> i32 => fn()
                 public func retained()
                     let c = counter.view()
                     inspect(c)
@@ -596,7 +623,8 @@ public sealed partial class MirBorrowsTest
             public func main() => ()
 
             """);
-        Assert.Empty(Problems(c, AnalyzeUnsupported(c, ["count", "counter", "counter@ref"]), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
+        Assert.Empty(Problems(
+            c, AnalyzeUnsupported(c, ["(counter)", "count", "counter", "counter@ref", "fn", "handle", "leaf"]), [.. LoanCodes, DiagnosticCode.Unsupported_Kd]));
     }
 
     // The Loan problems and located Unsupported_Kd records of a program: the prelude, the effect Types and group State with the given

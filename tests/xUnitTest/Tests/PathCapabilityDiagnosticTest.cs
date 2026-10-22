@@ -67,21 +67,23 @@ public class PathCapabilityDiagnosticTest
         "func bumpc(x: uniq/Color) -> i32\n    x@follow = Color.Blue\n    return 4\n";
 
     // Group storage: a var and a let Field, a var and a let struct, a Tuple, a fixed array, an Array, a Dictionary, object handles (var and
-    // let ones of a derived Type, an rc one), a var whose setter is private, one whose setter is custom and computed Fields of a scalar and
-    // a struct; Point's computed Field cx and exclusive and retaining shared methods; the group's glook borrows its argument, and its
-    // function bump has its body appended.
+    // let ones of a derived Type, an rc one), a derived struct whose base method borrows its base, a function value, a var whose setter is
+    // private, one whose setter is custom and computed Fields of a scalar and a struct; Point's computed Field cx and exclusive and
+    // retaining shared methods; the group's glook borrows its argument, and its function bump has its body appended.
     private const string Statics =
         "struct Point\n    public var x: i32 = 0\n    public computed cx: i32\n        get() -> i32 => self.x\n        set(value: i32) -> () => self.x = value\n" +
         "    public init() => ()\n    public func grow(self: uniq/Self) => self.x = self.x + 1\n" +
         "    public func view(self: ref/Self) -> ref/i32 during self => self.x@ref\nfunc take(x: uniq/i32) -> () => x@follow = 1\n" +
         "func look(x: ref/i32) -> i32 => x@follow\nfunc lookp(x: ref/Point) -> i32 => x.x\n" +
-        "open struct Shape\n    public var size: i32 = 0\n    public init() => ()\nstruct Circle: Shape\n    public init() => ()\n" +
+        "open struct Shape\n    public var size: i32 = 0\n    public init() => ()\n    public func peek(self: ref/Self) -> i32 => self.size\n" +
+        "struct Circle: Shape\n    public init() => ()\n" +
         "group State\n    public var counter: i32 = 0\n    public let limit: i32 = 5\n    public var point: Point = Point.init()\n" +
         "    public let fixed: Point = Point.init()\n    public var pair: (i32, i32) = (1, 2)\n    public var fa: [2 of i32] = [1, 2]\n" +
         "    public var values: Array<i32> = [1, 2]\n    public var dict: Dictionary<i32, i32> = [1: 2]\n" +
         "    public var handle: obj/Point = Point.init()@obj\n" +
         "    public var circle: obj/Circle = Circle.init()@obj\n    public let ring: obj/Circle = Circle.init()@obj\n" +
-        "    public var shared: rc/Point = Point.init()@rc\n" +
+        "    public var shared: rc/Point = Point.init()@rc\n    public var leaf: Circle = Circle.init()\n" +
+        "    public var fn: () -> i32 = func [] () => 1\n" +
         "    public var guarded: i32 = 0\n        private set\n    public var custom: i32 = 0\n" +
         "        set(value: i32) -> () => State.counter = value\n    public computed calc: i32\n        get() -> i32 => 1\n" +
         "    public computed cpt: Point\n        get() -> Point => Point.init()\n    public func glook(x: ref/i32) -> i32 => x@follow\n    public func bump()\n";
@@ -157,7 +159,8 @@ public class PathCapabilityDiagnosticTest
     // (PLAN P42), so every Borrow SPEC lends of a Place rooted at a static Field, through inline parts, elements and an owning handle's
     // payload, is one located Unsupported_Kd at the Borrow (DECISIONS R4-M89 PD12 (i), BU-18, BU-25): a written one (shorthand, typed,
     // @raw, object, case adaptation), qualified or in the Field's group, and an implicit one, at its operand: a receiver (a method's, a user
-    // index's, an accessor's), an argument, an expected Type's or a Case payload's adaptation and a value call's input (R4-M90 PQ-1). A
+    // index's, an accessor's, a base method's, a value call's callee), an argument, an expected Type's or a Case payload's adaptation and
+    // a value call's input (R4-M90 PQ-1). A
     // Borrow SPEC denies (a let, a private or custom setter, a let ancestor, a shared handle's payload exclusively, an argument's implicit
     // exclusive borrow) keeps its Language error. Parentheses and inline parts keep the Place, which is never a Temporary Value (SPEC 3.4,
     // 3.6), and a getter result is lent only shared (SPEC 11.5).
@@ -173,6 +176,9 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        let v = point.view()", "point", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => State.values.append(3)", "State.values", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => State.handle.grow()", "State.handle", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.leaf.peek()", "State.leaf", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        ()\nfunc f() -> i32 => State.fn()", "State.fn", DiagnosticCode.Unsupported_Kd)]
+    [InlineData("        _ = fn()", "fn", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() -> i32 => State.point.cx", "State.point", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => State.point.cx = 3", "State.point", DiagnosticCode.Unsupported_Kd)]
     [InlineData("        ()\nfunc f() => State.point.cx += 3", "State.point", DiagnosticCode.Unsupported_Kd)]
@@ -236,7 +242,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        ()\nfunc f()\n    let r = State.fixed.x@uniq", "State.fixed.x@uniq", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = State.limit@s", "State.limit@s", DiagnosticCode.InvalidAssignment_Kd)]
     [InlineData("        ()\nfunc f()\n    let r = State.ring@objuniq/Shape", "State.ring@objuniq/Shape", DiagnosticCode.InvalidAssignment_Kd)]
-    public void AQualifiedStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
+    public void AStaticBorrowIsUnsupported(string body, string at, DiagnosticCode code)
     {
         var source = Statics + body + "\npublic func main() => ()\n";
         var observed = DiagnosticCorpus.Check(source).Diagnostics.Select(static x => (x.Code, x.Span!.Value.Start, x.Span.Value.Length));
@@ -254,7 +260,7 @@ public class PathCapabilityDiagnosticTest
     [InlineData("        State.counter += 1\nfunc f() => State.bump()")]
     [InlineData("        ()\nfunc g() => ()\nfunc f<s/T>()\n    s is ref\n    _ = g@s")]
     [InlineData("        ()\nfunc g() => ()\nfunc f<s/T>()\n    s is owner or uniq\n    _ = g@s")]
-    public void StaticAccessesWithoutAQualifiedBorrowBind(string body)
+    public void StaticAccessesWithoutABorrowBind(string body)
     {
         var c = MinimalEmissionTest.Analyze(Statics + body + "\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));

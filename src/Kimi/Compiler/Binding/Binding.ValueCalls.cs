@@ -370,7 +370,8 @@ public sealed partial class Binding
 
     // SPEC 7.3, 7.7.3: the callee of a value call is a Receiver Expression, acquired in the call's mode: through a handle or view as its
     // payload (TryPayloadReceiver), exclusively only where its lending point is exclusively writable, and owned only by the value read
-    // of a Copy closure. False when the acquisition fails, its record made.
+    // of a Copy closure; a Shared or Exclusive call borrows an owned callee Place, whose static root is the located limit until P42
+    // (FailStaticBorrow). False when the acquisition fails, its record made.
     private bool AcquireValueCallee(InvocationKoto call, BindingScope scope, SemanticsKind receiver, out BoundArgumentOperation receiverOperation)
     {
         var receiverType = call.Method.BoundType!;
@@ -416,7 +417,8 @@ public sealed partial class Binding
             }
         }
 
-        return true;
+        return receiver == SemanticsKind.Owner || receiverType.Semantics != SemanticsKind.Owner ||
+            !this.FailStaticBorrow(call.Method, ArgumentOperationKind.Borrow, receiver);
     }
 
     private BoundType? BindValueCall(InvocationKoto call, BindingScope scope, BoundType signature, SemanticsKind receiver = SemanticsKind.Ref)
@@ -517,7 +519,7 @@ public sealed partial class Binding
                 var parameter = ownBinder is null ? parameters.Components[i] :
                     this.SubstituteStoredOrigins(parameters.Components[i], ownBinder, origins.AsSpan(0, originCount), argumentOrigins.AsSpan(0, inputCount));
                 // An input's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
-                if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter) &&
+                if (!this.FailStaticBorrow(operations[i].Source!, operations[i].Kind, parameter.Semantics) &&
                     !this.CheckTypeUse(instantiated[i], parameter, operations[i].Source!))
                 {
                     return this.Fail(call, BindingFailure.NoApplicableCandidate);

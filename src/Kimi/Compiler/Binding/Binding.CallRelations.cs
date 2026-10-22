@@ -204,7 +204,7 @@ public sealed partial class Binding
     private void JudgeCallFit(FunctionKoto selected, ReadOnlySpan<BoundArgumentOperation> operations, int argumentCount, int index)
     {
         var operation = operations[index];
-        if (operation.Source is { } source && this.FailStaticBorrow(source, operation.Kind, operation.ParameterType))
+        if (operation is { Source: { } source, ParameterType: { } mode } && this.FailStaticBorrow(source, operation.Kind, mode.Semantics))
         {
             return;
         }

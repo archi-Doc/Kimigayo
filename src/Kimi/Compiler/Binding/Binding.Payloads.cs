@@ -32,8 +32,7 @@ public sealed partial class Binding
         }
 
         // A receiver's implicit Borrow is lent as SPEC lends it (BorrowablePlace).
-        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.LendsPlace(source, scope, exclusive, out _) &&
-            !BorrowableTemporary(source, exclusive, true, false))
+        if (actual.Semantics is not (SemanticsKind.ObjRef or SemanticsKind.ObjUniq) && !this.LendsHandle(source, scope, exclusive, out _))
         {
             return false;
         }
