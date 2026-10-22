@@ -176,8 +176,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // An adapter's call of its callee (PD3): each callee parameter takes the adapter's own of its kind and logical index (a value, the
-    // result slot, the location the erased call passed, SPEC 22.5.1), an environment or a context the next given value; its value (none
-    // for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
+    // result slot, the location the erased call passed, SPEC 22.5.1), a parameter without an operand (Given: an environment or a context)
+    // the next given value; its value (none for a void callee). False, with InternalInvariant_Kd, where the adapter has no such parameter.
     private bool Forward(FunctionAbi callee, ReadOnlySpan<Value> given, out Value? result)
     {
         result = null;
@@ -186,7 +186,7 @@ internal sealed partial class FunctionCodegen
         var next = 0;
         for (var i = 0; i < parameters.Length; i++)
         {
-            if (parameters[i].Kind is AbiParameterKind.Environment or AbiParameterKind.Context)
+            if (Given(parameters[i]))
             {
                 this.arguments[i] = given[next++];
                 continue;
