@@ -5784,11 +5784,11 @@ structure is recorded here by the unit that first implements it.
   generation the compiler pipeline benchmark's stage 5 is empty and stage 6 is the generation entry, against PD26's and C-design-2's
   "stage 5 times layout", since the instance collector lays out every by-value use in stage 3 (K 4.8, R5-M37). The six stage names
   stay, so reports remain comparable with the 49cb2b5d baseline. It leaves the list; R5's group reviews check the code against R5-M94.
-- **R5-M98 Ask A-7 and H5 after R4-M106** (2026-10-22, R5 planning session; plan §3.4 A-7, §4 H5, §7 row 13; under R4-M106) R4-M106
+- **R5-M98 Ask A-7 and H5 after R4-M106** (2026-10-22, R5 planning session; plan §3.4 A-7, §4 H5, §6.4 rank 13; under R4-M106) R4-M106
   deletes A5-F6 and A5P-S2 (abstract calls reach by paths: `preserves results`, rule 3, delegation and P12 deleted), so ask A-7 ("A5-F6
-  (with A5P-S2) before R4's exit") and row 13's "need A5-F6 and A5P-S2" have no object. H5's prerequisite A-7 becomes R4's units U0-U5,
+  (with A5P-S2) before R4's exit") and rank 13's "need A5-F6 and A5P-S2" have no object. H5's prerequisite A-7 becomes R4's units U0-U5,
   which R4's exit counts in place of G:A5-F6 (R4-M106). H5's deletions shrink to match: U2 removes `EffectSummary`'s `preserves` half
-  (about -810 Binding lines) and U1 retires `CallEffectConflict_Kd` with the old Analysis's rules 1 and 3 (its DIAGNOSTICS rows and the
+  (about -810 lines over Binding, the grammar and the library) and U1 retires `CallEffectConflict_Kd` with the old Analysis's rules 1 and 3 (its DIAGNOSTICS rows and the
   difference ledger's `a5-old-effects` cells), so H5 deletes what remains of the old effect checks, `confined`'s, by the same row. The
   plan's text is frozen; this entry supersedes those clauses. Nothing in R5's code depends on them.
 - **R5-M99 Drop flags in MIR code generation (C4b)** (2026-10-22, C lane; plan C4b, package C 3.2 I2 and I6, 3.9; the planning session's
