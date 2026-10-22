@@ -6141,3 +6141,9 @@ structure is recorded here by the unit that first implements it.
   8 bytes or less, its requirement test and `ContextualClosureTest` "Object" move from C5a to C5b, since a concrete Closure environment
   is the Closure value itself and never allocates (IMPL 21.1.2), and PD19 governs only a value erased into IMPL 21.1.3's common
   function value (against plan row C5a). They leave the list; R5's group reviews check the code against those entries.
+- **R5-M105 The owner confirms C5b's departure** (owner, 2026-10-22, on the R5 planning session's explanation before C5b landed;
+  verbatim 「C5b の逸脱（ErasedCalls の corpus O2 A/B を C8d と C9c の遅い方へ移し、C5b は固定配列版で参考測定する）を承認します。」;
+  the consequences are the planning session's) The departure R5-M104 records is confirmed: plan row C5b's verification "the ErasedCalls
+  kernel O2 A/B" moves to the later of C8d and C9c, since the corpus kernel needs `Array` of a Function Type (C8d) and string
+  interpolation (C9c) under MIR code generation; C5b measures a fixed-array variant of the kernel as information, and a B/A beyond the
+  A=B variance on it stops C5b (R5-M8's O2 rule). The later of C8d and C9c runs the corpus A/B under R5-M8. It leaves the list.
