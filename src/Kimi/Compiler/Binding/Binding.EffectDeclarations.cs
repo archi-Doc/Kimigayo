@@ -532,7 +532,7 @@ public sealed partial class Binding
         var (cause, note) = rejection.Kind switch
         {
             EffectRejection.SpecificationOutsideContract => ("an effect specification outside a Contract's items",
-                "An effect specification is a Contract item and bounds a requirement the Contract inherits; this position takes effect clauses"),
+                "An effect specification is a Contract item and bounds a requirement the Contract inherits"),
             EffectRejection.ClauseOutsideRequirement => ("an effect clause outside a requirement", "An effect clause stands in the Constraint region of the requirement it bounds"),
             EffectRejection.OutsideContract => ("an effect item outside a Contract, original virtual function or Callable Constraint", $"A Contract, original virtual function or Callable Constraint declares bounds; {EffectOwner(effect)} declares no bound of its own, and an implementation can neither add nor remove its public contract's bound"),
             EffectRejection.CallableForm => ("the effect list is not under a single Callable Constraint", "Write other requirements in separate clauses; parentheses and combined requirements accept no effect list"),

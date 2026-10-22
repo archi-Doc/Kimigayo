@@ -67,7 +67,8 @@ public sealed partial class Binding
     /// <param name="instanceContext">The concrete generic context, when reporting an instance.</param>
     /// <param name="instanceSite">The source call that requested the instance.</param>
     /// <returns><see langword="true"/> when a violation was recorded for the conformance and reported.</returns>
-    internal bool ReportEffectViolation(Koto use, DiagnosticRequirement requirement, DiagnosticCode code, string? instanceContext = null, Koto? instanceSite = null)
+    internal bool ReportEffectViolation(
+        Koto use, DiagnosticRequirement requirement, DiagnosticCode code, string? instanceContext = null, Koto? instanceSite = null)
     {
         if (this.effectViolations?.TryGetValue(use, out var violation) != true)
         {
@@ -92,7 +93,8 @@ public sealed partial class Binding
             note += "; " + instanceContext;
         }
 
-        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + 1 + (item is null ? 0 : 1) + (instanceSite is null ? 0 : 1);
+        var count = (violation.Node is { } node && !ReferenceEquals(node, violation.Site) ? 1 : 0) + 1 + (item is null ? 0 : 1) +
+            (instanceSite is null ? 0 : 1);
         var related = new (string Role, Koto At, string? Label)[count];
         var next = 0;
         if (violation.Node is { } effectNode && !ReferenceEquals(effectNode, violation.Site))
@@ -132,5 +134,6 @@ public sealed partial class Binding
     };
 
     // The violating effect and the public bound it must satisfy; text is formed only during publication.
-    private readonly record struct EffectViolationRecord(EffectViolation Kind, Koto? Site, Koto? Node, FunctionKoto Requirement, BoundContract Contract, BoundRequirement Identity);
+    private readonly record struct EffectViolationRecord(
+        EffectViolation Kind, Koto? Site, Koto? Node, FunctionKoto Requirement, BoundContract Contract, BoundRequirement Identity);
 }

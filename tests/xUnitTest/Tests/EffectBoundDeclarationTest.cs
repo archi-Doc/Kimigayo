@@ -17,6 +17,10 @@ public class EffectBoundDeclarationTest
     // An effect specification anywhere but among a Contract's items (SPEC 8.11.1, F.6; PLAN G219).
     private const string Misplaced = "an effect specification outside a Contract's items";
 
+    // Its whole Note: a SPEC fact that holds at every position, never what the position takes (bu25 review R1: a clause is
+    // rejected too under `F is Copy`, a combined requirement or a Contract-wide clause).
+    private const string MisplacedNote = "An effect specification is a Contract item and bounds a requirement the Contract inherits";
+
     private const string Override = "open struct Base\n    public virtual func score(self: objref/Self) -> i32 => 1\n" +
         "struct Derived : Base\n    override func score(self: objref/Self) -> i32\n        ";
 
@@ -42,10 +46,10 @@ public class EffectBoundDeclarationTest
     [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n    effect Bounded.own confined\n", "effect Bounded.own confined", "Bounded is this Contract", "effect clause")]
     [InlineData("struct Plain\ncontract Bounded: Source\n    effect Plain.take confined\n", "effect Plain.take confined", "Plain names no Contract", null)]
     [InlineData("contract Bounded\n    func own(self: ref/Self) -> ()\n    effect confined\n", "effect confined", "an effect clause outside a requirement", "Constraint region")]
-    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect Source.take confined\n", "effect Source.take confined", Misplaced, "Contract item")]
-    [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect Source.take confined\n    return\n", "effect Source.take confined", Misplaced, "effect clauses")]
-    [InlineData("func check<F>(f: F) -> ()\n    F is Copy\n        effect Source.take confined\n    return\n", "effect Source.take confined", Misplaced, "effect clauses")]
-    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        effect Source.take confined\n        return 1\n", "effect Source.take confined", Misplaced, "effect clauses")]
+    [InlineData("contract Bounded: Source\n    func own(self: ref/Self) -> ()\n        effect Source.take confined\n", "effect Source.take confined", Misplaced, MisplacedNote)]
+    [InlineData("func check<F>(f: F) -> ()\n    F is Callable<() -> i32>\n        effect Source.take confined\n    return\n", "effect Source.take confined", Misplaced, MisplacedNote)]
+    [InlineData("func check<F>(f: F) -> ()\n    F is Copy\n        effect Source.take confined\n    return\n", "effect Source.take confined", Misplaced, MisplacedNote)]
+    [InlineData("open struct Base\n    public virtual func score(self: objref/Self) -> i32\n        effect Source.take confined\n        return 1\n", "effect Source.take confined", Misplaced, MisplacedNote)]
     [InlineData("struct S\n    effect confined\n", "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "S declares no bound of its own")]
     [InlineData("func f() -> ()\n    effect confined\n", "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "the function f declares no bound of its own")]
     [InlineData(Override + "effect confined\n        return 2\n", "effect confined", "an effect item outside a Contract, original virtual function or Callable Constraint", "the function score declares no bound")]
@@ -58,7 +62,11 @@ public class EffectBoundDeclarationTest
         Assert.Equal(nameof(DiagnosticCode.InvalidEffectBound_Kd), error.Code);
         Assert.Equal(text, error.Text);
         Assert.Equal(cause, error.Label);
-        if (note is not null)
+        if (cause == Misplaced)
+        {
+            Assert.Equal(note, error.Note);
+        }
+        else if (note is not null)
         {
             Assert.Contains(note, error.Note);
         }
