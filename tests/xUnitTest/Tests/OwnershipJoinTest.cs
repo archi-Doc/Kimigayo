@@ -76,7 +76,7 @@ public class OwnershipJoinTest
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Contains(c.Problems, issue => issue.Code.IsLoanConflict());
 
-        // SPEC 15.6.5, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
+        // SPEC 15.6.6, 16.2.2: one record, at the exit whose cleanup destroys `local`, never also at the join or the later use.
         var conflict = Assert.Single(c.Ownership.Issues);
         Assert.Equal((OwnershipRequirement.ComparisonLoanConflict, "local"), (conflict.Failure, conflict.Destroyed));
         Assert.IsType<Kimi.Compiler.Parsing.ExitKoto>(conflict.Source);
