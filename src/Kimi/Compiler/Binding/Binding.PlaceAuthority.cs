@@ -173,12 +173,8 @@ public sealed partial class Binding
                 case PathStep.Receiver:
                     bindingDenies = denied; // SPEC 6.3.4, 16.3.1: a special receiver's path grants its row's authority.
                     return Receiver(source)?.Parts == SemanticsKind.Uniq ? SemanticsKind.Uniq : authority;
-                case PathStep.RawFollow:
-                    // SPEC 5.7 (Authority), 15.6.2: a raw pointer whose Origin keeps only shared Loans is a shared layer; any other raw
-                    // dereference ends the walk with the authority reached so far, which condition 3 of SPEC 5.2.1 bounds.
-                    bindingDenies = denied;
-                    return source.CodeContext.Compilation.Binding.StepOf(next.BoundType?.RawOrigin) == RawStep.Shared ? SemanticsKind.Ref : authority;
                 default:
+                    // A root, or a raw dereference: no raw Origin denies an access (SPEC 5.7 Authority; condition 3 of SPEC 5.2.1).
                     bindingDenies = denied;
                     return authority;
             }
@@ -258,8 +254,8 @@ public sealed partial class Binding
             return true; // The accessor's Receiver Expression checks its own capability.
         }
 
-        // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission; a pointer whose Origin keeps only shared Loans
-        // does (PathAuthority's raw arm).
+        // SPEC 5.2, 5.7: binding mutability does not decide pointee write permission, nor does any raw Origin (condition 3 of SPEC 5.2.1
+        // bounds the access at run time); a safe shared layer inside the pointee does.
         if (node is DereferenceKoto dereference)
         {
             return ReferenceTypes.IsPointer(dereference.Operand.BoundType) && !ReachedThroughShared(node);
@@ -423,7 +419,7 @@ public sealed partial class Binding
         var place = KotoHelper.UnwrapParentheses(source);
         if (ElementAccess.IsRawPlace(place))
         {
-            return !ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless its pointer keeps only shared Loans.
+            return !ReachedThroughShared(place); // SPEC 5.2.3, 5.7: a raw Place offers Take unless a safe shared layer inside it denies.
         }
 
         return !IsBarePlace(place) || (PathAuthority(place, out _, out var layers) == SemanticsKind.Owner && layers == SemanticsMask.None);

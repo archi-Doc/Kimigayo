@@ -51,7 +51,7 @@ public sealed partial class Binding
 
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Address;
-        return Complete(conversion, this.types.Pointer(stored, path.Origin is { } origin ? this.Formed(origin, path.Mode) : null));
+        return Complete(conversion, this.types.Pointer(stored, path.Origin));
     }
 
     // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer. SPEC 5.7: a pointer keeps its raw
@@ -83,7 +83,7 @@ public sealed partial class Binding
     // upper bound and is fitted to the expected Type, result or storage destination: a returned borrow takes the declared result's
     // Origin, and any other one is the anchor, which fits every destination while its Loan is checked under the anchor. SPEC 5.7:
     // through a pointer that states an Origin the borrow lies within it (the anchor meets it, and a declared result is outlived by
-    // it), and an exclusive borrow through a pointer whose Origin keeps only shared Loans is denied.
+    // it). An exclusive borrow is denied only by a safe shared layer inside the pointee: no raw Origin denies an access (SPEC 5.7).
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
         if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
@@ -91,7 +91,7 @@ public sealed partial class Binding
             return this.Fail(conversion, AccessFailure(conversion.Left));
         }
 
-        var within = this.PathOrigin(conversion.Left) is { Dereferences: true } path ? RegionOf(path.Origin) : null;
+        var within = this.PathOrigin(conversion.Left) is { Dereferences: true } path ? path.Origin : null;
         var declared = ResultFunction(conversion)?.BoundSymbol?.Type is
             { Kind: BoundTypeKind.Semantics, Components: [var target], Origin: { } result } declaredResult &&
             declaredResult.Semantics == semantics && ReferenceEquals(target, referent) ? result : null;

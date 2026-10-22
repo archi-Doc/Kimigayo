@@ -28,14 +28,14 @@ public sealed partial class Binding
         return stored;
     }
 
-    // SPEC 5.7, 15.6.2 (D11): the Origin and mode of the last borrow or raw pointer that a Place's path dereferences, from the leaf
-    // through NextPathStep: a member's, a borrowed element's or an inline part's the innermost borrow, raw or pair layer of the Type
-    // it is selected from; a followed borrow's outer Origin and layer; a pair follow's slot with its admitted cases' mode; a raw
-    // pointer's Origin and step (none when it states none); a user index's published element; a Slice element's Slice, shared. Owned
-    // roots, owned parts, owned Array elements and object payloads continue. Dereferences is true when the path dereferences; false
-    // through no dereference, with the Origin of a special receiver at the root (exclusive; SPEC 5.7: the value constructed or
-    // destroyed) and none otherwise; null for a pair layer admitting a non-borrow case (U2, located by the caller). Field and Stored:
-    // the stored Field the leaf's inline selections (Tuple and fixed-array elements) start from, and the leaf's stored Type in it.
+    // SPEC 5.7 (Reading a Field, Typed paths): the Origin of the last borrow or raw pointer that a Place's path dereferences, from the
+    // leaf through NextPathStep: a member's, a borrowed element's or an inline part's the innermost borrow, raw or pair layer of the Type
+    // it is selected from; a followed borrow's outer Origin; a pair follow's slot; a raw pointer's Origin (none when it states none); a
+    // user index's published element; a Slice element's Slice. Owned roots, owned parts, owned Array elements and object payloads
+    // continue. Dereferences is true when the path dereferences; false through no dereference, with the Origin of a special receiver at
+    // the root (SPEC 5.7: the value constructed or destroyed) and none otherwise; null for a pair layer admitting a non-borrow case or a
+    // layer that is no borrow (U2, located by the caller). Field and Stored: the stored Field the leaf's inline selections (Tuple and
+    // fixed-array elements) start from, and the leaf's stored Type in it.
     private RawPath PathOrigin(Koto place)
     {
         Span<int> positions = stackalloc int[16];
@@ -69,7 +69,7 @@ public sealed partial class Binding
             source = KotoHelper.UnwrapParentheses(next);
         }
 
-        return new(false, null, RawStep.Unstated, field, StoredPart(field, positions[..Math.Max(selected, 0)]));
+        return new(false, null, field, StoredPart(field, positions[..Math.Max(selected, 0)]));
     }
 
     // One step of PathOrigin: what a step that ends the walk reaches, null for one the walk continues past.
@@ -77,22 +77,22 @@ public sealed partial class Binding
     {
         switch (step)
         {
-            case PathStep.Follow when next.BoundType is { } followed && this.LayerStep(followed) is not null:
-                return this.Reached(followed, source);
+            case PathStep.Follow when next.BoundType is { Kind: BoundTypeKind.Semantics } followed && IsBorrow(followed.Semantics):
+                return this.Reached(followed);
             case PathStep.PairFollow or PathStep.RawFollow when next.BoundType is { } layer:
-                return this.Reached(layer, source);
+                return this.Reached(layer);
             case PathStep.UserIndex when ElementAccess.IndexerCall(source, exclusive: false)?.BoundType is { } element:
-                return this.Reached(element, source);
+                return this.Reached(element);
             case PathStep.SliceElement:
-                return new(true, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin, RawStep.Shared);
+                return new(true, (next.BoundType?.Kind == BoundTypeKind.Slice ? next.BoundType : next.BoundType?.Components[0])?.Origin);
             case PathStep.Receiver when source.BoundSymbol is { } receiver:
-                return new(false, this.ReceiverOrigin(receiver), RawStep.Exclusive);
+                return new(false, this.ReceiverOrigin(receiver));
             case PathStep.Member or PathStep.BorrowedElement or PathStep.InlinePart when this.InnermostLayer(next.BoundType) is { } layer:
-                return this.Reached(layer, source);
+                return this.Reached(layer);
             case PathStep.Follow or PathStep.BorrowedElement or PathStep.ArrayElement or PathStep.Member or PathStep.InlinePart:
                 return null;
             default:
-                return new(false, null, RawStep.Unstated);
+                return new(false, null);
         }
     }
 
@@ -103,37 +103,31 @@ public sealed partial class Binding
         BoundType? innermost = null;
         for (; BelowLayer(type) is { } below; type = below)
         {
-            innermost = type!.Semantics == SemanticsKind.Raw || this.LayerStep(type) is not null || TryPairLayer(type, out _, out _) ? type : innermost;
+            innermost = type!.Semantics == SemanticsKind.Raw || IsBorrow(type.Semantics) || TryPairLayer(type, out _, out _) ? type : innermost;
         }
 
         return innermost;
     }
 
-    // The layer a path dereferences: a raw pointer's Origin and step, a borrow's outer Origin and mode, or a pair layer's with its
-    // weakest borrow case's mode (FollowStep); Dereferences is null for a pair layer admitting a non-borrow case (U2). A raw Origin
-    // without a step breaks RawOrigins' contract: InternalInvariant_Kd at the dereference `at`.
-    private RawPath Reached(BoundType layer, Koto at)
+    // The layer a path dereferences: a raw pointer's Origin, a borrow's outer Origin, or a pair layer's slot; Dereferences is null for a
+    // pair layer admitting a non-borrow case or a layer that is no borrow (U2).
+    private RawPath Reached(BoundType layer)
     {
         if (layer.Semantics == SemanticsKind.Raw && layer.Kind == BoundTypeKind.Semantics)
         {
-            var raw = layer.RawOrigin;
-            if (this.StepOf(raw) is not { } step)
-            {
-                this.Fail(at, BindingFailure.Internal);
-                return new(true, raw, RawStep.Unstated);
-            }
-
-            return new(true, raw, step);
+            return new(true, layer.RawOrigin);
         }
 
-        var mode = TryPairLayer(layer, out _, out _) ? FollowStep(this.LayerAdmitted(layer)) : this.LayerStep(layer);
-        return new(mode is null ? null : true, this.OuterOrigin(layer), mode.GetValueOrDefault());
+        var borrow = TryPairLayer(layer, out _, out _)
+            ? this.LayerAdmitted(layer) is not SemanticsMask.None and var admitted && (admitted & ~SemanticsMask.Borrow) == 0
+            : layer.Kind == BoundTypeKind.Semantics && IsBorrow(layer.Semantics);
+        return new(borrow ? true : null, this.OuterOrigin(layer));
     }
 
     // SPEC 5.7, 6.3.4, 16.3.1 (DECISIONS BU-23): the Origin of a constructor's or destructor's receiver `self`, its Place's atom.
     private BoundOrigin ReceiverOrigin(BindingSymbol receiver) => this.OriginAtom(receiver.Declaration, OriginKind.Projection, ReceiverSlot);
 
-    // What PathOrigin publishes for a Place (SPEC 5.7): whether its path dereferences (null: U2), the Origin and mode of the last
-    // dereference, and the stored Field the Place is or lies inline in, with the Place's stored Type there.
-    private readonly record struct RawPath(bool? Dereferences, BoundOrigin? Origin, RawStep Mode, MemberAccessKoto? Field = null, BoundType? Stored = null);
+    // What PathOrigin publishes for a Place (SPEC 5.7): whether its path dereferences (null: U2), the Origin of the last dereference,
+    // and the stored Field the Place is or lies inline in, with the Place's stored Type there.
+    private readonly record struct RawPath(bool? Dereferences, BoundOrigin? Origin, MemberAccessKoto? Field = null, BoundType? Stored = null);
 }

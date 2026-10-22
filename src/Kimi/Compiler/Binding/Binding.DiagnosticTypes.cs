@@ -57,7 +57,7 @@ public sealed partial class Binding
             if (current.Kind is BoundTypeKind.Semantics or BoundTypeKind.SemanticsApplication && current.Components.Count == 1)
             {
                 // SPEC 5.7: a raw layer shows the region its Origin names.
-                var layer = current.Origin ?? RegionOf(current.RawOrigin);
+                var layer = current.Origin ?? current.RawOrigin;
                 var mark = complete ? layer is not null : shown is not null && ReferenceEquals(layer, shown);
                 if (mark)
                 {

@@ -479,7 +479,7 @@ public sealed partial class Binding
             var origin = type.Origin is { } outer ? this.SubstitutePairOrigins(outer, binder, arguments) : null;
             if (type.RawOrigin is { } raw)
             {
-                origin = this.Restep(raw, this.SubstitutePairOrigins(RegionOf(raw)!, binder, arguments));
+                origin = this.SubstitutePairOrigins(raw, binder, arguments);
             }
 
             changed |= !ReferenceEquals(origin, type.Origin ?? type.RawOrigin);

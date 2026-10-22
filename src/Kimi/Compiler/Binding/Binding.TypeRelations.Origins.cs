@@ -109,8 +109,8 @@ public sealed partial class Binding
         if (actual.Semantics == SemanticsKind.Raw && actual.Kind == BoundTypeKind.Semantics)
         {
             // SPEC 5.7: a raw layer's Origins relate by their regions; a missing one is Unstated, the one producer of that end (S4).
-            longer = RegionOf(actual.RawOrigin) ?? BoundOrigin.Unstated;
-            shorter = RegionOf(expected.RawOrigin) ?? BoundOrigin.Unstated;
+            longer = actual.RawOrigin ?? BoundOrigin.Unstated;
+            shorter = expected.RawOrigin ?? BoundOrigin.Unstated;
             return ReferenceEquals(actual.RawOrigin, expected.RawOrigin) ? OuterOriginFit.None : OuterOriginFit.Relation;
         }
 

@@ -16,7 +16,7 @@ public sealed partial class Binding
             return false;
         }
 
-        if ((type.Origin ?? RegionOf(type.RawOrigin)) is { } origin && HasLocalRegion(origin))
+        if ((type.Origin ?? type.RawOrigin) is { } origin && HasLocalRegion(origin))
         {
             return true;
         }
@@ -193,7 +193,7 @@ public sealed partial class Binding
             var origin = type.Origin is { } outer ? Resolve(outer) : null;
             if (type.RawOrigin is { } raw)
             {
-                origin = this.Restep(raw, Resolve(RegionOf(raw)!));
+                origin = Resolve(raw);
             }
 
             return this.types.Intern(type.Kind, type.Symbol, type.Semantics, components.AsSpan(0, type.Components.Count), type.Length, origin, arguments.AsSpan(0, type.OriginArguments.Count), type.LengthExpression, type.ClosureContext, type.LengthArguments);

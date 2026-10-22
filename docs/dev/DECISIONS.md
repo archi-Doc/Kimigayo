@@ -2388,7 +2388,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Field read take the Origin of the last reference the path dereferences (a borrow's, or the one a raw pointer states). Dropping
     or narrowing an Origin is a fit (`raw/T during o <: raw/T`, §3.8); any other change is a claim, only the grouped
     `E@(raw/U during o)` in an unsafe context (§13.5.1 admits it), else a Refuted Origin relation. A write, Take, in-place
-    destruction or exclusive Borrow through a pointer whose Origin keeps only shared Loans is an error. A raw Origin is no slot use,
+    destruction or exclusive Borrow through a pointer whose Origin keeps only shared Loans is an error (superseded by BU-24's no
+    static raw authority: undefined behavior by condition 3, no compile-time error). A raw Origin is no slot use,
     and a slot it states must not be Phantom; raw Place borrows and `Raw.slice` lie within it; no intersection (for formed Origins
     superseded by R4-M105); the pointer's uses add no point to its region.
   - Calls (D6, D10, D15): through a raw layer with an Origin a call may store what the Referent Type of that Origin's borrow
@@ -2404,7 +2405,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     either wording: `Dictionary.insertOrReplace` and `DictionaryStorage.removeEntry`, which G160-3 rewrites), C2 (condition 5 as the
     general rule, an obligation on clients with no diagnostic) and C3 (D11's error covers exclusive Borrows) are the planning
     session's correction, addition and extension, confirmed by the owner (2026-10-21, answering the planning session's questions
-    verbatim: C1 「承認 (Recommended)」, C2 「承認 (Recommended)」, C3 「エラーにする (Recommended)」), as is D15's definition after
+    verbatim: C1 「承認 (Recommended)」, C2 「承認 (Recommended)」, C3 「エラーにする (Recommended)」; C3 superseded with D11's error by
+    BU-24's no static raw authority), as is D15's definition after
     review B4 (the borrow an Origin belongs to, the signature restriction and `placeEntry`'s typed handle: 「承認 (Recommended)」).
   - Representations (D19; "Closed vocabularies"): A5's address, a non-conflicting set element naming a holder (a row of the
     conflicts table), and Binding's optional raw Origin with `self` are approved (the address amended by R4-M105: an own-step
@@ -2765,7 +2767,8 @@ and migration obligations remain in force; no numeric cap changes are authorized
     borrow it is formed through, an intersection included; a written `o` stays one atom. Supersedes R4-M95's "no intersection" (G160
     D18) for formed Origins only: G160 records no reason for D18, and the reconstructed one (a written intersection may belong to no
     single borrow) does not hold for a formed one. 5.7's Authority error stays (B′+'s `Formed` wraps a shared formation as
-    `Shared(L)`). B′+: `RawStep` gains an intersection row (Exclusive); U2's intersection half and BU's substitution item 11 go.
+    `Shared(L)`; superseded by BU-24's no static raw authority: no Authority error, no `Shared(L)`). B′+: `RawStep` gains an
+    intersection row (Exclusive); U2's intersection half and BU's substitution item 11 go.
   - OQ-R3 (b): a Warning where an operation ends the owning value's stay in its holder (Move, Take, `exchange`, `swap`, replacement
     or destruction of the owning value's Place or an ancestor; a call taking it by `uniq`) while a value carrying a pointer formed
     through its own step may still be used. With (b) the owner approved the change to the owner-approved address representation
@@ -4082,6 +4085,42 @@ resumed by R4-M86 (2026-10-20).
   through a raw pointer) is a new limit, a located `Unsupported_Kd` at the written Type of the Field that closes it
   (`RejectPolymorphicKeeperCycles`, after the first fixed point; no library or corpus program reaches it; the monomorphic twin keeps
   its rows). `StoredStep` range-checks its positions (a broken contract otherwise).
+  No static raw authority (unit bu20 U1, after the full process on reading 1: designs A and B, the design review's merge M (items
+  1-7) and R4's constraints for A5 and G160-4). The owner, directly, 2026-10-22: 「静的な権限判定をやめる (推奨)」 (its option: writes,
+  Take and `@uniq` through a raw pointer are always allowed statically; only condition 3 of SPEC 5.2.1, the capability of the path the
+  address was taken from, decides whether they are defined, a violation being undefined behavior; a raw Origin states only which
+  storage the pointer reaches and where a call may store through it); R4: 「G160-4 を「静的な権限判定をやめる」でOKです。」; the stored
+  cap 「Loan 要求で上限 (推奨)」 and the signature cap 「シグネチャ版も入れる (推奨)」 (its option: SPEC 5.2.1 gains one sentence, a raw
+  layer written in a function's signature whose Origin only `ref` or `objref` inputs of that signature state gives the pointers read
+  from it, and those derived from them, read authority only; borrows formed later in the body do not count; typed paths such as
+  `*(x@follow@raw) = 1` are not covered). This supersedes reading 1 and its N1-N4 limit. SPEC: 5.2.1's second limit carries both
+  caps in one sentence; 5.7's Authority bullet says no access through a raw pointer is a compile-time error and defines "keeps only
+  shared Loans" by everything the Origin belongs to; 5.6, `clear` and 15.6.2 say undefined behavior; 5.7 Calls stores through each
+  member borrow. Deleted: `PathAuthority`'s raw arm and the `SharedPathAccess_Kd` message's raw clause; `OriginKind.Shared` and its
+  interning; `Formed`; `Restep` (each rewriter maps a raw Origin with its own map); `RegionOf`; `PublishedStep`; `StepOf`'s binder
+  join with `SlotsStep`, `CasesStep`, `FollowStep`, `LayerStep` and `RequirementStep`; `RawPath.Mode`; `Reached`'s
+  `InternalInvariant_Kd` record; `WrittenRawOrigin`'s stepping and assertion; `RejectRawOrigins`, `Unpublish`, `rawJudgmentVersion`
+  and condition (1)'s raise check. So D1, D2, R1, R2 and N1-N4 cannot recur: no verdict reads a step, and a written raw Origin is
+  the atom its name binds in every position. `RawStep` (Unstated, Own, Static, Shared, Exclusive) is the authority an Origin can
+  keep, an over-approximation read only by retention and the TyCtxt views after Binding (R4's constraint 2): `StepOf`, by kind,
+  never Shared; `StoredStep`, Shared for a Field's or Case payload's layer stating a slot whose Loan requirement is `ref` (the stored
+  cap, under any instance); `SignatureStep`, Shared for a signature's layer whose Origin its inputs state only as the outer Origin of
+  a `ref`, `objref` or Slice layer (or of a pair admitting only those) or at a `ref` slot (the signature cap; RetentionTest's row
+  `p: raw/… during b` with `b: ref/…` keeps no store); `TyCtxt.RawStep(function, input, positions)` reads the latter, allocation-free
+  when warm. `RawMembers` (`TyCtxt.RawMembers`, G160-4's (3a); total; one substitution per stored layer, a scan of the input Types
+  per signature layer) gives the borrows an Origin belongs to, shared with retention's `RawContent`. `InvalidRawOrigin` judges every
+  written raw Origin once, from `ValidateOriginRequirements` after the last fixed point (R2 (a): a Phantom slot through a
+  declaration's projection too; a binder atom no borrow holds; U1 keeps only the non-borrow pair case), and a universal stated by a
+  Slice input belongs to it (a new valid form). Superseded in this entry: C1b's `Shared` (Q-O1), `Formed`, `StepOf`'s rows, `RegionOf`
+  and `Restep`; C2's raw arm; the final review's `FollowStep` and `PublishedStep` ruling; S2's `SlotsStep`; C4's "steps Shared" and
+  `PublishedStep` view; the written rule's stepping and conditions (1) and (3); "Never published". The keeper-cycle limit stays until
+  U2. Measured: a pinned interleaved Bind A/B against the merge `b4eb12ac` over Milestones 1, 20 and 33 gave equal warm minima (within
+  0.5%) and 56 fewer cold bytes; the diagnostic snapshot shows no difference. Rejected: design A's extent-wide signature step (a
+  callee's body edit would change its callers' rows; unmeasured scans), its form-based Authority text and an uncapped stored reader;
+  design B's never-Shared stored and signature layers (A5 would write through every shared view). Open for a SPEC session: the scope
+  of "the borrows an Origin belongs to" in the dynamic limit (a body, the binder or more); whether a body-local borrow judged through
+  the Origin counts; and (R4) 5.2.1's first limit binds "a raw pointer read ..." but not every pointer derived from it (the caps'
+  sentence does), which A5's assumption needs.
 
 ## R5 and R6 (adopted 2026-10-18)
 

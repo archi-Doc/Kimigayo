@@ -440,10 +440,10 @@ public sealed partial class Binding
         this.ValidateLayoutFragments();
         this.ValidateBaseDeclarations();
         this.PrepareStorage();
-        // SPEC 5.7: the slots' requirements exist before an instance's stored Types are substituted, whose raw Origins keep their steps;
-        // a declaration's raw Origin without one is rejected and published unstated first.
+        // SPEC 5.7, 15.3.5: the slots' requirements and keepers exist before inline layouts substitute instances; the keeper-cycle limit
+        // judges them once they do.
         this.ComputeOriginRequirements();
-        this.RejectRawOrigins();
+        this.RejectPolymorphicKeeperCycles();
         this.ValidateInlineLayouts();
         this.ValidateCLayoutFields();
         this.ValidateLibraryImports(); // Reads the C-layout fact and the prepared storage (SPEC 22.6).

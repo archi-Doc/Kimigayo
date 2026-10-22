@@ -291,12 +291,12 @@ public class RawStorageTest
         Assert.Equal((nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), label), (record.Code, record.Label));
     }
 
-    // SPEC 5.7 (DECISIONS R4-M105, OQ-R2 (a)): a Field read through a borrow states the borrow's outer Origin, a meet included, formed
-    // with the borrow's mode: a shared one keeps the shared view, so authority stays shared; an exclusive one is the meet itself.
+    // SPEC 5.7 (DECISIONS R4-M105, OQ-R2 (a); BU-24): a Field read through a borrow states the borrow's outer Origin, a meet included,
+    // whatever the borrow's mode.
     [Theory]
-    [InlineData("ref", OriginKind.Shared)]
-    [InlineData("uniq", OriginKind.Intersection)]
-    public void AFieldReadThroughAMeetStatesTheMeet(string mode, OriginKind kind)
+    [InlineData("ref")]
+    [InlineData("uniq")]
+    public void AFieldReadThroughAMeetStatesTheMeet(string mode)
     {
         var source = Block.Replace("{0}", "()", StringComparison.Ordinal).Replace("{1}", "()", StringComparison.Ordinal) +
             $"func choose(c: bool, a: {mode}/Block, b: {mode}/Block) -> {mode}/Block => if c => a else => b\n" +
@@ -304,8 +304,7 @@ public class RawStorageTest
         var c = MinimalEmissionTest.Analyze(source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var read = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MemberAccessKoto>().Single(static x => x.ToString() == "choose(c, x, y).data").TypeOf()!.RawOrigin!;
-        Assert.Equal(kind, read.Kind);
-        Assert.Equal(OriginKind.Intersection, Binding.RegionOf(read)!.Kind);
+        Assert.Equal(OriginKind.Intersection, read.Kind);
     }
 
     // SPEC 5.6, 5.7 (DECISIONS BU-24, the owner's Q-O3 D5 exception): the default pipeline generates and runs the programs Q-O3's

@@ -58,8 +58,8 @@ public sealed partial class Binding
     }
 
     // SPEC 5.7, Reading a Field: a `during self` layer read at `place` (a Field, or a Subject a payload is selected from in place)
-    // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), formed with that dereference's mode, the
-    // special receiver's in a constructor or drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
+    // states the Origin of the last borrow or raw pointer the path dereferences (PathOrigin), the special receiver's in a constructor or
+    // drop, or none through no dereference; null after a located Unsupported_Kd at `node` (U2).
     private BoundType? ReadHolder(BoundType type, Koto place, Koto node)
     {
         if (!type.CarriesRawOrigin || !HoldsHolder(type))
@@ -74,7 +74,7 @@ public sealed partial class Binding
             return null;
         }
 
-        return this.ReplaceHolder(type, path.Origin is { } origin ? this.Formed(origin, path.Mode) : null);
+        return this.ReplaceHolder(type, path.Origin);
     }
 
     private BoundType ReplaceHolder(BoundType type, BoundOrigin? image)
@@ -132,7 +132,7 @@ public sealed partial class Binding
             return true;
         }
 
-        var longer = RegionOf(written?.BoundType?.RawOrigin) ?? BoundOrigin.Unstated;
+        var longer = written?.BoundType?.RawOrigin ?? BoundOrigin.Unstated;
         var relation = new OriginRelationFact(at, longer, BoundOrigin.Holder, Equality: false, stored, Refuted: true);
         this.FailExplained(ref this.originRelations, at, BindingFailure.OriginRelation, relation);
         return true;

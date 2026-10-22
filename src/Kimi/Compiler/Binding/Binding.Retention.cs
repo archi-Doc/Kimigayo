@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Runtime.InteropServices;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -16,10 +17,12 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, int> retentionCarriers = new(ReferenceEqualityComparer.Instance);
 
     // The inputs (and declaring Type) of the contract or erased signature being walked, whose borrows a raw layer's Origin belongs to
-    // (RawContent), reused; the raw Origins whose content is being walked, outermost first, so a referent naming one of them again
-    // ends there; and whether its result has a raw layer without an Origin (SPEC 5.7 Calls, D6).
+    // (RawContent), reused, and how many of them are its inputs (SignatureStep reads those); the raw Origins whose content is being
+    // walked, outermost first, so a referent naming one of them again ends there; and whether its result has a raw layer without an
+    // Origin (SPEC 5.7 Calls, D6).
     private readonly List<BoundType> retentionScope = new();
     private readonly List<BoundOrigin> retentionRawChain = new();
+    private int retentionInputs;
     private bool retentionUnstatedResult;
 
     // SPEC 15.6.4: the retention of a callee's contract whose inputs and result are instantiated (a function, or the closure or item a
@@ -108,6 +111,7 @@ public sealed partial class Binding
         this.retentionCarriers.Clear();
         this.retentionScope.Clear();
         this.retentionScope.AddRange(inputs);
+        this.retentionInputs = inputs.Length;
         if (declaring is not null)
         {
             this.retentionScope.Add(declaring);
@@ -175,9 +179,10 @@ public sealed partial class Binding
     // of a raw layer without an Origin or with `static`, or a value the call may write, whose nominal Type may hide an exclusive layer)
     // at or above it: a value stored there brings its whole Type, so every occurrence below that position is in it, past any layer
     // (SPEC 15.6.4, DECISIONS BU-1). Before such a position, the walk reaches no writable storage past a shared layer or a raw layer
-    // whose step is Shared (`at.Shared`, SPEC 5.7, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a pair layer whose
-    // binder admits no exclusive Semantics. A raw layer with another Origin addresses what the borrows its Origin belongs to admit
-    // (RawContent), and its atom is that Origin's region, as a borrow's; a raw result layer without one reaches every input (D6).
+    // the contract's signature makes Shared (`at.Shared`; SignatureStep: only shared input borrows state its Origin there, so a pointer
+    // read from it has read authority only, SPEC 5.2.1 condition 3, 8.11.4 rule 1; D10, superseding R4-M51's raw clause), nor past a
+    // pair layer whose binder admits no exclusive Semantics. A raw layer with another Origin addresses what each borrow its Origin
+    // belongs to admits (RawContent), and its atom is that Origin, as a borrow's; a raw result layer without one reaches every input (D6).
     // A callable Type stores nothing, and its per-call Origins belong to no value of it (SPEC 15.2.3).
     private void RetentionWalk(BoundType type, RetentionAtom at, OriginVariance variance, bool callable)
     {
@@ -214,13 +219,13 @@ public sealed partial class Binding
             (type.Kind == BoundTypeKind.Semantics && type.Semantics is SemanticsKind.Ref or SemanticsKind.ObjRef or SemanticsKind.Rc or SemanticsKind.Arc);
         var raw = type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw };
         var rawOrigin = type.RawOrigin;
-        var step = raw && !inside ? this.PublishedStep(rawOrigin) : RawStep.Unstated;
+        var step = raw && !inside ? this.SignatureStep(rawOrigin, CollectionsMarshal.AsSpan(this.retentionScope)[..this.retentionInputs]) : RawStep.Unstated;
         var past = at.Shared || shared || step == RawStep.Shared;
         var through = raw ? !past && step is RawStep.Unstated or RawStep.Static : at.Writable && !shared;
         var below = at with { Layer = layer, Writable = !inside && (through || here.Writable), Shared = past };
         if (raw && !inside && !past && step == RawStep.Exclusive && at.Input >= 0)
         {
-            this.RawContent(RegionOf(rawOrigin)!, at.Input);
+            this.RawContent(rawOrigin!, at.Input);
         }
 
         this.retentionUnstatedResult |= raw && !inside && rawOrigin is null && at.Input == Retention.Result;
@@ -230,9 +235,9 @@ public sealed partial class Binding
         }
     }
 
-    // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what the borrows the
-    // Origin belongs to admit, walked as input `index`'s writable content: the referent of each input whose outer Origin it is, and the
-    // keepers of each slot it binds in a nominal Type of the contract, substituted by that Type.
+    // SPEC 5.7 Calls (D15; design-final §6.2): a raw parameter layer whose Origin steps Exclusive lets the call write what each borrow the
+    // Origin belongs to admits (RawMembers: the referent of each input whose outer Origin it is, the keepers of each slot it binds in a
+    // nominal Type of the contract, substituted by that Type), walked as input `index`'s writable content.
     private void RawContent(BoundOrigin origin, int index)
     {
         // An Origin whose content is being walked adds nothing new when its referent reaches it again.
@@ -243,66 +248,16 @@ public sealed partial class Binding
 
         this.retentionRawChain.Add(origin);
         var content = new RetentionAtom(index, RetentionKind.Content, Writable: true, null, null, origin);
-        for (var i = 0; i < this.retentionScope.Count; i++)
+        var start = this.rawMembers.Count;
+        this.RawMembers(origin, CollectionsMarshal.AsSpan(this.retentionScope), this.rawMembers);
+        var end = this.rawMembers.Count;
+        for (var i = start; i < end; i++)
         {
-            var input = this.retentionScope[i];
-            if (ReferenceEquals(this.OuterOrigin(input), origin) && this.BorrowReferent(input, out _, out _) is { } referent)
-            {
-                this.RetentionWalk(referent, content, OriginVariance.Invariant, callable: false);
-            }
-
-            this.SlotContent(input, origin, content);
+            this.RetentionWalk(this.rawMembers[i].Referent, content, OriginVariance.Invariant, callable: false);
         }
 
+        this.rawMembers.RemoveRange(start, end - start);
         this.retentionRawChain.RemoveAt(this.retentionRawChain.Count - 1);
-    }
-
-    // The keepers of each slot of a nominal Type within `type` that `origin` binds, substituted by that Type, walked as `content`.
-    private void SlotContent(BoundType type, BoundOrigin origin, RetentionAtom content)
-    {
-        for (var i = 0; i < type.Components.Count; i++)
-        {
-            this.SlotContent(type.Components[i], origin, content);
-        }
-
-        for (var i = 0; type.Symbol?.Schema is { } schema && i < type.OriginArguments.Count && i < schema.Origins.Count; i++)
-        {
-            if (ReferenceEquals(type.OriginArguments[i], origin))
-            {
-                this.KeeperContent(schema.Origins[i], type, content, this.keeperChain.Count);
-            }
-        }
-    }
-
-    // A slot's keepers in `owner`: each kept referent, or a nested Type's slot's keepers in that Type, substituted by `owner`. The walk's
-    // chain (keeperChain from `chain` on) ends at a slot already on it: its cycle returns the owner it started from, since one that does
-    // not is rejected at its declaration (RejectPolymorphicKeeperCycles), so nothing is lost.
-    private void KeeperContent(OriginParameter slot, BoundType owner, RetentionAtom content, int chain)
-    {
-        if (this.keeperChain.IndexOf(slot, chain) >= 0)
-        {
-            return;
-        }
-
-        this.keeperChain.Add(slot);
-        foreach (var keeper in this.Keepers(slot))
-        {
-            if (this.StoredType(keeper.Type, owner) is not { } kept)
-            {
-                continue;
-            }
-
-            if (keeper.Via is null)
-            {
-                this.RetentionWalk(kept, content, OriginVariance.Invariant, callable: false);
-            }
-            else
-            {
-                this.KeeperContent(keeper.Via, kept, content, chain);
-            }
-        }
-
-        this.keeperChain.RemoveAt(this.keeperChain.Count - 1);
     }
 
     // An Origin occurrence; a Function Type's per-call Origin, bound by its own syntax, belongs to no value of it (SPEC 15.3.4).

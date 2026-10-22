@@ -395,8 +395,8 @@ public sealed record BoundType
         this.Semantics = semantics;
         this.Components = components ?? [];
         this.Length = length;
-        // DECISIONS BU-24: the slot's role is the layer's. Unstated is never stored; Shared(L) and Holder only in the raw role.
-        if (origin?.Kind == OriginKind.Unstated || (semantics != SemanticsKind.Raw && origin?.Kind is OriginKind.Shared or OriginKind.Holder))
+        // DECISIONS BU-24: the slot's role is the layer's. Unstated is never stored; Holder only in the raw role.
+        if (origin?.Kind == OriginKind.Unstated || (semantics != SemanticsKind.Raw && origin?.Kind == OriginKind.Holder))
         {
             throw new InvalidOperationException($"An Origin of kind {origin.Kind} is no Origin of a {semantics} layer.");
         }

@@ -82,8 +82,7 @@ public sealed partial class Binding
             return this.ReadHolder(stored, plan.Syntax.Expression, node);
         }
 
-        var mode = reach.Access == PatternAccessMode.Shared ? RawStep.Shared : RawStep.Exclusive;
-        return this.ReplaceHolder(stored, reach.Origin is { } through ? this.Formed(through, mode) : null);
+        return this.ReplaceHolder(stored, reach.Origin);
     }
 
     // SPEC 15.1.6 (Bindings): a part of an owned Subject or item reached with owned access is bound as its stored Type; a Place reached

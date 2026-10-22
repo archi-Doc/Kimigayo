@@ -202,7 +202,7 @@ public sealed partial class Binding
                     return null;
                 }
 
-                type = this.types.Pointer(type.Components[0], raw.Kind == OriginKind.Unstated ? null : raw);
+                type = this.types.Pointer(type.Components[0], raw);
             }
         }
         else
@@ -361,7 +361,7 @@ public sealed partial class Binding
         if (type.RawOrigin is { Kind: not OriginKind.Holder } raw)
         {
             // SPEC 5.7: a raw layer's Origin is a covariant position, no use of a slot for Loan requirements or Phantom status.
-            this.AccumulateOrigin(RegionOf(raw)!, schema, polarity, LoanRequirement.None, ref changed);
+            this.AccumulateOrigin(raw, schema, polarity, LoanRequirement.None, ref changed);
         }
 
         // A Type may carry fewer or more arguments than its declaration while a pass is
@@ -428,13 +428,6 @@ public sealed partial class Binding
 
             if (loan > parameter.LoanRequirement)
             {
-                // Written raw Origins were judged on the first fixed point's requirements (RejectRawOrigins, then each body's at its
-                // formation), so a later raise is a broken contract (DECISIONS BU-24: bodies add no Loan requirement to a slot).
-                if (this.rawJudgmentVersion == this.storageVersion)
-                {
-                    throw new InvalidOperationException($"The Loan requirement of `{parameter.Name}` rose after raw Origins were judged (InternalInvariant).");
-                }
-
                 parameter.LoanRequirement = loan;
                 changed = true;
             }
@@ -449,6 +442,11 @@ public sealed partial class Binding
             if (node.BoundType is not { } type)
             {
                 continue;
+            }
+
+            if (node is TypeSemanticsKoto { BoundType.RawOrigin: { } raw } written)
+            {
+                this.JudgeRawOrigin(written, raw); // SPEC 5.7: every written raw Origin, after the last fixed point.
             }
 
             var invalid = false;
