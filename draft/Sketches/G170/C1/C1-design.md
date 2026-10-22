@@ -122,13 +122,13 @@ identity goals with a constructed side): each Supply query and up to 8 reference
 | nested, each query its own process: seed 77 (40 models, 653 queries; 50 overflows, 16 over the 60 s budget, 34 declaration-error queries of 2 models); seed 78 (20, 324; 17) | 553 / 0 / 0; 307 / 0 / 0 | not run |
 
 No Supply query was unstable. The seed-4242 rows and the nested probes are the final build's; the seed-20261022 rows are the P2 build's (9c2325e8f, before the redo), not re-run. Exclusions depend on
-the reference's 5 s guard and the machine's load (R3-N2). The reference's answers changed under B wherever decomposition applies, so the counts are re-based, not reused; the default, two-parameter and
-nested profiles generate the same models as before. Nested model 39 `T is V`, Resource at 3,000 items on `152dda62`, is `+ Complete` at 300 items here (V 211). Fixed cases (153, all pass,
-[results/fixed.txt](results/fixed.txt)): rounds 1–4's (G170 depth 1–8, §3's B and D inputs, G180, negation, compounds, cycles, recursion, pending and Resource sources, the check under way, frozen
-views, the 4- and 64-Contract workloads, Enumerate's same-declaration facts, the review witnesses), round 5's (shared-n, shared-pos, shared-live-n, the wildcard join, a shape variable at two
-positions, m41, the kid meetings) and B's 22 (decomposition, conflicts, cycles, Refuted at kids and components, projection sides, negated rows, limit-keeps-proven, open-live-n) and the final review's
-witnesses (w2b-retire, w13a, w13b, w15, w3). Three old cases change meaning under B and are `none C` with the reason beside each (a binding against its requirement, B 3.7; `Opt<B0> is List<i32>`
-conflicts: shape5, shape7), with valid R4-B2 witnesses added. `pending` (seed 4245): Complete 2,629 (pending would change 0); Provisional 123 (pending changes 19).
+the reference's 5 s guard and the machine's load (R3-N2). The counts are re-based under B (the reference's answers changed wherever decomposition applies). Nested model 39 `T is V`, Resource at 3,000
+items on `152dda62`, is `+ Complete` at 300 items here (V 211). Fixed cases (153, all pass, [results/fixed.txt](results/fixed.txt)): rounds 1–4's (G170 depth 1–8, §3's B and D inputs, G180, negation,
+compounds, cycles, recursion, pending and Resource sources, the check under way, frozen views, the 4- and 64-Contract workloads, Enumerate's same-declaration facts, the review witnesses), round 5's
+(shared-n, shared-pos, shared-live-n, the wildcard join, a shape variable at two positions, m41, the kid meetings) and B's 22 (decomposition, conflicts, cycles, Refuted at kids and components,
+projection sides, negated rows, limit-keeps-proven, open-live-n) and the final review's witnesses (w2b-retire, w13a, w13b, w15, w3). Three old cases change meaning under B and are `none C` with the
+reason beside each (a binding against its requirement, B 3.7; `Opt<B0> is List<i32>` conflicts: shape5, shape7), with valid R4-B2 witnesses added. `pending` (seed 4245): Complete 2,629 (pending would
+change 0); Provisional 123 (pending changes 19).
 
 ## 3. Real-source witnesses
 
@@ -144,16 +144,16 @@ excluding D is none, so `E.(Q).W is i32` is none in D's view (today: +). Corpus 
 ## 4. Resource boundary and transport
 
 - **Limits, per request** (owner, OQ2): **rounds** (SPEC 8.3.3's search depth) and **items** (rows — demands, class demands, subscriptions, need and meeting rows, stored chain promises (one per
-  (class, shape); members are not items) —, supports, identity nodes; the seeded state counts); 4,096 and 65,536 provisional (C3 confirms them, IMPL 21.3.2/A.4). No join-work or read-alternatives
+  (class, shape); members are not items) —, supports, identity nodes; the seeded state counts); 4,096 and 65,536 provisional (C3 confirms them, IMPL 21.3.2/A.4); no join-work or read-alternatives
   limit. **At a limit** (B 3.10, D9): the polarities established at the stop stand in the answer; `Checker.Judge` maps Resource with the positive polarity established to Proven (both: Error),
   everything else to `Proof.Resource` — an established Refuted does not stand (more analysis could turn it into Error); the limit's record is written as before. Declaration validation (B 3.10: a
   premise error reported once at the declaration, never at a use) is not the request's: C3's input (§8).
 - **Order-free.** Each limit reads the state after a round and rounds are Jacobi. J (reported, never a limit) counts matching steps, index entries, probes, agreements, member requests, join steps,
   expansions computed (replays add nothing), classes merged and nodes over a merged class: a function of the round's starting state. `order` ([results/order.txt](results/order.txt)): 1,816 requests on
   400 models (seed 4242), 440 two-parameter and 444 structural requests (100 models each), templates and Contracts shuffled, ordinary and frozen views, 5,734 + 1,430 + 1,380 runs at each request's
-  need and need − 1 per limit, plus 3 × 30 shuffled runs of the unbounded enumeration at 300 items, G170 depth 8, nested 39 at 3,000 and 300 items and the fired-set witness (a merge every round,
-  chains stored before merges): 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items (seed 20261021: 1,832 requests, 0 differ, on the P2 build). The five causes this round found and
-  removed are in §10.
+  need and need − 1 per limit, plus 3 × 36 shuffled runs of the unbounded enumeration at 300 items, G170 depth 8, nested 39 at 3,000 and 300 items, the fired-set and the waiter witnesses (a merge
+  every round, chains stored before merges): 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; seed 20261022 default (100 models, 452 requests, 1,414 boundary runs): 0 differ.
+  The six causes this round found and removed are in §10.
 - **Tested values** (`resource`, [results/resource.txt](results/resource.txt)): G170 depth 8 and 64 complete at the need and are Resource at need − 1; enumerating a closed Type's infinite class is
   Resource at every limit; limit-keeps-proven (seed 20261022 model 312, 5,438 items needed) is Proven at 3,000 items with the limit's record. **Time to the item limit** (R2-N2; `limit`, three runs
   interleaved with `152dda62`'s build, load 2–13 %, [results/limit.txt](results/limit.txt)): 0.17 / 1.0–1.1 / 4.8–5.2 s to 1,000 / 3,000 / 10,000 items, J 63,858 / 564,267 / 6,214,809 (`152dda62`:
@@ -188,17 +188,17 @@ identity classes are TypeIdentity's (Q4; its own unit first: OQ5), which decompo
 Completion }`; `Enumerate(BoundType subject, EvidenceView view, declarations) -> SubjectEvidence { facts on the subject's class (positive or negated, available or only discoverable), identity members,
 Completion }`, `declarations` the consumer's candidates (identity: none, N8); `EvidenceView { BindingScope Premises, SourceState (provisional pass or final), FrozenDefinition (null for ordinary
 proof), Inadmissible (the inference owner's published set), UnderCheck (the conformance or declaration whose own check is running) }`; `Completion = Complete | Provisional | Resource(limit, count |
-source)`. No read sets (B2, OQ3): "depends" is per derivation and G172's design decides how a definition's value reaches another definition's view (prefer option (c), §3). Invariants: Jacobi rounds
-over request-local rows; answers, counts and limit outcomes functions of (request, inputs); indexes prune only pairs that can never be one Type; identity decomposed only by the structure, never
-projections or Contract arguments; nothing guessed; inadmissible bindings never read; Pending never a cached negative; Resource never absent. Prohibitions: no Binding writes, syntax-triggered supply,
-`DerivedFacts`, fallback fact scan, mode or bool parameter, cross-request semantic cache, second scheduler or read sets.
+source)`. No read sets (B2, OQ3): "depends" is per derivation and G172's design decides how a definition's value reaches another definition's view. Invariants: Jacobi rounds over request-local rows;
+answers, counts and limit outcomes functions of (request, inputs); indexes prune only pairs that can never be one Type; identity decomposed only by the structure, never projections or Contract
+arguments; nothing guessed; inadmissible bindings never read; Pending never a cached negative; Resource never absent. Prohibitions: no Binding writes, syntax-triggered supply, `DerivedFacts`, fallback
+fact scan, mode or bool parameter, cross-request semantic cache, second scheduler or read sets.
 
 ## 7. Cost
 
 A reference implementation (struct keys since round 5, LINQ), not the production evaluator; no speed claim ([results/cost.txt](results/cost.txt),
 [results/cost-152dda62.txt](results/cost-152dda62.txt), [results/scale.txt](results/scale.txt), [results/limit.txt](results/limit.txt), [results/profile.txt](results/profile.txt); `cost`: median of 15
 after 5, allocation per request; `scale`: median of 21 after 5; the machine shared with other sessions, load 3–56 % during `cost` and `scale`; the `152dda62` column is the same workload on that build,
-its `cost` from the P2 session's run at load 82–96 %):
+its `cost` from the P2 run):
 
 | Workload | Rounds | V | J | Time | Allocated | `152dda62` |
 | --- | ---: | ---: | ---: | ---: | ---: | --- |
@@ -218,12 +218,12 @@ explores the infinite universe `associate Y is K2` opens (need rows 4 → 54,148
 the Checker's Proven; its cost at the production limits is a C3 measurement; (iii) model 361: fixed this round (J 1.3 G → 1.4 M by one node per Type; 6.7 M once the join expands by the one expansion,
 §10), still Resource at 3,000 items as on `152dda62`.
 
-**Program-size scaling** (`T is Copy` unrelated unless stated; n = 10 / 400 / 1,600; shared-n also 20 / 40 / 100; shared-live-n and open-live-n 10 / 40 / 100 / 400). Rule 4 makes every family whose n
-Contracts have no fact flat (their rows are dead). shared-live-n (every Ki live through a conformance) is the live witness of R4-B1: one promise per class holds the n rows, V and J are linear; its
-**time is superlinear** (0.8 / 3.5 / 23 / 187 ms at 10 / 40 / 100 / 400, load 56 %): each of the 2n antecedent demands owns the n subscriptions (D1's `Owners` and `Requested` sets and the per-owner
-`expansions` keys: 2n² memberships), work not counted in J; recorded, not removed by a cache (an owner question, §9). open-live-n (n live `Wi: associate X is List<Self>`) measures rule 8 up: V and J
-linear (a class demand requests each row once). Adapter (loaded): `ProveCopy` of the G170 value against C, interleaved medians of 41: d2 7.8 µs against 124 µs and 76 KB, d8 28 µs against 1,088 µs and
-409 KB; the corpus's 400 requests 38 ms, 15.2 MB (the 44 programs' warm rebinds 1,070 ms).
+**Program-size scaling** (`T is Copy` unrelated unless stated; n = 10 / 400 / 1,600; shared-n also 20 / 40 / 100; shared-live-n and open-live-n 10 / 40 / 100 / 400). shared-live-n (every Ki live
+through a conformance) is the live witness of R4-B1: one promise per class holds the n rows, V and J are linear; its **time is superlinear** (0.8 / 3.5 / 23 / 187 ms at 10 / 40 / 100 / 400, load 56
+%): each of the 2n antecedent demands owns the n subscriptions (D1's `Owners` and `Requested` sets and the per-owner `expansions` keys: 2n² memberships), work not counted in J; recorded, not removed
+by a cache (an owner question, §9). open-live-n (n live `Wi: associate X is List<Self>`) measures rule 8 up: V and J linear (a class demand requests each row once). Adapter (loaded): `ProveCopy` of
+the G170 value against C, interleaved medians of 41: d2 7.8 µs against 124 µs and 76 KB, d8 28 µs against 1,088 µs and 409 KB; the corpus's 400 requests 38 ms, 15.2 MB (the 44 programs' warm rebinds
+1,070 ms).
 
 | Request | Answer | Rounds | V | J | Time | `152dda62` |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
@@ -237,8 +237,7 @@ linear (a class demand requests each row once). Adapter (loaded): `ProveCopy` of
 
 ## 8. C2's input list
 
-C0's census ([c0/census-raw.tsv](../c0/census-raw.tsv)) mapped to the operations; C2 routes each read as a pure move (answered from today's Facts), C3 replaces the answer. Paths under
-`src/Kimi/Compiler/Binding/`.
+C0's census ([c0/census-raw.tsv](../c0/census-raw.tsv)) mapped to the operations; C2 routes each read as a pure move, C3 replaces the answer. Paths under `src/Kimi/Compiler/Binding/`.
 
 | Read site (method) | Operation | Behavior change at C3 |
 | --- | --- | --- |
@@ -267,7 +266,7 @@ Callable constraints, Origin families, generic value-side conformances, structur
 | Q1/OQ1 Resource diagnostic; R2-B1 identity selection | one shared Binding analysis-limit code, the limit as an argument, the last free `BindingFailure` entry (also G172's inference budget and G174's fixed points); one need-driven rule for every identity side (§1), not a whitelist or a hold (「一般規則 (推奨)」) | owner, 2026-10-21 |
 | R4-B1 / R4-B2 (round 5) | the general rule: §1's rules 1–5 — a promise is a shape, matched as a node, filters from classes only, dead rows are not rows | owner's brief 2026-10-22 §3–§4; planning session (common design §4) |
 | Proposal B (2026-10-22) | the fixed decision "identity is not a row and is never decomposed (SPEC 8.2.3)" is superseded by the owner's spec change: identity is still not a row; the structure decomposes it (B 3.3), never projections or Contract arguments (B 3.5). Addendum decisions D5 (a Contract reference is not a Type: a reference agrees only with the same reference head, its arguments by the kid rule; reference classes gain no promise and meet only the same reference), D6 (rule 6), D7 (rule 7), D8 (rule 8), D9 (rule 9; at a limit only Proven and Error stand; declaration validation is C3's) | owner; planning session's addendum (three design-review rounds) |
-| Round 5, track P | struct keys (no string key in a request); the join by unification through an index, both lookups unfiltered; no semi-naive re-examination device in C1 (§4 records it as C3's input); one re-keying mechanism, `ShapeTable.Canon`; D1 subscriptions as owned rows; D2 the expansion memo per (promise, pattern, sign) without the requester; a chain's base re-resolved per round, never a snapshot; a parent's promises the round's top-level lookup; one node per Type in the structure by removal (a congruent duplicate leaves its class and its kids' use lists and owns no key; no flag, no filtered use list; the alternative, B0's duplicates kept until the memo merges them, rejected: a duplicate member is matched as another node and multiplies through nested patterns — model 361 J 1.3 G, 257 s — and the join and every lookup read class members); a promise's index key from its shape; one head function and one member expansion (rules 3, 5); a subscription's fired facts re-keyed when facts become one (rule 5); need rows as tagged effects (m41); no cache and no budget for a slow model (361, 12, seed 78 model 2: a cause fixed or an open item) | planning session, design P §1–§4, common §9 D1–D4; §10 |
+| Round 5, track P | struct keys (no string key in a request); the join by unification through an index, both lookups unfiltered; no semi-naive re-examination device in C1 (§4 records it as C3's input); one re-keying mechanism, `ShapeTable.Canon`; D1 subscriptions as owned rows; D2 the expansion memo per (promise, pattern, sign) without the requester; a chain's base re-resolved per round, never a snapshot; a parent's promises the round's top-level lookup; one node per Type in the structure by removal (a congruent duplicate leaves its class and its kids' use lists and owns no key; no flag, no filtered use list; the alternative, B0's duplicates kept until the memo merges them, rejected: a duplicate member is matched as another node and multiplies through nested patterns — model 361 J 1.3 G, 257 s — and the join and every lookup read class members); a promise's index key from its shape; one head function and one member expansion (rules 3, 5); a subscription's fired facts re-keyed when facts become one (rule 5); a bound-expansion waiter woken only by its Type (rule 5); need rows as tagged effects (m41); no cache and no budget for a slow model (361, 12, seed 78 model 2: a cause fixed or an open item) | planning session, design P §1–§4, common §9 D1–D4; §10 |
 | Q2 transport; Q4 identity classes, OQ5 scope | `ConstraintProof` gains a fifth member `Resource` (§4; N10); TypeIdentity owns the classes, C reads them (promises are C's, keyed by class); a separate reproduced identity unit before C3 | planning session |
 | Q3/OQ3 "depends"; Q5/OQ2 limits; OQ4 D5 freeze | per derivation, no read sets in C0–C4, G172's design decides its flow-back (prefer option (c)); rounds and items, 4,096 and 65,536 provisional, confirmed by C3 (§4's gate), in IMPL 21.3.2/A.4 at C3; where C3 shows only the proof changes and the old Emission generates correctly, the default pipeline accepts, otherwise a guard reports the located `Unsupported_Kd` until R6-check | owner |
 
@@ -290,6 +289,7 @@ subject class's demand, n memberships).
 | Round 5: seed 4242 model 361 `T.(K2).X is K0` (J 1.3 G, 257 s at 3,000 items; `df1ddea4` > 150 s) | per-site attribution: lookups per round grew linearly, `Match` calls 1.7× per round, because after each congruence a class kept the node whose key another node owned (a duplicate member, matched as another one; duplicates multiply through nested patterns). Rule 6: one node per Type per class; the node leaves its class and its kids' use lists | same rounds, V, E, N; J 1.4 M, 1.0–2.9 s warm (§7) |
 | Addendum review (rounds 1–3): a negated component refutes the parent (B2); projection-headed kids compared by head (B1); the structure need (B3); the kid pair selects the negated row (round 2 B1); Refuted owned by the Solver; at a limit an established Refuted is Resource (N2); the structural profile's exclusions | rules 7 and 9 as stated; Refuted with its negated-fact base case in `Solver`; `Checker.Judge`; the profile emits one constructed other side per projection, only where the declared requirement is not a constructed Type | fixed cases negated-component, proj-kids, proj-vs-con, projection-side, negated-row-kid; structural declaration errors 70 and 64 of 200 (B0: 99) |
 | Final review, round 1: B1 a congruent duplicate stayed in `usesOf`, owned the re-keyed key and retired the survivor (w2b-retire `A is Cp`: none); B2 rule 8's kid heads lived only in `Shapes` while demand and compound candidates and the join's heads read `VirtualHeads(HeadsOf(c))`, and the join's `Partners` expanded rows and chains but never producers (w13a, w13b, w15 `V is Cp`: none); B3 a negated row was requested only when its side bound the other side (w3 `T.(K).X is U`: none); N1 the item-limit curve; N3 a decomposed promise keyed by its producer's head; N5 `inProgress` | B1: one node per Type by removal (§9; `Retired` and the `UsesOf` filter deleted; the bound expansion scans a removed id as its survivor, same class and kids); B2: one head function `HeadsFor` (rule 3) at every filter, index and candidate selection, one member expansion `Expand` at every site including the join (`Partners`' own agreement, row requests and conditional forwarding deleted); N3: `Key` from the shape (rule 1); B3: the `Unbound` filter deleted, `Request` gates (rule 9); N1 stated (§0, §4); N5: a lookup asking itself through a cyclic structure answers nothing — reached by premise-error structures only (B 3.6) | fixed cases w2b-retire, w13a, w13b, w15, w3 (`+`, `+`, `+`, `+`, `-`); §2, §4 and §7 re-run on the redo |
+| Final review, round 2, N1 (inherited; on `152dda62` too): `order 100 20261022` differed in J by ±2 (10 of 452 requests; model 94 `T.(K2).X is Cp` 44 vs 42) | `EagerExpand`'s `waiting` woke a bound-expansion instance, and counted it, for every later-scanned node of the waited head (`List<U>` for a wait on `List<i32>`): a function of node ids. Rule: a waiter wakes only for the Type it waits for (the scanned node's class is its other side's; `OtherOf`, one expression for the wait and the wake); a futile wake is not work | the order mode's sixth fixed model (`EagerWake`: 3 of 6 shuffles differed before, 0 after); `order 100 20261022` 0 differ |
 | Redo: structural `order` (seed 4242 model 37) differed in E, J and peak items (9 of 444 requests; also on the P2 build) | a fifth representation read an accident of order: a subscription's fired set held fact ids, and when two facts became one (`i32 is K0<List<i32>>` and `U is K0<i32>` under U = i32) the union's root was whichever had the lower id, so one order fired the row again. Rule 5: every stored key is re-keyed after a round; the fired set follows the facts' union | the order mode's fifth fixed model (`FiredRekey`: 4 of 6 shuffles differed before, 0 after); structural `order` 0 differ |
 | R4-N1 references as Types; R4-N2 classification; R4-N3 parser; R3-B1, R3-B2; R2-B1, R2-B2, R2-N1–N5; round 1 B1–B4, N1–N12 | D5 adopted (§9); the C4 gate stands; prototype only; the rest as recorded in rounds 2–4 (`c1-review.md`) | §9; fixed cases; `order`; §3; `resource` |
 
@@ -297,4 +297,4 @@ Deleted since round 4 (`Solver.cs` 4,164 lines, `Shapes.cs` 188, `EGraph.cs` 356
 `MeetVirtuals`, `ExpandAt`, `Settle`, `Agree`'s term form, `AgreeClass`, `SameShape`, `HasFree`, `MayUnify`, `BindKey`, `SubText`'s string, `Sub.Requester`, `Groups`/`Group`, `Admits`, `Reachable`,
 `Effects.Refreshed`, `KidHeads`' term-head branch, the `KidAt` filter on stored chains, the deferred-true branches of `Kid` for constructor nodes, `EGraph.Refuted`/`Part` (now `ProperPart`, `Clash`
 and the Solver's `Refuted`); after the final review: `EGraph.Retired` and the `retired` list, `UsesOf`'s filter, `Shapes`/`KidShapes` (one `HeadsFor` with `PromiseHeads` as its promises' part),
-`VirtualHeads(HeadsOf(c))` at three sites, `Partners`' agreement loop, the `Unbound` filter on negated rows.
+`VirtualHeads(HeadsOf(c))` at three sites, `Partners`' agreement loop, the head-keyed wake of `waiting`, the `Unbound` filter on negated rows.

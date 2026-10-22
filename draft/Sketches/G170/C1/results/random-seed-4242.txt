@@ -362,8 +362,8 @@ conformance S1 is K0
   binding X = i32
   binding Y = S2
 
-SLOW model 76: 96 s
-SLOW model 150: 45 s
+SLOW model 76: 115 s
+SLOW model 150: 63 s
 DECLARATION-ERROR model 157 view ordinary: conflict
 contract Cp
 contract K0
@@ -525,7 +525,7 @@ conformance S1 is K0
   binding X = i32
   binding Y = S2 inferred 1
 
-SLOW model 241: 81 s
+SLOW model 241: 88 s
 DECLARATION-ERROR model 249 view ordinary: conflict
 contract Cp
 contract K0<A>
@@ -567,7 +567,7 @@ conformance S1 is K2<i64> pending
   binding X = List<i32>
   binding Y = List<i32> inferred 0
 
-SLOW model 263: 41 s
+SLOW model 263: 48 s
 DECLARATION-ERROR model 279 view ordinary: conflict
 contract Cp
 contract K0<A>
@@ -706,7 +706,7 @@ contract K3<A>
 input T is K0<List<i32>>
 input T.(K0<List<i32>>).Y is i32
 
-== RANDOM seed 4242: 110 s; models 400 (reference overflow 9, declaration errors 20); Supply queries 7813 (1728 of them reference-derived facts, 984 in a frozen view): stable 7813 (agree 7745, disagree 0, C Resource 68), unstable 0 (C Resource 0), provisional 565
+== RANDOM seed 4242: 139 s; models 400 (reference overflow 9, declaration errors 20); Supply queries 7813 (1728 of them reference-derived facts, 984 in a frozen view): stable 7813 (agree 7745, disagree 0, C Resource 68), unstable 0 (C Resource 0), provisional 565
    C Resource on stable queries: 68, of which the reference has evidence for neither polarity 55
    answer kinds on stable agreement: Eq=666, Eq-=447, Eq+=31, Is=3724, Is-=17, Is+=2130, Is+-=54, Or-compound=658, Or-compound+=18
    Enumerate: 707: agree 701, disagree 0, C Resource 6, unstable 0

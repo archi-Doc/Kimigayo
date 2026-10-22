@@ -1796,6 +1796,7 @@ public static class Runner
             ("nested 39 at 3,000 items", Nested39, "T is V", null, new Limits { Rounds = 300, Items = 3000 }),
             ("nested 39 at 300 items", Nested39, "T is V", null, new Limits { Rounds = 300, Items = 300 }),
             ("fired set re-keyed when facts become one (structural seed 4242 model 37)", FiredRekey, "T.(K1<i32>).Y is K2<U>", null, Harness),
+            ("a waiter wakes only for the Type it waits for (seed 20261022 model 94)", EagerWake, "T.(K2).X is Cp", null, Harness),
         })
         {
             var m = ModelText.Parse(text);
@@ -1891,6 +1892,27 @@ public static class Runner
     /// nested-projection identity rows.</summary>
     // Two facts that become one when their classes merge (`i32 is K0<List<i32>>`, `U is K0<i32>` under U = List<i32> = i32): a
     // subscription that fired on one of them fires again on the other unless its fired set follows the facts' union.
+    // A bound-expansion instance waiting for `List<i32>` was woken (and counted) by every later node of head List (`List<U>`).
+    private const string EagerWake = """
+        contract Cp
+        contract K0
+          clause Self is Cp
+          clause Self is Cp
+        contract K1
+          clause Self is K1
+          clause Self is K1
+        contract K2
+          associate X
+          clause Self.(K2).X is List<i32>
+        input T is K2
+        input U is K1
+        input U is not Cp
+        input T.(K2).X is i32
+        input List<U> is Cp
+        conformance S1 is K0
+        conformance S2 is K0
+        """;
+
     private const string FiredRekey = """
         contract Cp
         contract K0<A> : Cp

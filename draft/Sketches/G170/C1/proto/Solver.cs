@@ -1617,12 +1617,31 @@ public sealed class Solver
         {
             var nodeClass = this.g.ClassOfNode(node);
             var head = new HeadKey(this.g.HeadOf(node), this.g.KidCount(node));
-            if (this.waiting.Remove(head, out var waiters))
+            if (this.waiting.TryGetValue(head, out var waiters))
             {
+                // A waiter wakes only for the Type it waits for: the scanned node's class is that Type's (a wake for another node of
+                // the head is futile and is not work, so J is a function of the state, never of node ids).
+                var still = new List<(ShapeEntry Entry, int?[] Beta, int Scanned)>();
                 foreach (var (entry, beta, scanned) in waiters)
                 {
-                    this.work++;
-                    this.BindShape(entry, beta, scanned, fx, active, probe);
+                    if (this.OtherOf(entry, beta) == nodeClass)
+                    {
+                        this.work++;
+                        this.BindShape(entry, beta, scanned, fx, active, probe);
+                    }
+                    else
+                    {
+                        still.Add((entry, beta, scanned));
+                    }
+                }
+
+                if (still.Count == 0)
+                {
+                    this.waiting.Remove(head);
+                }
+                else
+                {
+                    this.waiting[head] = still;
                 }
             }
 
@@ -1674,7 +1693,7 @@ public sealed class Solver
         scanned = this.g.Find(scanned);
         if (entry.Both)
         {
-            var other = entry.Side.Head is VarHead v ? beta[v.Index] ?? -1 : this.ClassOf(entry.Side, beta);
+            var other = this.OtherOf(entry, beta);
             if (other < 0)
             {
                 var key = HeadKey.Of(entry.Side);
@@ -3668,6 +3687,9 @@ public sealed class Solver
     /// <summary>A bound-expansion entry: nodes of Scan's shape bind the row; Both: Side is then fully bound and the row serves the
     /// class demands of both sides; otherwise Side is matched against the active class demands.</summary>
     private sealed record ShapeEntry(Template T, Term Scan, Term Side, bool Both);
+
+    // The class of a Both entry's other side under the bindings (-1 while its Type does not exist: the instance waits for it).
+    private int OtherOf(ShapeEntry entry, int?[] beta) => entry.Side.Head is VarHead v ? beta[v.Index] ?? -1 : this.ClassOf(entry.Side, beta);
 
     private sealed class Goal
     {

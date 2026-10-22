@@ -1,37 +1,42 @@
 == ORDER: 1816 requests on 400 models (templates and Contracts shuffled; ordinary and frozen views) and 5734 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
    unbounded enumeration, 300 items: none Resource (items 310>300) rounds=30 V=142 E=165 J=6402 N=85 peak 310 [demands 30 idents 30 compounds 0 subs 54 chains 0 meetings 28]
    G170 depth 8: + Complete rounds=18 V=29 E=19 J=466 N=12 peak 51 [demands 10 idents 10 compounds 0 subs 9 chains 0 meetings 0]
-   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400414 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
-   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400414 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
    fired set re-keyed when facts become one (structural seed 4242 model 37): none Complete rounds=7 V=28 E=33 J=4443 N=9 peak 55 [demands 8 idents 3 compounds 0 subs 12 chains 2 meetings 0]
-== ORDER (merges every round): 30 shuffled runs of 5 fixed requests: 0 differ
+   a waiter wakes only for the Type it waits for (seed 20261022 model 94): none Complete rounds=3 V=12 E=7 J=42 N=9 peak 27 [demands 3 idents 5 compounds 0 subs 3 chains 0 meetings 1]
+== ORDER (merges every round): 36 shuffled runs of 6 fixed requests: 0 differ
 FAILURES 0
 
 == two-parameter profile (order 100 4242)
 == ORDER: 440 requests on 100 models (templates and Contracts shuffled; ordinary and frozen views) and 1430 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
    unbounded enumeration, 300 items: none Resource (items 310>300) rounds=30 V=142 E=165 J=6402 N=85 peak 310 [demands 30 idents 30 compounds 0 subs 54 chains 0 meetings 28]
    G170 depth 8: + Complete rounds=18 V=29 E=19 J=466 N=12 peak 51 [demands 10 idents 10 compounds 0 subs 9 chains 0 meetings 0]
-   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400414 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
-   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400414 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
    fired set re-keyed when facts become one (structural seed 4242 model 37): none Complete rounds=7 V=28 E=33 J=4443 N=9 peak 55 [demands 8 idents 3 compounds 0 subs 12 chains 2 meetings 0]
-== ORDER (merges every round): 30 shuffled runs of 5 fixed requests: 0 differ
+   a waiter wakes only for the Type it waits for (seed 20261022 model 94): none Complete rounds=3 V=12 E=7 J=42 N=9 peak 27 [demands 3 idents 5 compounds 0 subs 3 chains 0 meetings 1]
+== ORDER (merges every round): 36 shuffled runs of 6 fixed requests: 0 differ
 FAILURES 0
 
 == structural profile (order 100 4242)
 == ORDER: 444 requests on 100 models (templates and Contracts shuffled; ordinary and frozen views) and 1380 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
    unbounded enumeration, 300 items: none Resource (items 310>300) rounds=30 V=142 E=165 J=6402 N=85 peak 310 [demands 30 idents 30 compounds 0 subs 54 chains 0 meetings 28]
    G170 depth 8: + Complete rounds=18 V=29 E=19 J=466 N=12 peak 51 [demands 10 idents 10 compounds 0 subs 9 chains 0 meetings 0]
-   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400414 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
-   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400414 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
    fired set re-keyed when facts become one (structural seed 4242 model 37): none Complete rounds=7 V=28 E=33 J=4443 N=9 peak 55 [demands 8 idents 3 compounds 0 subs 12 chains 2 meetings 0]
-== ORDER (merges every round): 30 shuffled runs of 5 fixed requests: 0 differ
+   a waiter wakes only for the Type it waits for (seed 20261022 model 94): none Complete rounds=3 V=12 E=7 J=42 N=9 peak 27 [demands 3 idents 5 compounds 0 subs 3 chains 0 meetings 1]
+== ORDER (merges every round): 36 shuffled runs of 6 fixed requests: 0 differ
 FAILURES 0
 
-== seed 20261021 (P2 build 9c2325e8f, not re-run after the redo)
-== ORDER: 1832 requests on 400 models (templates and Contracts shuffled; ordinary and frozen views) and 5744 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
+== seed 20261022 default (order 100 20261022; the final review's N1 witness)
+== ORDER: 452 requests on 100 models (templates and Contracts shuffled; ordinary and frozen views) and 1414 limit-boundary runs: 0 differ in verdict, outcome, reason, rounds, V, E, J, N or peak items; 0 boundary outcomes other than Complete/Provisional at the need and Resource below it
    unbounded enumeration, 300 items: none Resource (items 310>300) rounds=30 V=142 E=165 J=6402 N=85 peak 310 [demands 30 idents 30 compounds 0 subs 54 chains 0 meetings 28]
    G170 depth 8: + Complete rounds=18 V=29 E=19 J=466 N=12 peak 51 [demands 10 idents 10 compounds 0 subs 9 chains 0 meetings 0]
-   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=395953 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
-   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=395953 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
-== ORDER (merges every round): 24 shuffled runs of 4 fixed requests: 0 differ
+   nested 39 at 3,000 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   nested 39 at 300 items: + Complete rounds=17 V=211 E=73 J=400318 N=22 peak 273 [demands 24 idents 12 compounds 0 subs 61 chains 54 meetings 34]
+   fired set re-keyed when facts become one (structural seed 4242 model 37): none Complete rounds=7 V=28 E=33 J=4443 N=9 peak 55 [demands 8 idents 3 compounds 0 subs 12 chains 2 meetings 0]
+   a waiter wakes only for the Type it waits for (seed 20261022 model 94): none Complete rounds=3 V=12 E=7 J=42 N=9 peak 27 [demands 3 idents 5 compounds 0 subs 3 chains 0 meetings 1]
+== ORDER (merges every round): 36 shuffled runs of 6 fixed requests: 0 differ
 FAILURES 0
