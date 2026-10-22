@@ -461,8 +461,9 @@ public sealed partial class Binding
             }
 
             var actual = this.ArgumentType(source, source.ErasedFunctionType ?? completed);
+            // A payload's Borrow of a static root is the located limit, its relations waiting for P42 (FailStaticBorrow).
             if (!this.AdaptInput(source, type, actual, scope, null, null, out var adapted, out var quality, out var kind) ||
-                (!this.FitsTypeAt(adapted, type, source) && !this.CheckLocalTypeUse(adapted, type, source)))
+                (!this.FailStaticBorrow(source, kind, type) && !this.FitsTypeAt(adapted, type, source) && !this.CheckLocalTypeUse(adapted, type, source)))
             {
                 if (this.acquisitionFailure is { } acquisition)
                 {
