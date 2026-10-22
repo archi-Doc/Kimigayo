@@ -585,10 +585,10 @@ public sealed partial class Binding
                             continue; // An invalid item declares no obligation for the implementation.
                         }
 
-                        if (!(bound.Bound == EffectBoundKind.Confined ? available.Confined : available.Preserves))
+                        if (!available)
                         {
                             proof = CombineProof(proof, ConstraintProof.Refuted, true);
-                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, bound, requirement));
+                            this.callablePremiseFailures.TryAdd(conformance.Use, (clause, requirement));
                         }
                     }
                 }

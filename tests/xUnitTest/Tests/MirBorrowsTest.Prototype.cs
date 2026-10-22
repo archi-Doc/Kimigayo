@@ -9,7 +9,8 @@ namespace XunitTest;
 /// but 75's, an error by SPEC's letter (the owner's decision of 2026-10-18; PLAN G147). An exclusive Loan that hits a reservation is
 /// reported once, by the reservation's formation, not again at its activation (R4-M68: c8a, c9g, c9h, c9m–c9o, c20b, c20f, c22a, c53, c63
 /// and c64). Left out: the linked-list walks (30a–30d, 35a–35b,
-/// 82–83) and 25c, which bind their payloads through a match (F8); the F6 cases (33a–33e, 36a–36g, `preserves results`); 108, which Binding
+/// 82–83) and 25c, which bind their payloads through a match (F8); the cases of the `preserves results` and P12 rules that Abstract
+/// Calls Reach by Paths deleted (33a–33e, 36a–36g); 108, which Binding
 /// rejects (its Origin relation); and 8c and 120b, which have no MIR-problem observable or form.</summary>
 public sealed partial class MirBorrowsTest
 {

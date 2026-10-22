@@ -51,7 +51,7 @@ internal sealed partial class TyCtxt
     private BoundType?[] witnessTypes = [];
     private BoundOrigin[] witnessOrigins = [];
 
-    // SPEC 8.6.1, 8.11.4, 11.9.2, 22.1; IMPL 21.3.1: what a requirement call with the recorded Contract reference runs under a closed
+    // SPEC 8.6.1, 8.11.3, 11.9.2, 22.1; IMPL 21.3.1: what a requirement call with the recorded Contract reference runs under a closed
     // substitution.
     internal RequirementTarget Witness(BindingSymbol requirement, BindingSymbol? contract, Subst subst)
     {
@@ -64,7 +64,7 @@ internal sealed partial class TyCtxt
         return target;
     }
 
-    // SPEC 7.3, 8.11.4: what a closed requirement's function item runs: Witness of the requirement's call on the Item's Self through the
+    // SPEC 7.3, 8.11.3: what a closed requirement's function item runs: Witness of the requirement's call on the Item's Self through the
     // Contract reference it records (its Components), which InstanceContract matches as a call's; null for another function's Item.
     internal RequirementTarget? Witness(BoundType item)
         => item is { Kind: BoundTypeKind.FunctionItem, Symbol: { } requirement, Components: [var self, var reference] } &&

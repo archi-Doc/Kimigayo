@@ -169,7 +169,7 @@ internal sealed partial class MirEffects
     }
 
     // An input of a summary in the selected view: a part destroyed (every part its destruction reaches), a published requirement on a Type
-    // (Require), or a call through a Callable value (SPEC 8.11.6): a Closure's or a function item's body entered through its substitution,
+    // (Require), or a call through a Callable value (SPEC 8.11.4): a Closure's or a function item's body entered through its substitution,
     // a common Function Type unknown (erasure keeps no bound), an abstract input by the definition's premises.
     private void Process(BoundType? type, byte kind, BindingSymbol? requirement = null)
     {
@@ -194,7 +194,7 @@ internal sealed partial class MirEffects
             // call's choice among them is not kept), else the summary's atom.
             var bounds = types.CallableBounds(this.definition, type, receiver);
             this.found |= bounds is null ? Limit : (byte)0;
-            if (bounds is { Confined: false })
+            if (bounds == false)
             {
                 this.AddAtom(type, kind);
             }
@@ -212,7 +212,7 @@ internal sealed partial class MirEffects
                 var function = item?.Target ?? type.Symbol!;
                 if (types.DispatchBounds(this.definition, function, item?.Self, types.ItemContract(type)) is { } dispatched)
                 {
-                    this.found |= dispatched.Confined ? (byte)0 : Unknown;
+                    this.found |= dispatched ? (byte)0 : Unknown;
                     break;
                 }
 
@@ -257,7 +257,7 @@ internal sealed partial class MirEffects
         this.Compose(body.Ordinal, cases.Views(body, subst), subst);
     }
 
-    // SPEC 4.9.6, 8.11.4: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
+    // SPEC 4.9.6, 8.11.3: a published requirement on a Type. An abstract Type has no implementation: the requirement is nothing where
     // the definition's premises declare it confined, else the summary's atom, composed at the callers (unknown at the top). Any other Type
     // runs each target Binding resolves under those premises (TyCtxt.Witnesses: a compiler function, a composite comparison's leaf
     // witnesses, a witness body as a dynamic edge), and none resolving (a composite with an abstract part) is a limit.
@@ -265,7 +265,7 @@ internal sealed partial class MirEffects
     {
         if (type.IsAbstract)
         {
-            if (types.DispatchBounds(this.definition, requirement, type, null)?.Confined != true)
+            if (types.DispatchBounds(this.definition, requirement, type, null) != true)
             {
                 this.AddAtom(type, Requires, requirement);
             }
@@ -284,7 +284,7 @@ internal sealed partial class MirEffects
         this.targets.RemoveRange(start, this.targets.Count - start);
     }
 
-    // SPEC 16.3, 8.11.4 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
+    // SPEC 16.3, 8.11.3 rule 1: a part a destruction reaches, at its depth in the walk. An abstract part is an atom; a Function value's
     // environment is unknown; an owning handle destroys its payload when it is proven Sealed (SPEC 16.3.3), walked on below the handle so
     // that a growing recursive Type (SPEC 15.3.5) meets the walk's bound, else any more-derived destructor may run; a struct's destructor
     // runs; a string's, an Array's or a Dictionary's storage is released (its elements are parts of their own).

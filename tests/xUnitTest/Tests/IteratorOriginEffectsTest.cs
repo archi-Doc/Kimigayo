@@ -46,7 +46,8 @@ public class IteratorOriginEffectsTest
         ScalarEmissionTest.EmitFixture("AssociatedIteratorIntersection", source, "intersection\n");
     }
 
-    // Warm rebinding reruns the effect bound of a formatting witness and the Origins of intersection items without allocating.
+    // Warm rebinding reruns the confined summaries of a Feed witness, which composes a generic helper, and of a formatting witness, and
+    // the Origins of intersection items, without allocating.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void WarmEffectBoundChecksDoNotAllocate()
@@ -55,7 +56,7 @@ public class IteratorOriginEffectsTest
             "struct Cursor {a, b, c}\n    Self is Iterator\n    associate Iterator.Item is ref/i32 during (a and b)\n    let first: ref/i32 during a\n    let second: ref/i32 during b\n    let other: uniq/i32 during c\n    var count: i32 = 0\n" +
             "    public func next(self: uniq/Self) -> Option<ref/i32 during (a and b)>\n        Helpers.bump(self.other, self.count@ref)\n        self.count += 1\n        if self.count == 1 => return .Some(self.first)\n        return .Some(self.second)\n" +
             "struct Writer\n    Self is BufferWriter\n    var local: i32 = 1\n    public func reserve(self: uniq/Self, minimum: isize) -> Result<WriteWindow, BufferFull>\n        _ = \"value: \\(self.local)\"\n        return .Err(BufferFull.init())";
-        var c = MinimalEmissionTest.Analyze(Source);
+        var c = Bounded(Source);
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var allocated = AllocationMeasurement.Measure(() => c.Binding.Bind(BindingMode.Final));
         Assert.True(c.Binding.Result.IsComplete);
