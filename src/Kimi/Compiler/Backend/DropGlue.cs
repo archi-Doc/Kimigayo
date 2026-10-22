@@ -4,7 +4,8 @@
 // R5-M95): what destroying a value of a closed Type destroys directly, in destruction order, the one enumeration (Parts) the instance
 // collector's DropGlue items target and FunctionCodegen writes their functions from, so the two cannot disagree; and the row of a Type's
 // glue function (Row), which FunctionCodegen writes through its call writer (PD3): a string's calls the runtime release (PD18's string
-// row, C0c); a struct's, Tuple's, enum's or fixed array's destroys its parts (C4a); the other rows are their units'.
+// row, C0c); a struct's, Tuple's, enum's, fixed array's or Closure environment's destroys its parts (C4a, C5a); the other rows are their
+// units'.
 // Input: a closed Type of a compilation and its TyCtxt (Sealed). Output: a Type's row, the string row's routine and a glue function's
 // parameters; the Type's direct parts in destruction order, each with its position in its aggregate: a declared destructor alone for a
 // struct that declares one (its body destroys the Fields and the base, R4-M6b); else a struct's Fields in reverse logical declaration order,
@@ -38,8 +39,8 @@ internal enum DropPartKind : byte
 internal enum DropGlueRow : byte
 {
     Release, // A string: the runtime release, called with the glue's own parameters (IMPL 21.1.3, PD18).
-    Parts, // A struct, Tuple, enum or fixed array: its parts' glue, one level, in destruction order; a declared destructor alone (R4-M6b).
-    Closure, // A Closure environment's captures in reverse initialization order (X23): C5a.
+    Parts, // A struct, Tuple, enum, fixed array or Closure environment: its parts' glue, one level, in destruction order (a Closure's captures
+    // in reverse initialization order, X23); a declared destructor alone (R4-M6b).
     Function, // An erased function value's environment, through its table's drop entry: C5b.
     Handle, // An obj, rc or arc release through ObjectRuntime, a Sealed payload's glue called directly: C6b.
     Collection, // An Array's or Dictionary's legacy row with its element glue: C8d, C8e.
@@ -78,8 +79,7 @@ internal static class DropGlue
 
         return type.Kind switch
         {
-            BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray => DropGlueRow.Parts,
-            BoundTypeKind.Closure => DropGlueRow.Closure,
+            BoundTypeKind.Nominal or BoundTypeKind.Constructed or BoundTypeKind.Tuple or BoundTypeKind.FixedArray or BoundTypeKind.Closure => DropGlueRow.Parts,
             BoundTypeKind.Function => DropGlueRow.Function,
             BoundTypeKind.Semantics => DropGlueRow.Handle,
             BoundTypeKind.Array or BoundTypeKind.Dictionary => DropGlueRow.Collection,

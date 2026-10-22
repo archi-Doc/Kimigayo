@@ -33,13 +33,13 @@ internal sealed partial class FunctionCodegen
     }
 
     // A constant of a covered kind: Bool (stored 0 or 1), Integer of an integer or char Type or a raw pointer's null (SPEC 5.1), Float (its
-    // IEEE bits), Unit (zero-sized).
+    // IEEE bits), Unit and a function item (zero-sized: a Function Item stores none of its Components, SPEC 7.7.4; DECISIONS R5-M102).
     private bool Constant(in MirConst constant, out Value value)
     {
         value = default;
-        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit))
+        if (constant.Kind is not (MirConstKind.Bool or MirConstKind.Integer or MirConstKind.Float or MirConstKind.Unit or MirConstKind.FnItem))
         {
-            return false; // String other than into a string local (C8c), FnItem (C5a), Location (C10a), TypeToken (C6a, C9a).
+            return false; // String other than into a string local (C8c), Location (C10a), TypeToken (C6a, C9a).
         }
 
         if (this.Representation(constant.Type) is not { } lowering)
