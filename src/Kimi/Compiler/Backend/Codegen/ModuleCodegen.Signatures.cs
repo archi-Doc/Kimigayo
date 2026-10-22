@@ -50,33 +50,14 @@ internal sealed partial class ModuleCodegen
         }
 
         var body = this.program.Bodies[entry.BodyOrdinal];
-        var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
-        var count = closure ? -1 : 0; // A Closure body's environment, its Arg local 1, is no parameter slot.
-        foreach (var local in body.Locals)
+        if (this.Inputs(item, body, out var count) is not { } result)
         {
-            count += local.Kind == MirLocalKind.Arg ? 1 : 0;
-        }
-
-        this.Reserve(count);
-        for (var slot = 0; slot < count; slot++)
-        {
-            if (this.collector.TypeOf(item, body.Locals[1 + FunctionCodegen.ArgumentPosition(body.Key, slot)].Type) is not { } parameter)
-            {
-                this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site); // The collector laid out every local of an admitted item.
-                return null;
-            }
-
-            this.parameters[slot] = parameter;
-        }
-
-        if (this.collector.TypeOf(item, body.Locals[0].Type) is not { } result)
-        {
-            this.Report(DiagnosticCode.InternalInvariant_Kd, entry.Site);
-            return null;
+            return null; // Recorded.
         }
 
         // SPEC 22.5.1: a caller-location library function receives its caller's location; the old generator's constructor and destructor
         // result slot is its own ABI choice, which local 0's Type replaces here (IMPL 21.3.1).
+        var closure = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment;
         var flags = (KimiLibraryCatalog.RequiresCallerLocation(body.Key.Decl) ? Abi.Flags.CallerLocation : Abi.Flags.None) |
             (closure ? Abi.Flags.ConcreteClosure : Abi.Flags.None);
         var types = this.parameters.AsSpan(0, count);
@@ -210,6 +191,39 @@ internal sealed partial class ModuleCodegen
 
         this.importSymbols[index] = symbol;
         return this.importSignatures[index] = Abi.Of(this.Layout, Abi.Convention.C, Abi.Flags.None, result, types).Named(LlvmModuleText.ExternalName(symbol));
+    }
+
+    // A body item's Callable inputs, its parameter Types in slot order into the scratch (its Arg locals' in its instance, by
+    // FunctionCodegen.ArgumentPosition; a Closure body's environment, its Arg local 1, is no parameter slot), and its result Type, local 0's;
+    // null, recorded at the item's site, where the instance does not make one (the collector laid out every local of an admitted item).
+    private BoundType? Inputs(int item, MirBody body, out int count)
+    {
+        var site = this.set.Items[item].Site;
+        count = FunctionCodegen.OrderOf(body.Key.Kind) == FunctionCodegen.ArgumentOrder.Environment ? -1 : 0;
+        foreach (var local in body.Locals)
+        {
+            count += local.Kind == MirLocalKind.Arg ? 1 : 0;
+        }
+
+        this.Reserve(count);
+        for (var slot = 0; slot < count; slot++)
+        {
+            if (this.collector.TypeOf(item, body.Locals[1 + FunctionCodegen.ArgumentPosition(body.Key, slot)].Type) is not { } parameter)
+            {
+                this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+                return null;
+            }
+
+            this.parameters[slot] = parameter;
+        }
+
+        var result = this.collector.TypeOf(item, body.Locals[0].Type);
+        if (result is null)
+        {
+            this.Report(DiagnosticCode.InternalInvariant_Kd, site);
+        }
+
+        return result;
     }
 
     // The scratch for a signature's parameter Types, grown to at least the count given.

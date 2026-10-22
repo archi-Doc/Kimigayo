@@ -33,7 +33,7 @@ internal sealed partial class FunctionCodegen
         {
             case MirCalleeKind.Fn when callee.Symbol!.CompilerFunction is not CompilerFunctionKind.None and var kind &&
                 IntrinsicDisposition.Of(kind).Kind == DispositionKind.Body:
-                this.Legacy(call);
+                this.Legacy(call, kind);
                 return;
             case MirCalleeKind.Fn or MirCalleeKind.Requirement:
                 this.Function(call);
@@ -45,7 +45,7 @@ internal sealed partial class FunctionCodegen
                 this.Report(DiagnosticCode.Unsupported_Kd, call.Source); // C6c loads the virtual slot.
                 return;
             case MirCalleeKind.Intrinsic:
-                this.Intrinsic(call);
+                this.Intrinsic(call, IntrinsicRows.Of((IntrinsicId)callee.Arg));
                 return;
             default:
                 throw new InvalidOperationException($"The MIR callee kind {callee.Kind} has no code generation row.");
@@ -164,14 +164,14 @@ internal sealed partial class FunctionCodegen
         this.Branch(call.Target);
     }
 
-    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition): the console
-    // writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come from one
-    // Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine is called through the one call writer
-    // (Invoke): the call's operands at its parameters' slots and the call site's location; its result is Unit.
-    private void Legacy(in MirTerminator call)
+    // A compiler function the backend serves from a legacy runtime row until R8 writes its body (the Body disposition), by its kind: the
+    // console writeLine (RuntimeAbi.WriteLine, SPEC 22.1-22.5.5: it borrows its string); C8b-C8e add theirs, and C9a's formatting rows come
+    // from one Backend table beside LegacyRuntimeHelpers.FormattingRow, not from more arms here. The routine is called through the one call
+    // writer (Invoke): the call's operands at its parameters' slots, placed by the call's own key, and the call site's location; its result
+    // is Unit.
+    private void Legacy(in MirTerminator call, CompilerFunctionKind kind)
     {
-        var symbol = call.Callee.Symbol!;
-        var routine = symbol.CompilerFunction switch
+        var routine = kind switch
         {
             CompilerFunctionKind.WriteLine => RuntimeAbi.WriteLine,
             _ => null,
@@ -182,7 +182,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        this.Invoke(call, routine, new(symbol, MirBodyKind.Fn));
+        this.Invoke(call, routine, new(call.Callee.Symbol, MirBodyKind.Fn));
     }
 
     // A call of a routine, its symbol or an entry pointer (an erased value's, FunctionCodegen.Closures), each argument with its parameter's
