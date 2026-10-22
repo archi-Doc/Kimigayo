@@ -63,12 +63,41 @@ public sealed class EGraph
     public bool Conflict(int c) => this.conflicting[this.Find(c)];
 
     /// <summary>Whether the class is its own proper part through constructor kids (B 3.6).</summary>
-    public bool Cyclic(int c) => this.Part(this.Find(c), this.Find(c), new());
+    public bool Cyclic(int c) => this.ProperPart(c, c, new());
 
-    /// <summary>Whether two classes can never be one (B 3.3): a conflicting class against any class, itself included; constructors of
-    /// different heads; equal heads and a Refuted kid pair; one class a proper part of the other (B 3.6). Coinductive over class
-    /// pairs, so cyclic structures terminate.</summary>
-    public bool Refuted(int a, int b) => this.Refuted(this.Find(a), this.Find(b), new());
+    /// <summary>Whether b is a proper part of a: reachable from a's constructor's kids through constructor kids only (B 3.6;
+    /// projections and Contract arguments are not followed).</summary>
+    public bool ProperPart(int a, int b, HashSet<int> visited)
+    {
+        var n = this.constructorOf[this.Find(a)];
+        if (n < 0)
+        {
+            return false;
+        }
+
+        b = this.Find(b);
+        foreach (var k in this.kids[n])
+        {
+            var kc = this.Find(k);
+            if (kc == b || (visited.Add(kc) && this.ProperPart(kc, b, visited)))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>The top-level head test (rule 7's prune): either class is conflicting, or both hold a constructor and the heads
+    /// differ, so they can never be one class (B 3.3). Reads materialized constructors only; the full relation (the Solver's Refuted)
+    /// adds the negated facts, the kid pairs and the proper parts.</summary>
+    public bool Clash(int a, int b)
+    {
+        a = this.Find(a);
+        b = this.Find(b);
+        var (n, o) = (this.constructorOf[a], this.constructorOf[b]);
+        return this.conflicting[a] || this.conflicting[b] || (n >= 0 && o >= 0 && (!this.heads[n].Equals(this.heads[o]) || this.kids[n].Length != this.kids[o].Length));
+    }
 
     public int Add(Head head, int[] kidClasses)
     {
@@ -266,60 +295,6 @@ public sealed class EGraph
         }
 
         return result;
-    }
-
-    private bool Refuted(int a, int b, HashSet<(int, int)> visited)
-    {
-        if (this.conflicting[a] || this.conflicting[b])
-        {
-            return true;
-        }
-
-        if (!visited.Add((Math.Min(a, b), Math.Max(a, b))))
-        {
-            return false;
-        }
-
-        var (n, o) = (this.constructorOf[a], this.constructorOf[b]);
-        if (n >= 0 && o >= 0)
-        {
-            if (!this.heads[n].Equals(this.heads[o]) || this.kids[n].Length != this.kids[o].Length)
-            {
-                return true;
-            }
-
-            for (var i = 0; i < this.kids[n].Length; i++)
-            {
-                if (this.Refuted(this.Find(this.kids[n][i]), this.Find(this.kids[o][i]), visited))
-                {
-                    return true;
-                }
-            }
-        }
-
-        return this.Part(a, b, new()) || this.Part(b, a, new());
-    }
-
-    // Whether b is a proper part of a: reachable from a's constructor's kids through constructor kids only (B 3.6; projections and
-    // Contract arguments are not followed).
-    private bool Part(int a, int b, HashSet<int> visited)
-    {
-        var n = this.constructorOf[a];
-        if (n < 0)
-        {
-            return false;
-        }
-
-        foreach (var k in this.kids[n])
-        {
-            var kc = this.Find(k);
-            if (kc == b || (visited.Add(kc) && this.Part(kc, b, visited)))
-            {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /// <summary>A smallest member of a class, for display.</summary>

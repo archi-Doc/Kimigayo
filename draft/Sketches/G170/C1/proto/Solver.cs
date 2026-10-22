@@ -893,10 +893,48 @@ public sealed class Solver
             var a = this.g.Find(this.g.LookupTerm(atom.A!));
             var b = this.g.Find(this.g.LookupTerm(atom.B!));
             yes = a == b;
-            no = this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null)) || this.g.Refuted(a, b); // a negated fact, or B 3.3's structural Refuted
+            no = this.Refuted(a, b, new());
         }
 
         return p.Kind == FK.Not ? (no, yes) : (yes, no);
+    }
+
+    // B 3.3's Refuted over the request's structure and facts (rule 6; D7), owned here because the negated facts live here: a negated
+    // identity fact between the two classes; a conflicting class against any class, itself included; constructors of different heads;
+    // equal heads and a Refuted kid pair; one class a proper part of the other (B 3.6). Coinductive over class pairs (cyclic structures
+    // terminate); reads materialized constructors and facts only (the structure need, rule 9, brings them).
+    private bool Refuted(int a, int b, HashSet<(int, int)> visited)
+    {
+        a = this.g.Find(a);
+        b = this.g.Find(b);
+        if (this.factIndex.ContainsKey(new(3, null, Math.Min(a, b), Math.Max(a, b), null)) || this.g.Conflict(a) || this.g.Conflict(b))
+        {
+            return true;
+        }
+
+        if (!visited.Add((Math.Min(a, b), Math.Max(a, b))))
+        {
+            return false;
+        }
+
+        var (n, o) = (this.g.Constructor(a), this.g.Constructor(b));
+        if (n >= 0 && o >= 0)
+        {
+            if (!this.g.HeadOf(n).Equals(this.g.HeadOf(o)) || this.g.KidCount(n) != this.g.KidCount(o))
+            {
+                return true;
+            }
+
+            for (var i = 0; i < this.g.KidCount(n); i++)
+            {
+                if (this.Refuted(this.g.KidOf(n, i), this.g.KidOf(o, i), visited))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return this.g.ProperPart(a, b, new()) || this.g.ProperPart(b, a, new());
     }
 
     // ---- Rounds ----

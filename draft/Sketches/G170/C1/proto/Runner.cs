@@ -873,7 +873,7 @@ public static class Runner
             input T is Slot<Array<W>>
             """;
         failures += Expect("B fill: a conditional conformance's condition Refuted by heads", Fill, "Array<W> is Option<i32>", "- C");
-        failures += Expect("B fill: the conformance does not apply", Fill, "T is Flag", "none C");
+        failures += Expect("B fill: the conformance does not apply (vacuous today: identity conditions are outside C1's rows, Condition requires Is)", Fill, "T is Flag", "none C");
         failures += Expect("B independent: projections are not decomposed", "contract Source\n  associate Element\ninput T is Source\ninput U is Source\ninput T.(Source).Element is U.(Source).Element", "T is U", "none C");
         failures += Expect("B cyclic: a Type identical to its own proper part", "input T is Option<U>\ninput U is Option<T>", "T is Option<U>", "+- C");
         failures += Expect("B reconstructed: a projection of the Type itself is no cycle", "contract Linked\n  associate Next\nconformance Cell<V> is Linked\n  binding Next = V\ninput T is Linked\ninput T is Cell<T.(Linked).Next>", "T is Cell<T.(Linked).Next>", "+ C");
@@ -885,6 +885,32 @@ public static class Runner
         failures += Expect("B limit-keeps-proven: the polarity established before the item limit stands (seed 20261022 model 312)", LimitKeepsProven, "i32 is Cp", "+ R", limits: new Limits { Rounds = 300, Items = 3000 });
         failures += Expect("B conflict-reached-by-row: the row fires on need and the conflict is the request's", "contract K<A>\n  clause Self is Array<A>\ninput T is K<U>\ninput T is Option<U>", "T is Array<U>", "+- C");
         failures += ExpectLinear("B open-live: unrelated request, live constructor sides with a variable kid (rule 8 up)", OpenLive, "T is Copy", "none C");
+
+        // The design review of the addendum (rounds 1–2): a negated component refutes the parent (B2); projection-headed kids stay
+        // deferred (B1: `T.(K).Y ≡ U.(K).X` is an ordinary premise, so `$1.(K).X` against `$1.(K).Y` or a constructor decides nothing);
+        // the structure need (B3: an identity goal's negative polarity requests every promise at its classes, so a projection side
+        // refutes by its binding's head); the kid pair selects the negated row (round 2 B1).
+        failures += Expect("B negated-component: a negated component refutes the parent", "input T is Option<U>\ninput U is not i32", "T is Option<i32>", "- C");
+        const string ProjKids = """
+            contract Cp
+            contract K
+              associate X
+              associate Y
+            contract Q<A>
+              clause Self is Pair<A.(K).X, i32>
+            contract R<A>
+              clause Self is Pair<A.(K).Y, i32>
+            input T is K
+            input U is K
+            input T.(K).Y is U.(K).X
+            input V is Q<U>
+            input W is R<T>
+            input W is Cp
+            """;
+        failures += Expect("B proj-kids: projection-headed kids are deferred, not compared by head", ProjKids, "V is Cp", "+ C");
+        failures += Expect("B proj-vs-con: a projection kid against a constructor kid is deferred", "contract Cp\ncontract K\n  associate X\n  associate Y\ncontract Q<A>\n  clause Self is Pair<A.(K).X, i32>\ncontract R\n  clause Self is Pair<List<i64>, i32>\ninput T is K\ninput U is K\ninput T.(K).Y is U.(K).X\ninput T.(K).Y is List<i64>\ninput V is Q<U>\ninput W is R\ninput W is Cp", "V is Cp", "+ C");
+        failures += Expect("B projection-side: the negative polarity needs the projection's structure (the structure need)", "contract K\n  associate X is List<i32>\ninput T is K", "T.(K).X is Array<U>", "- C");
+        failures += Expect("B negated-row-kid: the kid pair selects the negated row", "contract K\n  associate X\n  clause Self.(K).X is not i32\ninput T is K\ninput U is Option<T.(K).X>", "U is Option<i32>", "- C");
         return failures;
     }
 
@@ -1304,6 +1330,7 @@ public static class Runner
         var structural = Environment.GetEnvironmentVariable("G170_REVIEW_PROFILE") == "structural";
         var arity = names.Select(_ => two ? r.Next(3) : (r.Next(4) == 0 ? 1 : 0)).ToArray();
         var assocs = names.Select(_ => new[] { "X", "Y" }.Where(_ => r.Next(3) != 0).ToArray()).ToArray();
+        var constructed = new HashSet<(int Contract, string Assoc)>(); // associates whose declared requirement is a constructed Type
         var usedOr = false;
         string Pick(params string[] xs) => xs[r.Next(xs.Length)];
         string Own(int i) => arity[i] == 2 ? names[i] + "<A, B>" : arity[i] == 1 ? names[i] + "<A>" : names[i];
@@ -1408,7 +1435,13 @@ public static class Runner
                 sb.Append("  associate ").Append(z);
                 if (r.Next(10) < 6)
                 {
-                    sb.Append(" is ").Append(Requirement(i));
+                    var requirement = Requirement(i);
+                    if (requirement.StartsWith("i32", StringComparison.Ordinal) || requirement.StartsWith("List<", StringComparison.Ordinal))
+                    {
+                        constructed.Add((i, z));
+                    }
+
+                    sb.Append(" is ").Append(requirement);
                 }
 
                 sb.Append('\n');
@@ -1473,7 +1506,8 @@ public static class Runner
             inputs.Add("U is " + Ref(r.Next(n), -1));
         }
 
-        string? tProjection = assocs[tContract].Length != 0 ? "T.(" + tRef + ")." + assocs[tContract][r.Next(assocs[tContract].Length)] : null;
+        var tAssoc = assocs[tContract].Length != 0 ? assocs[tContract][r.Next(assocs[tContract].Length)] : null;
+        string? tProjection = tAssoc is null ? null : "T.(" + tRef + ")." + tAssoc;
         if (tProjection is not null && r.Next(10) < 3)
         {
             inputs.Add(r.Next(2) == 0 ? tProjection + " is U" : "U is " + tProjection);
@@ -1507,15 +1541,12 @@ public static class Runner
             inputs.Add("U is List<" + tProjection + ">");
         }
 
-        // The structural profile (proposal B): the T-projection's other side may be a constructed Type, one or two such inputs, so
-        // decomposition, structural Refuted and conflicts occur. The other profiles draw nothing here (their seeds stay comparable).
-        if (structural && tProjection is not null)
+        // The structural profile (proposal B): the T-projection's other side may be a constructed Type (one per projection), emitted only
+        // when the projection's declared requirement is not itself a constructed Type (B 3.7: the model would be a declaration error),
+        // so decomposition, structural Refuted and conflicts occur. The other profiles draw nothing here (their seeds stay comparable).
+        if (structural && tProjection is not null && !constructed.Contains((tContract, tAssoc!)))
         {
             inputs.Add(tProjection + " is " + Pick("List<i32>", "List<U>", "Option<U>"));
-            if (r.Next(2) == 0)
-            {
-                inputs.Add(tProjection + " is " + Pick("List<i32>", "List<U>", "Option<U>"));
-            }
         }
 
         // The nested profile: a second subject V of T's Contract whose projection is the same Type as T's (both i32), so nested
