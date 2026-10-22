@@ -12,7 +12,7 @@ public sealed partial class OwnershipBody
     // borrowDependencies still records the descendant's access mode; no extra per-Place/root table is needed.
     private const LoanRequirement RetainedCallExclusive = (LoanRequirement)3;
 
-    // SPEC 15.6.5: each destroyed root and holder already reported, and the work list of the carrying-definition walk.
+    // SPEC 15.6.6: each destroyed root and holder already reported, and the work list of the carrying-definition walk.
     private readonly List<(int Root, int Holder)> destroyedLoans = new();
     private readonly List<int> carryingWork = new();
     private readonly HashSet<BoundType> projectionParts = new(ReferenceEqualityComparer.Instance); // HasProjection's query.
@@ -199,7 +199,7 @@ public sealed partial class OwnershipBody
         this.borrowLiveness.Solve(this, this.borrowDependencies, this.borrowRoots!);
         var liveWidth = this.borrowLiveness.Count;
 
-        // SPEC 15.6.2, 15.6.5, 16.2.2: the reachable destructions of lent roots are checked first (pass 0), and then every
+        // SPEC 15.6.2, 15.6.6, 16.2.2: the reachable destructions of lent roots are checked first (pass 0), and then every
         // reachable operation in order (pass 1). A destruction's record states the Loan, so a later use of the dangling value,
         // including a join that precedes the destruction in operation order, does not restate it.
         this.destroyedLoans.Clear();
@@ -344,7 +344,7 @@ public sealed partial class OwnershipBody
                                 var lending = -1;
                                 if (destruction)
                                 {
-                                    // SPEC 15.6.5: one record per destroyed root and holder, at a destruction that a definition of the
+                                    // SPEC 15.6.6: one record per destroyed root and holder, at a destruction that a definition of the
                                     // holder carrying the root's Loan reaches.
                                     // Where the walk cannot tell which definition reaches (-2), every destruction the Loan reaches keeps
                                     // its record, so the escaping one is never deduplicated away.
@@ -1412,7 +1412,7 @@ public sealed partial class OwnershipBody
         => this.Operations[operation] is { Kind: OwnershipOperationKind.Cleanup, Place: >= 0 and var place } && place < this.Places.Count && this.dependencyRoots[place] &&
             (!ReferenceTypes.IsBorrow(this.Places[place].Type) || this.IsBorrowedPlace(place)) ? place : -1;
 
-    // SPEC 15.6.5: a definition of `holder` whose value may keep the Loan of `root` and reaches the input of `destruction` with no
+    // SPEC 15.6.6: a definition of `holder` whose value may keep the Loan of `root` and reaches the input of `destruction` with no
     // other definition of the holder between them: -1 when none does, -2 when the holder may change in a way this walk does not
     // follow, which keeps the destruction a conflict. A holder's Type names the Origins of every value it holds over the body, so
     // only the flow distinguishes the definition that keeps the root's Loan from one that keeps another source's, as the two

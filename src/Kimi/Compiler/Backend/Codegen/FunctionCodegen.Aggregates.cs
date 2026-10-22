@@ -5,8 +5,9 @@ using static Kimi.Compiler.Backend.LlvmModuleText;
 
 namespace Kimi.Compiler.Backend;
 
-// The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a and C2b; DECISIONS R5-M83, R5-M87, R4-M81): a Tuple, struct, enum Case or
-// fixed array put by its components, and a Fill's one value at each element by one counted loop, the loop writer (Loop) the glue shares.
+// The aggregates of FunctionCodegen (R5 package C 3.2, plans C2a, C2b and C5a; DECISIONS R5-M83, R5-M87, R4-M81, R5-M102): a Tuple, struct,
+// enum Case, Closure environment or fixed array put by its components, and a Fill's one value at each element by one counted loop, the
+// loop writer (Loop) the glue shares.
 internal sealed partial class FunctionCodegen
 {
     // One pass of a counted loop (Loop): its labels' stem and its work from the pass's element offset.
@@ -17,10 +18,11 @@ internal sealed partial class FunctionCodegen
         void Write(FunctionCodegen codegen, Value offset);
     }
 
-    // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC 13.7.1),
-    // then an enum Case's ordinal as its tag (Layout.Tag) and each value put at its component (Component), or a Fill's one value at each
-    // element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure environment is
-    // C5a's row, an Array or Dictionary from none C8d's and C8e's.
+    // An Aggregate (SPEC 4.3.1-4.3.4, 6.5.1-6.5.2, 7.7.1-7.7.2; IMPL 21.1.2-21.1.3): its operands' values in order, its Place located (SPEC
+    // 13.7.1), then an enum Case's ordinal as its tag (Layout.Tag) and each value put at its component (Component), or a Fill's one value at
+    // each element by one counted loop (DECISIONS R4-M81); noinit, from no operand, and a zero-sized Place store none. A Closure's
+    // environment is the Closure value, its captures placed as a Tuple's elements in the Place's own storage at every size, so forming it
+    // allocates nothing (DECISIONS R5-M102). An Array or Dictionary from none is C8d's and C8e's row.
     private void Aggregate(in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -28,11 +30,11 @@ internal sealed partial class FunctionCodegen
         var kind = (MirAggregateKind)rvalue.Op;
         switch (kind)
         {
-            case MirAggregateKind.Tuple or MirAggregateKind.Adt:
+            case MirAggregateKind.Tuple or MirAggregateKind.Adt or MirAggregateKind.Closure:
             case MirAggregateKind.FixedArray or MirAggregateKind.Fill when type.Kind == BoundTypeKind.FixedArray:
                 break;
-            case MirAggregateKind.Closure or MirAggregateKind.FixedArray:
-                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C5a's environment; C8d's and C8e's collections from none.
+            case MirAggregateKind.FixedArray:
+                this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C8d's and C8e's collections from none.
                 return;
             default:
                 throw new InvalidOperationException($"The MIR aggregate kind {kind} has no code generation row.");
@@ -76,7 +78,8 @@ internal sealed partial class FunctionCodegen
     }
 
     // The component of an aggregate its index-th operand initializes (IMPL 21.1.2; the validator's Component), in the aggregate's record:
-    // its offset and its Type in the item's instance. A Tuple's element and a struct's own Field are at the record's Field offsets, a
+    // its offset and its Type in the item's instance. A Tuple's element, a Closure's capture and a struct's own Field are at the record's
+    // Field offsets, a
     // struct's base first and at 0 (its complete base is a prefix, X1); an enum Case's payload element is at the payload's offset, the
     // record's Field 1, plus its offset in the Case's payload Tuple; a fixed array's element is at its position times the element's stride.
     private (long Offset, BoundType Type) Component(MirAggregateKind kind, BoundType type, ValueLowering record, int ordinal, int index)
@@ -86,7 +89,7 @@ internal sealed partial class FunctionCodegen
         {
             case MirAggregateKind.FixedArray:
                 return (index * (long)(this.Laid(type.Components[0])?.Layout.Stride ?? 0), type.Components[0]);
-            case MirAggregateKind.Tuple:
+            case MirAggregateKind.Tuple or MirAggregateKind.Closure:
                 return (offsets[index], type.Components[index]);
             case MirAggregateKind.Adt when AdtDef.IsEnum(type):
                 var payload = AdtDef.CaseTypes(type)![ordinal];
