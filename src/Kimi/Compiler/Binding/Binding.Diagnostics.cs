@@ -139,9 +139,6 @@ public sealed partial class Binding
         return ([operation, longer, shorter, source, destination], related);
     }
 
-    // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one.
-    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter) => BodyLocalOrigin(longer) && FixedOrigin(shorter);
-
     internal static DiagnosticCode OriginRelationCode(OriginRelationFact relation)
         => relation.Refuted ? DiagnosticCode.UnsatisfiedOriginRelation_Kd : DiagnosticCode.UnprovenOriginRelation_Kd;
 
@@ -585,6 +582,8 @@ public sealed partial class Binding
                 return new("expression", origin.Binder is DeclarationContainerKoto && !typeLevel ? "self." + origin.Name : origin.Name);
             case OriginKind.Inference when origin.Occurrence is null && origin.Binder is TypeKoto occurrence:
                 return new("omitted", occurrence.ToString());
+            case OriginKind.Holder:
+                return new("expression", "self"); // SPEC 5.7: `during self`.
             case OriginKind.Projection when origin.Slot == CallResultSlot && origin.Binder is FunctionKoto { IsAnonymous: true }:
                 return new("closure", "call result");
             case OriginKind.Projection or OriginKind.Anchor:
@@ -1026,6 +1025,7 @@ public sealed partial class Binding
         this.arityFailures?.Clear();
         this.constructorAbsences?.Clear();
         this.invalidStaticOriginSlots?.Clear();
+        this.phantomRawOrigins?.Clear();
         this.rejectedCandidates?.Clear();
         this.unboundSlots?.Clear();
         this.acquisitionPlaces?.Clear();

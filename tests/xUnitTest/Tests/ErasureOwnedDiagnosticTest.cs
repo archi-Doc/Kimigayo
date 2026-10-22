@@ -66,5 +66,14 @@ public class ErasureOwnedDiagnosticTest
         Assert.Equal((nameof(DiagnosticCode.TypeMismatch_Kd), "This closure requires an Exclusive call; a common Function value permits Shared calls only"), (error.Code, error.Note));
     }
 
+    // SPEC 15.2.3, 5.7: a raw layer's Origin other than `self` is in OwnedOrigins, so a pointer stating a body or input Origin is not
+    // Owned; `static` and a `during self` struct over an Owned T are.
+    [Theory]
+    [InlineData("func f(r: ref/i32, p: raw/i32 during r) => keep(p)", "UnprovenConstraint_Kd: keep(p)")]
+    [InlineData("func f(p: raw/i32 during static) => keep(p)", null)]
+    [InlineData("struct B<T>\n    let data: raw/T during self\n    public init() => self.data = null\nfunc f() => keep(B<i32>.init())", null)]
+    public void ARawOriginIsAnOwnedOrigin(string declarations, string? record)
+        => Assert.Equal(record is null ? [] : [record], RawPointerSyntaxTest.Records("func keep<T>(value: T)\n    T is Owned\n    _ = value@move\n" + declarations));
+
     private static string Text(string source, SourceSpan? span) => span is { } at ? source.Substring(at.Start, at.Length) : string.Empty;
 }

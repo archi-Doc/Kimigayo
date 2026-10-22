@@ -42,6 +42,16 @@ public sealed class PairVarianceTest
         Assert.DoesNotContain(relations, static x => x.Relation == "==");
     }
 
+    // SPEC 5.7, 15.3.5: a raw layer's Origin is a covariant position, so a slot a Loan<ref/...> Field and a raw layer state stays
+    // covariant.
+    [Fact]
+    public void ARawOriginIsACovariantPosition()
+    {
+        var c = CompilationTestHelper.BindSuccess("struct W {s}\n    let keep: Loan<ref/i32 during s>\n    let p: raw/i32 during s\n");
+        var schema = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.StructKoto>().Single().SymbolOf()!.Schema!;
+        Assert.Equal((Kimi.Compiler.OriginVariance.Covariant, Kimi.Compiler.LoanRequirement.Ref), (schema.Origins[0].Variance, schema.Origins[0].LoanRequirement));
+    }
+
     private static List<(string Relation, string Longer, string Shorter)> Relations(CheckOutput output)
     {
         var relations = new List<(string, string, string)>();

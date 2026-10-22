@@ -51,7 +51,14 @@ public sealed partial class Binding
                 origins[i] = this.Meet(left.OriginArguments[i], right.OriginArguments[i]);
             }
 
-            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, !InactiveOuterOrigin(left, this, null) && left.Origin is { } a ? this.Meet(a, right.Origin!) : null, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
+            // SPEC 5.7 (Q-O6): differing raw Origins have the unstated common Type, never a meet.
+            var origin = ReferenceEquals(left.RawOrigin, right.RawOrigin) ? left.RawOrigin : null;
+            if (!InactiveOuterOrigin(left, this, null) && left.Origin is { } a)
+            {
+                origin = this.Meet(a, right.Origin!);
+            }
+
+            var result = this.types.Intern(left.Kind, left.Symbol, left.Semantics, components.AsSpan(0, left.Components.Count), left.Length, origin, origins.AsSpan(0, left.OriginArguments.Count), left.LengthExpression, left.ClosureContext, left.LengthArguments);
             return IsSubtype(left, result) && IsSubtype(right, result) ? result : null;
         }
         finally
@@ -99,6 +106,14 @@ public sealed partial class Binding
     private static OuterOriginFit FitOuterOrigins(BoundType actual, BoundType expected, Binding? binding, Koto? use, out BoundOrigin longer, out BoundOrigin shorter)
     {
         longer = shorter = null!;
+        if (actual.Semantics == SemanticsKind.Raw && actual.Kind == BoundTypeKind.Semantics)
+        {
+            // SPEC 5.7: a raw layer's Origins relate by their regions; a missing one is Unstated, the one producer of that end (S4).
+            longer = actual.RawOrigin ?? BoundOrigin.Unstated;
+            shorter = expected.RawOrigin ?? BoundOrigin.Unstated;
+            return ReferenceEquals(actual.RawOrigin, expected.RawOrigin) ? OuterOriginFit.None : OuterOriginFit.Relation;
+        }
+
         if (ReferenceEquals(actual.Origin, expected.Origin) || InactiveOuterOrigin(actual, binding, use))
         {
             return OuterOriginFit.None;

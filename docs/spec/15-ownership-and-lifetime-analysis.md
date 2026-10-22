@@ -520,7 +520,7 @@ Each operation is checked against every Loan it reaches among those checked at i
 | Read, create `ref` | Allowed | Error |
 | Write, Move, create `uniq`, destroy the Place | Error | Error |
 
-**Shared access grants no mutation.** A Place is written, Moved, exclusively borrowed or destroyed only through a direct path or an exclusive reference ([§3.4](03-types-and-values.md#34-places-and-storage)), or by raw access within its authority ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)). Past a shared layer (`ref`, `objref`, `rc`, `arc`) only reads and shared borrows are possible, also through a raw pointer read there, and so past a raw pointer whose Origin keeps only shared Loans ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)); reference counts and Weak tables are not Places.
+**Shared access grants no mutation.** A Place is written, Moved, exclusively borrowed or destroyed only through a direct path or an exclusive reference ([§3.4](03-types-and-values.md#34-places-and-storage)), or by raw access within its authority ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)). Past a shared layer (`ref`, `objref`, `rc`, `arc`) only reads and shared borrows are possible; through a raw pointer read there, or past a raw pointer whose Origin keeps only shared Loans, any other access is undefined behavior rather than an error ([§5.2.1](05-raw-pointers-and-unsafe-memory.md#521-access-conditions)); reference counts and Weak tables are not Places.
 
 ### 15.6.3. Reborrowing and region splitting
 

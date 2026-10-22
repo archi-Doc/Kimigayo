@@ -15,7 +15,8 @@ public sealed partial class Binding
         => !ReferenceTypes.IsPointer(target) ? null : literal ? BoundType.USize : operand is NullLiteralKoto ? target : null;
 
     // SPEC 5.4: P@raw is the address of the written slot. It performs the checks of an immediately ending @ref and converts the
-    // borrowed address; the pointer carries no Origin, so it keeps no Loan. The operation's borrow is recorded on the operator.
+    // borrowed address, which keeps no Loan. The operation's borrow is recorded on the operator. SPEC 5.7 (Typed paths): the pointer
+    // states the Origin of the last borrow or raw pointer P is reached through (PathOrigin), formed with that borrow's mode.
     private BoundType? BindAddress(ConversionKoto conversion, BindingScope scope)
     {
         var stored = this.BindNode(conversion.Left, scope);
@@ -42,18 +43,36 @@ public sealed partial class Binding
             return this.Fail(conversion, this.BorrowFailure(conversion.Left, scope, exclusive: false));
         }
 
+        var path = this.PathOrigin(conversion.Left);
+        if (path.Dereferences is null)
+        {
+            return this.Fail(conversion, BindingFailure.Unsupported); // U2: a pair follow admitting a non-borrow case.
+        }
+
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Address;
-        return Complete(conversion, this.types.Intern(BoundTypeKind.Semantics, null, SemanticsKind.Raw, [stored]));
+        return Complete(conversion, this.types.Pointer(stored, path.Origin));
     }
 
-    // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer.
+    // SPEC 5.4, 5.5: a pointer converts to another pointer Type or usize, and usize to a pointer. SPEC 5.7: a pointer keeps its raw
+    // Origin unless the target states one, which is a fit of the source's Origin (none for usize) outside an unsafe context and a
+    // claim, which records no relation, inside one.
     private BoundType? CompletePointerConversion(ConversionKoto conversion, BoundType source, BoundType target)
     {
         if ((ReferenceTypes.IsPointer(source) && (ReferenceTypes.IsPointer(target) || ReferenceEquals(target, BoundType.USize))) ||
             (ReferenceEquals(source, BoundType.USize) && ReferenceTypes.IsPointer(target)))
         {
             conversion.ConversionBinding = ConversionBinding.Pointer;
+            if (target.RawOrigin is null && source.RawOrigin is { } kept && ReferenceTypes.IsPointer(target))
+            {
+                return Complete(conversion, this.types.Pointer(target.Components[0], kept));
+            }
+
+            if (target.RawOrigin is not null && !KotoHelper.IsUnsafeContext(conversion))
+            {
+                _ = this.CheckTypeUse(this.types.Pointer(target.Components[0], source.RawOrigin), target, conversion.Left);
+            }
+
             return Complete(conversion, target);
         }
 
@@ -62,12 +81,32 @@ public sealed partial class Binding
 
     // SPEC 5.2.2: a borrow of a raw Place recovers no owner or Loan. Its referent is a fresh anchor, so the result Origin has no
     // upper bound and is fitted to the expected Type, result or storage destination: a returned borrow takes the declared result's
-    // Origin, and any other one is the anchor, which fits every destination while its Loan is checked under the anchor.
+    // Origin, and any other one is the anchor, which fits every destination while its Loan is checked under the anchor. SPEC 5.7:
+    // through a pointer that states an Origin the borrow lies within it (the anchor meets it, and a declared result is outlived by
+    // it). An exclusive borrow is denied only by a safe shared layer inside the pointee: no raw Origin denies an access (SPEC 5.7).
     private BoundType? BorrowRawPlace(ConversionKoto conversion, SemanticsKind semantics, BoundType referent)
     {
-        var origin = ResultFunction(conversion)?.BoundSymbol?.Type is { Kind: BoundTypeKind.Semantics, Components: [var declared], Origin: { } result } declaredResult &&
-            declaredResult.Semantics == semantics && ReferenceEquals(declared, referent) ? result : this.OriginAtom(conversion, OriginKind.Anchor, 0, "anchor");
+        if (semantics == SemanticsKind.Uniq && ReachedThroughShared(conversion.Left))
+        {
+            return this.Fail(conversion, AccessFailure(conversion.Left));
+        }
+
+        var within = this.PathOrigin(conversion.Left) is { Dereferences: true } path ? path.Origin : null;
+        var declared = ResultFunction(conversion)?.BoundSymbol?.Type is
+            { Kind: BoundTypeKind.Semantics, Components: [var target], Origin: { } result } declaredResult &&
+            declaredResult.Semantics == semantics && ReferenceEquals(target, referent) ? result : null;
+        var origin = declared ?? this.OriginAtom(conversion, OriginKind.Anchor, 0, "anchor");
+        if (declared is null && within is not null)
+        {
+            origin = this.Meet(origin, within);
+        }
+
         var borrowed = this.types.Intern(BoundTypeKind.Semantics, null, semantics, [referent], origin: origin);
+        if (declared is not null && within is not null && !OriginOutlives(within, declared))
+        {
+            this.AddObligation(new(BindingObligationKind.OriginOutlives, conversion, BindingDeadline.BodyOrigins, borrowed, within, declared));
+        }
+
         Complete(conversion.Right, borrowed);
         conversion.ConversionBinding = ConversionBinding.Borrow;
         return Complete(conversion, borrowed);

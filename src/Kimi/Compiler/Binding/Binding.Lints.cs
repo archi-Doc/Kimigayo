@@ -349,7 +349,9 @@ public sealed partial class Binding
             }
         }
 
-        return false;
+        // SPEC 5.7: a claim needs an unsafe context unless the premises prove that its operand's Origin fits.
+        return node is ConversionKoto { ConversionBinding: ConversionBinding.Pointer, Right.BoundType.RawOrigin: { } claimed } claim &&
+            !claim.CodeContext.Compilation.Binding.ClaimFits(claim, claimed) ? null : false;
     }
 
     // One node's records in sequence, a discarded tail's innermost root first; the comparison is total, so the order is stable.
