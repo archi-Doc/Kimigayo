@@ -49,6 +49,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Effect bound | A guarantee about what a call may access, declared on a requirement, a Callable Constraint or a virtual slot: `confined`. | [§8.11](../08-generics-constraints-and-contracts.md#811-effect-bounds) |
 | Effective Type | The Type with the most derived Core guaranteed at a point after a refinement. | [§14.10.1](../14-control-flow.md#14101-refinable-bindings-and-effective-types) |
 | Excluded syntax | Syntax a directive does not select; it gets source checks only. | [§19.4](../19-compile-time-directives.md#194-excluded-syntax) |
+| Expansion (of a Type) | The Type with each abstract Type replaced by a constructed Type identical with it, repeatedly; a premise error where some Type has no finite one. | [§8.3.3](../08-generics-constraints-and-contracts.md#833-recursion-and-finality) |
 | Field | The storage of a `let` or `var` Property. | [§11.1](../11-properties.md#111-property-kinds) |
 | Finite Origin | An Origin whose region is inferred from uses, within an upper bound. | [§15.6.5](../15-ownership-and-lifetime-analysis.md#1565-judging-origin-relations) |
 | Fixed expected call signature | The one call signature fixed by a position's expected Type: a common Function Type, or the one signature the Callable Constraints of an unbound slot `F` give at `F`, `ref/F` or `uniq/F`. | [§10.5.2](../10-overload-resolution-and-inference.md#1052-call-signatures) |
@@ -121,7 +122,7 @@ A reading aid, sorted alphabetically. The linked section owns each definition.
 | Task slot | The leading `task;` of a parameter list or Function Type. | [§24.2](../24-suspension-and-asynchronous-tasks.md#242-task-slots) |
 | Temporary Value / Place | An expression's temporary result / the storage materializing it. | [§3.6](../03-types-and-values.md#36-temporaries) |
 | Type | A complete type: Semantics, target and all Origins. | [§3](../03-types-and-values.md#3-types-and-values) |
-| Type identity | The relation that makes two Types one in a scope: its premises, closed under replacement and the decomposition of constructed Types with one head. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
+| Type identity | The relation that makes two Types one in a scope: its grounds, closed under replacement and the decomposition of constructed Types with one head. | [§8.2.3](../08-generics-constraints-and-contracts.md#823-type-identity-and-identity-premises) |
 | Undefined behavior | The result of breaking an unsafe promise. | [§1.3](../01-overview.md#13-normative-status-and-wording), [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory) |
 | UniqSlice | A non-Copy exclusive contiguous view. | [§4.8.4](../04-arrays-indexing-and-slices.md#484-views-and-uniqslice) |
 | Unsafe context / Unsafe Block | Permission for unsafe operations / `unsafe`, which grants it lexically. | [§5](../05-raw-pointers-and-unsafe-memory.md#5-raw-pointers-and-unsafe-memory), [§14.3](../14-control-flow.md#143-do-and-unsafe) |

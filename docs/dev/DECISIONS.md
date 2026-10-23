@@ -3026,15 +3026,23 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
-- **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim: 「proposal B を Q1〜Q7 の推奨
-  どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します。R4 で SPEC へ取り込ん
-  でください（独立レビューつき）。」; unit spec-tid, `draft/Changes/2026-10-22 Type Identity by Structural Decomposition B.md`, INTEGRATED
+- **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim:
+  「proposal B を Q1〜Q7 の推奨どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、Q4 本案、Q5 採用、Q6 採用、
+  Q7 経路等式を残す）採択します。R4 で SPEC へ取り込んでください（独立レビューつき）。」; unit spec-tid, `draft/Changes/2026-10-22 Type Identity by Structural Decomposition B.md`, INTEGRATED
   2026-10-23) SPEC §8.2.3 states B's section 3: Type identity is one relation from its grounds (premises, the Constraints `T is C` supplies
   for every projection a query needs, completed bindings), closed under replacement and the decomposition of constructed Types with one
   head and agreeing compared attributes (one structure table read by decomposition, Refuted, premise errors, cycles, collisions and
   overlap); projections and Contract arguments never decompose; Origin, length and Semantics agreement is proven by its own rules, never
-  by identity; premise errors (Language: a Refuted stated identity, a proper-part cycle; Proof: unproven compared attributes, truth by
+  by identity; premise errors (Language: a Refuted identity of two Types the premises make identical, a proper-part cycle; Proof: unproven compared attributes, truth by
   Semantics case) are reported once where their premises first meet.
+  - Rationale and Principles (B 1.2, 7.1): non-decomposition put `Option<U>` and `Option<i32>` in one class while keeping `U` and
+    `i32` apart. A class had no one form, plain mismatches such as `Array<V> is Option<i32>` stayed Unknown, and it was one cause of
+    G170 C1's failed reviews. One Concept, One Canonical Form: one identity relation and one structure table serve decomposition,
+    Refuted, premise errors, cycles, collisions and overlap. Local Reasoning: consequences follow from a declaration's premises and Type
+    structure, whatever their side, order or spelling, except whether a limit is reached (Q7); premise errors are reported once where
+    their premises meet. Explicit Semantics: decomposition invents no Origin, length or Semantics relation, and specifications assume
+    no input identity. Compiler Server Protocol: Language errors, unproven requirements and limits are distinct and show their linking
+    premises and sources, and the AddPremise repair has a precondition and guarantee.
   - The answers: Q1, a conformance premise on a Type identical with a constructed Type is evidence (§8.2.3); Q3, "depends" means not
     holding with the judgment, or the current definition's inferred values, held pending, whatever derivation is recorded (§8.3.3,
     §8.5.5); Q4, only identity premise errors are reported at the declaration (§8.2.3, §8.8.2, §7.5), other contradictory evidence as
@@ -3047,13 +3055,16 @@ and migration obligations remain in force; no numeric cap changes are authorized
     "SPEC 8.5.5's 'depends' per derivation" of PLAN G170's 2026-10-21 owner item, by Q3 (whether C2–C4's implementation without read
     sets meets Q3 is BU's planning).
   - Examples and tests: the new SPEC blocks are registered in `spec-cases.json` with the implementation's records as (b) differences;
-    their expected codes use existing codes (InvalidConstraint_Kd, UnprovenConstraint_Kd, InvalidAssociatedType_Kd), which the
-    implementing units may refine with their own codes. OldRule `B3.3`: NormalizedConstraintProofBindingTest's two Unknown rows that B
-    refutes. No library or milestone program has an identity premise on a constructed Type or a growing Contract cycle.
-  - Repairs: `Repair.AddPremise` and `Repair.RemovePremise` join the schema's kinds (B 3.10); no condition value is added, the
-    AddPremise precondition and guarantee being §8.2.3's text.
+    their expected codes use existing codes (InvalidConstraint_Kd for Language, UnprovenConstraint_Kd for Proof, `Pack` included), which
+    the implementing units may refine with their own codes. OldRule `B3.3`: NormalizedConstraintProofBindingTest's two Unknown rows
+    that B refutes; they become Refuted, and the trait is removed, in the G170 C2–C4 unit that implements B 3.3 (Binding decides
+    identity for both pipelines, so R4-M50's MIR/R6-check condition does not apply). No library or milestone program has an identity premise on a constructed Type or a growing Contract cycle.
+  - Repairs: `Repair.AddPremise` and `Repair.RemovePremise` join the schema's kinds (B 3.10); offering one stays implementation-defined
+    (§23.1.3). Open: the condition values for AddPremise's precondition (not Refuted, no premise error) and guarantee (the requirement
+    Proven, callers prove it) are added by the implementing unit before it offers the kind; added values keep `kimi.check/3`.
   - Open: §8.5.5's Function-Type extraction (Q2), a separate revision; B 3.4's gap, an omitted Origin in a layer of a Constraint's
-    Type outside a Function Type, which §15.4.2 has no row for (not filled). Not implemented: PLAN G170's C2–C4 (BU); STATUS states it.
+    Type outside a Function Type, which §15.4.2 has no row for (not filled). Not implemented: PLAN G170's C2–C4 (BU); STATUS states it,
+    and that the implementation does not report SPEC 8.2.3's `cyclic` (an error before B too).
   - Rejected (B 7.2): non-decomposition; decomposing projections or Contract arguments; deriving Origin, length or Semantics relations
     from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;

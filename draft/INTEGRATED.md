@@ -1115,10 +1115,13 @@ The owner wrote two proposals on 2026-10-22 and combined them into proposal B; G
 follows B's section 3. Recorded by the R4 planning session on 2026-10-23, when the owner asked it to check the documents and merge C1.
 
 - [Type Identity by Structural Decomposition B](Changes/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md): 一部取り込み
-  at intake; closed on 2026-10-23 (below). G170 C1's executable design cites it as B 3.x. Its link to the
-  original Structural Decomposition proposal does not resolve on dev (that file is not on dev).
-- [Type Identity Normalization](Changes/2026-10-22%20Type%20Identity%20Normalization.md) (案 G′): 提案 at intake (not adopted);
-  B takes its rules where they agree and lists the differences in B's section 6. Closed on 2026-10-23 (below).
+  (intake only, as its status line said). Not integrated into SPEC then: §8.2.3 still stated non-decomposition; B's section 6 left
+  Q1–Q4 (with recommendations) and Q5–Q7 (decidability) for the owner. G170 C1's executable design cites it as B 3.x. Its link to the
+  original Structural Decomposition proposal does not resolve on dev (that file is not on dev). (Superseded: closed as 取り込み済み on
+  2026-10-23, below.)
+- [Type Identity Normalization](Changes/2026-10-22%20Type%20Identity%20Normalization.md) (案 G′): 提案 (not adopted, its status line);
+  B takes its rules where they agree and lists the differences in B's section 6. (Superseded: closed as 取り込み済み on 2026-10-23,
+  below.)
 
 ## 2026-10-23 — Type identity by structural decomposition integrated (proposal B; R4 unit spec-tid)
 
@@ -1140,7 +1143,11 @@ Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します�
     identity).
   - §4 examples → §8.2.3 (`same`, `conflict`, `otherView`, `independent`, `cyclic`), §8.3.3 (`Nested`, `Stream`, `Window`, from G′
     5.3 and 5.4), §8.5.1 (`Number`, `Pack`) and §8.8.2 (`Either`, `Slot`/`plain`/`fill`), each registered in
-    `tests/diagnostics/spec-cases.json` with the implementation's records as a (b) difference.
+    `tests/diagnostics/spec-cases.json` with the implementation's records as a (b) difference. The §4 examples not carried are
+    covered by the integrated rules: `tuplePart`, `arrayPart`, `functionPart` and `sameView` (decomposition, compared attributes),
+    `escape` (quantified Origins), `loopy` (truth by Semantics case), `optional` (closed world, unchanged), `reconstructed`
+    (projections of a constructed subject), `twice` (Constraints for every projection) and the `show` overload (identity as
+    written premises).
   - Not integrated: Q2 (§8.5.5's extraction does not enter Function Types; a separate §8.5.5 revision, PLAN G170) and Q4's G′
     alternative; B 3.4's gap (an omitted Origin in a layer of a Constraint's Type outside a Function Type has no §15.4.2 row) is not
     filled (DECISIONS R4-M115, open).
@@ -1151,5 +1158,7 @@ Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します�
     `../Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md`.
   - Not implemented: STATUS (Types and Contracts) states the default pipeline's old rule until PLAN G170's C2–C4.
 - `Changes/2026-10-22 Type Identity Normalization.md` (案 G′): 取り込み済み (closed 2026-10-23), not adopted as a whole; the rules B
-  shares with it, and its 4.6 and 4.9 criteria through B's Q5 and Q6, are integrated as above. Its decision procedure (normal forms,
-  representative order, completion) is not (B 7.2). The file moved from `Proposals/` with only its status sentence replaced.
+  shares with it, and its 4.6 and 4.9 criteria through B's Q5 and Q6, are integrated as above. Its own items: Q1's proven-conformance
+  rule, rejected by the owner's Q1; Q2's Function-Type extraction, transferred to a separate §8.5.5 revision (PLAN G170); Q4/Q9's
+  declaration errors for unsatisfiable conditions, rejected by Q4; 4.7 and 4.10's representative order, completion and its limits, and
+  the decision procedure (normal forms), not in SPEC (B 7.2). The file moved from `Proposals/` with only its status sentence replaced.
