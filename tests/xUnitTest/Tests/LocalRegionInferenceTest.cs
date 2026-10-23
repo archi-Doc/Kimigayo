@@ -29,6 +29,10 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
     private const string Capture = "func leak() -> i32\n    LOCAL\n    var f = func [var arr@move] () -> i32\n        let local: i32 = 1\n        STORE\n        return 0\n" +
         "    return f@uniq()\npublic func main() => ()\n";
 
+    // A block-local borrow stored into a value that names a `let` local's region, outside any Closure (BU's review of 2a0-3b, round 3).
+    private const string Moved = "func leak() -> i32\n    LOCAL\n    var w = arr@move\n    if true\n        let local: i32 = 1\n        STORE\n    return w[0]@follow\n" +
+        "public func main() => ()\n";
+
     // PLAN G65's h2: a Closure stores a call-local borrow into its `var` capture of a `let` local whose two qualifier slots bind each other.
     private const string H2 = "func leak() -> i32\n    let o = Option<Array<ref/i32>>.Some(Array<ref/i32>.init(capacity: 0))\n" +
         "    var f = func [var o@move] (n: i32) -> i32\nREAD        let local: i32 = n\n        var inner: Array<ref/i32> = []\n" +
@@ -170,6 +174,22 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
         Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
         Assert.StartsWith("local@ref", source[error.Span!.Value.Start..], StringComparison.Ordinal);
+    }
+
+    // SPEC 15.3.6, 15.4.4, 15.6.5: the region records the Loans later stored into it, so a block-local borrow stored into a value that
+    // names it is followed past the block (BU's review of 2a0-3b, B1 and N18; PLAN G225): an initializer qualifier's slot and a written slot
+    // bound only to itself, stored by a method and through a call. Dev rejects these with UnprovenConstraint_Kd at the local.
+    [Theory]
+    [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "w.append(local@ref)")]
+    [InlineData("let arr: Array<ref/i32> = []", "w.append(local@ref)")]
+    [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "keep(w@uniq, local@ref)")]
+    public void AStoreIntoAMovedRegionIsFollowedPastItsBlock(string local, string store)
+    {
+        var source = "func keep(slot: uniq/Array<ref/i32 during s>, v: ref/i32 during s) => slot@follow.append(v)\n" +
+            Moved.Replace("LOCAL", local, StringComparison.Ordinal).Replace("STORE", store, StringComparison.Ordinal);
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
+        Assert.StartsWith("let local", source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.6.5 (DECISIONS R4-M112, BU-28): PLAN G65's h2, a `let` local's region captured `[var o@move]` and assigned a call-local
