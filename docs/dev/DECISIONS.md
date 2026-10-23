@@ -3121,6 +3121,57 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - Rejected: (B) and (C) of the Site rule (a per-row value fact; moving the row Site now); reading Binding's completeness for row 9 (it
     also hides genuine limits in incomplete compilations, meet-trans); no row-9 report until the derived marking exists (it would accept
     uncovered forms silently); keeping appended atoms across passes (stale atoms after an edit, a second table).
+- **R4-M114 MirOrigins: Unknown, the oracle's masks, `Work` and the arena's limit; the view's part of a MIR atom** (2026-10-23; unit 2a-1b,
+  the second of G:A5-F4, DEC Q6 form 2, under R4-M94's package §6.3's Unknown, §6.4, D17 and D20; the R4 planning session's rulings on
+  its design (`s2-2a-1b/rulings.md`, `rulings-2.md`) and on its stop (`stop-g226.md`))
+  - Rule (SPEC 15.6.5): a chain or edge between fixed Origins is Proven only when the body's premises derive it, else Unknown:
+    `UnprovenOriginRelation_Kd` (`Ownership.UnprovenOrigin`) at the last edge's site (R4-M113's Site rule) with Reason (fixed source,
+    fixed target, false) and the fact `Relation`. An edge between two Fixed atoms passes nothing on, so it is judged where it is formed,
+    one `Close` and one `Outlives` (a meet at the longer end split per operand, D15: bc801917a239's two problems); an Equality row whose
+    second direction fails right after the first is one problem, Reason (Longer, Shorter, true). Chains: fixed-source bitsets over 2a-1a's
+    components (one propagation function for both passes); per Fixed target and part one `Close`, each source reaching the target tested
+    once, each in-edge reporting the failing sources its tail carries.
+  - A class's oracle condition is the set of borrow binders all its views share (SPEC 15.6.5: premises that hold in every case that
+    requires the relation); the class key stays 2a-1a's (active rows, containment edges). Whether a problem exists equals the per-case
+    judgment (the view whose borrows are a chain's binders exactly lies in a class whose shared binders are those), but a problem may carry
+    views of its class in which it alone would not fail: an input to 2a-2, whose merge rules read views.
+  - Departures from §6.4's text (ruling 2): one scratch mask of the fixed sources failing the target being judged instead of a stored mask
+    per target (memory falls; no source that reaches no edge into the target is tested), and `Work` counting node visits, edge steps,
+    bitset and mask words and the oracle's `Close` and `Outlives` calls, not the closure's internal steps, which the oracle's published API
+    (2a0-D §4) does not expose. V16 (9), N chained locals and N signature Origins whose premises order them:
+    Work/(4N + 2N·⌈N/64⌉) = 1.54, 1.70, 1.39, 1.09 at N = 32, 64, 128, 256; the 64-view pair body (six binders, one row masked by the
+    first): 2 classes, work 594 against 298 with one view.
+  - Arena (D20): `N_c·max(⌈Fin/64⌉, ⌈F/64⌉) + ⌈F/64⌉` words (`MirOrigins.ArenaWords`), admitted by `MirDataflow.Within(long words)`, R4-M15a's
+    one byte-limit decision, which `Prepare` also calls. Over it: `OwnershipStorageLimit_Kd` (`Ownership.StorageLimit`) once at the body in
+    every view, its other Origin problems dropped (the stratum skips the body). No test body binds within the test budget (the smallest
+    over the limit: 65,536 inner components with 8,192 fixed sources; the largest test body about 3,300 words of work), so the limit test
+    drives `Within` with `ArenaWords`' counts.
+  - The view's part of a MIR atom (rulings-2 (C), R4-M101 E4 applied to MIR atoms, not a new representation): `OriginAtomIn` gives an atom
+    MIR reads the part its forming body gives (`BoundOrigin.Body`: the layer's when a Field initializer formed it), a meet its operands';
+    `OriginRowSet.InLayer` publishes it; E4's check that the parts share Fixed atoms only moves into `InternAtom`, at the interning site.
+    MirOrigins judges a layer row, and a containment edge with a layer atom, with the layer's oracle (the Type's public premises; SPEC
+    6.3.3, R4-M110 Q1 (a)) and reads no forming body itself (E8's rows hold). A containment edge whose atoms are all Fixed takes the body's
+    oracle: in a Field initializer, which names no parameter or `self`, such an edge can name only `static`, which every oracle derives.
+    Pinned: a Field initializer's written Type argument relating the struct's Origins that only the constructor's clause orders is Unknown;
+    the same relation in the constructor's own body is valid. Not adopted: the body's oracle for an initializer's Refs (design reading 3), a
+    `MirScopeKind` entry (O1, restating Binding's fact) and a body boundary for one consumer (rulings-2 (A), (B)).
+  - Binding-judged forms (D1): a relation whose ends are fixed where Binding forms it has no row and its failed node is Opaque on the MIR,
+    so j-f, j-pick, c-detach (SPEC 15.5), c-box, c-peekU, c-pair, n-pass, x-skip, p1's direct form and r7-subst are pinned as Binding's
+    until R7.
+  - PD21: `MirDataflow.cs` was due (0c, 1b-2, V1 since the owner's discard); the planning session's ruling: one responsibility (the
+    analyses' bit-set dataflow and its arena: the solve, the state helpers, the byte limit), no split by responsibility exists, so `Within`
+    goes in and the next changing unit restructures the file first. `Binding.OriginRows.cs` was due (3): split first, behavior-preserving,
+    into `.Atoms.cs` (the atom table) and `.Oracle.cs` (the fixed-fixed oracle). `MirOrigins.cs` and `.Chains.cs` reach 2.
+  - Held (the ruling on `stop-g226.md`, (A)): judging Unknown over containment edges exposes PLAN G226's layer-dropping Reborrow names
+    (widened on dev to exclusive receiver and local layers): a Reborrow named by its inner layer only gives a containment edge from an outer
+    layer that no premise derives, a false Unknown in valid programs, the library's `BorrowingIterator.next` (`self.iterator`, so every
+    program and every milestone) and SPEC 15.6.3's `takeFirst` among them. The behavior commit waits for G226's Binding repair, after which
+    those edges hold by the meet law; then the census, the ledger and the Sessions are run. Rejected: skipping containment edges for Unknown
+    until G226 (a temporary special case by edge source) and a known-limit list in MirCensusTest (relaxing a library census gate).
+  - Ledger before G226 (mir Functional, base `f4332df53`): the 62 blocking old Unproven rows (cd1535825466, e3312717bde0, bc801917a239,
+    597510880fb0, 8e4cca7290b1, cab8c776076f) pair; open blocking rows from old rejections 164 → 102.
+  - Rejected: per-view masks (work per view); premise-keyed classes (a Binding member in a due file); a stored mask per target tested over
+    every fixed source (Ft·F tests).
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

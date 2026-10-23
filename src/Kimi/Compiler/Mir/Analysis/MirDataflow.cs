@@ -151,6 +151,12 @@ internal sealed class MirDataflow(MirReach reach)
         }
     }
 
+    /// <summary>Gets whether an analysis arena of a count of words is within the analyses' byte limit (R4-M15a), the one decision that
+    /// <see cref="Prepare"/> and MirOrigins share (2a0-D D20); above it the body is not analyzed (OwnershipStorageLimit_Kd).</summary>
+    /// <param name="words">The arena's words.</param>
+    /// <returns>Whether the arena is within the limit.</returns>
+    internal static bool Within(long words) => words <= ByteLimit / sizeof(ulong);
+
     /// <summary>Gets whether the runtime edges from the entry reach a block (P1); every other block only the checks reach (P2).</summary>
     /// <param name="block">A block of the body.</param>
     /// <returns>Whether it is in P1.</returns>
@@ -228,7 +234,7 @@ internal sealed class MirDataflow(MirReach reach)
     /// <returns>The scratch, or null when the arena would exceed the analyses' byte limit (R4-M15a).</returns>
     internal ulong[]? Prepare(int backward, int forward, int width)
     {
-        if ((long)this.headCount * (backward + forward) * sizeof(ulong) > ByteLimit)
+        if (!Within((long)this.headCount * (backward + forward)))
         {
             return null;
         }

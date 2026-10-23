@@ -35,7 +35,7 @@ public sealed partial class Binding
 
         List<OriginAtomEntry> Atoms { get; }
 
-        // Each atom's table index, and the parts (1 own, 2 layer) whose rows name it.
+        // Each atom's table index, and its parts (1 own, 2 layer): those whose rows name it, or for an atom MIR reads its forming body's.
         Dictionary<BoundOrigin, int> Index { get; }
 
         List<byte> Parts { get; }
@@ -82,15 +82,6 @@ public sealed partial class Binding
         if (layer.IsBody)
         {
             this.AddOriginRows(slice, layer, 2);
-        }
-
-        for (var i = 0; i < slice.Atoms.Count; i++)
-        {
-            // E4: the parts share Fixed atoms only, so a chain never crosses from one oracle's part to the other's.
-            if (builder.Parts[i] == 3 && slice.Atoms[i].Kind != OriginAtomKind.Fixed)
-            {
-                this.OriginFinding(slice.Rows[slice.LayerStart].Site);
-            }
         }
 
         return slice;
@@ -269,6 +260,12 @@ public sealed partial class Binding
         }
 
         void IOriginRowSetBuilder.EndOwnRows() => this.LayerStart = this.rows.Count;
+
+        /// <summary>Gets whether an atom belongs to the layer's part only (DECISIONS R4-M101 E4, R4-M114): a non-Fixed atom the layer's rows
+        /// name or a Field initializer formed; a Fixed atom is shared by both parts.</summary>
+        /// <param name="atom">The atom's index.</param>
+        /// <returns>Whether it is the layer's.</returns>
+        internal bool InLayer(int atom) => this.parts[atom] == 2 && this.atoms[atom].Kind != OriginAtomKind.Fixed;
     }
 
     // A row of a body's unit before its slice indexes its ends.

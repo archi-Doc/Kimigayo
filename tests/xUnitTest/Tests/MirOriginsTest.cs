@@ -11,7 +11,7 @@ namespace XunitTest;
 /// <summary>A5's Origin stratum, Refuted part (2a0-D §6; docs/dev/DECISIONS.md R4-M113): every row of a body's C1-F4 view and every
 /// containment edge of its Refs is an edge of one graph per class of views; a finite Origin reaching an edge into a fixed one is
 /// <c>UnsatisfiedOriginRelation_Kd</c> at that edge's site with its Reason and facts; an Unclassed end is the located limit (row 9).</summary>
-public sealed class MirOriginsTest
+public sealed partial class MirOriginsTest
 {
     private const string Main = "public func main() => ()\n";
 
@@ -189,7 +189,9 @@ public sealed class MirOriginsTest
         Assert.Equal(exclusive + 1, origins.ContainmentEdges);
     }
 
-    // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components and bitsets).
+    // +warm: the stratum on a body it judged before allocates nothing (pooled frames, edges, components, bitsets and the arena; the oracles
+    // the view pools): Refuted chains, Unknown chains and edges, an Equality row failing both ways, a pair layer's two classes and a Field
+    // initializer's layer oracle.
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void AWarmJudgmentAllocatesNothing()
@@ -197,7 +199,9 @@ public sealed class MirOriginsTest
         var c = MirBuildTest.Compile("func region(input: ref/i32) -> ref/i32 during input\n    var view = input\n    let local = 5\n" +
             "    view = local@ref\n    return view\nfunc two(x: ref/i32, c: bool) -> ref/i32 during x\n    let l1 = 1\n    let l2 = 2\n" +
             "    var r = x\n    if c => r = l1@ref else => r = l2@ref\n    return r\nfunc layers(p: ref/i32) -> ref/i32 during p\n" +
-            "    var local: i32 = 1\n    var r = local@uniq\n    let rr = r@uniq\n    return rr@follow@follow@ref\n" + Main);
+            "    var local: i32 = 1\n    var r = local@uniq\n    let rr = r@uniq\n    return rr@follow@follow@ref\n" + R7Inv + Phantom +
+            "func pair<s/T>(x: ref/i32, y: ref/i32) -> i32\n    s is owner or ref\n    let k: Option<s/(ref/i32 during x) during y> = .None\n    return 0\n" +
+            "func chain(x: ref/i32, y: ref/i32) -> ref/i32 during y\n    var r = x\n    r = y\n    return r\n" + LayerCount + Main);
         var program = c.BuildMir();
         var origins = new MirOrigins(c.Types, new MirCases(c.Types));
         var bodies = program.Bodies.ToArray();
@@ -224,7 +228,8 @@ public sealed class MirOriginsTest
     // The problems of a program's own bodies with an Origin stratum's code, and their indices.
     private static IEnumerable<(MirProblem Problem, int Index)> Found(MirProgram program)
         => program.Problems.All.ToArray().Select((x, i) => (x, i))
-            .Where(static x => x.x.Subject.Module == 0 && x.x.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.Unsupported_Kd);
+            .Where(static x => x.x.Subject.Module == 0 && x.x.Code is DiagnosticCode.UnsatisfiedOriginRelation_Kd or DiagnosticCode.UnprovenOriginRelation_Kd
+                or DiagnosticCode.Unsupported_Kd or DiagnosticCode.OwnershipStorageLimit_Kd);
 
     // A program's body judged by a stratum of its own, for its work and containment edges.
     private static (MirOrigins Origins, MirBody Body, Compilation C) Judged(string source, string name)

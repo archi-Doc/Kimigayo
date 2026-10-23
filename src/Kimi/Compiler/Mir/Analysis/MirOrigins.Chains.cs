@@ -1,9 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
-// MirOrigins' judgment of one class (2a0-D §6.2, §6.3; D15, D16, D19): its edges (each active row, Longer -> Shorter and back for an equality,
-// a meet expanded by MeetNode's rule; each containment edge), Tarjan's components over the inner nodes (Finite and Inferred), finite-source
-// bitsets propagated in topological order, and a problem at each edge into a Fixed node per finite source reaching its tail; an edge with an
-// Unclassed end forms nothing and gives the located limit. 2a-1b adds Unknown here.
+// MirOrigins' judgment of one class (2a0-D §6.2-§6.4; D15-D17, D19, D20): its edges (each active row, Longer -> Shorter and back for an
+// equality, a meet expanded by MeetNode's rule; each containment edge); an edge between two Fixed Origins judged at once, one oracle test
+// (an Equality row failing both ways is one problem); Tarjan's components over the inner nodes (Finite and Inferred); finite-source and
+// then fixed-source bitsets propagated in topological order through one pooled arena that MirDataflow.Within admits; and at each edge into
+// a Fixed node a problem per finite source (Refuted) and per fixed source the oracle does not derive (Unknown), the oracle closed once per
+// target and part. An edge of the layer's part (a layer row, or an edge between a Field initializer's atoms) is judged with the layer's
+// oracle, the Type's public premises (DECISIONS R4-M101 E4, R4-M110 Q1 (a), R4-M114); an edge with an Unclassed end forms nothing and is
+// the located limit.
 
 using System.Numerics;
 using Kimi.Diagnostics;
@@ -12,15 +16,19 @@ namespace Kimi.Compiler.Mir;
 
 internal sealed partial class MirOrigins
 {
-    private int[] tails = []; // The class's edges, by edge index: tail, head, site's Ref (or -1 for a row's Site) and row (-1: containment).
+    private int[] tails = []; // The class's edges between non-Fixed or mixed ends, by edge index: tail, head, site and row (-1: containment).
     private int[] heads = [];
     private int[] edgeRows = [];
     private SourceRef[] edgeSites = [];
     private int edgeCount;
-    private int[] outStart = []; // The edges by tail (counting sort): node v's out-edges are outEdges[outStart[v]..outStart[v + 1]).
+    private int[] outStart = []; // The edges by tail and by head (counting sorts): node v's out-edges are outEdges[outStart[v]..outStart[v + 1]).
     private int[] outEdges = [];
+    private int[] inStart = [];
+    private int[] inEdges = [];
     private int[] finite = []; // Per node: its finite-source bit, or -1.
     private int[] finiteNodes = []; // Per finite-source bit: its node.
+    private int[] fixedBits = []; // Per node: its fixed-source bit (a Fixed tail of an edge), or -1.
+    private int[] fixedNodes = []; // Per fixed-source bit: its node.
     private int[] order = []; // Tarjan's state per node: visit order (0: unvisited), low link, component (-1: open).
     private int[] low = [];
     private int[] component = [];
@@ -28,13 +36,25 @@ internal sealed partial class MirOrigins
     private int[] frames = []; // Tarjan's call stack: node and next out-edge cursor, two ints per frame.
     private int[] members = []; // The nodes by component (counting sort), from memberStart.
     private int[] memberStart = [];
-    private ulong[] sources = []; // Per component: the finite sources reaching it, words each.
+    private ulong[] arena = []; // Each component's sources, one pass's words each, then the failing sources of the target being judged.
+    private ulong classViews; // The judged class's views and the borrow binders they all share, the oracle's condition (SPEC 15.6.5).
+    private ulong condition;
+    private (int Tail, int Head, int Row, int Pending) lastDirect; // The last failed direct edge and its problem's index.
 
-    // A class's judgment: its edges, then the Refuted chains.
-    private void JudgeClass(int c)
+    /// <summary>Gets the words of a class's arena (2a0-D §6.4, D20): each component's sources, the wider pass's words, and the fixed sources
+    /// failing the target being judged.</summary>
+    /// <param name="components">The inner components.</param>
+    /// <param name="finiteSources">The finite sources.</param>
+    /// <param name="fixedSources">The fixed sources.</param>
+    /// <returns>The words.</returns>
+    internal static long ArenaWords(int components, int finiteSources, int fixedSources)
+        => ((long)components * Math.Max((finiteSources + 63) >> 6, (fixedSources + 63) >> 6)) + ((fixedSources + 63) >> 6);
+
+    // A class's judgment: its edges, then its chains; false when its arena is over the limit, so the stratum skips the body.
+    private bool JudgeClass(int c)
     {
         ref readonly var known = ref this.classes[c];
-        this.edgeCount = 0;
+        (this.classViews, this.condition, this.edgeCount, this.lastDirect) = (known.Views, known.Borrows, 0, (-1, -1, -1, -1));
         var rows = this.slice.Rows;
         var bits = this.rowBits.AsSpan(c * this.rowWords, this.rowWords);
         for (var r = 0; r < rows.Count; r++)
@@ -47,7 +67,7 @@ internal sealed partial class MirOrigins
             var row = rows[r];
             if (this.Unclassed(row.Longer) || this.Unclassed(row.Shorter))
             {
-                this.Limit(row.Site, known.Views); // 2a0-D §3 row 9: no edge; the located limit at the row.
+                this.Limit(row.Site); // 2a0-D §3 row 9: no edge; the located limit at the row.
                 continue;
             }
 
@@ -63,17 +83,21 @@ internal sealed partial class MirOrigins
             var site = this.refs[edge.Ref].Site;
             if (this.Unclassed(edge.Tail) || this.Unclassed(edge.Head))
             {
-                this.Limit(site, known.Views);
+                this.Limit(site);
                 continue;
             }
 
             this.Relate(edge.Tail, edge.Head, site, -1);
         }
 
-        this.Refute(known.Views);
+        return this.Chains();
     }
 
     private bool Unclassed(int node) => this.slice.Atoms[node].Kind == OriginAtomKind.Unclassed;
+
+    // An edge's part (DECISIONS R4-M101 E4, R4-M114): a row's by its index, a containment edge's by its atoms, the layer's when either is the
+    // layer's (a Field initializer's Ref); Fixed atoms are shared.
+    private bool InLayer(int tail, int head, int row) => row >= 0 ? row >= this.slice.LayerStart : this.slice.InLayer(tail) || this.slice.InLayer(head);
 
     // An edge `longer -> shorter` by MeetNode's rule (2a0-D D15): a meet at the longer end gives an edge from each operand and, unless it is
     // Fixed, its own node's; a non-Fixed meet at the shorter end is its node, reached from each of its operands.
@@ -109,10 +133,18 @@ internal sealed partial class MirOrigins
         }
     }
 
+    // An edge of the graph; one between two Fixed Origins passes nothing on, so it is judged at once instead (SPEC 15.6.5; 2a0-D §6.3).
     private void Join(int tail, int head, SourceRef site, int row)
     {
         if (tail == head)
         {
+            return;
+        }
+
+        var atoms = this.slice.Atoms;
+        if (atoms[tail].Kind == OriginAtomKind.Fixed && atoms[head].Kind == OriginAtomKind.Fixed)
+        {
+            this.Direct(tail, head, site, row);
             return;
         }
 
@@ -124,44 +156,124 @@ internal sealed partial class MirOrigins
         (this.tails[at], this.heads[at], this.edgeRows[at], this.edgeSites[at]) = (tail, head, row, site);
     }
 
-    // SPEC 15.6.5 (2a0-D D16): a finite source reaching the tail of an edge into a Fixed node must outlive it, which a finite Origin never
-    // does: one problem per source and edge, Reason (source, fixed end, false). Sources propagate over Tarjan's components of the inner nodes
-    // in topological order, 64 per word; a Fixed node passes none on.
-    private void Refute(ulong views)
+    // SPEC 15.6.5: a relation between two fixed Origins is Proven only when the premises derive it, one oracle test under the class's
+    // condition; an Equality row failing in both directions is one problem with Equality set, the second direction failing right after the
+    // first (2a0-D §6.3).
+    private void Direct(int tail, int head, SourceRef site, int row)
     {
         var atoms = this.slice.Atoms;
-        var nodes = atoms.Count;
-        MirDataflow.Grow(ref this.finite, nodes);
-        var count = 0;
-        for (var v = 0; v < nodes; v++)
-        {
-            this.finite[v] = atoms[v].Kind == OriginAtomKind.Finite ? count++ : -1;
-            if (this.finite[v] >= 0)
-            {
-                MirDataflow.Grow(ref this.finiteNodes, count);
-                this.finiteNodes[count - 1] = v;
-            }
-        }
-
-        this.Work += nodes + this.edgeCount;
-        if (count == 0 || this.edgeCount == 0)
+        var oracle = this.Oracle(this.InLayer(tail, head, row));
+        oracle.Close(atoms[head].Atom, this.condition);
+        this.Work += 2;
+        if (oracle.Outlives(atoms[tail].Atom))
         {
             return;
         }
 
-        this.IndexEdges(nodes);
+        if (row >= 0 && this.lastDirect == (head, tail, row, this.pending.Count - 1))
+        {
+            var first = this.pending[^1];
+            this.pending[^1] = first with { Reason = first.Reason with { Equality = true } };
+            this.lastDirect = (-1, -1, -1, -1);
+            return;
+        }
+
+        this.Unproven(tail, head, site, row);
+        this.lastDirect = (tail, head, row, this.pending.Count - 1);
+    }
+
+    // SPEC 15.6.5 (2a0-D D16, D17, D20): over Tarjan's components of the inner nodes, finite sources and then fixed sources propagate in
+    // topological order, 64 per word, through one arena MirDataflow.Within admits; a Fixed node passes none on. False when the arena is over
+    // the limit.
+    private bool Chains()
+    {
+        var atoms = this.slice.Atoms;
+        var nodes = atoms.Count;
+        MirDataflow.Grow(ref this.finite, nodes);
+        MirDataflow.Grow(ref this.fixedBits, nodes);
+        var (finiteCount, fixedCount) = (0, 0);
+        for (var v = 0; v < nodes; v++)
+        {
+            (this.finite[v], this.fixedBits[v]) = (atoms[v].Kind == OriginAtomKind.Finite ? finiteCount++ : -1, -1);
+            if (this.finite[v] >= 0)
+            {
+                MirDataflow.Grow(ref this.finiteNodes, finiteCount);
+                this.finiteNodes[finiteCount - 1] = v;
+            }
+        }
+
+        for (var e = 0; e < this.edgeCount; e++)
+        {
+            if (this.tails[e] is var tail && atoms[tail].Kind == OriginAtomKind.Fixed && this.fixedBits[tail] < 0)
+            {
+                this.fixedBits[tail] = fixedCount++;
+                MirDataflow.Grow(ref this.fixedNodes, fixedCount);
+                this.fixedNodes[fixedCount - 1] = tail;
+            }
+        }
+
+        this.Work += nodes + this.edgeCount;
+        if (this.edgeCount == 0)
+        {
+            return true;
+        }
+
+        this.IndexEdges(this.tails, nodes, ref this.outStart, ref this.outEdges);
         var components = this.Components(nodes);
+        var words = ArenaWords(components, finiteCount, fixedCount);
+        if (!MirDataflow.Within(words))
+        {
+            this.StorageLimit();
+            return false;
+        }
+
+        MirDataflow.Grow(ref this.arena, (int)words);
+        if (finiteCount > 0)
+        {
+            this.Refute(this.Propagate(this.finite, finiteCount, components), components);
+        }
+
+        if (fixedCount > 0)
+        {
+            var fixedWords = this.Propagate(this.fixedBits, fixedCount, components);
+            this.IndexEdges(this.heads, nodes, ref this.inStart, ref this.inEdges);
+            for (var g = 0; g < nodes; g++)
+            {
+                if (atoms[g].Kind == OriginAtomKind.Fixed && this.inStart[g] < this.inStart[g + 1])
+                {
+                    this.Unknown(g, false, fixedWords, components);
+                    this.Unknown(g, true, fixedWords, components);
+                }
+            }
+        }
+
+        return true;
+    }
+
+    // One pass's sources per component, in the arena: an inner node's own bit, a non-inner tail's bit into its head's component, then each
+    // component's sources into those of the components its edges reach, highest component first (every edge between components goes from a
+    // higher id to a lower one); returns the words per component.
+    private int Propagate(int[] bit, int count, int components)
+    {
         var words = (count + 63) >> 6;
-        MirDataflow.Grow(ref this.sources, components * words);
-        this.sources.AsSpan(0, components * words).Clear();
+        this.arena.AsSpan(0, components * words).Clear();
+        for (var e = 0; e < this.edgeCount; e++)
+        {
+            if (this.component[this.tails[e]] < 0 && bit[this.tails[e]] is var b and >= 0)
+            {
+                this.arena[(this.component[this.heads[e]] * words) + (b >> 6)] |= 1UL << b;
+            }
+        }
+
+        this.Work += this.edgeCount;
         for (var k = components - 1; k >= 0; k--)
         {
-            var reached = this.sources.AsSpan(k * words, words);
+            var reached = this.arena.AsSpan(k * words, words);
             for (var m = this.memberStart[k]; m < this.memberStart[k + 1]; m++)
             {
-                if (this.finite[this.members[m]] is var bit and >= 0)
+                if (bit[this.members[m]] is var b and >= 0)
                 {
-                    reached[bit >> 6] |= 1UL << bit;
+                    reached[b >> 6] |= 1UL << b;
                 }
             }
 
@@ -170,46 +282,120 @@ internal sealed partial class MirOrigins
                 var tail = this.members[m];
                 for (var e = this.outStart[tail]; e < this.outStart[tail + 1]; e++)
                 {
-                    var head = this.heads[this.outEdges[e]];
+                    var into = this.component[this.heads[this.outEdges[e]]];
                     this.Work += words;
-                    if (this.component[head] >= 0 && this.component[head] != k)
+                    if (into >= 0 && into != k)
                     {
-                        var into = this.sources.AsSpan(this.component[head] * words, words);
-                        for (var w = 0; w < words; w++)
-                        {
-                            into[w] |= reached[w];
-                        }
+                        MirDataflow.Union(this.arena.AsSpan(into * words, words), reached);
                     }
-                    else if (atoms[head].Kind == OriginAtomKind.Fixed)
+                }
+            }
+        }
+
+        return words;
+    }
+
+    // SPEC 15.6.5 (2a0-D D16): a finite source reaching the tail of an edge into a Fixed node must outlive it, which a finite Origin never
+    // does: one problem per source and edge, Reason (source, fixed end, false).
+    private void Refute(int words, int components)
+    {
+        var atoms = this.slice.Atoms;
+        for (var k = components - 1; k >= 0; k--)
+        {
+            for (var m = this.memberStart[k]; m < this.memberStart[k + 1]; m++)
+            {
+                var tail = this.members[m];
+                for (var e = this.outStart[tail]; e < this.outStart[tail + 1]; e++)
+                {
+                    if (atoms[this.heads[this.outEdges[e]]].Kind == OriginAtomKind.Fixed)
                     {
-                        this.Refuted(this.outEdges[e], reached, views);
+                        this.Refuted(this.outEdges[e], this.arena.AsSpan(k * words, words));
                     }
                 }
             }
         }
     }
 
-    // The edges by tail, a counting sort: node v's out-edges are outEdges[outStart[v]..outStart[v + 1]).
-    private void IndexEdges(int nodes)
+    // SPEC 15.6.5 (2a0-D D17): the fixed sources reaching the tails of g's in-edges of one part, each tested once with that part's oracle
+    // closed at g under the class's condition (the mask over the sources, computed for those that reach g); each edge reports the failing
+    // sources its tail carries, Reason (source, g, false). Every tail is inner: an edge between Fixed ends was judged when formed.
+    private void Unknown(int g, bool layer, int words, int components)
     {
-        MirDataflow.Grow(ref this.outStart, nodes + 1);
-        MirDataflow.Grow(ref this.outEdges, this.edgeCount);
-        this.outStart.AsSpan(0, nodes + 1).Clear();
+        var failing = this.arena.AsSpan(components * words, words);
+        failing.Clear();
+        for (var i = this.inStart[g]; i < this.inStart[g + 1]; i++)
+        {
+            var e = this.inEdges[i];
+            if (this.InLayer(this.tails[e], g, this.edgeRows[e]) == layer)
+            {
+                MirDataflow.Union(failing, this.arena.AsSpan(this.component[this.tails[e]] * words, words));
+                this.Work += words;
+            }
+        }
+
+        if (failing.IndexOfAnyExcept(0UL) < 0)
+        {
+            return;
+        }
+
+        var atoms = this.slice.Atoms;
+        var oracle = this.Oracle(layer);
+        oracle.Close(atoms[g].Atom, this.condition);
+        this.Work += words + 1;
+        for (var w = 0; w < words; w++)
+        {
+            for (var word = failing[w]; word != 0; word &= word - 1)
+            {
+                var bit = BitOperations.TrailingZeroCount(word);
+                this.Work++;
+                if (oracle.Outlives(atoms[this.fixedNodes[(w << 6) + bit]].Atom))
+                {
+                    failing[w] &= ~(1UL << bit);
+                }
+            }
+        }
+
+        for (var i = this.inStart[g]; i < this.inStart[g + 1]; i++)
+        {
+            var e = this.inEdges[i];
+            if (this.InLayer(this.tails[e], g, this.edgeRows[e]) != layer)
+            {
+                continue;
+            }
+
+            var carried = this.arena.AsSpan(this.component[this.tails[e]] * words, words);
+            this.Work += words;
+            for (var w = 0; w < words; w++)
+            {
+                for (var word = carried[w] & failing[w]; word != 0; word &= word - 1)
+                {
+                    this.Unproven(this.fixedNodes[(w << 6) + BitOperations.TrailingZeroCount(word)], g, this.edgeSites[e], this.edgeRows[e]);
+                }
+            }
+        }
+    }
+
+    // The edges by a key (their tails or their heads), a counting sort: node v's edges are index[start[v]..start[v + 1]), in edge order.
+    private void IndexEdges(int[] keys, int nodes, ref int[] start, ref int[] index)
+    {
+        MirDataflow.Grow(ref start, nodes + 1);
+        MirDataflow.Grow(ref index, this.edgeCount);
+        start.AsSpan(0, nodes + 1).Clear();
         for (var e = 0; e < this.edgeCount; e++)
         {
-            this.outStart[this.tails[e] + 1]++;
+            start[keys[e] + 1]++;
         }
 
         for (var v = 0; v < nodes; v++)
         {
-            this.outStart[v + 1] += this.outStart[v];
+            start[v + 1] += start[v];
         }
 
         MirDataflow.Grow(ref this.low, nodes); // Scratch for the insertion cursors.
-        this.outStart.AsSpan(0, nodes).CopyTo(this.low);
+        start.AsSpan(0, nodes).CopyTo(this.low);
         for (var e = 0; e < this.edgeCount; e++)
         {
-            this.outEdges[this.low[this.tails[e]]++] = e;
+            index[this.low[keys[e]]++] = e;
         }
     }
 
@@ -316,7 +502,7 @@ internal sealed partial class MirOrigins
     }
 
     // An edge into a Fixed node with the finite sources reaching its tail: one problem per source, at the edge's site, with its facts.
-    private void Refuted(int edge, ReadOnlySpan<ulong> reached, ulong views)
+    private void Refuted(int edge, ReadOnlySpan<ulong> reached)
     {
         var atoms = this.slice.Atoms;
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
@@ -334,15 +520,36 @@ internal sealed partial class MirOrigins
 
                 var reason = new MirReason(atoms[source].Atom, atoms[this.heads[edge]].Atom, Equality: false);
                 var count = this.pendingFacts.Count - start;
-                this.pending.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, requirement, this.edgeSites[edge], reason, views, start, count));
+                this.pending.Add(new(DiagnosticCode.UnsatisfiedOriginRelation_Kd, requirement, this.edgeSites[edge], reason, this.classViews, start, count));
             }
         }
     }
 
+    // A fixed source the target's premises do not derive, at the last edge's site with its row (SPEC 15.6.5, 23.1.2; 2a0-D D18).
+    private void Unproven(int source, int target, SourceRef site, int row)
+    {
+        var atoms = this.slice.Atoms;
+        var start = this.pendingFacts.Count;
+        this.pendingFacts.Add(new(MirFactKind.Relation, site, row));
+        var reason = new MirReason(atoms[source].Atom, atoms[target].Atom, Equality: false);
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.UnprovenOrigin);
+        this.pending.Add(new(DiagnosticCode.UnprovenOriginRelation_Kd, requirement, site, reason, this.classViews, start, 1));
+    }
+
     // The located limit at a row or Ref with an Unclassed end (2a0-D §3 row 9, D19), whatever Binding's completeness (DECISIONS R4-M113).
-    private void Limit(SourceRef site, ulong views)
+    private void Limit(SourceRef site)
     {
         var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.Unsupported);
-        this.pending.Add(new(DiagnosticCode.Unsupported_Kd, requirement, site, default, views, this.pendingFacts.Count, 0));
+        this.pending.Add(new(DiagnosticCode.Unsupported_Kd, requirement, site, default, this.classViews, this.pendingFacts.Count, 0));
+    }
+
+    // D20 (R4-M15a): a class's arena over the analyses' byte limit is OwnershipStorageLimit_Kd once at the body in every view, and the stratum
+    // skips the body, its other Origin problems dropped.
+    private void StorageLimit()
+    {
+        this.pending.Clear();
+        this.pendingFacts.Clear();
+        var requirement = DiagnosticRequirement.Ownership(OwnershipRequirement.StorageLimit);
+        this.pending.Add(new(DiagnosticCode.OwnershipStorageLimit_Kd, requirement, this.body.Source, default, this.allViews, 0, 0));
     }
 }

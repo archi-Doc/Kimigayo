@@ -1,10 +1,13 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // The C1-F4 view's atom table (2a0-D §3, D4, D7; DECISIONS R4-M101 E4, E5): an atom's identity (resolved at its use, a meet canonical),
-// its class in a body by §3's precedence, first match deciding, and the index MIR reads an atom by (OriginAtomIn, at a MIR site).
-// Input: an atom, the slice it is interned in and the use or MIR site it is resolved at. Output: the atom's index in the slice's table.
+// its class in a body by §3's precedence, first match deciding, the part of a constructor's slice it belongs to (E4), and the index MIR
+// reads an atom by (OriginAtomIn, at a MIR site).
+// Input: an atom, the slice it is interned in and the use or MIR site it is resolved at. Output: the atom's index in the slice's table and
+// its part (OriginRowSet.InLayer).
 // Invariants: an atom is classed once, on its first appearance in a slice; a class no precedence row gives is a broken contract
-// (OriginFinding); roots by the forming body for non-declaration binders and by slot role for declaration binders.
+// (OriginFinding); roots by the forming body for non-declaration binders and by slot role for declaration binders; an atom's part is its
+// rows' part, or for an atom MIR reads its forming body's (DECISIONS R4-M114), and only a Fixed atom is in both parts (else a finding).
 // Must not: let a slot or binder leave the view (only ProjectionRole does, D7).
 
 using Kimi.Compiler.Parsing;
@@ -13,13 +16,32 @@ namespace Kimi.Compiler;
 
 public sealed partial class Binding
 {
-    // An atom MIR reads (a Ref's or a dereferenced layer's Origin) at a MIR site: resolved at the site's syntax, classed in the body's table,
-    // and returned as its index there.
+    // An atom MIR reads (a Ref's or a dereferenced layer's Origin) at a MIR site: resolved at the site's syntax, classed in the body's table
+    // with the part its forming body gives, and returned as its index there.
     internal int OriginAtomIn(ExecutableBody body, BoundOrigin origin, SourceRef site)
     {
         var slice = this.OriginRows(body);
         var use = this.compilation.SyntaxOf(site);
-        return this.InternAtom(slice, this.CanonicalOrigin(this.OriginAtUse(origin, use)), use, 0);
+        var atom = this.CanonicalOrigin(this.OriginAtUse(origin, use));
+        return this.InternAtom(slice, atom, use, PartOf(atom, slice));
+    }
+
+    // E4 for an atom MIR reads (DECISIONS R4-M114): in a constructor's slice, the part whose unit formed it (1 the body's own, 2 its
+    // layer's, the Field initializers'), a meet its operands' parts; a declaration atom names no part, as Fixed atoms are shared.
+    private static byte PartOf(BoundOrigin atom, OriginRowSet slice)
+    {
+        if (atom.Kind == OriginKind.Intersection)
+        {
+            byte part = 0;
+            for (var i = 0; i < atom.Operands.Count; i++)
+            {
+                part |= PartOf(atom.Operands[i], slice);
+            }
+
+            return part;
+        }
+
+        return !slice.Layer.IsBody || !atom.Body.IsBody ? (byte)0 : atom.Body == slice.Layer ? (byte)2 : atom.Body == slice.Body ? (byte)1 : (byte)0;
     }
 
     // A Projection slot's role (2a0-D D7: only the view decodes slots; DECISIONS R4-M101 E5): a declaration binder (a function, accessor
@@ -87,7 +109,14 @@ public sealed partial class Binding
             builder.Parts.Add(0);
         }
 
+        // E4: the parts share Fixed atoms only, so a chain never crosses from one oracle's part to the other's.
+        var before = builder.Parts[index];
         builder.Parts[index] |= part;
+        if (before != 3 && builder.Parts[index] == 3 && builder.Atoms[index].Kind != OriginAtomKind.Fixed)
+        {
+            this.OriginFinding(SourceRef.Of(site));
+        }
+
         return index;
     }
 
