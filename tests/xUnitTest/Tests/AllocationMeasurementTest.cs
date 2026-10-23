@@ -4,11 +4,31 @@ using System.Buffers;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Xunit;
+using Xunit.v3;
 
 namespace XunitTest;
 
 public class AllocationMeasurementTest
 {
+    [Fact]
+    public void NestedAllocationClassesBelongToOneIsolatedCollection()
+    {
+        var assembly = typeof(AllocationMeasurementTest).Assembly;
+        var collections = new CollectionPerClassTestCollectionFactory(new XunitTestAssembly(assembly, configFilePath: null));
+        var allocationClasses = assembly.GetTypes().Where(type => type.IsNested && type.Name == "AllocationTests").ToArray();
+        Assert.NotEmpty(allocationClasses);
+        var isolated = collections.Get(allocationClasses[0]);
+        foreach (var type in allocationClasses)
+        {
+            var collection = collections.Get(type);
+            Assert.True(collection.DisableParallelization, $"{type.FullName} is not isolated under collection parallelism.");
+            Assert.Same(isolated, collection);
+            Assert.False(collections.Get(type.DeclaringType!).DisableParallelization);
+        }
+
+        Assert.False(collections.Get(typeof(AllocationMeasurementTest)).DisableParallelization);
+    }
+
     [Trait("Purpose", "Allocation")]
     [Fact]
     public void RunsTheStandardWindowAndIsolatesTheMeasuringThread()

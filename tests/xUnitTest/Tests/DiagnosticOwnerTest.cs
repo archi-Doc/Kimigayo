@@ -95,7 +95,7 @@ public sealed class DiagnosticOwnerTest
         Assert.Equal(1, line.Length);
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public sealed class AllocationTests
     {

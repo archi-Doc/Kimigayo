@@ -81,7 +81,7 @@ public class MatchCaptureTest
         }
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

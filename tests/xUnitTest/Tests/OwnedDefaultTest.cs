@@ -35,7 +35,7 @@ public class OwnedDefaultTest
         StringEmissionTest.WriteAuditedFixture("OwnedDefault" + name, ir, string.Empty, destructions, order: order);
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {
