@@ -208,9 +208,7 @@ public sealed partial class Binding
         {
             source = this.OriginAtUse(source, evidence);
             target = this.OriginAtUse(target, evidence);
-            // SPEC 15.6.5: an enclosing body's atom is fixed in the body that formed the relation, which never bounds it.
-            if (ReferenceEquals(source, target) || EnclosingAtom(target, body) ||
-                (!IsLocalRegion(target) && target.Kind is not (OriginKind.Projection or OriginKind.Anchor or OriginKind.Intersection)))
+            if (ReferenceEquals(source, target) || !BoundableIn(target, body))
             {
                 return;
             }
@@ -242,7 +240,8 @@ public sealed partial class Binding
     }
 
     // Lowering may reuse only relations already represented in the checked graph. A new finite fit needs ownership analysis.
-    // It runs after binding, so it judges in no body (DECISIONS BU-28).
+    // Its readers, lowering and the old analysis's RecordCallInput, run after Binding judged the fit in its body, so it judges in no body
+    // (DECISIONS BU-28).
     private bool VerifiedRegionOutlives(BoundOrigin longer, BoundOrigin shorter, Koto use)
     {
         if (this.ProvesOriginOutlives(longer, shorter, use))

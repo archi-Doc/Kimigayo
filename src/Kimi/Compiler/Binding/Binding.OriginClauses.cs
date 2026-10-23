@@ -161,7 +161,7 @@ public sealed partial class Binding
         obligation = obligation with { Body = this.formingBody }; // Judged in the body that forms it (SPEC 15.6.5; DECISIONS BU-28).
         var resolvedLonger = this.OriginAtUse(relation.Longer, use);
         var resolvedShorter = this.OriginAtUse(relation.Shorter, use);
-        if (HasLocalRegion(resolvedLonger) || HasLocalRegion(resolvedShorter) || !FixedOrigin(resolvedShorter))
+        if (HasRegionIn(resolvedLonger, this.formingBody) || !FixedIn(resolvedShorter, this.formingBody))
         {
             this.AddObligation(obligation with { Longer = resolvedLonger, Shorter = resolvedShorter, Clause = use });
             return null;

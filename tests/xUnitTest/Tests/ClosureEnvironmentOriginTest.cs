@@ -75,6 +75,20 @@ public class ClosureEnvironmentOriginTest
     private const string BodyError = "func ok() -> isize\n    let arr: Array<ref/i32> = []\n    var f = func [var arr@move] () -> isize\n" +
         "        let wrong: bool = 5\n        return arr.length\n    return f@uniq()\npublic func main() => ()\n";
 
+    // A local clause in a Closure body relating the local's slot to a capture's Origin (the final review's k06, k07, k09).
+    private const string Holder = "struct H {s}\n    public let item: ref/i32 during s\n    public init(item: ref/i32 during s) => self.item = item\n";
+
+    private const string ClauseOverParameter = Holder + "func g(p: ref/i32) -> i32\n    let a: i32 = 1\n    let r = a@ref\n    let f = func [r, p] () -> i32\n" +
+        "        let h: H{x} = H.init(r)\n            origin x.s outlives p\n        return h.item@follow\n    return f()\npublic func main() => ()\n";
+
+    private const string ClauseOverCapture = Holder + "func g(p: ref/i32) -> i32\n    let a: i32 = 1\n    let b: i32 = 2\n    let r = a@ref\n    let q = b@ref\n" +
+        "    let f = func [r, q] () -> i32\n        let h: H{x} = H.init(r)\n            origin x.s outlives q\n        return h.item@follow\n    return f()\n" +
+        "public func main() => ()\n";
+
+    private const string ClauseOverCaptureFromInput = Holder + "func g(p: ref/i32) -> i32\n    let b: i32 = 2\n    let q = b@ref\n" +
+        "    let f = func [q] (y: ref/i32) -> i32\n        let h: H{x} = H.init(y)\n            origin x.s outlives q\n        return h.item@follow\n" +
+        "    let a: i32 = 1\n    return f(a@ref)\npublic func main() => ()\n";
+
     private const string Unproven = nameof(DiagnosticCode.UnprovenOriginRelation_Kd);
 
     private const string Unsatisfied = nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd);
@@ -147,7 +161,8 @@ public class ClosureEnvironmentOriginTest
     // them. Storing the call's own input or another capture's Origin into the environment is Unknown, and storing a borrow local to the call
     // is Refuted, on both pipelines. dev accepted the first rows and read the dead argument natively (`leak 41`); the class S rows (TwoRegions
     // to StaticDirect) are memory-safe and rejected because SPEC 15.6.5 stays (the owner, 2026-10-23), their rewrites over a written Origin
-    // being PLAN's open issue (a). The body is bound, so its own errors stay (BodyError, BU's N15).
+    // being PLAN's open issue (a). A local clause over a capture's Origin is Binding's record at the initializer, as one over an enclosing
+    // parameter's (the final review's B1). The body is bound, so its own errors stay (BodyError, BU's N15).
     [Theory]
     [InlineData(VarStore, Unproven, "x)")]
     [InlineData(StoreHead + "let arr: Array<ref/i32> = []" + StoreTail, Unproven, "x)")]
@@ -168,6 +183,9 @@ public class ClosureEnvironmentOriginTest
     [InlineData(CapturedBorrow, Unproven, "r)")]
     [InlineData(StaticThroughLocal, Unproven, "tmp[0]\n")]
     [InlineData(StaticDirect, Unproven, "arr[0]\n")]
+    [InlineData(ClauseOverParameter, Unproven, "H.init(r)")]
+    [InlineData(ClauseOverCapture, Unproven, "H.init(r)")]
+    [InlineData(ClauseOverCaptureFromInput, Unproven, "H.init(y)")]
     [InlineData(BodyError, nameof(DiagnosticCode.TypeMismatch_Kd), "5\n")]
     public void AStoreIntoTheEnvironmentIsJudgedAgainstItsFixedOrigins(string source, string code, string at)
     {

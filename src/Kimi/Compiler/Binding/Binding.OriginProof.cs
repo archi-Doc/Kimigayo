@@ -72,7 +72,7 @@ public sealed partial class Binding
     {
         longer = this.OriginAtUse(longer, use);
         shorter = this.OriginAtUse(shorter, use);
-        if (this.HasRegionBounds(longer) && !EnclosingAtom(longer, body))
+        if (this.SourcesIn(longer, body))
         {
             return this.JudgeLocalRegion(longer, shorter, use, body, condition);
         }

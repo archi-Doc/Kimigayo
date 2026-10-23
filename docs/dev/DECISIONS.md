@@ -4233,10 +4233,12 @@ resumed by R4-M86 (2026-10-20).
   that the environment bindings' Types name (a moved or copied value's regions, a captured reference's Origin, an entry's slot Borrow, a raw
   layer's Origin), and the rule is the C1-F4 view's row 6, `Binding.EnclosingAtom` (an atom of a body B's evaluation reaches through
   `EvaluatingBody`, by `RootOf`), which `ClassifyAtom` and the judge share. `Binding.OriginClasses.cs` holds SPEC 15.6.5's classes in a body:
-  `FixedOrigin` (by the contract), `FixedIn`, `RegionIn`, `BodyLocalIn`, `BodyChain(.., body)` and `RefutesOriginRelation(.., body)`, with
-  no context-free copy. The judge takes the body that formed the relation explicitly (`JudgeOriginRelation(.., body, ..)`): an
-  obligation's `Body`, the forming body while binding (`FailedDeclaredRelation`'s own obligation now carries it), none after binding
-  (lowering's `VerifiedRegionOutlives` recheck, unchanged). So in the body a store of the call's own input or of another capture's Origin
+  `FixedOrigin` (by the contract), `FixedIn`, `RegionIn` and `HasRegionIn`, `SourcesIn`, `BoundableIn`, `BodyLocalIn`, `BodyChain(.., body)`
+  and `RefutesOriginRelation(.., body)`, with no context-free copy. The judge takes the body that formed the relation explicitly
+  (`JudgeOriginRelation(.., body, ..)`): an obligation's `Body`, the forming body while binding (`FailedDeclaredRelation`'s own obligation
+  carries it, and its gate classes both ends in it, so a local clause over a capture's Origin is Binding's record at the initializer),
+  none in `VerifiedRegionOutlives` (unchanged: its readers, lowering and the old analysis's `RecordCallInput`, run after Binding judged the
+  fit in its body). So in the body a store of the call's own input or of another capture's Origin
   into the environment is Unknown (`UnprovenOriginRelation_Kd`, Binding's record, D1 being body-relative), a store of a borrow local to the
   call is Refuted (`UnsatisfiedOriginRelation_Kd`), the body never bounds an environment region (`RecordLocalRegionBound`), and a region of
   the body stops its source walk at an atom fixed in its body (`LocalRegionSources`). One display row shows a local's region as that local's
