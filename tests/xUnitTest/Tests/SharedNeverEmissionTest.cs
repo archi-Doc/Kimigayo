@@ -27,6 +27,6 @@ public class SharedNeverEmissionTest
         Assert.True(instance.Abi.NoReturn);
         Assert.False(instance.Abi.ResultSlot);
         Assert.DoesNotContain(instance.Instructions, x => x.Opcode is EmissionOpcode.ReturnVoid or EmissionOpcode.ReturnScalar);
-        ScalarEmissionTest.EmitFixture("SharedNeverDivergence", Source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("SharedNeverDivergence", Source, string.Empty, observationMilliseconds: 300);
     }
 }

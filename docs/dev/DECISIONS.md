@@ -143,6 +143,48 @@ rules that result from them.
   (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
   unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
 
+- **G138-1 Native execution and verification evidence ownership** (2026-10-24; planning session, independent designs A/B and
+  independent pre-code review). G138 needs execution progress distinguished from scheduling delay and missing observations
+  distinguished from program failures. Before changing that representation, test-scalar-process.ps1 owns one executable's
+  launch, stream draining, oracle comparison and recovery; test-scalar-fixture.ps1 retains compilation and level aggregation.
+  verification-native.ps1 owns the native success-line and pending-coverage predicates and their detail text; verify.ps1
+  retains invocation, selection, step reporting and the default conjunction with invocation success. The pending gate still
+  owns failing-set comparison. This first unit preserves waits, output, result schema and missing-evidence decisions.
+  The process extraction reuses e3f7f35fa3348c7dcc8a49d529066ad6d0cc4ebb; verify's native evaluation is also split before its
+  next change after three consecutive units. Rejected: expanding inline lifecycle/evidence logic, a generic process framework,
+  new mode arguments or a build component without a new responsibility. The following G138 unit replaces wall-time
+  divergence observation and publishes incomplete verification through these existing owners; G138 remains open.
+
+- **G138-2 Observed execution and incomplete native verification** (2026-10-24; planning session, independent A/B designs
+  and pre-code review). A nonterminating fixture requires a finite process CPU observation budget, not a short wall-time
+  delay that may contain only launch or scheduling. The process owner publishes observed CPU, termination, output/exit
+  violations and operational problems, then chooses passed, failed or incomplete once recovery and capture finish.
+  The .observation sidecar and observationMilliseconds replace the elapsed-time .timeout oracle at every producer.
+  A separate 30-second default execution deadline begins before launch; CPU time is never evidence of infinite execution.
+  - Raw stdout/stderr capture is asynchronous; completed bytes are decoded as strict UTF-8. Invalid bytes, wrong output,
+    unexpected exit and a missed expected-completion deadline are observed violations. Start/CPU/wait/kill/capture I/O
+    errors are unavailable observations. Their operation, exception type and message remain facts; consumers never infer
+    classification from text. Unavailable measurements remain null and every native launch attempt retains an execution.
+  - Recovery has a fixed 5,000 ms grace, separate from the execution deadline: one absolute budget for kill, exit wait
+    and both streams, never restarted per operation. It records budget, elapsed time and an unrecovered PID when known.
+    Recovery/capture problems dominate a known violation as incomplete, while the violation remains available.
+  - The fixture owner keeps LLVM and dependency checks: observed LLVM nonzero/dependency violations fail; unavailable
+    input, tool launch or evidence is incomplete. Unwritable evidence propagates an incomplete step, never a replacement
+    failed fixture. Aggregate, verification evidence, comparison and pending consumers preserve that distinction.
+    Incomplete results fail verification and pending comparison, and prevent ledger updates.
+  - Recovery-test normal/cancel cases have 30 seconds; only intentional timeout uses two seconds. Cancellation follows
+    bounded child readiness, and descendant readiness precedes parent exit. The product TestWorker deadline is unchanged.
+    The native test helper accepts one directory-plus-glob selection, split syntactically with Join-Path/Split-Path:
+    six required inputs retain its expected result/count and deadline. The top-level PowerShell param block remains a CLI
+    schema, not a member exception; its execution-deadline option is not propagated as an excess internal parameter.
+  - Reused behavior from eb2d34be4261fda2d6997e632007d4b86bf1f7b9, adapted to G138-1's owners. Its catch converted a failed
+    executable launch into failed with no execution, letting a known pending row accept an unobserved program. A real
+    LLVM link followed by retaining our executable reproduces that gap; invalid UTF-8 is the definite-failure control.
+    Rejected: merely increasing 200 ms, all exceptions becoming failed or incomplete, consumer exception-text inference,
+    a generic process/build framework or test-only production mode. No compiler semantics or emitted instructions change.
+    CPU polling and byte buffers add bounded verification work; completion may wait longer under load. Physical high load
+    and CPU/kill/drain operational faults are not claimed reproduced by deterministic delay and launch-loss probes.
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.

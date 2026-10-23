@@ -180,7 +180,7 @@ public class GuardEmissionTest
     public void DivergentGuardHasNoSelectedBodyEdge()
     {
         const string Source = "func stop() -> Never\n    loop => ()\nmatch 1\n    _ if stop() => Console.writeLine(\"bad\")\n    _ => Console.writeLine(\"after\")";
-        var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("GuardDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

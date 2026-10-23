@@ -55,7 +55,7 @@ public class FunctionEmissionTest
     [InlineData("FunctionNeverExpression", "func spin() -> Never => loop => ()\nfunc f() -> i32 => spin()\nConsole.writeLine(\"begin\")\nf()")]
     public void NonterminationHasNoFabricatedReturn(string name, string source)
     {
-        var ir = ScalarEmissionTest.EmitFixture(name, source, "begin\n", timeoutMilliseconds: 200);
+        var ir = ScalarEmissionTest.EmitFixture(name, source, "begin\n", observationMilliseconds: 200);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

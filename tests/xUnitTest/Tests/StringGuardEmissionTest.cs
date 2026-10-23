@@ -37,7 +37,7 @@ public class StringGuardEmissionTest
     public void DivergentGuardHasNoAcquisitionOrCleanup(string source)
     {
         var suffix = source.Contains("forever(s)", StringComparison.Ordinal) ? "Borrow" : "Plain";
-        var ir = ScalarEmissionTest.EmitFixture("StringGuardDivergent" + suffix, source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("StringGuardDivergent" + suffix, source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

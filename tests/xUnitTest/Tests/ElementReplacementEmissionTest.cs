@@ -104,7 +104,7 @@ public class ElementReplacementEmissionTest
         Assert.True(c.Emission.TryPrepare(out var module, out var error), MinimalEmissionTest.Describe(c, error));
         var function = module.GetFunction(0);
         Assert.DoesNotContain(function.Instructions, x => x.Callee == RuntimeAbi.DestroyString || x.Opcode == EmissionOpcode.DestroyAggregate);
-        ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
+        ScalarEmissionTest.EmitFixture("ElementReplacementDivergent" + name, source, string.Empty, observationMilliseconds: 300);
     }
 
     [Theory]

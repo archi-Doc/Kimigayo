@@ -106,7 +106,7 @@ public class AggregateFunctionEmissionTest
         var call = Assert.Single(function.Instructions, x => x.Callee?.ResultSlot == true);
         var result = function.GetOperands(call)[0];
         Assert.Equal(EmissionOperandKind.SlotAddress, function.SlotAddresses[(int)result.Value].Kind);
-        var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionDivergent", Source, string.Empty, timeoutMilliseconds: 300);
+        var ir = ScalarEmissionTest.EmitFixture("AggregateFunctionDivergent", Source, string.Empty, observationMilliseconds: 300);
         GeneratedIr.Parse(ir).AssertNoTerminationClaim();
     }
 

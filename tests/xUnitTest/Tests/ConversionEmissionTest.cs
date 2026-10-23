@@ -257,7 +257,7 @@ public class ConversionEmissionTest
             Assert.DoesNotContain(module.GetFunction(i).Instructions, x => x.Opcode == EmissionOpcode.Convert);
         }
 
-        ScalarEmissionTest.EmitFixture("ConversionNever", Source, string.Empty, timeoutMilliseconds: 500);
+        ScalarEmissionTest.EmitFixture("ConversionNever", Source, string.Empty, observationMilliseconds: 500);
     }
 
     [Theory]

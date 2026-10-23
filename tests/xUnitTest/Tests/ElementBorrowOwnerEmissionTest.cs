@@ -197,7 +197,7 @@ public class ElementBorrowOwnerEmissionTest
     [InlineData("Call", "func forever(a: ref/string) -> Never\n    loop => ()\nforever((\"held\", 0).0)")]
     [InlineData("ResultCleanup", "let equal = (label work: do\n    defer => loop => ()\n    exit to work (\"held\", 0)\n).0 == \"held\"")]
     public void NonterminationCannotReleaseOrDeliverAnOwner(string name, string source)
-        => ScalarEmissionTest.EmitFixture("ElementBorrowOwnerDivergent" + name, source, string.Empty, timeoutMilliseconds: 300);
+        => ScalarEmissionTest.EmitFixture("ElementBorrowOwnerDivergent" + name, source, string.Empty, observationMilliseconds: 300);
 
     [Trait("Purpose", "Allocation")]
     [Fact]

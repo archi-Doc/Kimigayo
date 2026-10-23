@@ -32,7 +32,11 @@ public class LogicalTerminalContinuationTest
     [InlineData("and")]
     [InlineData("or")]
     public void DefaultLogicalDivergenceNeverReturns(string op)
-        => ScalarEmissionTest.EmitFixture("NeverLogicalTerminal" + Configuration + "Default" + op, "func value(c: bool, x: i32 = (do\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " true\n        loop => continue\n    1\n)) -> i32 => x\nConsole.writeLine(\"begin\")\nvalue(true)", "begin\n", timeoutMilliseconds: 200);
+        => ScalarEmissionTest.EmitFixture(
+            "NeverLogicalTerminal" + Configuration + "Default" + op,
+            "func value(c: bool, x: i32 = (do\n    do\n        let b = (if (loop => continue) => true else => false) " + op + " true\n        loop => continue\n    1\n)) -> i32 => x\nConsole.writeLine(\"begin\")\nvalue(true)",
+            "begin\n",
+            observationMilliseconds: 200);
 
     private static string Source(string expression, string tail, bool condition)
         => "func stop() -> Never => $abort(\"stop\")\nfunc f(c: bool)\n    do\n        let b = " + expression + "\n        " + tail + "\nf(" + (condition ? "true" : "false") + ")";
