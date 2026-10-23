@@ -4273,6 +4273,28 @@ resumed by R4-M86 (2026-10-20).
   Open: neither published pipeline marks a Copy-typed part Moved (`t.0@move` then `t.0`), so a missing restore after `b.data@move`
   goes unreported as for any Copy part (PLAN G228); whether a `during self` layer or such a Tuple is Copy and what reading an
   enclosing Place gives (`let t = b.pair` binds as a Copy read of `(raw/u8, isize)`) stay PLAN G212's.
+  G160-2b (unit bu28, 2026-10-23; R4's G160-4 design review S5 and PQ-13 (a), the planning session's rulings on `g160-2b/design.md`, one
+  design and one review): the stored-layer reader is total over layers a Type argument supplies, which were `InternalInvariant`: a
+  Field or payload declared as a Type parameter or pair layer, also above the layer in a Tuple argument (`Local<raw/i32>`,
+  `Holder<raw/i32>`, `Option<raw/u8 during y>`, `Local<(raw/u8 during y, isize)>`). The declaration decides a step only where it
+  states the raw layer itself; any other stored layer has the kind of the Origin the argument states (`StepOf`, as
+  `TyCtxt.RawStep(raw)`), never the cap; a path whose substituted part is no raw layer stays `InternalInvariant`; `StoredMembers`
+  (`TyCtxt.RawMembers(instance, …)`) answers incomplete for such a layer whose Origin steps Exclusive, whose borrows are the scope's
+  that wrote the Type. No cap is added, and both capped forms answer soundly: a Type argument layer written in a signature over `ref`
+  inputs reads Exclusive (an interned instance does not say where its Type was written, and the same body-written Type is uncapped;
+  the signature reader answers Shared), and one a stored Type states with a `ref` slot reaches the reader without its Origin
+  (instance shapes, above) and reads Unstated; no verdict reads a step, and A5 reads only Shared as storing nothing. The census of
+  519 corpus programs reaches no such layer. PD21 (the planning session's ruling): the steps moved to `Binding.RawOrigins.Steps.cs`
+  and TyCtxt's raw views to `TyCtxt.Raw.cs` first (TyCtxt.cs due under the three-unit rule). Rejected: PQ-13 (b), A5 reading the
+  declaration's shape (a second owner); Unstated for every Type argument layer (drops a stated Origin); a clause per declared form; a
+  signature cap from the Origin atom's binder (caps body-written Types that SPEC 5.2.1 leaves uncapped). R4's OQ-3 (a raw argument
+  retained as a borrowed one, SPEC 15.6.4) is Binding's to publish: `Binding.RetentionInput` decides those rows in BU's G160-2c (R4-M116;
+  `Raw.initialize(slot, p)` with `slot: raw/(raw/i32)` gives no row today). Nested instances: a raw layer a Type argument supplies below
+  the holding value (`Local<Local<raw/i32 during y>>`, `Outer<raw/i32 during y>.inner`, a `uniq`-kept `inner: Local<raw/i32 during a>`)
+  is reached only through instance shapes, which state no raw Origin, so it reads Unstated with `RawMembers(instance)` complete and empty
+  whatever the program states — never Shared, not a regression (the reader threw), and G160-4 (B′ §4.4) reads Unstated as a concrete
+  exclusive reference. Open (PLAN at merge): that nested case (nested paths in the reader, full process, or shapes that keep Type
+  arguments' raw Origins); Binding keeps a pair argument's raw Origin, which SPEC 8.1.1's raw row drops.
 - **BU-28** (2026-10-23; the BU planning session after the full process: designs A and B, the design review's choice of B with A's
   staging, display row and test owner; the owner's answer below; PLAN G227 (G65's remainder), unit bu29, 2a0-3b's prerequisite by the
   owner's (iii)) SPEC 15.6.5, 15.3.4: in a Closure body the Origins of its captures are fixed. They are the atoms an enclosing body formed
