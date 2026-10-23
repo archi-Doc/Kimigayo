@@ -88,6 +88,9 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOverrideCondition_Kd);
+        c.Binding.ReportDiagnostics();
+        var record = Assert.Single(c.Diagnostics.Finalize().Diagnostics, x => x.Code == "UnprovenOverrideCondition_Kd");
+        Assert.Equal(new DiagnosticValue("proof", DiagnosticValueKind.Enumeration, "Unknown"), record.Reason![2]);
     }
 
     [Trait("Purpose", "Allocation")]
@@ -100,12 +103,15 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         Assert.True(complete, MinimalEmissionTest.Describe(c, null));
     }
 
-    [Fact]
-    public void ConditionDiagnosticsIdentifyTheUnprovenClauseInCliAndLsp()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ConditionDiagnosticsIdentifyTheUnprovenClauseInCliAndLsp(bool refuted)
     {
         const string Source = "contract Marker\nopen struct Base<T>\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived<U> : Base<U>\n    Self is Marker when U is Copy\n        override func read(self: objref/Self) -> i32 => 2\nlet independent = missing";
+        var source = refuted ? Source.Replace("struct Derived<U> : Base<U>\n", "struct Derived<U> : Base<U>\n    U is not Copy\n", StringComparison.Ordinal) : Source;
         var path = Path.GetFullPath("virtual-override-condition.kimi");
-        var c = MinimalEmissionTest.Analyze(Source, path);
+        var c = MinimalEmissionTest.Analyze(source, path);
         c.Binding.ReportDiagnostics();
         var shown = Assert.Single(TestDiagnostics.Of(c), x => x.Code == "UnprovenOverrideCondition_Kd");
         Assert.Equal("U is Copy", shown.Text);
@@ -114,12 +120,15 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var result = c.Diagnostics.Finalize();
         var record = Assert.Single(result.Diagnostics, x => x.Code == shown.Code);
         Assert.Equal(DiagnosticCategory.Proof, record.Category);
+        Assert.Equal(
+            [new("condition", DiagnosticValueKind.Text, "U is Copy"), new("cause", DiagnosticValueKind.Enumeration, "Condition"), new("proof", DiagnosticValueKind.Enumeration, refuted ? "Refuted" : "Unknown")],
+            record.Reason!);
         Assert.Contains(record.Related!, x => x.Role == "declaration" && x.Label == "original virtual slot");
         var console = new DiagnosticContractTest.DiagnosticConsole();
         new Kimigayo(console).Render(result, string.Empty);
         output.WriteLine(console.Text);
         Assert.Contains("original virtual slot", console.Text, StringComparison.Ordinal);
-        Assert.Contains("U is Copy is not implied", console.Text, StringComparison.Ordinal);
+        Assert.Contains(refuted ? "U is Copy is refuted" : "U is Copy is not implied", console.Text, StringComparison.Ordinal);
         var identity = SourceIdentity.FromPath(path);
         foreach (var related in new[] { false, true })
         {

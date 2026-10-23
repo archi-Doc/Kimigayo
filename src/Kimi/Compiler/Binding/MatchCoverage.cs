@@ -6,8 +6,6 @@
 // requirement its diagnostic reports.
 // Only a non-exhaustive match carries a reason; a missing Case or whole-payload reason names the Case's declaration index.
 // Must not prove coverage itself: Binding.Patterns decides it.
-// Open issue: Describe builds the diagnostic's Note text inside Binding (Binding.cs reports it), against AGENTS Diagnostics, which
-// takes message text only from the diagnostics adapter.
 
 namespace Kimi.Compiler;
 
@@ -41,14 +39,4 @@ public readonly record struct MatchCoverage(MatchCoverageState State, MatchCover
 
     /// <summary>Gets what a non-exhaustive match lacks; an unexplained one lacks a catch-all.</summary>
     public MatchCoverageReason Requirement => this.Reason == MatchCoverageReason.None ? MatchCoverageReason.CatchAllRequired : this.Reason;
-
-    /// <summary>Describes what a non-exhaustive match lacks; the message states that the match must be exhaustive.</summary>
-    /// <returns>The description.</returns>
-    public string Describe() => this.Requirement switch
-    {
-        MatchCoverageReason.MissingCase => $"The Case at declaration index {this.CaseIndex} has no arm.",
-        MatchCoverageReason.WholePayloadRequired => $"The Case at declaration index {this.CaseIndex} requires an unguarded whole-payload arm.",
-        MatchCoverageReason.BooleanValuesRequired => "Unguarded true and false Patterns or a catch-all are required.",
-        _ => "An unguarded whole-position catch-all is required.",
-    };
 }

@@ -3302,6 +3302,46 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (Copy, borrow or replace, as for Array) is what following the returned reference gives, and its §7 had already fixed
     the ABI to that of the reference result.
 
+## Diagnostic publication (2026-10-23)
+
+- **G89-1 Override and match facts** (planning session; the owner's G89 request, two independent designs and independent
+  design review). SPEC 6.4 and 14.8 keep their existing judgments; SPEC 23.1 and DIAGNOSTICS require retained facts and an
+  explanation owned by the diagnostic adapter. `Binding.Diagnostics.VirtualOverrides` and `Binding.Diagnostics.Match`
+  own their conversions; the semantic failure records never select wording or repeat a check during publication.
+  - First extract the conversions with every published fact, Note, Label and location unchanged. The existing string
+    override cause is removed by the following G89 behavior unit, which records cause, compared Types or names, the
+    violating parameter's declaration index, proof and locations. Match retains its existing reason and Case index.
+  - Rejected: leaving publication in semantic owners, or moving individual cause formatting into DiagnosticOwner.
+    The existing phase-specific adapters own these conversions; the common owner keeps schema and display limits.
+
+- **G89-2 Typed override and match diagnostics** (planning session; the owner's G89 request; two independent designs,
+  chosen design independently reviewed). The missing representation in G89-1 is the check's cause and compared values,
+  not another message. Binding keeps these in its existing `OverrideFailure` dictionary; the adapters alone turn them
+  into facts and Notes. Slot selection, signatures, condition proofs, match coverage and acceptance do not change.
+  - `OverrideFailureCause` closes the existing nine causes. `NoBase` and `NoInheritedGroup` need no extra payload;
+    `NoMatchingInputs` retains the first inherited function when one exists; `AmbiguousInputs` retains two candidates;
+    `DuplicateSlot` retains the original slot and preceding implementation. `ExternalName` requires both compared names,
+    the violating parameter's zero-based declaration index (including the receiver) and its name span. `ResultType`
+    requires both compared bound Types and the written return Type when present. `OriginBinders` requires the original
+    slot. `Condition` requires the original slot, condition node and the already computed `Unknown` or `Refuted` proof.
+    Other payload fields are unused. Primary and related location selection stays unchanged; publication never re-proves.
+  - `OverrideContractMismatch` publishes names as `expected:Text,actual:Text,cause:Enumeration,parameter:Number`, Types as
+    `expected:Type,actual:Type,cause:Enumeration`, or Origin binders as `cause:Enumeration`, in that order. The actual
+    parameter index makes the name schema distinct; the common `expected {0}, found {1}` Label applies to the first two.
+    The Type schema uses existing `BoundPair` so both differing Type fragments survive elision. Other override codes
+    publish `cause`; a condition also publishes the actual expression and proof. Explanation prose belongs only in Note.
+  - Match publishes its existing `coverage` enumeration, with a numeric `case` only for `MissingCase` and
+    `WholePayloadRequired`. Its four explanations stay in `Binding.Diagnostics.Match`; `MatchCoverage.Requirement`
+    and the coverage judgment are unchanged. `Reason` strings, concatenated Type pairs and semantic `Describe` are gone.
+  - Design A kept conversion in the phase adapters; independent B avoided redundant condition prose but put conversion
+    in `DiagnosticOwner`. Chosen: A's owner and the nonredundant schemas. Rejected: keeping strings; equal-arity Type/Text
+    alternatives (Type is Text plus its schema flag); a dummy discriminator; shared variant selection machinery;
+    cause paraphrases disguised as condition facts; individual cause rendering in `DiagnosticOwner`. No new IR,
+    failure code, table, component, migration exception or change to the shared diagnostic selector is needed.
+    `VirtualDeclarations` and `BaseCalls` retain separate eligibility/use contracts and remain follow-up issues.
+  - The change trades a larger value in the existing failure dictionary for direct typed data, removes the nine-argument
+    recorder and combined-string conversion, and keeps warm failure Binding allocation-free. Fixed 128-failure
+    cold/warm and retained-compilation measurements belong in `DiagnosticMeasurements`; evidence records the actual cost.
 ## Binding units (2026-10-18)
 
 Units of the BU planning session (PLAN G129, G130 and the retention gap found by R4's E14 implementer), run in parallel with R4
