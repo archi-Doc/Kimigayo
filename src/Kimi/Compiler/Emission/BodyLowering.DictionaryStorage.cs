@@ -18,7 +18,7 @@ internal sealed partial class BodyLowering
             body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components: [{ Kind: BoundTypeKind.Dictionary, Components: [var keyType, var valueType] }] } input ||
             !this.TryGetArrayElement(keyType, out var key) || !this.TryGetArrayElement(valueType, out var value) ||
             body.Resolve(plan.ReturnType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Tuple, Components: [var address, var stride] } result ||
-            address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+            address is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } || pointee.Kind != BoundTypeKind.Dictionary || // D5 exception (owner, 2026-10-22), removed at R6-gen: G160-3's handle states its Dictionary.
             !ReferenceEquals(stride, BoundType.ISize) || !ReferenceEquals(body.Resolve(call.BoundType, body.ContextAt(id)), result) ||
             this.aggregateLayouts.Get(result) is not { Fields.Length: 2 } layout || layout.Offset(0) != 0 || layout.Offset(1) != 8)
         {

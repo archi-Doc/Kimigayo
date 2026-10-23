@@ -155,7 +155,7 @@ internal sealed partial class BodyLowering
             plan.ArgumentOperations.Length != inputs || call.ArgumentNodes.Count != inputs || target.Parameters.Count != inputs || plan.ArgumentToParameter.Length != inputs ||
             plan.ArgumentToParameter[0] != 0 || plan.ArgumentToParameter[1] != 1 || plan.ArgumentToParameter[2] != 2 || plan.TypeArguments.Length != 2 ||
             body.Resolve(plan.ArgumentOperations[0].ParameterType, InterpretationContext.Root) is not { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Raw, Components: [var pointee] } handleType ||
-            !ReferenceEquals(pointee, BoundType.Primitives["u8"]) ||
+            pointee.Kind != BoundTypeKind.Dictionary || // D5 exception (owner, 2026-10-22), removed at R6-gen: G160-3's handle states its Dictionary.
             body.Resolve(plan.TypeArguments[0], InterpretationContext.Root) is not { } keyType || body.Resolve(plan.TypeArguments[1], InterpretationContext.Root) is not { } valueType ||
             !ReferenceEquals(body.Resolve(plan.ArgumentOperations[1].ParameterType, InterpretationContext.Root), keyType) ||
             !ReferenceEquals(body.Resolve(plan.ArgumentOperations[inputs - 1].ParameterType, InterpretationContext.Root), valueType) ||

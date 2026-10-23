@@ -3,7 +3,7 @@ public struct UniqSlice<T> {source}
     Self is UniqIndexable<isize>
     associate Element is T
 
-    internal let storage: raw/T
+    internal let storage: raw/T during source
     public let length: isize
     internal let loan: Loan<uniq/T during source>
 

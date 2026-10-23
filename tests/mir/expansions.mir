@@ -505,7 +505,7 @@ fn table @160
   _5: ref/Dictionary<i32, bool> temp @167
   _6: ref/i32 temp @167
   _7: Never temp @167
-  _8: (raw/u8, isize) temp @168
+  _8: (raw/Dictionary<i32, bool>, isize) temp @168
   _9: uniq/Dictionary<i32, bool> temp @168
   _10: () temp @168
   _11: i32 temp @169
@@ -515,7 +515,7 @@ fn table @160
   _15: ref/Dictionary<i32, bool> temp @169
   _16: ref/i32 temp @169
   _17: Never temp @169
-  _18: (raw/u8, isize) temp @170
+  _18: (raw/Dictionary<i32, bool>, isize) temp @170
   _19: uniq/Dictionary<i32, bool> temp @170
   _20: () temp @170
   bb0:

@@ -4163,6 +4163,11 @@ resumed by R4-M86 (2026-10-20).
   with C4, `b7123abf`; it is not on dev). Open: `TyCtxt.RawStep(function, …)` reads the declared signature, retention the call's
   instantiated inputs, which may read Exclusive where the view reads Shared (conservative); `keeperPath` makes a finite cycle that
   changes Type arguments once a Limit (accepted by the design); A5's record for a Limit call under sel is R4's.
+  G160-3's exception (unit bu23; the owner, 2026-10-22: 「認める」, the bu23 design's S5): G160-3's `dictionaryStorage` returns
+  `(raw/Dictionary<K, V> during value, isize)` and `placeEntry` takes `raw/Dictionary<K, V>` (R4-M95), so the old Emission's
+  Dictionary layout and placement shape checks (`BodyLowering.DictionaryStorage`, `BodyLowering.Dictionaries`) accept a Dictionary
+  pointee in place of `u8` until R6-gen; with R4's consent the MIR builder's literal handle temporary (`MirBuilder.Expansions`) is
+  the Tuple of a pointer to the literal's Dictionary Type, stating no raw Origin, and `isize`, in place of the declared result Type.
   G212 (unit bu26, 2026-10-23; R4-M110, the planning session's rulings on `g212/design.md`, one design and one review): a Tuple or
   fixed-array Place enclosing a `during self` layer in the same holding value is written and borrowed as the layer's Place is. One
   verdict table in `HolderWriteFailure` decides the allowlist's accesses (`PathOrigin` publishes the whitelisted Place forms: a
