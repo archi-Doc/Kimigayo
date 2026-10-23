@@ -3054,9 +3054,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     w6, incomparable, s-noprincipal-c, u5 (and u6's `Unsupported_Kd` leaves; its `InvalidAssignment_Kd` stays). o4/o5 keep dev's one
     record at `local@ref`; o6, g1, g2, s2, u10, the S3 demo and s-vars are unchanged.
   - Found by the census, pre-existing and outside this cause: h2 (a `let` whose two qualifier slots are bound to each other, captured
-    `[var o@move]` by a Closure that assigns it a call-local borrow) became accepted (now the guard below), as dev accepts the `var` forms h3 and h5:
-    SPEC 15.6.5's fixed capture Origins in a Closure body are not represented (PLAN G65's environment Origins); a later read is the
-    `ComparisonLoanConflict_Kd` it is for `var` (h2b, h5b). v3, w3 and w4 (a `let` initialized through `Option<…>.Some(…)` whose payload
+    `[var o@move]` by a Closure that assigns it a call-local borrow) became accepted, as dev then accepted the `var` forms h3 and h5:
+    SPEC 15.6.5's fixed capture Origins in a Closure body were not represented; a later read was the `ComparisonLoanConflict_Kd` it was
+    for `var` (h2b, h5b). Since G227 (BU-28) every one of them is `UnsatisfiedOriginRelation_Kd` at the store, on both pipelines. v3, w3 and w4 (a `let` initialized through `Option<…>.Some(…)` whose payload
     a `match` `var` binding extends) stay rejected, now with `ComparisonLoanConflict_Kd` at the initializer, as dev rejects w5, their
     bounded form: the old analysis's retention through a region's equality bounds.
   - B3 (BU's re-check of ba28de15b): a Closure storing its own borrowed argument into a `[var arr@move]` capture whose element Origin is a
@@ -3064,16 +3064,26 @@ and migration obligations remain in force; no numeric cap changes are authorized
     hid it) and accepted on dev for v6b (`var arr`) and v6c (the written slot); native runs read the dead argument. SPEC 15.3.4 (a
     per-call Origin cannot escape its binder) and 15.6.5 (a capture's Origin is fixed in the Closure body) reject the store. This refutes
     PLAN G65's "not a soundness defect" for a stored borrowed argument; the G65 probes had covered call-local borrows only. The cause is
-    pre-existing and outside this unit: the Closure body does not fix its environment's Origins (PLAN G227).
+    pre-existing and outside this unit: the Closure body did not fix its environment's Origins (G227, fixed by BU-28 on dev 74a2f2a05).
   - The owner, 2026-10-23, verbatim: 「(d)+(a) で進めてください。2a0-3b は、その単位が領域にした let の slot を [var x@move] で捕まえる形に
     一時的なその場の Unsupported_Kd を付けて今入れ、G225 を直す。h2 の記録された差は取り消す。並行して BU が Closure の環境の保持（環境の Origin
     を Closure 本体で固定）の誤ったコードの修正を始めてよい。それが入ったら一時的な U を外す。」 This withdraws the earlier decision that
     accepted h2 as a recorded difference until R6-check (「記録された差： R6-check まで受け入れます。」, the same day).
+  - The owner, 2026-10-23, verbatim: 「(iii) で進めてください。BU の G227（Closure の環境の Origin を固定する誤ったコードの修正）を優先して
+    先に入れ、その後で 2a0-3b を一時的な U なしで入れる。」 This replaces (d)+(a)'s temporary located `Unsupported_Kd`, which never
+    landed: G227 landed first (BU-28, dev 74a2f2a05), and this unit lands without it (its commit d84a7d136, on this branch only, is
+    reverted). Under G227 (SPEC 15.6.5: a store into a capture's fixed Origin is judged in the Closure body) the B3 family is rejected on
+    both pipelines: h1, h2, h2b, h3, h5, h5b, c8a, c8b, y1, y8 and the capture forms c3–c6, c6b, c9, k1, u3 as
+    `UnsatisfiedOriginRelation_Kd` at the store, v6a–v6c, v6 and the raw form (`let q = arr[0]@follow@raw` assigned `y@follow@raw` in
+    `[var q@move]`) as `UnprovenOriginRelation_Kd`; nothing is newly accepted. Re-expected for that reason:
+    `AStoreIntoARegionWithNoCandidateIsFollowed` (3 rows, a Loan conflict before) and the h2 pin, now
+    `ACallLocalBorrowStoredIntoACapturedRegionIsRefutedAtTheStore` (2 rows, accepted and a Loan conflict before); no other test changed
+    (G227's A5 review, both pipelines). B1's store-following past a call is no longer reachable through a capture.
   - The re-check's non-blocking items: N8, a cycle whose resolution is a meet of its own variables is not detected by R1's test (no
     instance found; y1–y4 and y7 are rejected on the read route); N9, R2's post-pass leaves a covariant dependent's meet on the replaced
     candidate (z1, rejected on dev and here, names `p ∧ a` where 15.3.6 reads `p` alone); N11, c8a, a Copy capture of h2's class, is in
-    the census (now guarded); N12, the MIR rejection of h2 that the withdrawn decision cited was the MIR analysis's shadow verdict, and the
-    published `KIMI_PIPELINE=mir` check accepted h2; both now give the guard's record.
+    the census (rejected since G227); N12, the MIR rejection of h2 that the withdrawn decision cited was the MIR analysis's shadow verdict,
+    and the published `KIMI_PIPELINE=mir` check accepted h2; both now give G227's `UnsatisfiedOriginRelation_Kd`.
   - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
     for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
     (R4-M4) needs the row; it goes with the old reporter at R6-check.

@@ -155,9 +155,10 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         }
     }
 
-    // SPEC 15.3.6, 15.4.4, 15.6.5: the region records the Loans later stored into it, so a call-local borrow stored through a `var` capture
-    // is followed past the call (BU's review of 2a0-3b, B1; PLAN G225): an initializer qualifier's slot, a written slot bound only to
-    // itself, and a store through a call.
+    // SPEC 15.3.6, 15.4.4, 15.6.5 (BU's review of 2a0-3b, B1; PLAN G225; DECISIONS R4-M112, BU-28): a call-local borrow stored through a
+    // `var` capture of a `let` local's region (an initializer qualifier's slot, a written slot bound only to itself, a store through a
+    // call) is Refuted at the store, since the Closure body fixes its captures' Origins (G227); before G227 the region followed it past
+    // the call to a Loan conflict.
     [Theory]
     [InlineData("let arr = Array<ref/i32>.init(capacity: 0)", "arr.append(local@ref)")]
     [InlineData("let arr: Array<ref/i32> = []", "arr.append(local@ref)")]
@@ -167,23 +168,22 @@ public class LocalRegionInferenceTest(ITestOutputHelper output)
         var source = "func keep(slot: uniq/Array<ref/i32 during s>, v: ref/i32 during s) => slot@follow.append(v)\n" +
             Capture.Replace("LOCAL", local, StringComparison.Ordinal).Replace("STORE", store, StringComparison.Ordinal);
         var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
-        Assert.Equal(nameof(DiagnosticCode.ComparisonLoanConflict_Kd), error.Code);
-        Assert.StartsWith("let local", source[error.Span!.Value.Start..], StringComparison.Ordinal);
+        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
+        Assert.StartsWith("local@ref", source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
-    // Pinned, a recorded difference until R6-check (the owner, 2026-10-23, on PLAN G65's h2; DECISIONS R4-M112): SPEC 15.6.5 refutes a
-    // call-local borrow stored into a capture's fixed Origin, but a Closure body's environment bindings are not yet fixed Origins (A5-F7,
-    // 2c-D; DECISIONS R4-M99), so h2, a `let` local's region captured `[var o@move]` and assigned a call-local borrow that nothing reads
-    // again, is accepted on the default pipeline as dev accepts the `var` forms h3 and h5; h2b's later read of the stored borrow is
-    // rejected, as every route that reaches it after its call is.
+    // SPEC 15.6.5 (DECISIONS R4-M112, BU-28): PLAN G65's h2, a `let` local's region captured `[var o@move]` and assigned a call-local
+    // borrow, is Refuted at the store whether or not a later call reads it (h2b), since the Closure body fixes its captures' Origins
+    // (G227); it was accepted, then pinned as a recorded difference, before G227.
     [Theory]
-    [InlineData("", null)]
-    [InlineData(H2bRead, nameof(DiagnosticCode.ComparisonLoanConflict_Kd))]
-    public void ACallLocalBorrowStoredIntoACapturedRegionIsRejectedOnlyWhenReachedAgain(string read, string? code)
+    [InlineData("")]
+    [InlineData(H2bRead)]
+    public void ACallLocalBorrowStoredIntoACapturedRegionIsRefutedAtTheStore(string read)
     {
         var source = H2.Replace("READ", read, StringComparison.Ordinal);
-        string[] expected = code is null ? [] : [code];
-        Assert.Equal(expected, DiagnosticCorpus.Check(source).Diagnostics.Select(static x => x.Code));
+        var error = Assert.Single(DiagnosticCorpus.Check(source).Diagnostics);
+        Assert.Equal(nameof(DiagnosticCode.UnsatisfiedOriginRelation_Kd), error.Code);
+        Assert.StartsWith("inner@move", source[error.Span!.Value.Start..], StringComparison.Ordinal);
     }
 
     // SPEC 15.3.6: the principal lower bound is chosen after every bound is seen, whatever the clause order, so both orders keep the one
