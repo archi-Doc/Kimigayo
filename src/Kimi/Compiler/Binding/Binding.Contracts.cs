@@ -14,7 +14,6 @@ public sealed partial class Binding
     private readonly Dictionary<BoundType, BoundType> associatedIdentityChecks = new(ReferenceEqualityComparer.Instance);
     private readonly List<(Koto Use, BoundType Type, BindingSymbol Contract)> projectionUses = new();
     private readonly List<(ForKoto Loop, BoundType Subject, BoundType Iterator, BindingSymbol Entry)> userIterations = new();
-    private BoundConstraint[] contractFactScratch = [];
     private bool contractHeadersReady;
     private bool bindingConstraintTypes;
 
@@ -707,81 +706,6 @@ public sealed partial class Binding
 
         BoundType Instantiate(BoundType type)
             => this.ContractType(reference is null ? type : this.SubstituteContractReference(type, reference), scope, self, normalize);
-    }
-
-    private void ExpandContractPremises()
-    {
-        for (var n = 0; n < this.nodes.Count; n++)
-        {
-            if (this.nodes[n] is not (FunctionKoto or DeclarationContainerKoto or SyntaxFormKoto { Akind: KotoKind.ConditionalConformance, Parent: DeclarationContainerKoto }))
-            {
-                continue;
-            }
-
-            var scope = this.scopes[this.nodes[n]];
-            if (scope.Owner is ContractKoto contract)
-            {
-                // SPEC 8.7.3: inside a Contract, an inherited Self clause holds for its Self, as one declared directly does.
-                this.AddContractPremises(contract.BoundSymbol!.Contract!, this.ContractSelfType(contract.BoundSymbol), scope);
-            }
-
-            this.ExpandScopeContractPremises(scope);
-        }
-    }
-
-    private void ExpandScopeContractPremises(BindingScope scope)
-    {
-        if (scope.Constraints is not { } environment || environment.Facts.Count == 0)
-        {
-            return;
-        }
-
-        var count = environment.Facts.Count;
-        if (this.contractFactScratch.Length < count)
-        {
-            this.contractFactScratch = new BoundConstraint[Math.Max(count, Math.Max(16, this.contractFactScratch.Length * 2))];
-        }
-
-        // Expansion performs no proof or nested scope expansion, so one owned buffer suffices.
-        var facts = this.contractFactScratch;
-        environment.Facts.CopyTo(facts);
-        try
-        {
-            for (var i = 0; i < count; i++)
-            {
-                if (facts[i] is { Kind: ConstraintKind.Contract, Contract.Contract: { } shape, Subject: { } subject })
-                {
-                    this.AddContractPremises(shape, subject, scope);
-                }
-            }
-        }
-        finally
-        {
-            Array.Clear(facts, 0, count);
-        }
-    }
-
-    private void AddContractPremises(BoundContract shape, BoundType self, BindingScope scope)
-    {
-        var environment = scope.Constraints ??= new();
-        AddClauses(shape);
-        for (var i = 0; i < shape.Ancestors.Count; i++)
-        {
-            this.AddConstraintFact(environment, this.InternConstraint(new(ConstraintKind.Contract, self, contract: shape.Ancestors[i])), shape.Symbol);
-            AddClauses(shape.Ancestors[i].Contract!);
-        }
-
-        void AddClauses(BoundContract declaration)
-        {
-            this.AddArithmeticPremises(declaration, self, environment, shape.Symbol);
-            for (var i = 0; i < declaration.ClauseStorage.Count; i++)
-            {
-                if (declaration.ClauseStorage[i].BoundConstraint is { } constraint && DependentConstraint(constraint, contractSelf: true))
-                {
-                    this.AddConstraintFact(environment, this.ContractConstraint(constraint, scope, self, false, declaration.Symbol), shape.Symbol);
-                }
-            }
-        }
     }
 
     private bool IsLibraryDeclaration(Koto declaration) => ReferenceEquals(declaration.CodeContext.Kotonoha, this.Library.Kotonoha);
