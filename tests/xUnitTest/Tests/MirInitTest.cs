@@ -84,7 +84,8 @@ public sealed class MirInitTest(ITestOutputHelper output)
                 "    let u = t@move\nfunc element()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n    let x = a[0]\n" + Loop +
                 "        i += 1\nfunc dropped()\n    var d = D.init()\n    take(d.n@move)\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n"));
         Assert.Empty(Problems(Head + "func restored()\n" + Tuple + "    t.0 = 5\n    let u = t@move\nfunc copies()\n    var t: (i32, i32) = (1, 2)\n" +
-            "    let a = t.0\n    let b = t.0\n    let u = t@move\n" + Loop + "        t.0 = i\n        i += 1\n    let u = t@move\nfunc dropped()\n" +
+            "    let a = t.0\n    let b = t.0\n    let u = t@move\nfunc elementRestored()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n" +
+            "    a[0] = 3\n    let x = a[0]\n" + Loop + "        t.0 = i\n        i += 1\n    let u = t@move\nfunc dropped()\n" +
             "    var d = D.init()\n    take(d.n@move)\n    d.n = 3\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n    b.data = null\n"));
     }
 
