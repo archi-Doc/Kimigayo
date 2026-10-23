@@ -1,5 +1,6 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+using System.Diagnostics;
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -18,7 +19,7 @@ namespace Kimi.Compiler;
 //   to and including the first shared layer, every one when none is shared (SPEC 15.6.3); a reference read in place is its referent; a
 //   binding's own Place is the atom of its binder and slot; a raw dereference ends the walk (raw Origins are Binding.RawOrigins').
 // - Prohibitions: nothing here judges an Origin relation, selects an adaptation or reports a diagnostic; no other component meets the
-//   layers of a Borrow's path.
+//   layers of a Borrow's path, and a Pattern position's layers (Binding.Patterns.Layers) meet through MeetLayer, this walk's step.
 public sealed partial class Binding
 {
     internal static Koto PlaceOriginSource(Koto source)
@@ -102,6 +103,14 @@ public sealed partial class Binding
         return this.MeetLayers(reference, layers, ref origin) ? origin : this.MeetWith(origin, this.ContainedOrigin(holder));
     }
 
+    // SPEC 3.5, 14.9.2, 15.6.3 (DECISIONS BU-27): the Type a value source of Type `type` supplies a consumer deriving its Type from it: a
+    // bare Place storing an exclusive reference is Reborrowed by its bare acquisition, so it supplies the Reborrow this names; any other
+    // source its Type.
+    private BoundType? NamedReborrowType(Koto? source, BoundType? type)
+        => source is not null && IsBarePlace(source) &&
+            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components: [var referent] } && this.ReferentOrigin(source, type) is { } origin && !ReferenceEquals(origin, type.Origin)
+            ? this.types.Rebuild(type, [referent], origin, []) : type;
+
     // SPEC 15.6.3, 4.7.1, 4.8.2, 14.8 (DECISIONS BU-27): the meet of the Origins of the safe borrow layers `place`'s path dereferences,
     // from its last step outward up to and including the first shared one, over NextPathStep (MeetStep); null when the path dereferences
     // no layer.
@@ -156,8 +165,10 @@ public sealed partial class Binding
             case PathStep.Candidate:
                 origin = this.MeetWith(origin, this.OriginAtom(PlaceOriginBinder(path), OriginKind.Projection, PlaceOriginSlot(path)));
                 return true;
-            default:
+            case PathStep.Root or PathStep.Receiver or PathStep.RawFollow:
                 return true;
+            default:
+                throw new UnreachableException();
         }
     }
 
@@ -188,7 +199,7 @@ public sealed partial class Binding
                 break;
             }
 
-            met = ends ? layer : this.MeetWith(met, layer); // From the outside in, a shared layer drops the layers outside it.
+            met = this.MeetLayer(met, layer, ends);
             shared |= ends;
             type = BelowLayer(type);
         }
@@ -196,6 +207,10 @@ public sealed partial class Binding
         origin = this.MeetWith(origin, met);
         return shared;
     }
+
+    // SPEC 15.6.3: one layer's Origin met, from the outside in, into the Origin the layers outside it reached: a shared layer restarts it
+    // at its own Origin (dropping the layers outside it), an exclusive one meets it. MeetLayers' step and a Pattern position's (SelectLayers).
+    private BoundOrigin? MeetLayer(BoundOrigin? reached, BoundOrigin? layer, bool shared) => shared ? layer ?? reached : this.MeetWith(reached, layer);
 
     private BoundOrigin? MeetWith(BoundOrigin? a, BoundOrigin? b) => a is null ? b : b is null ? a : this.Meet(a, b);
 

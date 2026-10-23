@@ -4177,7 +4177,8 @@ resumed by R4-M86 (2026-10-20).
   Intersection); one reached through no layer by its root's atom (bu18). Owner: `Binding.PlaceOrigins`, one walk `ContainedOrigin`
   over `NextPathStep` (PlaceAuthority's one enumeration of a path's steps, which PathAuthority walks too; `MeetStep`): a follow
   dereferences its operand's outer layer, a member or a borrowed element every layer of its receiver's own Type (`MeetLayers`, which
-  `SharedReferenceThroughLayers` reads too), a pair follow its slot by its admitted cases, each going on unless shared; a user index's
+  `SharedReferenceThroughLayers` reads too; its step `MeetLayer` is a Pattern position's in `SelectLayers` as well), a pair follow its
+  slot by its admitted cases, each going on unless shared; a user index's
   published result, an Array or UniqSlice element's receiver Borrow (`PlaceOrigin` of the receiver), a Slice element's `source` and a
   guard candidate's atom (`ref/T during g`, 14.8) end it, as a root, a special receiver and a raw dereference do (raw Origins stay
   `Binding.RawOrigins`', G160-1). Entries: `PathReborrowOrigin(place, o)` and `ReferentOrigin(holder, reference, layers)` (the
@@ -4193,10 +4194,15 @@ resumed by R4-M86 (2026-10-20).
   referent, its Origin being Binding's name, the Type its consumer expects: a receiver's, argument's or payload's AdaptedType, a value
   call's callee operation's, the Subject borrow (`Hir.Patterns.Subject` tests Semantics and referent, not Type identity), the `$tryWrite`
   writer operation's (`MirBuilder.Formatting` now passes it), or the destination's Type at a bare `let`/`var`/`return`, a tuple or
-  array element, a Match binding or a capture (G227 states the capture's). `MirBuilder.Reborrowed` builds the Ref with that Type, as
+  array element, a Match binding or a capture (G227 states the capture's), and at an `if`, `match` or `do` result, whose common Type
+  (SPEC 14.9.2) is chosen from the Types its sources supply: a bare Reborrow source (a body's trailing expression, a jump's operand)
+  supplies its named Type (`NamedReborrowType`, read by `ResultCandidates`), not its stored one. `MirBuilder.Reborrowed` builds the Ref with that Type, as
   `Acquired` types every other borrow by `expected`; a missing or disagreeing Type is a broken contract, `InternalInvariant_Kd` and a
-  derived Opaque, never the stored Type (the census over the suite, the library, milestones and goldens found the callee and the writer
-  only, both now published). Validator's view: MirValidator compares a Ref's referent and Place modulo Origins and its mode with its
+  derived Opaque, never the stored Type. The census (the suite, the library, milestones, goldens and the final review's probes) found
+  three positions without one: the value-call callee and the writer, both now published, and a jump Binding rejects (no target, an
+  unknown label, a `yield` outside a construct, an exit across a Closure), which no consumer takes, so the derived jump designates a
+  Place operand without acquiring it (`MirBuilder.Transfers.DerivedOperand`, R4 consenting); operator, index, compound-update and
+  Erasure operands take no bare Reborrow. Validator's view: MirValidator compares a Ref's referent and Place modulo Origins and its mode with its
   Ref kind; only MirOrigins reads a Ref's Origin (its atom and Anchor; `Contain` reads the layers' stored Origins), so at a bare
   acquisition into a destination the Ref's atom and Anchor are the destination's, as for every implicit borrow.
   Departure from R4-M50 (R4 agreeing; G226 is a wrong-code fix D5 permits): the old analysis takes its Loans from Binding's names, so
@@ -4216,7 +4222,9 @@ resumed by R4-M86 (2026-10-20).
   Reborrow-only column (OQ-2: a closed column of a due file, two rules for a Ref's Type in one function). Open: R4's C3 (a Borrow
   through a capture is not met with the Closure's call receiver, SPEC 15.6.3; G227); A's residuals (a finite source through a `var`
   slot inside a meet, now Binding's Refuted for the probed forms; an inferred element Origin whose receiver Loan no pipeline carries,
-  `t2`/`t3`/LocalInputs). Not temporary.
+  `t2`/`t3`/LocalInputs); a discarded bare Reborrow (`_ = h.link`, and a Place standing alone in Discard Context, SPEC 14.2) has no
+  consumer Type: the builder's temporary takes the Place's stored Type, for which A5 on the held 2a-1b judges a reaching layer's edge
+  (`s -> a`) Unknown on a valid program; no published channel carries the named Type there (a planning ruling pending). Not temporary.
 
 ## R5 and R6 (adopted 2026-10-18)
 

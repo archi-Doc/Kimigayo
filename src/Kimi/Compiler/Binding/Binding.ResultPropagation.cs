@@ -305,7 +305,9 @@ public sealed partial class Binding
                 awaiting |= awaits;
                 if (!awaits)
                 {
-                    types.Add(source);
+                    // DECISIONS BU-27: a bare Reborrow, a body's trailing expression or a jump's operand, supplies the Type it is named.
+                    var supplier = context.SourceNodes[i] is CodeBlockKoto { TrailingExpression: { } tail } ? tail : context.SourceNodes[i];
+                    types.Add(this.NamedReborrowType(supplier, source)!);
                 }
             }
         }
