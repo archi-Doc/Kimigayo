@@ -2776,7 +2776,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (R4-M95, G160 §9.2 and D1): A5's address gains an own-step marker carrying the owning value's Place, which the Warning compares
     with the operation's Place by 15.6.2's steps (the Place or an ancestor); for Loan checking an address still conflicts with
     nothing. G160-4 designs it under the full process, with the Warning's sentence for 5.2.1 condition 3 and any closed-vocabulary
-    entry for the owner.
+    entry for the owner. (Scope superseded by R4-M116, OQ-1 (a): ancestors with no dereference between, every exclusive Borrow.)
   - OQ-R4 (a): an Information diagnostic for a raw Field in a struct's or enum's inline storage that the Type's `drop` releases
     without `during self`, repaired by stating `during self` and adding the claim at each constructor fill; not for unannotated raw
     Fields in general (G160 D3's canonical "unstated") and not on a constructor fill; for an enum's Case payload no repair candidate
@@ -3027,6 +3027,93 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
+- **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim:
+  「proposal B を Q1〜Q7 の推奨どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、Q4 本案、Q5 採用、Q6 採用、
+  Q7 経路等式を残す）採択します。R4 で SPEC へ取り込んでください（独立レビューつき）。」; unit spec-tid, `draft/Changes/2026-10-22 Type Identity by Structural Decomposition B.md`, INTEGRATED
+  2026-10-23) SPEC §8.2.3 states B's section 3: Type identity is one relation from its grounds (premises, the Constraints `T is C` supplies
+  for every projection a query needs, completed bindings), closed under replacement and the decomposition of constructed Types with one
+  head and agreeing compared attributes (one structure table read by decomposition, Refuted, premise errors, cycles, collisions and
+  overlap); projections and Contract arguments never decompose; Origin, length and Semantics agreement is proven by its own rules, never
+  by identity; premise errors (Language: a Refuted identity of two Types the premises make identical, a proper-part cycle; Proof: unproven compared attributes, truth by
+  Semantics case) are reported once where their premises first meet.
+  - Rationale and Principles (B 1.2, 7.1): non-decomposition put `Option<U>` and `Option<i32>` in one class while keeping `U` and
+    `i32` apart. A class had no one form, plain mismatches such as `Array<V> is Option<i32>` stayed Unknown, and it was one cause of
+    G170 C1's failed reviews. One Concept, One Canonical Form: one identity relation and one structure table serve decomposition,
+    Refuted, premise errors, cycles, collisions and overlap. Local Reasoning: consequences follow from a declaration's premises and Type
+    structure, whatever their side, order or spelling, except whether a limit is reached (Q7); premise errors are reported once where
+    their premises meet. Explicit Semantics: decomposition invents no Origin, length or Semantics relation, and specifications assume
+    no input identity. Compiler Server Protocol: Language errors, unproven requirements and limits are distinct and show their linking
+    premises and sources, and the AddPremise repair has a precondition and guarantee.
+  - The answers: Q1, a conformance premise on a Type identical with a constructed Type is evidence (§8.2.3); Q3, "depends" means not
+    holding with the judgment, or the current definition's inferred values, held pending, whatever derivation is recorded (§8.3.3,
+    §8.5.5); Q4, only identity premise errors are reported at the declaration (§8.2.3, §8.8.2, §7.5), other contradictory evidence as
+    before; Q5, expanding recursion among Contracts is a Language error (§8.3.3, G′ 4.6's edges); Q6, a Type without finite expansion is
+    a premise error (§8.3.3, G′ 4.9's criterion stated declaratively); Q7, path equations stay and only whether a limit is reached may
+    depend on declaration names; Resource keeps the identities obtained (§8.3.3). Q2: §8.5.5's extraction still does not enter Function
+    Types.
+  - Supersedes: SPEC 8.2.3's non-decomposition and its "two different fully bound Types" error (now the structural conflict); PlanB §4.3
+    rule 6's "never decompose equality" for constructed Types (projections and Contract arguments still never decompose); the reading
+    "SPEC 8.5.5's 'depends' per derivation" of PLAN G170's 2026-10-21 owner item, by Q3 (whether C2–C4's implementation without read
+    sets meets Q3 is BU's planning).
+  - Examples and tests: the new SPEC blocks are registered in `spec-cases.json` with the implementation's records as (b) differences;
+    their expected codes use existing codes (InvalidConstraint_Kd for Language, UnprovenConstraint_Kd for Proof, `Pack` included), which
+    the implementing units may refine with their own codes. OldRule `B3.3`: NormalizedConstraintProofBindingTest's two Unknown rows
+    that B refutes; they become Refuted, and the trait is removed, in the G170 C2–C4 unit that implements B 3.3 (Binding decides
+    identity for both pipelines, so R4-M50's MIR/R6-check condition does not apply). No library or milestone program has an identity premise on a constructed Type or a growing Contract cycle.
+  - Repairs: `Repair.AddPremise` and `Repair.RemovePremise` join the schema's kinds (B 3.10); offering one stays implementation-defined
+    (§23.1.3). Open: the condition values for AddPremise's precondition (not Refuted, no premise error) and guarantee (the requirement
+    Proven, callers prove it) are added by the implementing unit before it offers the kind; added values keep `kimi.check/3`.
+  - Open: §8.5.5's Function-Type extraction (Q2), a separate revision; B 3.4's gap, an omitted Origin in a layer of a Constraint's
+    Type outside a Function Type, which §15.4.2 has no row for (not filled). Not implemented: PLAN G170's C2–C4 (BU); STATUS states it,
+    and that the implementation does not report SPEC 8.2.3's `cyclic` (an error before B too).
+  - Rejected (B 7.2): non-decomposition; decomposing projections or Contract arguments; deriving Origin, length or Semantics relations
+    from decomposition; Refuted by contradiction; constructed Constraint subjects; G′'s decision procedure in SPEC.
+- **R4-M116 G160-4's design (B′) and SPEC 15.6.4's raw arguments and 5.2.1's own-step Warning** (owner, 2026-10-23, choices
+  verbatim: OQ-3 「(a) 借用と同じに保持 (推奨)」, OQ-1 「(a) 逆参照を挟まない祖先 (推奨)」, OQ-2 「(a) OwnStepDeparture_Kd (推奨)」; full
+  process: designs A and B, the design review, B′, its re-review ACCEPT WITH FIXES; R4-M95, R4-M105, BU-24 and the owner's two caps
+  stay)
+  - SPEC 15.6.4 (OQ-3): a raw pointer argument is retained as a borrowed one, its pointee as the referent; its own value (its Loans and
+    the holders it addresses) only by a result or storage that can hold a value of its Type or by a result the call forms within its
+    storage, and never by storage the call writes through it; an untied raw result retains a raw argument with a read through it. Why:
+    once raw pointers carry Loans and addresses (G160), the letter retained a raw argument's own value wherever an Origin inside its
+    pointee may be retained, so `Raw.initialize(storage + i, x)` in `Array.initRepeating` kept the storage's `uniq` Loan in the Array,
+    making the library invalid, while a result holding a value read through a raw argument lost what the read carried. The
+    within-storage clause restates §5.2.2 and §5.6 (a borrow formed through a raw pointer, `Raw.slice`'s result included, carries what
+    the pointer reaches), and the untied clause applies "retained as a borrowed one" (§15.6's Holders); both are within OQ-3 (the
+    planning session's reading, confirmed by the re-review). One Concept, One Canonical Form: one retention rule for borrowed and raw
+    arguments; Local Reasoning: decided per argument from the contract's Types; Explicit Semantics: the self-store exception is stated.
+    Observation (re-review R-N2): a callee that stores a converted pointer where its contract's Type cannot hold the argument breaks
+    its contract (undefined behavior); no text change. Rejected: keeping the letter and having each library body avoid deriving raw
+    store targets from remainders (impractical: every library raw store does so); an A5-only reading without SPEC text (a departure
+    from SPEC, which AGENTS forbids).
+  - SPEC 5.2.1 condition 3 (OQ-1): after the own-step limit, a Warning is required where an operation may end the owning value's stay
+    in its holder while a pointer formed through that own step may still be used: a Move or Take of the Place or of an ancestor with no
+    dereference between, a replacing write, its destruction, or an exclusive Borrow of the Place or of any ancestor, calls by `uniq`
+    included. Reading for A5: access paths are a body's, so the pointer's formation is in the body. Rejected: every ancestor through
+    dereferences with calls only (it warns on a Move of a reference whose referent stays); calls by `uniq` only (it misses
+    `let r = b@uniq; r@follow = make()`).
+  - OQ-2: `OwnStepDeparture_Kd`, Warning, Language, requirement `Ownership.OwnStepDeparture`, facts Anchor (the pointer's formation),
+    Use (the witness) and Evaluated (inside an inline default copy), no repair; new closed-vocabulary entries, added with DIAGNOSTICS by
+    4c. Rejected: `OwnStepPointerOutlivesOwner_Kd` (the owner is not destroyed; the record locates the departure).
+  - Design (the planning session's rulings on the review's PQ-1 to PQ-13): B′ as amended by the re-review. R-B1: "only" restored in the
+    15.6.4 text, the existing rule cited (§5.2.2, §5.6). R-B2: G160-2c's untied rule also covers writable storage a call writes a pointer
+    into through an Unstated or Static raw layer, and A5 adds Φ_E to that input's write targets (`fill(h)` storing `Raw.allocate(1)` into
+    `h.p`, then `Raw.initialize(h.p, y@ref)`, a failing-first test). R-B3: a raw input's own-layer Origin atom yields no Value row of its
+    own. R-B4: "can hold a value of its Type" is normalized Type identity with Origins fitted. R-B5: G160-2c runs MirCensusTest and the
+    Text, Utf8Writer and interpolation classes with the untied rule before merging, and a new problem stops it. R-N1 amends PQ-3: the
+    guard's Exclusive row walks the pointee as a Type argument; where that is wider than the keepers it holds the view as a located
+    `Unsupported_Kd`.
+  - Owners and order: Binding's `RetentionInput` decides 15.6.4's row kinds, so raw arguments' rows are BU's G160-2c (B′ §3.2 as
+    amended; it starts on the owner's word for BU) and A5's `Retained` is unchanged. Order: 4a (behavior-preserving splits of the due
+    `MirBorrows.Values.cs`, `.Locations.cs`, `.Solve.cs` and `.Reports.cs`), BU's G160-2b (`RawStep` total), G160-2c, 4b (addresses;
+    an untracked Φ_E at raw formation and at call results that may hold a raw pointer, its false-error residual recorded; one located
+    `Unsupported_Kd` for a Borrow or read of a `during self` layer's Place or of an inline Place enclosing it, registered for X-2; r3
+    deleted), 4c (the Warning, which bypasses P13's hold), G160-5 (records, census; BU deletes `TyCtxt.RawMembers` without an instance
+    and `RawStep(raw)` if no reader remains, keeping `RawMembers(instance, …)` for P13's per-part guard, R4-M76); one final review.
+    A5's addresses read no Origin of a raw Type argument (BU's open item: Binding keeps one through a pair parameter where SPEC 8.1.1
+    drops it). The representation and its supersessions (R4-M36, R4-M73's Raw bullet, A3 E16, R4-M93's r3) are recorded with 4b.
+  - Not implemented (STATUS). Unverified until 4b: G160-2c's mechanism, the census and ledger beyond the prototypes, the Exclusive
+    guard row on a layer a Type argument supplies, the Warning, the located `Unsupported_Kd`'s census, cost and warm allocation.
 - **Owner decisions, only when triggered:** O1 a MIR vocabulary member or `IntrinsicId`; O2 a total cap above 142,000;
   O3 an acceptance change outside plan Appendix B (C1–C6 and X1–X3 with a SPEC clause; T1–T4 belong to R7), any rejection
   of a milestone or library program, or a row reopening a SETTLED entry; O4 a general SPEC rule left Unsupported at the R4

@@ -1114,9 +1114,51 @@ applied (its §13). The owner then instructed the R4 planning session: 「この
 The owner wrote two proposals on 2026-10-22 and combined them into proposal B; G170 C1 (merged on 2026-10-23, `draft/Sketches/G170/C1/`)
 follows B's section 3. Recorded by the R4 planning session on 2026-10-23, when the owner asked it to check the documents and merge C1.
 
-- [Type Identity by Structural Decomposition B](Proposals/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md): 一部取り込み
-  (intake only, as its status line says). Not integrated into SPEC: §8.2.3 still states non-decomposition; B's section 6 leaves Q1–Q4
-  (with recommendations) and Q5–Q7 (decidability) for the owner. G170 C1's executable design cites it as B 3.x. Its link to the
-  original Structural Decomposition proposal does not resolve on dev (that file is not on dev).
-- [Type Identity Normalization](Proposals/2026-10-22%20Type%20Identity%20Normalization.md) (案 G′): 提案 (not adopted, its status line);
-  B takes its rules where they agree and lists the differences in B's section 6.
+- [Type Identity by Structural Decomposition B](Changes/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md): 一部取り込み
+  (intake only, as its status line said). Not integrated into SPEC then: §8.2.3 still stated non-decomposition; B's section 6 left
+  Q1–Q4 (with recommendations) and Q5–Q7 (decidability) for the owner. G170 C1's executable design cites it as B 3.x. Its link to the
+  original Structural Decomposition proposal does not resolve on dev (that file is not on dev). (Superseded: closed as 取り込み済み on
+  2026-10-23, below.)
+- [Type Identity Normalization](Changes/2026-10-22%20Type%20Identity%20Normalization.md) (案 G′): 提案 (not adopted, its status line);
+  B takes its rules where they agree and lists the differences in B's section 6. (Superseded: closed as 取り込み済み on 2026-10-23,
+  below.)
+
+## 2026-10-23 — Type identity by structural decomposition integrated (proposal B; R4 unit spec-tid)
+
+The owner, 2026-10-23, verbatim: 「proposal B を Q1〜Q7 の推奨どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、
+Q4 本案、Q5 採用、Q6 採用、Q7 経路等式を残す）採択します。R4 で SPEC へ取り込んでください（独立レビューつき）。」 DECISIONS R4-M115.
+
+- `Changes/2026-10-22 Type Identity by Structural Decomposition B.md`: 取り込み済み (closed 2026-10-23); the file moved from
+  `Proposals/` with only its status sentence replaced. Mapping by B section:
+  - 3.1 (grounds and relation; Q1 kept), 3.2 (the structure table, constructed Type, head), 3.3 (decomposition, Refuted), 3.4
+    (compared attributes), 3.5 (projections), 3.6 (proper part, cycles) and 3.10 (premise errors, reporting, display, the AddPremise
+    repair's precondition and guarantee) → SPEC §8.2.3; 3.3's proposition → §8.3.1; 3.1 and 3.9 → §8.3.2 (Contract refinement and
+    identity rows).
+  - 3.7 → §8.5.1 (specification atoms determine only), §8.5.5 (frozen premises); 3.8 → §8.8.2 and §7.5 (conditions), §8.9.1 steps
+    1–4 and §7.4.3 (heads of the structure); overloads (§10) need no text.
+  - 3.10's Resource and Q7 → §8.3.3 Limits; Q3 → §8.3.3 Finality and §8.5.5; Q5 → §8.3.3 Expanding recursion (G′ 4.6's edges); Q6 →
+    §8.3.3 Unbounded Types (G′ 4.9's criterion, stated without its normal-form procedure, as B 7.2 requires).
+  - 3.10's repair kinds → `schemas/check-output.schema.json` (`Repair.AddPremise`, `Repair.RemovePremise`; no new condition value).
+  - Appendix D (the deferred decomposition of identity premises removed), Appendix E (Constructed Type / head, Proper part, Type
+    identity).
+  - §4 examples → §8.2.3 (`same`, `conflict`, `otherView`, `independent`, `cyclic`), §8.3.3 (`Nested`, `Stream`, `Window`, from G′
+    5.3 and 5.4), §8.5.1 (`Number`, `Pack`) and §8.8.2 (`Either`, `Slot`/`plain`/`fill`), each registered in
+    `tests/diagnostics/spec-cases.json` with the implementation's records as a (b) difference. The §4 examples not carried are
+    covered by the integrated rules: `tuplePart`, `arrayPart`, `functionPart` and `sameView` (decomposition, compared attributes),
+    `escape` (quantified Origins), `loopy` (truth by Semantics case), `optional` (closed world, unchanged), `reconstructed`
+    (projections of a constructed subject), `twice` (Constraints for every projection) and the `show` overload (identity as
+    written premises).
+  - Not integrated: Q2 (§8.5.5's extraction does not enter Function Types; a separate §8.5.5 revision, PLAN G170) and Q4's G′
+    alternative; B 3.4's gap (an omitted Origin in a layer of a Constraint's Type outside a Function Type has no §15.4.2 row) is not
+    filled (DECISIONS R4-M115, open).
+  - OldRule id `B3.3` (DECISIONS R4-M50): `NormalizedConstraintProofBindingTest.NormalizationDoesNotAddLogicalRulesOrEraseTypeStructure`
+    (its `[3 of i32]` and `i32` rows are Refuted under B 3.3).
+  - Corrections (B's and G′'s bodies are frozen): the link to the Structural Decomposition proposal in B's header and G′'s section 6.3
+    does not resolve (that file is not on dev); after the move, the PlanB links in B 1.2 and G′ 1.1 resolve at
+    `../Proposals/2026-10-20%20G170%20Premise%20Dependencies%20and%20Inference%20PlanB.md`.
+  - Not implemented: STATUS (Types and Contracts) states the default pipeline's old rule until PLAN G170's C2–C4.
+- `Changes/2026-10-22 Type Identity Normalization.md` (案 G′): 取り込み済み (closed 2026-10-23), not adopted as a whole; the rules B
+  shares with it, and its 4.6 and 4.9 criteria through B's Q5 and Q6, are integrated as above. Its own items: Q1's proven-conformance
+  rule, rejected by the owner's Q1; Q2's Function-Type extraction, transferred to a separate §8.5.5 revision (PLAN G170); Q4/Q9's
+  declaration errors for unsatisfiable conditions, rejected by Q4; 4.7 and 4.10's representative order, completion and its limits, and
+  the decision procedure (normal forms), not in SPEC (B 7.2). The file moved from `Proposals/` with only its status sentence replaced.
