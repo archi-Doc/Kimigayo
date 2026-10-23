@@ -13,11 +13,6 @@ public sealed partial class Binding
 {
     internal static bool IsBorrow(SemanticsKind semantics) => semantics is SemanticsKind.Ref or SemanticsKind.Uniq or SemanticsKind.ObjRef or SemanticsKind.ObjUniq;
 
-    // SPEC 15.6.1: whether a relation is Refuted: its longer end is a body-local finite Origin and its shorter end a fixed one, or its
-    // longer end is Unstated (UnstatedRelation).
-    internal static bool RefutesOriginRelation(BoundOrigin longer, BoundOrigin shorter)
-        => UnstatedRelation(longer, shorter) == false || (BodyLocalOrigin(longer) && FixedOrigin(shorter));
-
     private static bool IsExclusive(SemanticsKind semantics) => semantics is SemanticsKind.Uniq or SemanticsKind.ObjUniq;
 
     private static int CompareOrigins(BoundOrigin a, BoundOrigin b)

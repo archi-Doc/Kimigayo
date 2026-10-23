@@ -430,24 +430,6 @@ public sealed partial class Binding
         node.Report(requirement, code, note: note, evidence: evidence, related: related, at: relation.At, condition: condition);
     }
 
-    private static bool BodyLocalOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind is OriginKind.Projection or OriginKind.Anchor)
-        {
-            return true;
-        }
-
-        for (var i = 0; i < origin.Operands.Count; i++)
-        {
-            if (BodyLocalOrigin(origin.Operands[i]))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
     // The Borrow that supplies a body-local Origin: the value itself, or the initializer of the local it names. For a meet, it is the
     // Borrow of its first body-local operand, which the meet's display shows (SPEC 23.1).
     private static Koto? BorrowSource(Koto value, BoundOrigin origin)

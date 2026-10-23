@@ -24,30 +24,6 @@ public sealed partial class Binding
     internal static bool IsFitObligation(in BindingObligation obligation)
         => obligation.Clause is null && !obligation.WellFormed && (obligation.Type is null || ReferenceEquals(obligation.Type.Origin, obligation.Shorter) || obligation.Use is not TypeKoto);
 
-    // SPEC 15.6.5: a fixed Origin is fixed by the body's contract: a signature, parameter or receiver Origin, a projection of one,
-    // static, or a meet of them.
-    internal static bool FixedOrigin(BoundOrigin origin)
-    {
-        if (origin.Kind == OriginKind.Intersection)
-        {
-            for (var i = 0; i < origin.Operands.Count; i++)
-            {
-                if (!FixedOrigin(origin.Operands[i]))
-                {
-                    return false;
-                }
-            }
-
-            return true;
-        }
-
-        return origin.Kind is OriginKind.Static or OriginKind.Parameter or OriginKind.Input;
-    }
-
-    // SPEC 15.6.1, 15.6.5 (2a0-D D1): a relation is a body chain, a row A5 judges, when one of its ends, as the caller has it at its use,
-    // is not fixed (an Unbound end counts); a fixed-fixed relation is Binding's to judge (A3 §7, until R7).
-    internal static bool BodyChain(BoundOrigin longer, BoundOrigin shorter) => !FixedOrigin(longer) || !FixedOrigin(shorter);
-
     internal bool IsVerifiedOriginObligation(in BindingObligation obligation)
     {
         if (obligation.Kind == BindingObligationKind.OriginInference && obligation.Longer is { } pending)
