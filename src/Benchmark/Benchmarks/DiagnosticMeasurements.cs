@@ -82,7 +82,54 @@ internal static class DiagnosticMeasurements
             },
             32);
 
+        results["override-failure-binding"] = OverrideFailures();
+
         Console.WriteLine(JsonSerializer.Serialize(new { compiler = Compilation.CompilerVersion, runtime = Environment.Version.ToString(), results }, new JsonSerializerOptions { WriteIndented = true }));
+    }
+
+    // Fixed failed programs measure warm Binding and the retained compilation, including its failure records.
+    private static object OverrideFailures()
+    {
+        const int Count = 128;
+        var source = new StringBuilder();
+        for (var i = 0; i < Count; i++)
+        {
+            source.Append($"open struct Base{i}\n    public virtual func read(self: objref/Self) -> i32 => 1\nstruct Derived{i} : Base{i}\n    override func read(self: objref/Self) -> i64 => 2\n");
+        }
+
+        var text = source.ToString();
+        var retained = new long[7];
+        for (var sample = 0; sample < retained.Length; sample++)
+        {
+            retained[sample] = RetainedOverrideFailures(text, Count);
+        }
+
+        var cold = Measure(() => BindOverrideFailures(text, Count), 8);
+        var compilation = BindOverrideFailures(text, Count);
+        var warm = Measure(() => Require(!compilation.Bind().IsComplete), 32);
+        GC.KeepAlive(compilation);
+        return new { count = Count, retainedBytes = retained, medianRetainedBytes = retained.Order().ElementAt(3), cold, warm };
+    }
+
+    // A separate stack frame retires the preceding sample before the next GC baseline.
+    [System.Runtime.CompilerServices.MethodImpl(System.Runtime.CompilerServices.MethodImplOptions.NoInlining)]
+    private static long RetainedOverrideFailures(string source, int count)
+    {
+        var before = GC.GetTotalMemory(true);
+        var compilation = BindOverrideFailures(source, count);
+        var retained = GC.GetTotalMemory(true) - before;
+        GC.KeepAlive(compilation);
+        return retained;
+    }
+
+    private static Compilation BindOverrideFailures(string source, int count)
+    {
+        var compilation = Compilation.CreateForTest();
+        Require(compilation.Prepare(Target));
+        compilation.Kotonoha.AddSource(new SourceDocument("override-failures.kimi", source));
+        Require(!compilation.Bind().IsComplete);
+        Require(compilation.Binding.Issues.Count(x => x.Code == DiagnosticCode.OverrideContractMismatch_Kd) == count);
+        return compilation;
     }
 
     private static CheckOutput Check(string project)

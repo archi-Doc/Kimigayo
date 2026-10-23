@@ -21,6 +21,8 @@ public sealed partial class Binding
             MatchCoverageReason.BooleanValuesRequired => "Unguarded true and false Patterns or a catch-all are required.",
             _ => "An unguarded whole-position catch-all is required.",
         };
-        node.Report(requirement, DiagnosticCode.NonExhaustiveMatch_Kd, note: note, evidence: [coverage.Requirement]);
+        object[] evidence = coverage.Requirement is MatchCoverageReason.MissingCase or MatchCoverageReason.WholePayloadRequired
+            ? [coverage.Requirement, coverage.CaseIndex] : [coverage.Requirement];
+        node.Report(requirement, DiagnosticCode.NonExhaustiveMatch_Kd, note: note, evidence: evidence);
     }
 }

@@ -1,8 +1,11 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi;
+using Kimi.Checking;
 using Kimi.Compiler;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
+using Kimi.Lsp;
 using Xunit;
 
 namespace XunitTest;
@@ -87,11 +90,45 @@ public class PatternBindingTest
     [InlineData("func f(x: bool) => match x\n    true => ()", MatchCoverageReason.BooleanValuesRequired)]
     public void CoverageUsesOnlyTheSpecifiedProofs(string source, MatchCoverageReason reason)
     {
-        var c = Parse(source);
-        Assert.False(c.Bind().IsComplete);
+        var path = Path.GetFullPath("match-coverage.kimi");
+        var c = MinimalEmissionTest.Analyze(source, path);
+        Assert.False(c.Binding.Result.IsComplete);
         Assert.Equal(MatchCoverageState.NonExhaustive, Plan(c).Coverage.State);
         Assert.Equal(reason, Plan(c).Coverage.Reason);
-        Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.NonExhaustiveMatch_Kd);
+        c.Binding.ReportDiagnostics();
+        c.Diagnostics.AddInput(c.Diagnostics.FindDocument(path)!, c.Kotonoha);
+        var result = c.Diagnostics.Finalize();
+        var record = Assert.Single(result.Diagnostics, x => x.Code == "NonExhaustiveMatch_Kd");
+        Assert.Equal(new DiagnosticValue("coverage", DiagnosticValueKind.Enumeration, reason.ToString()), record.Reason![0]);
+        var note = reason switch
+        {
+            MatchCoverageReason.MissingCase => "The Case at declaration index 0 has no arm.",
+            MatchCoverageReason.WholePayloadRequired => "The Case at declaration index 0 requires an unguarded whole-payload arm.",
+            MatchCoverageReason.BooleanValuesRequired => "Unguarded true and false Patterns or a catch-all are required.",
+            _ => "An unguarded whole-position catch-all is required.",
+        };
+        Assert.Equal(note, record.Note);
+        if (reason is MatchCoverageReason.MissingCase or MatchCoverageReason.WholePayloadRequired)
+        {
+            Assert.Equal(new DiagnosticValue("case", DiagnosticValueKind.Number, "0"), record.Reason[1]);
+            Assert.Equal(2, record.Reason.Length);
+        }
+        else
+        {
+            Assert.Single(record.Reason);
+        }
+
+        Assert.Equal(source.IndexOf("match", StringComparison.Ordinal), record.Span!.Value.Start);
+        var console = new DiagnosticContractTest.DiagnosticConsole();
+        new Kimigayo(console).Render(result, string.Empty);
+        Assert.Contains(note, console.Text, StringComparison.Ordinal);
+        var identity = SourceIdentity.FromPath(path);
+        foreach (var related in new[] { false, true })
+        {
+            var sent = Assert.Single(WorkspaceCheck.Place(new(CheckOutcome.Completed, false, TestPresence.No, result), [identity], identity, related)[identity]);
+            Assert.Equal(record.Display!.Range, sent.Range);
+            Assert.Contains(note, sent.Message, StringComparison.Ordinal);
+        }
     }
 
     [Theory]
