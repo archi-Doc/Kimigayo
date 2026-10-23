@@ -4339,7 +4339,12 @@ resumed by R4-M86 (2026-10-20).
   (no verdict changes on dev; the library and milestones are unaffected); no published channel carries Binding's name to a discard.
   Options, none taken in this unit (the planning session's ruling, 2026-10-23): (a) a fact in the Discard node's plan row, a new HIR
   fact for R4 and possibly the owner to decide; (b) publishing adaptation Types, A's rejected `ErasedTypes` column; (c) the builder
-  meeting the layers itself, a second copy of the rule. Not temporary.
+  meeting the layers itself, a second copy of the rule. Not temporary. StoredReborrow is the one rule at bare acquisition
+  positions only: with a fixed expected Type, BindAndAdaptNode's clause (Binding.Expressions.cs:313) forces the Reborrow of a bare
+  stored reference whose expected Type equals its own for `uniq` alone, so `return h.o` with a fixed expected `objuniq` Type keeps
+  the stored Origin and the old analysis reports `TransferRequired_Kd` (no acceptance changes); that clause should read
+  StoredReborrow's predicate, with the re-read 2's w4 (`return h.o` from `h: uniq/(H2 during a) during s` as `objuniq/P during a`,
+  a leak) and w12v (the same under `origin s outlives a`, valid) as its failing-first rows (PLAN G232).
 
 ## R5 and R6 (adopted 2026-10-18)
 
