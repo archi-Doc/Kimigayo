@@ -297,6 +297,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         {
             var donor = MinimalEmissionTest.Analyze(keep ? source : source.Replace("pass(z@follow@ref)", "pass(x)", StringComparison.Ordinal));
             var input = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<InvocationKoto>().Single(static x => x.Method is IdentifierNameKoto { IdentifierName: "pass" }).ArgumentNodes[0];
+            ParseTestHelper.Detach(input, new CodeBlockKoto(input.CodeContext));
             Assert.True(KotoHelper.Replace(call, call.ArgumentNodes[0], input));
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
@@ -431,6 +432,7 @@ public class FixedOriginRetentionTest(ITestOutputHelper output)
         {
             var donor = MinimalEmissionTest.Analyze(parent ? source : source.Replace("= z@follow@ref", "= x", StringComparison.Ordinal));
             var initializer = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<VariableKoto>().Single(static x => x.NameKoto.IdentifierName == "y").InitializerKoto!;
+            ParseTestHelper.Detach(initializer, new CodeBlockKoto(initializer.CodeContext));
             Assert.True(KotoHelper.Replace(local, local.InitializerKoto!, initializer));
             Assert.True(c.Bind().IsComplete);
             Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);

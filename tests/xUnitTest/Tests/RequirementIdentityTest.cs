@@ -162,7 +162,7 @@ public class RequirementIdentityTest(ITestOutputHelper output)
         Assert.Equal(2, previous.Length);
         var declaration = (ContractKoto)q.Declaration;
         var donor = CompilationTestHelper.ParseSuccess("contract Q: P<i64>").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single();
-        Assert.True(KotoHelper.Replace(declaration, declaration.Bases[0], donor.Bases[0]));
+        Assert.True(KotoHelper.Replace(declaration, declaration.Bases[0], ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(declaration.CodeContext))));
         Assert.False(mapping.IsVerified);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(mapping.IsVerified);

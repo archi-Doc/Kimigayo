@@ -84,6 +84,7 @@ public class BaseTypeFormationBindingTest
         var original = structure.Bases[0];
         var donor = MinimalEmissionTest.Analyze(source.Replace("Base<i32>", "Base<string>", StringComparison.Ordinal));
         var replacement = Type(donor).Bases[0];
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(structure, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.False(definition.IsVerified);

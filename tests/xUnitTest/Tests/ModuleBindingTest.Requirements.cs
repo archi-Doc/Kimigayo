@@ -156,6 +156,7 @@ public partial class ModuleBindingTest
         var original = clause.Left;
         var donor = Create(consumer, library.Replace("i32 is Copy", "string is Copy", StringComparison.Ordinal));
         var replacement = donor.SourceModules[1].RootKoto.NestedContainers.Single().NestedContainers.Single(x => x.Name == owner.Name).ConstraintNodes[0].Left;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
         var target = c.SourceModules[1].RootKoto.NestedContainers.Single().NestedContainers.Single(x => x.Name == "Target");

@@ -123,12 +123,14 @@ public class TypeArityBindingTest
         var root = c.Kotonoha.RootKoto;
         var original = root.NestedContainers.Single(x => x.GenericParameterNodes.Count == 1);
         var replacement = Assert.Single(Parse("struct Box<T>\n    var a: i32").Kotonoha.RootKoto.NestedContainers);
+        ParseTestHelper.Detach(replacement, new GroupKoto(replacement.CodeContext, default, default));
         Assert.True(KotoHelper.Replace(root, original, replacement));
         c.Kotonoha.AddSource(new SourceDocument("later.kimi", "struct Box<T>\n    var b: i32\nfunc f(x: Box, y: Box<i32>, z: Box<i32, u8>) => ()"));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal(3, root.NestedContainers.Count);
         Assert.Equal(2, replacement.Members.Count);
         var duplicate = Assert.Single(Parse("struct Box").Kotonoha.RootKoto.NestedContainers);
+        ParseTestHelper.Detach(duplicate, new GroupKoto(duplicate.CodeContext, default, default));
         Assert.False(KotoHelper.Replace(root, replacement, duplicate));
         Assert.True(c.Bind().IsComplete);
     }

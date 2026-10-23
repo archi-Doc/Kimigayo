@@ -92,6 +92,7 @@ public class RuntimeTestFormationBindingTest
         var original = test.Right;
         var donor = MinimalEmissionTest.Analyze(source.Replace("is Box<i32>", "is Box<string>", StringComparison.Ordinal));
         var replacement = Test(donor).Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(test, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(test.RuntimeTestOf());

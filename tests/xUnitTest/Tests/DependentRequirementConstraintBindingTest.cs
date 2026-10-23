@@ -85,6 +85,7 @@ public class DependentRequirementConstraintBindingTest
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(source.Replace("i32 is T", "i32 is not T", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single().ConstraintNodes[0].Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(clause, replacement, original));

@@ -30,6 +30,7 @@ public class VirtualPublicEffectTest
         Assert.True(c.Binding.AvailableEffectBounds(original, null, original));
         var donor = MinimalEmissionTest.Analyze(Source);
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
         Assert.False(c.Binding.AvailableEffectBounds(original, null, original));
         c.Bind();

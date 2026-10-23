@@ -713,6 +713,11 @@ public abstract class Koto
 
     internal bool ReplaceChild(Koto oldKoto, Koto newKoto)
     {
+        if (newKoto.Parent is not null)
+        {
+            throw new InvalidOperationException("A replacement must be detached.");
+        }
+
         if (this.AttributeChain == oldKoto && newKoto is AttributeKoto attribute)
         {
             // Only the head is replaced; the remaining attributes stay attached behind it.

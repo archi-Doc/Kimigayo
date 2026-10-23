@@ -98,7 +98,8 @@ public class VirtualEffectObligationTest(ITestOutputHelper output)
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
         var donor = MinimalEmissionTest.Analyze(Source.Replace("=> State.count", "=> 2", StringComparison.Ordinal));
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
-        Assert.True(KotoHelper.Replace(function, function.ExpressionBody!, replacement.ExpressionBody!));
+        var body = ParseTestHelper.Detach(replacement.ExpressionBody!, new CodeBlockKoto(function.CodeContext));
+        Assert.True(KotoHelper.Replace(function, function.ExpressionBody!, body));
         c.Bind();
         Assert.DoesNotContain(c.Binding.Issues, x => x.Code == DiagnosticCode.UnsatisfiedEffectBound_Kd);
     }

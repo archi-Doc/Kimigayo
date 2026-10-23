@@ -65,6 +65,7 @@ public class CallCompletionBindingTest
         var original = target.ReturnType!;
         var donor = MinimalEmissionTest.Analyze(Source("internal", "public").Replace("-> Source.Hidden.Element", "-> i32", StringComparison.Ordinal));
         var replacement = donor.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single().ReturnType!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(target, original, replacement));
         Assert.True(c.Bind().IsComplete);
         var call = Call(c);

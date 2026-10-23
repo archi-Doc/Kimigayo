@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Parsing;
 using Xunit;
 
 namespace XunitTest;
@@ -62,6 +63,7 @@ public class DictionaryIndexableTest
         var index = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single();
         Assert.NotNull(c.Binding.IndexerCall(index, false));
         var replacement = KotoTree.Walk(MinimalEmissionTest.Analyze(Prefix + "let r = values[j]").Kotonoha.RootKoto).OfType<Kimi.Compiler.Parsing.IndexKoto>().Single().Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(index, index.Right, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(replacement, c.Binding.IndexerCall(index, false)!.ArgumentNodes[0]);

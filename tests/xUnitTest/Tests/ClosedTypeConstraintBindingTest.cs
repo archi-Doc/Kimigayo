@@ -116,6 +116,7 @@ public class ClosedTypeConstraintBindingTest
         var original = clause.Right;
         var donor = MinimalEmissionTest.Analyze(Source("struct", "i32 is Copy"));
         var replacement = Target(donor).ConstraintNodes[0].Right;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(clause, replacement, original));

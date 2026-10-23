@@ -124,7 +124,8 @@ public class VirtualConditionalDispatchTest(ITestOutputHelper output)
         var donor = MinimalEmissionTest.Analyze(Source.Replace("T is Copy", "T is Owned", StringComparison.Ordinal));
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
-        Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], changed.TypeConstraints[0]));
+        var replacement = ParseTestHelper.Detach(changed.TypeConstraints[0], new CodeBlockKoto(original.CodeContext));
+        Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], replacement));
         Assert.False(c.WriteIr(TextWriter.Null, out _));
         Assert.True(c.Bind().IsComplete);
         c.Binding.CheckStartup(OutputKind.Application);

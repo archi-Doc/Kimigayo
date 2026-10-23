@@ -75,6 +75,7 @@ public class PropertyCompletionBindingTest
         var original = property.Declaration.TypeKoto!;
         var donor = MinimalEmissionTest.Analyze(Prefix + "struct S\n    var value: E<Source>");
         var replacement = Property(donor).Declaration.TypeKoto!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property.Declaration, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.False(property.IsVerified);

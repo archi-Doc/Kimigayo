@@ -107,6 +107,7 @@ public class ConditionalMemberAccessBindingTest
         var original = Member(c);
         var donor = MinimalEmissionTest.Analyze(Source(property, "Source.Hidden.Item", "internal"));
         var replacement = Member(donor);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = Block(c);
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.True(c.Bind().IsComplete);

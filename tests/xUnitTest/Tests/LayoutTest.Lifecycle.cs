@@ -125,7 +125,8 @@ public partial class LayoutTest
     {
         var donor = CompilationTestHelper.BindSuccess(source.Replace(field, edited, StringComparison.Ordinal));
         var syntax = FieldTypeSyntax(c);
-        Assert.True(KotoHelper.Replace(syntax.Parent!, syntax, FieldTypeSyntax(donor)));
+        var replacement = ParseTestHelper.Detach(FieldTypeSyntax(donor), new CodeBlockKoto(syntax.CodeContext));
+        Assert.True(KotoHelper.Replace(syntax.Parent!, syntax, replacement));
         Assert.True(c.Bind().IsComplete);
     }
 

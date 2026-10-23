@@ -1,6 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Xunit;
 
@@ -23,6 +24,7 @@ public class AssociatedFormationEditingTest
         var parent = original.Parent!;
         var donor = ParseTestHelper.ParseSuccess(source.Replace("ref/i32 during a", "uniq/i32 during a", StringComparison.Ordinal));
         var replacement = Formation(donor.RootKoto, nested);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         output.GetStringBuilder().Clear();
         Assert.False(c.WriteIr(output, out _));
@@ -64,6 +66,9 @@ public class AssociatedFormationEditingTest
         var clause = Clause(c.Kotonoha.RootKoto, original);
         var parent = clause.Parent!;
         var replacement = Clause(ParseTestHelper.ParseSuccess(Source.Replace(original, edited, StringComparison.Ordinal)).RootKoto, edited);
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        var placeholder = new IsKoto(ref reader, default, new CodeBlockKoto(replacement.CodeContext), new CodeBlockKoto(replacement.CodeContext));
+        ParseTestHelper.Detach(replacement, placeholder);
         Assert.True(KotoHelper.Replace(parent, clause, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.True(KotoHelper.Replace(parent, replacement, clause));

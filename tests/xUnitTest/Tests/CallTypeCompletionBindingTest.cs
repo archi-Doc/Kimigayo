@@ -84,6 +84,7 @@ public class CallTypeCompletionBindingTest
         var original = generic.TypeArguments.Single();
         var donor = MinimalEmissionTest.Analyze(Prefix("internal") + "group Consumer\n    func take<T>() => ()\n    func call() => take<E<Source>>()");
         var replacement = Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments.Single();
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(call.CallOf());

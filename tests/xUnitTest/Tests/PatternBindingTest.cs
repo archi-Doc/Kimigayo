@@ -268,6 +268,7 @@ public class PatternBindingTest
         var oldPattern = match.Arms[0].Pattern;
         var replacement = Parse("func g(x: Option<i32>) => match x\n    .Some(let m) => ()");
         var newPattern = Matches(replacement)[0].Arms[0].Pattern;
+        ParseTestHelper.Detach(newPattern, new CodeBlockKoto(newPattern.CodeContext));
         Assert.True(KotoHelper.Replace(match, oldPattern, newPattern));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, i => i.Code == DiagnosticCode.UnresolvedBinding_Kd && ReferenceEquals(i.Node, match.Arms[0].Body));
@@ -275,11 +276,13 @@ public class PatternBindingTest
         var newName = Assert.Single(KotoTree.Walk(newPattern).OfType<IdentifierNameKoto>(), n => n.IdentifierName == "m");
         // Reusing an old Pattern child must not resurrect its old arm scope or Symbol.
         var oldName = Assert.Single(KotoTree.Walk(oldPattern).OfType<IdentifierNameKoto>(), n => n.IdentifierName == "n");
+        ParseTestHelper.Detach(oldName, new CodeBlockKoto(oldName.CodeContext));
         Assert.True(KotoHelper.Replace(newName.Parent!, newName, oldName));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.Equal("n", Assert.Single(plan.Positions, p => p.Kind == BoundPatternKind.Binding).BodySymbol!.Name);
         var function = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), f => !f.IsGenerated);
         var empty = Assert.Single(KotoTree.Walk(Parse("func g() => ()").Kotonoha.RootKoto).OfType<FunctionKoto>(), f => !f.IsGenerated);
+        ParseTestHelper.Detach(empty, new CodeBlockKoto(empty.CodeContext));
         Assert.True(KotoHelper.Replace(function.Parent!, function, empty));
         Assert.True(c.Bind().IsComplete, Describe(c));
         Assert.False(c.Binding.TryGetMatch(match, out _));

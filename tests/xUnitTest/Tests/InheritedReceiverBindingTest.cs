@@ -422,6 +422,7 @@ public class InheritedReceiverBindingTest
         var fragment = CompilationTestHelper.ParseSuccess(change == "access" ? Source.Replace("public func", "private func", StringComparison.Ordinal) : Source.Replace("self: ref", "self: uniq", StringComparison.Ordinal));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
         var replacement = KotoTree.Walk(fragment.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         var call = Call(c);
         var oldPlan = call.CallOf();
@@ -445,6 +446,7 @@ public class InheritedReceiverBindingTest
         var d = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D");
         var original = d.Bases[0];
         var replacement = KotoTree.Walk(fragment.Kotonoha.RootKoto).OfType<StructKoto>().Single(x => x.Name == "D").Bases[0];
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(d, original, replacement));
         Assert.True(c.Binding.Bind(BindingMode.Final).IsComplete, Describe(c));
         Assert.Equal("bool", Call(c).CallOf()!.DeclaringType!.Components[0].Name);

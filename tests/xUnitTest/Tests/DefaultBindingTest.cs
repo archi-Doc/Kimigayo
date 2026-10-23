@@ -167,6 +167,7 @@ public class DefaultBindingTest
         var original = (FunctionKoto)oldPlan.Target.Declaration;
         var replacementCompilation = MinimalEmissionTest.Analyze("func f(x: i32) => ()");
         var replacement = KotoTree.Walk(replacementCompilation.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.Name == "f");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         Assert.True(KotoHelper.Replace(parent, original, replacement));
         Assert.True(c.Bind().IsComplete);

@@ -85,6 +85,7 @@ public class GenericCallFormationBindingTest
         var original = Assert.Single(generic.TypeArguments);
         var donor = MinimalEmissionTest.Analyze(source.Replace("Box<i32>", "Box<string>", StringComparison.Ordinal));
         var replacement = Assert.Single(Assert.IsType<GenericsKoto>(Call(donor).Method).TypeArguments);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(generic, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(call.CallOf());

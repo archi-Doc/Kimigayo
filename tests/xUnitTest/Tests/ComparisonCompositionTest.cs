@@ -217,7 +217,7 @@ public class ComparisonCompositionTest
         var self = call.ConformingType;
         var donor = MinimalEmissionTest.Analyze(ViewSource.Replace("self.value - other.value", "other.value - self.value", StringComparison.Ordinal));
         var key = Container(c, "Key");
-        Assert.True(KotoHelper.Replace(key, Compare(key), Compare(Container(donor, "Key"))));
+        Assert.True(KotoHelper.Replace(key, Compare(key), ParseTestHelper.Detach(Compare(Container(donor, "Key")), new CodeBlockKoto(key.CodeContext))));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         call = Comparisons(c.Kotonoha).First(x => ReferenceEquals(x.ConformingType, self));
         var after = View(c, call)!.Parts[0].Parts[0];

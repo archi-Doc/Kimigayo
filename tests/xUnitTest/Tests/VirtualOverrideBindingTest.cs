@@ -97,7 +97,8 @@ public class VirtualOverrideBindingTest(ITestOutputHelper output)
         Assert.True(c.Binding.TryGetVirtualOverride(implementation, out _));
         var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32 => 2", "-> i64 => 2", StringComparison.Ordinal));
         var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsOverride);
-        Assert.True(KotoHelper.Replace(implementation, implementation.ReturnType!, changed.ReturnType!));
+        var replacement = ParseTestHelper.Detach(changed.ReturnType!, new CodeBlockKoto(implementation.CodeContext));
+        Assert.True(KotoHelper.Replace(implementation, implementation.ReturnType!, replacement));
         Assert.False(c.Binding.TryGetVirtualOverride(implementation, out _));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.OverrideContractMismatch_Kd);

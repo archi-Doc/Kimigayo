@@ -138,6 +138,7 @@ public class ProductTestMembershipTest
         var original = FindFunction(compilation.Kotonoha.RootKoto, "target")!;
         var replacementSource = MinimalEmissionTest.Analyze("#Test\nfunc target() => Missing.api()\n()");
         var replacement = FindFunction(replacementSource.Kotonoha.RootKoto, "target")!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
         Assert.False(compilation.Bind().IsComplete);
         Assert.False(compilation.Analysis.IsVerified);
