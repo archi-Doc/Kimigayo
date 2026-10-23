@@ -110,6 +110,11 @@ public class OriginRelationDiagnosticTest
     [InlineData(Box + "func leak(h: objref/Box<uniq/i32 during a> during o) -> ref/i32 during a\n    return h.item@follow@ref\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h.item@follow@ref", "requires o outlives a, which is not proven")]
     [InlineData(View + "func leak(h: uniq/(H2 during a) during s) -> uniq/i32 during a\n    return h.o@follow.x@uniq\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "h.o@follow.x@uniq", "requires s outlives a, which is not proven")]
     [InlineData(Optional + "    public func get(self: uniq/Self during s) -> uniq/string during a\n        match self.o\n            .Some(let v) => return v\n            .None => $abort(\"none\")\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "v", "requires s outlives self.a, which is not proven")]
+    // SPEC 3.5.1, 14.9.2: a bare Reborrow, `uniq/T` or `objuniq/T`, at an initializer or as a join's source without a fixed Target
+    // Result Type is named so too, and so is the join.
+    [InlineData(Holder2 + "func leak(holder: uniq/(Holder2 during a) during h, c: bool) -> uniq/i32 during a\n    let r = if c => holder.link else => holder.link\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "r", "requires h outlives a, which is not proven")]
+    [InlineData(View + "func leak(h: uniq/(H2 during a) during s) -> objuniq/P during a\n    var x = h.o\n    return x\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "x", "requires s outlives a, which is not proven")]
+    [InlineData(View + "func leak(h: uniq/(H2 during a) during s, c: bool) -> objuniq/P during a\n    let r = if c => h.o else => h.o\n    return r\n", nameof(DiagnosticCode.UnprovenOriginRelation_Kd), "r", "requires s outlives a, which is not proven")]
     public void ABorrowThroughLayersIsContainedInEach(string body, string code, string text, string label)
     {
         var source = body + Main;
@@ -162,6 +167,13 @@ public class OriginRelationDiagnosticTest
     [InlineData("func f(value: uniq/Option<i32> during a) -> i32\n    var entries: Dictionary<i32, uniq/Option<i32> during a> = [1: value@move]\n    match entries[1]\n        .Some(let x) => return x\n        .None => return 0\n")]
     [InlineData("struct Borrowing<I> {source}\n    var iterator: uniq/I during source\n    public func next(self: uniq/Self during step) -> Option<I.(LendingIterator).LentItem(step)>\n        I is LendingIterator\n        return self.iterator.next()\n")]
     [InlineData("func takeFirst<S>(h: uniq/(uniq/S during s, i32)) -> Option<S.Item>\n    S is Iterator\n    var r = h@follow@uniq\n    let first = r.0.next()\n    h.1 = 5\n    return first@move\n")]
+    // SPEC 3.5.1, 14.9.2: a stored `uniq/T` or `objuniq/T` acquired bare at an initializer, a selection's or `do`'s expression body or a
+    // jump's operand without a fixed Target Result Type is Reborrowed, never read as a Copy value.
+    [InlineData(Holder2 + "func f(holder: uniq/(Holder2 during a) during h, c: bool) -> uniq/i32 during h\n    let r = if c => holder.link else => holder.link\n    return r\n")]
+    [InlineData(Holder2 + "func f(holder: uniq/(Holder2 during a) during h) -> uniq/i32 during h\n    let r = label l: do\n        exit to l holder.link\n    return r\n")]
+    [InlineData(View + "func f(h: uniq/(H2 during a) during s) -> objuniq/P during s\n    var x = h.o\n    return x\n")]
+    [InlineData(View + "func f(h: uniq/(H2 during a) during s, c: bool) -> objuniq/P during s\n    let r = if c => h.o else => h.o\n    return r\n")]
+    [InlineData(View + "struct H3 {a}\n    public var o: objuniq/P during a\n    public var l: uniq/i32 during a\nfunc f(h: uniq/(H3 during a) during s, c: bool) -> i32\n    var x = h.o\n    let y = if c => h.o else => h.o\n    var u = h.l\n    let w = if c => h.l else => h.l\n    return 0\n")]
     // SPEC 15.6.3, 22.2.1: a LendingIterator's item may name the receiver borrow `step` that contains the Reborrow.
     [InlineData("struct Cursor {source}\n    Self is LendingIterator\n    associate LentItem(step) is ref/i32 during step\n    let value: uniq/i32 during source\n    public func next(self: uniq/Self during step) -> Option<ref/i32 during step> => .Some(self.value)\n")]
     public void AProvenRelationIsAccepted(string body)

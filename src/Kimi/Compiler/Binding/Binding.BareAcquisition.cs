@@ -13,10 +13,11 @@ namespace Kimi.Compiler;
 // - Prohibitions: no consumer decides by its own position test whether a bare acquisition Reborrows.
 public sealed partial class Binding
 {
-    // SPEC 3.5: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
-    // Arguments, assignment sources and results take their expected Type from the
-    // declaration and adapt there instead; an anonymous function's expression body without a written or expected result
-    // Type is a result source (SPEC 14.9.2) whose Type the bare acquisition infers.
+    // SPEC 3.5, 10.2: the positions without a fixed expected Type that acquire any Place operand by bare acquisition.
+    // Arguments, assignment sources and results take their expected Type from the declaration and adapt there instead. A result source
+    // (SPEC 14.9.1, 14.9.2) without a fixed Target Result Type is one: an anonymous function's expression body without a written or
+    // expected result Type, a jump's operand, and a selection's or `do`'s body when its value is used (ResultTarget); the join's
+    // common Type is chosen from the Types its sources take here.
     private static bool IsBareAcquisitionPosition(Koto node)
     {
         var target = node;
@@ -31,15 +32,17 @@ public sealed partial class Binding
             DiscardKoto discard => ReferenceEquals(discard.Operand, target),
             TupleLiteralKoto or ArrayLiteralKoto => true,
             FunctionKoto { IsAnonymous: true } function => ReferenceEquals(function.ExpressionBody, target),
-            _ => false,
+            JumpKoto jump => ReferenceEquals(jump.Expression, target),
+            _ => ResultTarget(target) is IfKoto or MatchKoto or DoKoto && KotoHelper.IsValueContext(target),
         };
     }
 
-    // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference Reborrows it in its own Semantics, exactly as an
-    // annotation of the same complete Type would. Returns the Reborrow's Type, null when the node is acquired otherwise.
+    // SPEC 3.5.1: the bare acquisition of a Place storing an exclusive reference, `uniq/T` or `objuniq/T`, Reborrows it in its own
+    // Semantics, exactly as an annotation of the same complete Type would; the Reborrow's Type is Binding's name for it (DECISIONS
+    // BU-27), which a join's common Type takes from each such source. Returns that Type, null when the node is acquired otherwise.
     private BoundType? StoredReborrow(Koto node, BoundType? actual)
     {
-        if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq, Components.Count: 1 } &&
+        if (actual is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components.Count: 1 } &&
             node.ErasedFunctionType is null && IsBareAcquisitionPosition(node) && IsBarePlace(node) &&
             this.ExpectedAdaptation(node, actual, actual) is { } reborrow)
         {

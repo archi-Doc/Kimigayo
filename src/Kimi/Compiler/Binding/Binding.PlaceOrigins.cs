@@ -103,14 +103,6 @@ public sealed partial class Binding
         return this.MeetLayers(reference, layers, ref origin) ? origin : this.MeetWith(origin, this.ContainedOrigin(holder));
     }
 
-    // SPEC 3.5, 14.9.2, 15.6.3 (DECISIONS BU-27): the Type a value source of Type `type` supplies a consumer deriving its Type from it: a
-    // bare Place storing an exclusive reference is Reborrowed by its bare acquisition, so it supplies the Reborrow this names; any other
-    // source its Type.
-    private BoundType? NamedReborrowType(Koto? source, BoundType? type)
-        => source is not null && IsBarePlace(source) &&
-            type is { Kind: BoundTypeKind.Semantics, Semantics: SemanticsKind.Uniq or SemanticsKind.ObjUniq, Components: [var referent] } && this.ReferentOrigin(source, type) is { } origin && !ReferenceEquals(origin, type.Origin)
-            ? this.types.Rebuild(type, [referent], origin, []) : type;
-
     // SPEC 15.6.3, 4.7.1, 4.8.2, 14.8 (DECISIONS BU-27): the meet of the Origins of the safe borrow layers `place`'s path dereferences,
     // from its last step outward up to and including the first shared one, over NextPathStep (MeetStep); null when the path dereferences
     // no layer.

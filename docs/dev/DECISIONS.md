@@ -4213,8 +4213,11 @@ resumed by R4-M86 (2026-10-20).
   call's callee operation's, the Subject borrow (`Hir.Patterns.Subject` tests Semantics and referent, not Type identity), the `$tryWrite`
   writer operation's (`MirBuilder.Formatting` now passes it), or the destination's Type at a bare `let`/`var`/`return`, a tuple or
   array element, a Match binding or a capture (G227 states the capture's), and at an `if`, `match` or `do` result, whose common Type
-  (SPEC 14.9.2) is chosen from the Types its sources supply: a bare Reborrow source (a body's trailing expression, a jump's operand)
-  supplies its named Type (`NamedReborrowType`, read by `ResultCandidates`), not its stored one. `MirBuilder.Reborrowed` builds the Ref with that Type, as
+  (SPEC 14.9.2) is chosen from the Types its sources supply: a result source without a fixed Target Result Type (a selection's or
+  `do`'s body value, a jump's operand) is a bare acquisition position (SPEC 10.2; `Binding.BareAcquisition`'s
+  IsBareAcquisitionPosition), where `StoredReborrow`, the one rule for a stored `uniq/T` and `objuniq/T` (3.5.1) at every such
+  position, `var x = h.o` included, records the Reborrow whose named Type the join reads (the re-read's R1 deleted
+  `NamedReborrowType`, a second copy of that rule). `MirBuilder.Reborrowed` builds the Ref with that Type, as
   `Acquired` types every other borrow by `expected`; a missing or disagreeing Type is a broken contract, `InternalInvariant_Kd` and a
   derived Opaque, never the stored Type. The census (the suite, the library, milestones, goldens and the final review's probes) found
   three positions without one: the value-call callee and the writer, both now published, and a jump Binding rejects (no target, an
@@ -4232,7 +4235,10 @@ resumed by R4-M86 (2026-10-20).
   Census (on 5fca37089, with G160-1): every verdict change is a SPEC-invalid program newly rejected (the leak family of
   `OriginRelationDiagnosticTest.ABorrowThroughLayersIsContainedInEach`, G192's p1 and `var cur = a@follow@uniq` returned as the inner
   Origin, so G192 closes, and the S1 rows above); the diagnostic snapshot, the library, milestones, goldens and SPEC examples are
-  unchanged; on R4's held 2a-1b the MIR's containment family closes, the three pair-layer `x.item` rows (C1) included.
+  unchanged; on R4's held 2a-1b the MIR's containment family closes, the three pair-layer `x.item` rows (C1) included. R1 also
+  accepts the valid programs that read such a source as a Copy value before (`TransferRequired_Kd`: a stored `uniq` as an `if`,
+  `match`, `do` or `loop` result source or a jump's operand, a bare `objuniq` at any bare acquisition position) and names their
+  leaks; the diagnostic and semantic snapshots are unchanged.
   Rejected: the outermost layer alone (equal under 15.6.1 only where well-formedness is a premise, which Binding has for signature
   Types only; every existing meet renamed); a fresh region per Borrow with containment rows from Binding (a second copy of A5's E4
   edges); MirOrigins skipping a containment edge whose head is Binding's name (R4's STOP option (B): a symptom fix that keeps `leak`
