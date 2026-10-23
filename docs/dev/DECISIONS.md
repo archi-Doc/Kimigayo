@@ -6581,3 +6581,50 @@ structure is recorded here by the unit that first implements it.
   (AGENTS: no speculative mechanism; no audit deviates in its output before then); and plan row C7's native run of `tests/mir/statics.kimi`
   is replaced by the `StaticRows` program and `StaticInitializationTest`'s fixtures, since that program declares `var` statics, which
   R5-M82's `StaticStorage` row rejects at check until P42. They leave the list.
+- **R5-M108 Adapter items keyed by the erased target Function Type (C5c)** (2026-10-23, C lane; R5-M104's removal condition, PLAN G157
+  (12) and (22); designs 1 and 2, one design review and the planning session's choice, `c5c-decision.md`, under the full process; SPEC
+  7.7.4, 10.7, 22.5.1, IMPL 21.1.3, 21.3.1)
+  - Key: SPEC 10.7 lets a source whose result is Never fit a Function Type of any result, and subtyping differs only in Origins (SPEC
+    3.8), so one source reaches Function Types of different erased signatures exactly then: a Never function Item into another result, a
+    requirement Item whose witness's result is Never at the requirement's own result, a Never Closure erased once stored. A ClosureErasure
+    or ItemAdapter item is keyed by the erased source Type and the erased target Function Type, the Cast's (`MonoKey.Function`, a
+    positional field; `MonoKey` has no default arguments). Raw count over the ledger's 300 classes under sel: 414 adapter items for 414
+    sources, so no source of the corpus has two.
+  - Layout (K 4.8): the target's inputs and result are by-value uses at the erasure, laid out by row 13's caller (`LaysOutSignature`);
+    one that does not lay out drops the edge with its record, so a body with an oversized result has `OversizedLayout_Kd` at its erasure
+    besides its own result local. An intrinsic row's `LaysOutType` also lays out its function Item's Type argument (`Bodyless`; G157 (12)).
+  - Entry: `ModuleCodegen.Adapter` is the erased signature of the item's target Function Type (`Erased`'s form, named by the item), the
+    one every erased call of that Type writes; Abi reads no Origin, so the erased Type serves.
+  - What a function Item's call runs (`FunctionCodegen.Runs`, for its Value call and its ItemAdapter's entry), decided by its function: a
+    compiler function's call is its direct call's row, whatever targets the row needs, written when it is one runtime routine (`Routine`
+    by disposition: an intrinsic's Routine, TryAllocate or Allocate row, the legacy writeLine row) with its slot-less values, else that
+    row's unit's located `Unsupported_Kd`; any other function's is its body target (its body, a requirement Item's witness). `Pass` and
+    `Forward` share `Given`. A Never callee leaves the entry's result slot unused and ends it `unreachable`.
+  - Defect fixed (sel, wrong code without a record): a Value call of `Text.toString<V>` with a user witness called the format witness, and
+    `Text.writer<Sink>`'s the reserve witness, with the function's own operands; both are C9a's located `Unsupported_Kd` now.
+  - Deleted: `ModuleCodegen.Fits`, `Adapter`'s body lookup, both temporary located `Unsupported_Kd` arms, the Value call's arity test (Fail
+    and Slice are no routine rows).
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.3's `MonoKey` gains the erased target
+    Function Type, and its ClosureErasure and ItemAdapter rows are keyed by it beside the erased source Type.
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): R5-M43 row 13's "keyed by the erased Closure or Item
+    Type" reads "and the erased target Function Type".
+  - Departure (for the owner's departures list), confirmed by the owner (R5-M109): K package 4.8's by-value list gains an adapter's target
+    inputs and result, laid out at the erasure.
+  - Supersedes R5-M104's entry rule ("under the erased signature of its source's own Callable signature"), its temporary structure and
+    ruling Q3's arity test, and R5-M102's reading of a function Item's Value call as its first target when that is a body.
+  - The old generator stays frozen (R5-M6): its adapter of a Never source is defined under the source's signature and called under the
+    target's, but natively at O0 and O2 it gives MIR code generation's outcome (a user function reads no received location or context); no
+    D5 exception, and G157 (22)'s old half closes.
+  - Restructured first, behavior unchanged: an item's targets in `InstanceCollector.Edges.cs`, `MonoKey` without default arguments,
+    ModuleCodegen's signatures split (`.Imports`, `.Erasures`), a routine row by one function.
+  - Verified: the sel ledger loses 12 rows (C-frame 10, call 2: Raw.allocate and Console.writeLine erased or as defaults), all this
+    unit's; their families `CompilerReference*` and `CompilerFunction*` and the new `ErasureTargets` run natively under sel at O0 and O2;
+    `InstanceCollectorTest` (the key's Function; a Never source's two items for three erasures; the oversized target, body result,
+    exchange and Raw.allocate erasures and Raw.allocate's Item call as located records, each failing before); `FunctionCodegenTest`
+    (entries per target signature for the three Never forms, the erased compiler Items' routines with the received location, the two
+    defects' regressions, M9's 0 B and I1 over the extended erasure source); `ErasureTargets` under both generators.
+  - Rejected: per-target entries inside code generation (functions no item names); a result-independent erased ABI (every erased call
+    changes, results through memory at O2); an adaptation in MIR (SPEC 10.7 inserts none; held MIR); re-keying only Never sources (a clause
+    for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
+    writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
+    are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
