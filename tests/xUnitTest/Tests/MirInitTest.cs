@@ -2,6 +2,7 @@
 
 using System.Runtime.CompilerServices;
 using System.Text;
+using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
@@ -434,7 +435,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
         // (SPEC 7.2.3, R4-M69).
         string[] slot = ["DefaultArgumentMove_Kd s 1", "DefaultArgumentMove_Kd s 1"];
         Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)), y: i32 = 0) -> i32 => x\n"));
-        Assert.Equal(slot, Problems(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n"));
+        var recovered = CompilationTestHelper.Parse(Take + "func g(s: string, x: i32 = (take(s@move, s@move)) y: i32 = 0) -> i32 => x\n");
+        Assert.Equal(nameof(DiagnosticCode.ExpectedSyntax_Kd), Assert.Single(TestDiagnostics.Of(recovered)).Code);
+        recovered.Bind();
+        Assert.Equal(slot, Problems(recovered));
     }
 
     // SPEC 23.1.2 (DECISIONS R4-M88): an operation Binding left unresolved evaluates every operand before its derived value, also inside
@@ -509,8 +513,10 @@ public sealed class MirInitTest(ITestOutputHelper output)
 
     // The problems of a source's own bodies: code, the first line of the subject, and the views.
     internal static string[] Problems(string source)
+        => Problems(MirBuildTest.Compile(source));
+
+    private static string[] Problems(Compilation c)
     {
-        var c = MirBuildTest.Compile(source);
         var program = c.BuildMir();
         Assert.Empty(program.Findings);
         return [.. program.Problems.All.ToArray().Where(static x => x.Subject.Module == 0)

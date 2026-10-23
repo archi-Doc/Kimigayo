@@ -5,7 +5,9 @@ using Kimi;
 using Kimi.Compiler;
 using Kimi.Compiler.Mir;
 using Kimi.Compiler.Parsing;
+using Kimi.Diagnostics;
 using Xunit;
+using Xunit.Sdk;
 
 namespace XunitTest;
 
@@ -237,6 +239,17 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         }));
     }
 
+    // G136 N2: a malformed fixture must fail before Binding can silently change the program under test.
+    [Theory]
+    [InlineData("func loop() => ()\n")]
+    [InlineData("func f() => \"unterminated\n")]
+    public void CompileRejectsSyntaxErrors(string source)
+        => Assert.ThrowsAny<XunitException>(() => Compile(source));
+
+    [Fact]
+    public void CompileAllowsBindingErrors()
+        => Assert.NotEmpty(Compile("func f() => missing\n").Binding.Issues);
+
     // A body's TestRecordValue calls, in block order.
     internal static MirTerminator[] Records(MirBody body) => [.. body.Blocks.ToArray().Select(static x => x.Terminator)
         .Where(static x => x is { Kind: MirTerminatorKind.Call, Callee: { Kind: MirCalleeKind.Intrinsic, Arg: (int)IntrinsicId.TestRecordValue } })];
@@ -247,6 +260,7 @@ public sealed partial class MirBuildTest(ITestOutputHelper output)
         c.IsTestBuild = test;
         Assert.True(c.Prepare(WindowsProfile.Target));
         c.Kotonoha.AddSource(new SourceDocument("Program.kimi", source));
+        Assert.DoesNotContain(TestDiagnostics.Of(c), static x => x.Severity == DiagnosticSeverity.Error);
         c.Bind();
         _ = test ? c.Binding.CheckTestStartup() : c.Binding.CheckStartup(OutputKind.Application);
         return c;
