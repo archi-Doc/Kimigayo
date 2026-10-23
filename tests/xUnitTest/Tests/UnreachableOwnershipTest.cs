@@ -91,7 +91,7 @@ public class UnreachableOwnershipTest
     private static int LineOf(string source, int offset)
         => source.AsSpan(0, offset).Count('\n') + 1;
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

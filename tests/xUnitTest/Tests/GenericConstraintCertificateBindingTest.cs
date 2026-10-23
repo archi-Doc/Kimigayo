@@ -73,6 +73,7 @@ public class GenericConstraintCertificateBindingTest
         var certificate = property.SymbolOf()!.Property!;
         var original = property.TypeKoto!;
         var replacement = Property(MinimalEmissionTest.Analyze(source.Replace("Box<i32>", "Box<string>", StringComparison.Ordinal))).TypeKoto!;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(property, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.False(certificate.IsVerified);

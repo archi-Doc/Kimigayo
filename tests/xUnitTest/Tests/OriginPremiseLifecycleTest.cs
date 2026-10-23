@@ -2,6 +2,7 @@
 
 using Kimi;
 using Kimi.Compiler;
+using Kimi.Compiler.Lexing;
 using Kimi.Compiler.Parsing;
 using Verification;
 using Xunit;
@@ -30,6 +31,14 @@ public class OriginPremiseLifecycleTest
         var edited = source.Replace("origin a outlives x", "origin b outlives a", StringComparison.Ordinal);
         var donor = MinimalEmissionTest.Analyze(edited);
         var replacement = Clause(edited, KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(static x => x.Name == "g"), "origin b outlives a");
+        var reader = new TokenReader(replacement.CodeContext, string.Empty, []);
+        var placeholder = new OriginRelationKoto(
+            ref reader,
+            default,
+            new CodeBlockKoto(replacement.CodeContext),
+            new CodeBlockKoto(replacement.CodeContext),
+            equality: true);
+        ParseTestHelper.Detach(replacement, placeholder);
         for (var i = 0; i < 3; i++)
         {
             Assert.True(KotoHelper.Replace(clause.Parent!, clause, replacement));

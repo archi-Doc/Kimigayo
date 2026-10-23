@@ -25,7 +25,7 @@ public class ConditionalContinuationTest
     private const string Configuration = "Release";
 #endif
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

@@ -40,7 +40,7 @@ public class UserIterationTest
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
         var replacement = MinimalEmissionTest.Analyze(Drain + "for item in Batch<bool>.init(true) => ()");
         var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
-        Assert.True(KotoHelper.Replace(loop, loop.Iterable, changed.Iterable));
+        Assert.True(KotoHelper.Replace(loop, loop.Iterable, ParseTestHelper.Detach(changed.Iterable, new CodeBlockKoto(loop.CodeContext))));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(BoundType.Boolean, loop.Bindings[0].TypeOf());
         Assert.Same(loop.Iterable, Assert.IsType<MemberAccessKoto>(loop.IterationOf().Entry!.Method).Left);
@@ -54,9 +54,14 @@ public class UserIterationTest
     {
         var c = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init() => ()");
         var loop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<ForKoto>());
-        var replacement = MinimalEmissionTest.Analyze(Counter + Three + "for item in Three.init() => Console.writeLine(\"changed\")");
-        var changed = Assert.Single(KotoTree.Walk(replacement.Kotonoha.RootKoto).OfType<ForKoto>());
-        Assert.True(KotoHelper.Replace(loop, loop.Body, changed.Body));
+        var donor = new Kotonoha(c, "donor", "donor.kimi");
+        donor.AddSource(new SourceDocument("donor.kimi", Counter + Three + "for item in Three.init() => Console.writeLine(\"changed\")"));
+        var changed = Assert.Single(KotoTree.Walk(donor.RootKoto).OfType<ForKoto>());
+        var body = ParseTestHelper.Detach(changed.Body, new CodeBlockKoto(loop.CodeContext));
+        Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
+        Assert.True(c.Binding.CheckStartup(OutputKind.Application).IsComplete);
+        Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));
+        Assert.True(KotoHelper.Replace(loop, loop.Body, body));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(loop.Body, loop.IterationOf().Plan!.Decomposition.Arms[0].Syntax.Body);
         c.Binding.CheckStartup(OutputKind.Application);

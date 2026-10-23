@@ -361,6 +361,7 @@ public class ConditionalMemberBindingTest
         };
         var original = Select(c);
         var replacement = Select(fragment);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         var parent = original.Parent!;
         var call = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<InvocationKoto>());
         var retained = call.CallOf()!;

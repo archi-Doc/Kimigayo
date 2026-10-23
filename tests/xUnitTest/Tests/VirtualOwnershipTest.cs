@@ -108,7 +108,7 @@ public class VirtualOwnershipTest(ITestOutputHelper output)
         var drop = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsDestructor);
         var donor = MinimalEmissionTest.Analyze(Source.Replace("Console.writeLine(\"drop\")", "()", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsDestructor);
-        Assert.True(KotoHelper.Replace(drop, drop.ExpressionBody!, changed.ExpressionBody!));
+        Assert.True(KotoHelper.Replace(drop, drop.ExpressionBody!, ParseTestHelper.Detach(changed.ExpressionBody!, new CodeBlockKoto(drop.CodeContext))));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);
         Assert.True(c.Analyze().IsVerified, MinimalEmissionTest.Describe(c, null));

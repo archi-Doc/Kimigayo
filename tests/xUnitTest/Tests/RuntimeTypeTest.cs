@@ -184,6 +184,7 @@ public class RuntimeTypeTest
         var oldTarget = test.Right;
         var fragment = CompilationTestHelper.ParseSuccess(Source.Replace("is not Dog", "is not Missing", StringComparison.Ordinal));
         var newTarget = Test(fragment).Right;
+        ParseTestHelper.Detach(newTarget, new CodeBlockKoto(newTarget.CodeContext));
         Assert.True(KotoHelper.Replace(test, oldTarget, newTarget));
         Assert.False(c.Bind().IsComplete);
         Assert.Null(test.RuntimeTestOf());

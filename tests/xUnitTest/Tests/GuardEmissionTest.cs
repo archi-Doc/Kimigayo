@@ -191,7 +191,10 @@ public class GuardEmissionTest
         var match = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<MatchKoto>());
         var oldGuard = match.Arms[0].Guard!;
         match.Arms[0].Guard = null;
+        oldGuard.Parent = null;
+        ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         Assert.True(KotoHelper.Replace(match, match.Arms[0].Body, oldGuard));
+        ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
         Assert.True(c.Bind().IsComplete);
         Assert.True(c.Binding.TryGetMatch(match, out var plan));
         Assert.Null(plan!.Positions[0].CandidateSymbol);

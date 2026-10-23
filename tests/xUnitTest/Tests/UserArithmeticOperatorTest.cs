@@ -256,6 +256,7 @@ public class UserArithmeticOperatorTest
         var original = Assert.Single(c.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
         var donor = MinimalEmissionTest.Analyze("struct Value\n    public let value: i32 = 40\nlet value = Value.init()");
         var changed = Assert.Single(donor.Kotonoha.RootKoto.NestedContainers.OfType<StructKoto>());
+        ParseTestHelper.Detach(changed, new GroupKoto(changed.CodeContext, default, default));
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, static x => x.Code == DiagnosticCode.ArithmeticSelection_Kd);

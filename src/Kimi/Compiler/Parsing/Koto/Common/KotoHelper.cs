@@ -57,8 +57,9 @@ public static partial class KotoHelper
     /// <summary>Replaces a child node while preserving its source metadata.</summary>
     /// <param name="parent">The parent node.</param>
     /// <param name="oldKoto">The child to replace.</param>
-    /// <param name="newKoto">The replacement child.</param>
+    /// <param name="newKoto">The detached replacement child.</param>
     /// <returns><see langword="true"/> when the child was replaced.</returns>
+    /// <exception cref="InvalidOperationException">The replacement child is already attached; no node or analysis state is changed.</exception>
     public static bool Replace(Koto parent, Koto oldKoto, Koto newKoto)
     {
         if (parent.ReplaceChild(oldKoto, newKoto))

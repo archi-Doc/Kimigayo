@@ -66,7 +66,7 @@ public class GeneralDefaultTest
         ScalarEmissionTest.EmitFixture("GeneralDefaultDefers", source, "default end\ncallee\nsecond\nfirst\n");
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

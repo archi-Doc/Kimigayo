@@ -87,6 +87,7 @@ public sealed class VirtualHoverTest
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var donor = Create(Source.Replace("        effect confined\n", string.Empty, StringComparison.Ordinal));
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, replacement));
         c.Bind();
         var current = HoverBuilder.Create(c);

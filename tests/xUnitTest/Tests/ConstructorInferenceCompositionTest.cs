@@ -63,6 +63,7 @@ public class ConstructorInferenceCompositionTest
         var original = function.Parameters[0].Type;
         var donor = MinimalEmissionTest.Analyze(source.Replace("value: T, name", "value: ref/T, name", StringComparison.Ordinal));
         var replacement = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Last(x => x.IsConstructor).Parameters[0].Type;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Failure == BindingFailure.ParameterShapeMismatch);
@@ -80,6 +81,7 @@ public class ConstructorInferenceCompositionTest
         var original = call.ArgumentNodes[0];
         var donor = MinimalEmissionTest.Analyze(source.Replace("42", "true", StringComparison.Ordinal));
         var replacement = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<InvocationKoto>()).ArgumentNodes[0];
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(call, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Same(BoundType.Boolean, call.CallOf()!.DeclaringType!.Components[0]);

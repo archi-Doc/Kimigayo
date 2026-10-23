@@ -34,6 +34,7 @@ public class VirtualCallableGuaranteeTest(ITestOutputHelper output)
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
         var donor = MinimalEmissionTest.Analyze(ConfinedProgram(false));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsVirtual);
+        ParseTestHelper.Detach(changed, new CodeBlockKoto(changed.CodeContext));
         Assert.True(KotoHelper.Replace(original.Parent!, original, changed));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

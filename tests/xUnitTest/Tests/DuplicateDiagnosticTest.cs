@@ -149,7 +149,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
         }
     }
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public sealed class AllocationTests
     {

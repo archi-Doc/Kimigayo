@@ -78,6 +78,7 @@ public class SyntaxIdTest
         var statement = Statement(c, "p");
         var removed = PreOrder(statement);
         var replacement = Statement(CompilationTestHelper.Parse(Source, "Program.kimi"), "p");
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.All(PreOrder(replacement), x => Assert.True(x.SyntaxOwner is null && x.SyntaxId == 0));
         Assert.True(KotoHelper.Replace(statement.Parent!, statement, replacement));
         Assert.NotEqual(version, table.Version);
@@ -130,6 +131,7 @@ public class SyntaxIdTest
         var statement = Statement(c, "p");
         var removed = new HashSet<Koto>(PreOrder(statement), ReferenceEqualityComparer.Instance);
         var donor = Statement(MinimalEmissionTest.Analyze("let p = (1 + 2) * 3\n"), "p");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         Assert.True(KotoHelper.Replace(statement.Parent!, statement, donor));
         var nodes = table.Nodes[1..].ToArray().Concat(PreOrder(donor)).Select(x => x!).ToArray();
         var (facts, ids) = (nodes.Select(Facts).ToArray(), nodes.Select(x => x.SyntaxId).ToArray());
@@ -170,6 +172,7 @@ public class SyntaxIdTest
         var donorCompilation = MinimalEmissionTest.Analyze(Source);
         var donorTable = donorCompilation.Kotonoha.Syntax;
         var donor = Statement(donorCompilation, "p");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         var donorIds = PreOrder(donor).Select(x => x.SyntaxId).ToArray();
         Assert.All(PreOrder(donor), x => Assert.Same(donorTable, x.SyntaxOwner));
 

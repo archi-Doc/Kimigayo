@@ -22,7 +22,8 @@ public class SyntaxEditInvalidationTest
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         var field = Field(c);
         var donor = Field(MinimalEmissionTest.Analyze(Source.Replace("public var f: i32", "public var f: string", StringComparison.Ordinal)));
-        Assert.True(KotoHelper.Replace(field, field.TypeKoto!, donor.TypeKoto!));
+        var replacement = ParseTestHelper.Detach(donor.TypeKoto!, new CodeBlockKoto(donor.CodeContext));
+        Assert.True(KotoHelper.Replace(field, field.TypeKoto!, replacement));
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Bind().IsComplete); // twice(s.f) no longer fits.
     }
@@ -33,11 +34,9 @@ public class SyntaxEditInvalidationTest
         var c = MinimalEmissionTest.Analyze(Source);
         Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
         var call = Call(c);
-        // Detach a donor argument by swapping another throwaway node into its slot.
         var donor = Call(MinimalEmissionTest.Analyze(Source.Replace("return twice(s.f)", "return twice(3)", StringComparison.Ordinal)));
         var replacement = donor.ArgumentNodes[0];
-        var filler = Call(MinimalEmissionTest.Analyze(Source.Replace("return twice(s.f)", "return twice(4)", StringComparison.Ordinal))).ArgumentNodes[0];
-        Assert.True(KotoHelper.Replace(donor, replacement, filler));
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         call.ReplaceArgument(0, replacement);
         Assert.False(c.Binding.Result.IsComplete);
         Assert.False(c.Analysis.IsVerified);
@@ -58,10 +57,29 @@ public class SyntaxEditInvalidationTest
         Assert.NotNull(c.Binding.IndexerCall(index, true));
         var declaration = Statements(c).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "box");
         var donor = Statements(MinimalEmissionTest.Analyze(Indexed.Replace("var box", "let box", StringComparison.Ordinal))).OfType<FieldKoto>().Single(x => x.NameKoto.IdentifierName == "box");
+        ParseTestHelper.Detach(donor, new CodeBlockKoto(donor.CodeContext));
         Assert.True(KotoHelper.Replace(declaration.Parent!, declaration, donor));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.NotNull(c.Binding.IndexerCall(index, false));
         Assert.Null(c.Binding.IndexerCall(index, true));
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void RejectedReplacementPreservesCurrentAnalysis(bool self)
+    {
+        var c = MinimalEmissionTest.Analyze(Source);
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        var call = Call(c);
+        var current = call.ArgumentNodes[0];
+        var replacement = self ? current : call.Method;
+        var version = c.Kotonoha.Syntax.Version;
+        Assert.Throws<InvalidOperationException>(() => KotoHelper.Replace(call, current, replacement));
+        Assert.True(c.Binding.Result.IsComplete && c.Analysis.IsVerified);
+        Assert.Equal(version, c.Kotonoha.Syntax.Version);
+        Assert.Same(current, call.ArgumentNodes[0]);
+        ParseTestHelper.VerifyParents(c.Kotonoha.RootKoto);
     }
 
     private static IReadOnlyList<Koto> Statements(Compilation c) => c.Kotonoha.GeneratedFunction!.Body!.Items;

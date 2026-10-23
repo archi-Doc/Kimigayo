@@ -150,7 +150,7 @@ public class AssociatedIdentityTest(ITestOutputHelper output)
         var old = mapping.AssociatedTypes.Keys.ToArray();
         Assert.Equal(2, old.Length);
         var donor = CompilationTestHelper.ParseSuccess("contract Q: C<i64>").Kotonoha.RootKoto.NestedDeclarationContainers.OfType<ContractKoto>().Single();
-        Assert.True(KotoHelper.Replace(q, q.Bases[0], donor.Bases[0]));
+        Assert.True(KotoHelper.Replace(q, q.Bases[0], ParseTestHelper.Detach(donor.Bases[0], new CodeBlockKoto(q.CodeContext))));
         Assert.False(mapping.IsVerified);
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(old[1], Assert.Single(mapping.AssociatedTypes).Key);

@@ -94,7 +94,7 @@ public class DefaultCompletionTest
     private const string Prefix = "DefaultCompletionRelease";
 #endif
 
-    [TestClass(DisableParallelization = true)]
+    [Collection<AllocationIsolationCollection>]
     [Trait("Purpose", "Allocation")]
     public class AllocationTests
     {

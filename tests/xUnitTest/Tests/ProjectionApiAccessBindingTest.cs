@@ -110,6 +110,7 @@ public class ProjectionApiAccessBindingTest
         var original = function.Parameters[0].Type;
         var replacementSource = MinimalEmissionTest.Analyze("group Api\n    func replacement(value: i32) => ()");
         var replacement = replacementSource.Kotonoha.RootKoto.NestedContainers.Single(x => x.Name == "Api").Members.OfType<FunctionKoto>().Single().Parameters[0].Type;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(function, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.True(KotoHelper.Replace(function, replacement, original));

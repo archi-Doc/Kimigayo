@@ -84,6 +84,7 @@ public class ContractConstraintSubjectBindingTest
         var original = clause.Left;
         var donor = MinimalEmissionTest.Analyze(Head + "public contract R: Origin\n    Origin.Item is Copy");
         var replacement = Contract(donor).ConstraintNodes[0].Left;
+        ParseTestHelper.Detach(replacement, new CodeBlockKoto(replacement.CodeContext));
         Assert.True(KotoHelper.Replace(clause, original, replacement));
         Assert.True(c.Bind().IsComplete, MinimalEmissionTest.Describe(c, null));
         Assert.Equal(BindingState.Resolved, Contract(c).StateOf());

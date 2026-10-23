@@ -14,6 +14,26 @@ rules that result from them.
   restating them; a decision recorded only there is not in force.
 - Open questions belong in PLAN until decided.
 
+## Syntax edits
+
+- **AST1 Detached child replacements** (2026-10-23, planning session, implementing the owner's G169 design).
+  Snapshot-based AST edits (SPEC §23.5) preserve one owning child slot and its `Parent` link. `Koto.ReplaceChild`
+  rejects an attached replacement before changing a slot, an attribute chain, source provenance or analysis state,
+  matching `ReplaceAt`'s detached precondition. `KotoHelper.Replace` transfers source metadata only after success.
+  Test donors are removed through `ParseTestHelper.Detach(node, placeholder)`: the caller supplies a detached node
+  accepted by the donor's slot; the helper replaces that slot and returns the original detached node. A swap uses
+  one detached placeholder and three replacements. This removes fake `Parent` resets and two-call swaps, without
+  compensating in the ledger. Rejected: a new general detachment API in `ChildSlots` (misses attribute ownership),
+  and automatic stealing in `KotoHelper` (implicitly changes another tree). The successful production path adds one null
+  check and no allocation; the test setup explicitly represents the same ownership rule.
+  Scope: a correctly detached compound subtree from another compilation already fails reanalysis before this
+  guard (G235). Semantic readers, including `HirTables.HasCurrentBinding`, confuse source provenance with its
+  current semantic owner. Fixing that predicate alone would leave other readers and edit invalidation inconsistent;
+  a consistent owner-publication design is a separate unit. The iteration-body and requirement-premise editing
+  tests use a donor source unit in the recipient compilation, reestablish verified analysis after donor preparation,
+  then retain their original edit, reanalysis, generation and diagnostic assertions. Cross-compilation syntax-ID
+  relocation tests remain; their passing cases do not certify compound-subtree reanalysis.
+
 ## Build artifacts
 
 - **B1 Library build records** (2026-10-15, planning session; owner decision in IMPL §20.3.2). `Project.Build` selects product checks or Application emission by OutputKind. `NativeToolchain` owns invalidation and atomic record publication; Library success is `status: checked`, with input and selected compilation metadata, and invokes no native tools. All artifact-producing calls retain the single Windows x64 target rule. Library manifests are rejected because they cannot establish source-check success. Rejected: record writing in Project (duplicates publication ownership), and a new record component (moves an already shared responsibility without removing duplication). No compiler phase, IR or generation contract changes.
@@ -87,6 +107,14 @@ rules that result from them.
   - Reason: the rule catches a file that accumulates responsibilities; a propagated argument adds none, and a split without
     a responsibility boundary fails review (AGENTS).
   - Rejected: counting it, which forces a split or a ruling for files whose responsibility did not change.
+
+- **Q8 Allocation test isolation** (2026-10-23, planning session; G88). Formerly serial nested `AllocationTests`
+  join one `AllocationIsolationCollection`, declared with xUnit's `CollectionDefinition(DisableParallelization = true)`.
+  The existing `collections` runner mode ignores class-level `TestClass.DisableParallelization`; collection discovery
+  now publishes isolation where the scheduler consumes it. Replace all 24 ineffective class attributes. Functional
+  cases and allocation tests that already ran concurrently retain their collections. Rejected: removing isolation
+  (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
+  unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
 
 ## Code rules (2026-10-12)
 

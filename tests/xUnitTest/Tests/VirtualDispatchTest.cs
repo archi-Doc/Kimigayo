@@ -72,7 +72,8 @@ public class VirtualDispatchTest
         var original = Assert.Single(KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
         var donor = MinimalEmissionTest.Analyze(Source.Replace("-> i32 => 2", "-> i32 => 9", StringComparison.Ordinal));
         var changed = Assert.Single(KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>(), x => x.IsOverride);
-        Assert.True(KotoHelper.Replace(original, original.ExpressionBody!, changed.ExpressionBody!));
+        var replacement = ParseTestHelper.Detach(changed.ExpressionBody!, new CodeBlockKoto(original.CodeContext));
+        Assert.True(KotoHelper.Replace(original, original.ExpressionBody!, replacement));
         Assert.False(c.WriteIr(TextWriter.Null, out _));
         c.Bind();
         c.Binding.CheckStartup(OutputKind.Application);

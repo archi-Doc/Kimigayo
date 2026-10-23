@@ -84,7 +84,8 @@ public class VirtualOverrideConditionTest(ITestOutputHelper output)
         var donor = MinimalEmissionTest.Analyze(Source.Replace("T is Copy", "T is Owned", StringComparison.Ordinal));
         var original = KotoTree.Walk(c.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsVirtual);
         var changed = KotoTree.Walk(donor.Kotonoha.RootKoto).OfType<FunctionKoto>().Single(x => x.IsVirtual);
-        Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], changed.TypeConstraints[0]));
+        var replacement = ParseTestHelper.Detach(changed.TypeConstraints[0], new CodeBlockKoto(original.CodeContext));
+        Assert.True(KotoHelper.Replace(original, original.TypeConstraints[0], replacement));
         Assert.False(c.Bind().IsComplete);
         Assert.Contains(c.Binding.Issues, x => x.Code == DiagnosticCode.UnprovenOverrideCondition_Kd);
     }

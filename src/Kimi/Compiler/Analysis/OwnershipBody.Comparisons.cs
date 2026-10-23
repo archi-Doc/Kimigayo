@@ -18,7 +18,7 @@ public sealed partial class OwnershipBody
 
     /// <summary>Gets whether a value call's receiver Place is the temporary borrow that lends its callee: a shared borrow of a common
     /// Function value in a field or element, or the complete payload of an object callee borrowed in the call's receiver mode (SPEC 7.3,
-    /// 7.6.3, 13.5.5.1).</summary>
+    /// 7.7.3, 13.5.5).</summary>
     /// <param name="place">The receiver Place.</param>
     /// <param name="receiver">The plan's receiver Type where the call reads it.</param>
     /// <param name="plan">The value call.</param>
