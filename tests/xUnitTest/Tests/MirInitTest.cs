@@ -65,6 +65,29 @@ public sealed class MirInitTest(ITestOutputHelper output)
         Assert.Equal(["MovedPlace_Kd see(pair) 1"], Problems(Pair + "    see(pair)\n"));
     }
 
+    // SPEC 13.5.3, 15.1.1-15.1.3 (PLAN G228): `@move` marks a Copy-typed part Moved like any part: a read, a second Move or a whole use
+    // after it is MovedPlace until the part is written again, also across a loop, and a Type with drop needs the part restored before
+    // the drop runs, a `during self` layer's Move restored by null included (SPEC 5.7, DECISIONS R4-M110); Copies of a part move nothing.
+    // The old analysis, which both published pipelines use until R6-check, accepts these forms (OwnershipAnalysis.AcquireElement ignores
+    // the explicit Move); the rows pin the verdicts R6-check publishes.
+    [Fact]
+    public void AMoveOfACopyTypedPartMarksItMoved()
+    {
+        const string Head = "func take(x: i32) => ()\nstruct D\n    public var n: i32 = 1\n    public init() => ()\n    drop => ()\n" +
+            "struct Block\n    internal var data: raw/u8 during self\n    public init() => self.data = null\n    drop => ()\n";
+        const string Tuple = "    var t: (i32, i32) = (1, 2)\n    take(t.0@move)\n";
+        const string Loop = "func cycle(n: i32)\n    var t: (i32, i32) = (1, 2)\n    var i = 0\n    while i < n\n        take(t.0@move)\n";
+        Assert.Equal(
+            ["MovedPlace_Kd t.0 1", "MovedPlace_Kd t.0 1", "MovedPlace_Kd t 1", "MovedPlace_Kd a[0] 1", "MovedPlace_Kd t.0 1",
+                "MovedPlace_Kd var d = D.init() 1", "MovedPlace_Kd var b = Block.init() 1"],
+            Problems(Head + "func read()\n" + Tuple + "    let b = t.0\nfunc twice()\n" + Tuple + "    take(t.0@move)\nfunc whole()\n" + Tuple +
+                "    let u = t@move\nfunc element()\n    var a: [2 of i32] = [1, 2]\n    take(a[0]@move)\n    let x = a[0]\n" + Loop +
+                "        i += 1\nfunc dropped()\n    var d = D.init()\n    take(d.n@move)\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n"));
+        Assert.Empty(Problems(Head + "func restored()\n" + Tuple + "    t.0 = 5\n    let u = t@move\nfunc copies()\n    var t: (i32, i32) = (1, 2)\n" +
+            "    let a = t.0\n    let b = t.0\n    let u = t@move\n" + Loop + "        t.0 = i\n        i += 1\n    let u = t@move\nfunc dropped()\n" +
+            "    var d = D.init()\n    take(d.n@move)\n    d.n = 3\nfunc layer()\n    var b = Block.init()\n    let w = b.data@move\n    b.data = null\n"));
+    }
+
     // SPEC 6.3, 15.1.2: a constructor builds its object from fresh storage: a base and every own Field placed before it completes
     // (an implicit constructor and an empty struct's included); a missing Field is reported at the constructor. Writing a part of an
     // aggregate that was never constructed is reported at the write.
