@@ -4611,6 +4611,16 @@ resumed by R4-M86 (2026-10-20).
     only (PlanB's C2 routing condition unmet); Invalid as both polarities (ProveProposition would skip its structural judgment where
     facts alone give both, changing EndProof's cause); the raw proposition at C2 (two normalizations per proof).
 
+- **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
+  unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
+  environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
+  `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now builds the existing runtime-test
+  syntax; `Binding.Aliases.AliasTarget` resolves source aliases; `Binding.Imports.LookupImportedType` and `LookupImportedValue` select
+  their imported declarations. The Type path keeps the first populated stage even when no arity matches; the value path keeps its
+  overload merge and environment-conflict order. Local/inherited/module lookup and the alias-resolution gate remain in `Lookup`.
+  No grammar, diagnostic, Type identity, table or plan changes in this unit. The following G209 unit adds the written-Origin check
+  and selected-import provenance, replacing the outer-Origin shortcut; G209 remains open until then. Rejected: growing the oversized
+  parser and Type-formation file, a new lookup mode or argument bag, and sharing Type-arity selection with value-overload merging.
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

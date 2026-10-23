@@ -3666,17 +3666,7 @@ CloseParameters:
             }
             else if (token.Kind == TokenKind.Is && !reader.IsParsingCompileTimeCondition)
             {
-                var negated = reader.TryConsume(TokenKind.Not);
-                right = ParseConstraintSubject(ref reader);
-                if (OpensAdjacentTypeArguments(ref reader, right.Span))
-                {
-                    right = ParseGenericsPostfix(ref reader, right);
-                }
-
-                var test = (IsKoto)KotoHelper.NewBinaryKoto(ref reader, token, left, right);
-                test.IsRuntimeTest = true;
-                test.IsNegated = negated;
-                left = test;
+                left = ParseRuntimeTypeTest(ref reader, token, left);
             }
             else
             {

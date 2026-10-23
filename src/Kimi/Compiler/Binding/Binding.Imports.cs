@@ -1,5 +1,9 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
+// Selects imported declarations after ordinary scope lookup has exhausted its eligible stages.
+// Inputs are a name, use and lookup role; outputs are a declaration and its imported environment or an ambiguity failure.
+// Source aliases precede defaults even on an arity mismatch; Type arities and value overload sets keep their distinct contracts.
+
 using Kimi.Compiler.Parsing;
 
 namespace Kimi.Compiler;
@@ -135,5 +139,103 @@ public sealed partial class Binding
                 }
             }
         }
+    }
+
+    private BindingSymbol? LookupImportedType(string name, BindingScope scope, Koto use, bool core, int arity, TypeLookupRole role)
+    {
+        var candidates = default(TypeCandidates);
+        var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
+        if (use.CodeContext.SourceDocument is { } source &&
+            this.namedAliases.TryGetValue((source, name), out var named) && named.BindingState == BindingState.Resolved)
+        {
+            this.AddTypeCandidates(ref candidates, named.BoundSymbol, scope, core, arity, named.BoundType, role);
+        }
+
+        for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
+        {
+            var alias = documentAliases[i];
+            var target = this.AliasTarget(alias);
+            if (target is not null && target.Types.TryGetValue(name, out var candidate))
+            {
+                this.AddTypeCandidates(ref candidates, candidate, scope, core, arity, alias.BoundType, role);
+            }
+        }
+
+        if (candidates.First is not null)
+        {
+            return this.SelectTypeCandidate(candidates, use);
+        }
+
+        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        {
+            var target = this.DefaultAliasTarget(use, path);
+            this.AddTypeCandidates(ref candidates, target?.Types.GetValueOrDefault(name), scope, core, arity, role: role);
+        }
+
+        return candidates.First is not null ? this.SelectTypeCandidate(candidates, use) : null;
+    }
+
+    private BindingSymbol? LookupImportedValue(string name, BindingScope scope, Koto use, bool core)
+    {
+        BindingSymbol? imported = null;
+        var documentAliases = use.CodeContext.SourceDocument is { } document ? this.aliasesByDocument.GetValueOrDefault(document) : null;
+        for (var i = 0; documentAliases is not null && i < documentAliases.Count; i++)
+        {
+            var alias = documentAliases[i];
+            var target = this.AliasTarget(alias);
+            if (target is null || !target.Values.TryGetValue(name, out var candidate))
+            {
+                continue;
+            }
+
+            candidate = this.AccessibleImport(candidate, scope);
+            if (candidate is null || (core && candidate.Kind == BindingSymbolKind.Container))
+            {
+                continue;
+            }
+
+            if (!this.MergeImport(use, candidate, ref imported))
+            {
+                return null;
+            }
+
+            if (alias.BoundType is { } importedEnvironment)
+            {
+                if (this.importedContainerEnvironments.TryGetValue(use, out var previous) && !ReferenceEquals(previous, importedEnvironment))
+                {
+                    this.Fail(use, BindingFailure.Ambiguous, unresolved: true);
+                    return null;
+                }
+
+                this.importedContainerEnvironments[use] = importedEnvironment;
+            }
+        }
+
+        if (imported is not null)
+        {
+            return imported;
+        }
+
+        foreach (var path in this.compilation.DefaultAliases(use.CodeContext.Kotonoha))
+        {
+            var target = this.DefaultAliasTarget(use, path);
+            if (target is null || !target.Values.TryGetValue(name, out var candidate))
+            {
+                continue;
+            }
+
+            var accessible = this.AccessibleImport(candidate, scope);
+            if (accessible is null || (core && accessible.Kind == BindingSymbolKind.Container))
+            {
+                continue;
+            }
+
+            if (!this.MergeImport(use, accessible, ref imported))
+            {
+                return null;
+            }
+        }
+
+        return imported;
     }
 }
