@@ -3196,14 +3196,19 @@ and migration obligations remain in force; no numeric cap changes are authorized
     analyses' bit-set dataflow and its arena: the solve, the state helpers, the byte limit), no split by responsibility exists, so `Within`
     goes in and the next changing unit restructures the file first. `Binding.OriginRows.cs` was due (3): split first, behavior-preserving,
     into `.Atoms.cs` (the atom table) and `.Oracle.cs` (the fixed-fixed oracle). `MirOrigins.cs` and `.Chains.cs` reach 2.
-  - Held (the ruling on `stop-g226.md`, (A)): judging Unknown over containment edges exposes PLAN G226's layer-dropping Reborrow names
+  - Held until G226 landed (the ruling on `stop-g226.md`, (A)); merged after it (dev ece46cfa5): judging Unknown over containment edges
+    exposed PLAN G226's layer-dropping Reborrow names
     (widened on dev to exclusive receiver and local layers): a Reborrow named by its inner layer only gives a containment edge from an outer
     layer that no premise derives, a false Unknown in valid programs, the library's `BorrowingIterator.next` (`self.iterator`, so every
     program and every milestone) and SPEC 15.6.3's `takeFirst` among them. The behavior commit waits for G226's Binding repair, after which
     those edges hold by the meet law; then the census, the ledger and the Sessions are run. Rejected: skipping containment edges for Unknown
     until G226 (a temporary special case by edge source) and a known-limit list in MirCensusTest (relaxing a library census gate).
-  - Ledger before G226 (mir Functional, base `f4332df53`): the 62 blocking old Unproven rows (cd1535825466, e3312717bde0, bc801917a239,
-    597510880fb0, 8e4cca7290b1, cab8c776076f) pair; open blocking rows from old rejections 164 → 102.
+  - Ledger (mir Functional on dev ece46cfa5 with G226; base: the bp split merged with the same dev): 61 complete old Unproven rows pair
+    (cd1535825466, e3312717bde0, bc801917a239, 597510880fb0, 8e4cca7290b1, cab8c776076f and 2a0-3b's 571ba9e507a6 among them), 7 MIR-only
+    Unproven rows appear in Binding-incomplete compilations, signatures 233 → 222, open blocking rows from old rejections 172 → 102, none
+    a library or milestone body. 2a0-3b's refuted capture stores pair: their 8 Unsatisfied rows through 2a-1a, their 2 Unproven rows
+    here; the MIR's extra Loan conflict at `let local` in 6 of those programs stays a MIR-only row. After G226 the library row and the 44
+    test rows are gone; p1 keeps one Unknown, at its return (`q@follow@follow@uniq: b > a`), and the default pipeline rejects it too.
   - Rejected: per-view masks (work per view); premise-keyed classes (a Binding member in a due file); a stored mask per target tested over
     every fixed source (Ft·F tests).
 - **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim:
