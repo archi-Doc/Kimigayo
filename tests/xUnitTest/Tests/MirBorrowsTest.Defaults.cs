@@ -22,12 +22,12 @@ public sealed partial class MirBorrowsTest
             T is Copy
             return value
         func g(n: i32, value: () -> i32 = if n == 0 => func () => 7 else => g(n - 1)) -> () -> i32 => value@move
-        func rr(x: uniq/i32 during a, z: ref/i32 during a, n: i32, y: ref/i32 during a = if n == 0 => z else => label w: do
+        func rr(x: uniq/i32 during a, z: ref/i32 during a, n: i32, y: ref/i32 during a = if n == 0 => z else => (label w: do
             var local = 0
             var other = 0
             _ = rr(local@uniq, other@ref, n - 1)
             exit to w z
-        ) -> ref/i32 during a => y
+        )) -> ref/i32 during a => y
         func putr(p: raw/(ref/i32 during a), x: ref/i32 during a, n: i32, y: i32 = label w: do
             if n == 0
                 unsafe => p[0] = x
@@ -253,8 +253,8 @@ public sealed partial class MirBorrowsTest
 
     // R26-access (SPEC 7.2.3; R4-M98 D4): a default cannot modify a preceding slot or borrow it exclusively: DefaultAccessTest's :25 (fa,
     // the reservation of increment's input) and :26 (fb, a write through the reserved input, in a view with no Loan, which the stratum still
-    // checks, D5), an exclusive capture entry (round 19's dt-cap-uniq, whose `[x@uniq]` of an i32 slot Binding rejects, InvalidAssignment_Kd:
-    // the Binding-valid `[x@follow@uniq]` instead), and a write that stores a Reborrow of another slot into storage the body does not own,
+    // checks, D5), a bare capture entry Reborrowing an exclusive input (SPEC 7.7.2; round 19's dt-cap-uniq), and a write that stores a
+    // Reborrow of another slot into storage the body does not own,
     // both failures kept (dt-twice, whose `x@follow = z@ref` of an i32 slot Binding rejects, UnsatisfiedOriginRelation_Kd: the Reborrow of a
     // reserved input instead). A Loan R26-borrow reports is not an Access too (ExclusiveCase below).
     [Fact]
@@ -274,7 +274,7 @@ public sealed partial class MirBorrowsTest
                     exit to work 1
                 ) => ()
                 func capUniq(x: uniq/i32, y: i32 = label w: do
-                    let c = func [x@follow@uniq] () => x@follow
+                    let c = func [x] () => x@follow
                     exit to w c()
                 ) => ()
                 func twice(z: uniq/i32 during a, x: uniq/(ref/i32 during a) during b, y: i32 = label w: do
