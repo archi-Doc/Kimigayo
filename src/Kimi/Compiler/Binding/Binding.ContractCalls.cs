@@ -8,7 +8,7 @@ public sealed partial class Binding
 {
     private readonly Dictionary<MemberAccessKoto, RequirementGroup> requirementGroups = new(ReferenceEqualityComparer.Instance);
 
-    // SPEC 8.4.3: the bound Contract reference whose requirement is the candidate under evaluation or the selected
+    // SPEC 8.4.1, 8.6.4: the bound Contract reference whose requirement is the candidate under evaluation or the selected
     // callee; its Type arguments substitute the requirement's signature (Key of Indexable<isize>) in ContractType.
     private BindingSymbol? activeRequirementContract;
 

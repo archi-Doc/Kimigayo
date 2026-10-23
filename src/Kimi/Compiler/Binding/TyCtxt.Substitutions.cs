@@ -1,7 +1,7 @@
 // Copyright (c) All contributors. All rights reserved. Licensed under the MIT license.
 
 // Owns substitution interning (Subst): the substitutions of selected calls, closures, function items and the calls the compiler
-// synthesizes, and their application to a Type and composition (SPEC 8.2, 8.10, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
+// synthesizes, and their application to a Type and composition (SPEC 8.1.3, 8.6.4, 8.13.3; plan 5.6.2; DECISIONS R5-M36, R5-M43, R5-M70).
 // Input: CallPlans, Closure and function item Types, a binder, a target with its slot bindings; Binding's storage instantiation, length
 // substitution and Origin forwarding.
 // Output: interned Subst values, identity being equality, kept as long as the TyCtxt; a Type or a substitution in an instance (Apply,
@@ -30,14 +30,14 @@ internal sealed partial class TyCtxt
     // The lengths of a substitution whose binder has no length slot; never written, so every entry is null.
     private BoundLength?[] noLengths = [];
 
-    // SPEC 8.10, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
+    // SPEC 8.1.3, 10.5: a selected call's substitution, as its selection committed it; a value call has none. A direct base call's is its
     // implementation's in the Type implementing it, which it calls (virtual-dispatch 4).
     internal Subst? SubstOf(CallPlan call) => call.Kind == CalleeKind.Value ? null
         : call is { Kind: CalleeKind.Virtual, VirtualIsDirect: true, VirtualImplementation.BoundSymbol: { } implementation }
             ? this.Intern(implementation, null, call.VirtualImplementingType, call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins)
             : this.Intern(call.Target, call.ConformingType, call.DeclaringType ?? BoundContract(call), call.TypeArguments, call.LengthArguments, call.Origins, call.InputOrigins);
 
-    // SPEC 8.2: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
+    // SPEC 6.1.3, 8.1.3: a closure's substitution, the context of the instance that closed it; a closure no instance closed is in the identity of
     // the declaration enclosing it.
     internal Subst? SubstOfClosure(BoundType closure)
     {
@@ -98,7 +98,7 @@ internal sealed partial class TyCtxt
     internal Subst Synthesized(BindingSymbol requirement, BoundType self, BoundType reference)
         => this.Intern(requirement, self, ReferenceEquals(reference.Symbol?.Type, reference) ? null : reference, [], [], [], []);
 
-    // SPEC 8.2, 8.10: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
+    // SPEC 8.1.3, 8.15.1: a declared Type in the instance a substitution makes, which Binding's storage instantiation computes until R7 moves it
     // here; the identity keeps the Type.
     internal BoundType? Apply(BoundType type, Subst subst) => subst.IsIdentity ? type : binding.InstantiateStorageType(type, subst);
 
@@ -140,7 +140,7 @@ internal sealed partial class TyCtxt
         return failed ? null : this.Intern(inner.Target, self, declaring, types, lengths, origins[..inner.Origins.Length], origins[inner.Origins.Length..]);
     }
 
-    // SPEC 8.4.3: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
+    // SPEC 8.4.1, 8.6.4: the bound Contract reference a requirement call dispatches through (Indexable<isize>), which declares the requirement as a
     // generic container's instance declares a member; null for a reference to the requirement's own Contract or another call.
     private static BoundType? BoundContract(CallPlan call)
         => call is { Kind: CalleeKind.Requirement, RequirementContract: { Type: { } bound } contract } && !ReferenceEquals(bound.Symbol, contract) ? bound : null;

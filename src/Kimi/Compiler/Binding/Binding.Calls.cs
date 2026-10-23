@@ -229,7 +229,7 @@ public sealed partial class Binding
 
     private BoundType? BindCall(InvocationKoto call, BindingScope scope, BoundType? expected)
     {
-        // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.3): a call bound inside
+        // The bound requirement reference of a candidate or winner belongs to its own call (SPEC 8.4.1, 8.6.4): a call bound inside
         // it, such as a later argument, neither sees nor clears the enclosing call's reference.
         var enclosingRequirementContract = this.activeRequirementContract;
         var enclosingAcquisition = this.acquisitionFailure;

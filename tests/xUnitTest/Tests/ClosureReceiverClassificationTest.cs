@@ -62,7 +62,7 @@ public class ClosureReceiverClassificationTest
         Assert.Equal("The call is Exclusive (SPEC 7.7.3): it borrows the callee exclusively, because the callee Reborrows the captured exclusive reference view exclusively", error.Note);
     }
 
-    // SPEC 7.3 (check 1), 7.6.3, 13.5.5.1: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
+    // SPEC 7.3.3 (check 1), 7.7.3, 13.5.5: an object callee supplies only its payload authority. rc, arc and objref grant shared access,
     // a let obj handle is not writable, a reference supplies no owning receiver and a payload offers no Take; a temporary callee, a
     // callee reached through a reference or an element and an Exclusive call of an unproven Sealed payload are located limits before
     // generation, and an environment-borrowing result keeps the handle lent.
