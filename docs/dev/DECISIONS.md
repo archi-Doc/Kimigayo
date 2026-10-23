@@ -6628,3 +6628,10 @@ structure is recorded here by the unit that first implements it.
     for one form); keying by the physical signature (the collector keys by Types); one call writer with two input forms (a mode); row
     writers over materialized inputs (no instruction writer is reachable from an Item: Raw.release, initialize, slice and transferBytes
     are unsafe, never values; C8d keeps the adapters of instruction-shaped rows); a compiler-entry item per Item (one more item and call).
+- **R5-M109 The owner confirms C5c's departures** (owner, 2026-10-23, on the R5 planning session's explanation after C5c's design review
+  and before its behavior commit; verbatim 「C5c の逸脱 3 件（K package 4.3 の MonoKey に変換先の Function 型を加えること、R5-M43 の
+  13 行目のキーの書き方、K package 4.8 の by-value 一覧に adapter の変換先の入力と結果を加えること）を承認します。」; the consequences are
+  the planning session's) The three departures R5-M108 records are confirmed: the instance key `MonoKey` gains the erased target Function
+  Type, so ClosureErasure and ItemAdapter items are keyed by their erased source and target (against K package 4.3, R5-M18); R5-M43 row
+  13's "keyed by the erased Closure or Item Type" reads "and the erased target Function Type"; and K package 4.8's by-value list gains an
+  adapter's target inputs and result, laid out at the erasure. They leave the list.
