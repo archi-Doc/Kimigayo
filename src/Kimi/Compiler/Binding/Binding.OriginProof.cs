@@ -151,7 +151,7 @@ public sealed partial class Binding
     private OriginDeclaration? OpenInitializerInference(BoundOrigin atom, Koto use)
         => this.OpenInitializer(atom, use) is { } local ? this.InitializerDeclaration(local) : null;
 
-    // The declaration of the Origins a local's initializer infers, created on its first bound.
+    // The declaration of the Origins a local's initializer infers, created with the first Origin its initializer omits or bounds.
     private OriginDeclaration InitializerDeclaration(VariableKoto local)
     {
         if (!this.initializerOrigins.TryGetValue(local, out var declaration))

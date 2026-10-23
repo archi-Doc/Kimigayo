@@ -22,6 +22,10 @@ public sealed partial class MirDifferenceTest
         "func twin(a: ref/i32) -> i32\n    let local = 3\n    let h: H{x} = H.init(local@ref)\n        origin x.s outlives a\n    return h.item@follow\n" +
         "func fixed(a: ref/i32, b: ref/i32) -> i32\n    let h0 = H.init(a)\n    let h: H{x} = h0@move\n        origin x.s outlives b\n    return 0\n";
 
+    // A call argument with a fixed-fixed position (y over x, fixed by `s`) and a body-chain position (the local's borrow over x).
+    private const string CallPositions = "func store(slot: uniq/(ref/i32 during a), pair: (ref/i32 during a, ref/i32 during a)) => ()\n" +
+        "func caller(s: uniq/(ref/i32 during x), y: ref/i32)\n    let local = 1\n    let t = (y, local@ref)\n    store(s, t)\n";
+
     // R4-M17: the sides match as multisets on code and subject node: a node's second old record of one code stays old, and another code
     // at a matched node is new. R4-M67: a matched MIR problem that names another requirement writes the pair's as old>mir; a MIR record
     // that names none (-) agrees.
@@ -126,11 +130,13 @@ public sealed partial class MirDifferenceTest
     // R4-M111 (R4-M108): Binding's Origin relation records are compared with A5 only where they are twins, the records of a node whose
     // relation is also a row A5 judges: at a fit every record of the node, the mixed fit's fixed-fixed first chain included, and at a
     // local's clause its body-chain record. An all-fixed-fixed node's records pass through, Binding's until R7, and so, until A5-F7's
-    // 2c-6, does a Closure result over call-local storage. Each row has a record that passes through, which the ledger compared before.
+    // 2c-6, does a Closure result over call-local storage, and a call argument's fixed-fixed record beside a body-chain position of the
+    // same call, a row without a record at the same node (BU's review N6). Each row has a record that passes through.
     [Theory]
     [InlineData(TwinFits, "UnprovenOriginRelation_Kd A5 return t|UnsatisfiedOriginRelation_Kd A5 return local@ref", "UnprovenOriginRelation_Kd - x")]
     [InlineData(TwinClauses, "UnsatisfiedOriginRelation_Kd A5 origin x.s outlives a", "UnprovenOriginRelation_Kd - origin x.s outlives b")]
     [InlineData("public func main()\n    let f = func (x: i32) => x@ref\n    let r = f(1)\n", "", "UnsatisfiedOriginRelation_Kd - func (x: i32) => x@ref")]
+    [InlineData(CallPositions, "", "UnprovenOriginRelation_Kd - t")]
     public void OnlyTwinsOfBindingsOriginRecordsAreCompared(string source, string compared, string passed)
     {
         var c = MirBuildTest.Compile(source);

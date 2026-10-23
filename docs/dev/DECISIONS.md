@@ -3027,6 +3027,83 @@ and migration obligations remain in force; no numeric cap changes are authorized
     Closure result and re-runs the formation test); rows at the record's node (a call argument's fixed-fixed record shares its node with
     that position's rows); the code (Closure results are Unsatisfied, and a mixed twin is Unproven); one more `twinOnly` branch (a second
     special case where the canonical table takes a column).
+- **R4-M112 Every no-candidate body variable of a local is its local's region** (2026-10-22; unit 2a0-3b under R4-M94's package,
+  2a0-D §5.2 and D10, OQ12 (a), OQ7 (a); redone after BU's review blocked round 1 (B1, B2), under the R4 planning session's redo
+  rulings R1–R3; round 1 never landed, so this entry supersedes nothing on dev; one BU review, DEC Q6 form 1)
+  - Rule (SPEC 15.3.6, 15.4.4, 15.6.5): a variable whose row has no candidate is a local region of the body, whose later bounds are
+    recorded and judged. One representation: `LocalRegionSlot(local, slot)`, the one mutable locals use, so `RecordLocalRegionBound`
+    records later stores into it and the old reporter (A5 from 2a-1a) judges chains through its sources. Every `OriginInference`
+    obligation belongs to a local (`TypePosition.Local`), and each of its omitted Origins is resolved by one of its two declarations
+    before a later statement reads its Type: (a, R1) `ResolveInitializerOrigins` gives an initializer's omitted Origin whose bounds reach
+    nothing but its own variables (none, or a cycle among them) the region, in or outside the local's Type, in `let` and `var` locals; it
+    runs for every local whose initializer formed one (the initializer declaration is created with it: the reviewer's H holds, no new
+    field); (b, R2) `SolveLocalBounds` keeps the monotone principal search and, after all passes, gives a contravariant slot whose
+    candidate is not proven to outlive each lower bound the region (order-independent); (c, R3) a written slot that `InferLocalOrigins`
+    binds to itself gets the region. One count per local numbers the slots (`BindVariableCore`: initializer variables, then the Type's).
+    B1's hole cannot recur: no `Inference` atom of a local stays unresolved, and `IsVerifiedOriginObligation` is unchanged.
+  - Deleted: `JudgeLocalClause`'s principal branch (unreachable), `principalOriginFailures` and its report branch in `Binding.cs`. The old
+    reporter's stop is no longer reached by a local's variables; its code stays for other unchecked obligations (N3's comment corrected).
+  - Sites without a local (BU's N2): a call qualifier in an expression statement or a `return`, a default-argument template, a Field
+    initializer keep `MissingOriginBinding_Kd` (pre-existing; PLAN G10 records them as valid forms with a Language error).
+  - PLAN G225 (site (c)'s unsound acceptance on dev) is closed by R3.
+  - Census (BU's probes and the unit's on both pipelines, which agree on every probe; the Functional suite; the diagnostic snapshot,
+    0 differences; no library or milestone verdict change): newly rejected, each invalid by SPEC 15.6.5 (a call-local borrow stored
+    into a `var` capture's region outlives the call): c3 (G225, accepted on dev), and c2, c5, c6, c6b, c9, u3, h1 with
+    `ComparisonLoanConflict_Kd` instead of `UnprovenConstraint_Kd`; invalid programs keep their other records without
+    `UnprovenConstraint_Kd` (u1, u2, u4, u9, u12, m5, h4) or get their row records instead of `MissingOriginBinding_Kd` (i1–i4, k1,
+    s-noprincipal-c-err) or the located `Unsupported_Kd` (c4, m1, m2); newly accepted and valid: s-none, u8, u11, x1–x4, v1, v2, w1,
+    w6, incomparable, s-noprincipal-c, u5 (and u6's `Unsupported_Kd` leaves; its `InvalidAssignment_Kd` stays). o4/o5 keep dev's one
+    record at `local@ref`; o6, g1, g2, s2, u10, the S3 demo and s-vars are unchanged.
+  - Found by the census, pre-existing and outside this cause: h2 (a `let` whose two qualifier slots are bound to each other, captured
+    `[var o@move]` by a Closure that assigns it a call-local borrow) became accepted, as dev then accepted the `var` forms h3 and h5:
+    SPEC 15.6.5's fixed capture Origins in a Closure body were not represented; a later read was the `ComparisonLoanConflict_Kd` it was
+    for `var` (h2b, h5b). Since G227 (BU-28) every one of them is `UnsatisfiedOriginRelation_Kd` at the store, on both pipelines. v3, w3 and w4 (a `let` initialized through `Option<…>.Some(…)` whose payload
+    a `match` `var` binding extends) stay rejected, now with `ComparisonLoanConflict_Kd` at the initializer, as dev rejects w5, their
+    bounded form: the old analysis's retention through a region's equality bounds.
+  - B3 (BU's re-check of ba28de15b): a Closure storing its own borrowed argument into a `[var arr@move]` capture whose element Origin is a
+    region and reading it in a later call is newly accepted here for the qualifier form v6a (dev: `UnprovenConstraint_Kd`, the stop that
+    hid it) and accepted on dev for v6b (`var arr`) and v6c (the written slot); native runs read the dead argument. SPEC 15.3.4 (a
+    per-call Origin cannot escape its binder) and 15.6.5 (a capture's Origin is fixed in the Closure body) reject the store. This refutes
+    PLAN G65's "not a soundness defect" for a stored borrowed argument; the G65 probes had covered call-local borrows only. The cause is
+    pre-existing and outside this unit: the Closure body did not fix its environment's Origins (G227, fixed by BU-28 on dev 74a2f2a05).
+  - The owner, 2026-10-23, verbatim: 「(d)+(a) で進めてください。2a0-3b は、その単位が領域にした let の slot を [var x@move] で捕まえる形に
+    一時的なその場の Unsupported_Kd を付けて今入れ、G225 を直す。h2 の記録された差は取り消す。並行して BU が Closure の環境の保持（環境の Origin
+    を Closure 本体で固定）の誤ったコードの修正を始めてよい。それが入ったら一時的な U を外す。」 This withdraws the earlier decision that
+    accepted h2 as a recorded difference until R6-check (「記録された差： R6-check まで受け入れます。」, the same day).
+  - The owner, 2026-10-23, verbatim: 「(iii) で進めてください。BU の G227（Closure の環境の Origin を固定する誤ったコードの修正）を優先して
+    先に入れ、その後で 2a0-3b を一時的な U なしで入れる。」 This replaces (d)+(a)'s temporary located `Unsupported_Kd`, which never
+    landed: G227 landed first (BU-28, dev 74a2f2a05), and this unit lands without it (its commit d84a7d136, on this branch only, is
+    reverted). Under G227 (SPEC 15.6.5: a store into a capture's fixed Origin is judged in the Closure body) the B3 family is rejected on
+    both pipelines: h1, h2, h2b, h3, h5, h5b, c8a, c8b, y1, y8 and the capture forms c3–c6, c6b, c9, k1, u3 as
+    `UnsatisfiedOriginRelation_Kd` at the store, v6a–v6c, v6 and the raw form (`let q = arr[0]@follow@raw` assigned `y@follow@raw` in
+    `[var q@move]`) as `UnprovenOriginRelation_Kd`; nothing is newly accepted. Re-expected for that reason:
+    `AStoreIntoARegionWithNoCandidateIsFollowed` (3 rows, a Loan conflict before) and the h2 pin, now
+    `ACallLocalBorrowStoredIntoACapturedRegionIsRefutedAtTheStore` (2 rows, accepted and a Loan conflict before); no other test changed
+    (G227's A5 review, both pipelines). B1's store-following stays covered without a Closure: `AStoreIntoAMovedRegionIsFollowedPastItsBlock`
+    (a block-local borrow stored into a moved `let` region is a Loan conflict at the local past its block; dev: UnprovenConstraint_Kd).
+    N17 (BU's round-4 re-check): for a written slot's region (R3, site (c)), the store's record now waits behind an independent Binding
+    error, the pending PLAN G56 limit (a relation ownership judges waits for Binding's failures), as the `var` form and the qualifier form
+    already do on dev; so e1 and e2 (`let o: Option<ref/i32> = .None` captured `[var o]` beside an unrelated `TypeMismatch_Kd`) lose the
+    store's `UnsatisfiedOriginRelation_Kd` that dev shows, and both still reject (SPEC 23.1.2).
+  - The re-check's non-blocking items: N8, a cycle whose resolution is a meet of its own variables is not detected by R1's test (no
+    instance found; y1–y4 and y7 are rejected on the read route); N9, R2's post-pass leaves a covariant dependent's meet on the replaced
+    candidate (z1, rejected on dev and here, names `p ∧ a` where 15.3.6 reads `p` alone); N11, c8a, a Copy capture of h2's class, is in
+    the census (rejected since G227); N12, the MIR rejection of h2 that the withdrawn decision cited was the MIR analysis's shadow verdict,
+    and the published `KIMI_PIPELINE=mir` check accepted h2; both now give G227's `UnsatisfiedOriginRelation_Kd`.
+  - Departure from 2a0-D §5.3 (Q2 (a)): `Same(Ownership(UnprovenOrigin), UnprovenConstraint_Kd)` stays; the old reporter still gives it
+    for an unchecked obligation other than an `OriginOutlives` (an unverified length obligation), so `TheComparedSetCoversEachOwnershipCode`
+    (R4-M4) needs the row; it goes with the old reporter at R6-check.
+  - Ledger (mir Functional with `KIMI_MIR_DIFF`, base b26710690 and head): rows 2,953 -> 2,958, open blocking 180 -> 182: c8c1f3f534b0's
+    `UnprovenConstraint_Kd` row leaves; the new tests add three `both` `ComparisonLoanConflict_Kd` rows (the capture stores) and three
+    old-only A5 rows, open (b) until F4 lands (`a5-old-origins`): the o4/o5 pair's `UnsatisfiedOriginRelation_Kd` and the clause's
+    `UnprovenOriginRelation_Kd`.
+  - Structure: `Binding.OriginDeclarations.cs` (5,781 tokens, over the 5,000 limit) is split first, behavior-preserving: a local's omitted
+    Origins move to `Binding.LocalOrigins.cs`. PD21 as ruled in round 1: in-place re-expectations in `LocalOriginClauseTest.cs` and
+    `PairFollowTest.cs`; new tests in `LocalRegionInferenceTest.cs` (2 → 3).
+  - BU's review of 2a0-4: N2 and N6 are taken here.
+  - Rejected: verifying an unbound inference without the region (round 1, B1); choosing the region at the first incomparable pair
+    (round 1, B2); resolving the variables at the body's deadline (later uses already read the local's Type); one enumeration of the
+    local's Type only (misses an initializer's Origin outside it, x1).
 - **R4-M115 Type identity by structural decomposition (proposal B) in SPEC** (owner, 2026-10-23, verbatim:
   「proposal B を Q1〜Q7 の推奨どおり（Q1 本案、Q2 入れない（§8.5.5 の改訂として別に扱う）、Q3 採用、Q4 本案、Q5 採用、Q6 採用、
   Q7 経路等式を残す）採択します。R4 で SPEC へ取り込んでください（独立レビューつき）。」; unit spec-tid, `draft/Changes/2026-10-22 Type Identity by Structural Decomposition B.md`, INTEGRATED

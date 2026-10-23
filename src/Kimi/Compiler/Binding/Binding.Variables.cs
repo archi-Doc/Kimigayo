@@ -62,18 +62,19 @@ public sealed partial class Binding
         }
 
         // A Property's initializer and its fit are its initializer's body (SPEC 11.8, 6.3.3; DECISIONS R4-M101 E1, E4); a local's are
-        // the body that binds the local.
+        // the body that binds the local. The local's region slots are numbered once, in binding order: its initializer's Origins with no
+        // candidate first (ResolveInitializerOrigins), then its Type's (InferLocalOrigins, LocalBorrowType; SPEC 15.3.6).
+        var slot = -1;
         var saved = this.EnterBody(symbol.Property is null ? this.formingBody : InitializerBody(symbol));
         BoundType? inferred;
         try
         {
             inferred = variable.InitializerKoto is { } initializer ? this.BindExpected(initializer, scope, declared, variable.TypeKoto) : null;
             symbol.Resolving = false;
-            if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) &&
-                initializerOrigins.State < 2 && initializerOrigins.Replacements.Count != 0)
+            if (inferred is not null && this.initializerOrigins.TryGetValue(variable, out var initializerOrigins) && initializerOrigins.State < 2)
             {
                 // SPEC 15.4.4: finish all initializer acquisition bounds before checking the local's fixed Type.
-                inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, scope);
+                inferred = this.ResolveInitializerOrigins(inferred, initializerOrigins, variable, scope, ref slot);
             }
 
             if (symbol.Kind == BindingSymbolKind.Local && declared is not null && inferred is not null)
@@ -88,7 +89,7 @@ public sealed partial class Binding
                     inferred = referent;
                 }
 
-                declared = this.InferLocalOrigins(declared, inferred, variable, scope);
+                declared = this.InferLocalOrigins(declared, inferred, variable, scope, slot);
             }
 
             if (declared is not null && inferred is not null && !this.CheckTypeUse(inferred, declared, variable))
@@ -108,7 +109,7 @@ public sealed partial class Binding
 
         if (symbol.Kind == BindingSymbolKind.Local && variable.TypeKoto is null && declared is null && inferred is not null)
         {
-            declared = this.LocalBorrowType(inferred, variable, variable.InitializerKoto!);
+            declared = this.LocalBorrowType(inferred, variable, variable.InitializerKoto!, slot);
         }
 
         // An unavailable written Type cannot be replaced by the initializer's Type.
