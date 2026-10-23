@@ -5002,7 +5002,8 @@ structure is recorded here by the unit that first implements it.
   requirement call's until K6b (superseded by R5-M67, which moved it from K6). The collector's templates gain statement sites, in
   location order with the calls: an `Aggregate(Closure)`
   is the Closure's body (row 11), a `Use` of a `Const(FnItem)` (the builder's one form of that operand) the Item's (row 12), a
-  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13); a Value callee's Closure or
+  `Cast(Erasure)` a `ClosureErasure` or `ItemAdapter` item keyed by the erased Closure or Item Type (row 13; superseded by R5-M108: also
+  by the erased target Function Type); a Value callee's Closure or
   Item in the item's instance (`Apply`) is its body (row 5). A Closure's body is keyed by its definition and the erased substitution of
   the instance that closed it (`SubstOfClosure`, exact since G142, R5-M36), an Item's by its function's implementation under the Item's
   substitution; the Item of a function whose calls dispatch (`TyCtxt.Dispatches`, new, over `CallPlan.KindOf`, the one rule that also
@@ -6397,7 +6398,8 @@ structure is recorded here by the unit that first implements it.
   - Value calls (`FunctionCodegen.Closures.cs`), by the callee value's Type below its reference layer, a closed vocabulary: a Closure's body
     by the collector's target, the environment a borrow's pointer or an owned operand's storage (a Move's Place; a Copy's copy slot, numbered
     after the body's operands by block, since a block's terminator is its one call); a function Item's body or a requirement Item's witness
-    directly; an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
+    directly (superseded by R5-M108: what an Item's call runs is decided by its function, a compiler function's by its direct call's row,
+    not by its target's kind); an Item without a body target the later unit's located `Unsupported_Kd` (a virtual slot's Item C6c, a compiler function's Item
     C5b, C6a or C8*, a Builtin shim C8f or C9b, a property witness C3c); a common Function value through its table `{entry, context, drop}`
     (offsets 0, 8, 16, the layout C5b's erasure writes) with its environment word, under `ModuleCodegen.Erased`, `Abi.Of(ErasedClosure |
     CallerLocation)` of the call's Callable signature (SPEC 22.5.1: the call's location), reused by `Abi.Matches`. The old generator writes
@@ -6500,6 +6502,8 @@ structure is recorded here by the unit that first implements it.
     environments whenever they need destruction (the old generator's; IMPL 21.1.3); an adapter per erasure site (the old generator's; one
     item per Type); value-based copies of the intrinsic writers for erased compiler Items (a second copy of each row); `MirBodyKind.Shim`
     bodies (PD3); a MIR box for large environments (held MIR; IMPL leaves layout to the backend); a `MonoKind` per runtime routine.
+  - Superseded by R5-M108 (C5c): the adapter entry under its source's own signature, ruling Q3's descriptor-arity test and the temporary
+    structure above (an adapter item is keyed also by its erased target Function Type and its entry defined under that Type's signature).
 - **R5-M105 The owner confirms C5b's departure** (owner, 2026-10-22, on the R5 planning session's explanation before C5b landed;
   verbatim 「C5b の逸脱（ErasedCalls の corpus O2 A/B を C8d と C9c の遅い方へ移し、C5b は固定配列版で参考測定する）を承認します。」;
   the consequences are the planning session's) The departure R5-M104 records is confirmed: plan row C5b's verification "the ErasedCalls

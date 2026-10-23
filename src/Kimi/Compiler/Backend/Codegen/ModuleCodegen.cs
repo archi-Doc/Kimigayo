@@ -11,8 +11,8 @@
 // (__kimi_drop<item>, written by FunctionCodegen by its Type's row, DropGlue.Row: a string's (R5-M78), a struct's, Tuple's, enum's or fixed
 // array's (R5-M95), a Closure environment's (R5-M102), an erased function's (R5-M104); a handle's C6b, a collection's C8d and C8e),
 // ClosureErasure and ItemAdapter (__kimi_erase<item>, its entry under its target Function Type's erased signature, its table and its
-// heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's ObjectDescriptor and VTable items (C6a,
-// C6c), a test build's TestEntry (C10a).
+// heap environment's release, written by FunctionCodegen; R5-M108), the Builtin shims (C8f, C9b), the property witnesses (C3c), K8's
+// ObjectDescriptor and VTable items (C6a, C6c), a test build's TestEntry (C10a).
 // Inputs: the program the generation gate passed (validated, analyzed and accepted); the instance collector's checked set, marked from the
 // output roots the generation entry gives (K package 4.10), TypeOf and location rule (K package 4.9); the compilation's Layout and runtime
 // location texts (Compilation.Locations); the startup selection.
