@@ -14,6 +14,10 @@ The analyzer and CompilerSizeBudgetTest were retired (DECISIONS CR-R1); no live 
 [`compare-fixtures.ps1`](../../scripts/compare-fixtures.ps1) compares two runs' fixture evidence (behavior-preserving commits);
 [`codegen-pending.ps1`](../../scripts/codegen-pending.ps1) owns the R5 pending ledger (`tests/xUnitTest/TestData/codegen-pending/`), its sel report and gate, its write (`-UpdatePending`) and R5-M73's filing rule (`Get-KimiCodegenGroup`) (DECISIONS R5-M66, R5-M81, until G4).
 The matching script regressions are VerificationSelectionTest.ps1, VerificationInputsTest.ps1, FixtureComparisonTest.ps1 and CodegenPendingTest.ps1.
+[test-scalars.ps1](../../src/backend/windows-x64/test-scalars.ps1) owns native fixture selection and aggregation;
+[test-scalar-fixture.ps1](../../src/backend/windows-x64/test-scalar-fixture.ps1) compiles each optimization level;
+[test-scalar-process.ps1](../../src/backend/windows-x64/test-scalar-process.ps1) owns executable lifetime and oracle comparison
+(NativeFixtureRunnerTest.ps1).
 MirBuilder.Formatting owns formatting expansion with Test, Guard and Observe condition operations.
 
 The main path is source input → Koto syntax → Binding → control-flow/ownership analysis → physical emission model → LLVM IR → native tools. Checking stops after the front end; generation and native execution have separate entry points.

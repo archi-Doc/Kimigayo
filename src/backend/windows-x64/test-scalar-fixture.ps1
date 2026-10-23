@@ -2,13 +2,13 @@
 [CmdletBinding()]
 param([IO.FileInfo] $Fixture, [hashtable] $Context)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'test-scalar-process.ps1')
 $tools = $Context.tools
 $fixtures = $Context.fixtures
 $out = $Context.output
 $kernel = $Context.kernel
 $archive = $Context.archive
 $allowedSymbols = [Collections.Generic.HashSet[string]]::new([string[]]$Context.allowedSymbols, [StringComparer]::Ordinal)
-$executionEncoding = [Text.UTF8Encoding]::new($false, $true)
 $log = Join-Path $Context.logs ($Fixture.BaseName + '.log')
 $completed = [Collections.Generic.List[string]]::new()
 $timer = [Diagnostics.Stopwatch]::StartNew()
@@ -42,35 +42,7 @@ try {
                 if (-not $allowedSymbols.Contains($symbol)) { throw "Unexpected dependency in ${target}: $symbol" }
             }
             Invoke-Tool $tools['lld-link'] @("$target.obj", $archive, $kernel.path, '/entry:__kimi_start', '/subsystem:console', '/nodefaultlib', '/Brepro', "/out:$target.exe")
-            $start = [Diagnostics.ProcessStartInfo]::new("$target.exe")
-            $start.UseShellExecute = $false
-            $start.CreateNoWindow = $true
-            $start.RedirectStandardOutput = $true
-            $start.RedirectStandardError = $true
-            # Kimi writes UTF-8 bytes regardless of the invoking console's code page.
-            # A hidden verification worker can otherwise decode these as legacy text.
-            $start.StandardOutputEncoding = $executionEncoding
-            $start.StandardErrorEncoding = $executionEncoding
-            $process = [Diagnostics.Process]::Start($start)
-            try {
-                $stdout = $process.StandardOutput.ReadToEndAsync()
-                $stderr = $process.StandardError.ReadToEndAsync()
-                if ($timeout -gt 0) {
-                    if ($process.WaitForExit($timeout)) { throw "Divergent fixture returned: $target, exit=$($process.ExitCode)" }
-                    $process.Kill($true)
-                    $process.WaitForExit()
-                }
-                elseif (-not $process.WaitForExit(30000)) { throw "Timed out: $target" }
-                $actual = $stdout.GetAwaiter().GetResult()
-                $errorText = $stderr.GetAwaiter().GetResult()
-                if (($timeout -eq 0 -and $process.ExitCode -ne $exit) -or $actual -cne $expected -or $errorText -cne $expectedError) {
-                    throw "Failed: $target, exit=$($process.ExitCode), stdout=$actual, stderr=$errorText"
-                }
-            }
-            finally {
-                if (-not $process.HasExited) { $process.Kill($true); $process.WaitForExit() }
-                $process.Dispose()
-            }
+            Invoke-KimiFixtureProcess $target @{ stdout = $expected; stderr = $expectedError; exit = $exit; timeout = $timeout }
             $completed.Add($level)
         }
     } *> $log

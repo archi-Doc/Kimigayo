@@ -116,6 +116,13 @@ rules that result from them.
   (loses the documented measurement guarantee), or switching to `all` (changes every class's scheduling and needs an
   unrelated fixture/static-state audit). No compiler representation changes; managed suite duration may increase.
 
+- **G138-1 Native fixture process ownership** (2026-10-24, planning session; independently compared and reviewed designs).
+  test-scalar-process.ps1 owns one fixture executable's launch, stream draining, oracle comparison and recovery.
+  test-scalar-fixture.ps1 owns compilation and optimization-level aggregation; test-scalars.ps1 owns the selected run.
+  The first commit only extracts the existing execution block, retaining its waits and result format for comparison.
+  Rejected: growing process observation inside the compilation worker, or adding a general process framework. The
+  following G138 unit replaces elapsed-time divergence observation and propagates incomplete verification through consumers.
+
 ## Code rules (2026-10-12)
 
 CR-R1 supersedes only the analyzer enforcement, Report and approval requirements in CR-A0–CR-A9b below.
