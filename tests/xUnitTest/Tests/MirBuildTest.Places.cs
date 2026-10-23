@@ -323,6 +323,32 @@ public sealed partial class MirBuildTest
         Assert.All(refs, static x => Assert.Equal(OriginKind.Intersection, x.Origin?.Kind));
     }
 
+    // SPEC 13.6.1, 15.1.5 (DECISIONS BU-27): an object upcast of a stored exclusive reference to a view of its own Semantics Reborrows it,
+    // a Ref of its payload in that Semantics of the Origin Binding names for the upcast's borrow (a path's meet through an exclusive
+    // parameter), which the Upcast then changes to the view; a view of another Semantics borrows it in the view's mode (fail-before: an
+    // InternalInvariant_Kd at the Reborrowed operand).
+    [Theory]
+    [InlineData("func f()\n    var owner = make()\n    let child = owner@objuniq/Leaf\n    exclusive(child@objuniq/Base)\n", SemanticsKind.ObjUniq, false)]
+    [InlineData("func f(holder: uniq/(Holder during a) during h)\n    exclusive(holder.leaf@objuniq/Base)\n", SemanticsKind.ObjUniq, true)]
+    [InlineData("func f()\n    var owner = make()\n    let child = owner@objuniq/Leaf\n    shared(child@objref/Base)\n", SemanticsKind.ObjRef, false)]
+    public void AnUpcastsOperandIsARefOfItsPayloadInTheView(string body, SemanticsKind view, bool met)
+    {
+        const string Declarations = "open struct Base\n    public let value: i32\n    protected init(value: i32) => self.value = value\nstruct Leaf: Base\n" +
+            "    public init(): base(10) => ()\nstruct Holder {a}\n    public var leaf: objuniq/Leaf during a\nfunc shared(view: objref/Base) => ()\n" +
+            "func exclusive(view: objuniq/Base) => ()\nfunc make() -> obj/Leaf => Kimi.Intrinsics.makeObj(Leaf.init())\n";
+        var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
+        Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
+        var f = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
+        var statements = f.Statements.ToArray();
+        var cast = Assert.Single(statements, static x => x is { Kind: MirStatementKind.Assign, Rvalue: { Kind: MirRvalueKind.Cast, Op: (byte)MirCastKind.Upcast } }).Rvalue;
+        var operand = f.Operands[cast.Start];
+        var reference = Assert.Single(statements, x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref } && x.Place == operand.Place).Rvalue.Type!;
+        Assert.Equal((view, "Leaf"), (reference.Semantics, reference.Components[0].Symbol?.Name));
+        Assert.Equal((view, "Base"), (cast.Type!.Semantics, cast.Type.Components[0].Symbol?.Name));
+        Assert.True(!met || reference.Origin?.Kind == OriginKind.Intersection, $"{reference.Origin?.Kind}");
+    }
+
     // SPEC 23.1.2 (DECISIONS BU-27): a jump Binding rejects (no target, an unknown label, a yield outside a construct, an exit across a
     // Closure) is derived; no consumer takes its operand, so a stored exclusive reference there is designated, never Reborrowed, and the
     // build adds no record of its own to Binding's.
