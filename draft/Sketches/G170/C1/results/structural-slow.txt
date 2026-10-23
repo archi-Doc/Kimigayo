@@ -1,65 +1,65 @@
 == structural model 4
-List<S1.(K0).X> is K0: none Complete rounds=2 V=7 E=2 J=23 N=8 (0 s)
-List<S1.(K0).X> is K1: none Complete rounds=2 V=5 E=2 J=22 N=9 (0 s)
-List<S1.(K0).X> is K2: none Complete rounds=2 V=5 E=2 J=22 N=9 (1 s)
-List<S1.(K0).X> is i32: - Provisional rounds=3 V=8 E=2 J=85 N=9 (0 s)
-List<T.(K0).Y> is Cp: none Complete rounds=2 V=6 E=2 J=15 N=7 (0 s)
-List<T.(K0).Y> is K0: none Complete rounds=2 V=7 E=2 J=16 N=6 (0 s)
-List<T.(K0).Y> is U: - Complete rounds=3 V=11 E=4 J=156 N=6 (0 s)
-List<i32> is K0: none Complete rounds=1 V=4 E=2 J=9 N=7 (1 s)
-List<i32> is i32: - Complete rounds=0 V=2 E=2 J=5 N=7 (0 s)
-T is Cp: none Complete rounds=0 V=2 E=2 J=4 N=6 (0 s)
-T.(K0).Y is K1: none Complete rounds=2 V=6 E=2 J=72 N=6 (0 s)
-T.(K0).Y is List<U>: + Complete rounds=2 V=8 E=4 J=151 N=5 (0 s)
-T.(K0).Y.(K0).Y is Cp: none Complete rounds=2 V=7 E=2 J=75 N=7 (1 s)
-U is List<i32>: none Complete rounds=1 V=3 E=2 J=8 N=7 (0 s)
-U is i32: none Complete rounds=0 V=2 E=2 J=4 N=6 (0 s)
+List<S1.(K0).X> is K0: C none Complete rounds=2 V=7 E=2 J=23 N=8 established-at-stop 2 51 ms; ref5 none 11 ms; ref7 none 1 ms
+List<S1.(K0).X> is K1: C none Complete rounds=2 V=5 E=2 J=22 N=9 established-at-stop 2 46 ms; ref5 none 11 ms; ref7 none 1 ms
+List<S1.(K0).X> is K2: C none Complete rounds=2 V=5 E=2 J=22 N=9 established-at-stop 2 45 ms; ref5 none 11 ms; ref7 none 1 ms
+List<S1.(K0).X> is i32: C - Provisional rounds=3 V=7 E=2 J=78 N=9 established-at-stop 2 77 ms; ref5 - 11 ms; ref7 - 1 ms
+List<T.(K0).Y> is Cp: C none Complete rounds=2 V=6 E=2 J=15 N=7 established-at-stop 2 45 ms; ref5 none 11 ms; ref7 none 1 ms
+List<T.(K0).Y> is K0: C none Complete rounds=2 V=7 E=2 J=16 N=6 established-at-stop 2 49 ms; ref5 none 11 ms; ref7 none 1 ms
+List<T.(K0).Y> is U: C - Complete rounds=3 V=10 E=4 J=122 N=6 established-at-stop 2 72 ms; ref5 - 10 ms; ref7 - 1 ms
+List<i32> is K0: C none Complete rounds=1 V=4 E=2 J=9 N=7 established-at-stop 2 45 ms; ref5 none 11 ms; ref7 none 1 ms
+List<i32> is i32: C - Complete rounds=0 V=2 E=2 J=5 N=7 established-at-stop 2 48 ms; ref5 - 11 ms; ref7 - 1 ms
+T is Cp: C none Complete rounds=0 V=2 E=2 J=4 N=6 established-at-stop 2 45 ms; ref5 none 11 ms; ref7 none 1 ms
+T.(K0).Y is K1: C none Complete rounds=2 V=8 E=4 J=68 N=6 established-at-stop 2 64 ms; ref5 none 11 ms; ref7 none 1 ms
+T.(K0).Y is List<U>: C + Complete rounds=2 V=8 E=4 J=112 N=5 established-at-stop 1 66 ms; ref5 + 10 ms; ref7 + 1 ms
+T.(K0).Y.(K0).Y is Cp: C none Complete rounds=2 V=10 E=2 J=69 N=7 established-at-stop 2 96 ms; ref5 none 12 ms; ref7 none 1 ms
+U is List<i32>: C none Complete rounds=2 V=8 E=4 J=26 N=7 established-at-stop 0 67 ms; ref5 none 11 ms; ref7 none 1 ms
+U is i32: C none Complete rounds=2 V=7 E=4 J=25 N=6 established-at-stop 0 87 ms; ref5 none 16 ms; ref7 none 1 ms
 == structural model 33
-List<T.(K0).X> is K0: none Complete rounds=2 V=6 E=3 J=7 N=7 (0 s)
-List<T.(K0).X> is List<i32>: - Complete rounds=2 V=7 E=3 J=7 N=9 (0 s)
-List<i32> is K1: none Complete rounds=0 V=2 E=3 J=1 N=9 (1 s)
-List<i32> is K4: none Complete rounds=0 V=2 E=3 J=1 N=9 (0 s)
-S1 is K1: none Complete rounds=0 V=2 E=3 J=1 N=8 (0 s)
-S1 is S2: - Complete rounds=0 V=2 E=3 J=1 N=8 (0 s)
-T is Cp or K0: none Complete rounds=0 V=2 E=3 J=1 N=6 (0 s)
-T is K2: none Complete rounds=0 V=2 E=3 J=1 N=7 (0 s)
-T is K3: none Complete rounds=0 V=2 E=3 J=1 N=7 (1 s)
-T.(K0).X is Cp or K0: none Complete rounds=2 V=7 E=5 J=14 N=7 (0 s)
-T.(K0).X is K1: none Complete rounds=0 V=2 E=3 J=1 N=7 (0 s)
-T.(K0).X is List<U>: + Complete rounds=1 V=4 E=3 J=4 N=6 (0 s)
-T.(K0).X.(K1).Y is K4: none Complete rounds=0 V=2 E=3 J=2 N=9 (0 s)
-U is List<i32>: none Complete rounds=1 V=3 E=3 J=2 N=8 (1 s)
-U is i32: none Complete rounds=0 V=2 E=3 J=1 N=7 (0 s)
-i32 is Cp: none Complete rounds=2 V=6 E=3 J=6 N=7 (0 s)
+List<T.(K0).X> is K0: C none Complete rounds=2 V=6 E=3 J=7 N=7 established-at-stop 2 40 ms; ref5 none 12 ms; ref7 none 1 ms
+List<T.(K0).X> is List<i32>: C - Complete rounds=2 V=7 E=3 J=7 N=9 established-at-stop 2 47 ms; ref5 - 11 ms; ref7 - 0 ms
+List<i32> is K1: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 3 29 ms; ref5 none 12 ms; ref7 none 0 ms
+List<i32> is K4: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 3 30 ms; ref5 none 12 ms; ref7 none 0 ms
+S1 is K1: C none Complete rounds=0 V=2 E=3 J=1 N=8 established-at-stop 3 29 ms; ref5 none 11 ms; ref7 none 0 ms
+S1 is S2: C - Complete rounds=0 V=2 E=3 J=1 N=8 established-at-stop 2 38 ms; ref5 - 11 ms; ref7 - 1 ms
+T is Cp or K0: C none Complete rounds=0 V=2 E=3 J=1 N=6 established-at-stop 0 32 ms; ref5 none 11 ms; ref7 none 0 ms
+T is K2: C none Complete rounds=0 V=2 E=3 J=1 N=7 established-at-stop 3 28 ms; ref5 none 12 ms; ref7 none 0 ms
+T is K3: C none Complete rounds=0 V=2 E=3 J=1 N=7 established-at-stop 3 29 ms; ref5 none 12 ms; ref7 none 1 ms
+T.(K0).X is Cp or K0: C none Complete rounds=2 V=7 E=5 J=14 N=7 established-at-stop 0 43 ms; ref5 none 10 ms; ref7 none 0 ms
+T.(K0).X is K1: C none Complete rounds=0 V=2 E=3 J=1 N=7 established-at-stop 3 30 ms; ref5 none 12 ms; ref7 none 0 ms
+T.(K0).X is List<U>: C + Complete rounds=1 V=4 E=3 J=4 N=6 established-at-stop 1 42 ms; ref5 + 11 ms; ref7 + 0 ms
+T.(K0).X.(K1).Y is K4: C none Complete rounds=0 V=2 E=3 J=2 N=9 established-at-stop 3 30 ms; ref5 none 12 ms; ref7 none 1 ms
+U is List<i32>: C none Complete rounds=1 V=3 E=3 J=2 N=8 established-at-stop 0 43 ms; ref5 none 11 ms; ref7 none 0 ms
+U is i32: C none Complete rounds=0 V=2 E=3 J=1 N=7 established-at-stop 0 38 ms; ref5 none 11 ms; ref7 none 1 ms
+i32 is Cp: C none Complete rounds=2 V=6 E=3 J=6 N=7 established-at-stop 0 40 ms; ref5 none 11 ms; ref7 none 0 ms
 == structural model 79
-List<T.(K1).Y> is K1: none Complete rounds=2 V=6 E=4 J=9 N=7 (0 s)
-List<T.(K1).Y> is S1: - Complete rounds=2 V=6 E=4 J=7 N=8 (0 s)
-List<i32> is K0: + Complete rounds=2 V=7 E=6 J=18 N=7 (1 s)
-List<i32> is K2: none Complete rounds=0 V=2 E=4 J=2 N=7 (0 s)
-S1 is K0: none Complete rounds=0 V=2 E=4 J=2 N=8 (0 s)
-S1 is U: - Complete rounds=1 V=5 E=4 J=5 N=7 (0 s)
-T is Cp or K0: none Complete rounds=0 V=2 E=4 J=2 N=8 (0 s)
-T is K1: + Complete rounds=0 V=2 E=4 J=2 N=6 (0 s)
-T.(K1).Y is Cp or K0: none Complete rounds=1 V=5 E=4 J=5 N=8 (1 s)
-T.(K1).Y is K0: + Complete rounds=2 V=7 E=6 J=18 N=7 (0 s)
-T.(K1).Y is K1: + Complete rounds=0 V=2 E=4 J=2 N=6 (0 s)
-T.(K1).Y is List<U>: - Complete rounds=1 V=5 E=4 J=7 N=7 (0 s)
-U is K0: + Complete rounds=2 V=7 E=6 J=18 N=7 (0 s)
-U is K2: none Complete rounds=0 V=2 E=4 J=2 N=7 (0 s)
-U is List<i32>: + Complete rounds=1 V=4 E=4 J=5 N=6 (1 s)
-U is S2: - Complete rounds=1 V=5 E=4 J=5 N=7 (0 s)
-U is i32: - Complete rounds=1 V=4 E=4 J=5 N=6 (0 s)
+List<T.(K1).Y> is K1: C none Complete rounds=2 V=6 E=4 J=9 N=7 established-at-stop 2 37 ms; ref5 none 11 ms; ref7 none 0 ms
+List<T.(K1).Y> is S1: C - Complete rounds=2 V=6 E=4 J=7 N=8 established-at-stop 2 40 ms; ref5 - 11 ms; ref7 - 0 ms
+List<i32> is K0: C + Complete rounds=2 V=7 E=6 J=18 N=7 established-at-stop 3 45 ms; ref5 + 11 ms; ref7 + 0 ms
+List<i32> is K2: C none Complete rounds=0 V=2 E=4 J=2 N=7 established-at-stop 3 29 ms; ref5 none 12 ms; ref7 none 0 ms
+S1 is K0: C none Complete rounds=0 V=2 E=4 J=2 N=8 established-at-stop 2 34 ms; ref5 none 11 ms; ref7 none 0 ms
+S1 is U: C - Complete rounds=1 V=5 E=4 J=5 N=7 established-at-stop 2 41 ms; ref5 - 11 ms; ref7 - 0 ms
+T is Cp or K0: C none Complete rounds=0 V=2 E=4 J=2 N=8 established-at-stop 0 33 ms; ref5 none 11 ms; ref7 none 0 ms
+T is K1: C + Complete rounds=0 V=2 E=4 J=2 N=6 established-at-stop 3 30 ms; ref5 + 11 ms; ref7 + 0 ms
+T.(K1).Y is Cp or K0: C none Complete rounds=1 V=5 E=4 J=5 N=8 established-at-stop 0 35 ms; ref5 none 10 ms; ref7 none 0 ms
+T.(K1).Y is K0: C + Complete rounds=2 V=7 E=6 J=18 N=7 established-at-stop 3 45 ms; ref5 + 18 ms; ref7 + 0 ms
+T.(K1).Y is K1: C + Complete rounds=0 V=2 E=4 J=2 N=6 established-at-stop 3 30 ms; ref5 + 11 ms; ref7 + 0 ms
+T.(K1).Y is List<U>: C - Complete rounds=1 V=5 E=4 J=7 N=7 established-at-stop 2 49 ms; ref5 - 11 ms; ref7 - 0 ms
+U is K0: C + Complete rounds=2 V=7 E=6 J=18 N=7 established-at-stop 3 43 ms; ref5 + 11 ms; ref7 + 0 ms
+U is K2: C none Complete rounds=0 V=2 E=4 J=2 N=7 established-at-stop 3 30 ms; ref5 none 12 ms; ref7 none 0 ms
+U is List<i32>: C + Complete rounds=1 V=4 E=4 J=5 N=6 established-at-stop 1 41 ms; ref5 + 11 ms; ref7 + 0 ms
+U is S2: C - Complete rounds=1 V=5 E=4 J=5 N=7 established-at-stop 2 41 ms; ref5 - 12 ms; ref7 - 0 ms
+U is i32: C - Complete rounds=1 V=4 E=4 J=5 N=6 established-at-stop 2 113 ms; ref5 - 24 ms; ref7 - 0 ms
 == structural model 168
-List<T.(K2<i32>).X> is K2<i32>: none Complete rounds=2 V=7 E=3 J=9 N=9 (0 s)
-List<i32> is Cp: none Provisional rounds=1 V=5 E=3 J=6 N=9 (0 s)
-List<i32> is K3: none Complete rounds=0 V=2 E=3 J=1 N=9 (1 s)
-S1 is Cp: none Provisional rounds=0 V=2 E=3 J=2 N=10 (0 s)
-T.(K2<i32>).X is K0<U>: none Complete rounds=0 V=2 E=3 J=1 N=9 (0 s)
-T.(K2<i32>).X is List<U>: none Complete rounds=1 V=6 E=3 J=6 N=9 (0 s)
-T.(K2<i32>).X.(K4).X is K3: none Complete rounds=0 V=2 E=3 J=2 N=11 (0 s)
-T.(K2<i32>).X.(K4).X is S2: none Complete rounds=2 V=7 E=3 J=8 N=11 (0 s)
-U is K1: none Complete rounds=0 V=2 E=3 J=1 N=9 (1 s)
-U is K4: none Complete rounds=0 V=2 E=3 J=1 N=9 (0 s)
-U is List<i32>: none Complete rounds=1 V=5 E=3 J=5 N=8 (0 s)
-U is i32: none Complete rounds=0 V=2 E=3 J=1 N=8 (0 s)
-i32 is K0<i32>: none Complete rounds=0 V=2 E=3 J=1 N=9 (0 s)
+List<T.(K2<i32>).X> is K2<i32>: C none Complete rounds=2 V=7 E=3 J=9 N=9 established-at-stop 2 184 ms; ref5 none 23 ms; ref7 none 0 ms
+List<i32> is Cp: C none Provisional rounds=1 V=5 E=3 J=6 N=9 established-at-stop 2 36 ms; ref5 none 10 ms; ref7 none 0 ms
+List<i32> is K3: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 3 29 ms; ref5 none 10 ms; ref7 none 0 ms
+S1 is Cp: C none Provisional rounds=0 V=2 E=3 J=2 N=10 established-at-stop 2 34 ms; ref5 none 10 ms; ref7 none 0 ms
+T.(K2<i32>).X is K0<U>: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 3 29 ms; ref5 none 10 ms; ref7 none 0 ms
+T.(K2<i32>).X is List<U>: C none Complete rounds=1 V=6 E=3 J=6 N=9 established-at-stop 0 41 ms; ref5 none 9 ms; ref7 none 0 ms
+T.(K2<i32>).X.(K4).X is K3: C none Complete rounds=0 V=2 E=3 J=2 N=11 established-at-stop 3 29 ms; ref5 none 10 ms; ref7 none 0 ms
+T.(K2<i32>).X.(K4).X is S2: C none Complete rounds=2 V=7 E=3 J=8 N=11 established-at-stop 0 40 ms; ref5 none 9 ms; ref7 none 0 ms
+U is K1: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 3 30 ms; ref5 none 10 ms; ref7 none 0 ms
+U is K4: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 1 34 ms; ref5 none 10 ms; ref7 none 0 ms
+U is List<i32>: C none Complete rounds=1 V=5 E=3 J=5 N=8 established-at-stop 0 39 ms; ref5 none 10 ms; ref7 none 0 ms
+U is i32: C none Complete rounds=0 V=2 E=3 J=1 N=8 established-at-stop 0 39 ms; ref5 none 9 ms; ref7 none 0 ms
+i32 is K0<i32>: C none Complete rounds=0 V=2 E=3 J=1 N=9 established-at-stop 3 30 ms; ref5 none 10 ms; ref7 none 0 ms

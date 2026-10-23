@@ -15,3 +15,4 @@ T is V: + Complete rounds=15 V=211 E=68 J=258683 N=22 median 544270 us
 == seed 78 nested model 2 time at 3,000 items
 T is V: C + Resource (items 4631>3000) rounds=12 V=3962 E=912 J=1081983 N=209 established-at-stop 1 6962 ms; ref5 + 82 ms; ref7 + 274 ms
 == seed 78 nested model 2 at 65,536 items
+T is V: C + Resource (items 103211>65536) rounds=16 V=99314 E=5386 J=36913369 N=1200 established-at-stop 1 553023 ms; ref5 + 92 ms; ref7 + 251 ms
