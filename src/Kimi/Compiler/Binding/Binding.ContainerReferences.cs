@@ -408,9 +408,9 @@ public sealed partial class Binding
     {
         for (; ;)
         {
-            if (this.importedContainerEnvironments.TryGetValue(syntax, out var environment))
+            if (this.importedContainers.TryGetValue(syntax, out var import))
             {
-                return environment;
+                return import.Environment;
             }
 
             var next = syntax is GenericsKoto generic ? generic.Identifier! : UnwrapTypeSyntax(syntax);

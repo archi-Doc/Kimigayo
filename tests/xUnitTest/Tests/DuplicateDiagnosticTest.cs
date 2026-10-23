@@ -86,6 +86,7 @@ public sealed class DuplicateDiagnosticTest(ITestOutputHelper output)
     [InlineData("alias A => Kimi\nalias A => Kimi.Console\nalias A => Kimi.Text", "A", 0)]
     [InlineData("contract C\nstruct S<T>\n    Self is C when T is Copy\n    Self is C when T is Owned\n    Self is C when T is Copy", "C", 2)]
     [InlineData("func f<T>(value: ref/T) -> i32 => 1\nspecialize func f<i32>(value: ref/i32) -> i32 => 2\nspecialize func f<i32>(value: ref/i32) -> i32 => 3\nspecialize func f<i32>(value: ref/i32) -> i32 => 4", "f", 1)]
+    [InlineData("alias A => Kimi.Console\nalias A => ::Kimi.Console\nalias A => Kimi.Text\nalias A => Kimi", "A", 0)]
     public void PairwiseRecordersShareTheSameNormalization(string source, string name, int firstLine)
     {
         var c = Analyze(source);

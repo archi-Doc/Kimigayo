@@ -42,9 +42,9 @@ public sealed partial class Binding
 
         // Retain a mismatching declaration for the existing formation/arity diagnostic.
         // A populated nearer stage must never fall through to an outer or default stage.
-        if (candidates.Environment is { } environment)
+        if (candidates.Import.Environment is not null)
         {
-            this.importedContainerEnvironments[use] = environment;
+            this.importedContainers[use] = candidates.Import;
         }
 
         return candidates.Match ?? candidates.First;
@@ -57,10 +57,17 @@ public sealed partial class Binding
         internal BindingSymbol? Match;
         internal bool Ambiguous;
         internal bool NonGeneric;
-        internal BoundType? Environment;
+        internal AliasImport Import;
     }
 
-    private void AddTypeCandidates(ref TypeCandidates result, BindingSymbol? head, BindingScope scope, bool core, int arity, BoundType? environment = null, TypeLookupRole role = TypeLookupRole.Any)
+    private void AddTypeCandidates(
+        ref TypeCandidates result,
+        BindingSymbol? head,
+        BindingScope scope,
+        bool core,
+        int arity,
+        AliasImport import = default,
+        TypeLookupRole role = TypeLookupRole.Any)
     {
         for (var candidate = head; candidate is not null; candidate = candidate.Next)
         {
@@ -85,13 +92,14 @@ public sealed partial class Binding
                 continue;
             }
 
-            if (result.Match is not null && (!ReferenceEquals(result.Match, candidate) || !ReferenceEquals(result.Environment, environment)))
+            var same = ReferenceEquals(result.Match, candidate) && ReferenceEquals(result.Import.Environment, import.Environment);
+            if (result.Match is not null && !same)
             {
                 result.Ambiguous = true;
             }
 
+            result.Import = same ? result.Import.MergeWitness(import) : import;
             result.Match = candidate;
-            result.Environment = environment;
         }
     }
 

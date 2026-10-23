@@ -186,6 +186,9 @@ public enum SyntaxForm : ushort
     /// <summary>An Origin annotation on the borrow layer of an adaptation target.</summary>
     AdaptationOrigin,
 
+    /// <summary>An Origin annotation anywhere in a runtime Type-test target.</summary>
+    RuntimeTypeTestOrigin,
+
     /// <summary>A 'during' annotation after an ungrouped adaptation target.</summary>
     AdaptationDuring,
 

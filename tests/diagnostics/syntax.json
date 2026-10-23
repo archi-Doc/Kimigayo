@@ -292,6 +292,8 @@
     "Records": [ { "Code": "ExpectedSyntax_Kd", "Form": "Type", "At": "_", "Found": "_" } ] },
   { "Name": "operation-as-semantics-prefix", "Source": "public func main()\n    let source = 1\n    let value = source@copy/i32\n    let after = source@move/i32\n", "Intended": "'copy' and 'move' written as Semantics prefixes; each Type rests on its Error, so no Type formation check follows",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "OperationAsSemanticsPrefix", "At": "copy/i32", "Length": 4 }, { "Code": "MisplacedSyntax_Kd", "Form": "OperationAsSemanticsPrefix", "At": "move/i32", "Length": 4 } ] },
+  { "Name": "runtime-type-test-origin", "Source": "struct Animal\nstruct Slot<T>\nfunc f(x: objref/Animal) -> bool => x is Slot<raw/i32 during static>\npublic func main()\n    ()\n", "Intended": "a written Origin within a runtime Type-test target argument is forbidden; the target rests on the syntax Error",
+    "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "RuntimeTypeTestOrigin", "At": "raw/i32 during static" } ] },
   { "Name": "adaptation-origin", "Source": "func f(x: ref/i32 during a) -> i32\n    let y = x@(ref/i32 during a)\n    return 1\npublic func main()\n    ()\n", "Intended": "an Origin annotation on the borrow layer of a grouped adaptation target; the target rests on the Error",
     "Records": [ { "Code": "MisplacedSyntax_Kd", "Form": "AdaptationOrigin", "At": "(ref/i32 during a)", "Skip": 1, "Length": 16 } ] },
   { "Name": "adaptation-during", "Source": "public func main()\n    var x = 1\n    let y = x@ref/i32 during a\n", "Intended": "'during' after an ungrouped adaptation target; the annotation is skipped",

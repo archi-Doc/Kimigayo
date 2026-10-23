@@ -4676,6 +4676,36 @@ resumed by R4-M86 (2026-10-20).
     CallPlan (extra state while retaining the redundant Group), or a new IR/table. The existing view row corrects the public subject
     without another allocation; removing Group work is expected to preserve compilation and native costs.
 
+- **G209-1** (2026-10-24; the planning session after independent designs A and B and an independent pre-code review; structural
+  unit) SPEC 13.6.4 gives runtime `is` one named target before lookup; SPEC 18.2 gives source aliases their selected container and
+  environment before ordinary lookup merges imports. These responsibilities were embedded in the general expression parser and
+  `Binding.Types.Lookup`, with alias resolution beside Type formation. `Parser.RuntimeTypeTests` now builds the existing runtime-test
+  syntax; `Binding.Aliases.AliasTarget` resolves source aliases; `Binding.Imports.LookupImportedType` and `LookupImportedValue` select
+  their imported declarations. The Type path keeps the first populated stage even when no arity matches; the value path keeps its
+  overload merge and environment-conflict order. Local/inherited/module lookup and the alias-resolution gate remain in `Lookup`.
+  No grammar, diagnostic, Type identity, table or plan changes in this unit. The following G209 unit adds the written-Origin check
+  and selected-import provenance, replacing the outer-Origin shortcut; G209 remains open until then. Rejected: growing the oversized
+  parser and Type-formation file, a new lookup mode or argument bag, and sharing Type-arity selection with value-overload merging.
+- **G209-2** (2026-10-24; the planning session, independent designs A/B and independent pre-code review; owner explicitly approved
+  `SyntaxForm.RuntimeTypeTestOrigin` on 2026-10-24) SPEC 13.6.4's `NamedCoreType` forbids written Origins throughout complete Type
+  arguments and alias expansions. Ordinary Type parsing allowed them, while normalized `BoundType.Origin` cannot distinguish them
+  from implicit function Origins. `Parser.RuntimeTypeTests.ParseNamedCoreType` checks the whole owned syntax tree through the shared
+  `WrittenOrigin` query (`TypeSemanticsKoto.HasOrigin` and `OriginApplicationKoto`), records `MisplacedSyntax_Kd` at the first written
+  node and makes the target a recovery. Binding queries each successfully resolved alias target once during `PrepareAliases`.
+  Its existing alias lists, named entries, candidate summary and imported-container map retain one pass-local `AliasImport`: the
+  actual alias plus its first written-Origin witness. `Environment` reads that alias's stable `BoundType` after `AliasTarget` has
+  completed; no snapshot table or normalized-Type flag is needed. Original resolution, access, role and arity selection stay intact.
+  Same-candidate/environment imports keep the first selected declaration and union only the witness through AliasImport.MergeWitness,
+  retaining its first actual source; replacement candidates replace provenance.
+  Named equivalent aliases use the same rule. Unused, shadowed or eliminated aliases supply no witness. `ResetAliases` clears this
+  state before every pass and on invalidation; reusable query visitors clear their source reference after each query.
+  After Type formation succeeds, runtime-test Binding checks only the selected import facts in the target before the dependency
+  `Unsupported_Kd` boundary. A written alias Origin is `InvalidTypeFormation_Kd` and publishes no runtime-test plan. The former outer
+  Origin shortcut is removed. Ordinary Type declarations, implicit function Origins, lookup stages and generated-code rules stay
+  unchanged. A's selected-import provenance replaces the lost source information; B independently identified the same loss.
+  Rejected: normalized-Type provenance or recursive `BoundType.Origin` rejection, direct-syntax-only checking, a new side table,
+  rescanning all aliases, or an alias graph (SPEC 18.2 forbids alias chains). Syntax forms `OriginClause` and `AdaptationOrigin` have
+  different contracts; the approved new form is one row under the existing syntax diagnostic catalog. No new Binding/IR vocabulary.
 ## R5 and R6 (adopted 2026-10-18)
 
 The owner's answers to the plan's questions OQ1–OQ17, given on 2026-10-18 and relayed by the R4 planning session. "Plan"

@@ -135,6 +135,12 @@ public class Program
             return;
         }
 
+        if (args.Length > 0 && args[0] == "--alias-cost")
+        {
+            AnalyzeCostMeasurements.RunAliases();
+            return;
+        }
+
         if (args.Length > 0 && args[0] == "--analyze-cost")
         {
             AnalyzeCostMeasurements.Run();
