@@ -4528,6 +4528,10 @@ resumed by R4-M86 (2026-10-20).
     Subject). The census `draft/Sketches/G170/C2/census-c2.tsv` (56 rows) gives each read's disposition and C3 change;
     AdmittedSemantics corrects C1 §8 ("none: inputs"): it reads derived facts today (AddArithmeticPremises' Owner premise), so its
     C3 operation is Enumerate's compound rows.
+  - Staged prohibitions (the review's N1): C1 §5's no Binding writes, syntax-triggered supply, `DerivedFacts` and fallback scan hold
+    from C3; until then the eager derivation and the presence-gated scan moved in break them, as the entry contract states. Holding
+    the eight routings stages C1 §8's "C2 routes each read" within PlanB §6's C2 condition (reads left unrouted are listed for C3); C1
+    §5's operations and representation are unchanged, so Q6's form stands without a further owner decision.
   - Ruling 4: AvailableEffectBounds' `ReferenceEquals` match misses a universal family pattern's bounds, a wrong result reproduced on
     the default pipeline (a valid program rejected; the census row), filed as PLAN G234 by the planning session; not changed here.
   - Rejected: routing every read now (22 reads differ in subject relation, Invalid treatment, availability order or C3 operation, so

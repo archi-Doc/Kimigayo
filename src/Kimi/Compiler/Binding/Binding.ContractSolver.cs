@@ -8,7 +8,8 @@
 // - Invariants: innermost scope first, each environment in its order; an Invalid environment answers Invalid to Supply; availability
 //   is asked per fact, lazily, in the caller's order.
 // - Prohibitions: no judgment, lookup, normalization or inference rule here; no mode or bool parameter; no answer kept across
-//   requests; no new syntax-triggered supply; no read sets.
+//   requests; no second scheduler; no read sets. From C3 (C1 §5), broken until then by the eager derivation moved here: no Binding
+//   writes, syntax-triggered supply, DerivedFacts or fallback scan.
 
 using Kimi.Compiler.Parsing;
 
