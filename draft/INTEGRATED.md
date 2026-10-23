@@ -1108,3 +1108,15 @@ applied (its §13). The owner then instructed the R4 planning session: 「この
 - Integrated: the proposal's §5 (SPEC §6.4.6, §8.11, §12.7.1, §15.6, §15.6.3, §15.6.4, §16.3.3, §22.2, Appendices D, E and F,
   LIBRARY, IMPL Appendix A). No support is claimed: the default pipeline changes with U1 and U2, STATUS with U2. Not refreshed:
   SPECJ (being retranslated on `codex/specj-from-source`, whose source revision predates this change) and GUIDE.
+
+## 2026-10-22 — Type identity by structural decomposition (G170; intake only)
+
+The owner wrote two proposals on 2026-10-22 and combined them into proposal B; G170 C1 (merged on 2026-10-23, `draft/Sketches/G170/C1/`)
+follows B's section 3. Recorded by the R4 planning session on 2026-10-23, when the owner asked it to check the documents and merge C1.
+
+- [Type Identity by Structural Decomposition B](Proposals/2026-10-22%20Type%20Identity%20by%20Structural%20Decomposition%20B.md): 一部取り込み
+  (intake only, as its status line says). Not integrated into SPEC: §8.2.3 still states non-decomposition; B's section 6 leaves Q1–Q4
+  (with recommendations) and Q5–Q7 (decidability) for the owner. G170 C1's executable design cites it as B 3.x. Its link to the
+  original Structural Decomposition proposal does not resolve on dev (that file is not on dev).
+- [Type Identity Normalization](Proposals/2026-10-22%20Type%20Identity%20Normalization.md) (案 G′): 提案 (not adopted, its status line);
+  B takes its rules where they agree and lists the differences in B's section 6.
