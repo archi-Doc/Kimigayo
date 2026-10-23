@@ -315,6 +315,7 @@ public sealed partial class MirBuildTest
             "    public var counter: uniq/Counter during a\n    public var o: uniq/Option<i32> during a\n";
         var program = Compile(Declarations + body + "public func main() => ()\n").BuildMir();
         Assert.Empty(program.Findings);
+        Assert.Empty(program.Records);
         Assert.DoesNotContain(program.Problems.All.ToArray(), static x => x.Code == DiagnosticCode.InternalInvariant_Kd);
         var f = program.Bodies.ToArray().Single(x => x.Key is { Kind: MirBodyKind.Fn } && x.Key.Decl?.Name == "f");
         var refs = f.Statements.ToArray().Where(static x => x is { Kind: MirStatementKind.Assign, Rvalue.Kind: MirRvalueKind.Ref }).Select(static x => x.Rvalue.Type!)
