@@ -4,9 +4,10 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The intrinsic rows of FunctionCodegen (R5 plan C8a, package C 3.2; DECISIONS R5-M92): a call of an intrinsic by its row's writer
-// (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine through the one
-// call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with its element stride), a Fail's
+// The intrinsic rows of FunctionCodegen (R5 plans C8a and C5c, package C 3.2; DECISIONS R5-M92, R5-M108): a call of an intrinsic by its
+// row's writer (IntrinsicRows' writer column), over the closed IntrinsicWriter vocabulary: a routine row (Routine: a runtime routine through
+// the one call writer, Invoke, with its slot-less values; Raw.release, $abort, tryAllocateBytes, Raw.allocate with its element stride),
+// which a compiler function's Value call and adapter entry also call by its disposition (Routine by kind), a Fail's
 // Abort reason, Raw.initialize's copy, Raw.slice's record, transferBytes' memcpy and a staticEnsure's state test
 // (FunctionCodegen.Statics). Each takes its operands at its declaration's slots (ArgumentPosition) and ends through Finish; a row not
 // written yet is one located Unsupported_Kd at the call, its owning unit named in IntrinsicRows. In a caller-location body a location is
@@ -46,6 +47,20 @@ internal sealed partial class FunctionCodegen
             default:
                 throw new InvalidOperationException($"The intrinsic writer {row.Writer} has no code generation row.");
         }
+    }
+
+    // SPEC 7.7.4 (DECISIONS R5-M108): a compiler function's routine row by its disposition, what its Value call and its adapter's entry call
+    // (FunctionCodegen.Closures' Runs): an intrinsic's routine row (below), a Body disposition's legacy routine (LegacyRoutine); null for
+    // any other row, which is not one routine call or not written yet (a Shim's, an instruction writer's, an unwritten row's).
+    private FunctionAbi? Routine(CompilerFunctionKind kind, BoundType? result, out ReadOnlySpan<Value> given)
+    {
+        given = default;
+        return IntrinsicDisposition.Of(kind) switch
+        {
+            { Kind: DispositionKind.Intrinsic, Id: var id } => this.Routine(IntrinsicRows.Of(id), result, out given),
+            { Kind: DispositionKind.Body } => LegacyRoutine(kind),
+            _ => null,
+        };
     }
 
     // A routine row, a call that is one runtime routine: its routine, after its module request (TryAllocate's), and its slot-less values in

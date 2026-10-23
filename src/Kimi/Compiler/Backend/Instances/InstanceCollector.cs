@@ -27,8 +27,9 @@
 // Types are closed, every block included, once per definition and location, and of a root-module static's declaration (static storage
 // P42 has not brought, a generic container's included, DECISIONS R5-M82); Binding's refusals are Opaque values, so it never repeats them.
 // An operation whose Types depend on slots is a template site, checked in each instance with its Types there, once per location.
-// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates and
-// the Type argument of an intrinsic whose row names one), each type-driven item's Type and a DropGlue's collection element Types (X34) take
+// Layout obligations (K 4.8, InstanceCollector.Layouts.cs): each item's by-value uses (its body's locals but drop flags, its aggregates, the
+// Type argument of an intrinsic whose row names one, at its call or its function's Item, and the inputs and result of an erasure's target
+// Function Type, DECISIONS R5-M108), each type-driven item's Type and a DropGlue's collection element Types (X34) take
 // Layout's verdict: a limit is GenerationResourceLimit_Kd once per erased Type at its first use, a C-layout instance storing a zero-sized
 // Field InvalidCLayout_Kd and a layout over 2^63 - 1 bytes OversizedLayout_Kd at each use (both at one use when both hold); Rejected
 // storage derives from a Binding error; a type-driven item needs an Ok verdict.
@@ -108,7 +109,8 @@ internal sealed partial class InstanceCollector
         {
             if (body.Source.Module < rootModules && (body.Key.Decl is null || !this.types.Instantiates(body.Key.Decl)))
             {
-                set.Add(new() { Key = new(MonoKind.Body, new(body.Key, null), null, null, 0), BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
+                var key = new MonoKey(MonoKind.Body, new(body.Key, null), null, null, 0, null);
+                set.Add(new() { Key = key, BodyOrdinal = body.Ordinal, Parent = -1, Site = body.Source });
             }
         }
 

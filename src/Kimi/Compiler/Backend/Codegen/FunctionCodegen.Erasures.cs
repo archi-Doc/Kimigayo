@@ -4,8 +4,8 @@ using Kimi.Compiler.Mir;
 
 namespace Kimi.Compiler.Backend;
 
-// The common Function values of FunctionCodegen (R5 plan C5b, package C 3.2 and 3.6, PD3, PD19; SPEC 7.7.4, 16.4, 22.5.1, IMPL 21.1.3;
-// DECISIONS R5-M104): erasure, the adapter items' functions and a Function value's destruction, every call through the one call writer.
+// The common Function values of FunctionCodegen (R5 plans C5b and C5c, package C 3.2 and 3.6, PD3, PD19; SPEC 7.7.4, 10.7, 16.4, 22.5.1,
+// IMPL 21.1.3; DECISIONS R5-M104, R5-M108): erasure, the adapter items' functions and a Function value's destruction, every call through the one call writer.
 // A common Function value is IMPL 21.1.3's 16 bytes, its environment word at 0 and its table's address at 8 (Layout's FunctionHandle). An
 // adapter item's table is a private constant {entry, context, drop} at the offsets FunctionCodegen.Closures reads: its entry, a null
 // context and its drop entry, which takes a glue function's parameters at the Function value's address, the environment word's: the
@@ -15,12 +15,12 @@ namespace Kimi.Compiler.Backend;
 // is put in the zero-filled word, also one that needs destruction (PD19); a larger one is allocated when the value is formed, at the
 // conversion's location (SPEC 7.7.4, 22.5.1), the heap's 16-byte alignment covering every Layout alignment (IMPL 21.4.3; DECISIONS
 // R5-M92), and its address put in the word; a function Item has no environment. Then the table of the collector's adapter item at the site.
-// An adapter's entry (WriteAdapter) has the erased signature of its source's own Callable signature (ModuleCodegen.Adapter) and calls the
-// source's body with its own parameters and the location it received (Forward): a ClosureErasure's Shared Closure body with its
-// environment (the word spilled for an inline one, the heap pointer) and a null context; an ItemAdapter's function or requirement witness.
-// Temporary until C5c (DECISIONS R5-M104), which keys an adapter by its target Function Type: an erasure whose target's erased signature
-// is not its adapter's entry's (a Never-result source erased into another result) and an adapter without a body target (a compiler
-// function's Item, a Builtin or descriptor target) are one located Unsupported_Kd each, at the conversion and at the adapter's site.
+// An adapter item is keyed by its source and its target Function Type, so its entry (WriteAdapter) has the erased signature every erased
+// call of that Type writes (ModuleCodegen.Adapter) and calls what the source's call runs with its own parameters and the location it
+// received (Forward): a ClosureErasure's Shared Closure body with its environment (the word spilled for an inline one, the heap pointer) and
+// a null context; an ItemAdapter's what its Item's call runs (FunctionCodegen.Closures' Runs: a function's body, a requirement Item's
+// witness, a compiler function's routine row with its slot-less values, or that row's unit's located Unsupported_Kd at the adapter's site);
+// a Never-result callee leaves the entry's result unused and ends it unreachable (SPEC 10.7).
 // A Function value's glue row (DestroyErased): its table's drop entry, when present, at its address.
 internal sealed partial class FunctionCodegen
 {
@@ -38,17 +38,17 @@ internal sealed partial class FunctionCodegen
     internal void WriteAdapter(InstanceCollector collector, int item, TextWriter output)
     {
         (this.collector, this.item, this.output, this.next) = (collector, item, output, 0);
-        if (this.module.Adapter(item) is not { } entry)
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, default); // C5c: an adapter without a body target (above).
-            return;
-        }
-
+        var entry = this.module.Adapter(item);
         var targets = collector.Set.Targets(item);
-        var closure = collector.Set.Items[item].Key.Kind == MonoKind.ClosureErasure;
-        if (this.module.Signature(targets[0].Item) is not { } callee || this.Laid(collector.Set.Items[item].RepresentativeType) is not { } source)
+        var (key, represented) = (collector.Set.Items[item].Key, collector.Set.Items[item].RepresentativeType!);
+        var closure = key.Kind == MonoKind.ClosureErasure;
+        var given = default(ReadOnlySpan<Value>);
+        var callee = closure
+            ? this.module.Signature(targets[0].Item)
+            : this.Runs(represented, targets.Length > 0 ? targets[0].Item : -1, key.Function!.Components[1], default, out given);
+        if (callee is null || this.Laid(represented) is not { } source)
         {
-            return; // A broken contract, recorded.
+            return; // Recorded: a row not written yet, or a broken contract.
         }
 
         var heap = Heap(source.Layout);
@@ -57,7 +57,7 @@ internal sealed partial class FunctionCodegen
         this.abi = entry;
         output.Write(entry.GetDefinition(exported: false));
         output.Write("entry:\n");
-        var forwarded = closure ? this.Forward(callee, [this.Environment(heap), new('n', 0)], out var result) : this.Forward(callee, default, out result);
+        var forwarded = closure ? this.Forward(callee, [this.Environment(heap), new('n', 0)], out var result) : this.Forward(callee, given, out result);
         if (!forwarded)
         {
             return; // A broken contract, recorded.
@@ -83,12 +83,7 @@ internal sealed partial class FunctionCodegen
             return;
         }
 
-        if (this.InstanceType(statement.Place) is not { } function || this.module.Adapter(adapter) is not { } entry || !this.module.Fits(entry, function))
-        {
-            this.Report(DiagnosticCode.Unsupported_Kd, statement.Source); // C5c (above).
-            return;
-        }
-
+        var function = this.InstanceType(statement.Place);
         var operand = this.body.Operands[statement.Rvalue.Start];
         var type = operand.Kind == MirOperandKind.Const
             ? this.collector.TypeOf(this.item, this.body.Consts[operand.Arg].Type) : this.InstanceType(operand.Place);

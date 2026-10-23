@@ -195,14 +195,16 @@ internal sealed partial class InstanceCollector
         _ when argument is null => -1,
         IntrinsicTarget.None => -1,
         IntrinsicTarget.Witness => this.Runs(program, item, subject, this.types.OwnRequirement(KimiDeclarationId.BufferWriter)!, argument),
-        IntrinsicTarget.Descriptor => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0), argument),
+        IntrinsicTarget.Descriptor => this.AdmitType(item, subject, new(MonoKind.ObjectDescriptor, default, null, null, 0, null), argument),
         IntrinsicTarget.Glue => this.GlueOf(item, subject, argument),
         _ => throw new InvalidOperationException($"The intrinsic target {target} has no Type argument row."),
     };
 
     // K 4.5 rows 11-13, K 4.7 and K 4.8, in the item's instance: an aggregate's Type a by-value use, a Closure environment's also its body;
-    // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type;
-    // an operation whose Types depend on slots checked against the capability table (no target).
+    // a function item constant's body (as row 5); an erasure's ClosureErasure or ItemAdapter item, keyed by the erased Closure or Item Type
+    // and the erased target Function Type, the Cast's, whose inputs and result are by-value uses at the erasure (its entry takes and gives
+    // them; a Never-result source fits Function Types of other results, SPEC 10.7), a target that does not lay out dropping the edge
+    // (DECISIONS R5-M108); an operation whose Types depend on slots checked against the capability table (no target).
     private int Edge(MirProgram program, int item, MirBody body, in MirStatement statement)
     {
         var rvalue = statement.Rvalue;
@@ -225,8 +227,13 @@ internal sealed partial class InstanceCollector
             return (MirAggregateKind)rvalue.Op == MirAggregateKind.Closure ? this.Callee(program, item, subject, closed) : -1;
         }
 
+        if (rvalue.Kind != MirRvalueKind.Cast)
+        {
+            return this.Callee(program, item, subject, closed);
+        }
+
         var adapter = closed.Kind == BoundTypeKind.Closure ? MonoKind.ClosureErasure : MonoKind.ItemAdapter;
-        return rvalue.Kind != MirRvalueKind.Cast ? this.Callee(program, item, subject, closed)
-            : this.AdmitType(item, subject, new(adapter, default, null, null, 0), closed);
+        return this.In(item, subject, rvalue.Type!) is { } function && this.LaysOutSignature(subject, function)
+            ? this.AdmitType(item, subject, new(adapter, default, null, null, 0, this.types.Erase(function)), closed) : -1;
     }
 }

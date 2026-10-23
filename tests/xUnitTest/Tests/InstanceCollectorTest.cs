@@ -55,6 +55,7 @@ public sealed class InstanceCollectorTest
     // Uses of a Type one byte over the layout bound: two functions' parameters, and two callers passing theirs to a generic function, whose
     // records are each caller's parameter and argument and the generic instance's parameter.
     private const string Over = "func over(value: (" + Big + ", u8)) => ()";
+    private const string Huge = "(" + Big + ", u8)"; // One byte over the bound.
     private const string Again = "func again(value: (" + Big + ", u8)) => ()";
     private const string One = "func one(value: (" + Big + ", u8)) => pass(value@move)";
     private const string Two = "func two(value: (" + Big + ", u8)) => pass(value@move)";
@@ -520,8 +521,8 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.5 row 13: an erasure of a Closure or function item to its Function Type is its ClosureErasure or ItemAdapter item, keyed by the
-    // erased Type and represented by the first Type that requests it, whose target is the body the Closure or Item runs; a call of the
-    // Function Type value has no target.
+    // erased Type and the erased Function Type (DECISIONS R5-M108) and represented by the first Type that requests it, whose target is the
+    // body the Closure or Item runs; a call of the Function Type value has no target.
     [Fact]
     public void AnErasureIsItsAdapterItem()
     {
@@ -535,11 +536,27 @@ public sealed class InstanceCollectorTest
         var adapters = Enumerable.Range(0, set.Items.Length).Where(x => set.Items[x].Key.Kind is MonoKind.ClosureErasure or MonoKind.ItemAdapter).ToArray();
         Assert.Equal([MonoKind.ClosureErasure, MonoKind.ItemAdapter], adapters.Select(x => set.Items[x].Key.Kind).Order());
         Assert.All(adapters, x => Assert.Same(c.Types.Erase(set.Items[x].RepresentativeType!), set.Items[x].Key.Type));
+        Assert.All(adapters, x => Assert.Equal("(i32) -> i32", TyCtxt.Name(set.Items[x].Key.Function!)));
         Assert.Equal(
             ["Closure adder [i32]", "Fn pick [i32]"],
             adapters.SelectMany(x => set.Targets(x).ToArray()).Select(x => Label(program, set.Items[x.Item])).Order(StringComparer.Ordinal));
         var adder = set.Targets(Item(program, set, "Fn adder [i32]")).ToArray();
         Assert.DoesNotContain(adder, x => Label(program, set.Items[x.Item]).StartsWith("Fn pick", StringComparison.Ordinal));
+    }
+
+    // SPEC 10.7 (DECISIONS R5-M108): a Never-result source fits Function Types of other results, so it has one adapter item per erased
+    // target Function Type, each running the source's body: two items for three erasures into two Types.
+    [Fact]
+    public void ANeverSourceHasAnAdapterPerTargetFunctionType()
+    {
+        var (program, set) = Collect("func fail() -> Never => $abort(\"x\")\nfunc i() -> () -> i32 => fail\nfunc s() -> () -> string => fail\n" +
+            "func j() -> () -> i32 => fail\nlet x = 1\n");
+        Assert.Empty(set.Records);
+        var adapters = set.Items.ToArray().Where(static x => x.Key.Kind == MonoKind.ItemAdapter).ToArray();
+        Assert.Equal(["() -> i32", "() -> string"], adapters.Select(static x => TyCtxt.Name(x.Key.Function!)).Order(StringComparer.Ordinal));
+        Assert.Single(adapters.Select(static x => x.Key.Type).Distinct());
+        Assert.All(adapters, x => Assert.Equal(["Fn fail"], set.Targets(Array.IndexOf(set.Items.ToArray(), x)).ToArray()
+            .Select(y => Label(program, set.Items[y.Item]))));
     }
 
     // K 4.5 rows 4 and 12 (X5): the Item of a virtual slot, whose calls dispatch, is no target where it is made: its receiver's VTable holds
@@ -886,11 +903,13 @@ public sealed class InstanceCollectorTest
     }
 
     // K 4.3: a type-driven item's representative is closed; an open one is a broken contract, InternalInvariant_Kd at its request. Binding
-    // never gives one, so the test appends an erasure of an open function item to the top-level body in a new unreachable block.
+    // never gives one, so the test appends an erasure of an open function item to the top-level body in a new unreachable block, into a
+    // Function Type (a parameter's) as the validator requires of an erasure's target.
     [Fact]
     public void AnOpenAdapterTypeIsABrokenContract()
     {
-        var c = MirBuildTest.Compile("func pick<T>(value: T) -> T => value@move\nfunc hold<T>(value: T) -> i32\n    let item = pick<T>\n    return 1\nlet z = 1\n");
+        var c = MirBuildTest.Compile("func pick<T>(value: T) -> T => value@move\nfunc hold<T>(value: T) -> i32\n    let item = pick<T>\n    return 1\n" +
+            "func take(f: (i32) -> i32) => ()\nlet z = 1\n");
         Assert.True(c.Binding.Result.IsComplete, MinimalEmissionTest.Describe(c, null));
         var program = c.BuildMir();
         var hold = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "hold");
@@ -899,7 +918,8 @@ public sealed class InstanceCollectorTest
         var statement = top.Statements.ToArray().First(static x => x.Kind == MirStatementKind.Assign);
         var operand = top.AddOperand(MirOperand.Const(top.Const(new(MirConstKind.FnItem, open))));
         var block = top.AddBlock();
-        top.Push(block, statement with { Rvalue = new(MirRvalueKind.Cast, (byte)MirCastKind.Erasure, Start: operand, Count: 1, Type: BoundType.Unit) });
+        var function = program.Bodies.ToArray().Single(static x => x.Key.Decl?.Name == "take").Locals[1].Type;
+        top.Push(block, statement with { Rvalue = new(MirRvalueKind.Cast, (byte)MirCastKind.Erasure, Start: operand, Count: 1, Type: function) });
         top.Terminate(block, MirTerminator.Unreachable(statement.Source));
         var set = new InstanceCollector(c.Types, c.Layout).Run(program, 1);
         Assert.Equal([(DiagnosticCode.InternalInvariant_Kd, statement.Source.Syntax)], set.Records.Select(static x => (x.Code, x.Subject)));
@@ -1384,13 +1404,24 @@ public sealed class InstanceCollectorTest
 
     // IMPL 21.1.1, SPEC 8.15.3, DECISIONS R5-M52: a by-value use needing a layout over 2^63 - 1 bytes is OversizedLayout_Kd at each
     // use (one record per subject), not a Resource record: a parameter (at its function), two functions' parameters, a generic instance's
-    // parameter and each caller's uses, a generic instance's Raw.allocate Type argument; M, exactly at the bound, and a 2^31-byte array are
-    // one Resource record each. Subjects by their first line, codes in record order.
+    // parameter and each caller's uses, a generic instance's Raw.allocate Type argument, an erasure's target Function Type's inputs and
+    // result (a Never source's, a body's beside its own result local, a compiler function Item's) and Raw.allocate's Type argument through
+    // its Item, erased or called as a value (DECISIONS R5-M108); M, exactly at the bound, and a 2^31-byte array are one Resource record
+    // each. Subjects by their first line, codes in record order.
     [Theory]
     [InlineData(Over + "\n", "OversizedLayout_Kd " + Over)]
     [InlineData(Over + "\n" + Again + "\n", "OversizedLayout_Kd " + Over + "|OversizedLayout_Kd " + Again)]
     [InlineData("func pass<T>(value: T) => ()\n" + One + "\n" + Two + "\n", PassRecords)]
     [InlineData("func make<T>() -> raw/T => Raw.allocate<T>(0)\nlet p = make<(" + Big + ", u8)>()\nunsafe => Raw.release(p)\n", "OversizedLayout_Kd Raw.allocate<T>(0)")]
+    [InlineData("func fail() -> Never => $abort(\"x\")\nfunc big() -> () -> " + Huge + " => fail\n", "OversizedLayout_Kd fail")]
+    [InlineData(
+        "func make() -> " + Huge + " => $abort(\"x\")\nfunc get() -> () -> " + Huge + " => make\n",
+        "OversizedLayout_Kd func make() -> " + Huge + " => $abort(\"x\")|OversizedLayout_Kd make")]
+    [InlineData("func swap() -> (uniq/" + Huge + ", " + Huge + ") -> " + Huge + " => Kimi.Intrinsics.exchange\n", "OversizedLayout_Kd Kimi.Intrinsics.exchange")]
+    [InlineData("func huge() -> (isize) -> raw/" + Huge + " => Raw.allocate\n", "OversizedLayout_Kd Raw.allocate")]
+    [InlineData(
+        "func huge() -> raw/" + Huge + "\n    let f = Raw.allocate<" + Huge + ">\n    return f(1)\n",
+        "OversizedLayout_Kd Raw.allocate<" + Huge + ">|OversizedLayout_Kd f(1)")]
     [InlineData("func at(value: " + Big + ") => ()\n", "GenerationResourceLimit_Kd func at(value: " + Big + ") => ()")]
     [InlineData("func at(value: [2 of [1073741824 of u8]]) => ()\n", "GenerationResourceLimit_Kd func at(value: [2 of [1073741824 of u8]]) => ()")]
     public void ALayoutOverTheBoundIsARecordAtEachUse(string source, string records)

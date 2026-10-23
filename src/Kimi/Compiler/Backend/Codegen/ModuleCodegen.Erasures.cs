@@ -4,8 +4,8 @@ using System.Globalization;
 
 namespace Kimi.Compiler.Backend;
 
-// The common Function values' entries of ModuleCodegen (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102, R5-M104), whose definitions
-// FunctionCodegen.Erasures writes: an entry under a Callable signature (Erased), an adapter item's entry (Adapter) and its heap
+// The common Function values' entries of ModuleCodegen (IMPL 21.1.3, 21.3.1; DECISIONS R5-M102, R5-M104, R5-M108), whose definitions
+// FunctionCodegen.Erasures writes: an entry under a Callable signature (Erased), an adapter item's entry under its target's (Adapter) and its heap
 // environment's release (Release); each kept, or computed once per Write through the per-index cache of ModuleCodegen.Signatures.cs,
 // and the previous one reused while it still matches.
 internal sealed partial class ModuleCodegen
@@ -43,13 +43,13 @@ internal sealed partial class ModuleCodegen
         return abi;
     }
 
-    /// <summary>Gets the entry signature of a ClosureErasure or ItemAdapter item (IMPL 21.1.3, 21.3.1; DECISIONS R5-M104): the erased
-    /// signature (<see cref="Erased"/>'s form) of its source's own Callable signature, its body target's inputs and result (a Closure body's
-    /// environment not among them), named <see cref="AdapterPrefix"/> with its index, computed once per Write and the previous one while it
-    /// still matches. Temporary until C5c keys an adapter by its target Function Type: an adapter without a body target has none.</summary>
+    /// <summary>Gets the entry signature of a ClosureErasure or ItemAdapter item (IMPL 21.1.3, 21.3.1; DECISIONS R5-M108): the erased
+    /// signature (<see cref="Erased"/>'s form) of its target Function Type (its key's), the one every erased call of that Type writes, so a
+    /// Never-result source has one entry per target signature (SPEC 10.7); Abi reads no Origin, so the erased Type serves. Named
+    /// <see cref="AdapterPrefix"/> with its index, computed once per Write and the previous one while it still matches.</summary>
     /// <param name="item">The adapter item.</param>
-    /// <returns>The signature; null for an adapter without a body target, or, recorded, where the instance does not make its Types.</returns>
-    internal FunctionAbi? Adapter(int item)
+    /// <returns>The signature.</returns>
+    internal FunctionAbi Adapter(int item)
     {
         if (!this.set.IsGenerated(item))
         {
@@ -61,25 +61,8 @@ internal sealed partial class ModuleCodegen
             return current;
         }
 
-        var targets = this.set.Targets(item);
-        if (targets.Length == 0 || this.set.Items[targets[0].Item] is not { Key.Kind: MonoKind.Body, BodyOrdinal: var ordinal } ||
-            this.Inputs(targets[0].Item, this.program.Bodies[ordinal], out var count) is not { } result)
-        {
-            return null;
-        }
-
-        return this.Define(item, AdapterPrefix, ErasedFlags, result, this.parameters.AsSpan(0, count));
-    }
-
-    /// <summary>Gets whether an adapter's entry is the erased signature of a Function Type, the one every erased call of that Type uses
-    /// (<see cref="Erased"/>): a Never-result source erased into another result is not (SPEC 10.7; until C5c, DECISIONS R5-M104).</summary>
-    /// <param name="entry">The adapter's entry (<see cref="Adapter"/>).</param>
-    /// <param name="function">The closed Function Type the source is erased into.</param>
-    /// <returns>Whether the signatures match.</returns>
-    internal bool Fits(FunctionAbi entry, BoundType function)
-    {
-        ReadOnlySpan<BoundType> inputs = (BoundType[])function.Components[0].Components;
-        return Abi.Matches(entry, this.Layout, Abi.Convention.Internal, ErasedFlags, function.Components[1], inputs);
+        var function = this.set.Items[item].Key.Function!;
+        return this.Define(item, AdapterPrefix, ErasedFlags, function.Components[1], (BoundType[])function.Components[0].Components);
     }
 
     /// <summary>Gets the release of an adapter item's heap environment, its table's drop entry (IMPL 21.1.3; DECISIONS R5-M104): a glue

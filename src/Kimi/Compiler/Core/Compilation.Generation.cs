@@ -168,7 +168,7 @@ public partial class Compilation
         {
             foreach (var test in this.Tests.Cases)
             {
-                roots.Add(set.Find(new(Backend.MonoKind.Body, new(new(test.Symbol, Mir.MirBodyKind.Test), null), null, null, 0)));
+                roots.Add(set.Find(new(Backend.MonoKind.Body, new(new(test.Symbol, Mir.MirBodyKind.Test), null), null, null, 0, null)));
             }
         }
         else if (startup.OutputKind == OutputKind.Library)
@@ -190,7 +190,7 @@ public partial class Compilation
         else
         {
             var body = new Mir.MirDefKey(startup.Kind == StartupKind.Explicit ? startup.Symbol : null, Mir.MirBodyKind.Fn);
-            roots.Add(set.Find(new(Backend.MonoKind.Body, new(body, null), null, null, 0)));
+            roots.Add(set.Find(new(Backend.MonoKind.Body, new(body, null), null, null, 0, null)));
         }
 
         if (roots.Contains(-1))
