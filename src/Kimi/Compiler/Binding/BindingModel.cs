@@ -528,7 +528,7 @@ public sealed record BoundType
     /// <returns>The interned <c>Wrapping&lt;integer&gt;</c>.</returns>
     internal static BoundType WrappingOf(BoundType integer) => WrappingScalars[integer];
 
-    // A closure an instance closed keeps that instance's substitution (SPEC 8.2; DECISIONS R5-M36), interned and shared by the instance's
+    // A closure an instance closed keeps that instance's substitution (SPEC 6.1.3, 8.1.3; DECISIONS R5-M36), interned and shared by the instance's
     // closures, even when none of its slots occupy capture storage.
     internal Subst? ClosureContext { get; init; }
 

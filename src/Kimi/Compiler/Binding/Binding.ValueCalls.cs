@@ -322,7 +322,7 @@ public sealed partial class Binding
         return signature is not null;
     }
 
-    // SPEC 7.3 (object-kind row and check 1), 7.6.3, 13.5.5.1: a callee reached through an obj/rc/arc handle or an objref/objuniq view,
+    // SPEC 7.3.3 (object-kind column and check 1), 7.7.3, 13.5.5: a callee reached through an obj/rc/arc handle or an objref/objuniq view,
     // and a written payload follow, is acquired as its complete payload, `h@follow@ref` for a Shared call and `h@follow@uniq` for an
     // Exclusive one, through the same checked projection as the explicit spelling; the payload offers no Take.
     // The checks follow SPEC 7.3's order: the operation's legality and authority (a payload offers no Take and rc/arc/objref only Read),
