@@ -2775,7 +2775,7 @@ and migration obligations remain in force; no numeric cap changes are authorized
     (R4-M95, G160 §9.2 and D1): A5's address gains an own-step marker carrying the owning value's Place, which the Warning compares
     with the operation's Place by 15.6.2's steps (the Place or an ancestor); for Loan checking an address still conflicts with
     nothing. G160-4 designs it under the full process, with the Warning's sentence for 5.2.1 condition 3 and any closed-vocabulary
-    entry for the owner. (Scope and sentence: R4-M116, OQ-1 (a): ancestors with no dereference between, every exclusive Borrow.)
+    entry for the owner. (Scope superseded by R4-M116, OQ-1 (a): ancestors with no dereference between, every exclusive Borrow.)
   - OQ-R4 (a): an Information diagnostic for a raw Field in a struct's or enum's inline storage that the Type's `drop` releases
     without `during self`, repaired by stating `during self` and adding the claim at each constructor fill; not for unannotated raw
     Fields in general (G160 D3's canonical "unstated") and not on a constructor fill; for an enum's Case payload no repair candidate
@@ -3082,7 +3082,9 @@ and migration obligations remain in force; no numeric cap changes are authorized
     planning session's reading, confirmed by the re-review). One Concept, One Canonical Form: one retention rule for borrowed and raw
     arguments; Local Reasoning: decided per argument from the contract's Types; Explicit Semantics: the self-store exception is stated.
     Observation (re-review R-N2): a callee that stores a converted pointer where its contract's Type cannot hold the argument breaks
-    its contract (undefined behavior); no text change.
+    its contract (undefined behavior); no text change. Rejected: keeping the letter and having each library body avoid deriving raw
+    store targets from remainders (impractical: every library raw store does so); an A5-only reading without SPEC text (a departure
+    from SPEC, which AGENTS forbids).
   - SPEC 5.2.1 condition 3 (OQ-1): after the own-step limit, a Warning is required where an operation may end the owning value's stay
     in its holder while a pointer formed through that own step may still be used: a Move or Take of the Place or of an ancestor with no
     dereference between, a replacing write, its destruction, or an exclusive Borrow of the Place or of any ancestor, calls by `uniq`
@@ -3092,13 +3094,14 @@ and migration obligations remain in force; no numeric cap changes are authorized
   - OQ-2: `OwnStepDeparture_Kd`, Warning, Language, requirement `Ownership.OwnStepDeparture`, facts Anchor (the pointer's formation),
     Use (the witness) and Evaluated (inside an inline default copy), no repair; new closed-vocabulary entries, added with DIAGNOSTICS by
     4c. Rejected: `OwnStepPointerOutlivesOwner_Kd` (the owner is not destroyed; the record locates the departure).
-  - Design (the planning session's rulings on the review's PQ-1 to PQ-13): B′ as amended by the re-review. R-B2: G160-2c's untied rule
-    also covers writable storage a call writes a pointer into through an Unstated or Static raw layer, and A5 adds Φ_E to that input's
-    write targets (`fill(h)` storing `Raw.allocate(1)` into `h.p`, then `Raw.initialize(h.p, y@ref)`, a failing-first test). R-B3: a
-    raw input's own-layer Origin atom yields no Value row of its own. R-B4: "can hold a value of its Type" is normalized Type identity
-    with Origins fitted. R-B5: G160-2c runs MirCensusTest and the Text, Utf8Writer and interpolation classes with the untied rule before
-    merging, and a new problem stops it. R-N1 amends PQ-3: the guard's Exclusive row walks the pointee as a Type argument; where that is
-    wider than the keepers it holds the view as a located `Unsupported_Kd`.
+  - Design (the planning session's rulings on the review's PQ-1 to PQ-13): B′ as amended by the re-review. R-B1: "only" restored in the
+    15.6.4 text, the existing rule cited (§5.2.2, §5.6). R-B2: G160-2c's untied rule also covers writable storage a call writes a pointer
+    into through an Unstated or Static raw layer, and A5 adds Φ_E to that input's write targets (`fill(h)` storing `Raw.allocate(1)` into
+    `h.p`, then `Raw.initialize(h.p, y@ref)`, a failing-first test). R-B3: a raw input's own-layer Origin atom yields no Value row of its
+    own. R-B4: "can hold a value of its Type" is normalized Type identity with Origins fitted. R-B5: G160-2c runs MirCensusTest and the
+    Text, Utf8Writer and interpolation classes with the untied rule before merging, and a new problem stops it. R-N1 amends PQ-3: the
+    guard's Exclusive row walks the pointee as a Type argument; where that is wider than the keepers it holds the view as a located
+    `Unsupported_Kd`.
   - Owners and order: Binding's `RetentionInput` decides 15.6.4's row kinds, so raw arguments' rows are BU's G160-2c (B′ §3.2 as
     amended; it starts on the owner's word for BU) and A5's `Retained` is unchanged. Order: 4a (behavior-preserving splits of the due
     `MirBorrows.Values.cs`, `.Locations.cs`, `.Solve.cs` and `.Reports.cs`), BU's G160-2b (`RawStep` total), G160-2c, 4b (addresses;
